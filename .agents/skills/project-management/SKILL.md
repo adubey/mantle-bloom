@@ -121,4 +121,6 @@ to settle child issues, then update their project statuses to match their dispos
 - `start-rfc` follows [Starting or resuming an RFC](#starting-or-resuming-an-rfc) and uses
   [`create-issue`](../create-issue/SKILL.md) when follow-up work needs an issue.
 - `continue-rfc` reconstructs handoff context, then routes lifecycle work to `start-rfc`.
+- `edit-rfc` follows [Investigating additional work](#investigating-additional-work) when a
+  revision blocks an issue, and settles affected items after the revision merges.
 - `complete-rfc` follows [Completing an RFC](#completing-an-rfc).

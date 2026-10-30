@@ -10,7 +10,28 @@ or best next step is still uncertain. Also use it when an RFC or issue was aband
 because a gate failed, acceptance criteria were not met, or the proposed work appeared
 infeasible, and the user wants to understand what happened or whether another path exists.
 The exploration is collaborative: involve the user as evidence suggests useful directions,
-and ask which artifacts to create before making them.
+and ask which artifacts to create before making them. When the exploration splits off from
+RFC work and may revise that RFC, [`edit-rfc`](../edit-rfc/SKILL.md) coordinates it and its
+handoff. When the project owner invokes `edit-rfc`, that approves the tracker and a revision
+PR, which replaces the approval requests below for those two artifacts only.
+
+## Communicate clearly
+
+Explanations in this skill and in `edit-rfc` should be complete and easy to follow, even at
+the cost of length. The reader may be returning after days away or starting a new session.
+
+- Write in full sentences, and put the conclusion first.
+- Say what was observed, what it means, how certain it is, and what would change the
+  conclusion.
+- Give numbers with units and a comparison, such as a baseline, a threshold or the expected
+  size.
+- Explain gate labels, probe arms, knob names and other project shorthand, or use plain
+  descriptions instead.
+- When asking for a decision, explain each option and its consequences so the question can
+  be answered without reading the rest of the conversation.
+
+The tracker's comments stay a selective log, not a transcript, so each one covers a finding
+or a changed hypothesis. Its `## Exploration summary` is the complete account.
 
 ## 1. Frame the problem with the user
 
@@ -52,7 +73,7 @@ and ask which artifacts to create before making them.
   expensive failed gate until existing evidence and a meaningful change to the run are
   understood. The exploration goal is to find plausible, interesting hypotheses about the
   failure and possible mechanisms, not to test a candidate implementation.
-- At each new material decision point, share concise findings, explain the alternatives and
+- At each new material decision point, explain the findings, the alternatives and
   recommendation, and ask which direction the user wants to explore. Pause until they choose.
 - The exploration phase finds and sharpens hypotheses. Inspect code, literature, existing
   runs, and observations. Clearly labelled, temporary scratch perturbations of the current
@@ -88,7 +109,7 @@ and ask which artifacts to create before making them.
   or parameter-sensitive behavior matters. Follow `replay-ab` for its controlled before/after
   comparisons and avoid repeating matching prior runs.
 - Use the worktree discovery and path-resolution procedure in
-  [`continue-rfc`](../continue-rfc/SKILL.md#find-rfc-and-evidence-worktrees) to locate
+  [`continue-rfc`](../continue-rfc/SKILL.md#2-find-rfc-and-evidence-worktrees) to locate
   relevant registered trees. Treat other worktrees as read-only evidence unless the user
   explicitly directs otherwise.
 - If relevant evidence or uncommitted work is in an inaccessible worktree, clone, or host,
@@ -97,7 +118,7 @@ and ask which artifacts to create before making them.
 - Do not implement a model change or create downstream RFC or implementation artifacts
   during exploration. If the user approved an exploration tracker, use it as the
   investigation record: add comments with
-  concise findings, evidence links, and changed hypotheses—not a transcript of the
+  clear findings, evidence links, and changed hypotheses—not a transcript of the
   conversation. Keep its `## Exploration summary` pending until the evidence supports a useful handoff,
   then summarize findings, hypotheses, uncertainties, and recommended next steps. Update
   that summary when conclusions materially change or before ending the exploration. Keep
@@ -116,7 +137,7 @@ and ask which artifacts to create before making them.
 
 ## 3. Present outcomes and ask what to create
 
-When the evidence is sufficient or the user wants to decide, provide a concise summary of
+When the evidence is sufficient or the user wants to decide, provide a clear summary of
 the problem, evidence, applicable principles, remaining uncertainty, and a prioritized
 list of next steps. Outcomes may be combined; do not force the investigation into one
 category:

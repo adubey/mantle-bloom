@@ -69,7 +69,15 @@ Follow the [RFC lifecycle](../../../rfc/README.md#lifecycle) for issue timing an
 in this order:
 
 1. **Header:** title; status (Draft, Accepted, Implemented, or Withdrawn with any superseding RFC; see `complete-rfc`);
-   date; related issues and RFCs.
+   date; related issues and RFCs. Revising an accepted RFC doesn't change its Accepted status
+   or add an "under revision" state. Name the trigger and date in the status and date lines,
+   as in `Accepted (revised after G1)`.
+   Add one dated entry per revision to `## Revision note`, newest first, after the header and
+   any `## Outcome`. Each entry gives the revision PR, what the earlier version proposed, what
+   the evidence showed with links, and what changed, as in RFC 0009. For each changed gate or
+   acceptance criterion, it gives the old criterion, new criterion and reason, and it links
+   the impact table in [`edit-rfc`](../edit-rfc/SKILL.md). A draft RFC doesn't need a note.
+   Revise the body in place. `## Outcome` differs because it records how an RFC ended.
 2. **Problem:** what goes wrong, in general terms, with the evidence (section 1 above).
 3. **Proposed solutions:** what happens in nature, with citations; then one or more
    alternatives, each with its trade-offs; then the recommendation and why.
@@ -110,7 +118,9 @@ in this order:
      held-out acceptance seeds; do not tune against held-out results. Only the project owner
      may change an agreed diagnosis gate or acceptance criterion. If evidence suggests a
      criterion is invalid, propose a revision in the RFC with the old criterion, proposed
-     change and reason, and get the owner's decision before using it for a rerun.
+     change and reason, and get the owner's decision before using it for a rerun. Under
+     [`edit-rfc`](../edit-rfc/SKILL.md), the owner's merge of a PR that sets this out is that
+     decision.
 5. **Detailed design (provisional touchpoints):** the source files and functions likely
    to change, plus their tests and docs. Check that every file, function and constant you
    name exists, and mark new ones as new.
