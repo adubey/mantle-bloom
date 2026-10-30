@@ -58,7 +58,55 @@ def test_section_sampling_keeps_categorical_crust_values_discrete(section_world)
 
     assert np.array_equal(sampled["crust_type_code"], plate.collect("crust_type_code")[[0, -1]])
     assert continental.tolist() == [False, True]
-    assert np.array_equal(sampled["elevation"], plate.collect("elevation")[[0, -1]])
+    assert np.array_equal(sampled["nearest_node"], [0, 60])
+
+
+def test_section_sampling_blends_continuous_fields_along_the_arc(section_world):
+    """#702: copying the nearest node drew each interface as a node-wide staircase."""
+    plate = section_world.plates[0]
+    nodes = node_points(plate)
+    t = np.linspace(0.0, 1.0, 101)[:, None]
+    points = nodes[29] * (1.0 - t) + nodes[31] * t
+    points /= np.linalg.norm(points, axis=1, keepdims=True)
+    sampled, _, _ = cross_section._sample_fields(section_world, points)
+
+    node_step = float(np.diff(plate.collect("elevation"))[0])
+    steps = np.diff(sampled["elevation"])
+    assert np.all(steps > 0.0)
+    assert steps.max() < 0.1 * node_step
+
+
+def test_sampling_handles_worlds_with_fewer_nodes_than_the_kernel(monkeypatch):
+    nodes = np.array([[1.0, -0.005, 0.0], [1.0, 0.005, 0.0]])
+    nodes /= np.linalg.norm(nodes, axis=1, keepdims=True)
+    fields = {name: np.zeros(2) for name in cross_section.CONTINUOUS_FIELDS}
+    fields["elevation"] = np.array([0.0, 10.0])
+    monkeypatch.setattr(cross_section, "_world_surface", lambda _world: (nodes, fields, np.zeros(2, dtype=bool)))
+    world = SimpleNamespace(node_density=4.0, node_position_tree_cache=None)
+
+    sampled, _, _ = cross_section._sample_fields(world, np.array([[1.0, 0.0, 0.0]]))
+
+    assert sampled["elevation"][0] == pytest.approx(5.0)
+
+
+def test_biome_colors_interpolate_display_colors_between_cells(monkeypatch):
+    """#702: blend colours, not ids -- the mean of two ids is an unrelated biome."""
+    ids = np.zeros((2, 4), dtype=int)
+    ids[:, 2:] = 1
+    monkeypatch.setattr(
+        cross_section.climate, "compute_climate_cached", lambda _world: SimpleNamespace(biome_ids=ids)
+    )
+    # Longitude 0 is the shared edge of columns 1 and 2, midway between their centres.
+    colors = cross_section._biome_colors(None, np.array([[1.0, 0.0, 0.0]]), np.zeros(1))
+    palette = cross_section.biomes.BIOME_COLORS.astype(float)
+    assert colors[0] == pytest.approx((palette[0] + palette[1]) / 2.0)
+
+
+def test_vent_samples_give_each_volcano_node_one_middle_sample():
+    """#702: the fine arc gives a node many samples, and neighbouring vents stay separate."""
+    node_ids = np.array([5, 5, 5, 8, 8, 9, 9, 9, 9, 2])
+    volcano = np.array([False] * 3 + [True] * 2 + [True] * 4 + [False])
+    assert cross_section._vent_samples(volcano, node_ids).tolist() == [3, 6]
 
 
 def test_render_returns_png_and_section_revision(section_world, monkeypatch):
@@ -142,7 +190,13 @@ def test_render_keeps_sampled_crust_and_lithosphere_above_schematic_asthenospher
         * (1.0 - np.cos(arc_half_angle))
         * horizontal_scale
     )
-    assert image.getpixel((edge_x, edge_surface_y + 2)) == cross_section.CRUST_OCEANIC
+    # The arc's last column is one drawn column wide, so the output filter blends it with
+    # the background: it must still carry crust, just not at full coverage.
+    edge = np.array(image.getpixel((edge_x, edge_surface_y + 2)), dtype=float)
+    background = np.array((14.0, 20.0, 34.0))
+    coverage = (edge - background) / (np.array(cross_section.CRUST_OCEANIC) - background)
+    assert coverage == pytest.approx(np.full(3, coverage[0]), abs=0.05)
+    assert coverage[0] > 0.3
     assert image.getpixel((40, surface_y + 20)) == (14, 20, 34)
 
 
@@ -216,11 +270,11 @@ def test_plume_markers_flag_head_footprint_and_tail_roles():
     assert tail_samples == [0]  # the tail-only plume's nearest sample
 
 
-def test_render_draws_each_plume_glyph_once_at_its_sample_column(monkeypatch):
-    """RFC 0007 (#669): the render loop visits every pixel column, so plume
-    glyphs must paint once at the sample's own column -- the tail tick stays a
-    1 px line (not a sample-wide slab) and the head ellipse keeps its fill
-    instead of being buried by repeated outlines."""
+def test_render_draws_plume_conduit_and_glyphs_once(monkeypatch):
+    """RFC 0007 (#669): the render loop visits every pixel column, so surface
+    glyphs must paint once -- the head ellipse keeps its fill instead of being
+    buried by repeated outlines. #702: the tail is a conduit of its schematic
+    width, open at the section floor rather than a hairline."""
     sample_xyz = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]])
     tangent = np.tile([0.0, 1.0, 0.0], (len(sample_xyz), 1))
     distances = np.array([-1500.0, 0.0, 1500.0])
@@ -258,11 +312,20 @@ def test_render_draws_each_plume_glyph_once_at_its_sample_column(monkeypatch):
     image_base64, _ = cross_section.render_png_base64(world, 0.0, 0, 800, 500, show_plumes=True)
     image = Image.open(io.BytesIO(base64.b64decode(image_base64))).convert("RGB")
     pixels = np.asarray(image)
-    tail_rows = np.all(pixels == cross_section.PLUME_TAIL_COLOR, axis=-1).sum(axis=1)
-    # The tick line is 1 px wide; only the ellipse and arrowhead rows are wider.
-    # A per-column repaint would smear the tick across the sample (~250 px).
-    assert tail_rows.max() <= 10
-    assert int(np.count_nonzero(tail_rows)) > 50  # the tick still spans depth
+    conduit = np.all(pixels == cross_section.PLUME_TAIL_FILL, axis=-1)
+    arc_width = (800 - 2 * 20) * (690.0 / 820.0)
+    horizontal_scale = arc_width / (
+        2.0 * cross_section.PLANET_RADIUS_KM
+        * np.sin(cross_section.ARC_LENGTH_KM / (2.0 * cross_section.PLANET_RADIUS_KM))
+    )
+    # The tail sits on the arc's first sample, so the section edge clips its left half.
+    half_width_px = cross_section.PLUME_TAIL_CONDUIT_RADIUS_KM * horizontal_scale
+    assert conduit.sum(axis=1).max() == pytest.approx(half_width_px, abs=3.0)
+    # Flush with the floor: the conduit's last row sits on the section background.
+    column = int(np.argmax(conduit.sum(axis=0)))
+    floor_row = int(np.flatnonzero(conduit[:, column])[-1])
+    assert tuple(pixels[floor_row + 2, column]) == (14, 20, 34)
+    assert not np.any(np.all(pixels[:, column] == cross_section.ASTHENOSPHERE, axis=-1)[floor_row:])
     # One head ellipse plus one tail ellipse worth of dark outline: the
     # per-column repaint drew one outline per owned column (~250 each here).
     # Found by colour so the pin survives layout changes.
@@ -283,11 +346,11 @@ def _sized_ocean_fields(count):
     }
 
 
-def test_render_draws_tail_tick_for_every_marker_at_fractional_widths(monkeypatch):
+def test_render_draws_conduit_for_every_tail_marker_at_fractional_widths(monkeypatch):
     """RFC 0007 (#669): real sections have fractional sample x positions, and
-    the glyph column must be one the sample actually owns -- over several
-    render widths every tail marker gets its tick column (round() used to land
-    on the neighbour's column for ~half the samples, dropping their glyphs)."""
+    a marker must survive them -- over several render widths every tail marker
+    gets its conduit (round() used to land on the neighbour's column for ~half
+    the samples, dropping their glyphs)."""
     # Real geometry (fractional x_samples); everything else schematic.
     monkeypatch.setattr(
         cross_section, "_sample_fields",
@@ -319,10 +382,9 @@ def test_render_draws_tail_tick_for_every_marker_at_fractional_widths(monkeypatc
         image_base64, _ = cross_section.render_png_base64(world, 0.0, 0, width, 500, show_plumes=True)
         image = Image.open(io.BytesIO(base64.b64decode(image_base64))).convert("RGB")
         pixels = np.asarray(image)
-        tail_cols = np.all(pixels == cross_section.PLUME_TAIL_COLOR, axis=-1).sum(axis=0)
-        # A tick column carries the full conduit depth (~70+ rows here); the
-        # ellipse and arrowhead touch any one column for at most a few rows.
-        assert int(np.count_nonzero(tail_cols > 30)) == 3
+        conduit = np.all(pixels == cross_section.PLUME_TAIL_FILL, axis=-1)
+        widest_row = conduit[int(np.argmax(conduit.sum(axis=1)))].astype(int)
+        assert int(np.count_nonzero(np.diff(widest_row) == 1)) == 3
 
 
 def test_plume_markers_omit_plumes_outside_corridor_and_dead_stages():
@@ -400,3 +462,19 @@ def test_merge_plume_markers_prefers_head_then_tail_over_footprint():
     assert merged[middle] == "head"
     assert merged[middle + 5] == "tail"
     assert merged[middle + 10] == "head"
+
+
+def test_parcel_markers_keep_only_parcels_inside_the_corridor():
+    """#702: the bounded tree lookup must match the corridor rule and still scale
+    strength by the largest parcel anywhere, including ones off the section."""
+    sample_xyz, _, _ = cross_section._great_circle_samples(0.0, 0, 60.0)
+    middle = len(sample_xyz) // 2
+    off_plane = np.array([0.0, 0.0, 1.0])
+    near = sample_xyz[middle] + (80.0 / cross_section.PLANET_RADIUS_KM) * off_plane
+    far = sample_xyz[middle] + (120.0 / cross_section.PLANET_RADIUS_KM) * off_plane
+    world = SimpleNamespace(pending_magma_parcels=[
+        SimpleNamespace(origin_xyz=near / np.linalg.norm(near), volume_m3=1.0e9),
+        SimpleNamespace(origin_xyz=far / np.linalg.norm(far), volume_m3=4.0e9),
+    ])
+
+    assert cross_section._parcel_markers(world, sample_xyz, 60.0) == [(middle, 0.25)]

@@ -8,7 +8,7 @@ const ARC_LENGTH_KM = 3_000;
 const ARC_POSITION_COUNT = 120;
 const SECTION_DEPTH_KM = 350;
 const VERTICAL_EXAGGERATION = 2;
-const SECTION_STYLE_VERSION = 2;
+const SECTION_STYLE_VERSION = 3;
 const MAX_CACHED_SECTION_FRAMES = ARC_POSITION_COUNT;
 const PREFETCH_CONCURRENCY = 3;
 const PREFETCHED_FRAME_COUNT = MAX_CACHED_SECTION_FRAMES;
@@ -477,7 +477,7 @@ function OverlayLegendKeys({ showBoundaries, showFaults, showPlumes }: {
     <>
       {showBoundaries && <LegendKey color="#58BEFF" label="Plate boundary" line />}
       {showFaults && <LegendKey color="#FF7D57" label="Fault line" line />}
-      {showPlumes && <LegendKey color="#C93D3D" label="Plume tail" />}
+      {showPlumes && <LegendKey color="#D65C46" label="Plume tail" />}
     </>
   );
 }

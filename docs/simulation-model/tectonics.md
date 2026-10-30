@@ -1341,7 +1341,9 @@ split fraction against the #407 background. The "plumes" debug view
 (`render_image.py`) paints the halo and plateau with live head/tail footprints.
 The cross-section route (`show_plumes`, RFC 0007 #669) renders the same live
 plumes where they intersect the section arc: head ellipse over its footprint
-band, tail ellipse with a continues-below tick for the deep conduit. A head
+band, tail ellipse above a conduit that is domed under the lithosphere and open
+at the section floor. The conduit's 60 km radius is schematic, since the model
+stores no conduit width. A head
 whose centre lies off the section plane still paints its footprint band where
 the arc cuts it -- only the ellipse needs the centre within the corridor -- so
 an absent band means no live head cuts the section.
