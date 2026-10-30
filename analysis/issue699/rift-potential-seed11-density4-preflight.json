@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "title": "RFC 0010 Gate 3b rift-potential accounting preflight",
+  "date": "2026-10-30",
+  "seed": 11,
+  "node_density": 4,
+  "elapsed_years": 0,
+  "initial_state": "Generated t=0; cratons-first; climate/biomes disabled; no startup step",
+  "plate_selection": "Largest edge-connected continental component by represented area, before inspecting response",
+  "plate_id": 1,
+  "production_plate_node_count": 33869,
+  "production_plate_area_km2": 131141878.4184453,
+  "selected_continental_component_node_count": 30133,
+  "selected_continental_component_area_km2": 116380394.00658831,
+  "other_continental_component_count": 8,
+  "eligibility": "ineligible_before_force_transfer",
+  "reason": "The selected continental component is a proper subset of its production plate. Existing coarse-shell mesh validation uses whole-plate containment and cannot honor this component boundary; no force, capacity, or event score was computed.",
+  "next_requirement": "Build shell mesh and force aggregation that preserve the selected continental-component boundary; rerun frozen accounting checks before the persistence arm.",
+  "history_eligible": false,
+  "interpretation": "Diagnostic eligibility failure, not evidence for or against a persistent rift-potential event."
+}

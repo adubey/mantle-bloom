@@ -469,8 +469,8 @@ The prescribed-axis path trials and static coarse shell-response maps above rema
 mechanism/visualization work. They do not isolate the current contribution or demonstrate broad,
 persistent rifting load. The preregistered first screen selects the seed-11 density-4 largest
 connected continental plate before inspecting response fields, isolates the existing basal-drag
-source against full-force and no-basal-drag controls, and follows matching 2-Myr and 1-Myr histories
-through 30 Myr. A candidate event requires one edge-connected area of cells with Gate 2
+source against full-force and no-basal-drag controls, and, if accounting passes, follows matching
+2-Myr and 1-Myr histories through 30 Myr. A candidate event requires one edge-connected area of cells with Gate 2
 `N_ext/N_cap >= 1` covering at least 25% of the plate's continental area at every 2-Myr output over
 at least 10 Myr. The 25% and 10-Myr values are operational cutoffs. Report 10/20/30-Myr snapshots,
 directional coherence, craton/belt overlap, and sensitivity across the documented Gate 2 capacity
@@ -486,3 +486,26 @@ ineligible. The preregistration and timestep-arm clarification are in issue comm
 simulation probe has run under this preregistration yet. The gate scope is recorded in
 [issue #699](https://github.com/adubey/mantle-bloom/issues/699) and the revised Gate 3b text in
 [RFC 0010](../../rfc/0010-rifts-follow-weak-lithosphere.md).
+
+### Rift-potential accounting preflight (2026-10-30)
+
+The preregistered selection used seed 11, density 4, the generated t=0 state, and the largest
+edge-connected continental component by represented area. It selected 30,133 continental cells
+(`116.38 million km²`) on production plate 1, which has 33,869 total cells and covers
+`131.14 million km²`. The selected component is a proper subset of that production plate; eight
+other continental components were present.
+
+The current coarse-shell mesh builder validates its mesh with `plate.contains_batch`, which tests
+whole-plate territory. It cannot preserve the selected continental-component boundary or construct
+a valid load/accounting mesh for this preregistered target. The probe therefore stopped before
+force gathering, capacity scoring or any rift-potential measurement. Earlier whole-production-plate
+static shell numbers are excluded from this gate because they do not use the frozen component
+selection. The 2-Myr and 1-Myr histories were not run; this is a diagnostic eligibility failure,
+not evidence for or against a persistent event.
+
+The required next diagnostic change is a shell mesh and force aggregation that preserve the chosen
+component's boundary, with the frozen force, torque, equilibrium and work checks rerun before the
+30 Myr persistence arm. Any change to the diagnosed load-transfer method needs a dated issue
+preregistration update before its acceptance run. Measurements are in
+`rift-potential-seed11-density4-preflight.json`; the diagnostic is
+`bin/debug/probe_gate3b_rift_potential.py`.
