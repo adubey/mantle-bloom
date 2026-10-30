@@ -1,6 +1,6 @@
 ---
 name: rfc-authoring
-description: Write or revise the scientific content of a Mantle Bloom RFC. Use when asked to author a proposal, turn investigation findings into an RFC, or address technical review comments; this skill also chooses the NNNN for a new RFC.
+description: Write or revise the scientific content of a Mantle Bloom RFC. Use when asked to author a proposal, turn investigation findings into an RFC, or address technical review comments; this skill also chooses the NNNN for a new RFC. To split off a revision into a new session, use edit-rfc.
 ---
 
 # Write an RFC
@@ -72,12 +72,6 @@ in this order:
    date; related issues and RFCs. Revising an accepted RFC doesn't change its Accepted status
    or add an "under revision" state. Add each revision's date and trigger to the status line,
    newest first, as in `Accepted (revised 2026-10-30 after G2; revised 2026-10-17 after G1)`.
-   Add one dated entry per revision to `## Revision note`, newest first, after the header and
-   any `## Outcome`. Each entry gives the revision PR, what the earlier version proposed, what
-   the evidence showed with links, and what changed, as in RFC 0009. For each changed gate or
-   acceptance criterion, it gives the old criterion, new criterion and reason, and it links
-   the impact table in [`edit-rfc`](../edit-rfc/SKILL.md). A draft RFC doesn't need a note.
-   Revise the body in place. `## Outcome` differs because it records how an RFC ended.
 2. **Problem:** what goes wrong, in general terms, with the evidence (section 1 above).
 3. **Proposed solutions:** what happens in nature, with citations; then one or more
    alternatives, each with its trade-offs; then the recommendation and why.
@@ -135,6 +129,15 @@ in this order:
    alternative). They differ from acceptance criteria: acceptance says the change works,
    falsification says the idea was mistaken. Make them checkable with the same scripts.
 9. **References.**
+
+Two more sections go between the header and **Problem** when they apply, outside the numbered
+list. `## Outcome` comes first and records how an RFC ended; see `complete-rfc`.
+`## Revision note` comes next, for an accepted RFC revised through
+[`edit-rfc`](../edit-rfc/SKILL.md). Add one dated entry per revision, newest first. Each entry
+gives the revision PR, what the earlier version proposed, what the evidence showed with links,
+and what changed, as in RFC 0009. For each changed gate or acceptance criterion, it gives the
+old criterion, new criterion and reason, and it links the impact table. A draft RFC doesn't
+need a note. Revise the body in place.
 
 ## 4. Citations
 

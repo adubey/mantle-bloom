@@ -9,8 +9,8 @@ description: Set up an isolated branch, worktree, venv and ports for a Mantle Bl
    issues and PRs, any `.mbworld` saves or replay numbers, and whether the issue cites or is
    listed under an RFC. Read the RFC's status and diagnosis gates in `rfc/` and
    `rfc/README.md`. If it is not accepted or its gates have not passed, resolve that RFC
-   lifecycle step before implementing the issue. If a `## RFC revision return` comment
-   postdates this issue's last work, follow
+   lifecycle step before implementing the issue. If a `## RFC revision return` comment on
+   this issue or its tracking issue postdates this issue's last work, follow
    [Resume](../edit-rfc/SKILL.md#4-resume-an-affected-issue) in `edit-rfc`. If the tracking
    issue links an `## RFC revision brief` whose tracker is still open, raise it with the user
    before starting.

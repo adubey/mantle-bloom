@@ -1,6 +1,6 @@
 ---
 name: explore-problem
-description: Explore a Mantle Bloom problem interactively to find scientific hypotheses. Use before an RFC or small issue, or after an RFC or issue fails a gate or appears infeasible.
+description: Explore a Mantle Bloom problem interactively to find scientific hypotheses. Use before an RFC or small issue, or after an RFC or issue fails a gate or appears infeasible. When the work should split off and may revise an existing RFC, use edit-rfc.
 ---
 
 # Explore a Mantle Bloom problem
@@ -177,4 +177,4 @@ After the user selects artifacts:
 
 Do not start implementation merely because an issue or RFC was created. Use
 [`start-issue`](../start-issue/SKILL.md) only when the user also wants implementation to
-begin.
+begin. The exception is `edit-rfc`, which uses it to set up a revision's documentation branch.

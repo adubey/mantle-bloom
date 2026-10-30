@@ -51,14 +51,23 @@ revision of the same RFC is open, wait for it or build on it, and tell the user.
 
 **Make the evidence durable.**
 
-- Commit the work in progress and debug scripts that produced the evidence, then push that
-  commit to a new branch that is never rewritten:
-  `<agent>/issue-<N>-evidence-<slug>`. A later rebase of the working branch can't then lose
-  it. This branch never becomes a PR, so it doesn't need `pre-push-check`. Leave it in place
-  after the RFC closes. Never use `git stash`.
-- Keep saves and outputs as [`AGENTS.md`](../../../AGENTS.md#workflow) describes under
-  private evidence, not in a temporary directory. If another machine needs them, ask the
-  project owner how to transfer them. Compare checksums after any copy.
+- Commit the evidence, staging the files by name, because the worktree may hold unrelated
+  changes. Put debug scripts in their own commit, separate from any other work in progress, so
+  the edit session can cherry-pick them cleanly.
+- Push that commit to a new branch that is never rewritten, without switching this worktree
+  off its branch. `<N>` is the origin issue:
+
+  ```bash
+  git push origin HEAD:refs/heads/<agent>/issue-<N>-evidence-<slug>
+  ```
+
+  A later rebase of the working branch then can't lose the commit. This branch never becomes a
+  PR, so it doesn't need `pre-push-check`. Leave it in place after the RFC closes. Never use
+  `git stash`.
+- Put saves and large outputs in `~/mantle-bloom-captures/<rfc-or-issue>/`, as
+  [`AGENTS.md`](../../../AGENTS.md#workflow) describes, not in a temporary directory or the
+  handoff directory. If another machine needs them, ask the project owner how to transfer them.
+  Compare checksums after any copy.
 
 **Create the tracker.** Use [`create-issue`](../create-issue/SKILL.md) to create one new issue
 for this revision, linking the RFC and origin issue, and add the
@@ -81,6 +90,8 @@ neutral run labels and no personal paths:
   expects;
 - seeds that are held out or otherwise must not be used;
 - the origin work's state, and how the answer could affect it;
+- the gates, issues and PRs known so far that the answer could affect, as the first rows of
+  the impact table;
 - the private note's file name.
 
 Link the brief from the origin issue and the tracking issue, so sessions working on sibling
@@ -136,8 +147,8 @@ describes, and wait for the owner's choice. Outcomes can be combined.
 | Revise the RFC | Continue below | When the revision PR merges |
 | RFC stands, or the result is inconclusive | If gate results, findings or scripts need keeping, open a records PR | When the owner decides, after any records PR merges |
 | Small follow-up issues | Use [`create-issue`](../create-issue/SKILL.md) | When the owner decides |
-| Withdraw the RFC | Use [`complete-rfc`](../complete-rfc/SKILL.md), which settles the RFC, its issues and the index | When the completion PR merges |
-| New RFC | Use [`rfc-authoring`](../rfc-authoring/SKILL.md) and [`start-rfc`](../start-rfc/SKILL.md) | When the owner chooses this outcome; next step is to wait for the new RFC |
+| Withdraw the RFC, which you should recommend if a falsification criterion was met | Use [`complete-rfc`](../complete-rfc/SKILL.md), which settles the RFC, its issues and the index | When the completion PR merges |
+| New RFC | Use [`rfc-authoring`](../rfc-authoring/SKILL.md) and [`start-rfc`](../start-rfc/SKILL.md) | When the owner chooses this outcome; next step is to wait for the new RFC, and the existing RFC stays in force until the new one is accepted |
 
 A failed gate still blocks implementation under the
 [RFC lifecycle](../../../rfc/README.md#lifecycle), even if the RFC stands. Its return note must
@@ -177,7 +188,8 @@ criterion for any rerun until the PR merges, unless the owner approves it earlie
 **Open the PR and stop.** Follow [`pre-push-check`](../pre-push-check/SKILL.md) first. Use a
 `## Summary` that explains the evidence and what changed, then the two tables. End with
 `Refs #<tracker>` rather than `Closes`, because the tracker stays open through Return. Put
-the index row, ordering prose and **Related** lines in this PR. Add a pending-revision comment
+the index row, with the status line's wording, plus ordering prose and **Related** lines in
+this PR. Add a pending-revision comment
 with the PR link to the tracking issue and each item not marked Unchanged, so nobody starts
 stale work. Tell the user the PR is ready and give them this prompt for after the merge, which
 works in any session:
@@ -187,21 +199,29 @@ works in any session:
 **For a draft RFC,** the revision PR targets the RFC branch, using the isolated branch
 procedure in [`continue-rfc`](../continue-rfc/SKILL.md#2-find-rfc-and-evidence-worktrees) even
 if the draft's worktree exists. Revise in place, with no revision note. Merging that PR doesn't
-accept the RFC or change its status. In the return note, waiting work either rebases onto the
-RFC branch or waits for acceptance.
+accept the RFC or change its status or index row. In the return note, waiting work either
+rebases onto the RFC branch, which the note names as its base, or waits for acceptance.
 
 ## 3. Return: after the owner's decision
 
 Any session can run this, using the tracker, the merged PR and the private note. Verify the
 decision and any merge on GitHub first. If the owner closed a PR unmerged, ask them which
-outcome now applies. If the outcome has no impact table, build one now, since waiting issues
-still need verdicts. Then recheck the table against any work that started or landed since.
+outcome now applies. If the outcome has no impact table, build one now and post it on the
+tracking issue, since waiting issues still need verdicts. For a draft RFC with no tracking
+issue, post it on the RFC PR. Then recheck the table against any work that started or landed
+since.
 
 **Settle the tracking issue.** Update its checklist and sub-issues. Merging approves criteria
 changes only, so confirm each closure with the owner, unless they said the table's verdicts
-stand. Close issues through
-[Choosing not to pursue an issue](../project-management/SKILL.md#choosing-not-to-pursue-an-issue),
-and create new sub-issues only when the [RFC lifecycle](../../../rfc/README.md#lifecycle) allows
+stand. Settle each issue by what happened to it:
+
+- Work that landed and met its criteria closes through
+  [Completing an issue](../project-management/SKILL.md#completing-an-issue).
+- Superseded or no longer needed work closes through
+  [Choosing not to pursue an issue](../project-management/SKILL.md#choosing-not-to-pursue-an-issue).
+- Blocked work stays open and `On Hold`.
+
+Create new sub-issues only when the [RFC lifecycle](../../../rfc/README.md#lifecycle) allows
 them. For an open PR, comment with the outcome and a recommendation, and don't close it or
 push to it without the owner's go-ahead. After a withdrawal, `complete-rfc` has already done
 this step, so post the return notes only.
@@ -218,8 +238,9 @@ and every item whose verdict isn't Unchanged. Link the brief, and use this form:
 - **Brief:** <link>
 - **Outcome:** <PR and merged commit, or why no edit was made>
 - **What changed:** <what this means for this issue, in plain language>
-- **Next step for this issue:** <continue | rebase and continue | rerun a named gate |
-  re-scope | stop | wait for a named item>
+- **Impact table:** <link>
+- **Next step for this issue:** <continue | rebase onto a named base and continue | rerun a
+  named gate | re-scope | stop | wait for a named item>
 - **Evidence:** <which earlier results and seeds stand, and which don't>
 ```
 
@@ -228,7 +249,7 @@ Use the next step that matches the verdict, then set the status through
 
 | Verdict | Next step | Status while waiting to resume |
 |---|---|---|
-| Unchanged | Continue, or rebase and continue | `Ready` |
+| Unchanged | Continue, or rebase onto the named base and continue | `Ready` |
 | Must rerun | Rerun the named gate | `Ready` |
 | Invalidated | Re-scope | `Ready` |
 | Superseded | Stop | `Deprecated`, once the owner confirms closing it |
@@ -243,9 +264,10 @@ running, with a one-line prompt that links its return note.
 
 Read the return note first, and ignore one this issue has already acted on.
 
-- **Continue, or rebase and continue:** run `git fetch origin`, then rebase this session's own
-  branch onto `origin/main`. If the branch was already pushed, push it with
-  `--force-with-lease`. This doesn't need the user's approval.
+- **Continue, or rebase and continue:** first confirm the branch belongs to this task, and use
+  the **New session** case below if it doesn't. Run `git fetch origin`, then rebase the branch
+  onto the base the note names. If the branch was already pushed, push it with
+  `--force-with-lease`. Rebasing this task's own branch doesn't need the user's approval.
 - **Rerun, re-scope, stop or wait:** follow the note. Results it marks invalid don't count as
   evidence for the revised RFC.
 - **New session:** get the branch and worktree from the private note, and confirm with the
