@@ -1,0 +1,1769 @@
+{
+"issue": 696,
+"purpose": "Unperturbed A/B replay of the capped-sibling cycle fix, second run after review. Five 100 kyr steps from each #680 checkpoint.",
+"windows": {
+"A": {
+"checkpoint_sha256": "e4b0b4f09b87584aa7f77045f0f079f2309de0132049915a9aeb5589add27340",
+"baseline_peak_rss_gb": 4.89234432,
+"branch_peak_rss_gb": 5.112692736,
+"baseline": [
+{
+"age_myr": 221.7,
+"seconds": 18.429196708995732,
+"leaves": 990,
+"passes": 991,
+"pass_limit": 991,
+"hit_limit": true,
+"external_supply_m3": 1.1599028410963935e+18,
+"internal_transfer_m3": 1.7155324678949375e+20,
+"overflow_out_m3": 5.88178697123623e+17,
+"overflow_to_ocean_m3": 2.4661663865938022e+17,
+"residual_m3": 644199.9477539062,
+"lake_liquid_volume_m3": 1821966778516091.0,
+"silt_m3": 386893362479637.6,
+"max_pair_sends": 991,
+"final_export_m3": 7.348201174549824e+16,
+"final_export_sinks": 2,
+"final_export_fate": {
+"source_m3": 7.348201174549824e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 610978074900848.0,
+"settled_wet_m3": 6.960865276371742e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 3262380906879962.0,
+"settled_on_flow_cycle_m3": 7.287103367059739e+16,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 5.1469413648043315e+17,
+"other_export_fate": {
+"source_m3": 5.1469413648043315e+17,
+"ocean_m3": 2.4661419127497856e+17,
+"transit_loss_m3": 8102868867702592.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.59977076337752e+17,
+"settled_on_flow_cycle_m3": 2.59977076337752e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 7.348201174549824e+16
+},
+"routed_from_parent_outlet": {
+"source_m3": 7.348201174549824e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 7955105218896896.0,
+"settled_wet_m3": 6.226693107412224e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 3259975452479108.0,
+"settled_on_flow_cycle_m3": 6.552690652660134e+16,
+"settled_at_dead_end_m3": 0.0
+}
+},
+"anchor_component": {
+"nodes": 66,
+"volume_m3": 249389392937055.22
+}
+},
+{
+"age_myr": 221.8,
+"seconds": 18.53468433299713,
+"leaves": 991,
+"passes": 992,
+"pass_limit": 992,
+"hit_limit": true,
+"external_supply_m3": 1.1956493769702024e+18,
+"internal_transfer_m3": 1.8482856901646913e+20,
+"overflow_out_m3": 6.290335585777769e+17,
+"overflow_to_ocean_m3": 2.5756894118682294e+17,
+"residual_m3": 77481.0171661377,
+"lake_liquid_volume_m3": 2460209337185094.0,
+"silt_m3": 469891174358852.6,
+"max_pair_sends": 992,
+"final_export_m3": 8.351867418443269e+16,
+"final_export_sinks": 3,
+"final_export_fate": {
+"source_m3": 8.351867418443269e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 782604473080800.0,
+"settled_wet_m3": 8.210956769404045e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 626502017311443.8,
+"settled_on_flow_cycle_m3": 6.701513390901449e+16,
+"settled_at_dead_end_m3": 1.57209358023374e+16
+},
+"other_export_m3": 5.4551488051341235e+17,
+"other_export_fate": {
+"source_m3": 5.4551488051341235e+17,
+"ocean_m3": 2.5756893831296896e+17,
+"transit_loss_m3": 1.1713071138497536e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.7623287106194586e+17,
+"settled_on_flow_cycle_m3": 2.7623287106194586e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 8.351867418443269e+16
+},
+"routed_from_parent_outlet": {
+"source_m3": 8.351867418443269e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 2330879767818816.0,
+"settled_wet_m3": 1.4707164475911696e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 6.6480629940702184e+16,
+"settled_on_flow_cycle_m3": 608438601235886.9,
+"settled_at_dead_end_m3": 8.057935581537798e+16
+}
+},
+"anchor_component": {
+"nodes": 159,
+"volume_m3": 879185682452639.6
+}
+},
+{
+"age_myr": 221.9,
+"seconds": 17.49802616600209,
+"leaves": 1003,
+"passes": 1004,
+"pass_limit": 1004,
+"hit_limit": true,
+"external_supply_m3": 1.286305676210398e+18,
+"internal_transfer_m3": 1.909797152525588e+20,
+"overflow_out_m3": 6.980951595672613e+17,
+"overflow_to_ocean_m3": 2.9525939447176877e+17,
+"residual_m3": 162217.9266357422,
+"lake_liquid_volume_m3": 2138014476317240.5,
+"silt_m3": 414402544952556.4,
+"max_pair_sends": 1004,
+"final_export_m3": 7.988640295643544e+16,
+"final_export_sinks": 2,
+"final_export_fate": {
+"source_m3": 7.988640295643544e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 445537009822272.0,
+"settled_wet_m3": 7.925307544989147e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 187790496721699.22,
+"settled_on_flow_cycle_m3": 7.944086594661317e+16,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 6.182084613355884e+17,
+"other_export_fate": {
+"source_m3": 6.182084613355884e+17,
+"ocean_m3": 2.952591287662514e+17,
+"transit_loss_m3": 1.604762126890112e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 3.0690171130043584e+17,
+"settled_on_flow_cycle_m3": 3.0690171130043584e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 7.988640295643544e+16
+},
+"routed_from_parent_outlet": {
+"source_m3": 7.988640295643544e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 1229780569011312.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 7.865662238742413e+16,
+"settled_on_flow_cycle_m3": 187923112385375.1,
+"settled_at_dead_end_m3": 7.846869927503875e+16
+}
+},
+"anchor_component": {
+"nodes": 147,
+"volume_m3": 660973415763104.2
+}
+},
+{
+"age_myr": 222.0,
+"seconds": 42.36056600000302,
+"leaves": 1032,
+"passes": 1033,
+"pass_limit": 1033,
+"hit_limit": true,
+"external_supply_m3": 1.244649682610791e+18,
+"internal_transfer_m3": 1.8723314052924372e+20,
+"overflow_out_m3": 6.868929187222047e+17,
+"overflow_to_ocean_m3": 2.6255197577864736e+17,
+"residual_m3": 85421.21548461914,
+"lake_liquid_volume_m3": 2074098516031836.0,
+"silt_m3": 420746451361824.1,
+"max_pair_sends": 1032,
+"final_export_m3": 7.703180320133376e+16,
+"final_export_sinks": 2,
+"final_export_fate": {
+"source_m3": 7.703180320133376e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 603270190971680.0,
+"settled_wet_m3": 7.586878705372272e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 559745956639352.2,
+"settled_on_flow_cycle_m3": 7.642853301036208e+16,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 6.098611149826469e+17,
+"other_export_fate": {
+"source_m3": 6.098611149826469e+17,
+"ocean_m3": 2.625519755253297e+17,
+"transit_loss_m3": 1.4525884548023296e+16,
+"settled_wet_m3": 1.5868139345509636e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 3.1691511556378426e+17,
+"settled_on_flow_cycle_m3": 3.327832549092939e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 7.703180320133376e+16
+},
+"routed_from_parent_outlet": {
+"source_m3": 7.703180320133376e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 2956241895953760.0,
+"settled_wet_m3": 7.351581534874064e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 559745956639352.2,
+"settled_on_flow_cycle_m3": 7.351581534874064e+16,
+"settled_at_dead_end_m3": 559745956639352.2
+}
+},
+"anchor_component": {
+"nodes": 63,
+"volume_m3": 227732436564196.94
+}
+},
+{
+"age_myr": 222.1,
+"seconds": 17.09230383400427,
+"leaves": 988,
+"passes": 989,
+"pass_limit": 989,
+"hit_limit": true,
+"external_supply_m3": 1.342853920265424e+18,
+"internal_transfer_m3": 5.575296996022463e+20,
+"overflow_out_m3": 7.724495141620703e+17,
+"overflow_to_ocean_m3": 2.606947153433793e+17,
+"residual_m3": 79728.71208953857,
+"lake_liquid_volume_m3": 2235650947424949.0,
+"silt_m3": 1235352882580890.5,
+"max_pair_sends": 989,
+"final_export_m3": 2.8313435693748653e+17,
+"final_export_sinks": 3,
+"final_export_fate": {
+"source_m3": 2.8313435693748653e+17,
+"ocean_m3": 0.0,
+"transit_loss_m3": 558803602066656.0,
+"settled_wet_m3": 7.414082349459437e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.084347298408255e+17,
+"settled_on_flow_cycle_m3": 2.8257555333541987e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 4.893147043204965e+17,
+"other_export_fate": {
+"source_m3": 4.893147043204965e+17,
+"ocean_m3": 2.6069431163485376e+17,
+"transit_loss_m3": 1.4023956525508416e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.1459643616013434e+17,
+"settled_on_flow_cycle_m3": 2.1459643616013437e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 2.8313435693748653e+17
+},
+"routed_from_parent_outlet": {
+"source_m3": 2.8313435693748653e+17,
+"ocean_m3": 0.0,
+"transit_loss_m3": 794663643170880.0,
+"settled_wet_m3": 7.390496345349014e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.084347298408255e+17,
+"settled_on_flow_cycle_m3": 7.630546647834886e+16,
+"settled_at_dead_end_m3": 2.060342268159668e+17
+}
+},
+"anchor_component": {
+"nodes": 51,
+"volume_m3": 144266554492015.94
+}
+}
+],
+"branch": [
+{
+"age_myr": 221.7,
+"seconds": 8.476430082999286,
+"leaves": 990,
+"passes": 61,
+"pass_limit": 991,
+"hit_limit": false,
+"external_supply_m3": 1.1599028410963935e+18,
+"internal_transfer_m3": 2.5991953758821368e+19,
+"overflow_out_m3": 5.88178697123623e+17,
+"overflow_to_ocean_m3": 2.4661663865938022e+17,
+"residual_m3": 644199.9477539062,
+"lake_liquid_volume_m3": 1821966778516091.0,
+"silt_m3": 108561651693301.17,
+"max_pair_sends": 2,
+"final_export_m3": 7.348201174549824e+16,
+"final_export_sinks": 2,
+"final_export_fate": {
+"source_m3": 7.348201174549824e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 610978074900848.0,
+"settled_wet_m3": 6.960865276371742e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 3262380906879962.0,
+"settled_on_flow_cycle_m3": 7.287103367059739e+16,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 5.1469413648043315e+17,
+"other_export_fate": {
+"source_m3": 5.1469413648043315e+17,
+"ocean_m3": 2.4661419127497856e+17,
+"transit_loss_m3": 8102868867702592.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.59977076337752e+17,
+"settled_on_flow_cycle_m3": 2.59977076337752e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 7.348201174549824e+16
+},
+"routed_from_parent_outlet": {
+"source_m3": 7.348201174549824e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 7999307087725752.0,
+"settled_wet_m3": 6.226693107412224e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 3215773583650251.0,
+"settled_on_flow_cycle_m3": 6.226693107412224e+16,
+"settled_at_dead_end_m3": 3215773583650251.0
+}
+},
+"anchor_component": {
+"nodes": 66,
+"volume_m3": 249389392937055.22
+}
+},
+{
+"age_myr": 221.8,
+"seconds": 8.380347999998776,
+"leaves": 991,
+"passes": 74,
+"pass_limit": 992,
+"hit_limit": false,
+"external_supply_m3": 1.1954706363002957e+18,
+"internal_transfer_m3": 1.9340679648353845e+19,
+"overflow_out_m3": 6.299776777407817e+17,
+"overflow_to_ocean_m3": 2.5756898120320342e+17,
+"residual_m3": 68458.65060424805,
+"lake_liquid_volume_m3": 2460997981204037.0,
+"silt_m3": 81444708244566.56,
+"max_pair_sends": 2,
+"final_export_m3": 8.446513944817653e+16,
+"final_export_sinks": 3,
+"final_export_fate": {
+"source_m3": 8.446513944817653e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 790052032777008.0,
+"settled_wet_m3": 8.305077876308005e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 624308652319470.5,
+"settled_on_flow_cycle_m3": 6.795415028157347e+16,
+"settled_at_dead_end_m3": 1.5720937133826052e+16
+},
+"other_export_m3": 5.4551253441267354e+17,
+"other_export_fate": {
+"source_m3": 5.4551253441267354e+17,
+"ocean_m3": 2.575689783293495e+17,
+"transit_loss_m3": 1.171293864434368e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.7623061743898038e+17,
+"settled_on_flow_cycle_m3": 2.7623061743898038e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 8.446513944817653e+16
+},
+"routed_from_parent_outlet": {
+"source_m3": 8.446513944817653e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 2346246291491520.0,
+"settled_wet_m3": 1.4707165722771912e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 6.7411727433913096e+16,
+"settled_on_flow_cycle_m3": 606290163255276.1,
+"settled_at_dead_end_m3": 8.151260299342973e+16
+}
+},
+"anchor_component": {
+"nodes": 159,
+"volume_m3": 879185692374813.1
+}
+},
+{
+"age_myr": 221.9,
+"seconds": 8.093276082996454,
+"leaves": 1003,
+"passes": 69,
+"pass_limit": 1004,
+"hit_limit": false,
+"external_supply_m3": 1.282488117157143e+18,
+"internal_transfer_m3": 3.064898464751317e+19,
+"overflow_out_m3": 6.96239614445552e+17,
+"overflow_to_ocean_m3": 2.9510974442644845e+17,
+"residual_m3": 253202.90731811523,
+"lake_liquid_volume_m3": 2125531552989639.2,
+"silt_m3": 126855569454141.28,
+"max_pair_sends": 2,
+"final_export_m3": 7.82274274109149e+16,
+"final_export_sinks": 2,
+"final_export_fate": {
+"source_m3": 7.82274274109149e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 436346291124832.0,
+"settled_wet_m3": 7.75734493757814e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 217631744008656.66,
+"settled_on_flow_cycle_m3": 7.779108111979006e+16,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 6.180118917594072e+17,
+"other_export_fate": {
+"source_m3": 6.180118917594072e+17,
+"ocean_m3": 2.951094787209378e+17,
+"transit_loss_m3": 1.6017987760464384e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 3.0688442527800506e+17,
+"settled_on_flow_cycle_m3": 3.0688442527800506e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 7.80083109363046e+16,
+"no_parent": 219116474610282.7
+},
+"routed_from_parent_outlet": {
+"source_m3": 7.80083109363046e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 1206516859236896.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 7.680179407706771e+16,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 7.680179407706771e+16
+}
+},
+"anchor_component": {
+"nodes": 144,
+"volume_m3": 668129224880232.8
+}
+},
+{
+"age_myr": 222.0,
+"seconds": 32.606501500005834,
+"leaves": 1033,
+"passes": 76,
+"pass_limit": 1034,
+"hit_limit": false,
+"external_supply_m3": 1.2371151582306168e+18,
+"internal_transfer_m3": 2.8380757844137198e+19,
+"overflow_out_m3": 6.796813942110714e+17,
+"overflow_to_ocean_m3": 2.6252953590308976e+17,
+"residual_m3": 365128.8540649414,
+"lake_liquid_volume_m3": 2827753404172517.0,
+"silt_m3": 119263376166079.2,
+"max_pair_sends": 2,
+"final_export_m3": 7.16630199004565e+16,
+"final_export_sinks": 2,
+"final_export_fate": {
+"source_m3": 7.16630199004565e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 561094054022136.0,
+"settled_wet_m3": 7.054218156940527e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 559744277029091.8,
+"settled_on_flow_cycle_m3": 7.110192584643436e+16,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 6.080183737723914e+17,
+"other_export_fate": {
+"source_m3": 6.080183737723914e+17,
+"ocean_m3": 2.6252953564977226e+17,
+"transit_loss_m3": 1.4530322093468032e+16,
+"settled_wet_m3": 1.4117458900382958e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 3.168410571287682e+17,
+"settled_on_flow_cycle_m3": 3.3095851602915117e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 7.110327562342741e+16,
+"no_parent": 559744277029091.8
+},
+"routed_from_parent_outlet": {
+"source_m3": 7.110327562342741e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 2790049124241376.0,
+"settled_wet_m3": 6.831322649918603e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 6.831322649918603e+16,
+"settled_at_dead_end_m3": 0.0
+}
+},
+"anchor_component": {
+"nodes": 163,
+"volume_m3": 930601853984713.5
+}
+},
+{
+"age_myr": 222.1,
+"seconds": 8.187277707998874,
+"leaves": 989,
+"passes": 82,
+"pass_limit": 990,
+"hit_limit": false,
+"external_supply_m3": 1.3669896069358185e+18,
+"internal_transfer_m3": 3.1740873300560753e+19,
+"overflow_out_m3": 7.691418938375625e+17,
+"overflow_to_ocean_m3": 2.608357387790459e+17,
+"residual_m3": 830749.0133934021,
+"lake_liquid_volume_m3": 2801317139926144.0,
+"silt_m3": 133484253003685.27,
+"max_pair_sends": 2,
+"final_export_m3": 2.7958530419338838e+17,
+"final_export_sinks": 3,
+"final_export_fate": {
+"source_m3": 2.7958530419338838e+17,
+"ocean_m3": 0.0,
+"transit_loss_m3": 523986980695456.0,
+"settled_wet_m3": 6.757153832863579e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.1148977888405715e+17,
+"settled_on_flow_cycle_m3": 2.7906131721269293e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 4.895561367404799e+17,
+"other_export_fate": {
+"source_m3": 4.895561367404799e+17,
+"ocean_m3": 2.608353350708718e+17,
+"transit_loss_m3": 1.4028604018093184e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.1469219765151485e+17,
+"settled_on_flow_cycle_m3": 2.1469219765151485e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 6.809552530933123e+16,
+"no_parent": 2.1148977888405715e+17
+},
+"routed_from_parent_outlet": {
+"source_m3": 6.809552530933123e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 2654566100757448.0,
+"settled_wet_m3": 6.5440959208573784e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 6.5440959208573784e+16,
+"settled_at_dead_end_m3": 0.0
+}
+},
+"anchor_component": {
+"nodes": 153,
+"volume_m3": 727038128947108.6
+}
+}
+]
+},
+"B": {
+"checkpoint_sha256": "86fb5b7d2044846ac751906ff996184c7abe5454c93b39033bd82338e8749544",
+"baseline_peak_rss_gb": 4.611997696,
+"branch_peak_rss_gb": 5.219352576,
+"baseline": [
+{
+"age_myr": 222.2,
+"seconds": 17.826385458000004,
+"leaves": 1006,
+"passes": 1007,
+"pass_limit": 1007,
+"hit_limit": true,
+"external_supply_m3": 1.0791828810987927e+18,
+"internal_transfer_m3": 5.8056669032274795e+20,
+"overflow_out_m3": 5.656186861761177e+17,
+"overflow_to_ocean_m3": 2.2318293546559766e+17,
+"residual_m3": 77018.13052368164,
+"lake_liquid_volume_m3": 2436579718009392.5,
+"silt_m3": 1246506259960737.5,
+"max_pair_sends": 1007,
+"final_export_m3": 2.895807957167272e+17,
+"final_export_sinks": 3,
+"final_export_fate": {
+"source_m3": 2.895807957167272e+17,
+"ocean_m3": 0.0,
+"transit_loss_m3": 645143508531712.0,
+"settled_wet_m3": 8.543456232232946e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.03501089885866e+17,
+"settled_on_flow_cycle_m3": 2.8893565220819546e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 2.7603788840585315e+17,
+"other_export_fate": {
+"source_m3": 2.7603788840585315e+17,
+"ocean_m3": 2.231829339227537e+17,
+"transit_loss_m3": 9568435779415808.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 4.328651870368368e+16,
+"settled_on_flow_cycle_m3": 4.328651861741986e+16,
+"settled_at_dead_end_m3": 86263823.22615995
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 2.895807957167272e+17
+},
+"routed_from_parent_outlet": {
+"source_m3": 2.895807957167272e+17,
+"ocean_m3": 0.0,
+"transit_loss_m3": 3335731314273536.0,
+"settled_wet_m3": 8.274397451658766e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.03501089885866e+17,
+"settled_on_flow_cycle_m3": 2.8409432591840128e+17,
+"settled_at_dead_end_m3": 2150738484052391.5
+}
+},
+"anchor_component": {
+"nodes": 706,
+"volume_m3": 177441541467738.8
+}
+},
+{
+"age_myr": 222.3,
+"seconds": 16.926641707999806,
+"leaves": 990,
+"passes": 991,
+"pass_limit": 991,
+"hit_limit": true,
+"external_supply_m3": 1.1298363610303587e+18,
+"internal_transfer_m3": 2.3793012928709893e+20,
+"overflow_out_m3": 6.234624758489859e+17,
+"overflow_to_ocean_m3": 5.01069377820725e+17,
+"residual_m3": 144119.10549926758,
+"lake_liquid_volume_m3": 2144829510862581.0,
+"silt_m3": 492855520603070.9,
+"max_pair_sends": 989,
+"final_export_m3": 1.0630842149218843e+17,
+"final_export_sinks": 3,
+"final_export_fate": {
+"source_m3": 1.0630842149218843e+17,
+"ocean_m3": 0.0,
+"transit_loss_m3": 796455951717296.0,
+"settled_wet_m3": 1.0488896428518126e+17,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 623001255289866.1,
+"settled_on_flow_cycle_m3": 1.0551196554047114e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 5.1715397772548806e+17,
+"other_export_fate": {
+"source_m3": 5.1715397772548806e+17,
+"ocean_m3": 5.0106930868996563e+17,
+"transit_loss_m3": 1.5967554866509504e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 117114169012909.25,
+"settled_on_flow_cycle_m3": 117114169012909.25,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"river": 1.0568368267757203e+17,
+"another_basin": 624738814616400.5
+},
+"routed_from_parent_outlet": {
+"source_m3": 1.0630842149218843e+17,
+"ocean_m3": 8.635112748171363e+16,
+"transit_loss_m3": 1.93325551958584e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 624738814616400.5,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 624738814616400.5
+}
+},
+"anchor_component": {
+"nodes": 772,
+"volume_m3": 247011329584169.8
+}
+},
+{
+"age_myr": 222.4,
+"seconds": 41.09783287499886,
+"leaves": 960,
+"passes": 961,
+"pass_limit": 961,
+"hit_limit": true,
+"external_supply_m3": 1.1405312631865526e+18,
+"internal_transfer_m3": 4.5551452017466035e+20,
+"overflow_out_m3": 5.847081370700252e+17,
+"overflow_to_ocean_m3": 3.192895093434626e+17,
+"residual_m3": 239445.2667236328,
+"lake_liquid_volume_m3": 2432196680528992.5,
+"silt_m3": 1217746653236282.0,
+"max_pair_sends": 950,
+"final_export_m3": 2.3803307183752608e+17,
+"final_export_sinks": 2,
+"final_export_fate": {
+"source_m3": 2.3803307183752608e+17,
+"ocean_m3": 0.0,
+"transit_loss_m3": 7905431528896.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.380251664059972e+17,
+"settled_on_flow_cycle_m3": 2.380251664059972e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 3.4667506517366746e+17,
+"other_export_fate": {
+"source_m3": 3.4667506517366746e+17,
+"ocean_m3": 3.192895093016447e+17,
+"transit_loss_m3": 2.212050963244877e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 5265046239573986.0,
+"settled_on_flow_cycle_m3": 5265046239573986.0,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 2.3803307183752608e+17
+},
+"routed_from_parent_outlet": {
+"source_m3": 2.3803307183752608e+17,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.3803307183752608e+17,
+"settled_on_flow_cycle_m3": 2.355109143500148e+17,
+"settled_at_dead_end_m3": 2522157487511289.5
+}
+},
+"anchor_component": {
+"nodes": 773,
+"volume_m3": 251601223089912.06
+}
+},
+{
+"age_myr": 222.5,
+"seconds": 8.310002500002156,
+"leaves": 999,
+"passes": 87,
+"pass_limit": 1000,
+"hit_limit": false,
+"external_supply_m3": 1.1517095524894497e+18,
+"internal_transfer_m3": 3.777849226464992e+19,
+"overflow_out_m3": 5.958483014567265e+17,
+"overflow_to_ocean_m3": 5.7380554336089363e+17,
+"residual_m3": 149016.73121643066,
+"lake_liquid_volume_m3": 2156937808096177.0,
+"silt_m3": 158877108264205.0,
+"max_pair_sends": 2,
+"final_export_m3": 0.0,
+"final_export_sinks": 0,
+"final_export_fate": {
+"source_m3": 0.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 5.958479966610063e+17,
+"other_export_fate": {
+"source_m3": 5.958479966610063e+17,
+"ocean_m3": 5.7380526689024576e+17,
+"transit_loss_m3": 2.1956855729038336e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 85874041722294.27,
+"settled_on_flow_cycle_m3": 85874041722294.27,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {},
+"routed_from_parent_outlet": {
+"source_m3": 0.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+}
+},
+"anchor_component": {
+"nodes": 759,
+"volume_m3": 251335911983395.8
+}
+},
+{
+"age_myr": 222.6,
+"seconds": 16.753057207999518,
+"leaves": 971,
+"passes": 972,
+"pass_limit": 972,
+"hit_limit": true,
+"external_supply_m3": 1.219108501074656e+18,
+"internal_transfer_m3": 4.620030396848501e+20,
+"overflow_out_m3": 6.850508139001769e+17,
+"overflow_to_ocean_m3": 4.06279013329309e+17,
+"residual_m3": 91340.84170532227,
+"lake_liquid_volume_m3": 2431964217227923.5,
+"silt_m3": 1026259978879847.0,
+"max_pair_sends": 969,
+"final_export_m3": 2.397511663732085e+17,
+"final_export_sinks": 2,
+"final_export_fate": {
+"source_m3": 2.397511663732085e+17,
+"ocean_m3": 0.0,
+"transit_loss_m3": 2529667011784896.0,
+"settled_wet_m3": 2.3699202936995712e+17,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 229469991466493.2,
+"settled_on_flow_cycle_m3": 2.372214993614236e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 4.452996474104851e+17,
+"other_export_fate": {
+"source_m3": 4.452996474104851e+17,
+"ocean_m3": 4.062790132480309e+17,
+"transit_loss_m3": 3.878691912899763e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 233715033456523.94,
+"settled_on_flow_cycle_m3": 233715033456523.94,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 2.397511663732085e+17
+},
+"routed_from_parent_outlet": {
+"source_m3": 2.397511663732085e+17,
+"ocean_m3": 0.0,
+"transit_loss_m3": 584275667168.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.3975058209754134e+17,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 2.3975058209754134e+17
+}
+},
+"anchor_component": {
+"nodes": 735,
+"volume_m3": 233239946482772.78
+}
+}
+],
+"branch": [
+{
+"age_myr": 222.2,
+"seconds": 8.13408325000637,
+"leaves": 1006,
+"passes": 69,
+"pass_limit": 1007,
+"hit_limit": false,
+"external_supply_m3": 1.0791828810987927e+18,
+"internal_transfer_m3": 2.548885618108073e+19,
+"overflow_out_m3": 5.656186861761177e+17,
+"overflow_to_ocean_m3": 2.2318293546559766e+17,
+"residual_m3": 77018.13052368164,
+"lake_liquid_volume_m3": 2436579718009392.5,
+"silt_m3": 108334285045086.36,
+"max_pair_sends": 3,
+"final_export_m3": 2.895807957167272e+17,
+"final_export_sinks": 3,
+"final_export_fate": {
+"source_m3": 2.895807957167272e+17,
+"ocean_m3": 0.0,
+"transit_loss_m3": 645143508531712.0,
+"settled_wet_m3": 8.543456232232946e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.03501089885866e+17,
+"settled_on_flow_cycle_m3": 2.8893565220819546e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 2.7603788840585315e+17,
+"other_export_fate": {
+"source_m3": 2.7603788840585315e+17,
+"ocean_m3": 2.231829339227537e+17,
+"transit_loss_m3": 9568435779415808.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 4.328651870368368e+16,
+"settled_on_flow_cycle_m3": 4.328651861741986e+16,
+"settled_at_dead_end_m3": 86263823.22615995
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 8.60797058308612e+16,
+"no_parent": 2.03501089885866e+17
+},
+"routed_from_parent_outlet": {
+"source_m3": 8.60797058308612e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 3335731314273536.0,
+"settled_wet_m3": 8.274397451658766e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 8.059323603253528e+16,
+"settled_at_dead_end_m3": 2150738484052391.5
+}
+},
+"anchor_component": {
+"nodes": 706,
+"volume_m3": 177441541467738.8
+}
+},
+{
+"age_myr": 222.3,
+"seconds": 7.733442209006171,
+"leaves": 988,
+"passes": 63,
+"pass_limit": 989,
+"hit_limit": false,
+"external_supply_m3": 1.1298827024555104e+18,
+"internal_transfer_m3": 2.766398993029899e+19,
+"overflow_out_m3": 6.237810209360398e+17,
+"overflow_to_ocean_m3": 5.011321943112829e+17,
+"residual_m3": 140535.11065673828,
+"lake_liquid_volume_m3": 2143575916373714.2,
+"silt_m3": 117337120529187.1,
+"max_pair_sends": 2,
+"final_export_m3": 1.0656992570218661e+17,
+"final_export_sinks": 3,
+"final_export_fate": {
+"source_m3": 1.0656992570218661e+17,
+"ocean_m3": 0.0,
+"transit_loss_m3": 761872542907088.0,
+"settled_wet_m3": 1.0518505297814291e+17,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 623000181136614.5,
+"settled_on_flow_cycle_m3": 1.0580805315927952e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 5.172110186025436e+17,
+"other_export_fate": {
+"source_m3": 5.172110186025436e+17,
+"ocean_m3": 5.0113212518052346e+17,
+"transit_loss_m3": 1.596188474063712e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 117008681383017.78,
+"settled_on_flow_cycle_m3": 117008681383017.78,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 1.0594518789031426e+17,
+"no_parent": 624737811872346.8
+},
+"routed_from_parent_outlet": {
+"source_m3": 1.0594518789031426e+17,
+"ocean_m3": 0.0,
+"transit_loss_m3": 3932733667757760.0,
+"settled_wet_m3": 1.020124542225565e+17,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 1.020124542225565e+17,
+"settled_at_dead_end_m3": 0.0
+}
+},
+"anchor_component": {
+"nodes": 772,
+"volume_m3": 247011328989694.12
+}
+},
+{
+"age_myr": 222.4,
+"seconds": 31.500183166004717,
+"leaves": 959,
+"passes": 83,
+"pass_limit": 960,
+"hit_limit": false,
+"external_supply_m3": 1.1388916086000695e+18,
+"internal_transfer_m3": 3.6830967895866307e+19,
+"overflow_out_m3": 5.81791071775594e+17,
+"overflow_to_ocean_m3": 2.5696893341385786e+17,
+"residual_m3": 105130.51531982422,
+"lake_liquid_volume_m3": 2466628494678695.5,
+"silt_m3": 155474630768337.0,
+"max_pair_sends": 2,
+"final_export_m3": 3.0994733405037645e+17,
+"final_export_sinks": 3,
+"final_export_fate": {
+"source_m3": 3.0994733405037645e+17,
+"ocean_m3": 0.0,
+"transit_loss_m3": 520093502448768.0,
+"settled_wet_m3": 7.1136868797233496e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.3829037175069418e+17,
+"settled_on_flow_cycle_m3": 3.094272405479277e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 2.718437376663861e+17,
+"other_export_fate": {
+"source_m3": 2.718437376663861e+17,
+"ocean_m3": 2.5696893337204016e+17,
+"transit_loss_m3": 9609870429702112.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 5264933864643836.0,
+"settled_on_flow_cycle_m3": 5264933864643836.0,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 7.164899130597863e+16,
+"no_parent": 2.3829834274439782e+17
+},
+"routed_from_parent_outlet": {
+"source_m3": 7.164899130597863e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 2639069290897512.0,
+"settled_wet_m3": 6.900992201508112e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 6.900992201508112e+16,
+"settled_at_dead_end_m3": 0.0
+}
+},
+"anchor_component": {
+"nodes": 773,
+"volume_m3": 251600820968283.75
+}
+},
+{
+"age_myr": 222.5,
+"seconds": 8.068863583001075,
+"leaves": 1002,
+"passes": 81,
+"pass_limit": 1003,
+"hit_limit": false,
+"external_supply_m3": 1.1488680586901509e+18,
+"internal_transfer_m3": 3.474932365364071e+19,
+"overflow_out_m3": 5.968256517753098e+17,
+"overflow_to_ocean_m3": 5.107953586675576e+17,
+"residual_m3": 156084.93849945068,
+"lake_liquid_volume_m3": 2151857640567042.0,
+"silt_m3": 146446682380062.94,
+"max_pair_sends": 2,
+"final_export_m3": 7.523561382301978e+16,
+"final_export_sinks": 1,
+"final_export_fate": {
+"source_m3": 7.523561382301978e+16,
+"ocean_m3": 0.0,
+"transit_loss_m3": 535837579021808.0,
+"settled_wet_m3": 7.469977624399797e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 7.469977624399797e+16,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 5.2158973315839386e+17,
+"other_export_fate": {
+"source_m3": 5.2158973315839386e+17,
+"ocean_m3": 5.1079508219857766e+17,
+"transit_loss_m3": 1.0708895283796864e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 85755676019334.1,
+"settled_on_flow_cycle_m3": 85755676019334.1,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 7.523561382301978e+16
+},
+"routed_from_parent_outlet": {
+"source_m3": 7.523561382301978e+16,
+"ocean_m3": 5.9639406134232424e+16,
+"transit_loss_m3": 1.5596207688787352e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+}
+},
+"anchor_component": {
+"nodes": 759,
+"volume_m3": 251310174447105.62
+}
+},
+{
+"age_myr": 222.6,
+"seconds": 7.913533041995834,
+"leaves": 964,
+"passes": 84,
+"pass_limit": 965,
+"hit_limit": false,
+"external_supply_m3": 1.2113259544820692e+18,
+"internal_transfer_m3": 3.6421604331534504e+19,
+"overflow_out_m3": 6.790778595368553e+17,
+"overflow_to_ocean_m3": 3.091426327405444e+17,
+"residual_m3": 91238.7423248291,
+"lake_liquid_volume_m3": 2454193572170206.0,
+"silt_m3": 153175491536383.7,
+"max_pair_sends": 2,
+"final_export_m3": 3.505244927673205e+17,
+"final_export_sinks": 3,
+"final_export_fate": {
+"source_m3": 3.505244927673205e+17,
+"ocean_m3": 0.0,
+"transit_loss_m3": 3347830120365056.0,
+"settled_wet_m3": 3.4694887043285914e+17,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 227792214096297.3,
+"settled_on_flow_cycle_m3": 3.471766626469554e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 3.2855336665305715e+17,
+"other_export_fate": {
+"source_m3": 3.2855336665305715e+17,
+"ocean_m3": 3.0914263265927046e+17,
+"transit_loss_m3": 1.917717167072557e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 233562323061103.78,
+"settled_on_flow_cycle_m3": 233562323061103.78,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"no_parent": 3.5029600922142944e+17,
+"another_basin": 228483545891075.06
+},
+"routed_from_parent_outlet": {
+"source_m3": 228483545891075.06,
+"ocean_m3": 0.0,
+"transit_loss_m3": 1051011031823.4688,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 227432534859251.6,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 227432534859251.6
+}
+},
+"anchor_component": {
+"nodes": 735,
+"volume_m3": 233468046384282.06
+}
+}
+]
+},
+"C": {
+"checkpoint_sha256": "041b7430a6cf8867f2e2c76f18c3328e440add585ee4a2e4b3055e7766c2217e",
+"baseline_peak_rss_gb": 6.055985152,
+"branch_peak_rss_gb": 5.976064,
+"baseline": [
+{
+"age_myr": 201.1,
+"seconds": 11.011540999999852,
+"leaves": 502,
+"passes": 26,
+"pass_limit": 503,
+"hit_limit": false,
+"external_supply_m3": 6.238017413947896e+17,
+"internal_transfer_m3": 6.475113379299364e+18,
+"overflow_out_m3": 4.6066997919149606e+17,
+"overflow_to_ocean_m3": 4.4040389852387226e+17,
+"residual_m3": 860412.7251396179,
+"lake_liquid_volume_m3": 482386785348122.44,
+"silt_m3": 29016888576442.277,
+"max_pair_sends": 2,
+"final_export_m3": 0.0,
+"final_export_sinks": 0,
+"final_export_fate": {
+"source_m3": 0.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 4.606681007996053e+17,
+"other_export_fate": {
+"source_m3": 4.606681007996053e+17,
+"ocean_m3": 4.404022062141445e+17,
+"transit_loss_m3": 1.2033731120279424e+16,
+"settled_wet_m3": 168421544200912.47,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 8063741920980498.0,
+"settled_on_flow_cycle_m3": 8232163465181410.0,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {},
+"routed_from_parent_outlet": {
+"source_m3": 0.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+}
+},
+"anchor_component": {
+"nodes": 76,
+"volume_m3": 264786697186325.88
+}
+},
+{
+"age_myr": 201.2,
+"seconds": 56.31353404199763,
+"leaves": 489,
+"passes": 33,
+"pass_limit": 490,
+"hit_limit": false,
+"external_supply_m3": 6.162936046803475e+17,
+"internal_transfer_m3": 9.43313580431962e+18,
+"overflow_out_m3": 4.6031376652478515e+17,
+"overflow_to_ocean_m3": 4.461775733837007e+17,
+"residual_m3": 2210.745361328125,
+"lake_liquid_volume_m3": 155380088293125.1,
+"silt_m3": 41174193152911.87,
+"max_pair_sends": 2,
+"final_export_m3": 0.0,
+"final_export_sinks": 0,
+"final_export_fate": {
+"source_m3": 0.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 4.603131228255511e+17,
+"other_export_fate": {
+"source_m3": 4.603131228255511e+17,
+"ocean_m3": 4.4617696804710086e+17,
+"transit_loss_m3": 1.4135913654373248e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 241124076927.25452,
+"settled_on_flow_cycle_m3": 241124076927.25452,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {},
+"routed_from_parent_outlet": {
+"source_m3": 0.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+}
+},
+"anchor_component": {
+"nodes": 76,
+"volume_m3": 3236186028995.7983
+}
+},
+{
+"age_myr": 201.3,
+"seconds": 10.563995500000601,
+"leaves": 485,
+"passes": 31,
+"pass_limit": 486,
+"hit_limit": false,
+"external_supply_m3": 6.515226171064056e+17,
+"internal_transfer_m3": 8.431159961420426e+18,
+"overflow_out_m3": 4.890817269021195e+17,
+"overflow_to_ocean_m3": 4.7616623422723494e+17,
+"residual_m3": 111789.328830719,
+"lake_liquid_volume_m3": 504075047353781.25,
+"silt_m3": 36887078423530.11,
+"max_pair_sends": 2,
+"final_export_m3": 0.0,
+"final_export_sinks": 0,
+"final_export_fate": {
+"source_m3": 0.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 4.890812421151809e+17,
+"other_export_fate": {
+"source_m3": 4.890812421151809e+17,
+"ocean_m3": 4.7616612057321626e+17,
+"transit_loss_m3": 1.1811524466938688e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 1103597075026005.6,
+"settled_on_flow_cycle_m3": 1103597075026005.6,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {},
+"routed_from_parent_outlet": {
+"source_m3": 0.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+}
+},
+"anchor_component": {
+"nodes": 77,
+"volume_m3": 372576190814813.94
+}
+},
+{
+"age_myr": 201.4,
+"seconds": 12.394846750001307,
+"leaves": 488,
+"passes": 489,
+"pass_limit": 489,
+"hit_limit": true,
+"external_supply_m3": 6.713493207054296e+17,
+"internal_transfer_m3": 1.4447538198537562e+19,
+"overflow_out_m3": 5.179403794262738e+17,
+"overflow_to_ocean_m3": 4.795237020955432e+17,
+"residual_m3": 25584.20928955078,
+"lake_liquid_volume_m3": 439943515528991.94,
+"silt_m3": 49986639865123.12,
+"max_pair_sends": 480,
+"final_export_m3": 6049235702621080.0,
+"final_export_sinks": 1,
+"final_export_fate": {
+"source_m3": 6049235702621080.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 69138578911661.0,
+"settled_wet_m3": 5980097123709419.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 5980097123709419.0,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 5.1189114099778874e+17,
+"other_export_fate": {
+"source_m3": 5.1189114099778874e+17,
+"ocean_m3": 4.7952369939430016e+17,
+"transit_loss_m3": 1.1706484018831424e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.066095758465713e+16,
+"settled_on_flow_cycle_m3": 2.066095758465713e+16,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 6049235702621080.0
+},
+"routed_from_parent_outlet": {
+"source_m3": 6049235702621080.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 256650724562866.0,
+"settled_wet_m3": 5792584978058214.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 5792584978058214.0,
+"settled_at_dead_end_m3": 0.0
+}
+},
+"anchor_component": {
+"nodes": 69,
+"volume_m3": 15684015802379.297
+}
+},
+{
+"age_myr": 201.5,
+"seconds": 12.65435791699565,
+"leaves": 503,
+"passes": 504,
+"pass_limit": 504,
+"hit_limit": true,
+"external_supply_m3": 6.256008504080824e+17,
+"internal_transfer_m3": 2.0582352343753723e+20,
+"overflow_out_m3": 4.246529574259478e+17,
+"overflow_to_ocean_m3": 1.7737359307324522e+17,
+"residual_m3": 50851.688091278076,
+"lake_liquid_volume_m3": 1016593688912501.0,
+"silt_m3": 432507764079735.2,
+"max_pair_sends": 477,
+"final_export_m3": 2.0790661728103498e+17,
+"final_export_sinks": 1,
+"final_export_fate": {
+"source_m3": 2.0790661728103498e+17,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.0790661728103498e+17,
+"settled_on_flow_cycle_m3": 2.0790661728103498e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 2.1674629834776614e+17,
+"other_export_fate": {
+"source_m3": 2.1674629834776614e+17,
+"ocean_m3": 1.773735930695158e+17,
+"transit_loss_m3": 7132260501964544.0,
+"settled_wet_m3": 4322011769157087.5,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.7918433007128696e+16,
+"settled_on_flow_cycle_m3": 3.2240444776285784e+16,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"river": 2.0790661728103498e+17
+},
+"routed_from_parent_outlet": {
+"source_m3": 2.0790661728103498e+17,
+"ocean_m3": 2.049288318729925e+17,
+"transit_loss_m3": 2977785408042464.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+}
+},
+"anchor_component": {
+"nodes": 79,
+"volume_m3": 265691941804591.97
+}
+}
+],
+"branch": [
+{
+"age_myr": 201.1,
+"seconds": 11.1648389999973,
+"leaves": 502,
+"passes": 26,
+"pass_limit": 503,
+"hit_limit": false,
+"external_supply_m3": 6.238017413947896e+17,
+"internal_transfer_m3": 6.475113379299364e+18,
+"overflow_out_m3": 4.6066997919149606e+17,
+"overflow_to_ocean_m3": 4.4040389852387226e+17,
+"residual_m3": 860412.7251396179,
+"lake_liquid_volume_m3": 482386785348122.44,
+"silt_m3": 29016888576442.277,
+"max_pair_sends": 2,
+"final_export_m3": 0.0,
+"final_export_sinks": 0,
+"final_export_fate": {
+"source_m3": 0.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 4.606681007996053e+17,
+"other_export_fate": {
+"source_m3": 4.606681007996053e+17,
+"ocean_m3": 4.404022062141445e+17,
+"transit_loss_m3": 1.2033731120279424e+16,
+"settled_wet_m3": 168421544200912.47,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 8063741920980498.0,
+"settled_on_flow_cycle_m3": 8232163465181410.0,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {},
+"routed_from_parent_outlet": {
+"source_m3": 0.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+}
+},
+"anchor_component": {
+"nodes": 76,
+"volume_m3": 264786697186325.88
+}
+},
+{
+"age_myr": 201.2,
+"seconds": 55.839527749994886,
+"leaves": 489,
+"passes": 33,
+"pass_limit": 490,
+"hit_limit": false,
+"external_supply_m3": 6.162936046803475e+17,
+"internal_transfer_m3": 9.43313580431962e+18,
+"overflow_out_m3": 4.6031376652478515e+17,
+"overflow_to_ocean_m3": 4.461775733837007e+17,
+"residual_m3": 2210.745361328125,
+"lake_liquid_volume_m3": 155380088293125.1,
+"silt_m3": 41174193152911.87,
+"max_pair_sends": 2,
+"final_export_m3": 0.0,
+"final_export_sinks": 0,
+"final_export_fate": {
+"source_m3": 0.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 4.603131228255511e+17,
+"other_export_fate": {
+"source_m3": 4.603131228255511e+17,
+"ocean_m3": 4.4617696804710086e+17,
+"transit_loss_m3": 1.4135913654373248e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 241124076927.25452,
+"settled_on_flow_cycle_m3": 241124076927.25452,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {},
+"routed_from_parent_outlet": {
+"source_m3": 0.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+}
+},
+"anchor_component": {
+"nodes": 76,
+"volume_m3": 3236186028995.7983
+}
+},
+{
+"age_myr": 201.3,
+"seconds": 10.855423417000566,
+"leaves": 485,
+"passes": 31,
+"pass_limit": 486,
+"hit_limit": false,
+"external_supply_m3": 6.515226171064056e+17,
+"internal_transfer_m3": 8.431159961420426e+18,
+"overflow_out_m3": 4.890817269021195e+17,
+"overflow_to_ocean_m3": 4.7616623422723494e+17,
+"residual_m3": 111789.328830719,
+"lake_liquid_volume_m3": 504075047353781.25,
+"silt_m3": 36887078423530.11,
+"max_pair_sends": 2,
+"final_export_m3": 0.0,
+"final_export_sinks": 0,
+"final_export_fate": {
+"source_m3": 0.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 4.890812421151809e+17,
+"other_export_fate": {
+"source_m3": 4.890812421151809e+17,
+"ocean_m3": 4.7616612057321626e+17,
+"transit_loss_m3": 1.1811524466938688e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 1103597075026005.6,
+"settled_on_flow_cycle_m3": 1103597075026005.6,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {},
+"routed_from_parent_outlet": {
+"source_m3": 0.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+}
+},
+"anchor_component": {
+"nodes": 77,
+"volume_m3": 372576190814813.94
+}
+},
+{
+"age_myr": 201.4,
+"seconds": 10.42742683400138,
+"leaves": 488,
+"passes": 27,
+"pass_limit": 489,
+"hit_limit": false,
+"external_supply_m3": 6.713493207054296e+17,
+"internal_transfer_m3": 8.64632115972473e+18,
+"overflow_out_m3": 5.179403794262738e+17,
+"overflow_to_ocean_m3": 4.795237020955432e+17,
+"residual_m3": 25584.20928955078,
+"lake_liquid_volume_m3": 439943515528991.94,
+"silt_m3": 37663309975058.69,
+"max_pair_sends": 2,
+"final_export_m3": 6049235702621080.0,
+"final_export_sinks": 1,
+"final_export_fate": {
+"source_m3": 6049235702621080.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 69138578911661.0,
+"settled_wet_m3": 5980097123709419.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 5980097123709419.0,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 5.1189114099778874e+17,
+"other_export_fate": {
+"source_m3": 5.1189114099778874e+17,
+"ocean_m3": 4.7952369939430016e+17,
+"transit_loss_m3": 1.1706484018831424e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.066095758465713e+16,
+"settled_on_flow_cycle_m3": 2.066095758465713e+16,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"another_basin": 6049235702621080.0
+},
+"routed_from_parent_outlet": {
+"source_m3": 6049235702621080.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 256650724562866.0,
+"settled_wet_m3": 5792584978058214.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 5792584978058214.0,
+"settled_at_dead_end_m3": 0.0
+}
+},
+"anchor_component": {
+"nodes": 69,
+"volume_m3": 15684015802379.297
+}
+},
+{
+"age_myr": 201.5,
+"seconds": 10.863838375000341,
+"leaves": 503,
+"passes": 29,
+"pass_limit": 504,
+"hit_limit": false,
+"external_supply_m3": 6.256414731385764e+17,
+"internal_transfer_m3": 8.104319911543021e+18,
+"overflow_out_m3": 4.2465080521781146e+17,
+"overflow_to_ocean_m3": 1.7737315159963062e+17,
+"residual_m3": 50421.54288482666,
+"lake_liquid_volume_m3": 1018214207549046.5,
+"silt_m3": 34655137719504.285,
+"max_pair_sends": 2,
+"final_export_m3": 2.0790661727429862e+17,
+"final_export_sinks": 1,
+"final_export_fate": {
+"source_m3": 2.0790661727429862e+17,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.0790661727429862e+17,
+"settled_on_flow_cycle_m3": 2.0790661727429862e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 2.167441461463662e+17,
+"other_export_fate": {
+"source_m3": 2.167441461463662e+17,
+"ocean_m3": 1.7737315159590125e+17,
+"transit_loss_m3": 7132250993277760.0,
+"settled_wet_m3": 4320285858123340.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.791845769906383e+16,
+"settled_on_flow_cycle_m3": 3.2238743557187176e+16,
+"settled_at_dead_end_m3": 0.0
+},
+"parent_outlet": {
+"by_class_m3": {
+"no_parent": 2.0790661727429862e+17
+},
+"routed_from_parent_outlet": {
+"source_m3": 0.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+}
+},
+"anchor_component": {
+"nodes": 79,
+"volume_m3": 265691941804503.5
+}
+}
+]
+}
+},
+"baseline_commit": "d709f2b5aaac5ae45f1aae8680c5737a7b572ea4",
+"branch_commit": "6a29294f434e2739804aca08084e6b38c4295f1e"
+}

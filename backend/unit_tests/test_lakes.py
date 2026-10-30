@@ -434,6 +434,165 @@ def test_prognostic_depth_capped_siblings_break_a_closed_spill_cycle():
     assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e7)
 
 
+def _capped_pair_fixture(padding_leaves, supply_m3_per_yr):
+    """A deep basin held at its tier cap below the saddle it shares with a full sibling (#696).
+
+    `deep` sits at floor + its tier cap, 200 m below the 0 m saddle, and `full` holds water to
+    that saddle. `deep`'s outlet edge lands on node 1, not `full`'s sink, so an export at the sink
+    is distinguishable from one at the edge. Dry padding leaves only raise the solve's pass limit,
+    but they also shrink the cells, so the tier comes from the solver's own classification.
+    """
+    n = 3 + padding_leaves
+    previous = np.zeros(n)
+    previous[:2] = [100.0, 50.0]
+    node_area_km2 = 4.0 * np.pi * lakes.PLANET_RADIUS_KM**2 / n
+    _, tier_cap = lakes._classify_tier(np.array([2]), np.ones(n), node_area_km2)
+    previous[2] = tier_cap
+    deep_floor = -(tier_cap + 200.0)
+    elevation = np.zeros(n)
+    elevation[:3] = [-100.0, -50.0, deep_floor]
+    full = lakes.Lake(
+        lake_id=0, members=np.array([0, 1]), floor_elevation=-100.0, min_depth=-100.0,
+        max_depth=0.0, outlet_node_idx=0, sink_node_idx=0, outlet_target_idx=2,
+    )
+    deep = lakes.Lake(
+        lake_id=1, members=np.array([2]), floor_elevation=deep_floor, min_depth=deep_floor,
+        max_depth=0.0, outlet_node_idx=2, sink_node_idx=2, outlet_target_idx=1,
+    )
+    parent = lakes.Lake(
+        lake_id=2, members=np.array([0, 1, 2]), floor_elevation=deep_floor, min_depth=0.0,
+        max_depth=None, children=[full, deep],
+    )
+    padding = [
+        lakes.Lake(
+            lake_id=3 + i, members=np.array([3 + i]), floor_elevation=0.0, min_depth=0.0,
+            max_depth=None, sink_node_idx=3 + i,
+        )
+        for i in range(padding_leaves)
+    ]
+    supply = np.zeros(n)
+    supply[0] = supply_m3_per_yr
+    climate = lakes.LakeClimate(
+        supply, np.zeros(n), supply, wet_precip_m3_per_yr=supply, dry_runoff_m3_per_yr=np.zeros(n),
+        meltwater_m3_per_yr=np.zeros(n),
+    )
+    return [parent, *padding], elevation, previous, climate, lakes.CellHypsometry.whole_cells(elevation)
+
+
+@pytest.mark.parametrize("substeps", [1, 4])
+def test_capped_lake_and_full_sibling_send_at_most_once_per_integration_slice(substeps):
+    forest, elevation, previous, climate, hyps = _capped_pair_fixture(50, 1.0e15)
+
+    result = lakes.solve_lakes_prognostic(
+        forest, elevation, previous, 1.0, climate, hyps, substeps=substeps, diagnostic_trace=True,
+    )
+
+    sends = [(t.source_lake_id, t.receiver_lake_id) for t in result.trace.transfers if t.internal]
+    assert sends.count((0, 1)) <= substeps
+    assert sends.count((1, 0)) <= substeps
+
+
+@pytest.mark.parametrize("padding_leaves", [1, 400])
+def test_capped_pair_internal_transfer_is_bounded_by_surplus_at_any_leaf_count(padding_leaves):
+    supply = 1.0e15
+    forest, elevation, previous, climate, hyps = _capped_pair_fixture(padding_leaves, supply)
+
+    ledger = lakes.solve_lakes_prognostic(forest, elevation, previous, 1.0, climate, hyps).ledger
+
+    assert ledger.internal_transfer_m3 == pytest.approx(supply)
+    assert ledger.residual_m3 == pytest.approx(0.0, abs=1.0)
+
+
+@pytest.mark.parametrize("substeps", [1, 4])
+def test_capped_pair_exports_its_surplus_once_at_the_full_siblings_sink(substeps):
+    # #696 stops the repeat, not the destination: the volume and the node match the pre-fix
+    # solve, whose last pass left the surplus deferred on the leaf holding the deep outlet edge.
+    supply = 1.0e15
+    forest, elevation, previous, climate, hyps = _capped_pair_fixture(2, supply)
+
+    result = lakes.solve_lakes_prognostic(
+        forest, elevation, previous, 1.0, climate, hyps, substeps=substeps,
+    )
+
+    assert result.ledger.overflow_out_m3 == pytest.approx(supply)
+    assert result.overflow_m3[0] == pytest.approx(supply)
+    assert np.count_nonzero(result.overflow_m3) == 1
+    assert result.should_spill[0] and result.should_spill[2]
+    assert result.lake_depth[2] == pytest.approx(previous[2])
+
+
+def test_capped_pair_surplus_returns_to_the_flush_when_the_capped_body_splits():
+    # A merged body drops to a tier cap below its own saddle and splits on the next pass, leaving
+    # its shallow child with room. Surplus already held for export must still reach that child.
+    n = 53
+    node_area_km2 = 4.0 * np.pi * lakes.PLANET_RADIUS_KM**2 / n
+    _, tier_cap = lakes._classify_tier(np.array([1]), np.ones(n), node_area_km2)
+    deep_floor = -(tier_cap + 300.0)
+    elevation = np.zeros(n)
+    elevation[:3] = [-100.0, deep_floor, -250.0]
+    previous = np.zeros(n)
+    previous[:3] = [100.0, -200.0 - deep_floor, 50.0]
+    full = lakes.Lake(
+        lake_id=0, members=np.array([0]), floor_elevation=-100.0, min_depth=-100.0,
+        max_depth=0.0, outlet_node_idx=0, sink_node_idx=0, outlet_target_idx=2,
+    )
+    deep = lakes.Lake(
+        lake_id=1, members=np.array([1]), floor_elevation=deep_floor, min_depth=deep_floor,
+        max_depth=-200.0, outlet_node_idx=1, sink_node_idx=1, outlet_target_idx=2,
+    )
+    shallow = lakes.Lake(
+        lake_id=2, members=np.array([2]), floor_elevation=-250.0, min_depth=-250.0,
+        max_depth=-200.0, outlet_node_idx=2, sink_node_idx=2, outlet_target_idx=1,
+    )
+    merged = lakes.Lake(
+        lake_id=3, members=np.array([1, 2]), floor_elevation=deep_floor, min_depth=-200.0,
+        max_depth=0.0, outlet_node_idx=1, outlet_target_idx=0, children=[deep, shallow],
+    )
+    parent = lakes.Lake(
+        lake_id=4, members=np.array([0, 1, 2]), floor_elevation=deep_floor, min_depth=0.0,
+        max_depth=None, children=[full, merged],
+    )
+    padding = [
+        lakes.Lake(
+            lake_id=5 + i, members=np.array([3 + i]), floor_elevation=0.0, min_depth=0.0,
+            max_depth=None, sink_node_idx=3 + i,
+        )
+        for i in range(n - 3)
+    ]
+    supply = np.zeros(n)
+    supply[0] = 1.0e15
+    climate = lakes.LakeClimate(supply, np.zeros(n), supply)
+
+    result = lakes.solve_lakes_prognostic(
+        [parent, *padding], elevation, previous, 1.0, climate, lakes.CellHypsometry.whole_cells(elevation),
+    )
+
+    assert result.lake_depth[2] == pytest.approx(50.0)
+    assert result.should_spill[2]
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e3)
+
+
+def test_capped_pair_trace_closes_each_basins_budget():
+    # G6's basin budgets read source and receiver from the trace (#696): what a body sends and
+    # exports must equal what it took in, for the deep basin and its full sibling alike.
+    supply = 1.0e15
+    forest, elevation, previous, climate, hyps = _capped_pair_fixture(2, supply)
+
+    result = lakes.solve_lakes_prognostic(
+        forest, elevation, previous, 1.0, climate, hyps, diagnostic_trace=True,
+    )
+
+    transfers = result.trace.transfers
+    received = {0: supply, 1: 0.0}
+    sent = {0: 0.0, 1: 0.0}
+    for transfer in transfers:
+        sent[transfer.source_lake_id] += transfer.volume_m3
+        if transfer.receiver_lake_id is not None:
+            received[transfer.receiver_lake_id] += transfer.volume_m3
+    assert sent[0] == pytest.approx(received[0])
+    assert sent[1] == pytest.approx(received[1])
+
+
 # -- compute_spill_routing -----------------------------------------------------------------
 
 

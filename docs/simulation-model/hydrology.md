@@ -380,7 +380,14 @@ leaf or merged parent. If a capped lake cannot hold its integrated supply after 
 surplus leaves through its hierarchy outlet. If a merged body's level falls below its saddle,
 it splits into its children without resetting their stored volumes. Sibling transfers enter the
 hierarchy-assigned receiver and are booked once; the per-step ledger records those transfers
-separately from external sources, evaporation, exported overflow and storage change. This is the
+separately from external sources, evaporation, exported overflow and storage change. A basin
+capped below the saddle it shares with a sibling full to that saddle cannot merge with it, and
+each would spill to the other. The return flow's route depends on which body runs first, and
+bodies run in descending floor order. If the capped basin runs first, the surplus leaves through
+its outlet target. If the full sibling runs first, the surplus is held in the step's last
+integration slice and exported once at the sink of the leaf that holds the capped basin's outlet
+target, rather than resent on each zero-duration flush pass. Held surplus returns to the flush if
+either body splits or merges away, since a split can leave a child with room (#696). This is the
 prognostic D1b path in RFC 0014 (#588), which replaces balanced-level resets and last-step merge
 pins. Unit tests cover merge, split, cap overflow and budget closure.
 
