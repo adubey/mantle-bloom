@@ -5,7 +5,8 @@
 # anything currently uncommitted, mapped to test files through app/'s own import graph (a
 # module's tests, plus every module that transitively imports it). Pass --base <ref> to
 # compare against something other than main; anything else is forwarded to pytest, e.g.
-# `./bin/affected_test.sh -v`.
+# `./bin/affected_test.sh -v` or `./bin/affected_test.sh -n 2`. The default worker count comes
+# from bin/compute_budget.py, as in bin/unit_test.sh.
 #
 # Falls back to the full suite whenever the affected set can't be trusted (a file the import
 # graph can't map, e.g. a new __init__.py) -- see list_affected_tests.py's docstring. This is
@@ -42,6 +43,8 @@ if [[ -z "$AFFECTED" ]]; then
   exit 0
 fi
 
+WORKERS="$(python3 "$SCRIPT_DIR/compute_budget.py" workers --run unit)"
+
 cd "$REPO_ROOT/backend"
 source .venv/bin/activate
-python -m pytest $AFFECTED -q -n auto "${PYTEST_ARGS[@]+"${PYTEST_ARGS[@]}"}"
+python -m pytest $AFFECTED -q -n "$WORKERS" "${PYTEST_ARGS[@]+"${PYTEST_ARGS[@]}"}"

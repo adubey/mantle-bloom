@@ -22,15 +22,16 @@ Run these from the worktree root, in order, and stop to fix anything that fails.
 
 4. **Affected unit tests:** `./bin/affected_test.sh --base origin/main`. It falls back to
    the full suite by itself when the change can't be mapped through the import graph. The
-   full suite isn't required: CI runs it on a schedule (`full-suite.yml`). Don't run tests
-   while replays are going (RAM). You can skip this if this exact HEAD already passed in
+   full suite isn't required: CI runs it on a schedule (`full-suite.yml`). Test runs count
+   against [`compute-budget`](../compute-budget/SKILL.md), so check it first. You can skip this if this exact HEAD already passed in
    this session.
 
 5. **Frontend**, only if `git diff --name-only origin/main...HEAD -- frontend` is non-empty:
    `cd frontend && npm run lint && npm run build`. The build runs `tsc`, which is the
    typecheck.
 
-6. **Stress tests:** `./bin/stress_test.sh` is slow. Run it when the change touches the step
+6. **Stress tests:** `./bin/stress_test.sh` is slow and also counts against
+   `compute-budget`. Run it when the change touches the step
    pipeline, world generation or persistence (the areas `backend/stress_tests/` covers).
    Otherwise just say it wasn't run.
 

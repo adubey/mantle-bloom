@@ -7,8 +7,8 @@ neighbor stresses. See the [RFC](../../rfc/0010-rifts-follow-weak-lithosphere.md
 [issue 487 findings](../../analysis/issue487/README.md).
 
 Run scripts from the repository root with the worktree's `backend/.venv/bin/python`. Several tools
-replay a full world and use substantial memory. Run one replay at a time and do not run it alongside
-a test suite. Keep full saves and captures in scratch space; the compact outputs and findings belong
+replay a full world and use substantial memory, so follow the
+[`compute-budget` skill](../../.agents/skills/compute-budget/SKILL.md) before starting one. Keep full saves and captures in scratch space; the compact outputs and findings belong
 in `analysis/issue487/`. Each script's module docstring gives its complete usage and arguments.
 
 ### `audit_gate2_assumption_basis.py`

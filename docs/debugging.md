@@ -30,8 +30,9 @@ pages below summarise it.
   their own checkout's `backend/` first on `sys.path`, and `PYTHONPATH` does not override
   that. For an `origin/main` baseline, run a copy of the script inside a detached
   `origin/main` worktree. `craton_genuine_area.py` instead takes `--model-root`.
-- **Memory.** A replay or probe holds a full world (0.6–2.7 GB). Run one at a time, never
-  alongside another replay or a test run.
+- **Memory.** A replay or probe holds a full world, peaking near 2 GB for a young world and
+  6 GB or more for a mature one. Follow the
+  [`compute-budget` skill](../.agents/skills/compute-budget/SKILL.md) before starting one.
 - **Output.** Write full outputs to scratch space. Commit only compact JSON and findings, in
   `analysis/issue<N>/` (see [AGENTS.md](../AGENTS.md#conventions)). Saves stay out of the
   repository.
