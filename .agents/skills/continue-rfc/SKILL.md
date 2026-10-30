@@ -87,7 +87,8 @@ revision after new evidence, use [`edit-rfc`](../edit-rfc/SKILL.md); for a revie
   the script/command, save name and SHA, seed, step schedule and controls, commit(s),
   measured values and conclusion. Check referenced compact JSON and scripts against the
   current files. A save or raw replay output may be on another machine, so check
-  [`b2-saves`](../b2-saves/SKILL.md) before calling it unavailable; don't treat an unverified filename or a run on a different commit as equivalent evidence.
+  [`b2-saves`](../b2-saves/SKILL.md) before calling it unavailable; don't treat an unverified
+  filename or a run on a different commit as equivalent evidence.
 - Keep machine-specific paths private. Use the local-only handoff procedure in
   [`AGENTS.md`](../../../AGENTS.md#workflow); use a neutral artifact basename/run label and
   checksum in repository-facing records.
