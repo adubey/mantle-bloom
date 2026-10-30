@@ -423,10 +423,13 @@ class _PrognosticAccounting:
     wet_precip_total: float
     dry_runoff_total: float
     meltwater_total: float
-    integrated_supply_at_leaf: np.ndarray
+    external_supply_at_leaf: np.ndarray
     final_spilling_ids: set[int]
     overflow_by_outlet: np.ndarray
     deferred: dict[int, float]
+    # Spilled volume by (a leaf of the source body, receiving leaf). Silt reads this once the
+    # final bodies are known, because only then can a transfer be judged internal (#693).
+    transfer_by_leaf_pair: dict[tuple[int, int], float] = field(default_factory=dict)
     trace_external_by_node: np.ndarray | None = None
     trace_wet_precip_by_node: np.ndarray | None = None
     trace_dry_runoff_by_node: np.ndarray | None = None
@@ -474,6 +477,72 @@ def _build_solve_trace(accounting, diagnostic_trace: bool):
         accounting.trace_sublimation_by_node,
         tuple(accounting.trace_transfers),
     )
+
+
+def _book_silt_transfer(accounting, source_leafs, receiver_leaf, volume):
+    key = (source_leafs[0], receiver_leaf)
+    accounting.transfer_by_leaf_pair[key] = accounting.transfer_by_leaf_pair.get(key, 0.0) + volume
+
+
+def _without_circulation(flows: dict[tuple[int, int], float]) -> dict[tuple[int, int], float]:
+    """Cancel every closed loop in a directed flow, leaving each node's net flow unchanged.
+
+    Walks forward from each node. Reaching the walk's own path closes a loop, which gives up
+    its smallest edge; a node with nothing left to send cannot be on a loop, so the edge into it
+    is final.
+    """
+    live: dict[int, dict[int, float]] = {}
+    for (source, receiver), volume in sorted(flows.items()):
+        live.setdefault(source, {})[receiver] = volume
+    acyclic: dict[tuple[int, int], float] = {}
+    for start in sorted(live):
+        path = [start]
+        while path:
+            node = path[-1]
+            outgoing = live.get(node)
+            if not outgoing:
+                path.pop()
+                if path:
+                    acyclic[(path[-1], node)] = live[path[-1]].pop(node)
+                continue
+            receiver = next(iter(outgoing))
+            if receiver not in path:
+                path.append(receiver)
+                continue
+            loop_start = path.index(receiver)
+            loop = path[loop_start:]
+            edges = list(zip(loop, [*loop[1:], receiver]))
+            smallest = min(live[source][target] for source, target in edges)
+            for source, target in edges:
+                live[source][target] -= smallest
+                if live[source][target] <= 0.0:
+                    del live[source][target]
+            del path[loop_start + 1:]
+    return acyclic
+
+
+def _final_body_silt_supply(accounting, final_bodies, final_body_leaf_ids) -> list[float]:
+    """Each final body's step supply for silt: external water plus water from other bodies.
+
+    Water counts once, on entering a body (#693). A transfer between a body's own children has
+    already been counted, and capped siblings can pass the same water round a closed outlet
+    cycle many times per step, so loops between bodies cancel while one-way through-flow stays
+    (#363).
+    """
+    body_of_leaf: dict[int, int] = {}
+    supply = []
+    for index, body in enumerate(final_bodies):
+        leaf_ids = final_body_leaf_ids[id(body)]
+        body_of_leaf.update(dict.fromkeys(leaf_ids, index))
+        supply.append(float(accounting.external_supply_at_leaf[leaf_ids].sum()))
+    between_bodies: dict[tuple[int, int], float] = {}
+    for (source_leaf, receiver_leaf), volume in accounting.transfer_by_leaf_pair.items():
+        key = (body_of_leaf[source_leaf], body_of_leaf[receiver_leaf])
+        if key[0] != key[1]:
+            between_bodies[key] = between_bodies.get(key, 0.0) + volume
+    for (_, receiver), volume in _without_circulation(between_bodies).items():
+        supply[receiver] += volume
+    return supply
 
 
 def _warn_if_depth_caps_bound(accounting: _PrognosticAccounting) -> None:
@@ -763,7 +832,7 @@ def _advance_prognostic_body(
         if total_rate > 0.0:
             for leaf_id in body_leafs:
                 leaf = leaves[leaf_id]
-                accounting.integrated_supply_at_leaf[leaf_id] += (
+                accounting.external_supply_at_leaf[leaf_id] += (
                     external_rate * dt_step * float(rates[leaf.members].sum()) / total_rate
                 )
     if input_volume <= 0.0 and not np.any(depth[members] > 0.0):
@@ -846,14 +915,12 @@ def _advance_prognostic_body(
                 pending[id(receiver)] = pending.get(id(receiver), 0.0) + overflow
             _trace_transfer(accounting, route_source, receiver, target, overflow, internal=True, depth=depth)
             accounting.internal_transfer_total += overflow
-            if leaf_id >= 0:
-                accounting.integrated_supply_at_leaf[leaf_id] += overflow
+            _book_silt_transfer(accounting, body_leaf_ids[id(route_source)], leaf_id, overflow)
             return
         traversed.add(id(receiver))
         _trace_transfer(accounting, route_source, receiver, target, overflow, internal=True, depth=depth)
         accounting.internal_transfer_total += overflow
-        if leaf_id >= 0:
-            accounting.integrated_supply_at_leaf[leaf_id] += overflow
+        _book_silt_transfer(accounting, body_leaf_ids[id(route_source)], leaf_id, overflow)
         route_source = receiver
         target = receiver.outlet_target_idx
     accounting.overflow_out_total += overflow
@@ -1005,9 +1072,9 @@ def solve_lakes_prognostic(
     filled_elevation = np.asarray(elevation, dtype=float).copy()
     spill_target = np.full(n, -1, dtype=np.int64)
     rim_node_idx = np.full(n, -1, dtype=np.int64)
-    final_body_leaf_ids: dict[int, list[int]] = {}
-    for body in final_bodies:
-        final_body_leaf_ids[id(body)] = sorted({int(x) for x in leaf_of_node[body.members] if x >= 0})
+    _, final_body_leaf_ids = _body_leaf_mapping(final_bodies, leaf_of_node)
+    silt_supply = _final_body_silt_supply(accounting, final_bodies, final_body_leaf_ids)
+    for body, supply in zip(final_bodies, silt_supply):
         wet_members = body.members[depth[body.members] > 0.0]
         body.current_water_elevation = (
             float(np.max(hypsometry.level_from_depth(depth[wet_members], wet_members)))
@@ -1030,9 +1097,11 @@ def solve_lakes_prognostic(
         if is_sea:
             lake_is_sea[wet] = True
         if len(wet):
-            supply = sum(accounting.integrated_supply_at_leaf[i] for i in final_body_leaf_ids[id(body)])
             wet_area = float((hypsometry.area_m2[wet] * wet_fraction[wet_fraction > 0.0]).sum())
-            rise = SILT_ACCUMULATION_COEFFICIENT * supply / max(wet_area, 1.0)
+            # Released storage can exceed what the world supplied this step, and silt is sized
+            # by this step's supply (#693).
+            bounded_supply = min(supply, accounting.external_used_total)
+            rise = SILT_ACCUMULATION_COEFFICIENT * bounded_supply / max(wet_area, 1.0)
             silt_deposited[wet] = np.minimum(rise * wet_fraction[wet_fraction > 0.0], depth[wet])
 
     final_storage = float((lake_depth * hypsometry.area_m2).sum())

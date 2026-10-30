@@ -592,6 +592,144 @@ def test_capped_pair_trace_closes_each_basins_budget():
     assert sent[0] == pytest.approx(received[0])
     assert sent[1] == pytest.approx(received[1])
 
+def _silt_m3(result, hyps):
+    return float(np.dot(result.silt_deposited, hyps.area_m2))
+
+
+def _spill_pair(right_outlet_target):
+    """Two one-cell basins side by side: left spills into right, and right spills on to
+    `right_outlet_target`."""
+    left = lakes.Lake(
+        lake_id=0, members=np.array([0]), floor_elevation=0.0, min_depth=0.0,
+        max_depth=100.0, outlet_node_idx=0, sink_node_idx=0, outlet_target_idx=1,
+    )
+    right = lakes.Lake(
+        lake_id=1, members=np.array([1]), floor_elevation=0.0, min_depth=0.0,
+        max_depth=100.0, outlet_node_idx=1, sink_node_idx=1,
+        outlet_target_idx=right_outlet_target,
+    )
+    return left, right
+
+
+def test_silt_supply_of_a_merged_body_is_only_the_water_that_entered_it():
+    # #693: the left child fills and spills into the right child before they merge. That spill
+    # moves water already inside the final body, so it must not count as new supply.
+    forest = lakes.build_lake_hierarchy(_MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS)
+    hyps = lakes.CellHypsometry.whole_cells(_MERGE_ELEVATION)
+    external_m3 = 1.0e16
+    climate = lakes.LakeClimate(
+        np.zeros(6), np.zeros(6), np.array([external_m3, 0.0, 0.0, 0.0, 0.0, 0.0])
+    )
+
+    result = lakes.solve_lakes_prognostic(
+        forest, _MERGE_ELEVATION, np.zeros(6), 1.0, climate, hyps, substeps=32,
+        is_ocean=_MERGE_IS_OCEAN,
+    )
+
+    assert any(event.kind == "merge" for event in result.events)
+    assert result.ledger.internal_transfer_m3 > 0.0  # the ledger still books the hop
+    assert _silt_m3(result, hyps) == pytest.approx(
+        lakes.SILT_ACCUMULATION_COEFFICIENT * external_m3
+    )
+
+
+def test_silt_supply_of_capped_siblings_counts_exchanged_water_once():
+    # #693: two capped siblings that never merge can pass the same water round their closed
+    # outlet cycle in every slice. What they exchange is neither body's new supply.
+    elevation = np.array([0.0, 0.0])
+    left, right = _spill_pair(right_outlet_target=0)
+    left.max_depth = right.max_depth = 3_000.0
+    parent = lakes.Lake(
+        lake_id=2, members=np.array([0, 1]), floor_elevation=0.0, min_depth=3_000.0,
+        max_depth=None, children=[left, right],
+    )
+    hyps = lakes.CellHypsometry.whole_cells(elevation)
+    supply = np.array([3.0e20, 1.0e20])
+
+    result = lakes.solve_lakes_prognostic(
+        [parent], elevation, np.zeros(2), 1.0, lakes.LakeClimate(np.zeros(2), np.zeros(2), supply),
+        hyps, substeps=8,
+    )
+
+    assert result.ledger.internal_transfer_m3 > supply.sum()  # water really did circulate
+    silt_supply_m3 = (
+        result.silt_deposited * hyps.area_m2 / lakes.SILT_ACCUMULATION_COEFFICIENT
+    )
+    assert silt_supply_m3.max() <= supply.sum() * (1.0 + 1e-9)
+    # Right's whole supply passes through into left, and left sends nothing back on net.
+    assert silt_supply_m3[1] == pytest.approx(supply[1])
+
+
+def test_silt_supply_keeps_through_flow_from_outside_the_body():
+    # A spilling lake silts from the water passing through it (#363). The receiver is a separate
+    # final body, so the donor's overflow is its real outside supply.
+    elevation = np.array([0.0, 0.0, -10.0])
+    left, right = _spill_pair(right_outlet_target=2)
+    is_ocean = np.array([False, False, True])
+    hyps = lakes.CellHypsometry.whole_cells(elevation)
+    capacity_m3 = 100.0 * float(hyps.area_m2[0])
+    left_external = 3.0 * capacity_m3
+    right_external = 2.0 * capacity_m3
+    climate = lakes.LakeClimate(
+        np.zeros(3), np.zeros(3), np.array([left_external, right_external, 0.0])
+    )
+
+    result = lakes.solve_lakes_prognostic(
+        [left, right], elevation, np.zeros(3), 1.0, climate, hyps, substeps=16, is_ocean=is_ocean,
+    )
+
+    transfer_m3 = left_external - capacity_m3
+    assert result.ledger.internal_transfer_m3 == pytest.approx(transfer_m3)
+    coefficient = lakes.SILT_ACCUMULATION_COEFFICIENT
+    silt_m3 = result.silt_deposited * hyps.area_m2
+    assert silt_m3[0] == pytest.approx(coefficient * left_external)
+    assert silt_m3[1] == pytest.approx(coefficient * (right_external + transfer_m3))
+
+
+def test_silt_supply_never_exceeds_world_external_supply_when_storage_drains():
+    # #693 bound: the left lake starts far above its rim and releases that stored water in one
+    # step. The release moves real water, but silt is sized by this step's supply.
+    elevation = np.array([0.0, 0.0, -10.0])
+    left, right = _spill_pair(right_outlet_target=2)
+    hyps = lakes.CellHypsometry.whole_cells(elevation)
+    external_m3 = 1.0e16
+    prior_depth = np.array([50_000.0, 0.0, 0.0])
+    climate = lakes.LakeClimate(np.zeros(3), np.zeros(3), np.array([external_m3, 0.0, 0.0]))
+
+    result = lakes.solve_lakes_prognostic(
+        [left, right], elevation, prior_depth, 1.0, climate, hyps, substeps=1,
+        is_ocean=np.array([False, False, True]),
+    )
+
+    assert result.ledger.internal_transfer_m3 > external_m3
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e6)
+    assert np.max(result.silt_deposited * hyps.area_m2) <= (
+        lakes.SILT_ACCUMULATION_COEFFICIENT * external_m3 * (1.0 + 1e-9)
+    )
+
+
+def test_without_circulation_keeps_each_bodys_net_flow():
+    # Body 3 feeds a 0 -> 1 -> 2 -> 0 ring, and 2 drains to 4.
+    flows = {(3, 0): 5.0, (0, 1): 100.0, (1, 2): 102.0, (2, 0): 97.0, (2, 4): 5.0}
+
+    acyclic = lakes._without_circulation(flows)
+
+    def net(body, edges):
+        return sum(v for (a, _), v in edges.items() if a == body) - sum(
+            v for (_, b), v in edges.items() if b == body
+        )
+
+    for body in range(5):
+        assert net(body, acyclic) == pytest.approx(net(body, flows))
+    assert (2, 0) not in acyclic  # the smallest ring edge is what cancels
+    assert sum(acyclic.values()) < sum(flows.values())
+
+
+def test_without_circulation_leaves_one_way_flow_alone():
+    flows = {(0, 1): 1.0, (0, 2): 2.0, (1, 3): 3.0, (2, 3): 4.0}
+
+    assert lakes._without_circulation(flows) == flows
+
 
 # -- compute_spill_routing -----------------------------------------------------------------
 
