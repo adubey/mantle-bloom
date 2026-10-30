@@ -141,6 +141,70 @@ def test_sync_skips_a_save_still_being_written(tmp_path):
     assert bucket.files == {}
 
 
+def test_sync_uploads_a_save_rewritten_at_the_same_name_and_size(tmp_path):
+    first = save(tmp_path, "mantle-bloom-seed1-1y.bloom", content="first", age_days=1)
+    bucket = FakeBucket()
+    b2.sync(bucket, tmp_path, NOW)
+    save(tmp_path, first.name, content="other", age_days=1)
+
+    assert b2.sync(bucket, tmp_path, NOW) == 0
+
+    assert len(bucket.files) == 2
+    assert b2.sha1_of(first) in {remote.sha1 for remote in bucket.list_files()}
+
+
+def test_sync_hashes_an_unchanged_save_once(tmp_path, monkeypatch):
+    save(tmp_path, "mantle-bloom-seed1-1y.bloom", age_days=1)
+    bucket = FakeBucket()
+    hashes = {}
+    b2.sync(bucket, tmp_path, NOW, hashes)
+
+    def must_not_hash(_path):
+        raise AssertionError("rehashed an unchanged save")
+
+    monkeypatch.setattr(b2, "sha1_of", must_not_hash)
+    assert b2.sync(bucket, tmp_path, NOW, hashes) == 0
+
+
+def test_hash_cache_survives_a_round_trip_and_a_corrupt_file(tmp_path):
+    cache = tmp_path / "state" / "hashes.json"
+    b2.save_hashes({"a": [1, 2, "sha"]}, cache)
+    assert b2.load_hashes(cache) == {"a": [1, 2, "sha"]}
+    cache.write_text("not json")
+    assert b2.load_hashes(cache) == {}
+
+
+def test_cron_pushes_before_it_purges_and_a_held_lock_skips_the_run(tmp_path, monkeypatch):
+    old = save(tmp_path, "mantle-bloom-seed1-1y.bloom", age_days=30)
+    bucket = FakeBucket()
+    state = tmp_path / "state"
+    monkeypatch.setattr(b2, "STATE_DIR", state)
+    monkeypatch.setattr(b2, "LOCK_FILE", state / "lock")
+    monkeypatch.setattr(b2, "HASH_CACHE", state / "hashes.json")
+    monkeypatch.setattr(b2, "read_pins", set)
+    monkeypatch.setattr(b2, "client_for", lambda _cfg: bucket)
+    monkeypatch.setattr(b2.time, "time", lambda: NOW)
+    cfg = config(tmp_path)
+
+    state.mkdir()
+    with (state / "lock").open("w") as lock:
+        b2.fcntl.flock(lock, b2.fcntl.LOCK_EX)
+        assert b2.cmd_cron(cfg, None) == 0
+        assert old.exists() and bucket.files == {}
+
+    assert b2.cmd_cron(cfg, None) == 0
+    assert old.name in bucket.files and not old.exists()
+
+
+def test_env_file_privacy_check(tmp_path):
+    env = tmp_path / "b2.env"
+    env.write_text("x")
+    env.chmod(0o644)
+    assert not b2.env_file_is_private(env)
+    env.chmod(0o600)
+    assert b2.env_file_is_private(env)
+
+
 def test_push_keeps_different_saves_with_one_name_apart(tmp_path):
     first = save(tmp_path, "mantle-bloom-seed1-1y.bloom", content="first")
     bucket = FakeBucket()
@@ -215,21 +279,17 @@ def test_catalog_marks_where_each_file_lives():
         b2.Remote("both.bloom", 3, "a" * 40, 1000, {"machine": "studio"}),
         b2.Remote("cloud.bloom", 3, "b" * 40, 2000),
     ]
-
-    class Stat:
-        st_size = 3
-
-    class Local:
-        def __init__(self, name):
-            self.name = name
-
-        def stat(self):
-            return Stat
-
-    rows = b2.catalog(remotes, [Local("both.bloom"), Local("local.bloom")], {"both.bloom"})
+    local = {"both.bloom": (3, "a" * 40), "local.bloom": (3, "c" * 40)}
+    rows = b2.catalog(remotes, local, {"both.bloom"})
     where = {row["name"]: row["where"] for row in rows}
     assert where == {"both.bloom": "both", "cloud.bloom": "cloud", "local.bloom": "local"}
     assert next(row for row in rows if row["name"] == "both.bloom")["pinned"]
+
+
+def test_catalog_does_not_call_equal_name_and_size_a_backup():
+    remotes = [b2.Remote("save.bloom", 3, "a" * 40, 1000)]
+    rows = b2.catalog(remotes, {"save.bloom": (3, "b" * 40)}, set())
+    assert sorted(row["where"] for row in rows) == ["cloud", "local"]
 
 
 def test_config_reads_the_env_file_and_the_environment_wins(tmp_path):
@@ -238,6 +298,12 @@ def test_config_reads_the_env_file_and_the_environment_wins(tmp_path):
     cfg = b2.load_config({"B2_BUCKET": "fromenv", "MANTLE_BLOOM_SAVES_DIR": "/x"}, env)
     assert (cfg.key_id, cfg.bucket, cfg.saves_dir) == ("fromfile", "fromenv", Path("/x"))
     assert b2.missing_settings(cfg) == ["B2_APPLICATION_KEY"]
+
+
+def test_cron_uses_the_interpreter_behind_a_venv(monkeypatch):
+    monkeypatch.setattr(b2.sys, "executable", "/worktree/.venv/bin/python3")
+    monkeypatch.setattr(b2.sys, "_base_executable", "/usr/bin/python3", raising=False)
+    assert b2.stable_python() == "/usr/bin/python3"
 
 
 def test_cron_line_replacement_keeps_other_jobs():
@@ -251,6 +317,8 @@ class Stub(BaseHTTPRequestHandler):
     requests: list = []
     stored: dict = {}
     fail_next_upload = False
+    bucket_type = "allPrivate"
+    versions: list = []  # pages of b2_list_file_versions
 
     def log_message(self, *_args):
         pass
@@ -282,7 +350,11 @@ class Stub(BaseHTTPRequestHandler):
         body = self.rfile.read(int(self.headers["Content-Length"]))
         Stub.requests.append((self.path, dict(self.headers), body))
         if self.path.endswith("b2_list_buckets"):
-            self.reply({"buckets": [{"bucketId": "bid", "bucketType": "allPrivate"}]})
+            self.reply({"buckets": [{"bucketId": "bid", "bucketType": Stub.bucket_type}]})
+        elif self.path.endswith("b2_list_file_versions"):
+            self.reply(Stub.versions.pop(0))
+        elif self.path.endswith("b2_delete_file_version"):
+            self.reply({})
         elif self.path.endswith("b2_get_upload_url"):
             self.reply({"uploadUrl": f"{self.base()}/upload", "authorizationToken": "up"})
         elif self.path.endswith("b2_list_file_names"):
@@ -309,6 +381,7 @@ def client(monkeypatch):
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     Stub.requests, Stub.stored, Stub.fail_next_upload = [], {}, False
+    Stub.bucket_type, Stub.versions = "allPrivate", []
     monkeypatch.setattr(b2.time, "sleep", lambda _seconds: None)
     yield b2.B2("id", "secret", "bucket", api_url=f"http://127.0.0.1:{server.server_address[1]}")
     server.shutdown()
@@ -354,3 +427,51 @@ def test_wire_download_authorizes_and_hashes_what_arrived(client, tmp_path):
     assert client.download("a b.bloom", dest) == hashlib.sha1(b"payload").hexdigest()
     assert dest.read_bytes() == b"payload"
     assert Stub.requests[-1][1]["Authorization"] == "token"
+
+
+def public_refused(call):
+    Stub.bucket_type = "allPublic"
+    with pytest.raises(b2.B2Error, match="bucket_not_private"):
+        call()
+    assert not any(request[0] == "/upload" for request in Stub.requests)
+
+
+def test_wire_upload_refuses_a_public_bucket(client, tmp_path):
+    path = save(tmp_path, "mantle-bloom-seed1-1y.bloom")
+    public_refused(lambda: client.upload(path, path.name, b2.sha1_of(path), {"machine": "m"}))
+
+
+def test_wire_listing_refuses_a_public_bucket_so_sync_and_cron_stop(client, tmp_path):
+    save(tmp_path, "mantle-bloom-seed1-1y.bloom", age_days=1)
+    public_refused(lambda: b2.sync(client, tmp_path, NOW))
+
+
+def test_wire_delete_removes_every_version_across_pages(client):
+    key = "saves/a.bloom"
+    Stub.versions = [
+        {
+            "files": [{"fileName": key, "fileId": "1"}, {"fileName": key, "fileId": "2"}],
+            "nextFileName": key,
+            "nextFileId": "3",
+        },
+        {
+            "files": [{"fileName": key, "fileId": "3"}, {"fileName": key + ".bak", "fileId": "4"}],
+            "nextFileName": None,
+        },
+    ]
+
+    assert client.delete("a.bloom") == 3
+
+    bodies = [json.loads(body) for url, _, body in Stub.requests if "file_versions" in url]
+    assert "startFileId" not in bodies[0]
+    assert bodies[1]["startFileId"] == "3"
+    deleted = [
+        json.loads(body)["fileId"] for url, _, body in Stub.requests if "delete_file_version" in url
+    ]
+    assert deleted == ["1", "2", "3"]
+
+
+def test_wire_delete_still_works_on_a_public_bucket(client):
+    Stub.bucket_type = "allPublic"
+    Stub.versions = [{"files": [{"fileName": "saves/a.bloom", "fileId": "1"}]}]
+    assert client.delete("a.bloom") == 1

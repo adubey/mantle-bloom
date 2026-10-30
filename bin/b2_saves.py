@@ -67,6 +67,7 @@ PINS_FILE = CONFIG_DIR / "b2_pins.txt"
 STATE_DIR = Path.home() / ".local" / "state" / "mantle-bloom"
 LOCK_FILE = STATE_DIR / "b2_saves.lock"
 LOG_FILE = STATE_DIR / "b2_saves.log"
+HASH_CACHE = STATE_DIR / "b2_sha1_cache.json"
 # Cron must not depend on a worktree that can vanish, so it runs a private copy.
 INSTALLED_SCRIPT = Path.home() / ".local" / "share" / "mantle-bloom" / "b2_saves.py"
 CRON_MARKER = "# mantle-bloom-b2-saves"
@@ -142,6 +143,35 @@ def sha1_of(path: Path) -> str:
     return digest.hexdigest()
 
 
+def load_hashes(path: Path = HASH_CACHE) -> dict:
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}  # only a cache: a lost one costs one rehash
+
+
+def save_hashes(hashes: dict, path: Path = HASH_CACHE) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = path.with_name(path.name + ".part")
+    partial.write_text(json.dumps(hashes))
+    os.replace(partial, path)
+
+
+def cached_sha1(path: Path, hashes: dict) -> str:
+    """A save's SHA-1, rehashed only when its size or mtime moves, so hourly runs stay cheap.
+
+    Only sync and list use this. Purge always rehashes, since it's about to delete the file.
+    """
+    stat = path.stat()
+    stamp = [stat.st_size, stat.st_mtime_ns]
+    entry = hashes.get(path.name)
+    if entry and entry[:2] == stamp:
+        return entry[2]
+    sha1 = sha1_of(path)
+    hashes[path.name] = [*stamp, sha1]
+    return sha1
+
+
 def remote_key(name: str) -> str:
     return REMOTE_PREFIX + name
 
@@ -191,6 +221,13 @@ class B2:
         self.storage_url = storage["apiUrl"]
         self.download_url = storage["downloadUrl"]
 
+    def _require_private(self) -> None:
+        """Refuse a public bucket on every read and write, not just in doctor (#708): the
+        bucket can be made public after setup, and cron would keep uploading to it."""
+        self._ensure_bucket()
+        if self.bucket_type != "allPrivate":
+            raise B2Error(403, "bucket_not_private", f"{self.bucket} is {self.bucket_type}")
+
     def _ensure_bucket(self) -> None:
         if self.bucket_id:
             return
@@ -233,7 +270,7 @@ class B2:
         return self.bucket_type
 
     def list_files(self) -> list[Remote]:
-        self._ensure_bucket()
+        self._require_private()
         files, start = [], None
         while True:
             query = {"bucketId": self.bucket_id, "prefix": REMOTE_PREFIX, "maxFileCount": 1000}
@@ -250,7 +287,7 @@ class B2:
                 return files
 
     def upload(self, path: Path, name: str, sha1: str, info: dict[str, str]) -> Remote:
-        self._ensure_bucket()
+        self._require_private()
         size = path.stat().st_size
         for attempt in range(ATTEMPTS):
             target = self._call("b2_get_upload_url", {"bucketId": self.bucket_id})
@@ -298,13 +335,22 @@ class B2:
 
     def delete(self, name: str) -> int:
         """Delete every version of a file and return how many went."""
-        self._ensure_bucket()
+        self._ensure_bucket()  # not private-only: this is how to clean up a public bucket
         key = remote_key(name)
-        versions = self._call(
-            "b2_list_file_versions",
-            {"bucketId": self.bucket_id, "startFileName": key, "maxFileCount": 100},
-        )["files"]
-        doomed = [version for version in versions if version["fileName"] == key]
+        doomed = []
+        query = {
+            "bucketId": self.bucket_id,
+            "prefix": key,
+            "startFileName": key,
+            "maxFileCount": 1000,
+        }
+        while True:
+            page = self._call("b2_list_file_versions", query)
+            doomed += [version for version in page["files"] if version["fileName"] == key]
+            # Names sort together, so the first page past this name means all its versions are in.
+            if page.get("nextFileName") != key:
+                break
+            query["startFileId"] = page["nextFileId"]
         for version in doomed:
             self._call(
                 "b2_delete_file_version",
@@ -382,19 +428,20 @@ def push_file(client, path: Path, remotes: list[Remote], note: str = "") -> None
     print(f"pushed {path.name} as {name} ({size / 1e6:.0f} MB)")
 
 
-def sync(client, saves_dir: Path, now: float) -> int:
-    """Push every settled local save the bucket lacks; returns how many failed."""
+def sync(client, saves_dir: Path, now: float, hashes: dict | None = None) -> int:
+    """Push every settled local save the bucket lacks; returns how many failed.
+
+    Compares contents: a save re-written under one name, even at one size, is a new save.
+    """
+    hashes = {} if hashes is None else hashes
     remotes = client.list_files()
-    # Name and size spare hashing every save each hour. A false match only leaves that save
-    # unpushed, and purge then keeps it, because purge compares SHA-1s.
-    known = {(r.name, r.size) for r in remotes}
     failures = 0
     for path in local_saves(saves_dir):
-        stat = path.stat()
-        if (path.name, stat.st_size) in known or now - stat.st_mtime < SETTLE_SECONDS:
+        if now - path.stat().st_mtime < SETTLE_SECONDS:
             continue
         try:
-            push_file(client, path, remotes)
+            if cached_sha1(path, hashes) not in {remote.sha1 for remote in remotes}:
+                push_file(client, path, remotes)
         except (B2Error, OSError, ValueError) as err:
             failures += 1
             print(f"FAILED {path.name}: {err}", file=sys.stderr)
@@ -458,16 +505,18 @@ def pull(client, name: str, saves_dir: Path) -> Path:
     return dest
 
 
-def catalog(remotes: list[Remote], paths: list[Path], pins: set[str]) -> list[dict]:
-    """One row per file, joining the bucket's metadata with what this machine holds."""
-    local = {path.name: path.stat().st_size for path in paths}
+def catalog(remotes: list[Remote], local: dict[str, tuple], pins: set[str]) -> list[dict]:
+    """One row per file, joining the bucket's metadata with what this machine holds.
+
+    `local` maps name to (size, SHA-1). `both` means the same bytes are in both places.
+    """
+    local_sha1s = {sha1 for _size, sha1 in local.values()}
     rows = []
     for remote in remotes:
-        here = local.get(remote.name) == remote.size
         rows.append(
             {
                 "name": remote.name,
-                "where": "both" if here else "cloud",
+                "where": "both" if remote.sha1 in local_sha1s else "cloud",
                 "size": remote.size,
                 "sha1": remote.sha1,
                 "uploaded": datetime.fromtimestamp(
@@ -477,10 +526,12 @@ def catalog(remotes: list[Remote], paths: list[Path], pins: set[str]) -> list[di
                 **remote.info,
             }
         )
-    in_rows = {row["name"] for row in rows if row["where"] == "both"}
-    for name, size in sorted(local.items()):
-        if name not in in_rows:
-            rows.append({"name": name, "where": "local", "size": size, "pinned": name in pins})
+    remote_sha1s = {remote.sha1 for remote in remotes}
+    for name, (size, sha1) in sorted(local.items()):
+        if sha1 not in remote_sha1s:
+            rows.append(
+                {"name": name, "where": "local", "size": size, "sha1": sha1, "pinned": name in pins}
+            )
     return sorted(rows, key=lambda row: (row.get("uploaded", ""), row["name"]))
 
 
@@ -521,8 +572,25 @@ def without_cron_line(crontab: str) -> str:
     )
 
 
+def stable_python() -> str:
+    """The interpreter behind any venv: a worktree's venv can vanish, and cron would fail."""
+    return getattr(sys, "_base_executable", None) or sys.executable
+
+
 def cron_line(python: str, script: Path, log: Path) -> str:
     return f'{CRON_SCHEDULE} "{python}" "{script}" cron >> "{log}" 2>&1 {CRON_MARKER}\n'
+
+
+def env_file_is_private(path: Path = ENV_FILE) -> bool:
+    return not path.exists() or path.stat().st_mode & 0o077 == 0
+
+
+def run_sync(client, cfg: Config, now: float) -> int:
+    hashes = load_hashes()
+    try:
+        return sync(client, cfg.saves_dir, now, hashes)
+    finally:
+        save_hashes(hashes)
 
 
 def cmd_doctor(cfg: Config, _args: argparse.Namespace) -> int:
@@ -532,18 +600,26 @@ def cmd_doctor(cfg: Config, _args: argparse.Namespace) -> int:
     if missing := missing_settings(cfg):
         print(f"missing in {ENV_FILE}: {', '.join(missing)}")
         return 1
+    healthy = env_file_is_private()
+    if not healthy:
+        print(f"WARNING: {ENV_FILE} is readable by other users; run chmod 600 on it")
     client = client_for(cfg)
     bucket_type = client.type_of_bucket()
-    print(f"bucket {cfg.bucket}: {bucket_type}, {len(client.list_files())} files")
     if bucket_type != "allPrivate":
-        print("WARNING: this bucket is not private, so anyone could download these saves")
+        print(f"WARNING: bucket {cfg.bucket} is {bucket_type}, so anyone could download saves")
         return 1
-    return 0
+    print(f"bucket {cfg.bucket}: {bucket_type}, {len(client.list_files())} files")
+    return 0 if healthy else 1
 
 
 def cmd_list(cfg: Config, args: argparse.Namespace) -> int:
-    paths = local_saves(cfg.saves_dir)
-    rows = catalog(client_for(cfg).list_files(), paths, read_pins())
+    hashes = load_hashes()
+    local = {
+        path.name: (path.stat().st_size, cached_sha1(path, hashes))
+        for path in local_saves(cfg.saves_dir)
+    }
+    save_hashes(hashes)
+    rows = catalog(client_for(cfg).list_files(), local, read_pins())
     if args.json:
         print(json.dumps(rows, indent=2))
     else:
@@ -567,7 +643,7 @@ def cmd_pull(cfg: Config, args: argparse.Namespace) -> int:
 
 
 def cmd_sync(cfg: Config, _args: argparse.Namespace) -> int:
-    return 1 if sync(client_for(cfg), cfg.saves_dir, time.time()) else 0
+    return 1 if run_sync(client_for(cfg), cfg, time.time()) else 0
 
 
 def cmd_purge(cfg: Config, args: argparse.Namespace) -> int:
@@ -605,7 +681,7 @@ def cmd_cron(cfg: Config, _args: argparse.Namespace) -> int:
         client = client_for(cfg)
         now = time.time()
         # A failed push can't lose anything: purge checks the bucket for each file itself.
-        failures = sync(client, cfg.saves_dir, now)
+        failures = run_sync(client, cfg, now)
         purge(client, cfg, now, dry_run=False, pins=read_pins())
     return 1 if failures else 0
 
@@ -614,7 +690,7 @@ def cmd_install_cron(_cfg: Config, _args: argparse.Namespace) -> int:
     INSTALLED_SCRIPT.parent.mkdir(parents=True, exist_ok=True)
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     shutil.copy2(Path(__file__).resolve(), INSTALLED_SCRIPT)
-    line = cron_line(sys.executable, INSTALLED_SCRIPT, LOG_FILE)
+    line = cron_line(stable_python(), INSTALLED_SCRIPT, LOG_FILE)
     write_crontab(without_cron_line(read_crontab()) + line)
     print(f"installed: {line.strip()}")
     return 0

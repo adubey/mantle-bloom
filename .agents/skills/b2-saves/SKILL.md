@@ -23,16 +23,18 @@ moved out of it. Bucket copies stay until someone deletes them by hand.
 | Protect a local copy | `bin/b2_saves.py pin <name>`, undo with `unpin` |
 | Check the setup | `bin/b2_saves.py doctor` |
 
-`list` shows whether each file is `local`, `cloud` or `both`, plus its size, simulated age,
-upload date, source machine, world name and note. Metadata is stored with each file and
-can't be edited later, so give a note at push time.
+`list` shows whether each file is `local`, `cloud` or `both`, where `both` means the same
+bytes by SHA-1, plus its size, simulated age, upload date, source machine, world name and
+note. Metadata is stored with each file and can't be edited later, so give a note at push
+time.
 
 ## Rules
 
 - **Never put a credential in the repo, an issue, a PR, a log or a chat summary.** The repo
   is public. Credentials stay in `~/.config/mantle-bloom/b2.env`, which is mode 600 and sits
   outside every checkout.
-- **Keep the bucket private.** `doctor` fails on a public one.
+- **Keep the bucket private.** Every push, pull, list and cron run refuses a public bucket.
+  `delete-remote` still works, so a mistake can be cleaned up.
 - **Pull only from this bucket and treat it as trusted input.** Older `.mbworld` saves are
   pickles, and loading a pickle can run code. SHA-1 checks catch corruption, not tampering.
 - **Run `delete-remote` only when the user names that file.** It removes every version from
