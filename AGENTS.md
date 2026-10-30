@@ -58,7 +58,8 @@ Run from the repo root (or worktree root).
   decisions tracked by a parent issue with sub-issues; each sub-issue gets its own isolated
   issue worktree. Never switch the RFC proposal worktree to an issue branch. Use
   `start-rfc` to begin or advance an RFC workstream, `continue-rfc` to reconstruct an RFC
-  handoff, and `rfc-authoring` to choose new RFC numbers and write proposal content. The
+  handoff, `edit-rfc` to split off an exploration and revision when evidence challenges an
+  RFC, and `rfc-authoring` to choose new RFC numbers and write proposal content. The
   primary checkout's local `main` lags `origin`: don't use it as a base or baseline, and
   don't pull or reset it. Run `./bin/setup.sh` in each new worktree. Each worktree has its own
   `backend/.venv`, so don't symlink one from another tree.
@@ -98,11 +99,14 @@ Run from the repo root (or worktree root).
   worktrees of the clone share it. Never copy its
   contents or personal paths into a commit, issue, PR, or checked-in report. Keep durable
   run labels, checksums, commands, and findings in the appropriate analysis report or RFC.
+  Keep saves and large outputs out of temporary directories, in
+  `~/mantle-bloom-captures/<rfc-or-issue>/` with a `SHA256SUMS` file beside them.
 - Tool-agnostic skills for these workflows are in `.agents/skills/`; Claude Code's
   `.claude/skills` links there. Any coding agent working in this repo can use them:
   `explore-problem`, `create-issue`, `start-issue`,
-  `start-rfc`, `continue-rfc`, `project-management`, `compute-budget`, `replay-ab`,
-  `pre-push-check`, `rfc-authoring`, `rfc-review`, `complete-rfc`, `documentation`.
+  `start-rfc`, `continue-rfc`, `edit-rfc`, `project-management`, `compute-budget`,
+  `replay-ab`, `pre-push-check`, `rfc-authoring`, `rfc-review`, `complete-rfc`,
+  `documentation`.
 
 ## Conventions
 

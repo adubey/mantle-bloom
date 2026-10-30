@@ -16,7 +16,8 @@ membership and its initial status.
 - Read `AGENTS.md`, the relevant issue comments, and the RFC index or RFC when applicable.
 - Check existing issues and RFC tracking checklists for duplicate or already-planned work.
 - An exploration tracker, when requested, is a new issue linked to its source item; do not
-  reuse or reopen the issue or RFC that prompted the exploration.
+  reuse or reopen the issue or RFC that prompted the exploration. Under
+  [`edit-rfc`](../edit-rfc/SKILL.md), the project owner's invocation approves the tracker.
 - An exploration tracker requested by `explore-problem` is a bounded investigation issue,
   even when the underlying scientific question is large or uncertain. It does not authorize
   model implementation or replace an RFC that may be needed for a resulting model change.

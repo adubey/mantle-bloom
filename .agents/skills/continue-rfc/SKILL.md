@@ -8,7 +8,8 @@ description: Resume, pick up, or continue work on an existing Mantle Bloom RFC o
 Use this when a chat or agent is taking over an existing RFC, its diagnosis gates, or an
 issue linked to it. Rebuild the project state from durable records before relying on a
 handoff summary. For a new RFC, use [`start-rfc`](../start-rfc/SKILL.md); for a scientific
-revision use [`rfc-authoring`](../rfc-authoring/SKILL.md); for a review use
+revision use [`rfc-authoring`](../rfc-authoring/SKILL.md); to split off an exploration and
+revision after new evidence, use [`edit-rfc`](../edit-rfc/SKILL.md); for a review use
 [`rfc-review`](../rfc-review/SKILL.md).
 
 ## 1. Identify the decision and requested work
@@ -22,6 +23,10 @@ revision use [`rfc-authoring`](../rfc-authoring/SKILL.md); for a review use
   issue, dependent RFCs/issues and the deliverable requested in this chat. Check these
   against current GitHub state when available; stale RFC headers and handoff notes may not
   reflect a merge or gate result.
+- Check the issue and tracking issue for a linked `## RFC revision brief` and for a
+  `## RFC revision return` comment. If a return note postdates this issue's last work, follow
+  [Resume](../edit-rfc/SKILL.md#4-resume-an-affected-issue) in `edit-rfc`. A brief whose
+  tracker is still open means a revision is in progress, so raise it before continuing.
 
 ## 2. Find RFC and evidence worktrees
 

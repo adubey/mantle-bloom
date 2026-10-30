@@ -79,7 +79,9 @@ damage-driven local cuts that may link into rift segments; see
 Use [`start-rfc`](../.agents/skills/start-rfc/SKILL.md) to begin or advance an RFC
 workstream, including acceptance, diagnosis gates, implementation issues, and their PRs. Use
 [`continue-rfc`](../.agents/skills/continue-rfc/SKILL.md) to reconstruct the state, evidence
-and worktree after a handoff, then return to the RFC workflow.
+and worktree after a handoff, then return to the RFC workflow. Use
+[`edit-rfc`](../.agents/skills/edit-rfc/SKILL.md) to split off an exploration and revision
+when new evidence challenges an RFC, and to return the result to waiting sessions.
 Use [`project-management`](../.agents/skills/project-management/SKILL.md) for project
 board status transitions during RFC and issue work. [`rfc-authoring`](../.agents/skills/rfc-authoring/SKILL.md)
 owns RFC content and numbering and defines its sections (problem, solutions, design,
@@ -100,6 +102,9 @@ RFC proposals are reviewed with
    work is not acceptance. Any agent may ask, but only the owner decides. Set the status to
    Accepted and create or update the tracking issue immediately, listing diagnosis gates
    and planned implementation steps. Run each gate next and record its result in the RFC.
+   If evidence challenges an accepted RFC, revise it with
+   [`edit-rfc`](../.agents/skills/edit-rfc/SKILL.md). It stays Accepted, and the owner's merge
+   of the revision PR is their decision on the gate or criteria changes it sets out.
 3. **Implemented:** implementation issues may be opened at acceptance when their scope is
    independent of diagnosis-gate results. If a gate determines the implementation approach
    or issue scope, wait for its result before opening those sub-issues. In either case,

@@ -1,6 +1,6 @@
 ---
 name: rfc-authoring
-description: Write or revise the scientific content of a Mantle Bloom RFC. Use when asked to author a proposal, turn investigation findings into an RFC, or address technical review comments; this skill also chooses the NNNN for a new RFC.
+description: Write or revise the scientific content of a Mantle Bloom RFC. Use when asked to author a proposal, turn investigation findings into an RFC, or address technical review comments; this skill also chooses the NNNN for a new RFC. To split off a revision into a new session, use edit-rfc.
 ---
 
 # Write an RFC
@@ -69,7 +69,9 @@ Follow the [RFC lifecycle](../../../rfc/README.md#lifecycle) for issue timing an
 in this order:
 
 1. **Header:** title; status (Draft, Accepted, Implemented, or Withdrawn with any superseding RFC; see `complete-rfc`);
-   date; related issues and RFCs.
+   date; related issues and RFCs. Revising an accepted RFC doesn't change its Accepted status
+   or add an "under revision" state. Add each revision's date and trigger to the status line,
+   newest first, as in `Accepted (revised 2026-10-30 after G2; revised 2026-10-17 after G1)`.
 2. **Problem:** what goes wrong, in general terms, with the evidence (section 1 above).
 3. **Proposed solutions:** what happens in nature, with citations; then one or more
    alternatives, each with its trade-offs; then the recommendation and why.
@@ -110,7 +112,9 @@ in this order:
      held-out acceptance seeds; do not tune against held-out results. Only the project owner
      may change an agreed diagnosis gate or acceptance criterion. If evidence suggests a
      criterion is invalid, propose a revision in the RFC with the old criterion, proposed
-     change and reason, and get the owner's decision before using it for a rerun.
+     change and reason, and get the owner's decision before using it for a rerun. Under
+     [`edit-rfc`](../edit-rfc/SKILL.md), the owner's merge of a PR that sets this out is that
+     decision.
 5. **Detailed design (provisional touchpoints):** the source files and functions likely
    to change, plus their tests and docs. Check that every file, function and constant you
    name exists, and mark new ones as new.
@@ -125,6 +129,15 @@ in this order:
    alternative). They differ from acceptance criteria: acceptance says the change works,
    falsification says the idea was mistaken. Make them checkable with the same scripts.
 9. **References.**
+
+Two more sections go between the header and **Problem** when they apply, outside the numbered
+list. `## Outcome` comes first and records how an RFC ended; see `complete-rfc`.
+`## Revision note` comes next, for an accepted RFC revised through
+[`edit-rfc`](../edit-rfc/SKILL.md). Add one dated entry per revision, newest first. Each entry
+gives the revision PR, what the earlier version proposed, what the evidence showed with links,
+and what changed, as in RFC 0009. For each changed gate or acceptance criterion, it gives the
+old criterion, new criterion and reason, and it links the impact table. A draft RFC doesn't
+need a note. Revise the body in place.
 
 ## 4. Citations
 

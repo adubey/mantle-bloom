@@ -27,13 +27,13 @@ as the canonical source for acceptance, diagnosis gates and implementation-issue
 ## 2. Set up or recover the RFC worktree
 
 - Use `git worktree list --porcelain` and the path-resolution guidance in
-  [`continue-rfc`](../continue-rfc/SKILL.md#find-rfc-and-evidence-worktrees) to discover
+  [`continue-rfc`](../continue-rfc/SKILL.md#2-find-rfc-and-evidence-worktrees) to discover
   an accessible RFC worktree and evidence. Never switch branches or overwrite another
   task's work.
 - For a new RFC, create its proposal worktree from `origin/main` after `rfc-authoring` has
   selected the number. The primary checkout's local `main` may lag behind `origin`.
 - For an existing draft whose worktree is unavailable, follow the isolated continuation
-  branch procedure in [`continue-rfc`](../continue-rfc/SKILL.md#find-rfc-and-evidence-worktrees).
+  branch procedure in [`continue-rfc`](../continue-rfc/SKILL.md#2-find-rfc-and-evidence-worktrees).
   For an accepted RFC, use an isolated worktree from `origin/main` when code or RFC files
   must be edited.
 

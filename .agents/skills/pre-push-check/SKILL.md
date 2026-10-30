@@ -10,7 +10,7 @@ Run these from the worktree root, in order, and stop to fix anything that fails.
 1. **Is the branch current?** Run `git fetch origin` and
    `git merge-base --is-ancestor origin/main HEAD`. If it's behind and touches the same
    files as recent merges, merge `origin/main` first. Ask before rewriting history that's
-   already pushed.
+   already pushed, unless you are rebasing this task's own agent branch.
 
 2. **Lint:** `backend/.venv/bin/ruff check`. `--fix` is safe for unused imports. Delete a
    dead local only after checking that it isn't a sign of a missing step. A C901 finding
