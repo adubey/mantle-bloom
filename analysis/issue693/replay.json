@@ -6,7 +6,7 @@
  "windows": {
   "A": {
    "baseline": {
-    "checkpoint_sha256": null,
+    "checkpoint_sha256": "e4b0b4f09b87584aa7f77045f0f079f2309de0132049915a9aeb5589add27340",
     "peak_rss_gb": 4.76,
     "records": [
      {
@@ -82,7 +82,7 @@
     ]
    },
    "branch": {
-    "checkpoint_sha256": null,
+    "checkpoint_sha256": "e4b0b4f09b87584aa7f77045f0f079f2309de0132049915a9aeb5589add27340",
     "peak_rss_gb": 3.88,
     "records": [
      {
@@ -160,7 +160,7 @@
   },
   "B": {
    "baseline": {
-    "checkpoint_sha256": null,
+    "checkpoint_sha256": "86fb5b7d2044846ac751906ff996184c7abe5454c93b39033bd82338e8749544",
     "peak_rss_gb": 5.46,
     "records": [
      {
@@ -236,7 +236,7 @@
     ]
    },
    "branch": {
-    "checkpoint_sha256": null,
+    "checkpoint_sha256": "86fb5b7d2044846ac751906ff996184c7abe5454c93b39033bd82338e8749544",
     "peak_rss_gb": 6.39,
     "records": [
      {
@@ -314,7 +314,7 @@
   },
   "C": {
    "baseline": {
-    "checkpoint_sha256": null,
+    "checkpoint_sha256": "041b7430a6cf8867f2e2c76f18c3328e440add585ee4a2e4b3055e7766c2217e",
     "peak_rss_gb": 5.62,
     "records": [
      {
@@ -390,7 +390,7 @@
     ]
    },
    "branch": {
-    "checkpoint_sha256": null,
+    "checkpoint_sha256": "041b7430a6cf8867f2e2c76f18c3328e440add585ee4a2e4b3055e7766c2217e",
     "peak_rss_gb": 6.05,
     "records": [
      {

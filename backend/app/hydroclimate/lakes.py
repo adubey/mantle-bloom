@@ -489,7 +489,8 @@ def _without_circulation(flows: dict[tuple[int, int], float]) -> dict[tuple[int,
 
     Walks forward from each node. Reaching the walk's own path closes a loop, which gives up
     its smallest edge; a node with nothing left to send cannot be on a loop, so the edge into it
-    is final.
+    is final. Where loops overlap, the order they cancel in can change a node's gross inflow, by
+    no more than the loop's volume. Sorted input keeps that deterministic, not canonical.
     """
     live: dict[int, dict[int, float]] = {}
     for (source, receiver), volume in sorted(flows.items()):
