@@ -7,7 +7,9 @@ passage state plus water-derived lake silt, routed sediment and the step's net g
 change, and the terrain change outside erosion measured at the next step. Also record the
 component's lake-wide budget and its largest inlets. The #680 preflight read `silt_deposited`
 only, so it could not separate that pathway from sediment delivery or from the sill's other
-elevation changes.
+elevation changes. Each record also gives the largest supply any final body's silt implies this
+step, for the #693 bound against world external supply, and on code with the #693 count, the
+largest supply before that bound.
 
 A rim is a model graph edge between two cells, not a surveyed geomorphic sill. This script
 changes no model term and does not test a mechanism.
@@ -50,6 +52,8 @@ from app.hydroclimate import hydrology, lakes  # noqa: E402
 anchor = np.asarray(json.loads(args.anchors.read_text())["anchor_points"], dtype=float)[0]
 step_transfers: list[tuple[int, float]] = []
 liquid_depth_after_solve: list[np.ndarray] = []
+max_body_implied_supply: list[float] = []
+max_body_unbounded_supply: list[float | None] = [None]
 trace_transfer = lakes._trace_transfer
 solve_lakes_prognostic = lakes.solve_lakes_prognostic
 
@@ -65,11 +69,28 @@ def observing_solve(*solve_args, **solve_kwargs):
     """Keep the solver's own depth, before `advance_lake_ice` rewrites it in place."""
     result = solve_lakes_prognostic(*solve_args, **solve_kwargs)
     liquid_depth_after_solve[:] = [result.lake_depth.copy()]
+    forest, elevation, hypsometry = solve_args[0], solve_args[1], solve_args[5]
+    bodies = lakes.governing_bodies(forest, elevation, result.lake_depth, hypsometry)
+    silt_m3 = [
+        float(np.dot(result.silt_deposited[body.members], hypsometry.area_m2[body.members]))
+        for body in bodies
+    ]
+    max_body_implied_supply[:] = [max(silt_m3, default=0.0) / lakes.SILT_ACCUMULATION_COEFFICIENT]
     return result
+
+
+def observing_body_supply(*supply_args):
+    """Note the largest body supply before the world bound, then return it unchanged."""
+    supply = final_body_silt_supply(*supply_args)
+    max_body_unbounded_supply[:] = [max(supply, default=0.0)]
+    return supply
 
 
 lakes._trace_transfer = counting_trace_transfer
 lakes.solve_lakes_prognostic = observing_solve
+final_body_silt_supply = getattr(lakes, "_final_body_silt_supply", None)
+if final_body_silt_supply is not None:
+    lakes._final_body_silt_supply = observing_body_supply
 world.ice_age_period_years = 0.0
 step_years = float(args.step_years)
 
@@ -272,6 +293,10 @@ def snapshot(step: int) -> dict:
         "component_levels": component_levels(fields, component),
         "implied_supply_m3": silt_m3 / lakes.SILT_ACCUMULATION_COEFFICIENT,
         "world_implied_supply_m3": float(np.dot(fields.silt_deposited, area)) / lakes.SILT_ACCUMULATION_COEFFICIENT,
+        "max_body_implied_over_world_external": (
+            max_body_implied_supply[0] / max(float(ledger.external_supply_m3), 1.0)
+        ),
+        "max_body_unbounded_supply_m3": max_body_unbounded_supply[0],
         "transfers": transfer_summary(),
         "zero_depth_silt": zero_depth_silt(fields, area),
         # Silt this component would hold if its supply were only the external water settling

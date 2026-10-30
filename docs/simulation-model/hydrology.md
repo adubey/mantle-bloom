@@ -322,8 +322,13 @@ No cross-step `Lake` registry is needed: continuity comes from persisted per-nod
 
 **Lakes accumulate silt.** `silt_depth` (a persistent per-node field, carried exactly like `lake_depth`) is a
 small volume fraction (`SILT_ACCUMULATION_COEFFICIENT`, m^3 of silt per m^3 of water) of each
-resolved body's step-integrated supply, including overflow received from a sibling body,
-settling once over its final wet area.
+resolved body's step-integrated supply, settling once over its final wet area. A body's supply
+is the external water reaching its own leaves plus overflow that entered from another final
+body, so a spilling lake silts from its through-flow. Water counts once, on entering a body
+(#693): transfers between a final body's own children are not supply, closed loops between
+final bodies cancel, and each body's supply is bounded by the world's external supply for that
+step, because a transfer can carry released storage as well as this step's water.
+Water ledgers still book every transfer; only silt reads this count.
 Because it's sized in m^3/yr, a catchment silts the same at any node density, and the breach
 surge never reaches it (#363). The coefficient keeps the total silt laid down under the
 earlier model-unit rule, which read `water_deposited`, on a reference replay
