@@ -509,3 +509,72 @@ component's boundary, with the frozen force, torque, equilibrium and work checks
 preregistration update before its acceptance run. Measurements are in
 `rift-potential-seed11-density4-preflight.json`; the diagnostic is
 `bin/debug/probe_gate3b_rift_potential.py`.
+
+### Component-bound shell accounting result (2026-10-30)
+
+The dated issue amendment above was followed exactly for the initial accounting check. The
+same generated seed-11, density-4 world had climate disabled and was advanced through the
+frozen 2 Myr startup step. Before inspecting forces, the largest edge-connected continental
+component selected on production plate 1 contains 30,156 cells and represents 116.47 million
+km² (88.85% of the 33,856-cell, 131.08 million km² parent plate). Component-specific shell
+containment was built from those active cell keys; production forces were gathered on the
+unchanged parent plate, checked for node-order alignment, then restricted to component cells.
+
+The basal-drag-only source passes coarse force/torque transfer at both caps (512: 0.510% and
+0.439%; 1,024: 0.634% and 0.673%) and component shell-area coverage (99.09% and 99.16%). The
+separate basal-drag energy account closes exactly at the computed precision: plate work
+`9.049e9 W`, mantle reaction work `-7.992e10 W`, and viscous dissipation `7.087e10 W`, with
+residual `0.0%`; the mantle reaction is equal and opposite to the component source force and
+moment. However, shell equilibrium residuals are 8.78% and 24.30%, both above the frozen 1%
+limit. Independently integrated elastic strain-energy residuals are 27.51% and 5.38%, above
+the frozen 5% limit. Thus neither basal-drag mesh is accounting-eligible. No force correction,
+solver tolerance adjustment, mesh-cap change, or threshold change was attempted.
+
+The controls are also not accounting-eligible: the full production-force transfer residuals
+are 3.61–4.07% force and 3.25–4.72% torque; the no-basal-drag control residuals are
+16.18–18.22% force and 15.77–23.02% torque. All shell equilibrium residuals exceed 1%.
+Some control elastic-energy residuals also exceed 5%. Component coverage itself exceeds 99%
+in all six meshes. The complete metrics and per-check pass flags are in
+[`rift-potential-component-accounting-seed11-density4.json`](rift-potential-component-accounting-seed11-density4.json),
+reproduced by [`probe_gate3b_component_shell.py`](../../bin/debug/probe_gate3b_component_shell.py).
+
+The frozen eligibility rule therefore stops Gate 3b before Gate 2 capacity scoring,
+rift-potential scoring, or any 2/1 Myr persistence history. This is a mechanics/accounting
+eligibility failure, not evidence that basal drag does or does not produce broad persistent
+rift potential. The component-bound method fixes the previous whole-plate target mismatch,
+but the current coarse force transfer and shell solve cannot support the preregistered event
+measurement. A revised transfer/solver method needs a separately dated issue preregistration
+amendment before another acceptance diagnostic; no tuning is inferred from this null
+eligibility result.
+
+### Accounting audit and corrected parent-shell result (2026-10-30)
+
+The component-only result above is retained as a failed diagnostic attempt, but its ineligibility
+conclusion is superseded. Two implementation errors caused it to overstate the accounting
+failure: it cut the shell at the continental-component boundary, omitting the mechanical path
+through the rest of the same plate; and its shell-work calculation included the rigid-rotation
+load removed by the thin-shell solver. The coarse-mesh transfer also dropped load and area assigned
+to representative cells omitted by the connected mesh filter.
+
+The corrected preflight uses the entire production plate as the shell domain and keeps the frozen
+largest continental component only as the event-evaluation mask. It uses the thin-shell solver's
+default precision and iteration limit; separately measures physical unscaled equilibrium; computes
+non-rigid shell external work from the solver's equilibrated force; and transfers omitted
+representative bins to the nearest retained shell node while still reporting the original mesh
+coverage. These amendments and their predictions were recorded on #699 before this run. No
+cutoff, source field, representative cap, or material assumption changed.
+
+At both 512 and 1,024 representatives, all three frozen force cases passed every accounting check:
+basal drag only, full production force, and production force without basal drag. The weakest margins
+are still comfortably within the limits: maximum force-transfer residual is below `6e-15`, maximum
+torque-transfer residual is `0.52%`, maximum equilibrium residual is `0.015%`, maximum shell
+elastic-work residual is `0.0076%`, and minimum full-plate area coverage is `99.24%`. The separate
+basal-drag plate/mantle/dissipation energy residual is `3.6e-14%`. Thus the seed-11 density-4
+initial-state **accounting gate passes** and the run is eligible to continue to the preregistered
+capacity/event screen. The persistence history itself has not run; no rift-potential event is
+claimed.
+
+The full data, including solver stopping statistics, component demand summaries, parent-plate
+resultants, and individual pass flags, is in
+[`rift-potential-parent-shell-accounting-seed11-density4.json`](rift-potential-parent-shell-accounting-seed11-density4.json).
+The reproducer is [`probe_gate3b_component_shell.py`](../../bin/debug/probe_gate3b_component_shell.py).
