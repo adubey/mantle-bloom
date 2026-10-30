@@ -24,7 +24,7 @@ Sea Ice class area today (`biomes.classify_pelagic`'s SST cutoff) against f_ice 
 `--zonal` adds the pure-function bands at tilts of 15, 23.5 and 35 degrees on a 0.25 degree
 grid: the latitudes where ice becomes perennial and where freezing starts.
 
-Usage (one save at a time; peak RSS about 2.5 GB):
+Usage (follow the compute-budget skill before each save; peak RSS about 2.5 GB):
 
     cd backend
     .venv/bin/python ../bin/debug/gate_sea_ice.py <save>.mbworld --out <scratch>/g5-<seed>.json

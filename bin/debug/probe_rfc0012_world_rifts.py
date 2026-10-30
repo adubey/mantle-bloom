@@ -8,7 +8,7 @@ The result is the spatial support of the current model's active thinning in one 
 the full sedimentary-basin or tectonic-province width. Checkpoint rows also audit the rift
 path subaccounts and the continental-material and craton balances.
 
-Run one replay at a time; do not run alongside unit or stress tests:
+Follow the compute-budget skill before starting each replay:
 
     PYTHONHASHSEED=0 PYTHONPATH=backend NUMBA_CACHE_DIR=<private-cache> \\
       backend/.venv/bin/python bin/debug/probe_rfc0012_world_rifts.py \\

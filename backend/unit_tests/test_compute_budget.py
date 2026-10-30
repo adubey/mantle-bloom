@@ -71,6 +71,18 @@ def test_there_is_always_at_least_one_worker():
     assert budget.worker_count(machine(available_gb=1.0, load=20.0), [], "stress") == 1
 
 
+@pytest.mark.parametrize("text", ["0", "-1", "nan", "inf", "lots"])
+def test_gb_must_be_a_positive_number(monkeypatch, text):
+    monkeypatch.setattr(sys, "argv", ["compute_budget.py", "check", "--run", "sim", "--gb", text])
+    with pytest.raises(SystemExit) as usage_error:
+        budget.main()
+    assert usage_error.value.code == 2
+
+
+def test_gb_accepts_a_known_peak():
+    assert budget.positive_gb("2.5") == 2.5
+
+
 @pytest.mark.parametrize(("action", "code", "out"), [("check", 3, "WAIT"), ("workers", 0, "1")])
 def test_an_unreadable_machine_never_fails_a_test_run(monkeypatch, capsys, action, code, out):
     def denied():

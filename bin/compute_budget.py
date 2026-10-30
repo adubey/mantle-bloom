@@ -179,11 +179,19 @@ def report(machine: Machine, runs: list[Run]) -> None:
         )
 
 
+def positive_gb(text: str) -> float:
+    """A --gb value. NaN and negatives would compare as room to spare, so a typo says RUN."""
+    value = float(text)
+    if not math.isfinite(value) or value <= 0:
+        raise argparse.ArgumentTypeError(f"{text} is not a positive number of GB")
+    return value
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("action", choices=["check", "workers"])
     parser.add_argument("--run", choices=sorted(PEAK_GB), required=True)
-    parser.add_argument("--gb", type=float, help="expected peak, if better known than the default")
+    parser.add_argument("--gb", type=positive_gb, help="expected peak, if better than the default")
     args = parser.parse_args()
 
     if platform.system() != "Darwin":
