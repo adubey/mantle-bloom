@@ -96,8 +96,8 @@ cratons sit (RFC 0009).
 
 ### Rifting and thin-shell diagnostics
 
-[Rifting and thin-shell scripts](debugging/scripts-rifting.md): RFC 0010's connected-source
-Gate 2 load, mesh and capacity diagnostics.
+[Rifting and thin-shell scripts](debugging/scripts-rifting.md): RFC 0010's Gate 2 load, mesh and
+capacity diagnostics, plus the Gate 3b candidate path visualization.
 
 | Script | Answers |
 |---|---|
@@ -110,6 +110,7 @@ Gate 2 load, mesh and capacity diagnostics.
 | [`replay_gate2_coupled_event.py`](debugging/scripts-rifting.md#replay_gate2_coupled_eventpy) | pair-level stress sensitivity to contact loads and rigid-mode projections |
 | [`sensitivity_gate2_capacity.py`](debugging/scripts-rifting.md#sensitivity_gate2_capacitypy) | one-factor capacity sensitivity on captured node loads |
 | [`validate_thin_shell_plate_meshes.py`](debugging/scripts-rifting.md#validate_thin_shell_plate_meshespy) | generated-plate mesh coverage, curved-surface and edge-condition checks |
+| [`plot_gate3b_plate_paths.py`](debugging/scripts-rifting.md#plot_gate3b_plate_pathspy) | full plate, craton mask, candidate paths, opening axes and gap close-ups |
 
 ### Crust and mantle budgets
 

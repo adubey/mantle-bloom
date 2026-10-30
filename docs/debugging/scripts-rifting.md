@@ -3,13 +3,30 @@
 These offline diagnostics support RFC 0010's Gate 2 assessment of local loading and lithosphere
 capacity. Gate 2 is closed for the connected-source, single-plate diagnostic. Its capacity results
 are conditional scenarios; they do not select a production rupture threshold or validate coupled
-neighbor stresses. See the [RFC](../../rfc/0010-rifts-follow-weak-lithosphere.md) and
+neighbor stresses. The Gate 3b plotter below visualizes candidate graph routes and their source
+plate, but it does not add physical validation. See the [RFC](../../rfc/0010-rifts-follow-weak-lithosphere.md) and
 [issue 487 findings](../../analysis/issue487/README.md).
 
 Run scripts from the repository root with the worktree's `backend/.venv/bin/python`. Several tools
 replay a full world and use substantial memory, so follow the
 [`compute-budget` skill](../../.agents/skills/compute-budget/SKILL.md) before starting one. Keep full saves and captures in scratch space; the compact outputs and findings belong
 in `analysis/issue487/`. Each script's module docstring gives its complete usage and arguments.
+
+### `plot_gate3b_plate_paths.py`
+
+Regenerates the plate named by two compatible `probe_gate3b_interior_belt_paths.py` JSON files,
+then draws the full plate mesh, craton mask, both candidate crack paths, prescribed opening
+directions and local gap views. The A close-up is widened to show surrounding cratons. Opening
+arrows indicate the probe's prescribed axis and are lengthened for visibility; they are not
+measured plate motion. The paths are graph-probe candidates, with no production stress field or
+split applied. World generation can use substantial memory, so render one figure at a time.
+
+```bash
+PYTHONPATH=backend backend/.venv/bin/python bin/debug/plot_gate3b_plate_paths.py \
+    --route-json analysis/issue699/interior-belt-path-seed11-density4-stepover150.json \
+    --route-json analysis/issue699/interior-belt-path-seed11-density4.json \
+    --out /tmp/gate3b-plate-paths.png
+```
 
 ### `audit_gate2_assumption_basis.py`
 
