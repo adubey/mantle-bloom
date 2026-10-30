@@ -72,8 +72,10 @@ net/deposit ratios are 0.165–0.244. Any clearance calculation must include thi
 
 ## Silt supply is overcounted on merge steps
 
-`integrated_supply_at_leaf` adds every internal transfer, and a final body sums its leaves. Water
-moving between a body's own children is therefore counted as new supply each time it moves.
+`integrated_supply_at_leaf` adds every internal transfer to the receiving leaf, and a final body
+sums its leaves. Water that a capped sibling pair passes back and forth is therefore counted as
+new supply on every pass. See [Depth-cap recirculation](#depth-cap-recirculation). This
+report first attributed the excess to a body's own children; the pass measurement corrected that.
 
 | Window, step | Silt mean (mm/yr) | Component implied supply ÷ component external | Component implied ÷ world external | External-only silt (mm/yr) |
 |---|---:|---:|---:|---:|
@@ -90,22 +92,52 @@ supply reads zero in C because its sinks fall outside the wet component, so C ha
 bound.
 
 In ordinary steps the component's supply equals its external supply, so the effect is confined
-to steps where children exchange water. The silt is still real to the model: it was about 100 m of the
+to steps where bodies exchange water repeatedly. The silt is still real to the model: it was about 100 m of the
 125 m deposited on A's controlling rim in the event step, and that rim's spill level rose about
 12 m. In C at 201.5 Myr, the same step as its silt spike, one dry cell received 5,301 m of
 `sediment_deposited` for 899 m of net rise. It received only 12 m of silt, and the link between
 the two has not been established.
 
-**Internal transfers.** World internal transfer is 1.7e20–5.8e20 m³ per step in most A and B
-steps, against 1.1e18–1.3e18 m³ of external supply. One body sent about 1,000 times in a step,
-so this is repeated recirculation, not one-way hops. The largest count per body drops to 2 at B 222.5 Myr and
-C 201.1–201.3 Myr, and is about 480 at C 201.4–201.5 Myr. The stderr guard reports the same order of gross overflow at the sea-tier depth
-cap (6.96e10 km³ on A's first step), which points at capped bodies. That cause is a lead, not a
-demonstrated result. Internal transfers cancel in the water ledger, so G6 and G7 closure is
-unaffected; only silt reads them.
-
 World lake silt ranges from 2.9e13 to 1.2e15 m³ per step. The upper value is about 12 km³/yr of
 non-conservative material.
+
+## Depth-cap recirculation
+
+`bin/debug/measure_lake_recirculation.py` counts the solve's passes and sending pairs over the same
+five steps per window. Compact results are in [`recirculation.json`](recirculation.json).
+
+**Mechanism.** A deep basin sits at its tier cap (1,800 or 3,500 m above its floor), below the
+saddle it shares with a smaller sibling. The sibling is full to the saddle and spills into the
+deep basin. The deep basin spills back and cannot reach the saddle, so the pair never merges. The
+surplus moves on every zero-duration pass until the loop ends at one pass per leaf plus one.
+
+- Passes reached the limit in 11 of 15 steps.
+- All 42 top-listed pairs with at least 10 sends have a partner at floor + cap.
+- Reciprocal pairs carry 94–98% of internal transfer in steps with large cycles. Internal
+  transfer reaches 5.8e20 m³ per step against about 1.1e18 m³ of external supply.
+- The guard at `lakes.py` lines 790–793 describes this case but does not stop these cycles. The
+  branch that lets them through has not been confirmed.
+
+A's event is one of these pairs: at 221.8 Myr, one body is capped at −831 m and the other is full
+at −805.6 m. Each sends about 1.6e19 m³ over 989 passes, which explains its silt spike and its
+two water levels. These are separate bodies, so a fix that only excludes a body's own children
+would not remove this spike.
+
+**Final export.** Surplus still deferred when the passes end is exported at a leaf sink, never the
+ocean in these steps. It ranges from 0 to 33% of world external supply per step.
+
+| Window, age (Myr) | Final export ÷ external supply | Ocean overflow (m³) | Sum (m³) |
+|---|---:|---:|---:|
+| B, 222.2 | 0.268 | 2.23e17 | 5.13e17 |
+| B, 222.3 | 0.094 | 5.01e17 | 6.07e17 |
+| B, 222.4 | 0.209 | 3.19e17 | 5.57e17 |
+| B, 222.5 | 0.000 | 5.74e17 | 5.74e17 |
+| C, 201.4 | 0.009 | 4.80e17 | 4.86e17 |
+| C, 201.5 | 0.332 | 1.77e17 | 3.85e17 |
+
+In B the sum is steadier than either term, which suggests the cycle may divert water that would
+otherwise reach the ocean. A does not show this clearly, and the exported water's destination has
+not been traced. Water ledgers still close, so G6 and G7 are unaffected.
 
 ## Controlling connectors
 
@@ -200,12 +232,11 @@ separate studies, so this is an order-of-magnitude comparison.
 1. **Withdraw the registered sediment preflight and envelope.** The rates, two of its three
    connectors and the 0.4–8.8 mm/yr range do not support the screen. This is a blocked screen,
    not evidence that sediment is unimportant.
-2. **Open a standalone issue for merge-step silt supply.** Invariant: no body's step supply
-   exceeds world external supply, and silt from a through-flow equals what the same water would
-   give without internal hops. Add a failing unit test. This changes model behaviour, so it needs
-   the usual replay comparison.
-3. **Investigate recirculation at capped bodies** separately, since the silt invariant may be
-   satisfied without resolving why bodies send about 1,000 times per step.
+2. **Fix the depth-cap cycle first.** Detect it and export the surplus once, then trace where that
+   water should go.
+3. **Then fix the silt supply count.** Invariant: no body's step supply exceeds world external
+   supply. Stopping the cycle may remove most of the excess. This changes model behaviour, so it
+   needs the usual replay comparison.
 4. **Then run a redesigned G8 diagnostic,** labelled diagnostic-only.
 
 ### Draft diagnostic, not yet registered or run
@@ -228,7 +259,7 @@ separate studies, so this is an order-of-magnitude comparison.
 - Only five steps per window were measured, on two worlds.
 - The per-step supply multiple was measured only for the A and B components; C has the world
   bound only.
-- The cause of about 1,000 sends per body is unresolved.
+- Where final-export water ends up, and whether the cycle affects ocean delivery, is untraced.
 - Measurements came from observational wrappers and the hierarchy's reported rims. No arm tested
   what happens with sediment removed.
 - Source coverage for outlet aggradation came from a short search and is not a systematic review.

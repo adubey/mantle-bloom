@@ -31,7 +31,10 @@ advance_lake_ice = hydrology.advance_lake_ice
 
 def observing_advance_lake_ice(prior_ice, liquid_depth, *rest, **kwargs):
     result = advance_lake_ice(prior_ice, liquid_depth, *rest, **kwargs)
-    captured.update(solved=np.array(liquid_depth), ice=np.array(result[0]), budget=result[2])
+    captured.update(
+        solved=np.array(liquid_depth), ice=np.array(result[0]), budget=result[2],
+        prior_ice=np.array(prior_ice), ice_cover=np.array(rest[3]),
+    )
     return result
 
 
@@ -55,6 +58,15 @@ result = {
     "sublimation_km3": float(budget["sublimation_m3"]) / 1e9,
     "freezing_km3": float(budget["freezing_m3"]) / 1e9,
     "melting_km3": float(budget["melting_m3"]) / 1e9,
+    "prior_ice_km3": float(np.dot(captured["prior_ice"], area)) / 1e9,
+    # What the rate would take if it ran all step on the solved wet area, unlimited by storage.
+    "continuous_sublimation_km3": float(
+        np.dot(hydrology.LAKE_ICE_SUBLIMATION_M_PER_YR * captured["ice_cover"] * (solved > 0.0), area)
+        * args.step_years
+    ) / 1e9,
+    "solved_wet_area_km2": float(area[solved > 0.0].sum()) / 1e6,
+    "external_supply_km3": float(fields.lake_water_ledger.external_supply_m3) / 1e9,
+    "evaporation_km3": float(fields.lake_water_ledger.evaporation_m3) / 1e9,
 }
 args.out.parent.mkdir(parents=True, exist_ok=True)
 args.out.write_text(json.dumps(result, indent=1) + "\n")
