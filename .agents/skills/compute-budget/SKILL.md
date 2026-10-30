@@ -62,10 +62,17 @@ is over budget even if it says `RUN`.
   until python3 bin/compute_budget.py check --run sim --gb 6; do sleep 120; done
   ```
 
-Two agents that check within the same few seconds can both get `RUN`, because a run counts
-only once it appears in `ps`. An agent the user prompted directly doesn't need to allow for
-this, since those rarely start in the same moment. Automatically spawned agents do: whatever
-spawns a batch of them should start their heavy runs one at a time, at least 30 seconds apart.
+Two agents that check close together can both get `RUN`, because `check` can't see a run until
+it's started. `bin/debug/` scripts and test workers are listed as soon as they start, but a
+script anywhere else is listed only once it passes 1 GB, which can take minutes. An agent the
+user prompted directly doesn't need to allow for this, since those rarely start together.
+Automatically spawned agents do: whatever spawns a batch of them should start their heavy
+runs one at a time, starting each only once `check` lists the one before.
+
+If `check` says `WAIT` for memory pressure with no runs listed, the user's own apps are short
+of memory. Keep waiting, and tell the user if it lasts more than 30 minutes. If it says it
+can't read the machine, it's probably in a sandbox that denies `ps`, so run it outside the
+sandbox rather than looping: the wait would never end.
 
 Never stop or pause another agent's run to make room. If you're the one holding things up,
 and your work can use less, shrink it: fewer workers, a shorter horizon or a younger save.

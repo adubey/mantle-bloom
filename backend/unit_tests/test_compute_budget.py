@@ -38,6 +38,13 @@ def test_memory_pressure_blocks_a_second_run_however_much_looks_free():
     assert "pressure" in reason
 
 
+def test_memory_pressure_blocks_the_first_run_too():
+    # With no agent runs detected, the pressure comes from the user's own apps.
+    ok, reason = budget.decide(machine(pressure=2), [], 1.0)
+    assert not ok
+    assert "pressure" in reason
+
+
 def test_a_run_too_big_for_the_machine_goes_ahead_alone():
     # On the 8 GB machine a mature replay never fits the margin, and waiting wouldn't help.
     ok, reason = budget.decide(machine(available_gb=6.0, total_gb=8.0), [], 6.0)
@@ -58,6 +65,19 @@ def test_installed_ram_caps_workers_on_an_idle_machine(total_gb, ceiling):
 
 def test_there_is_always_at_least_one_worker():
     assert budget.worker_count(machine(available_gb=1.0, load=20.0), [], "stress") == 1
+
+
+@pytest.mark.parametrize(("action", "code", "out"), [("check", 3, "WAIT"), ("workers", 0, "1")])
+def test_an_unreadable_machine_never_fails_a_test_run(monkeypatch, capsys, action, code, out):
+    def denied():
+        raise PermissionError("ps")
+
+    monkeypatch.setattr(budget.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(budget, "read_machine", machine)
+    monkeypatch.setattr(budget, "read_runs", denied)
+    monkeypatch.setattr(sys, "argv", ["compute_budget.py", action, "--run", "unit"])
+    assert budget.main() == code
+    assert capsys.readouterr().out.startswith(out)
 
 
 @pytest.mark.parametrize(

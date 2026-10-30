@@ -10,7 +10,8 @@ and checks this script first. See .agents/skills/compute-budget/SKILL.md for the
     bin/compute_budget.py workers --run unit           # print only pytest's -n value
 
 `check` prints RUN or WAIT and exits 0 or 3. `workers` never waits: bin/unit_test.sh and
-friends use it for their default -n, and it prints at least 1. Off macOS (CI) there's
+friends use it for their default -n, and it prints at least 1, even if the machine can't be
+read (a sandboxed shell may deny ps; `check` then says WAIT). Off macOS (CI) there's
 nothing to share, so `check` always says RUN and `workers` prints `auto`.
 
 Free memory comes from kern.memorystatus_level, the percentage `memory_pressure` reports,
@@ -151,13 +152,14 @@ def worker_count(machine: Machine, runs: list[Run], kind: str) -> int:
 
 
 def decide(machine: Machine, runs: list[Run], need_gb: float) -> tuple[bool, str]:
+    # Pressure comes first: with no agent runs, it's the user's apps that are short of memory.
+    if machine.pressure != NORMAL_PRESSURE:
+        return False, f"memory pressure level is {machine.pressure}, not normal"
     free = free_gb(machine, runs)
     if not runs:
         if free < need_gb:
             return True, f"nothing else is running, but {need_gb:.1f} GB may swap: run it alone"
         return True, "nothing else is running"
-    if machine.pressure != NORMAL_PRESSURE:
-        return False, f"memory pressure level is {machine.pressure}, not normal"
     if free < need_gb:
         return False, f"{need_gb:.1f} GB needed, {free:.1f} GB free"
     return True, f"{need_gb:.1f} GB needed, {free:.1f} GB free"
@@ -186,7 +188,17 @@ def main() -> int:
         print("RUN" if args.action == "check" else "auto")
         return 0
 
-    machine, runs = read_machine(), read_runs()
+    # The budget is advisory, so a sandbox that denies ps mustn't fail a test run (#704).
+    try:
+        machine, runs = read_machine(), read_runs()
+    except (OSError, subprocess.CalledProcessError, ValueError, IndexError) as error:
+        print(f"compute_budget: can't read this machine's state: {error}", file=sys.stderr)
+        if args.action == "workers":
+            print(1)
+            return 0
+        print("WAIT: can't read this machine's state")
+        return 3
+
     workers = worker_count(machine, runs, args.run)
     if args.action == "workers":
         print(workers)
