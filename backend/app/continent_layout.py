@@ -55,7 +55,7 @@ CRATONS_FIRST_DEFAULT = False
 # --- Continents --------------------------------------------------------------------------
 
 # Design choices (RFC 0009 knobs), tuned to the layout measures over 20 seeds.
-CONTINENT_COUNT_RANGE = (2, 6)
+CONTINENT_COUNT_RANGE = (4, 7)
 CONTINENT_SPACING_KM = 4000.0
 # Dirichlet concentration: 2 gives clearly unequal continents without slivers.
 CONTINENT_SIZE_CONCENTRATION = 2.0

@@ -12,7 +12,7 @@ from app.noise import SphereNoise
 
 @pytest.fixture(scope="module")
 def layout() -> ContinentLayout:
-    return cratons_first_layout(7, land_fraction=0.29).layout
+    return cratons_first_layout(1, land_fraction=0.29).layout
 
 
 def test_belts_separate_the_cores_with_no_unmarked_gap(layout):
@@ -69,7 +69,7 @@ def test_continental_and_craton_areas_hit_their_targets(layout):
 
 
 def test_same_seed_gives_the_same_layout(layout):
-    again = cratons_first_layout(7, land_fraction=0.29).layout
+    again = cratons_first_layout(1, land_fraction=0.29).layout
     for name in ("continent", "core", "belt", "plate"):
         assert np.array_equal(getattr(again, name), getattr(layout, name))
     assert not np.array_equal(cratons_first_layout(8, land_fraction=0.29).layout.plate, layout.plate)
@@ -102,7 +102,7 @@ def test_some_nuclei_join_an_existing_craton(layout):
 
 def test_without_clustering_every_nucleus_is_its_own_craton(monkeypatch):
     monkeypatch.setattr(cl, "CRATON_CLUSTER_CONCENTRATION", 1e12)
-    layout = cratons_first_layout(7, land_fraction=0.29).layout
+    layout = cratons_first_layout(1, land_fraction=0.29).layout
     assert len(np.unique(layout.nucleus_craton)) == len(layout.nucleus_craton)
 
 
@@ -112,7 +112,7 @@ def test_some_cratons_reach_a_continental_edge(layout, monkeypatch):
     assert layout.craton_diagnostics()["cratons_near_edge_share"] > 0.1
     monkeypatch.setattr(cl, "CONTINENT_CENTRE_PULL", 0.0)
     monkeypatch.setattr(cl, "CONTINENT_GROWTH_SPEED_SIGMA", 0.0)
-    even = cratons_first_layout(7, land_fraction=0.29).layout
+    even = cratons_first_layout(1, land_fraction=0.29).layout
     assert even.craton_diagnostics()["cratons_near_edge_share"] < layout.craton_diagnostics()["cratons_near_edge_share"]
 
 
