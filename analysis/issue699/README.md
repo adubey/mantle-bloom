@@ -578,3 +578,9 @@ The full data, including solver stopping statistics, component demand summaries,
 resultants, and individual pass flags, is in
 [`rift-potential-parent-shell-accounting-seed11-density4.json`](rift-potential-parent-shell-accounting-seed11-density4.json).
 The reproducer is [`probe_gate3b_component_shell.py`](../../bin/debug/probe_gate3b_component_shell.py).
+
+After rebasing the issue branch onto `origin/main` at `0f591e2a`, I reran the same seed-11 density-4
+preflight. All six source/cap cases passed again, with identical force, torque, equilibrium, shell
+work, area-coverage, and basal-energy residuals. The repeated run took 14.29 seconds. This confirms
+the rebase did not change the accounting result; the persistence history and rift-potential screen
+remain unrun.

@@ -517,5 +517,5 @@
   "selection_rule": "Largest edge-connected continental component by represented area after the frozen 2 Myr startup step, before force inspection.",
   "shell_domain": "entire parent production plate; continental component is the demand-evaluation mask",
   "title": "RFC 0010 Gate 3b parent-shell accounting preflight with continental-component evaluation",
-  "wall_time_seconds": 14.527540374998352
+  "wall_time_seconds": 14.28572729199368
 }
