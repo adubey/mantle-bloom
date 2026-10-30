@@ -95,18 +95,38 @@ cratons sit (RFC 0009).
 ### Rifting and thin-shell diagnostics
 
 [Rifting and thin-shell scripts](debugging/scripts-rifting.md): RFC 0010's connected-source
-Gate 2 load, mesh and capacity diagnostics.
+Gate 2 load, mesh and capacity diagnostics, plus Gate 3 average-stress history sensitivities.
 
 | Script | Answers |
 |---|---|
 | [`audit_gate2_assumption_basis.py`](debugging/scripts-rifting.md#audit_gate2_assumption_basispy) | independent heat-flow, strain-rate and stress-assumption scales |
+| [`audit_gate3_miyakejima_reference_profiles.py`](debugging/scripts-rifting.md#audit_gate3_miyakejima_reference_profilespy) | compact NOAA terrain trace and auxiliary Hughes GPS displacement digitization for the Miyakejima benchmark |
 | [`benchmark_gate2_coupled_shell.py`](debugging/scripts-rifting.md#benchmark_gate2_coupled_shellpy) | manufactured force, torque and resultant checks across a shared two-plate mesh |
 | [`calibrate_gate2_capacity.py`](debugging/scripts-rifting.md#calibrate_gate2_capacitypy) | column-capacity scales against published benchmarks and matched loads |
+| [`calibrate_gate3_average_stress.py`](debugging/scripts-rifting.md#calibrate_gate3_average_stresspy) | average-stress damage sensitivity, timestep partitioning and synthetic segment growth/linkage |
 | [`diagnose_gate2_column_envelope.py`](debugging/scripts-rifting.md#diagnose_gate2_column_envelopepy) | depth-integrated normal-fault and ductile lithosphere capacity scenarios |
+| [`evaluate_gate3_growth_history.py`](debugging/scripts-rifting.md#evaluate_gate3_growth_historypy) | one-hop collar extension, nucleation, adjacency growth and linkage screen for held-out RFC 0010 histories |
+| [`evaluate_gate3_spatial_history.py`](debugging/scripts-rifting.md#evaluate_gate3_spatial_historypy) | spatial damage patch sizes and material associations for held-out RFC 0010 histories |
+| [`test_gate3_magma_process_zone.py`](debugging/scripts-rifting.md#test_gate3_magma_process_zonepy) | paired dike-assisted damage and mesh sensitivity of a nonlocal stress process zone |
+| [`prototype_gate3_resolved_dike_tip.py`](debugging/scripts-rifting.md#prototype_gate3_resolved_dike_tippy) | 0.5 km elastic cutout around a pressurized dike tip with matched coarse displacement boundaries |
+| [`prototype_gate3_resolved_dike_damage.py`](debugging/scripts-rifting.md#prototype_gate3_resolved_dike_damagepy) | prestressed dike-tip damage coupling and aperture-compatibility screen |
+| [`prototype_gate3_cohesive_dike_interface.py`](debugging/scripts-rifting.md#prototype_gate3_cohesive_dike_interfacepy) | prestressed seam-stiffness sweep, pressure recalibration and event-scale damage response |
+| [`prototype_gate3_frictional_fault.py`](debugging/scripts-rifting.md#prototype_gate3_frictional_faultpy) | Coulomb fault prestress and dike-tip stress-transfer sensitivity across mesh spacings |
+| [`prototype_gate3_coupled_dike_fault_history.py`](debugging/scripts-rifting.md#prototype_gate3_coupled_dike_fault_historypy) | staged pressure history, carried Coulomb slip, and reduced dike/fault energy sensitivity |
+| [`prototype_gate3_finite_reservoir_tip_advance.py`](debugging/scripts-rifting.md#prototype_gate3_finite_reservoir_tip_advancepy) | fixed-mesh tip advance with finite-source pressure feedback and mesh comparison |
+| [`prototype_gate3_mapped_3d_fault_transfer.py`](debugging/scripts-rifting.md#prototype_gate3_mapped_3d_fault_transferpy) | mapped 3-D Miyakejima dike-to-fault elastic stress-transfer and quadrature sensitivity |
+| [`prototype_gate3_2d_viscoplastic_section.py`](debugging/scripts-rifting.md#prototype_gate3_2d_viscoplastic_sectionpy) | local 2-D stress transfer with layered brittle–ductile rheology |
+| [`run_gate3_2d_viscoplastic_transient.py`](debugging/scripts-rifting.md#run_gate3_2d_viscoplastic_transientpy) | short paired thinning-feedback sequence on the 2-D section prototype |
+| [`verify_gate3_material_advection.py`](debugging/scripts-rifting.md#verify_gate3_material_advectionpy) | manufactured affine marker-trajectory and finite-strain update check |
+| [`verify_gate3_marker_grid_transfer.py`](debugging/scripts-rifting.md#verify_gate3_marker_grid_transferpy) | manufactured marker/grid transfer loop with prescribed grid velocity |
+| [`run_gate3_section_marker_coupling.py`](debugging/scripts-rifting.md#run_gate3_section_marker_couplingpy) | FE section velocity advects markers and feeds material/thinning state into the next solve |
+| [`run_gate3_section_marker_moving_mesh.py`](debugging/scripts-rifting.md#run_gate3_section_marker_moving_meshpy) | moving FE mesh with full marker coverage and marker-state feedback |
+| [`audit_gate3_section_stress_basis.py`](debugging/scripts-rifting.md#audit_gate3_section_stress_basispy) | fixed-kinematics sensitivity of local brittle-plastic and creep stress targets |
 | [`replay_gate2_assumption_screen.py`](debugging/scripts-rifting.md#replay_gate2_assumption_screenpy) | crossed K0, mantle-rheology and pore-pressure scenarios on fixed loads |
 | [`replay_gate2_capacity.py`](debugging/scripts-rifting.md#replay_gate2_capacitypy) | thin-shell loads and capacity alternatives on the pinned Gate 1 events |
 | [`replay_gate2_coupled_event.py`](debugging/scripts-rifting.md#replay_gate2_coupled_eventpy) | pair-level stress sensitivity to contact loads and rigid-mode projections |
 | [`sensitivity_gate2_capacity.py`](debugging/scripts-rifting.md#sensitivity_gate2_capacitypy) | one-factor capacity sensitivity on captured node loads |
+| [`sweep_gate3_candidate_loads.py`](debugging/scripts-rifting.md#sweep_gate3_candidate_loadspy) | event-snapshot and cumulative node-history sensitivity sweeps for RFC 0010 Gate 3 |
 | [`validate_thin_shell_plate_meshes.py`](debugging/scripts-rifting.md#validate_thin_shell_plate_meshespy) | generated-plate mesh coverage, curved-surface and edge-condition checks |
 
 ### Crust and mantle budgets
