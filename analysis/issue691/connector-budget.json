@@ -1,0 +1,2302 @@
+{
+"issue": 691,
+"source_commit": "ea8f0ebb1d47e8e52c61aad617df50646bcc713a",
+"purpose": "Unperturbed per-pathway budget around the RFC 0014 G8 windows. Five 100 kyr steps from each registered checkpoint; ice_age_period_years=0. No model term changed.",
+"windows": {
+"A": {
+"checkpoint_sha256": "e4b0b4f09b87584aa7f77045f0f079f2309de0132049915a9aeb5589add27340",
+"peak_rss_gb": 6.74045952,
+"records": [
+{
+"age_myr": 221.7,
+"component": {
+"nodes": 64,
+"area_km2": 260841.250927588,
+"volume_km3": 249388.2907237453,
+"silt_mean_mm_yr": 0.0031946394154512415,
+"sediment_mean_mm_yr": 0.5374329315534827,
+"silt_max_m": 0.3796551417404762,
+"sediment_max_m": 105.77476474035682
+},
+"level_groups": [
+{
+"level_m": -1318.0,
+"nodes": 47,
+"volume_km3": 109700.58788799928
+},
+{
+"level_m": -1334.0,
+"nodes": 2,
+"volume_km3": 16426.732581970573
+},
+{
+"level_m": -1344.0,
+"nodes": 2,
+"volume_km3": 15945.002697946746
+}
+],
+"anchor_level_m": -1317.9649426852438,
+"anchor_connectors": [
+{
+"lake_id": 1268,
+"member_count": 88,
+"is_spilling": false,
+"spill_level_m": -2931.163097468223,
+"clearance_m": -1613.1981547829791,
+"edge_km": 94.27811752887561,
+"rim": {
+"node": 31729,
+"bed_m": -2931.163097468223,
+"lake_depth_m": 1609.1081511517832,
+"silt_m": 0.3796551417404762,
+"sediment_deposited_m": 73.35752355549036,
+"net_geomorphic_m": 6.298678751341413,
+"outside_erosion_m": 2.113262215499617
+},
+"target": {
+"node": 31672,
+"bed_m": -3243.6000132565355,
+"lake_depth_m": 1913.6805524424008,
+"silt_m": 0.3796551417404762,
+"sediment_deposited_m": 78.1748483209462,
+"net_geomorphic_m": 10.65807544238396,
+"outside_erosion_m": 3.0288174659326614
+}
+},
+{
+"lake_id": 1283,
+"member_count": 154,
+"is_spilling": false,
+"spill_level_m": -1870.9403669263008,
+"clearance_m": -552.975424241057,
+"edge_km": 95.64806936265447,
+"rim": {
+"node": 31464,
+"bed_m": -1870.9403669263008,
+"lake_depth_m": 552.975424241057,
+"silt_m": 0.3796551417404762,
+"sediment_deposited_m": 42.71902028267028,
+"net_geomorphic_m": 6.960420633882904,
+"outside_erosion_m": 8.994479251941584
+},
+"target": {
+"node": 31415,
+"bed_m": -1945.3944099558735,
+"lake_depth_m": 627.4294672706296,
+"silt_m": 0.3796551417404762,
+"sediment_deposited_m": 44.88060460759913,
+"net_geomorphic_m": 11.063619049838962,
+"outside_erosion_m": 7.618524517771675
+}
+},
+{
+"lake_id": 1319,
+"member_count": 181,
+"is_spilling": false,
+"spill_level_m": -806.5048816137374,
+"clearance_m": 511.4600610715064,
+"edge_km": 93.87193774852041,
+"rim": {
+"node": 35536,
+"bed_m": -803.6312246413993,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 4.573313828205318,
+"net_geomorphic_m": -3.2239604546994087,
+"outside_erosion_m": 1.2140391905118122
+},
+"target": {
+"node": 35547,
+"bed_m": -915.3672171942624,
+"lake_depth_m": 38.712347693519355,
+"silt_m": 0.12022762766594426,
+"sediment_deposited_m": 6.180787195710455,
+"net_geomorphic_m": -1.6344713071389378,
+"outside_erosion_m": -0.9234518163443681
+}
+},
+{
+"lake_id": 1367,
+"member_count": 353,
+"is_spilling": false,
+"spill_level_m": -694.3140676318276,
+"clearance_m": 623.6508750534163,
+"edge_km": 65.6379568146488,
+"rim": {
+"node": 31367,
+"bed_m": -1562.9001719251637,
+"lake_depth_m": 263.6823277668872,
+"silt_m": 0.299733876667216,
+"sediment_deposited_m": 35.30544941867708,
+"net_geomorphic_m": 8.703489249973245,
+"outside_erosion_m": 7.655531199063034
+},
+"target": {
+"node": 31319,
+"bed_m": -694.3140676318276,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 0.05666238792318337,
+"net_geomorphic_m": -3.639691521183522,
+"outside_erosion_m": 8.604207881017032
+}
+},
+{
+"lake_id": 1385,
+"member_count": 410,
+"is_spilling": false,
+"spill_level_m": 77.66444366906472,
+"clearance_m": 1395.6293863543085,
+"edge_km": 89.46838547136647,
+"rim": {
+"node": 35109,
+"bed_m": 77.66444366906472,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 123.30345715784668,
+"net_geomorphic_m": -21.628678571910996,
+"outside_erosion_m": 6.614276162093233
+},
+"target": {
+"node": 35066,
+"bed_m": -123.15484121168987,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 39.54748412190789,
+"net_geomorphic_m": -10.764669512293494,
+"outside_erosion_m": 8.874340998335526
+}
+}
+],
+"external_supply_m3": 1.1599028410963935e+18,
+"internal_transfer_m3": 1.7155324678949375e+20,
+"component_implied_supply_m3": 2.032423759485074e+16,
+"component_external_supply_m3": 2.0336469580407824e+16,
+"world_implied_supply_m3": 9.436423475113114e+19,
+"world_lake_silt_m3": 386893362479637.6,
+"transfers": {
+"count": 4258,
+"total_m3": 1.7155324678949926e+20,
+"largest_m3": 2.6151379690666925e+17,
+"distinct_sources": 247,
+"max_sends_by_one_source": 991
+},
+"zero_depth_silt": {
+"nodes_final_zero": 2356,
+"nodes_solver_zero": 0,
+"silt_m3_final_zero": 117561342645519.92,
+"silt_m3_solver_zero": 0.0,
+"solver_depth_median_m": 163.1595337284234,
+"lake_ice_median_m": 0.0
+},
+"normalized_ledger_residual": 5.553913008308341e-13
+},
+{
+"age_myr": 221.8,
+"component": {
+"nodes": 157,
+"area_km2": 628282.8875235294,
+"volume_km3": 879182.5015947103,
+"silt_mean_mm_yr": 1.8779604251322977,
+"sediment_mean_mm_yr": 0.4763384951354075,
+"silt_max_m": 236.79002450528952,
+"sediment_max_m": 87.53362987408026
+},
+"level_groups": [
+{
+"level_m": -831.0,
+"nodes": 49,
+"volume_km3": 281422.4557414841
+},
+{
+"level_m": -806.0,
+"nodes": 63,
+"volume_km3": 196518.4363906859
+},
+{
+"level_m": -805.0,
+"nodes": 5,
+"volume_km3": 45852.162969071534
+}
+],
+"anchor_level_m": -805.6411459055869,
+"anchor_connectors": [
+{
+"lake_id": 1293,
+"member_count": 154,
+"is_spilling": false,
+"spill_level_m": -1854.9854670404764,
+"clearance_m": -1049.3443211348895,
+"edge_km": 95.6480693627487,
+"rim": {
+"node": 31465,
+"bed_m": -1854.9854670404764,
+"lake_depth_m": 1049.3443211348895,
+"silt_m": 236.79002450528952,
+"sediment_deposited_m": 40.63963644434775,
+"net_geomorphic_m": 64.20423605756787,
+"outside_erosion_m": 8.937367724084197
+},
+"target": {
+"node": 31416,
+"bed_m": -1926.7122663882628,
+"lake_depth_m": 1121.071120482676,
+"silt_m": 236.79002450528952,
+"sediment_deposited_m": 41.94584419819657,
+"net_geomorphic_m": 68.13543457196351,
+"outside_erosion_m": 7.588139659193985
+}
+},
+{
+"lake_id": 1323,
+"member_count": 181,
+"is_spilling": true,
+"spill_level_m": -805.6411459055869,
+"clearance_m": 0.0,
+"edge_km": 93.87193774861642,
+"rim": {
+"node": 35538,
+"bed_m": -805.6411459055869,
+"lake_depth_m": 100.46153031189172,
+"silt_m": 100.46153031189172,
+"sediment_deposited_m": 24.845562497663078,
+"net_geomorphic_m": 11.452988267150886,
+"outside_erosion_m": 1.231355551723027
+},
+"target": {
+"node": 35549,
+"bed_m": -917.9251403177457,
+"lake_depth_m": 115.45414085424031,
+"silt_m": 115.45414085424031,
+"sediment_deposited_m": 24.79303578264273,
+"net_geomorphic_m": 17.781288868843376,
+"outside_erosion_m": -0.8996001006094048
+}
+},
+{
+"lake_id": 1374,
+"member_count": 354,
+"is_spilling": false,
+"spill_level_m": -689.3495512719941,
+"clearance_m": 116.29159463359281,
+"edge_km": 65.63795681471746,
+"rim": {
+"node": 31368,
+"bed_m": -1546.5411514761274,
+"lake_depth_m": 740.9000055705405,
+"silt_m": 236.79002450528952,
+"sediment_deposited_m": 33.758916466467674,
+"net_geomorphic_m": 66.13418557087357,
+"outside_erosion_m": 7.6234335489668865
+},
+"target": {
+"node": 31320,
+"bed_m": -689.3495512719941,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 0.056641867385950166,
+"net_geomorphic_m": -0.5060005221099573,
+"outside_erosion_m": 8.554568123929698
+}
+},
+{
+"lake_id": 1386,
+"member_count": 411,
+"is_spilling": false,
+"spill_level_m": 62.65004125924696,
+"clearance_m": 868.2911871648339,
+"edge_km": 89.46838547121536,
+"rim": {
+"node": 35111,
+"bed_m": 62.65004125924696,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 138.21509470756132,
+"net_geomorphic_m": -17.152497516560288,
+"outside_erosion_m": 6.573732365008766
+},
+"target": {
+"node": 35068,
+"bed_m": -125.04516972564784,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 38.73316241110189,
+"net_geomorphic_m": -10.67602966370265,
+"outside_erosion_m": 8.82589378382471
+}
+}
+],
+"external_supply_m3": 1.1956493769702024e+18,
+"internal_transfer_m3": 1.8482856901646913e+20,
+"component_implied_supply_m3": 2.8777814598952067e+19,
+"component_external_supply_m3": 4.048128735197528e+16,
+"world_implied_supply_m3": 1.1460760350215918e+20,
+"world_lake_silt_m3": 469891174358852.6,
+"transfers": {
+"count": 6278,
+"total_m3": 1.848285690164783e+20,
+"largest_m3": 1.5823080903965917e+17,
+"distinct_sources": 286,
+"max_sends_by_one_source": 992
+},
+"zero_depth_silt": {
+"nodes_final_zero": 3232,
+"nodes_solver_zero": 0,
+"silt_m3_final_zero": 94724452260451.56,
+"silt_m3_solver_zero": 0.0,
+"solver_depth_median_m": 869.599492386325,
+"lake_ice_median_m": 0.0
+},
+"normalized_ledger_residual": 6.480245685610276e-14
+},
+{
+"age_myr": 221.9,
+"component": {
+"nodes": 144,
+"area_km2": 575963.7971729257,
+"volume_km3": 660970.0517917653,
+"silt_mean_mm_yr": 0.002712145408032361,
+"sediment_mean_mm_yr": 0.3500438347326955,
+"silt_max_m": 0.3316532455464475,
+"sediment_max_m": 66.30115270560508
+},
+"level_groups": [
+{
+"level_m": -960.0,
+"nodes": 94,
+"volume_km3": 294348.6891913399
+},
+{
+"level_m": -994.0,
+"nodes": 3,
+"volume_km3": 28543.861445108745
+},
+{
+"level_m": -998.0,
+"nodes": 4,
+"volume_km3": 28517.926317267356
+}
+],
+"anchor_level_m": -960.1977285971303,
+"anchor_connectors": [
+{
+"lake_id": 1278,
+"member_count": 89,
+"is_spilling": false,
+"spill_level_m": -2879.7301837209557,
+"clearance_m": -1919.5324551238255,
+"edge_km": 94.27811752892343,
+"rim": {
+"node": 31729,
+"bed_m": -2879.7301837209557,
+"lake_depth_m": 1908.2113180930523,
+"silt_m": 0.3316532455464475,
+"sediment_deposited_m": 45.62631657077392,
+"net_geomorphic_m": 1.487726460282829,
+"outside_erosion_m": 2.135984104703766
+},
+"target": {
+"node": 31672,
+"bed_m": -3181.890520003278,
+"lake_depth_m": 2202.6848854832506,
+"silt_m": 0.3316532455464475,
+"sediment_deposited_m": 46.34214047571521,
+"net_geomorphic_m": 6.4343152717588055,
+"outside_erosion_m": 3.0510730454288932
+}
+},
+{
+"lake_id": 1293,
+"member_count": 154,
+"is_spilling": false,
+"spill_level_m": -1781.8438632588243,
+"clearance_m": -821.646134661694,
+"edge_km": 95.64806936279581,
+"rim": {
+"node": 31464,
+"bed_m": -1781.8438632588243,
+"lake_depth_m": 821.646134661694,
+"silt_m": 0.3316532455464475,
+"sediment_deposited_m": 28.853981673431985,
+"net_geomorphic_m": 3.4940044081081396,
+"outside_erosion_m": 8.87844230792848
+},
+"target": {
+"node": 31415,
+"bed_m": -1850.9886921571053,
+"lake_depth_m": 890.790963559975,
+"silt_m": 0.3316532455464475,
+"sediment_deposited_m": 30.04764581099327,
+"net_geomorphic_m": 7.42605088048731,
+"outside_erosion_m": 7.559115309889421
+}
+},
+{
+"lake_id": 1332,
+"member_count": 181,
+"is_spilling": false,
+"spill_level_m": -792.956802086713,
+"clearance_m": 167.24092651041735,
+"edge_km": 93.87193774861642,
+"rim": {
+"node": 35537,
+"bed_m": -792.956802086713,
+"lake_depth_m": 32.70474712231329,
+"silt_m": 0.0955062536712086,
+"sediment_deposited_m": 17.622701916074703,
+"net_geomorphic_m": -1.048142702109999,
+"outside_erosion_m": 1.2490385248481743
+},
+"target": {
+"node": 35548,
+"bed_m": -901.0434515495117,
+"lake_depth_m": 36.55954543567828,
+"silt_m": 0.11923966953955555,
+"sediment_deposited_m": 17.067646054671602,
+"net_geomorphic_m": 0.25890926424654026,
+"outside_erosion_m": -0.8758608044531684
+}
+},
+{
+"lake_id": 1383,
+"member_count": 354,
+"is_spilling": false,
+"spill_level_m": -681.3009836701743,
+"clearance_m": 278.896744926956,
+"edge_km": 65.63795681485477,
+"rim": {
+"node": 31367,
+"bed_m": -1472.783532356287,
+"lake_depth_m": 512.5858037591566,
+"silt_m": 0.3316532455464475,
+"sediment_deposited_m": 25.1314274054719,
+"net_geomorphic_m": 6.224308603581676,
+"outside_erosion_m": 7.592544452433913
+},
+"target": {
+"node": 31319,
+"bed_m": -681.3009836701743,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 0.056621519303455096,
+"net_geomorphic_m": -3.4666345423604525,
+"outside_erosion_m": 8.504138975666137
+}
+},
+{
+"lake_id": 1398,
+"member_count": 410,
+"is_spilling": false,
+"spill_level_m": 52.07127610769544,
+"clearance_m": 1012.2690047048258,
+"edge_km": 89.4683854713161,
+"rim": {
+"node": 35110,
+"bed_m": 52.07127610769544,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 148.31603022194707,
+"net_geomorphic_m": -9.078630422742947,
+"outside_erosion_m": 6.543484048713765
+},
+"target": {
+"node": 35067,
+"bed_m": -126.89530560552578,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 37.87872626538918,
+"net_geomorphic_m": -10.673108810624285,
+"outside_erosion_m": 8.771851062954454
+}
+}
+],
+"external_supply_m3": 1.286305676210398e+18,
+"internal_transfer_m3": 1.909797152525588e+20,
+"component_implied_supply_m3": 3.809994067549835e+16,
+"component_external_supply_m3": 2.0931585772863936e+16,
+"world_implied_supply_m3": 1.0107379145184302e+20,
+"world_lake_silt_m3": 414402544952556.4,
+"transfers": {
+"count": 4364,
+"total_m3": 1.9097971525255564e+20,
+"largest_m3": 2.6019909891024528e+17,
+"distinct_sources": 304,
+"max_sends_by_one_source": 1004
+},
+"zero_depth_silt": {
+"nodes_final_zero": 3521,
+"nodes_solver_zero": 0,
+"silt_m3_final_zero": 119899255430888.84,
+"silt_m3_solver_zero": 0.0,
+"solver_depth_median_m": 853.3962943375718,
+"lake_ice_median_m": 0.0
+},
+"normalized_ledger_residual": 1.2611149094331492e-13
+},
+{
+"age_myr": 222.0,
+"component": {
+"nodes": 63,
+"area_km2": 256750.99224570126,
+"volume_km3": 227732.43656419695,
+"silt_mean_mm_yr": 0.002980180199879297,
+"sediment_mean_mm_yr": 0.569972425960345,
+"silt_max_m": 0.36498191551848275,
+"sediment_max_m": 116.87349338108534
+},
+"level_groups": [
+{
+"level_m": -1346.0,
+"nodes": 43,
+"volume_km3": 75025.5323718078
+},
+{
+"level_m": -1369.0,
+"nodes": 2,
+"volume_km3": 16448.041806344492
+},
+{
+"level_m": -1359.0,
+"nodes": 2,
+"volume_km3": 15180.572364761092
+}
+],
+"anchor_level_m": -1345.6842689385064,
+"anchor_connectors": [
+{
+"lake_id": 1310,
+"member_count": 89,
+"is_spilling": false,
+"spill_level_m": -2876.106473155969,
+"clearance_m": -1530.4222042174626,
+"edge_km": 94.27811752892343,
+"rim": {
+"node": 31729,
+"bed_m": -2876.106473155969,
+"lake_depth_m": 1528.2403591043528,
+"silt_m": 0.36498191551848275,
+"sediment_deposited_m": 78.50828919490979,
+"net_geomorphic_m": 6.570726698488215,
+"outside_erosion_m": 2.1517471640609074
+},
+"target": {
+"node": 31672,
+"bed_m": -3172.4051316860905,
+"lake_depth_m": 1817.5949748899727,
+"silt_m": 0.36498191551848275,
+"sediment_deposited_m": 83.98918604079138,
+"net_geomorphic_m": 12.449234998941847,
+"outside_erosion_m": 3.0622830843249176
+}
+},
+{
+"lake_id": 1331,
+"member_count": 154,
+"is_spilling": false,
+"spill_level_m": -1769.4714165427877,
+"clearance_m": -423.78714760428124,
+"edge_km": 95.6480693627487,
+"rim": {
+"node": 31464,
+"bed_m": -1769.4714165427877,
+"lake_depth_m": 426.691347039427,
+"silt_m": 0.337165602663966,
+"sediment_deposited_m": 42.335560868811484,
+"net_geomorphic_m": 6.730959870477818,
+"outside_erosion_m": 8.829477525423954
+},
+"target": {
+"node": 31415,
+"bed_m": -1836.0035259667286,
+"lake_depth_m": 490.3192570282222,
+"silt_m": 0.36498191551848275,
+"sediment_deposited_m": 44.4667639274588,
+"net_geomorphic_m": 10.958871206060849,
+"outside_erosion_m": 7.52416062820771
+}
+},
+{
+"lake_id": 1367,
+"member_count": 181,
+"is_spilling": false,
+"spill_level_m": -792.7559062639748,
+"clearance_m": 552.9283626745316,
+"edge_km": 93.87193774842439,
+"rim": {
+"node": 35537,
+"bed_m": -792.7559062639748,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 5.073581635740783,
+"net_geomorphic_m": -3.1557227386726936,
+"outside_erosion_m": 1.2682867126916335
+},
+"target": {
+"node": 35548,
+"bed_m": -901.6604030897183,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 4.555720423143418,
+"net_geomorphic_m": -1.7141359503807507,
+"outside_erosion_m": -0.8526727384623882
+}
+},
+{
+"lake_id": 1409,
+"member_count": 355,
+"is_spilling": false,
+"spill_level_m": -676.2634792368686,
+"clearance_m": 669.4207897016378,
+"edge_km": 65.63795681478611,
+"rim": {
+"node": 31367,
+"bed_m": -1458.9666793002714,
+"lake_depth_m": 163.63945257320646,
+"silt_m": 0.23475496249996208,
+"sediment_deposited_m": 34.690044162397335,
+"net_geomorphic_m": 8.53717311941864,
+"outside_erosion_m": 7.556869752715556
+},
+"target": {
+"node": 31319,
+"bed_m": -676.2634792368686,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 0.056601307398751036,
+"net_geomorphic_m": -3.3167059005686497,
+"outside_erosion_m": 8.459114768216523
+}
+},
+{
+"lake_id": 1421,
+"member_count": 411,
+"is_spilling": false,
+"spill_level_m": 49.53612973366626,
+"clearance_m": 1395.2203986721727,
+"edge_km": 89.46838547116499,
+"rim": {
+"node": 35110,
+"bed_m": 49.53612973366626,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 150.5400707896317,
+"net_geomorphic_m": -1.3997203648416985,
+"outside_erosion_m": 6.511645177315984
+},
+"target": {
+"node": 35067,
+"bed_m": -128.7965633531956,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 35.91865522272809,
+"net_geomorphic_m": -9.236173472308394,
+"outside_erosion_m": 8.725053490449511
+}
+}
+],
+"external_supply_m3": 1.244649682610791e+18,
+"internal_transfer_m3": 1.8723314052924372e+20,
+"component_implied_supply_m3": 1.8662542033902484e+16,
+"component_external_supply_m3": 1.8662542033902484e+16,
+"world_implied_supply_m3": 1.026210856980059e+20,
+"world_lake_silt_m3": 420746451361824.1,
+"transfers": {
+"count": 4484,
+"total_m3": 1.8723314052924152e+20,
+"largest_m3": 2.285584299397866e+17,
+"distinct_sources": 318,
+"max_sends_by_one_source": 1033
+},
+"zero_depth_silt": {
+"nodes_final_zero": 3849,
+"nodes_solver_zero": 0,
+"silt_m3_final_zero": 118320918260254.25,
+"silt_m3_solver_zero": 0.0,
+"solver_depth_median_m": 1105.8567151016819,
+"lake_ice_median_m": 0.0
+},
+"normalized_ledger_residual": 6.863072933537303e-14
+},
+{
+"age_myr": 222.1,
+"component": {
+"nodes": 50,
+"area_km2": 203217.09744190733,
+"volume_km3": 144264.05285333685,
+"silt_mean_mm_yr": 0.0031614915655769488,
+"sediment_mean_mm_yr": 0.6379498983966004,
+"silt_max_m": 0.4222531740939313,
+"sediment_max_m": 134.99806234803225
+},
+"level_groups": [
+{
+"level_m": -1788.0,
+"nodes": 41,
+"volume_km3": 82008.48442813814
+},
+{
+"level_m": -1801.0,
+"nodes": 2,
+"volume_km3": 13850.388965805
+},
+{
+"level_m": -1795.0,
+"nodes": 2,
+"volume_km3": 12830.946304458175
+}
+],
+"anchor_level_m": -1787.9219735976792,
+"anchor_connectors": [
+{
+"lake_id": 560,
+"member_count": 56,
+"is_spilling": false,
+"spill_level_m": -3396.745198874423,
+"clearance_m": -1608.8232252767436,
+"edge_km": 102.00905870791077,
+"rim": {
+"node": 31723,
+"bed_m": -3645.79908510737,
+"lake_depth_m": 1842.6496291626363,
+"silt_m": 0.3949557106097717,
+"sediment_deposited_m": 113.62936354910958,
+"net_geomorphic_m": 17.73711632928962,
+"outside_erosion_m": null
+},
+"target": {
+"node": 35500,
+"bed_m": -3396.745198874423,
+"lake_depth_m": 1602.1992052457317,
+"silt_m": 0.3949557106097717,
+"sediment_deposited_m": 101.06661730185255,
+"net_geomorphic_m": 15.782911357493958,
+"outside_erosion_m": null
+}
+},
+{
+"lake_id": 1269,
+"member_count": 88,
+"is_spilling": false,
+"spill_level_m": -2867.38399929342,
+"clearance_m": -1079.4620256957407,
+"edge_km": 94.27811752882782,
+"rim": {
+"node": 31726,
+"bed_m": -2867.38399929342,
+"lake_depth_m": 1079.527606930291,
+"silt_m": 0.3949557106097717,
+"sediment_deposited_m": 81.30271442228151,
+"net_geomorphic_m": 7.598625951869963,
+"outside_erosion_m": null
+},
+"target": {
+"node": 31669,
+"bed_m": -3156.8936136028237,
+"lake_depth_m": 1369.245111971099,
+"silt_m": 0.3949557106097717,
+"sediment_deposited_m": 91.15689103901124,
+"net_geomorphic_m": 13.777143922499818,
+"outside_erosion_m": null
+}
+},
+{
+"lake_id": 1284,
+"member_count": 152,
+"is_spilling": false,
+"spill_level_m": -1753.910979146886,
+"clearance_m": 34.010994450793305,
+"edge_km": 95.64806936260734,
+"rim": {
+"node": 31461,
+"bed_m": -1753.910979146886,
+"lake_depth_m": 108.5728766463693,
+"silt_m": 0.18404501882302776,
+"sediment_deposited_m": 37.33513866547917,
+"net_geomorphic_m": 5.3632446908593465,
+"outside_erosion_m": null
+},
+"target": {
+"node": 31412,
+"bed_m": -1817.52049413246,
+"lake_depth_m": 97.29457597754256,
+"silt_m": 0.4222531740939313,
+"sediment_deposited_m": 37.06005643940035,
+"net_geomorphic_m": 9.162342349965002,
+"outside_erosion_m": null
+}
+},
+{
+"lake_id": 1323,
+"member_count": 179,
+"is_spilling": false,
+"spill_level_m": -794.6433422899559,
+"clearance_m": 993.2786313077233,
+"edge_km": 93.8719377483764,
+"rim": {
+"node": 35534,
+"bed_m": -794.6433422899559,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 1.0091534447820036,
+"net_geomorphic_m": -0.9532326243277112,
+"outside_erosion_m": null
+},
+"target": {
+"node": 35545,
+"bed_m": -904.2272117785615,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 0.30212271895683096,
+"net_geomorphic_m": -0.33774034523275986,
+"outside_erosion_m": null
+}
+},
+{
+"lake_id": 1356,
+"member_count": 353,
+"is_spilling": false,
+"spill_level_m": -671.1210703692208,
+"clearance_m": 1116.8009032284585,
+"edge_km": 65.63795681458015,
+"rim": {
+"node": 31364,
+"bed_m": -1442.8726364281372,
+"lake_depth_m": 1.3338295520913326,
+"silt_m": 0.045251163384328504,
+"sediment_deposited_m": 30.578015357983038,
+"net_geomorphic_m": 7.485687371889526,
+"outside_erosion_m": null
+},
+"target": {
+"node": 31316,
+"bed_m": -671.1210703692208,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 0.05658125074319186,
+"net_geomorphic_m": -0.5041917237074358,
+"outside_erosion_m": null
+}
+}
+],
+"external_supply_m3": 1.342853920265424e+18,
+"internal_transfer_m3": 5.575296996022463e+20,
+"component_implied_supply_m3": 1.5669979013259e+16,
+"component_external_supply_m3": 1.5683635550373594e+16,
+"world_implied_supply_m3": 3.013055811172904e+20,
+"world_lake_silt_m3": 1235352882580890.5,
+"transfers": {
+"count": 6121,
+"total_m3": 5.575296996022974e+20,
+"largest_m3": 2.3375651223801293e+17,
+"distinct_sources": 314,
+"max_sends_by_one_source": 989
+},
+"zero_depth_silt": {
+"nodes_final_zero": 4178,
+"nodes_solver_zero": 0,
+"silt_m3_final_zero": 874769888079046.1,
+"silt_m3_solver_zero": 0.0,
+"solver_depth_median_m": 2004.7569705257379,
+"lake_ice_median_m": 0.0
+},
+"normalized_ledger_residual": 5.937258765553566e-14
+}
+]
+},
+"B": {
+"checkpoint_sha256": "86fb5b7d2044846ac751906ff996184c7abe5454c93b39033bd82338e8749544",
+"peak_rss_gb": 6.551781376,
+"records": [
+{
+"age_myr": 222.2,
+"component": {
+"nodes": 418,
+"area_km2": 1516044.9196730687,
+"volume_km3": 115360.95862424887,
+"silt_mean_mm_yr": 0.0060635953843892355,
+"sediment_mean_mm_yr": 0.06877335296645382,
+"silt_max_m": 0.6371829097096786,
+"sediment_max_m": 10.526287467722534
+},
+"level_groups": [
+{
+"level_m": 634.0,
+"nodes": 418,
+"volume_km3": 115360.95862424887
+}
+],
+"anchor_level_m": 633.9978364337119,
+"anchor_connectors": [
+{
+"lake_id": 1518,
+"member_count": 387,
+"is_spilling": false,
+"spill_level_m": 532.2670613122236,
+"clearance_m": -101.73077512148825,
+"edge_km": 72.79841849071559,
+"rim": {
+"node": 86133,
+"bed_m": 532.1193121196475,
+"lake_depth_m": 101.8785243140644,
+"silt_m": 0.6371829097096786,
+"sediment_deposited_m": 7.548846397410634,
+"net_geomorphic_m": 1.3853280365892715,
+"outside_erosion_m": 0.0
+},
+"target": {
+"node": 86101,
+"bed_m": 532.2670613122236,
+"lake_depth_m": 101.73077512148825,
+"silt_m": 0.6371829097096786,
+"sediment_deposited_m": 7.527328210916631,
+"net_geomorphic_m": 1.3785636668590087,
+"outside_erosion_m": 0.0
+}
+},
+{
+"lake_id": 1524,
+"member_count": 1219,
+"is_spilling": false,
+"spill_level_m": 533.1794578737818,
+"clearance_m": -100.81837855993012,
+"edge_km": 62.47477597608394,
+"rim": {
+"node": 86128,
+"bed_m": 533.1794578737818,
+"lake_depth_m": 100.81837855993012,
+"silt_m": 0.6371829097096786,
+"sediment_deposited_m": 7.606252610569701,
+"net_geomorphic_m": 1.3783525334720252,
+"outside_erosion_m": 0.0
+},
+"target": {
+"node": 86127,
+"bed_m": 532.8557005324819,
+"lake_depth_m": 101.14213590122995,
+"silt_m": 0.6371829097096786,
+"sediment_deposited_m": 7.639629326062896,
+"net_geomorphic_m": 1.39607861888544,
+"outside_erosion_m": 0.0
+}
+},
+{
+"lake_id": 1533,
+"member_count": 1370,
+"is_spilling": false,
+"spill_level_m": 636.598948846286,
+"clearance_m": 2.601112412574139,
+"edge_km": 101.59316427096802,
+"rim": {
+"node": 86327,
+"bed_m": 636.598948846286,
+"lake_depth_m": 4.237019721883477,
+"silt_m": 0.2806485809283809,
+"sediment_deposited_m": 3.8157294512742816,
+"net_geomorphic_m": -1.1700297983570636,
+"outside_erosion_m": 8.320496215131243
+},
+"target": {
+"node": 86350,
+"bed_m": 635.1460359347188,
+"lake_depth_m": 5.677212931309643,
+"silt_m": 0.4378912835651144,
+"sediment_deposited_m": 4.056781883771017,
+"net_geomorphic_m": 0.7606369975492271,
+"outside_erosion_m": 7.414757051663628
+}
+},
+{
+"lake_id": 1560,
+"member_count": 1375,
+"is_spilling": false,
+"spill_level_m": 639.8287382284216,
+"clearance_m": 5.830901794709689,
+"edge_km": 101.04257602756448,
+"rim": {
+"node": 87587,
+"bed_m": 639.8287382284216,
+"lake_depth_m": 0.026303943205376688,
+"silt_m": 0.026303943205376688,
+"sediment_deposited_m": 0.8931803998183733,
+"net_geomorphic_m": 0.07322597636175487,
+"outside_erosion_m": 7.340137538787758
+},
+"target": {
+"node": 87637,
+"bed_m": 638.1013120904536,
+"lake_depth_m": 4.0451451418196465,
+"silt_m": 0.1921129118609474,
+"sediment_deposited_m": 8.940127861136773,
+"net_geomorphic_m": -0.46564844906788494,
+"outside_erosion_m": 8.042598821767342
+}
+},
+{
+"lake_id": 1569,
+"member_count": 2362,
+"is_spilling": false,
+"spill_level_m": 643.6921592532808,
+"clearance_m": 9.694322819568924,
+"edge_km": 100.18115957184291,
+"rim": {
+"node": 86256,
+"bed_m": 643.6921592532808,
+"lake_depth_m": 1.6804961309965347,
+"silt_m": 0.17691280832777043,
+"sediment_deposited_m": 4.250233707548773,
+"net_geomorphic_m": -1.1351234967387427,
+"outside_erosion_m": 8.83884545603405
+},
+"target": {
+"node": 86283,
+"bed_m": 636.9776630910824,
+"lake_depth_m": 0.6939083864148713,
+"silt_m": 0.4046242763938453,
+"sediment_deposited_m": 0.6844252007649587,
+"net_geomorphic_m": 0.18430068075031159,
+"outside_erosion_m": 7.453031938597633
+}
+}
+],
+"external_supply_m3": 1.0791828810987927e+18,
+"internal_transfer_m3": 5.8056669032274795e+20,
+"component_implied_supply_m3": 2.2421177993796022e+17,
+"component_external_supply_m3": 2.2536734790857827e+17,
+"world_implied_supply_m3": 3.040259170635945e+20,
+"world_lake_silt_m3": 1246506259960737.5,
+"transfers": {
+"count": 6273,
+"total_m3": 5.80566690322713e+20,
+"largest_m3": 2.308676189422499e+17,
+"distinct_sources": 319,
+"max_sends_by_one_source": 1007
+},
+"zero_depth_silt": {
+"nodes_final_zero": 4200,
+"nodes_solver_zero": 0,
+"silt_m3_final_zero": 846601109363302.2,
+"silt_m3_solver_zero": 0.0,
+"solver_depth_median_m": 1989.530647463653,
+"lake_ice_median_m": 0.0
+},
+"normalized_ledger_residual": 7.136707954935683e-14
+},
+{
+"age_myr": 222.3,
+"component": {
+"nodes": 753,
+"area_km2": 2696953.274993104,
+"volume_km3": 246986.056353104,
+"silt_mean_mm_yr": 0.008640260646075251,
+"sediment_mean_mm_yr": 0.09152526019985761,
+"silt_max_m": 0.9182512709621873,
+"sediment_max_m": 13.936774090842539
+},
+"level_groups": [
+{
+"level_m": 665.0,
+"nodes": 749,
+"volume_km3": 246514.98038190525
+},
+{
+"level_m": 655.0,
+"nodes": 2,
+"volume_km3": 305.18508866054674
+},
+{
+"level_m": 662.0,
+"nodes": 1,
+"volume_km3": 120.08315832497088
+}
+],
+"anchor_level_m": 664.8388919337563,
+"anchor_connectors": [
+{
+"lake_id": 1538,
+"member_count": 2428,
+"is_spilling": true,
+"spill_level_m": 650.9806586637167,
+"clearance_m": -13.858233270039591,
+"edge_km": 100.53089675459375,
+"rim": {
+"node": 86280,
+"bed_m": 650.9806586637167,
+"lake_depth_m": 14.047106817964368,
+"silt_m": 0.8228384563262586,
+"sediment_deposited_m": 5.301217855932669,
+"net_geomorphic_m": 0.5980825132746759,
+"outside_erosion_m": 8.678659521749069
+},
+"target": {
+"node": 86306,
+"bed_m": 631.9666084789299,
+"lake_depth_m": 32.8722834548264,
+"silt_m": 0.9182512709621873,
+"sediment_deposited_m": 6.984568056063221,
+"net_geomorphic_m": 1.3374001938045694,
+"outside_erosion_m": 6.640926928276485
+}
+},
+{
+"lake_id": 1541,
+"member_count": 2434,
+"is_spilling": true,
+"spill_level_m": 664.8388919337563,
+"clearance_m": 0.0,
+"edge_km": 55.64190050732695,
+"rim": {
+"node": 85246,
+"bed_m": 654.1549832510843,
+"lake_depth_m": 10.683908682671927,
+"silt_m": 0.9182512709621873,
+"sediment_deposited_m": 5.477681414397717,
+"net_geomorphic_m": 0.019082400632214558,
+"outside_erosion_m": -0.03316066534239326
+},
+"target": {
+"node": 85220,
+"bed_m": 664.8388919337563,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 165.73334652221882,
+"net_geomorphic_m": 27.266691309895577,
+"outside_erosion_m": -0.024416195334197255
+}
+}
+],
+"external_supply_m3": 1.1298363610303587e+18,
+"internal_transfer_m3": 2.3793012928709893e+20,
+"component_implied_supply_m3": 5.68350713322602e+17,
+"component_external_supply_m3": 3.419473450312657e+17,
+"world_implied_supply_m3": 1.2020866356172461e+20,
+"world_lake_silt_m3": 492855520603070.9,
+"transfers": {
+"count": 6309,
+"total_m3": 2.3793012928710246e+20,
+"largest_m3": 2.6692052973587245e+17,
+"distinct_sources": 334,
+"max_sends_by_one_source": 989
+},
+"zero_depth_silt": {
+"nodes_final_zero": 4343,
+"nodes_solver_zero": 0,
+"silt_m3_final_zero": 115993632345236.77,
+"silt_m3_solver_zero": 0.0,
+"solver_depth_median_m": 1903.2334944519362,
+"lake_ice_median_m": 0.0
+},
+"normalized_ledger_residual": 1.2755750343159215e-13
+},
+{
+"age_myr": 222.4,
+"component": {
+"nodes": 751,
+"area_km2": 2689275.9820614327,
+"volume_km3": 251580.00189914874,
+"silt_mean_mm_yr": 0.005592268997282264,
+"sediment_mean_mm_yr": 0.08841907141775067,
+"silt_max_m": 0.594748605514567,
+"sediment_max_m": 13.51831652714646
+},
+"level_groups": [
+{
+"level_m": 669.0,
+"nodes": 745,
+"volume_km3": 250914.74533974557
+},
+{
+"level_m": 657.0,
+"nodes": 1,
+"volume_km3": 220.81704353830898
+},
+{
+"level_m": 668.0,
+"nodes": 1,
+"volume_km3": 146.69081903454136
+}
+],
+"anchor_level_m": 668.5378252332032,
+"anchor_connectors": [
+{
+"lake_id": 1517,
+"member_count": 2457,
+"is_spilling": false,
+"spill_level_m": 660.2574006987404,
+"clearance_m": -8.280424534462782,
+"edge_km": 100.53089675468341,
+"rim": {
+"node": 86284,
+"bed_m": 660.2574006987404,
+"lake_depth_m": 9.69635282505595,
+"silt_m": 0.43031162225548036,
+"sediment_deposited_m": 5.560152464575374,
+"net_geomorphic_m": -1.054872230079127,
+"outside_erosion_m": 8.646251874487007
+},
+"target": {
+"node": 86310,
+"bed_m": 639.9449356010109,
+"lake_depth_m": 28.592889632192282,
+"silt_m": 0.594748605514567,
+"sediment_deposited_m": 6.610644138866508,
+"net_geomorphic_m": 1.2193741567407415,
+"outside_erosion_m": 6.582587382940574
+}
+},
+{
+"lake_id": 1523,
+"member_count": 2463,
+"is_spilling": true,
+"spill_level_m": 668.5378252332032,
+"clearance_m": 0.0,
+"edge_km": 53.95876352552987,
+"rim": {
+"node": 87565,
+"bed_m": 645.1268053575495,
+"lake_depth_m": 23.411019875653665,
+"silt_m": 0.594748605514567,
+"sediment_deposited_m": 6.090113036397905,
+"net_geomorphic_m": -0.19515225253780955,
+"outside_erosion_m": 0.0
+},
+"target": {
+"node": 87566,
+"bed_m": 668.5378252332032,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 180.2752313739149,
+"net_geomorphic_m": 27.476405979627998,
+"outside_erosion_m": -0.0248295739668265
+}
+}
+],
+"external_supply_m3": 1.1405312631865526e+18,
+"internal_transfer_m3": 4.5551452017466035e+20,
+"component_implied_supply_m3": 3.668086512101942e+17,
+"component_external_supply_m3": 3.680955408479001e+17,
+"world_implied_supply_m3": 2.970113788381176e+20,
+"world_lake_silt_m3": 1217746653236282.0,
+"transfers": {
+"count": 4047,
+"total_m3": 4.5551452017468e+20,
+"largest_m3": 2.6318862298577485e+17,
+"distinct_sources": 335,
+"max_sends_by_one_source": 950
+},
+"zero_depth_silt": {
+"nodes_final_zero": 4423,
+"nodes_solver_zero": 0,
+"silt_m3_final_zero": 1134450004742664.0,
+"silt_m3_solver_zero": 0.0,
+"solver_depth_median_m": 1871.2454081666874,
+"lake_ice_median_m": 0.0
+},
+"normalized_ledger_residual": 2.0994187047064541e-13
+},
+{
+"age_myr": 222.5,
+"component": {
+"nodes": 739,
+"area_km2": 2645800.014536631,
+"volume_km3": 251303.80887205372,
+"silt_mean_mm_yr": 0.0058786403155029745,
+"sediment_mean_mm_yr": 0.12122198930743745,
+"silt_max_m": 0.6223200974836862,
+"sediment_max_m": 17.226915501183242
+},
+"level_groups": [
+{
+"level_m": 670.0,
+"nodes": 733,
+"volume_km3": 250614.06341441313
+},
+{
+"level_m": 660.0,
+"nodes": 1,
+"volume_km3": 222.68733500546213
+},
+{
+"level_m": 669.0,
+"nodes": 1,
+"volume_km3": 149.89631240823957
+}
+],
+"anchor_level_m": 670.0982458736132,
+"anchor_connectors": [
+{
+"lake_id": 1556,
+"member_count": 2449,
+"is_spilling": false,
+"spill_level_m": 667.8487803431483,
+"clearance_m": -2.2494655304649314,
+"edge_km": 100.53089675472823,
+"rim": {
+"node": 86283,
+"bed_m": 667.8487803431483,
+"lake_depth_m": 6.048960500395627,
+"silt_m": 0.3471717385341132,
+"sediment_deposited_m": 7.158229780999722,
+"net_geomorphic_m": -0.7998181688144541,
+"outside_erosion_m": 8.60421671178483
+},
+"target": {
+"node": 86309,
+"bed_m": 647.7468971406922,
+"lake_depth_m": 22.351348732920997,
+"silt_m": 0.6223200974836862,
+"sediment_deposited_m": 8.357052645803504,
+"net_geomorphic_m": 1.5195861565562154,
+"outside_erosion_m": 6.5477989795256235
+}
+},
+{
+"lake_id": 1559,
+"member_count": 2455,
+"is_spilling": true,
+"spill_level_m": 670.0982458736132,
+"clearance_m": 0.0,
+"edge_km": 57.486650685051956,
+"rim": {
+"node": 85335,
+"bed_m": 666.9180231453797,
+"lake_depth_m": 5.5850589551449135,
+"silt_m": 0.3757543006685932,
+"sediment_deposited_m": 6.521490926894515,
+"net_geomorphic_m": -0.6684594296657451,
+"outside_erosion_m": 1.0756102875961915
+},
+"target": {
+"node": 85293,
+"bed_m": 670.0982458736132,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 191.47214088518868,
+"net_geomorphic_m": 30.256222169485227,
+"outside_erosion_m": 1.0704658761480914
+}
+}
+],
+"external_supply_m3": 1.1517095524894497e+18,
+"internal_transfer_m3": 3.777849226464992e+19,
+"component_implied_supply_m3": 3.7935869834666816e+17,
+"component_external_supply_m3": 3.8095473430843386e+17,
+"world_implied_supply_m3": 3.875051421078171e+19,
+"world_lake_silt_m3": 158877108264205.0,
+"transfers": {
+"count": 348,
+"total_m3": 3.777849226464992e+19,
+"largest_m3": 2.6899902647121904e+17,
+"distinct_sources": 295,
+"max_sends_by_one_source": 2
+},
+"zero_depth_silt": {
+"nodes_final_zero": 4280,
+"nodes_solver_zero": 0,
+"silt_m3_final_zero": 142449676516243.78,
+"silt_m3_solver_zero": 0.0,
+"solver_depth_median_m": 1932.0823116621468,
+"lake_ice_median_m": 0.0
+},
+"normalized_ledger_residual": 1.293874231522411e-13
+},
+{
+"age_myr": 222.6,
+"component": {
+"nodes": 453,
+"area_km2": 1643783.6580763366,
+"volume_km3": 162849.97160891598,
+"silt_mean_mm_yr": 0.00685331284580347,
+"sediment_mean_mm_yr": 0.0850877355078519,
+"silt_max_m": 0.7216714135679584,
+"sediment_max_m": 13.089053235861696
+},
+"level_groups": [
+{
+"level_m": 672.0,
+"nodes": 452,
+"volume_km3": 162807.10313643777
+},
+{
+"level_m": 668.0,
+"nodes": 1,
+"volume_km3": 42.868472478201014
+}
+],
+"anchor_level_m": 671.8287422867247,
+"anchor_connectors": [
+{
+"lake_id": 1471,
+"member_count": 1459,
+"is_spilling": false,
+"spill_level_m": 668.5829413894194,
+"clearance_m": -3.245800897305344,
+"edge_km": 70.92134678682858,
+"rim": {
+"node": 86343,
+"bed_m": 668.5829413894194,
+"lake_depth_m": 9.276154029595226,
+"silt_m": 0.39953401126657173,
+"sediment_deposited_m": 4.782605625023537,
+"net_geomorphic_m": 0.8769774769107244,
+"outside_erosion_m": null
+},
+"target": {
+"node": 86322,
+"bed_m": 668.3903139467425,
+"lake_depth_m": 4.042672873192332,
+"silt_m": 0.5204577245423775,
+"sediment_deposited_m": 4.361976017615497,
+"net_geomorphic_m": 0.8262580179034558,
+"outside_erosion_m": null
+}
+},
+{
+"lake_id": 1510,
+"member_count": 1460,
+"is_spilling": true,
+"spill_level_m": 671.8287422867247,
+"clearance_m": 0.0,
+"edge_km": 76.0243833123503,
+"rim": {
+"node": 85282,
+"bed_m": 671.8287422867247,
+"lake_depth_m": 2.9784469843919084,
+"silt_m": 0.36083570678398086,
+"sediment_deposited_m": 4.9071980728498374,
+"net_geomorphic_m": -1.6098864154191688,
+"outside_erosion_m": null
+},
+"target": {
+"node": 85243,
+"bed_m": 654.3912316874507,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 97.08194908663069,
+"net_geomorphic_m": 12.095849745066516,
+"outside_erosion_m": null
+}
+}
+],
+"external_supply_m3": 1.219108501074656e+18,
+"internal_transfer_m3": 4.620030396848501e+20,
+"component_implied_supply_m3": 2.7476496730771654e+17,
+"component_external_supply_m3": 2.7561823517991056e+17,
+"world_implied_supply_m3": 2.5030731192191392e+20,
+"world_lake_silt_m3": 1026259978879847.0,
+"transfers": {
+"count": 4059,
+"total_m3": 4.6200303968485927e+20,
+"largest_m3": 2.6695138494153392e+17,
+"distinct_sources": 299,
+"max_sends_by_one_source": 969
+},
+"zero_depth_silt": {
+"nodes_final_zero": 4232,
+"nodes_solver_zero": 0,
+"silt_m3_final_zero": 934305283854669.4,
+"silt_m3_solver_zero": 0.0,
+"solver_depth_median_m": 1949.4988673248663,
+"lake_ice_median_m": 0.0
+},
+"normalized_ledger_residual": 7.49242923208266e-14
+}
+]
+},
+"C": {
+"checkpoint_sha256": "041b7430a6cf8867f2e2c76f18c3328e440add585ee4a2e4b3055e7766c2217e",
+"peak_rss_gb": 6.037700608,
+"records": [
+{
+"age_myr": 201.1,
+"component": {
+"nodes": 76,
+"area_km2": 214973.95957271138,
+"volume_km3": 264786.69718632585,
+"silt_mean_mm_yr": 0.0656292467065121,
+"sediment_mean_mm_yr": 0.25373116169736876,
+"silt_max_m": 6.593589483421302,
+"sediment_max_m": 168.9267547462464
+},
+"level_groups": [
+{
+"level_m": 270.0,
+"nodes": 7,
+"volume_km3": 32838.23067731688
+},
+{
+"level_m": 264.0,
+"nodes": 5,
+"volume_km3": 24823.725488970173
+},
+{
+"level_m": 271.0,
+"nodes": 5,
+"volume_km3": 19870.89091766371
+}
+],
+"anchor_level_m": 278.38705850751876,
+"anchor_connectors": [
+{
+"lake_id": 579,
+"member_count": 2372,
+"is_spilling": true,
+"spill_level_m": -508.3126736650464,
+"clearance_m": -786.6997321725652,
+"edge_km": 76.4420968430178,
+"rim": {
+"node": 72504,
+"bed_m": -508.3126736650464,
+"lake_depth_m": 0.0,
+"silt_m": 6.593589483421302,
+"sediment_deposited_m": 0.09258654913776039,
+"net_geomorphic_m": 1.5388753998239508,
+"outside_erosion_m": 0.0
+},
+"target": {
+"node": 72595,
+"bed_m": -509.09049293519314,
+"lake_depth_m": 0.0,
+"silt_m": 6.593589483421302,
+"sediment_deposited_m": 0.029323196787008978,
+"net_geomorphic_m": 1.6079625208685684,
+"outside_erosion_m": 0.0
+}
+},
+{
+"lake_id": 627,
+"member_count": 2465,
+"is_spilling": true,
+"spill_level_m": -57.358737032051145,
+"clearance_m": -335.7457955395699,
+"edge_km": 54.341138415047865,
+"rim": {
+"node": 72862,
+"bed_m": -57.358737032051145,
+"lake_depth_m": 0.0,
+"silt_m": 6.593589483421302,
+"sediment_deposited_m": 7.247367400111039,
+"net_geomorphic_m": 1.6167873616599948,
+"outside_erosion_m": 0.0
+},
+"target": {
+"node": 72861,
+"bed_m": -64.58556379970292,
+"lake_depth_m": 0.0,
+"silt_m": 6.593589483421302,
+"sediment_deposited_m": 0.36751653411219193,
+"net_geomorphic_m": 1.7016036931759544,
+"outside_erosion_m": 0.0
+}
+},
+{
+"lake_id": 639,
+"member_count": 2605,
+"is_spilling": true,
+"spill_level_m": 832.1458309187186,
+"clearance_m": 553.7587724111999,
+"edge_km": 54.46325197964737,
+"rim": {
+"node": 70306,
+"bed_m": 859.1441811038867,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 0.0878175814430318,
+"net_geomorphic_m": -1.0604185782785862,
+"outside_erosion_m": 0.23816369334326737
+},
+"target": {
+"node": 70232,
+"bed_m": 841.9986778666371,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 0.05228208808459331,
+"net_geomorphic_m": -6.186649136994674,
+"outside_erosion_m": 0.9059586867861071
+}
+}
+],
+"external_supply_m3": 6.238017413947896e+17,
+"internal_transfer_m3": 6.475113379299364e+18,
+"component_implied_supply_m3": 3.4411168361642035e+17,
+"component_external_supply_m3": 0.0,
+"world_implied_supply_m3": 7.077289896693239e+18,
+"world_lake_silt_m3": 29016888576442.277,
+"transfers": {
+"count": 89,
+"total_m3": 6.475113379299362e+18,
+"largest_m3": 1.9162477921789802e+17,
+"distinct_sources": 83,
+"max_sends_by_one_source": 2
+},
+"zero_depth_silt": {
+"nodes_final_zero": 1695,
+"nodes_solver_zero": 0,
+"silt_m3_final_zero": 25489604614214.805,
+"silt_m3_solver_zero": 0.0,
+"solver_depth_median_m": 901.9437976011469,
+"lake_ice_median_m": 0.0
+},
+"normalized_ledger_residual": 1.379304782342829e-12
+},
+{
+"age_myr": 201.2,
+"component": {
+"nodes": 58,
+"area_km2": 162767.84481946842,
+"volume_km3": 3194.5056970837795,
+"silt_mean_mm_yr": 0.0785065218472826,
+"sediment_mean_mm_yr": 0.3090015299946446,
+"silt_max_m": 7.85065218472826,
+"sediment_max_m": 205.9119471978265
+},
+"level_groups": [
+{
+"level_m": 776.0,
+"nodes": 2,
+"volume_km3": 2968.1810888892733
+},
+{
+"level_m": -1302.0,
+"nodes": 2,
+"volume_km3": 9.886990297357062
+},
+{
+"level_m": -659.0,
+"nodes": 2,
+"volume_km3": 8.301779640217957
+}
+],
+"anchor_level_m": -1065.0895204883604,
+"anchor_connectors": [
+{
+"lake_id": 566,
+"member_count": 2187,
+"is_spilling": true,
+"spill_level_m": -1454.1836596714882,
+"clearance_m": -389.0941391831277,
+"edge_km": 74.27563385807623,
+"rim": {
+"node": 71717,
+"bed_m": -1454.7284947044575,
+"lake_depth_m": 0.0,
+"silt_m": 7.85065218472826,
+"sediment_deposited_m": 0.4382711277298811,
+"net_geomorphic_m": 1.7943197185218196,
+"outside_erosion_m": 0.0
+},
+"target": {
+"node": 71811,
+"bed_m": -1454.1836596714882,
+"lake_depth_m": 0.0,
+"silt_m": 7.85065218472826,
+"sediment_deposited_m": 0.6908001303542062,
+"net_geomorphic_m": 1.2105800047731918,
+"outside_erosion_m": 0.0
+}
+},
+{
+"lake_id": 569,
+"member_count": 2327,
+"is_spilling": true,
+"spill_level_m": -1435.0200135725977,
+"clearance_m": -369.93049308423724,
+"edge_km": 55.1240087328434,
+"rim": {
+"node": 71653,
+"bed_m": -1435.0200135725977,
+"lake_depth_m": 0.0,
+"silt_m": 7.85065218472826,
+"sediment_deposited_m": 3.537339788429713,
+"net_geomorphic_m": 2.04037469746595,
+"outside_erosion_m": 0.0
+},
+"target": {
+"node": 71654,
+"bed_m": -1435.6795908539912,
+"lake_depth_m": 0.0,
+"silt_m": 7.85065218472826,
+"sediment_deposited_m": 0.2925255101532905,
+"net_geomorphic_m": 1.9905545476372026,
+"outside_erosion_m": 0.0
+}
+},
+{
+"lake_id": 572,
+"member_count": 2369,
+"is_spilling": true,
+"spill_level_m": -506.77379826522247,
+"clearance_m": 558.315722223138,
+"edge_km": 76.4420968431357,
+"rim": {
+"node": 72500,
+"bed_m": -506.77379826522247,
+"lake_depth_m": 0.0,
+"silt_m": 7.85065218472826,
+"sediment_deposited_m": 0.14539523454570374,
+"net_geomorphic_m": 1.7964503411386659,
+"outside_erosion_m": 0.0
+},
+"target": {
+"node": 72591,
+"bed_m": -507.4825304143246,
+"lake_depth_m": 0.0,
+"silt_m": 7.85065218472826,
+"sediment_deposited_m": 0.07041780615871931,
+"net_geomorphic_m": 1.9130643896491506,
+"outside_erosion_m": 0.0
+}
+},
+{
+"lake_id": 620,
+"member_count": 2465,
+"is_spilling": true,
+"spill_level_m": -55.74194967039115,
+"clearance_m": 1009.3475708179693,
+"edge_km": 54.341138414964945,
+"rim": {
+"node": 72858,
+"bed_m": -55.74194967039115,
+"lake_depth_m": 0.0,
+"silt_m": 7.85065218472826,
+"sediment_deposited_m": 7.243663224847241,
+"net_geomorphic_m": 1.9438967712854307,
+"outside_erosion_m": 0.0
+},
+"target": {
+"node": 72857,
+"bed_m": -62.88396010652697,
+"lake_depth_m": 0.0,
+"silt_m": 7.85065218472826,
+"sediment_deposited_m": 0.29516879256923795,
+"net_geomorphic_m": 1.9912006833385263,
+"outside_erosion_m": 0.0
+}
+},
+{
+"lake_id": 629,
+"member_count": 2605,
+"is_spilling": true,
+"spill_level_m": 831.4104719952179,
+"clearance_m": 1896.4999924835784,
+"edge_km": 54.46325197964737,
+"rim": {
+"node": 70302,
+"bed_m": 858.3219262189514,
+"lake_depth_m": 0.0,
+"silt_m": 2.985416983684304,
+"sediment_deposited_m": 0.12492267690007651,
+"net_geomorphic_m": -0.25467549627501285,
+"outside_erosion_m": 0.2404876104719733
+},
+"target": {
+"node": 70228,
+"bed_m": 836.7179874164285,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 0.11421508733479084,
+"net_geomorphic_m": -4.825624974778293,
+"outside_erosion_m": 0.9147987113892668
+}
+}
+],
+"external_supply_m3": 6.162936046803475e+17,
+"internal_transfer_m3": 9.43313580431962e+18,
+"component_implied_supply_m3": 3.1166676500865126e+17,
+"component_external_supply_m3": 0.0,
+"world_implied_supply_m3": 1.0042486134856554e+19,
+"world_lake_silt_m3": 41174193152911.87,
+"transfers": {
+"count": 91,
+"total_m3": 9.433135804319621e+18,
+"largest_m3": 2.19893927108375e+17,
+"distinct_sources": 83,
+"max_sends_by_one_source": 2
+},
+"zero_depth_silt": {
+"nodes_final_zero": 1969,
+"nodes_solver_zero": 0,
+"silt_m3_final_zero": 37394789231837.19,
+"silt_m3_solver_zero": 0.0,
+"solver_depth_median_m": 1064.9393907146289,
+"lake_ice_median_m": 0.0
+},
+"normalized_ledger_residual": 3.587162587018521e-15
+},
+{
+"age_myr": 201.3,
+"component": {
+"nodes": 77,
+"area_km2": 217699.93632162677,
+"volume_km3": 372576.19081481395,
+"silt_mean_mm_yr": 0.06827797597344075,
+"sediment_mean_mm_yr": 0.29104340086561403,
+"silt_max_m": 6.827797597344077,
+"sediment_max_m": 179.29470436923697
+},
+"level_groups": [
+{
+"level_m": 771.0,
+"nodes": 7,
+"volume_km3": 39768.382279121266
+},
+{
+"level_m": 782.0,
+"nodes": 5,
+"volume_km3": 22537.27032463983
+},
+{
+"level_m": 789.0,
+"nodes": 4,
+"volume_km3": 21185.099884606927
+}
+],
+"anchor_level_m": 784.662914664163,
+"anchor_connectors": [
+{
+"lake_id": 604,
+"member_count": 2279,
+"is_spilling": true,
+"spill_level_m": -53.79805289910572,
+"clearance_m": -838.4609675632688,
+"edge_km": 54.341138415047865,
+"rim": {
+"node": 72849,
+"bed_m": -53.79805289910572,
+"lake_depth_m": 0.0,
+"silt_m": 6.827797597344077,
+"sediment_deposited_m": 7.115881361833335,
+"net_geomorphic_m": 1.6741932619114692,
+"outside_erosion_m": 0.0
+},
+"target": {
+"node": 72848,
+"bed_m": -60.892759423188444,
+"lake_depth_m": 0.0,
+"silt_m": 6.827797597344077,
+"sediment_deposited_m": 0.2525591356752153,
+"net_geomorphic_m": 1.7307538680724974,
+"outside_erosion_m": 0.0
+}
+},
+{
+"lake_id": 610,
+"member_count": 2419,
+"is_spilling": true,
+"spill_level_m": 353.8895540208348,
+"clearance_m": -430.77336064332826,
+"edge_km": 54.37547951987008,
+"rim": {
+"node": 72782,
+"bed_m": 353.8895540208348,
+"lake_depth_m": 0.0,
+"silt_m": 6.827797597344077,
+"sediment_deposited_m": 0.06996421486696856,
+"net_geomorphic_m": 1.1663763692076827,
+"outside_erosion_m": 0.0
+},
+"target": {
+"node": 72783,
+"bed_m": 353.2463935510433,
+"lake_depth_m": 0.0,
+"silt_m": 6.827797597344077,
+"sediment_deposited_m": 13.328672369568599,
+"net_geomorphic_m": 3.411094917477385,
+"outside_erosion_m": 0.0
+}
+},
+{
+"lake_id": 619,
+"member_count": 2609,
+"is_spilling": true,
+"spill_level_m": 834.5059759343766,
+"clearance_m": 49.843061270213525,
+"edge_km": 54.46325197956462,
+"rim": {
+"node": 70293,
+"bed_m": 858.3077383331483,
+"lake_depth_m": 0.0,
+"silt_m": 2.6951806257296615,
+"sediment_deposited_m": 0.14766720875662542,
+"net_geomorphic_m": -0.24144413204794546,
+"outside_erosion_m": 0.23771105670130055
+},
+"target": {
+"node": 70219,
+"bed_m": 832.8071611530395,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 0.12854690398821708,
+"net_geomorphic_m": -3.7360958309554917,
+"outside_erosion_m": 0.9042432126170752
+}
+}
+],
+"external_supply_m3": 6.515226171064056e+17,
+"internal_transfer_m3": 8.431159961420426e+18,
+"component_implied_supply_m3": 3.62539293209454e+17,
+"component_external_supply_m3": 0.0,
+"world_implied_supply_m3": 8.996848395982954e+18,
+"world_lake_silt_m3": 36887078423530.11,
+"transfers": {
+"count": 112,
+"total_m3": 8.431159961420427e+18,
+"largest_m3": 2.0160495627919312e+17,
+"distinct_sources": 100,
+"max_sends_by_one_source": 2
+},
+"zero_depth_silt": {
+"nodes_final_zero": 1981,
+"nodes_solver_zero": 0,
+"silt_m3_final_zero": 32737735750160.52,
+"silt_m3_solver_zero": 0.0,
+"solver_depth_median_m": 1059.8586350927862,
+"lake_ice_median_m": 0.0
+},
+"normalized_ledger_residual": 1.715816548736354e-13
+},
+{
+"age_myr": 201.4,
+"component": {
+"nodes": 33,
+"area_km2": 91311.6442055858,
+"volume_km3": 2960.7137886066957,
+"silt_mean_mm_yr": 0.07109204119202432,
+"sediment_mean_mm_yr": 0.49164759074849507,
+"silt_max_m": 7.109204119202436,
+"sediment_max_m": 163.63038377245806
+},
+"level_groups": [
+{
+"level_m": 784.0,
+"nodes": 1,
+"volume_km3": 1514.2103109533596
+},
+{
+"level_m": 777.0,
+"nodes": 1,
+"volume_km3": 1321.5319937794736
+},
+{
+"level_m": -26.0,
+"nodes": 1,
+"volume_km3": 4.9994413575107925
+}
+],
+"anchor_level_m": -1059.1534624620213,
+"anchor_connectors": [
+{
+"lake_id": 553,
+"member_count": 2131,
+"is_spilling": true,
+"spill_level_m": -1451.4430102252793,
+"clearance_m": -392.28954776325804,
+"edge_km": 74.27563385789422,
+"rim": {
+"node": 71698,
+"bed_m": -1451.4430102252793,
+"lake_depth_m": 0.0,
+"silt_m": 7.109204119202436,
+"sediment_deposited_m": 0.3601213621156099,
+"net_geomorphic_m": 1.5236113617772844,
+"outside_erosion_m": 0.0
+},
+"target": {
+"node": 71792,
+"bed_m": -1451.8316337583005,
+"lake_depth_m": 0.0,
+"silt_m": 7.109204119202436,
+"sediment_deposited_m": 0.5754313559231968,
+"net_geomorphic_m": 1.3742573905535664,
+"outside_erosion_m": 0.0
+}
+},
+{
+"lake_id": 556,
+"member_count": 2290,
+"is_spilling": true,
+"spill_level_m": -1431.1978034771878,
+"clearance_m": -372.04434101516654,
+"edge_km": 55.1240087326799,
+"rim": {
+"node": 71731,
+"bed_m": -1431.1978034771878,
+"lake_depth_m": 0.0,
+"silt_m": 7.109204119202436,
+"sediment_deposited_m": 0.788639142974437,
+"net_geomorphic_m": 1.8406243560996245,
+"outside_erosion_m": 0.0
+},
+"target": {
+"node": 71635,
+"bed_m": -1431.3408169666418,
+"lake_depth_m": 0.0,
+"silt_m": 7.109204119202436,
+"sediment_deposited_m": 4.005825668141458,
+"net_geomorphic_m": 2.7170072813514707,
+"outside_erosion_m": 0.0
+}
+},
+{
+"lake_id": 559,
+"member_count": 2403,
+"is_spilling": true,
+"spill_level_m": -503.3813639759719,
+"clearance_m": 555.7720984860493,
+"edge_km": 76.4420968430178,
+"rim": {
+"node": 72481,
+"bed_m": -503.3813639759719,
+"lake_depth_m": 0.0,
+"silt_m": 7.109204119202436,
+"sediment_deposited_m": 0.09258654913776039,
+"net_geomorphic_m": 1.6646999868137868,
+"outside_erosion_m": 0.0
+},
+"target": {
+"node": 72572,
+"bed_m": -503.9042366115182,
+"lake_depth_m": 0.0,
+"silt_m": 7.109204119202436,
+"sediment_deposited_m": 0.02941455634913447,
+"net_geomorphic_m": 1.7340498330160585,
+"outside_erosion_m": 0.0
+}
+},
+{
+"lake_id": 592,
+"member_count": 2466,
+"is_spilling": true,
+"spill_level_m": -52.12385963719425,
+"clearance_m": 1007.029602824827,
+"edge_km": 54.34113841479908,
+"rim": {
+"node": 72839,
+"bed_m": -52.12385963719425,
+"lake_depth_m": 0.0,
+"silt_m": 7.109204119202436,
+"sediment_deposited_m": 7.059582532192454,
+"net_geomorphic_m": 1.7430455126263453,
+"outside_erosion_m": 0.0
+},
+"target": {
+"node": 72838,
+"bed_m": -59.16200555511595,
+"lake_depth_m": 0.0,
+"silt_m": 7.109204119202436,
+"sediment_deposited_m": 0.2928812965148972,
+"net_geomorphic_m": 1.8093986571758336,
+"outside_erosion_m": 0.0
+}
+},
+{
+"lake_id": 595,
+"member_count": 2608,
+"is_spilling": true,
+"spill_level_m": 837.3442454493509,
+"clearance_m": 1896.4977079113721,
+"edge_km": 54.46325197956462,
+"rim": {
+"node": 70283,
+"bed_m": 858.3040052578017,
+"lake_depth_m": 0.0,
+"silt_m": 2.899089107212878,
+"sediment_deposited_m": 0.06605916176846281,
+"net_geomorphic_m": -0.6922262132229662,
+"outside_erosion_m": 0.23976205398048478
+},
+"target": {
+"node": 70209,
+"bed_m": 829.9753085347011,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 0.07749881987428678,
+"net_geomorphic_m": -5.236874312749023,
+"outside_erosion_m": 0.9120513260131702
+}
+}
+],
+"external_supply_m3": 6.713493207054296e+17,
+"internal_transfer_m3": 1.4447538198537562e+19,
+"component_implied_supply_m3": 1.5833002856524333e+17,
+"component_external_supply_m3": 0.0,
+"world_implied_supply_m3": 1.2191863381737347e+19,
+"world_lake_silt_m3": 49986639865123.12,
+"transfers": {
+"count": 1086,
+"total_m3": 1.4447538198538346e+19,
+"largest_m3": 2.4574414936001837e+17,
+"distinct_sources": 109,
+"max_sends_by_one_source": 481
+},
+"zero_depth_silt": {
+"nodes_final_zero": 1985,
+"nodes_solver_zero": 0,
+"silt_m3_final_zero": 34246795914931.95,
+"silt_m3_solver_zero": 0.0,
+"solver_depth_median_m": 1072.7986828344885,
+"lake_ice_median_m": 0.0
+},
+"normalized_ledger_residual": 3.810863957182204e-14
+},
+{
+"age_myr": 201.5,
+"component": {
+"nodes": 77,
+"area_km2": 217699.93632162677,
+"volume_km3": 265691.57571484696,
+"silt_mean_mm_yr": 1.060695742287448,
+"sediment_mean_mm_yr": 0.28904299281046425,
+"silt_max_m": 107.23535866168473,
+"sediment_max_m": 172.2995319826146
+},
+"level_groups": [
+{
+"level_m": 271.0,
+"nodes": 6,
+"volume_km3": 28927.14233999146
+},
+{
+"level_m": 277.0,
+"nodes": 4,
+"volume_km3": 18889.935048357467
+},
+{
+"level_m": 278.0,
+"nodes": 5,
+"volume_km3": 17991.824715223585
+}
+],
+"anchor_level_m": 284.7838251412004,
+"anchor_connectors": [
+{
+"lake_id": 577,
+"member_count": 2153,
+"is_spilling": true,
+"spill_level_m": -501.7166639891581,
+"clearance_m": -786.5004891303586,
+"edge_km": 76.4420968430178,
+"rim": {
+"node": 72478,
+"bed_m": -501.7166639891581,
+"lake_depth_m": 0.0,
+"silt_m": 107.23535866168473,
+"sediment_deposited_m": 0.46351877636402705,
+"net_geomorphic_m": 26.058533976410843,
+"outside_erosion_m": null
+},
+"target": {
+"node": 72569,
+"bed_m": -502.1701867785021,
+"lake_depth_m": 0.0,
+"silt_m": 107.23535866168473,
+"sediment_deposited_m": 0.12975237391456076,
+"net_geomorphic_m": 26.21342629876949,
+"outside_erosion_m": null
+}
+},
+{
+"lake_id": 613,
+"member_count": 2292,
+"is_spilling": true,
+"spill_level_m": -50.380814124567905,
+"clearance_m": -335.1646392657683,
+"edge_km": 54.34113841488201,
+"rim": {
+"node": 72836,
+"bed_m": -50.380814124567905,
+"lake_depth_m": 0.0,
+"silt_m": 107.23535866168473,
+"sediment_deposited_m": 7.10732764441288,
+"net_geomorphic_m": 26.24621841911044,
+"outside_erosion_m": null
+},
+"target": {
+"node": 72835,
+"bed_m": -57.35260689794011,
+"lake_depth_m": 0.0,
+"silt_m": 107.23535866168473,
+"sediment_deposited_m": 0.36859106387919593,
+"net_geomorphic_m": 26.303187710694246,
+"outside_erosion_m": null
+}
+},
+{
+"lake_id": 631,
+"member_count": 2431,
+"is_spilling": true,
+"spill_level_m": 358.7119843773678,
+"clearance_m": 73.9281592361674,
+"edge_km": 54.37547951978722,
+"rim": {
+"node": 72769,
+"bed_m": 358.7119843773678,
+"lake_depth_m": 0.0,
+"silt_m": 1.0517905934384568,
+"sediment_deposited_m": 0.1233022642598973,
+"net_geomorphic_m": 0.19759239363884262,
+"outside_erosion_m": null
+},
+"target": {
+"node": 72770,
+"bed_m": 358.17927640929804,
+"lake_depth_m": 0.0,
+"silt_m": 12.230597897923964,
+"sediment_deposited_m": 5301.285162186023,
+"net_geomorphic_m": 899.2103593988212,
+"outside_erosion_m": null
+}
+},
+{
+"lake_id": 634,
+"member_count": 2607,
+"is_spilling": false,
+"spill_level_m": 839.8559335346234,
+"clearance_m": 555.072108393423,
+"edge_km": 54.46325197948188,
+"rim": {
+"node": 70280,
+"bed_m": 857.8515410985592,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 0.1472512923100813,
+"net_geomorphic_m": -1.029979698589159,
+"outside_erosion_m": null
+},
+"target": {
+"node": 70206,
+"bed_m": 825.6504855479652,
+"lake_depth_m": 0.0,
+"silt_m": 0.0,
+"sediment_deposited_m": 0.12403113970774697,
+"net_geomorphic_m": -1.9894443351658992,
+"outside_erosion_m": null
+}
+}
+],
+"external_supply_m3": 6.256008504080824e+17,
+"internal_transfer_m3": 2.0582352343753723e+20,
+"component_implied_supply_m3": 5.632034037868245e+18,
+"component_external_supply_m3": 0.0,
+"world_implied_supply_m3": 1.0548969855603297e+20,
+"world_lake_silt_m3": 432507764079735.2,
+"transfers": {
+"count": 1066,
+"total_m3": 2.0582352343754067e+20,
+"largest_m3": 2.1299559399280918e+17,
+"distinct_sources": 105,
+"max_sends_by_one_source": 477
+},
+"zero_depth_silt": {
+"nodes_final_zero": 1725,
+"nodes_solver_zero": 0,
+"silt_m3_final_zero": 406262977003077.0,
+"silt_m3_solver_zero": 0.0,
+"solver_depth_median_m": 837.0907480643818,
+"lake_ice_median_m": 0.0
+},
+"normalized_ledger_residual": 8.128455717108964e-14
+}
+]
+}
+}
+}

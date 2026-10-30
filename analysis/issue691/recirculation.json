@@ -1,0 +1,1677 @@
+{
+"issue": 691,
+"purpose": "Unperturbed flush-pass measurement. Five 100 kyr steps from each registered G8 checkpoint.",
+"source_commit": "cab3145796bf00c483f0192ce129f4d5531117fe",
+"windows": {
+"A": {
+"checkpoint_sha256": "e4b0b4f09b87584aa7f77045f0f079f2309de0132049915a9aeb5589add27340",
+"records": [
+{
+"step": 1,
+"age_myr": 221.7,
+"leaves": 990,
+"passes": 991,
+"pass_limit": 991,
+"hit_limit": true,
+"internal_transfer_m3": 1.7155324678949375e+20,
+"external_supply_m3": 1.1599028410963935e+18,
+"overflow_to_ocean_m3": 2.4661663865938022e+17,
+"transfer_m3_by_kind": {
+"one_way": 7.763214834331421e+18,
+"reciprocal": 1.6379003195517023e+20
+},
+"top_pairs": [
+{
+"sends": 991,
+"total_m3": 6.956413012991471e+19,
+"first_m3": 7.019589316842935e+16,
+"last_m3": 7.019589316842935e+16,
+"reciprocal": true,
+"source": {
+"lake_id": 1400,
+"members": 259,
+"floor_m": -1972.8884691528842,
+"rim_m": 1559.4557637646972,
+"rim_depth_m": 3532.3442329175814,
+"level_m": 1527.111530847116,
+"drains_at_floor": false,
+"outlet_target": 30116
+},
+"receiver": {
+"lake_id": 551,
+"members": 13,
+"floor_m": 1112.7649160384071,
+"rim_m": 1559.4557637646972,
+"rim_depth_m": 446.69084772629003,
+"level_m": 1559.4557637646972,
+"drains_at_floor": false,
+"outlet_target": 30117
+}
+},
+{
+"sends": 991,
+"total_m3": 6.949814472164123e+19,
+"first_m3": 4210484894949519.0,
+"last_m3": 7.019589316842935e+16,
+"reciprocal": true,
+"source": {
+"lake_id": 551,
+"members": 13,
+"floor_m": 1112.7649160384071,
+"rim_m": 1559.4557637646972,
+"rim_depth_m": 446.69084772629003,
+"level_m": 1559.4557637646972,
+"drains_at_floor": false,
+"outlet_target": 30117
+},
+"receiver": {
+"lake_id": 1400,
+"members": 259,
+"floor_m": -1972.8884691528842,
+"rim_m": 1559.4557637646972,
+"rim_depth_m": 3532.3442329175814,
+"level_m": 1527.111530847116,
+"drains_at_floor": false,
+"outlet_target": 30116
+}
+},
+{
+"sends": 990,
+"total_m3": 3.253257391298222e+18,
+"first_m3": 3286118577068892.5,
+"last_m3": 3286118577068892.5,
+"reciprocal": true,
+"source": {
+"lake_id": 1328,
+"members": 102,
+"floor_m": -2151.7093427710784,
+"rim_m": -835.0992286126609,
+"rim_depth_m": 1316.6101141584174,
+"level_m": -835.0992286126609,
+"drains_at_floor": false,
+"outlet_target": 36589
+},
+"receiver": {
+"lake_id": 638,
+"members": 53,
+"floor_m": -4105.8879355926365,
+"rim_m": -835.0992286126609,
+"rim_depth_m": 3270.7887069799754,
+"level_m": -2305.8879355926365,
+"drains_at_floor": false,
+"outlet_target": 36601
+}
+}
+],
+"final_export_m3": 7.348201174549824e+16,
+"final_exports": [
+{
+"leaf_id": 551,
+"sink": 30115,
+"volume_m3": 7.019589316842935e+16,
+"sink_is_ocean": false
+},
+{
+"leaf_id": 639,
+"sink": 36623,
+"volume_m3": 3286118577068892.5,
+"sink_is_ocean": false
+}
+]
+},
+{
+"step": 2,
+"age_myr": 221.8,
+"leaves": 991,
+"passes": 992,
+"pass_limit": 992,
+"hit_limit": true,
+"internal_transfer_m3": 1.8482856901646913e+20,
+"external_supply_m3": 1.1956493769702024e+18,
+"overflow_to_ocean_m3": 2.5756894118682294e+17,
+"transfer_m3_by_kind": {
+"one_way": 5.208339283665496e+18,
+"reciprocal": 1.7962022973281265e+20
+},
+"top_pairs": [
+{
+"sends": 992,
+"total_m3": 6.6378603556417315e+19,
+"first_m3": 6.691391487542086e+16,
+"last_m3": 6.691391487542086e+16,
+"reciprocal": true,
+"source": {
+"lake_id": 1743,
+"members": 298,
+"floor_m": -1804.9408193849833,
+"rim_m": 2343.376442980675,
+"rim_depth_m": 4148.317262365658,
+"level_m": 1695.0591806150169,
+"drains_at_floor": false,
+"outlet_target": 30123
+},
+"receiver": {
+"lake_id": 551,
+"members": 28,
+"floor_m": 1642.6470255837357,
+"rim_m": 2343.376442980675,
+"rim_depth_m": 700.7294173969394,
+"level_m": 2343.376442980675,
+"drains_at_floor": false,
+"outlet_target": 30115
+}
+},
+{
+"sends": 992,
+"total_m3": 6.6313872253821534e+19,
+"first_m3": 2182612279632439.5,
+"last_m3": 6.691391487542086e+16,
+"reciprocal": true,
+"source": {
+"lake_id": 551,
+"members": 28,
+"floor_m": 1642.6470255837357,
+"rim_m": 2343.376442980675,
+"rim_depth_m": 700.7294173969394,
+"level_m": 2343.376442980675,
+"drains_at_floor": false,
+"outlet_target": 30115
+},
+"receiver": {
+"lake_id": 1743,
+"members": 298,
+"floor_m": -1804.9408193849833,
+"rim_m": 2343.376442980675,
+"rim_depth_m": 4148.317262365658,
+"level_m": 1695.0591806150169,
+"drains_at_floor": false,
+"outlet_target": 30123
+}
+},
+{
+"sends": 989,
+"total_m3": 1.5797739089504438e+19,
+"first_m3": 1.6173513564630618e+16,
+"last_m3": 1.5973244510060426e+16,
+"reciprocal": true,
+"source": {
+"lake_id": 1290,
+"members": 173,
+"floor_m": -4331.091437652859,
+"rim_m": -805.6411459055869,
+"rim_depth_m": 3525.450291747272,
+"level_m": -831.091437652859,
+"drains_at_floor": false,
+"outlet_target": 35538
+},
+"receiver": {
+"lake_id": 1323,
+"members": 181,
+"floor_m": -4241.2504113843825,
+"rim_m": -805.6411459055869,
+"rim_depth_m": 3435.6092654787954,
+"level_m": -805.6411459055867,
+"drains_at_floor": false,
+"outlet_target": 35549
+}
+}
+],
+"final_export_m3": 8.351867418443269e+16,
+"final_exports": [
+{
+"leaf_id": 551,
+"sink": 30122,
+"volume_m3": 6.691391487542086e+16,
+"sink_is_ocean": false
+},
+{
+"leaf_id": 585,
+"sink": 35504,
+"volume_m3": 1.5973244510060426e+16,
+"sink_is_ocean": false
+},
+{
+"leaf_id": 641,
+"sink": 36650,
+"volume_m3": 631514798951395.1,
+"sink_is_ocean": false
+}
+]
+},
+{
+"step": 3,
+"age_myr": 221.9,
+"leaves": 1003,
+"passes": 1004,
+"pass_limit": 1004,
+"hit_limit": true,
+"internal_transfer_m3": 1.909797152525588e+20,
+"external_supply_m3": 1.286305676210398e+18,
+"overflow_to_ocean_m3": 2.9525939447176877e+17,
+"transfer_m3_by_kind": {
+"one_way": 1.1146242529952926e+19,
+"reciprocal": 1.7983347272260354e+20
+},
+"top_pairs": [
+{
+"sends": 1004,
+"total_m3": 8.00161209921402e+19,
+"first_m3": 7.969733166547784e+16,
+"last_m3": 7.969733166547784e+16,
+"reciprocal": true,
+"source": {
+"lake_id": 1773,
+"members": 283,
+"floor_m": -1673.3469604777622,
+"rim_m": 2283.6138045877215,
+"rim_depth_m": 3956.9607650654834,
+"level_m": 1826.653039522238,
+"drains_at_floor": false,
+"outlet_target": 32693
+},
+"receiver": {
+"lake_id": 630,
+"members": 13,
+"floor_m": 2245.8555816687503,
+"rim_m": 2283.6138045877215,
+"rim_depth_m": 37.758222918971114,
+"level_m": 2283.6138045877215,
+"drains_at_floor": false,
+"outlet_target": 32694
+}
+},
+{
+"sends": 1004,
+"total_m3": 7.994096130903289e+19,
+"first_m3": 4537648558188059.0,
+"last_m3": 7.969733166547784e+16,
+"reciprocal": true,
+"source": {
+"lake_id": 630,
+"members": 13,
+"floor_m": 2245.8555816687503,
+"rim_m": 2283.6138045877215,
+"rim_depth_m": 37.758222918971114,
+"level_m": 2283.6138045877215,
+"drains_at_floor": false,
+"outlet_target": 32694
+},
+"receiver": {
+"lake_id": 1773,
+"members": 283,
+"floor_m": -1673.3469604777622,
+"rim_m": 2283.6138045877215,
+"rim_depth_m": 3956.9607650654834,
+"level_m": 1826.653039522238,
+"drains_at_floor": false,
+"outlet_target": 32693
+}
+},
+{
+"sends": 2,
+"total_m3": 5.203977119379602e+17,
+"first_m3": 2.6019909891024528e+17,
+"last_m3": 2.601986130277149e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 1056,
+"members": 919,
+"floor_m": -5445.002417830806,
+"rim_m": -5140.636433155928,
+"rim_depth_m": 304.36598467487784,
+"level_m": -5140.636433155928,
+"drains_at_floor": false,
+"outlet_target": 37685
+},
+"receiver": {
+"lake_id": 700,
+"members": 7,
+"floor_m": -5179.412258923963,
+"rim_m": -5140.636433155928,
+"rim_depth_m": 38.77582576803525,
+"level_m": -5140.636433155928,
+"drains_at_floor": false,
+"outlet_target": 37676
+}
+}
+],
+"final_export_m3": 7.988640295643544e+16,
+"final_exports": [
+{
+"leaf_id": 630,
+"sink": 32693,
+"volume_m3": 7.969733166547784e+16,
+"sink_is_ocean": false
+},
+{
+"leaf_id": 660,
+"sink": 36711,
+"volume_m3": 189071290957599.38,
+"sink_is_ocean": false
+}
+]
+},
+{
+"step": 4,
+"age_myr": 222.0,
+"leaves": 1032,
+"passes": 1033,
+"pass_limit": 1033,
+"hit_limit": true,
+"internal_transfer_m3": 1.8723314052924372e+20,
+"external_supply_m3": 1.244649682610791e+18,
+"overflow_to_ocean_m3": 2.6255197577864736e+17,
+"transfer_m3_by_kind": {
+"one_way": 1.038348741270248e+19,
+"reciprocal": 1.7684965311654065e+20
+},
+"top_pairs": [
+{
+"sends": 1032,
+"total_m3": 7.891916307652538e+19,
+"first_m3": 7.64720572446944e+16,
+"last_m3": 7.64720572446944e+16,
+"reciprocal": true,
+"source": {
+"lake_id": 1832,
+"members": 27,
+"floor_m": 1742.1887722314796,
+"rim_m": 2362.4926371888732,
+"rim_depth_m": 620.3038649573937,
+"level_m": 2362.4926371888732,
+"drains_at_floor": false,
+"outlet_target": 86564
+},
+"receiver": {
+"lake_id": 1814,
+"members": 284,
+"floor_m": -1536.163978410778,
+"rim_m": 2362.4926371888732,
+"rim_depth_m": 3898.6566155996516,
+"level_m": 1963.8360215892221,
+"drains_at_floor": false,
+"outlet_target": 86577
+}
+},
+{
+"sends": 1032,
+"total_m3": 7.891916307652538e+19,
+"first_m3": 7.64720572446944e+16,
+"last_m3": 7.64720572446944e+16,
+"reciprocal": true,
+"source": {
+"lake_id": 1814,
+"members": 284,
+"floor_m": -1536.163978410778,
+"rim_m": 2362.4926371888732,
+"rim_depth_m": 3898.6566155996516,
+"level_m": 1963.8360215892221,
+"drains_at_floor": false,
+"outlet_target": 86577
+},
+"receiver": {
+"lake_id": 1832,
+"members": 27,
+"floor_m": 1742.1887722314796,
+"rim_m": 2362.4926371888732,
+"rim_depth_m": 620.3038649573937,
+"level_m": 2362.4926371888732,
+"drains_at_floor": false,
+"outlet_target": 86564
+}
+},
+{
+"sends": 1027,
+"total_m3": 5.748601464210175e+17,
+"first_m3": 560794909035170.06,
+"last_m3": 559745956639352.2,
+"reciprocal": true,
+"source": {
+"lake_id": 1361,
+"members": 302,
+"floor_m": -2623.5820555397167,
+"rim_m": 113.3891376196695,
+"rim_depth_m": 2736.971193159386,
+"level_m": -823.5820555397167,
+"drains_at_floor": false,
+"outlet_target": 1336
+},
+"receiver": {
+"lake_id": 22,
+"members": 39,
+"floor_m": -72.78764007330557,
+"rim_m": 113.3891376196695,
+"rim_depth_m": 186.17677769297507,
+"level_m": 113.38913761966955,
+"drains_at_floor": false,
+"outlet_target": 1403
+}
+}
+],
+"final_export_m3": 7.703180320133376e+16,
+"final_exports": [
+{
+"leaf_id": 864,
+"sink": 86604,
+"volume_m3": 7.64720572446944e+16,
+"sink_is_ocean": false
+},
+{
+"leaf_id": 22,
+"sink": 1336,
+"volume_m3": 559745956639352.2,
+"sink_is_ocean": false
+}
+]
+},
+{
+"step": 5,
+"age_myr": 222.1,
+"leaves": 988,
+"passes": 989,
+"pass_limit": 989,
+"hit_limit": true,
+"internal_transfer_m3": 5.575296996022463e+20,
+"external_supply_m3": 1.342853920265424e+18,
+"overflow_to_ocean_m3": 2.606947153433793e+17,
+"transfer_m3_by_kind": {
+"one_way": 1.0166577601644562e+19,
+"reciprocal": 5.473631220006461e+20
+},
+"top_pairs": [
+{
+"sends": 909,
+"total_m3": 1.8728515301706655e+20,
+"first_m3": 2.0607506817283683e+17,
+"last_m3": 2.060342268159668e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 1296,
+"members": 6182,
+"floor_m": -5448.750610868388,
+"rim_m": -1365.4875314812084,
+"rim_depth_m": 4083.26307938718,
+"level_m": -1948.7506108683883,
+"drains_at_floor": false,
+"outlet_target": 3912
+},
+"receiver": {
+"lake_id": 77,
+"members": 155,
+"floor_m": -2460.7622906276365,
+"rim_m": -1365.4875314812084,
+"rim_depth_m": 1095.274759146428,
+"level_m": -1365.4875314812084,
+"drains_at_floor": false,
+"outlet_target": 3990
+}
+},
+{
+"sends": 908,
+"total_m3": 1.8707907794889372e+20,
+"first_m3": 2.060342268159668e+17,
+"last_m3": 2.060342268159668e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 77,
+"members": 155,
+"floor_m": -2460.7622906276365,
+"rim_m": -1365.4875314812084,
+"rim_depth_m": 1095.274759146428,
+"level_m": -1365.4875314812084,
+"drains_at_floor": false,
+"outlet_target": 3990
+},
+"receiver": {
+"lake_id": 1296,
+"members": 6182,
+"floor_m": -5448.750610868388,
+"rim_m": -1365.4875314812084,
+"rim_depth_m": 4083.26307938718,
+"level_m": -1948.7506108683883,
+"drains_at_floor": false,
+"outlet_target": 3912
+}
+},
+{
+"sends": 989,
+"total_m3": 7.38779372528332e+19,
+"first_m3": 7.470568133127458e+16,
+"last_m3": 7.469962709666102e+16,
+"reciprocal": true,
+"source": {
+"lake_id": 1719,
+"members": 281,
+"floor_m": -1382.311637573901,
+"rim_m": 2376.5758791979333,
+"rim_depth_m": 3758.8875167718343,
+"level_m": 2117.688362426099,
+"drains_at_floor": false,
+"outlet_target": 86586
+},
+"receiver": {
+"lake_id": 1758,
+"members": 26,
+"floor_m": 1841.0394435532985,
+"rim_m": 2376.5758791979333,
+"rim_depth_m": 535.5364356446348,
+"level_m": 2376.5758791979333,
+"drains_at_floor": false,
+"outlet_target": 86573
+}
+}
+],
+"final_export_m3": 2.8313435693748653e+17,
+"final_exports": [
+{
+"leaf_id": 77,
+"sink": 3831,
+"volume_m3": 2.060342268159668e+17,
+"sink_is_ocean": false
+},
+{
+"leaf_id": 819,
+"sink": 86600,
+"volume_m3": 7.469962709666102e+16,
+"sink_is_ocean": false
+},
+{
+"leaf_id": 20,
+"sink": 1403,
+"volume_m3": 2400503024858716.0,
+"sink_is_ocean": false
+}
+]
+}
+]
+},
+"B": {
+"checkpoint_sha256": "86fb5b7d2044846ac751906ff996184c7abe5454c93b39033bd82338e8749544",
+"records": [
+{
+"step": 1,
+"age_myr": 222.2,
+"leaves": 1006,
+"passes": 1007,
+"pass_limit": 1007,
+"hit_limit": true,
+"internal_transfer_m3": 5.8056669032274795e+20,
+"external_supply_m3": 1.0791828810987927e+18,
+"overflow_to_ocean_m3": 2.2318293546559766e+17,
+"transfer_m3_by_kind": {
+"one_way": 9.993934322974302e+18,
+"reciprocal": 5.7057275599974236e+20
+},
+"top_pairs": [
+{
+"sends": 939,
+"total_m3": 1.9108752340282992e+20,
+"first_m3": 2.03501089885866e+17,
+"last_m3": 2.03501089885866e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 1320,
+"members": 6140,
+"floor_m": -5441.849328257646,
+"rim_m": -1358.145491627084,
+"rim_depth_m": 4083.7038366305624,
+"level_m": -1941.8493282576464,
+"drains_at_floor": false,
+"outlet_target": 3912
+},
+"receiver": {
+"lake_id": 1350,
+"members": 155,
+"floor_m": -2268.4622727243645,
+"rim_m": -1358.145491627084,
+"rim_depth_m": 910.3167810972805,
+"level_m": -1358.145491627084,
+"drains_at_floor": false,
+"outlet_target": 3989
+}
+},
+{
+"sends": 938,
+"total_m3": 1.9088402231294404e+20,
+"first_m3": 2.03501089885866e+17,
+"last_m3": 2.03501089885866e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 1350,
+"members": 155,
+"floor_m": -2268.4622727243645,
+"rim_m": -1358.145491627084,
+"rim_depth_m": 910.3167810972805,
+"level_m": -1358.145491627084,
+"drains_at_floor": false,
+"outlet_target": 3989
+},
+"receiver": {
+"lake_id": 1320,
+"members": 6140,
+"floor_m": -5441.849328257646,
+"rim_m": -1358.145491627084,
+"rim_depth_m": 4083.7038366305624,
+"level_m": -1941.8493282576464,
+"drains_at_floor": false,
+"outlet_target": 3912
+}
+},
+{
+"sends": 1006,
+"total_m3": 8.423898913494337e+19,
+"first_m3": 8.373656971664346e+16,
+"last_m3": 8.373656971664346e+16,
+"reciprocal": true,
+"source": {
+"lake_id": 1839,
+"members": 26,
+"floor_m": 1913.3964491088554,
+"rim_m": 2389.6769513669224,
+"rim_depth_m": 476.2805022580669,
+"level_m": 2389.6769513669224,
+"drains_at_floor": false,
+"outlet_target": 86579
+},
+"receiver": {
+"lake_id": 1779,
+"members": 283,
+"floor_m": -1241.7694437689618,
+"rim_m": 2389.6769513669224,
+"rim_depth_m": 3631.446395135884,
+"level_m": 2258.2305562310385,
+"drains_at_floor": false,
+"outlet_target": 86592
+}
+}
+],
+"final_export_m3": 2.895807957167272e+17,
+"final_exports": [
+{
+"leaf_id": 74,
+"sink": 3830,
+"volume_m3": 2.03501089885866e+17,
+"sink_is_ocean": false
+},
+{
+"leaf_id": 838,
+"sink": 86606,
+"volume_m3": 8.373656971664346e+16,
+"sink_is_ocean": false
+},
+{
+"leaf_id": 570,
+"sink": 31412,
+"volume_m3": 2343136114217741.5,
+"sink_is_ocean": false
+}
+]
+},
+{
+"step": 2,
+"age_myr": 222.3,
+"leaves": 990,
+"passes": 991,
+"pass_limit": 991,
+"hit_limit": true,
+"internal_transfer_m3": 2.3793012928709893e+20,
+"external_supply_m3": 1.1298363610303587e+18,
+"overflow_to_ocean_m3": 5.01069377820725e+17,
+"transfer_m3_by_kind": {
+"one_way": 1.3120190960004616e+19,
+"reciprocal": 2.248099383270971e+20
+},
+"top_pairs": [
+{
+"sends": 989,
+"total_m3": 1.0452116216811833e+20,
+"first_m3": 1.0568368267757203e+17,
+"last_m3": 1.0568368267757203e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 1838,
+"members": 306,
+"floor_m": -1090.7969641813233,
+"rim_m": 2449.5667934026924,
+"rim_depth_m": 3540.3637575840157,
+"level_m": 2409.2030358186767,
+"drains_at_floor": false,
+"outlet_target": 30119
+},
+"receiver": {
+"lake_id": 541,
+"members": 30,
+"floor_m": 1815.2375283069232,
+"rim_m": 2449.5667934026924,
+"rim_depth_m": 634.3292650957692,
+"level_m": 2449.5667934026924,
+"drains_at_floor": false,
+"outlet_target": 30111
+}
+},
+{
+"sends": 988,
+"total_m3": 1.0441547848544076e+20,
+"first_m3": 1.0568368267757203e+17,
+"last_m3": 1.0568368267757203e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 541,
+"members": 30,
+"floor_m": 1815.2375283069232,
+"rim_m": 2449.5667934026924,
+"rim_depth_m": 634.3292650957692,
+"level_m": 2449.5667934026924,
+"drains_at_floor": false,
+"outlet_target": 30111
+},
+"receiver": {
+"lake_id": 1838,
+"members": 306,
+"floor_m": -1090.7969641813233,
+"rim_m": 2449.5667934026924,
+"rim_depth_m": 3540.3637575840157,
+"level_m": 2409.2030358186767,
+"drains_at_floor": false,
+"outlet_target": 30119
+}
+},
+{
+"sends": 986,
+"total_m3": 5.349936756491254e+17,
+"first_m3": 543975586213249.0,
+"last_m3": 542588527982642.1,
+"reciprocal": true,
+"source": {
+"lake_id": 1409,
+"members": 191,
+"floor_m": -1543.7081537590193,
+"rim_m": 873.1089225798864,
+"rim_depth_m": 2416.8170763389057,
+"level_m": 256.2918462409808,
+"drains_at_floor": false,
+"outlet_target": 36766
+},
+"receiver": {
+"lake_id": 633,
+"members": 59,
+"floor_m": 756.8498927129581,
+"rim_m": 873.1089225798864,
+"rim_depth_m": 116.25902986692836,
+"level_m": 873.1089225798864,
+"drains_at_floor": false,
+"outlet_target": 36756
+}
+}
+],
+"final_export_m3": 1.0630842149218843e+17,
+"final_exports": [
+{
+"leaf_id": 541,
+"sink": 30118,
+"volume_m3": 1.0568368267757203e+17,
+"sink_is_ocean": false
+},
+{
+"leaf_id": 633,
+"sink": 36766,
+"volume_m3": 542588527982642.1,
+"sink_is_ocean": false
+},
+{
+"leaf_id": 651,
+"sink": 37044,
+"volume_m3": 82150286633758.44,
+"sink_is_ocean": false
+}
+]
+},
+{
+"step": 3,
+"age_myr": 222.4,
+"leaves": 960,
+"passes": 961,
+"pass_limit": 961,
+"hit_limit": true,
+"internal_transfer_m3": 4.5551452017466035e+20,
+"external_supply_m3": 1.1405312631865526e+18,
+"overflow_to_ocean_m3": 3.192895093434626e+17,
+"transfer_m3_by_kind": {
+"one_way": 1.352066503976614e+19,
+"reciprocal": 4.4199385513492244e+20
+},
+"top_pairs": [
+{
+"sends": 879,
+"total_m3": 2.0701409371366736e+20,
+"first_m3": 2.355109143500148e+17,
+"last_m3": 2.355109143500148e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 1316,
+"members": 238,
+"floor_m": -2651.930852533809,
+"rim_m": -900.5790190508156,
+"rim_depth_m": 1751.3518334829932,
+"level_m": -900.5790190508155,
+"drains_at_floor": false,
+"outlet_target": 94109
+},
+"receiver": {
+"lake_id": 1271,
+"members": 6261,
+"floor_m": -5437.128693738483,
+"rim_m": -900.5790190508156,
+"rim_depth_m": 4536.549674687667,
+"level_m": -1937.128693738483,
+"drains_at_floor": false,
+"outlet_target": 39093
+}
+},
+{
+"sends": 879,
+"total_m3": 2.0701409371366736e+20,
+"first_m3": 2.355109143500148e+17,
+"last_m3": 2.355109143500148e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 1271,
+"members": 6261,
+"floor_m": -5437.128693738483,
+"rim_m": -900.5790190508156,
+"rim_depth_m": 4536.549674687667,
+"level_m": -1937.128693738483,
+"drains_at_floor": false,
+"outlet_target": 39093
+},
+"receiver": {
+"lake_id": 1316,
+"members": 238,
+"floor_m": -2651.930852533809,
+"rim_m": -900.5790190508156,
+"rim_depth_m": 1751.3518334829932,
+"level_m": -900.5790190508155,
+"drains_at_floor": false,
+"outlet_target": 94109
+}
+},
+{
+"sends": 950,
+"total_m3": 2.3960526656564695e+18,
+"first_m3": 2525210008259012.0,
+"last_m3": 2522157487511289.5,
+"reciprocal": true,
+"source": {
+"lake_id": 1403,
+"members": 188,
+"floor_m": -1499.9911794894172,
+"rim_m": 1042.9528533725443,
+"rim_depth_m": 2542.944032861961,
+"level_m": 300.00882051058295,
+"drains_at_floor": false,
+"outlet_target": 36765
+},
+"receiver": {
+"lake_id": 636,
+"members": 58,
+"floor_m": 817.8055396934892,
+"rim_m": 1042.9528533725443,
+"rim_depth_m": 225.14731367905506,
+"level_m": 1042.9528533725443,
+"drains_at_floor": false,
+"outlet_target": 36743
+}
+}
+],
+"final_export_m3": 2.3803307183752608e+17,
+"final_exports": [
+{
+"leaf_id": 707,
+"sink": 39153,
+"volume_m3": 2.355109143500148e+17,
+"sink_is_ocean": false
+},
+{
+"leaf_id": 636,
+"sink": 36771,
+"volume_m3": 2522157487511289.5,
+"sink_is_ocean": false
+}
+]
+},
+{
+"step": 4,
+"age_myr": 222.5,
+"leaves": 999,
+"passes": 87,
+"pass_limit": 1000,
+"hit_limit": false,
+"internal_transfer_m3": 3.777849226464992e+19,
+"external_supply_m3": 1.1517095524894497e+18,
+"overflow_to_ocean_m3": 5.7380554336089363e+17,
+"transfer_m3_by_kind": {
+"one_way": 1.369572280056567e+19,
+"reciprocal": 2.4082769464084242e+19
+},
+"top_pairs": [
+{
+"sends": 2,
+"total_m3": 5.379800642428472e+17,
+"first_m3": 2.6899096523311987e+17,
+"last_m3": 2.6898909900972733e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 321,
+"members": 39,
+"floor_m": -5382.93895920511,
+"rim_m": -5184.940773107512,
+"rim_depth_m": 197.9981860975986,
+"level_m": -5184.940773107512,
+"drains_at_floor": false,
+"outlet_target": 40193
+},
+"receiver": {
+"lake_id": 688,
+"members": 38,
+"floor_m": -5379.014381160651,
+"rim_m": -5184.940773107512,
+"rim_depth_m": 194.07360805313965,
+"level_m": -5184.940773107512,
+"drains_at_floor": false,
+"outlet_target": 37776
+}
+},
+{
+"sends": 2,
+"total_m3": 5.3796325575832e+17,
+"first_m3": 2.6898180771132384e+17,
+"last_m3": 2.6898144804699616e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 1016,
+"members": 65,
+"floor_m": -5402.639196789781,
+"rim_m": -5164.349245926684,
+"rim_depth_m": 238.28995086309715,
+"level_m": -5164.349245926684,
+"drains_at_floor": false,
+"outlet_target": 37812
+},
+"receiver": {
+"lake_id": 128,
+"members": 17,
+"floor_m": -5172.364057876125,
+"rim_m": -5164.349245926684,
+"rim_depth_m": 8.014811949441537,
+"level_m": -5164.349245926684,
+"drains_at_floor": false,
+"outlet_target": 37802
+}
+},
+{
+"sends": 2,
+"total_m3": 5.379357129504041e+17,
+"first_m3": 2.6896800884556976e+17,
+"last_m3": 2.6896770410483434e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 689,
+"members": 67,
+"floor_m": -5239.394315795169,
+"rim_m": -5072.97795010501,
+"rim_depth_m": 166.41636569015918,
+"level_m": -5072.97795010501,
+"drains_at_floor": false,
+"outlet_target": 40317
+},
+"receiver": {
+"lake_id": 737,
+"members": 8,
+"floor_m": -5075.087240344393,
+"rim_m": -5072.97795010501,
+"rim_depth_m": 2.1092902393829718,
+"level_m": -5072.97795010501,
+"drains_at_floor": false,
+"outlet_target": 40343
+}
+}
+],
+"final_export_m3": 0.0,
+"final_exports": []
+},
+{
+"step": 5,
+"age_myr": 222.6,
+"leaves": 971,
+"passes": 972,
+"pass_limit": 972,
+"hit_limit": true,
+"internal_transfer_m3": 4.620030396848501e+20,
+"external_supply_m3": 1.219108501074656e+18,
+"overflow_to_ocean_m3": 4.06279013329309e+17,
+"transfer_m3_by_kind": {
+"one_way": 1.2789654778716707e+19,
+"reciprocal": 4.492133849061477e+20
+},
+"top_pairs": [
+{
+"sends": 889,
+"total_m3": 2.1293416442642036e+20,
+"first_m3": 2.3952277450038355e+17,
+"last_m3": 2.395209928512583e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 1279,
+"members": 6184,
+"floor_m": -5429.666099166675,
+"rim_m": -416.4038649217223,
+"rim_depth_m": 5013.262234244952,
+"level_m": -1929.666099166675,
+"drains_at_floor": false,
+"outlet_target": 32055
+},
+"receiver": {
+"lake_id": 583,
+"members": 14,
+"floor_m": -455.13079775515223,
+"rim_m": -416.4038649217223,
+"rim_depth_m": 38.72693283342994,
+"level_m": -416.4038649217223,
+"drains_at_floor": false,
+"outlet_target": 32056
+}
+},
+{
+"sends": 888,
+"total_m3": 2.1269464165191995e+20,
+"first_m3": 2.3952099285125827e+17,
+"last_m3": 2.395209928512583e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 583,
+"members": 14,
+"floor_m": -455.13079775515223,
+"rim_m": -416.4038649217223,
+"rim_depth_m": 38.72693283342994,
+"level_m": -416.4038649217223,
+"drains_at_floor": false,
+"outlet_target": 32056
+},
+"receiver": {
+"lake_id": 1279,
+"members": 6184,
+"floor_m": -5429.666099166675,
+"rim_m": -416.4038649217223,
+"rim_depth_m": 5013.262234244952,
+"level_m": -1929.666099166675,
+"drains_at_floor": false,
+"outlet_target": 32055
+}
+},
+{
+"sends": 2,
+"total_m3": 5.3388176260010016e+17,
+"first_m3": 2.669411427454895e+17,
+"last_m3": 2.6694061985461066e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 1030,
+"members": 749,
+"floor_m": -5429.666099166675,
+"rim_m": -5091.826969440908,
+"rim_depth_m": 337.8391297257667,
+"level_m": -5091.826969440908,
+"drains_at_floor": false,
+"outlet_target": 37671
+},
+"receiver": {
+"lake_id": 684,
+"members": 7,
+"floor_m": -5140.707846082098,
+"rim_m": -5091.826969440908,
+"rim_depth_m": 48.88087664118939,
+"level_m": -5091.826969440908,
+"drains_at_floor": false,
+"outlet_target": 37662
+}
+}
+],
+"final_export_m3": 2.397511663732085e+17,
+"final_exports": [
+{
+"leaf_id": 583,
+"sink": 32100,
+"volume_m3": 2.395209928512583e+17,
+"sink_is_ocean": false
+},
+{
+"leaf_id": 638,
+"sink": 36714,
+"volume_m3": 230173521950216.56,
+"sink_is_ocean": false
+}
+]
+}
+]
+},
+"C": {
+"checkpoint_sha256": "041b7430a6cf8867f2e2c76f18c3328e440add585ee4a2e4b3055e7766c2217e",
+"records": [
+{
+"step": 1,
+"age_myr": 201.1,
+"leaves": 502,
+"passes": 26,
+"pass_limit": 503,
+"hit_limit": false,
+"internal_transfer_m3": 6.475113379299364e+18,
+"external_supply_m3": 6.238017413947896e+17,
+"overflow_to_ocean_m3": 4.4040389852387226e+17,
+"transfer_m3_by_kind": {
+"one_way": 3.2911345890940657e+18,
+"reciprocal": 3.1839787902052956e+18
+},
+"top_pairs": [
+{
+"sends": 2,
+"total_m3": 3.832492192712992e+17,
+"first_m3": 1.916246623350599e+17,
+"last_m3": 1.9162455693623926e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 549,
+"members": 945,
+"floor_m": -1472.053472661308,
+"rim_m": -1471.4281882486523,
+"rim_depth_m": 0.6252844126556738,
+"level_m": -1471.4281882486523,
+"drains_at_floor": false,
+"outlet_target": 72225
+},
+"receiver": {
+"lake_id": 90,
+"members": 884,
+"floor_m": -1471.9683168727095,
+"rim_m": -1471.4281882486523,
+"rim_depth_m": 0.5401286240571608,
+"level_m": -1471.4281882486523,
+"drains_at_floor": false,
+"outlet_target": 72129
+}
+},
+{
+"sends": 2,
+"total_m3": 3.832157949669044e+17,
+"first_m3": 1.9160795279833142e+17,
+"last_m3": 1.9160784216857296e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 576,
+"members": 2216,
+"floor_m": -1472.053472661308,
+"rim_m": -1454.8864154936248,
+"rim_depth_m": 17.167057167683197,
+"level_m": -1454.8864154936248,
+"drains_at_floor": false,
+"outlet_target": 71815
+},
+"receiver": {
+"lake_id": 93,
+"members": 156,
+"floor_m": -1467.6667000687369,
+"rim_m": -1454.8864154936248,
+"rim_depth_m": 12.780284575112091,
+"level_m": -1454.8864154936248,
+"drains_at_floor": false,
+"outlet_target": 71721
+}
+},
+{
+"sends": 2,
+"total_m3": 3.787199210220741e+17,
+"first_m3": 1.8936003084296157e+17,
+"last_m3": 1.8935989017911254e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 579,
+"members": 2372,
+"floor_m": -1472.053472661308,
+"rim_m": -508.3126736650464,
+"rim_depth_m": 963.7407989962616,
+"level_m": -508.3126736650464,
+"drains_at_floor": false,
+"outlet_target": 72595
+},
+"receiver": {
+"lake_id": 99,
+"members": 93,
+"floor_m": -521.0661534154175,
+"rim_m": -508.3126736650464,
+"rim_depth_m": 12.75347975037107,
+"level_m": -508.3126736650464,
+"drains_at_floor": false,
+"outlet_target": 72504
+}
+}
+],
+"final_export_m3": 0.0,
+"final_exports": []
+},
+{
+"step": 2,
+"age_myr": 201.2,
+"leaves": 489,
+"passes": 33,
+"pass_limit": 490,
+"hit_limit": false,
+"internal_transfer_m3": 9.43313580431962e+18,
+"external_supply_m3": 6.162936046803475e+17,
+"overflow_to_ocean_m3": 4.461775733837007e+17,
+"transfer_m3_by_kind": {
+"one_way": 4.3300395260803067e+18,
+"reciprocal": 5.103096278239314e+18
+},
+"top_pairs": [
+{
+"sends": 2,
+"total_m3": 4.397875304259493e+17,
+"first_m3": 2.1989380202586083e+17,
+"last_m3": 2.1989372840008848e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 527,
+"members": 806,
+"floor_m": -1470.4327632021634,
+"rim_m": -1469.8147919764801,
+"rim_depth_m": 0.6179712256832772,
+"level_m": -1469.8147919764801,
+"drains_at_floor": false,
+"outlet_target": 72221
+},
+"receiver": {
+"lake_id": 88,
+"members": 842,
+"floor_m": -1470.356354348873,
+"rim_m": -1469.8147919764801,
+"rim_depth_m": 0.5415623723929457,
+"level_m": -1469.8147919764801,
+"drains_at_floor": false,
+"outlet_target": 72125
+}
+},
+{
+"sends": 2,
+"total_m3": 4.3978475971359155e+17,
+"first_m3": 2.198924189727315e+17,
+"last_m3": 2.198923407408601e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 551,
+"members": 1944,
+"floor_m": -1470.4327632021634,
+"rim_m": -1467.6425577177968,
+"rim_depth_m": 2.790205484366652,
+"level_m": -1467.6425577177968,
+"drains_at_floor": false,
+"outlet_target": 71909
+},
+"receiver": {
+"lake_id": 91,
+"members": 43,
+"floor_m": -1468.205224879322,
+"rim_m": -1467.6425577177968,
+"rim_depth_m": 0.562667161525269,
+"level_m": -1467.6425577177968,
+"drains_at_floor": false,
+"outlet_target": 72005
+}
+},
+{
+"sends": 2,
+"total_m3": 4.397569490705856e+17,
+"first_m3": 2.1987885625767194e+17,
+"last_m3": 2.198780928129137e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 566,
+"members": 2187,
+"floor_m": -1470.4327632021634,
+"rim_m": -1454.1836596714882,
+"rim_depth_m": 16.249103530675256,
+"level_m": -1454.1836596714882,
+"drains_at_floor": false,
+"outlet_target": 71811
+},
+"receiver": {
+"lake_id": 90,
+"members": 140,
+"floor_m": -1464.4244522828633,
+"rim_m": -1454.1836596714882,
+"rim_depth_m": 10.240792611375127,
+"level_m": -1454.1836596714882,
+"drains_at_floor": false,
+"outlet_target": 71717
+}
+}
+],
+"final_export_m3": 0.0,
+"final_exports": []
+},
+{
+"step": 3,
+"age_myr": 201.3,
+"leaves": 485,
+"passes": 31,
+"pass_limit": 486,
+"hit_limit": false,
+"internal_transfer_m3": 8.431159961420426e+18,
+"external_supply_m3": 6.515226171064056e+17,
+"overflow_to_ocean_m3": 4.7616623422723494e+17,
+"transfer_m3_by_kind": {
+"one_way": 3.650113229049785e+18,
+"reciprocal": 4.781046732370642e+18
+},
+"top_pairs": [
+{
+"sends": 2,
+"total_m3": 4.032096304510107e+17,
+"first_m3": 2.016048327087099e+17,
+"last_m3": 2.016047977423008e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 514,
+"members": 601,
+"floor_m": -1468.5084644945957,
+"rim_m": -1467.8941139575854,
+"rim_depth_m": 0.6143505370102957,
+"level_m": -1467.8941139575854,
+"drains_at_floor": false,
+"outlet_target": 72212
+},
+"receiver": {
+"lake_id": 88,
+"members": 646,
+"floor_m": -1468.4370987505042,
+"rim_m": -1467.8941139575854,
+"rim_depth_m": 0.5429847929187872,
+"level_m": -1467.8941139575854,
+"drains_at_floor": false,
+"outlet_target": 72116
+}
+},
+{
+"sends": 2,
+"total_m3": 4.032072362096526e+17,
+"first_m3": 2.016036551359291e+17,
+"last_m3": 2.016035810737235e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 535,
+"members": 1521,
+"floor_m": -1468.5084644945957,
+"rim_m": -1465.866635999973,
+"rim_depth_m": 2.641828494622814,
+"level_m": -1465.866635999973,
+"drains_at_floor": false,
+"outlet_target": 71900
+},
+"receiver": {
+"lake_id": 92,
+"members": 43,
+"floor_m": -1466.1168641486863,
+"rim_m": -1465.866635999973,
+"rim_depth_m": 0.25022814871340415,
+"level_m": -1465.866635999973,
+"drains_at_floor": false,
+"outlet_target": 71996
+}
+},
+{
+"sends": 2,
+"total_m3": 4.031816651197011e+17,
+"first_m3": 2.0159119776050602e+17,
+"last_m3": 2.0159046735919507e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 553,
+"members": 1989,
+"floor_m": -1468.5084644945957,
+"rim_m": -1452.9341749859357,
+"rim_depth_m": 15.574289508660058,
+"level_m": -1452.9341749859357,
+"drains_at_floor": false,
+"outlet_target": 71802
+},
+"receiver": {
+"lake_id": 89,
+"members": 138,
+"floor_m": -1460.8631260308384,
+"rim_m": -1452.9341749859357,
+"rim_depth_m": 7.92895104490276,
+"level_m": -1452.9341749859357,
+"drains_at_floor": false,
+"outlet_target": 71708
+}
+}
+],
+"final_export_m3": 0.0,
+"final_exports": []
+},
+{
+"step": 4,
+"age_myr": 201.4,
+"leaves": 488,
+"passes": 489,
+"pass_limit": 489,
+"hit_limit": true,
+"internal_transfer_m3": 1.4447538198537562e+19,
+"external_supply_m3": 6.713493207054296e+17,
+"overflow_to_ocean_m3": 4.795237020955432e+17,
+"transfer_m3_by_kind": {
+"one_way": 4.390493451523496e+18,
+"reciprocal": 1.0057044747014908e+19
+},
+"top_pairs": [
+{
+"sends": 480,
+"total_m3": 2.9036331372581453e+18,
+"first_m3": 6049235702621080.0,
+"last_m3": 6049235702621080.0,
+"reciprocal": true,
+"source": {
+"lake_id": 631,
+"members": 533,
+"floor_m": -399.80041625671834,
+"rim_m": 1627.1678681268304,
+"rim_depth_m": 2026.9682843835487,
+"level_m": 1400.199583743282,
+"drains_at_floor": false,
+"outlet_target": 162533
+},
+"receiver": {
+"lake_id": 243,
+"members": 41,
+"floor_m": 1588.5443573158082,
+"rim_m": 1627.1678681268304,
+"rim_depth_m": 38.62351081102224,
+"level_m": 1627.1678681268304,
+"drains_at_floor": false,
+"outlet_target": 162578
+}
+},
+{
+"sends": 479,
+"total_m3": 2.897583901555524e+18,
+"first_m3": 6049235702621080.0,
+"last_m3": 6049235702621080.0,
+"reciprocal": true,
+"source": {
+"lake_id": 243,
+"members": 41,
+"floor_m": 1588.5443573158082,
+"rim_m": 1627.1678681268304,
+"rim_depth_m": 38.62351081102224,
+"level_m": 1627.1678681268304,
+"drains_at_floor": false,
+"outlet_target": 162578
+},
+"receiver": {
+"lake_id": 631,
+"members": 533,
+"floor_m": -399.80041625671834,
+"rim_m": 1627.1678681268304,
+"rim_depth_m": 2026.9682843835487,
+"level_m": 1400.199583743282,
+"drains_at_floor": false,
+"outlet_target": 162533
+}
+},
+{
+"sends": 2,
+"total_m3": 4.9148798337807475e+17,
+"first_m3": 2.4574402783202717e+17,
+"last_m3": 2.457439555460476e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 514,
+"members": 665,
+"floor_m": -1466.8376657285485,
+"rim_m": -1466.2234885844337,
+"rim_depth_m": 0.6141771441148194,
+"level_m": -1466.2234885844337,
+"drains_at_floor": false,
+"outlet_target": 72202
+},
+"receiver": {
+"lake_id": 86,
+"members": 804,
+"floor_m": -1466.7678788969913,
+"rim_m": -1466.2234885844337,
+"rim_depth_m": 0.5443903125576526,
+"level_m": -1466.2234885844337,
+"drains_at_floor": false,
+"outlet_target": 72106
+}
+}
+],
+"final_export_m3": 6049235702621080.0,
+"final_exports": [
+{
+"leaf_id": 243,
+"sink": 162534,
+"volume_m3": 6049235702621080.0,
+"sink_is_ocean": false
+}
+]
+},
+{
+"step": 5,
+"age_myr": 201.5,
+"leaves": 503,
+"passes": 504,
+"pass_limit": 504,
+"hit_limit": true,
+"internal_transfer_m3": 2.0582352343753723e+20,
+"external_supply_m3": 6.256008504080824e+17,
+"overflow_to_ocean_m3": 1.7737359307324522e+17,
+"transfer_m3_by_kind": {
+"one_way": 3.502807193014328e+18,
+"reciprocal": 2.0232071624452732e+20
+},
+"top_pairs": [
+{
+"sends": 477,
+"total_m3": 9.917145647981188e+19,
+"first_m3": 2.0790665403875027e+17,
+"last_m3": 2.0790661728103498e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 631,
+"members": 2431,
+"floor_m": -1465.0794387141202,
+"rim_m": 358.7119843773678,
+"rim_depth_m": 1823.791423091488,
+"level_m": 334.9205612858799,
+"drains_at_floor": false,
+"outlet_target": 72770
+},
+"receiver": {
+"lake_id": 95,
+"members": 176,
+"floor_m": 358.17927640929804,
+"rim_m": 358.7119843773678,
+"rim_depth_m": 0.532707968069758,
+"level_m": 358.7119843773678,
+"drains_at_floor": false,
+"outlet_target": 72769
+}
+},
+{
+"sends": 476,
+"total_m3": 9.896354982577313e+19,
+"first_m3": 2.0790661728103498e+17,
+"last_m3": 2.0790661728103498e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 95,
+"members": 176,
+"floor_m": 358.17927640929804,
+"rim_m": 358.7119843773678,
+"rim_depth_m": 0.532707968069758,
+"level_m": 358.7119843773678,
+"drains_at_floor": false,
+"outlet_target": 72769
+},
+"receiver": {
+"lake_id": 631,
+"members": 2431,
+"floor_m": -1465.0794387141202,
+"rim_m": 358.7119843773678,
+"rim_depth_m": 1823.791423091488,
+"level_m": 334.9205612858799,
+"drains_at_floor": false,
+"outlet_target": 72770
+}
+},
+{
+"sends": 2,
+"total_m3": 4.2599089979268506e+17,
+"first_m3": 2.1299548917701846e+17,
+"last_m3": 2.1299541061566656e+17,
+"reciprocal": true,
+"source": {
+"lake_id": 532,
+"members": 674,
+"floor_m": -1465.0794387141202,
+"rim_m": -1464.484074441827,
+"rim_depth_m": 0.5953642722931818,
+"level_m": -1464.484074441827,
+"drains_at_floor": false,
+"outlet_target": 72199
+},
+"receiver": {
+"lake_id": 88,
+"members": 667,
+"floor_m": -1465.029857418566,
+"rim_m": -1464.484074441827,
+"rim_depth_m": 0.5457829767390194,
+"level_m": -1464.484074441827,
+"drains_at_floor": false,
+"outlet_target": 72103
+}
+}
+],
+"final_export_m3": 2.0790661728103498e+17,
+"final_exports": [
+{
+"leaf_id": 95,
+"sink": 72770,
+"volume_m3": 2.0790661728103498e+17,
+"sink_is_ocean": false
+}
+]
+}
+]
+}
+}
+}
