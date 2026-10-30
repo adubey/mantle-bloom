@@ -97,7 +97,7 @@ cratons sit (RFC 0009).
 ### Rifting and thin-shell diagnostics
 
 [Rifting and thin-shell scripts](debugging/scripts-rifting.md): RFC 0010's Gate 2 load, mesh and
-capacity diagnostics, plus the Gate 3b candidate path visualization.
+capacity diagnostics, plus Gate 3b's coarse shell-response probe and candidate path visualization.
 
 | Script | Answers |
 |---|---|
@@ -110,7 +110,8 @@ capacity diagnostics, plus the Gate 3b candidate path visualization.
 | [`replay_gate2_coupled_event.py`](debugging/scripts-rifting.md#replay_gate2_coupled_eventpy) | pair-level stress sensitivity to contact loads and rigid-mode projections |
 | [`sensitivity_gate2_capacity.py`](debugging/scripts-rifting.md#sensitivity_gate2_capacitypy) | one-factor capacity sensitivity on captured node loads |
 | [`validate_thin_shell_plate_meshes.py`](debugging/scripts-rifting.md#validate_thin_shell_plate_meshespy) | generated-plate mesh coverage, curved-surface and edge-condition checks |
-| [`plot_gate3b_plate_paths.py`](debugging/scripts-rifting.md#plot_gate3b_plate_pathspy) | full plate, craton mask, candidate paths, opening axes and gap close-ups |
+| [`probe_gate3b_local_load.py`](debugging/scripts-rifting.md#probe_gate3b_local_loadpy) | coarse static shell response to production per-node forces; transfer and resolution checks |
+| [`plot_gate3b_plate_paths.py`](debugging/scripts-rifting.md#plot_gate3b_plate_pathspy) | full plate, cratons, candidate paths, opening axes, gap close-ups and optional shell-response field |
 
 ### Crust and mantle budgets
 

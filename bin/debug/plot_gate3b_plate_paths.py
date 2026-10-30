@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw a full-plate view of Gate 3b crack-path JSON results.
+"""Draw a full-plate view of Gate 3b crack paths and optional shell demand.
 
 Usage:
     PYTHONPATH=backend backend/.venv/bin/python bin/debug/plot_gate3b_plate_paths.py \
@@ -21,7 +21,9 @@ import math
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+from scipy.spatial import cKDTree
 
 EARTH_RADIUS_KM = 6_371.0
 MOTION_STEP_YEARS = 2.0e6
@@ -163,7 +165,92 @@ def _dashed_line(
         position = stop + 7
 
 
-def render(world: Any, results: list[dict[str, Any]], out: Path, a_context_scale: float) -> None:
+def _demand_color(value: float, maximum: float) -> tuple[int, int, int]:
+    """Map clipped positive shell demand from cool blue to warm red."""
+    t = max(0.0, min(1.0, value / maximum)) if maximum > 0 else 0.0
+    stops = ((40, 99, 170), (54, 168, 153), (246, 202, 73), (201, 65, 58))
+    position = t * (len(stops) - 1)
+    low = min(int(position), len(stops) - 2)
+    fraction = position - low
+    return tuple(round(stops[low][axis] * (1 - fraction) + stops[low + 1][axis] * fraction)
+                 for axis in range(3))
+
+
+def _prepare_demand_points(
+    shell_data: dict[str, Any] | None, plate_lat_lon: list[tuple[float, float]]
+) -> tuple[list[tuple[tuple[float, float], float]], float]:
+    if shell_data is None:
+        return [], 0.0
+    shell_map = max(shell_data["maps"], key=lambda item: item["target_representatives"])
+    if len(shell_map["mesh_lat_lon_degrees"]) != len(shell_map["mesh_demand_n_per_m"]):
+        raise ValueError("shell-response map has mismatched point and demand arrays")
+    mesh_demand = np.asarray(shell_map["mesh_demand_n_per_m"], dtype=float)
+    demand_max = float(np.quantile(mesh_demand, 0.99))
+    mesh_points = shell_map["mesh_lat_lon_degrees"]
+    medoid_xyz = np.asarray([_xyz(list(point)) for point in mesh_points])
+    plate_xyz = np.asarray([_xyz(list(point)) for point in plate_lat_lon])
+    nearest = cKDTree(medoid_xyz).query(plate_xyz, k=1)[1]
+    interpolated = mesh_demand[nearest]
+    return list(zip(plate_lat_lon, interpolated.tolist())), demand_max
+
+
+def _draw_shell_legend(draw: ImageDraw.ImageDraw, x: int, y: int, maximum: float) -> None:
+    draw.text((x, y), "Shell demand: low", font=_font(14), fill="#39475c")
+    for index in range(48):
+        x0 = x + 115 + index * 4
+        draw.line((x0, y + 8, x0 + 4, y + 8),
+                  fill=_demand_color(maximum * index / 47, maximum), width=8)
+    draw.text((x + 320, y), "high (p99)", font=_font(14), fill="#39475c")
+
+
+def _draw_plate_cells(
+    draw: ImageDraw.ImageDraw,
+    plate_lat_lon: list[tuple[float, float]],
+    demand_points: list[tuple[tuple[float, float], float]],
+    demand_max: float,
+    project,
+) -> None:
+    if demand_points:
+        for point, value in demand_points:
+            x, y = project(point)
+            draw.ellipse((x - 5, y - 5, x + 5, y + 5), fill=_demand_color(value, demand_max))
+        return
+    for point in plate_lat_lon:
+        x, y = project(point)
+        draw.ellipse((x - 4, y - 4, x + 4, y + 4), fill="#dce7ec")
+
+
+def _draw_overview_legend(
+    draw: ImageDraw.ImageDraw, ox0: int, oy1: int, shell_data: dict[str, Any] | None,
+    demand_max: float,
+) -> None:
+    legend_y = oy1 - 83
+    draw.ellipse((ox0 + 30, legend_y + 4, ox0 + 42, legend_y + 16), fill=CRATON)
+    draw.text((ox0 + 50, legend_y), "cratons", font=_font(16), fill="#39475c")
+    draw.line((ox0 + 144, legend_y + 10, ox0 + 182, legend_y + 10), fill=PATH_COLORS[0], width=5)
+    draw.text((ox0 + 191, legend_y), "crack paths", font=_font(16), fill="#39475c")
+    draw.line((ox0 + 311, legend_y + 10, ox0 + 346, legend_y + 10), fill="#293b73", width=5)
+    draw.polygon(((ox0 + 352, legend_y + 10), (ox0 + 340, legend_y + 3),
+                  (ox0 + 340, legend_y + 17)), fill="#293b73")
+    draw.text((ox0 + 362, legend_y), "opening arrows", font=_font(16), fill="#39475c")
+    draw.text((ox0 + 560, legend_y), "A / B link to close-ups →", font=_font(16, True), fill="#39475c")
+    if shell_data is not None:
+        _draw_shell_legend(draw, ox0 + 30, legend_y + 25, demand_max)
+
+
+def _draw_local_demand(draw, demand_points, demand_max, local, local_xy, bounds) -> None:
+    if not demand_points:
+        return
+    min_x, max_x, min_y, max_y = bounds
+    for point, value in demand_points:
+        x, y = local(point)
+        if min_x <= x <= max_x and min_y <= y <= max_y:
+            px, py = local_xy(point)
+            draw.ellipse((px - 4, py - 4, px + 4, py + 4), fill=_demand_color(value, demand_max))
+
+
+def render(world: Any, results: list[dict[str, Any]], out: Path, a_context_scale: float,
+           shell_data: dict[str, Any] | None = None) -> None:
     from app import cratons
 
     cratons.ensure_initialized(world)
@@ -180,15 +267,20 @@ def render(world: Any, results: list[dict[str, Any]], out: Path, a_context_scale
         for point in points
     ]
     craton_points = [point for point, is_craton in zip(plate_lat_lon, craton_mask) if is_craton]
+    demand_points, demand_max = _prepare_demand_points(shell_data, plate_lat_lon)
     route_data = [result["scenarios"][0] for result in results]
     tracks_by_case = [item["partial_tip_paths_lat_lon_degrees"] for item in route_data]
 
     width, height = 1900, 1270
     image = Image.new("RGB", (width, height), "#f7f8fa")
     draw = ImageDraw.Draw(image)
-    draw.text((65, 35), f"Seed {results[0]['seed']} · plate, cratons, crack paths, and opening directions",
+    title_suffix = " and shell response" if shell_data is not None else ""
+    draw.text((65, 35), f"Seed {results[0]['seed']} · plate, cratons, crack paths{title_suffix}",
               font=_font(38, True), fill="#172033")
-    draw.text((67, 91), "Full plate view with route locations marked; close-ups show both gaps and nearby craton context.",
+    subtitle = ("Color = nearest-medoid shell demand at generation (clipped at p99); paths use the 2 Myr step. "
+                "Field is provisional; gold marks cratons." if shell_data is not None
+                else "Full plate view with route locations marked; close-ups show both gaps and nearby craton context.")
+    draw.text((67, 91), subtitle,
               font=_font(23), fill="#45536a")
 
     # Plate overview.
@@ -212,9 +304,7 @@ def render(world: Any, results: list[dict[str, Any]], out: Path, a_context_scale
     radius_x, radius_y = 2 * math.sqrt(2) * scale, math.sqrt(2) * scale
     draw.ellipse((center_x - radius_x, center_y - radius_y,
                   center_x + radius_x, center_y + radius_y), outline="#9ba8b8", width=2)
-    for point in plate_lat_lon:
-        x, y = global_xy(point)
-        draw.ellipse((x - 4, y - 4, x + 4, y + 4), fill="#dce7ec")
+    _draw_plate_cells(draw, plate_lat_lon, demand_points, demand_max, global_xy)
     for point in craton_points:
         x, y = global_xy(point)
         draw.ellipse((x - 4, y - 4, x + 4, y + 4), fill=CRATON)
@@ -244,16 +334,7 @@ def render(world: Any, results: list[dict[str, Any]], out: Path, a_context_scale
         draw.text((x + 19, y - 18), chr(65 + index), font=_font(21, True),
                   fill="#172033", stroke_width=2, stroke_fill="white")
 
-    legend_y = oy1 - 83
-    draw.ellipse((ox0 + 30, legend_y + 4, ox0 + 42, legend_y + 16), fill=CRATON)
-    draw.text((ox0 + 50, legend_y), "cratons", font=_font(16), fill="#39475c")
-    draw.line((ox0 + 144, legend_y + 10, ox0 + 182, legend_y + 10), fill=PATH_COLORS[0], width=5)
-    draw.text((ox0 + 191, legend_y), "crack paths", font=_font(16), fill="#39475c")
-    draw.line((ox0 + 311, legend_y + 10, ox0 + 346, legend_y + 10), fill="#293b73", width=5)
-    draw.polygon(((ox0 + 352, legend_y + 10), (ox0 + 340, legend_y + 3),
-                  (ox0 + 340, legend_y + 17)), fill="#293b73")
-    draw.text((ox0 + 362, legend_y), "opening arrows", font=_font(16), fill="#39475c")
-    draw.text((ox0 + 560, legend_y), "A / B link to close-ups →", font=_font(16, True), fill="#39475c")
+    _draw_overview_legend(draw, ox0, oy1, shell_data, demand_max)
 
     # Two local windows; widen A to show the surrounding craton pattern.
     for index, (result, scenario, tracks) in enumerate(zip(results, route_data, tracks_by_case)):
@@ -297,6 +378,8 @@ def render(world: Any, results: list[dict[str, Any]], out: Path, a_context_scale
             gy = plot_y0 + fraction * (plot_y1 - plot_y0)
             draw.line((gx, plot_y0, gx, plot_y1), fill="#edf0f4", width=1)
             draw.line((plot_x0, gy, plot_x1, gy), fill="#edf0f4", width=1)
+        _draw_local_demand(draw, demand_points, demand_max, local, local_xy,
+                           (min_x, max_x, min_y, max_y))
         visible_cratons = 0
         for point in craton_points:
             x, y = local(point)
@@ -331,7 +414,9 @@ def render(world: Any, results: list[dict[str, Any]], out: Path, a_context_scale
               "Opposing arrows show the prescribed opening axis at A and B; displayed length is enlarged for visibility.",
               font=_font(19), fill="#45536a")
     draw.text((86, footer_y + 96),
-              "Illustrative graph probe only: no production stress field, measured plate motion, or split applied.",
+              ("Provisional static shell response: solver residual missed the preregistered 1% cutoff; "
+               "no damage or split applied." if shell_data is not None else
+               "Illustrative graph probe only: no production stress field, measured plate motion, or split applied."),
               font=_font(18), fill="#45536a")
     out.parent.mkdir(parents=True, exist_ok=True)
     image.save(out)
@@ -341,6 +426,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--route-json", type=Path, action="append", required=True,
                         help="one route JSON from probe_gate3b_interior_belt_paths.py; repeat twice, A then B")
+    parser.add_argument("--shell-json", type=Path,
+                        help="optional coarse shell-response output from probe_gate3b_local_load.py")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--a-context-scale", type=float, default=3.2,
                         help="linear context expansion for close-up A (default: 3.2)")
@@ -348,6 +435,12 @@ def main() -> None:
     if args.a_context_scale < 1:
         parser.error("--a-context-scale must be at least 1")
     results = _route_inputs(args.route_json)
+    shell_data = json.loads(args.shell_json.read_text(encoding="utf-8")) if args.shell_json else None
+    if shell_data is not None:
+        route = results[0]
+        if (shell_data.get("seed"), shell_data.get("node_density"), shell_data.get("plate_id")) != (
+                route.get("seed"), route.get("node_density"), route.get("plate_id")):
+            parser.error("--shell-json must match the route seed, density, and plate")
     from app import world as world_mod
 
     world = world_mod.generate_world(
@@ -358,7 +451,7 @@ def main() -> None:
     )
     world.simulate_climate_biomes = False
     world_mod.step_world(world, MOTION_STEP_YEARS)
-    render(world, results, args.out, args.a_context_scale)
+    render(world, results, args.out, args.a_context_scale, shell_data)
     print(f"Wrote {args.out}")
 
 
