@@ -444,3 +444,29 @@ PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_gate3b_interior_belt
   --target-gap-km 150 --minimum-gap-km 100 --maximum-gap-km 200 \
   --out analysis/issue699/interior-belt-path-seed11-density4-stepover150.json
 ```
+
+## Gate 3b direction revision (2026-10-30)
+
+The project owner redirected Gate 3b to work backwards from at least one plate-scale
+**rift-potential event** to the simplest current source capable of producing it. The working
+hypothesis is that mantle or magma currents load broad sections of a plate over time; a sustained
+coherent extensional field creates the potential, and Gate 3a's local crack/segment rules then
+determine nucleation, growth, arrest and linkage. A localized snapshot or prescribed crack route
+does not count as the event. A duration of tens of Myr, initially a 10–30 Myr bracket, is a
+hypothesis for testing rather than a hard timer.
+
+The revised diagnostic sequence is: (1) preregister measurable event criteria and distinguish the
+broad loading precursor from cracks, completed rift and plate breakup; (2) identify and characterize
+at least one event on a generated spherical plate, including footprint, direction, load relative to
+the local crack threshold, persistence, timestep response and force/work accounts; (3) infer the
+minimum broad current field needed to deliver that load; (4) audit existing `mantle.flow_at` and
+per-node basal drag as candidate interfaces without assuming they model magma currents or rift
+traction; and (5) forward-run the simplest low-cost current source through Gate 3a's local response.
+The event definition, footprint and amplitude cutoffs, duration cases and accounting checks must be
+frozen in an issue comment before a new probe.
+
+The prescribed-axis path trials and static coarse shell-response maps above remain useful exploratory
+mechanism/visualization work. They do not identify a current source or demonstrate broad, persistent
+rifting load. No new simulation probe has been run under the revised gate yet. The scope is recorded
+in [issue #699](https://github.com/adubey/mantle-bloom/issues/699) and the revised Gate 3b text in
+[RFC 0010](../../rfc/0010-rifts-follow-weak-lithosphere.md).
