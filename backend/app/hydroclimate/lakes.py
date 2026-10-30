@@ -405,6 +405,15 @@ def _empty_lake_solve_result(elevation, depth, hypsometry, is_ocean, *, export_p
 
 
 @dataclass
+class _CycleSurplus:
+    """Surplus held back from a closed capped pair, with the pair that closed the cycle."""
+
+    volume: float
+    sender: "Lake"
+    receiver: "Lake"
+
+
+@dataclass
 class _PrognosticAccounting:
     evaporation_total: float
     ocean_overflow_total: float
@@ -432,9 +441,10 @@ class _PrognosticAccounting:
     lake_cap_overflow_m3: float = 0.0
     sea_cap_overflow_m3: float = 0.0
     # Surplus that reached a closed capped-sibling cycle in the step's last integration slice,
-    # by the leaf it would have been deferred to. Neither body can take it, so it waits for the
-    # final export instead of circulating through the flush passes (#696).
-    cycle_surplus: dict[int, float] = field(default_factory=dict)
+    # by the leaf it would have been deferred to. Neither body can take it while both stay
+    # active, so it waits for the final export instead of circulating through the flush passes
+    # (#696). `_release_broken_cycles` returns it if either body stops being active.
+    cycle_surplus: dict[int, _CycleSurplus] = field(default_factory=dict)
     final_slice: bool = False
 
 
@@ -826,7 +836,10 @@ def _advance_prognostic_body(
                     and _cap_is_artificial(route_source, prev_lake_depth, node_area_km2, hypsometry)
                     and _spills_back_to(receiver, route_source, leaf_of_node, body_for_leaf, node_count)
                 ):
-                    accounting.cycle_surplus[leaf_id] = accounting.cycle_surplus.get(leaf_id, 0.0) + overflow
+                    held = accounting.cycle_surplus.setdefault(
+                        leaf_id, _CycleSurplus(0.0, route_source, receiver)
+                    )
+                    held.volume += overflow
                     return
                 accounting.deferred[leaf_id] = accounting.deferred.get(leaf_id, 0.0) + overflow
             else:
@@ -851,24 +864,44 @@ def _advance_prognostic_body(
             accounting.ocean_overflow_total += overflow
 
 
+def _release_broken_cycles(accounting, active_bodies):
+    """Return held surplus to the flush when a pair's body has split or merged away.
+
+    A capped merged body can fall below its own saddle and split, which leaves a child with room
+    (#696). Only the pair's own bodies decide this: merge ladders change the active set on most
+    passes, and releasing on any change would bring the recirculation back.
+    """
+    active = {id(body) for body in active_bodies}
+    for leaf_id, held in list(accounting.cycle_surplus.items()):
+        if id(held.sender) not in active or id(held.receiver) not in active:
+            accounting.deferred[leaf_id] = accounting.deferred.get(leaf_id, 0.0) + held.volume
+            del accounting.cycle_surplus[leaf_id]
+
+
+def _export_at_leaf_sink(accounting, leaf, source, volume, is_ocean, depth):
+    sink = leaf.sink_node_idx
+    accounting.overflow_out_total += volume
+    if 0 <= sink < len(accounting.overflow_by_outlet):
+        accounting.overflow_by_outlet[sink] += volume
+        if is_ocean is not None and bool(is_ocean[sink]):
+            accounting.ocean_overflow_total += volume
+        _trace_deferred_export(accounting, source, sink, volume, depth)
+
+
 def _export_final_surplus(accounting, leaves, is_ocean, depth):
     """Export what the passes left unplaced at each holding leaf's sink.
 
     A closed capped-sibling cycle leaves the flush with surplus neither body can hold, and a
     hierarchy cycle can still outlast the finite zero-duration flush. Keep this final pass-on in
-    the physical overflow field and ledger rather than dropping it at the end of the solve.
+    the physical overflow field and ledger rather than dropping it at the end of the solve. Held
+    surplus never crossed to its leaf's body, so its sender stays the trace's source, which keeps
+    per-basin budgets closed.
     """
-    n = len(accounting.overflow_by_outlet)
-    for leaf_id, volume in accounting.cycle_surplus.items():
-        accounting.deferred[leaf_id] = accounting.deferred.get(leaf_id, 0.0) + volume
+    for leaf_id, held in accounting.cycle_surplus.items():
+        _export_at_leaf_sink(accounting, leaves[leaf_id], held.sender, held.volume, is_ocean, depth)
+    accounting.cycle_surplus.clear()
     for leaf_id, volume in accounting.deferred.items():
-        sink = leaves[leaf_id].sink_node_idx
-        accounting.overflow_out_total += volume
-        if 0 <= sink < n:
-            accounting.overflow_by_outlet[sink] += volume
-            if is_ocean is not None and bool(is_ocean[sink]):
-                accounting.ocean_overflow_total += volume
-            _trace_deferred_export(accounting, leaves[leaf_id], sink, volume, depth)
+        _export_at_leaf_sink(accounting, leaves[leaf_id], leaves[leaf_id], volume, is_ocean, depth)
     accounting.deferred.clear()
 
 
@@ -941,7 +974,8 @@ def solve_lakes_prognostic(
                 pending[id(receiver)] = pending.get(id(receiver), 0.0) + volume
         accounting.deferred = {}
         # Hierarchy outlets select receivers; terrain flow_target is used later for exported
-        # discharge only. Sibling cycles defer return flow until the next integration slice.
+        # discharge only. Sibling cycles defer return flow until the next integration slice,
+        # except a closed capped pair in the last slice, which holds it for the final export.
         ordered_bodies = _ordered_spill_bodies(bodies, leaf_of_node, body_for_leaf, body_by_id, n)
         processed: set[int] = set()
         for body in ordered_bodies:
@@ -957,6 +991,7 @@ def solve_lakes_prognostic(
 
         next_bodies = _active_bodies(forest, elevation, depth, hypsometry)
         _record_body_transitions(body_by_id.values(), next_bodies, events, seen_events)
+        _release_broken_cycles(accounting, next_bodies)
         if substep + 1 >= steps and not accounting.deferred:
             break
 

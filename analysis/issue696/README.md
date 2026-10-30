@@ -42,6 +42,20 @@ time, where final export ends up, and each pair's parent outlet.
 **Variability.** Deterministic replay of one world per window. A and B share a world, so they are
 not independent. Steps 2–5 are a one-trajectory comparison, not a distribution.
 
+## Second preregistration, after review
+
+Review of the first version found that held surplus could stay held after its capped body split,
+and that the held send left per-basin traces unbalanced. Held surplus now returns to the flush if
+either body of the pair stops being active, and its trace keeps the sender as source. Both arms
+rerun with the extended script, so these results replace the first run's.
+
+**Expected.** The first-run thresholds stand, including check 2's bar of 2, which is expected to
+fail again for the reason recorded below. The first step still matches exactly. If the split path
+never fired in these windows, steps 2–5 match the first run; any difference there means it did. In
+that case Window A's collapse must be re-examined, because silt would no longer be the only
+candidate. Exports through an outlet are now routed too, and final export's dry share is split by
+lake ice, to account for the 1.69e18 m³ and the 45% the first report left unexplained.
+
 ## Results
 
 Baseline `d709f2b5`, branch `6393180e`. Compact results are in

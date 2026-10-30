@@ -6,9 +6,10 @@ transfer, the most repeated body pairs, final export, ocean overflow, lake volum
 wet component at a fixed anchor, and step time.
 
 Final export is routed again on its own through the step's flow targets and transit losses, to
-split it into ocean, in-transit loss, and settling on a cycle or a dead end, on wet or dry
-ground. Each exporting pair's parent is classified too: what its outlet would be if the export
-used that instead of the leaf sink. Changes no model term, so `--backend` compares two trees.
+split it into ocean, in-transit loss, and settling on a cycle or a dead end, on wet, icy or dry
+ground. Exports through an outlet are routed the same way, as other export. Each exporting pair's
+parent is classified too: what its outlet would be if the export used that instead of the leaf
+sink. Held returns from a closed capped pair aren't sends, so they appear in no pair count. Changes no model term, so `--backend` compares two trees.
 
 Example from the repository root:
 
@@ -44,6 +45,7 @@ from app.hydroclimate import hydrology, lakes  # noqa: E402
 
 pairs: dict[tuple[int, int], dict] = {}
 exports: list[dict] = []
+other_exports: list[tuple[int, float]] = []
 counts = {"active_bodies": 0, "solves": 0}
 overflow_route: dict = {}
 
@@ -59,6 +61,8 @@ def observing_transfer(accounting, source, receiver, target, volume, *, internal
         row = pairs.setdefault((id(source), id(receiver)), {"sends": 0, "total_m3": 0.0})
         row["sends"] += 1
         row["total_m3"] += float(volume)
+    if not internal:
+        other_exports.append((int(target), float(volume)))
     return trace_transfer(accounting, source, receiver, target, volume, internal=internal, depth=depth)
 
 
@@ -76,6 +80,7 @@ def observing_solve(*solve_args, **solve_kwargs):
     # A later solve in the same step replaces the earlier one's result, so measure only the last.
     pairs.clear()
     exports.clear()
+    other_exports.clear()
     counts["active_bodies"] = 0
     counts["solves"] += 1
     return solve_lakes_prognostic(*solve_args, **solve_kwargs)
@@ -98,7 +103,7 @@ lakes.solve_lakes_prognostic = observing_solve
 hydrology.route_downstream = observing_route
 
 
-def route_fate(source_m3: np.ndarray, lake_depth: np.ndarray) -> dict:
+def route_fate(source_m3: np.ndarray, lake_depth: np.ndarray, lake_ice: np.ndarray) -> dict:
     """Where `source_m3` ends up if routed alone through this step's overflow route."""
     is_ocean = overflow_route["is_ocean"]
     flow_target = overflow_route["flow_target"]
@@ -110,13 +115,15 @@ def route_fate(source_m3: np.ndarray, lake_depth: np.ndarray) -> dict:
     settled[is_ocean] += source_m3[is_ocean]
     land = ~is_ocean
     wet = land & (lake_depth > 0.0)
+    icy = land & ~wet & (lake_ice > 0.0)
     on_cycle = land & (flow_target >= 0)
     return {
         "source_m3": float(source_m3.sum()),
         "ocean_m3": float(settled[is_ocean].sum()),
         "transit_loss_m3": float(source_m3.sum() - settled.sum()),
         "settled_wet_m3": float(settled[wet].sum()),
-        "settled_dry_m3": float(settled[land & ~wet].sum()),
+        "settled_ice_m3": float(settled[icy].sum()),
+        "settled_dry_m3": float(settled[land & ~wet & ~icy].sum()),
         "settled_on_flow_cycle_m3": float(settled[on_cycle].sum()),
         "settled_at_dead_end_m3": float(settled[land & ~on_cycle].sum()),
     }
@@ -155,7 +162,10 @@ def parent_outlets(fields) -> dict:
         classes[kind] += item["volume_m3"]
         if target >= 0:
             source[target] += item["volume_m3"]
-    return {"by_class_m3": dict(classes), "routed_from_parent_outlet": route_fate(source, np.asarray(fields.lake_depth))}
+    return {
+        "by_class_m3": dict(classes),
+        "routed_from_parent_outlet": route_fate(source, np.asarray(fields.lake_depth), np.asarray(fields.lake_ice_m)),
+    }
 
 
 def anchor_component(fields) -> dict | None:
@@ -182,6 +192,11 @@ def snapshot(step: int, seconds: float) -> dict:
     export_by_node = np.zeros(len(depth))
     for item in exports:
         export_by_node[item["sink"]] += item["volume_m3"]
+    other_by_node = np.zeros(len(depth))
+    for target, volume in other_exports:
+        if 0 <= target < len(depth):
+            other_by_node[target] += volume
+    ice = np.asarray(fields.lake_ice_m)
     ranked = sorted(pairs.values(), key=lambda row: -row["total_m3"])
     silt_m3 = float(np.dot(fields.silt_deposited, area))
     return {
@@ -205,7 +220,9 @@ def snapshot(step: int, seconds: float) -> dict:
         "top_pairs": [{"sends": row["sends"], "total_m3": row["total_m3"]} for row in ranked[:TOP_PAIRS]],
         "final_export_m3": float(export_by_node.sum()),
         "final_export_sinks": len(np.flatnonzero(export_by_node)),
-        "final_export_fate": route_fate(export_by_node, depth),
+        "final_export_fate": route_fate(export_by_node, depth, ice),
+        "other_export_m3": float(other_by_node.sum()),
+        "other_export_fate": route_fate(other_by_node, depth, ice),
         "parent_outlet": parent_outlets(fields),
         "anchor_component": anchor_component(fields),
     }
