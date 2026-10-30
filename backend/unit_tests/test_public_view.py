@@ -701,11 +701,8 @@ def test_visibility_toggle_does_not_publish_a_queued_regenerates_name(guest, ste
 
 
 def test_failed_regenerate_publishes_its_rename(guest, steps, monkeypatch):
-    def failing_generate(*_args, **_kwargs):
-        raise ValueError("no room")
-        yield
-
-    monkeypatch.setattr(main, "generate_world_progress", failing_generate)
+    # Fails while iterating, which is where the route's error line catches a real failure.
+    monkeypatch.setattr(main, "generate_world_progress", lambda *_args, **_kwargs: map(int, ["no room"]))
     response = _local().post(f"/worlds/{_S.world_id}/generate", json={"seed": 1, "name": "next-planet"})
     assert '"type": "error"' in response.text
     assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["name"] == "next-planet"
