@@ -69,8 +69,10 @@ user prompted directly doesn't need to allow for this, since those rarely start 
 Automatically spawned agents do: whatever spawns a batch of them should start their heavy
 runs one at a time, starting each only once `check` lists the one before.
 
-If `check` says `WAIT` for memory pressure with no runs listed, the user's own apps are short
-of memory. Keep waiting, and tell the user if it lasts more than 30 minutes. If it says it
+The user can override a `WAIT`: if they tell you to run anyway, start the run.
+
+If `check` says `WAIT` for critical memory pressure with no runs listed, the user's own apps
+are short of memory. Keep waiting, and tell the user if it lasts more than 30 minutes. If it says it
 can't read the machine, it's probably in a sandbox that denies `ps`, so run it outside the
 sandbox rather than looping: the wait would never end.
 

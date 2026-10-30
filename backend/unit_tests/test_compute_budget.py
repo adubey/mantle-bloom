@@ -32,17 +32,21 @@ def test_a_run_still_climbing_reserves_the_rest_of_its_peak():
     assert not budget.decide(machine(available_gb=9.0), [sim(rss_gb=1.0)], 6.0)[0]
 
 
-def test_memory_pressure_blocks_a_second_run_however_much_looks_free():
-    ok, reason = budget.decide(machine(pressure=2), [sim()], 1.0)
+def test_critical_pressure_blocks_a_second_run_however_much_looks_free():
+    ok, reason = budget.decide(machine(pressure=4), [sim()], 1.0)
     assert not ok
     assert "pressure" in reason
 
 
-def test_memory_pressure_blocks_the_first_run_too():
+def test_critical_pressure_blocks_the_first_run_too():
     # With no agent runs detected, the pressure comes from the user's own apps.
-    ok, reason = budget.decide(machine(pressure=2), [], 1.0)
+    ok, reason = budget.decide(machine(pressure=4), [], 1.0)
     assert not ok
     assert "pressure" in reason
+
+
+def test_warning_pressure_does_not_block_a_run_that_fits():
+    assert budget.decide(machine(pressure=2), [], 1.0)[0]
 
 
 def test_a_run_too_big_for_the_machine_goes_ahead_alone():

@@ -46,7 +46,9 @@ GB_PER_WORKER_CEILING = 4.0
 # Below this RSS a python process with no recognised command line isn't worth reserving for.
 UNKNOWN_HEAVY_GB = 1.0
 
-NORMAL_PRESSURE = 1
+# kern.memorystatus_vm_pressure_level: 1 normal, 2 warning, 4 critical. Only critical blocks a
+# run: this machine sits at warning from the user's own apps, with no agent at fault (#704).
+CRITICAL_PRESSURE = 4
 XDIST_WORKER = "exec(eval(sys.stdin.readline()))"
 # Matches the executable only: a shell wrapper's text often mentions python and bin/debug/.
 PYTHON_EXE = re.compile(r"\S*python[\d.]*(\s|$)", re.IGNORECASE)
@@ -153,8 +155,8 @@ def worker_count(machine: Machine, runs: list[Run], kind: str) -> int:
 
 def decide(machine: Machine, runs: list[Run], need_gb: float) -> tuple[bool, str]:
     # Pressure comes first: with no agent runs, it's the user's apps that are short of memory.
-    if machine.pressure != NORMAL_PRESSURE:
-        return False, f"memory pressure level is {machine.pressure}, not normal"
+    if machine.pressure >= CRITICAL_PRESSURE:
+        return False, "memory pressure is critical"
     free = free_gb(machine, runs)
     if not runs:
         if free < need_gb:
