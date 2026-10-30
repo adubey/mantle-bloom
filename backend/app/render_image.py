@@ -30,10 +30,10 @@ from numba import njit
 from PIL import Image, ImageDraw, ImageFilter
 from scipy.spatial import cKDTree
 
-from . import cratons, geometry, healpix_grid, lithosphere, mantle, plates, projections
+from . import cratons, geometry, healpix_grid, lithosphere, mantle, plates, plumes, projections
 from .hydroclimate import biomes, climate, coastline, geology, hydrology, volcanism
 from .elevation_lines import DEFAULT_NODE_DENSITY, PLANET_RADIUS_KM, effective_is_continental_from_codes, line_spacing_rad
-from .world import World, step_world
+from .world import PROGRESS_HEARTBEAT_INTERVAL_S, HeartbeatClock, World, step_world
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
 # see climate.py's module docstring for why. Handled by a separate code path
@@ -77,7 +77,12 @@ RESOURCE_VIEWS = ("resources", "soilQuality")
 # "craton" is node-cloud-derived from the craton fields (cratons.py): where the cratons are,
 # which predate the simulation and which formed during it, and how far each quiet continental
 # interior's formation clock has run. Its own dispatch branch (_render_craton_view).
-DEBUG_VIEWS = ("plates", "platesDetail", "speckle", "geomorph", "elevReason", "overlapAge", "crustType", "nodeAge", "craton")
+# "plumes" is node-cloud-derived from the plume fields (plumes.py): the heat halo
+# (`plume_heat_myr`) ramping ember-to-orange and live head plateau (`plateau_crust_m`)
+# tinting green, with live plume positions and head/tail footprints overlaid as rings
+# (orange head ring at PLUME_HEAD_RADIUS_KM, blue tail ring at PLUME_TAIL_RADIUS_KM
+# fading with tail age). Its own dispatch branch (_render_plumes_view).
+DEBUG_VIEWS = ("plates", "platesDetail", "speckle", "geomorph", "elevReason", "overlapAge", "crustType", "nodeAge", "craton", "plumes")
 VIEWS = ("elevation", "combined", "biome") + CLIMATE_VIEWS + RESOURCE_VIEWS + DEBUG_VIEWS
 # Transparent RGBA layers (not standalone maps, so not in VIEWS -- /world/render accepts them,
 # /world/animate doesn't) that the client-drawn "Plates & Faults" view composites under its own
@@ -417,8 +422,8 @@ _TEMPERATURE_STOP_RGB = np.array(
     dtype=float,
 )
 
-# Dry (tan) -> humid (deep teal/blue). climate.py's humidity is roughly [0, MAX_EVAPORATION_CEILING=1.4].
-_HUMIDITY_STOP_V = np.array([0.0, 0.3, 0.6, 0.9, 1.2, 1.4], dtype=float)
+# Dry (tan) -> humid (deep teal/blue), g/kg. climate.py's humidity_g_kg runs [~0.25, MAX_HUMIDITY_G_KG=18.8].
+_HUMIDITY_STOP_G_KG = np.array([0.0, 4.0, 8.0, 12.0, 16.0, 18.8], dtype=float)
 _HUMIDITY_STOP_RGB = np.array(
     [
         (120, 100, 60), (170, 150, 90), (140, 170, 110), (70, 150, 140), (30, 100, 140), (15, 60, 110),
@@ -470,8 +475,8 @@ def temperature_colors(celsius: np.ndarray) -> np.ndarray:
     return _interp_colors(celsius, _TEMPERATURE_STOP_C, _TEMPERATURE_STOP_RGB)
 
 
-def humidity_colors(humidity: np.ndarray) -> np.ndarray:
-    return _interp_colors(humidity, _HUMIDITY_STOP_V, _HUMIDITY_STOP_RGB)
+def humidity_colors(humidity_g_kg: np.ndarray) -> np.ndarray:
+    return _interp_colors(humidity_g_kg, _HUMIDITY_STOP_G_KG, _HUMIDITY_STOP_RGB)
 
 
 def precipitation_colors(precipitation_mm: np.ndarray) -> np.ndarray:
@@ -1691,7 +1696,7 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     # or -- when the diagnostic wind model is selected, leaving that state frozen -- the
     # diagnostic fields climate.compute_climate rebuilt this call. is_ocean likewise: the CFD
     # state's copy goes stale in diagnostic mode (refresh_forcing stops running).
-    if world.wind_model != "cfd":
+    if climate.uses_diagnostic_wind(world):
         wind_u_hp, wind_v_hp = _to_healpix(cfields.wind_u), _to_healpix(cfields.wind_v)
         land_air_temp_hp = _to_healpix(cfields.air_temperature_c)
         is_ocean_hp = _to_healpix(cfields.is_ocean.astype(np.float64)) > 0.5
@@ -1701,7 +1706,7 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
         is_ocean_hp = atmosphere.is_ocean
 
     if view == "humidity":
-        _fill_rects(pixels, centers, half_px, half_px, humidity_colors(_to_healpix(cfields.humidity)))
+        _fill_rects(pixels, centers, half_px, half_px, humidity_colors(_to_healpix(cfields.humidity_g_kg)))
     elif view == "precipitation":
         _fill_rects(pixels, centers, half_px, half_px, precipitation_colors(_to_healpix(cfields.precipitation_mm)))
     elif view == "temperature":
@@ -2225,11 +2230,14 @@ def _render_node_age_view(world: World, projection: str, width: int, height: int
 def _render_resampled_view(
     world: World, projection: str, width: int, height: int, view_rotation: np.ndarray,
     cell_colors: Callable[[np.ndarray], np.ndarray | None],
+    extra_draw: Callable[[ImageDraw.ImageDraw, float, float, float, float], None] | None = None,
 ) -> bytes:
     """Renders a debug view that colours each cell of the fine biome render grid (see
     biome_grid_dimensions) with `cell_colors(flat_xyz)`, given the cells' un-rotated
     positions, and overlays the coastline for orientation. `cell_colors` returning None
-    (a world with no plates) draws the plain background."""
+    (a world with no plates) draws the plain background. `extra_draw`, when given,
+    paints on top with the same projection fit (draw, scale, offset_x, offset_y,
+    pixel_scale) -- the plumes view's footprint rings use it."""
     pixel_scale = _stroke_scale(width)
     padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
@@ -2248,6 +2256,8 @@ def _render_resampled_view(
     image = Image.fromarray(pixels, mode="RGB")
     draw = ImageDraw.Draw(image)
     _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+    if extra_draw is not None:
+        extra_draw(draw, scale, offset_x, offset_y, pixel_scale)
     return _encode_image(image)
 
 
@@ -2344,6 +2354,17 @@ CRATON_VIEW_BELT_RGB = np.array((40, 150, 140), dtype=float)
 # Open ocean on the "waterLayer" overlay (lakes/seas keep LAKE_COLOR_RGB / SEA_COLOR_RGB).
 WATER_LAYER_OCEAN_RGB = (40, 90, 170)
 
+# Plume debug view (see _render_plumes_view): heated halo ramps from ember to bright
+# orange with plume_heat_myr; live plume-head plateau (plateau_crust_m) is green;
+# live heads get an orange footprint ring, tails a blue one fading with tail age.
+PLUME_VIEW_OCEANIC_RGB = np.array((24, 38, 72), dtype=float)
+PLUME_VIEW_CONTINENTAL_RGB = np.array((128, 126, 118), dtype=float)
+PLUME_VIEW_HEAT_HOT_RGB = np.array((255, 150, 40), dtype=float)
+PLUME_VIEW_PLATEAU_RGB = np.array((90, 200, 120), dtype=float)
+PLUME_VIEW_HEAD_RGB = (255, 90, 40)
+PLUME_VIEW_TAIL_RGB = np.array((120, 160, 255), dtype=float)
+PLUME_VIEW_TAIL_OLD_RGB = np.array((40, 55, 90), dtype=float)
+
 
 def craton_colors(
     continental: np.ndarray, craton_m: np.ndarray, formed_years: np.ndarray, stable_myr: np.ndarray, belt: np.ndarray | None = None
@@ -2386,6 +2407,91 @@ def _render_craton_view(world: World, projection: str, width: int, height: int, 
         )
 
     return _render_resampled_view(world, projection, width, height, view_rotation, cell_colors)
+
+
+def plume_colors(heat_myr: np.ndarray, plateau_m: np.ndarray, continental: np.ndarray) -> np.ndarray:
+    """Per-node plumes view colour -- see the PLUME_VIEW_* constants: heat halo ramps
+    ember-to-orange with `plume_heat_myr`, live head plateau tints green by thickness."""
+    frac = np.clip(np.asarray(heat_myr, dtype=float) / plumes.PLUME_HEAT_MYR, 0.0, 1.0)[:, None]
+    colors = np.where(
+        continental[:, None],
+        PLUME_VIEW_CONTINENTAL_RGB + frac * (PLUME_VIEW_HEAT_HOT_RGB - PLUME_VIEW_CONTINENTAL_RGB),
+        PLUME_VIEW_OCEANIC_RGB + frac * (PLUME_VIEW_HEAT_HOT_RGB - PLUME_VIEW_OCEANIC_RGB),
+    )
+    # Display-only tint scale, not a physics threshold: full green at 5 km of plateau.
+    share = np.clip(np.asarray(plateau_m, dtype=float) / 5000.0, 0.0, 1.0)[:, None]
+    colors = colors + share * (PLUME_VIEW_PLATEAU_RGB - colors) * 0.65
+    return colors.astype(np.uint8)
+
+
+def _plume_cell_colors(world: World, flat_xyz: np.ndarray) -> np.ndarray | None:
+    """Node heat + plateau resampled onto the render grid; None with no plates."""
+    idx = _nearest_node_indices(world, flat_xyz)
+    if idx is None:
+        return None
+    live = [p for p in world.plates if p.node_count() > 0]
+    continental = np.concatenate(
+        [effective_is_continental_from_codes(p.collect("crust_type_code"), p.crust_type == "continental") for p in live]
+    )
+    heat = np.concatenate([p.collect("plume_heat_myr") for p in live])
+    plateau = np.concatenate([p.collect("plateau_crust_m") for p in live])
+    return plume_colors(heat[idx], plateau[idx], continental[idx])
+
+
+def _draw_plume_markers(
+    draw: ImageDraw.ImageDraw, world: World, projection: str, scale: float, offset_x: float, offset_y: float,
+    pixel_scale: float, view_rotation: np.ndarray,
+) -> None:
+    """Live plume positions and footprints (RFC 0007, #583): an orange ring at the head
+    radius around head-active plumes, a blue ring at the tail radius around tail-stage
+    ones, fading with tail age, each with a centre dot. Rings are sampled small
+    circles in 3D so they stay true on every projection. Stage-based: a head plume
+    whose head is exhausted draws the tail ring, while the stats census still counts
+    it as a head (origin-based) -- see plumes.diagnostics."""
+    if not world.mantle_plumes:
+        return
+    earth_m = PLANET_RADIUS_KM * 1000.0
+    width_px = max(int(round(pixel_scale)), 1)
+    dot_r = max(2.0 * pixel_scale, 2.0)
+    angles = np.linspace(0.0, 2.0 * np.pi, 49)
+    up = np.array([0.0, 0.0, 1.0])
+    for plume in world.mantle_plumes:
+        pos = np.asarray(plume.position, dtype=float)
+        pos = pos / max(float(np.linalg.norm(pos)), 1e-12)
+        head_stage = not plume.is_tail_only and plume.head_remaining_m3 > 0.0
+        if head_stage:
+            radius_rad = plumes.PLUME_HEAD_RADIUS_KM * 1000.0 / earth_m
+            color = PLUME_VIEW_HEAD_RGB
+        else:
+            radius_rad = plumes.PLUME_TAIL_RADIUS_KM * 1000.0 / earth_m
+            span = max(float(plume.tail_end_years - plume.tail_start_years), 1e-9)
+            age = float(np.clip((world.elapsed_years - plume.tail_start_years) / span, 0.0, 1.0))
+            color = tuple(int(v) for v in PLUME_VIEW_TAIL_RGB + age * (PLUME_VIEW_TAIL_OLD_RGB - PLUME_VIEW_TAIL_RGB))
+        axis = up if abs(float(pos @ up)) < 0.9 else np.array([1.0, 0.0, 0.0])
+        e1 = np.cross(pos, axis)
+        e1 = e1 / max(float(np.linalg.norm(e1)), 1e-12)
+        e2 = np.cross(pos, e1)
+        ring = (
+            np.cos(radius_rad) * pos[None, :]
+            + np.sin(radius_rad) * (np.cos(angles)[:, None] * e1[None, :] + np.sin(angles)[:, None] * e2[None, :])
+        )
+        pts = _to_pixels(scale, offset_x, offset_y, _project_points(projection, _rotate(ring, view_rotation)))
+        draw.line([tuple(p) for p in pts], fill=color, width=width_px)
+        cx, cy = _to_pixels(scale, offset_x, offset_y, _project_points(projection, _rotate(pos[None, :], view_rotation)))[0]
+        draw.ellipse([cx - dot_r, cy - dot_r, cx + dot_r, cy + dot_r], fill=color)
+
+
+def _render_plumes_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+    """Renders "plumes" (see DEBUG_VIEWS): the `plume_heat_myr` halo and live head
+    plateau (`plateau_crust_m`) resampled onto the biome grid, with live plume
+    positions and head/tail footprints overlaid as rings via `extra_draw`."""
+    return _render_resampled_view(
+        world, projection, width, height, view_rotation,
+        lambda flat_xyz: _plume_cell_colors(world, flat_xyz),
+        lambda draw, scale, offset_x, offset_y, pixel_scale: _draw_plume_markers(
+            draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation
+        ),
+    )
 
 
 def _render_overlay_layer(world: World, layer: str, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
@@ -2477,13 +2583,19 @@ def _river_network_is_drawn(river: hydrology.RiverInfo, hide_short_networks: boo
     return not hide_short_networks or _river_network_is_long_enough(river)
 
 
-def _extend_drawn_rivers_downstream(hydro, drawn: np.ndarray, channel_width: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _extend_drawn_rivers_downstream(
+    hydro, drawn: np.ndarray, channel_width: np.ndarray, mouths: set[int]
+) -> tuple[np.ndarray, np.ndarray]:
     """Draws every river node downstream of a drawn one, all the way to its mouth. A river's
     last nodes before the coast are often new or reset cells whose channel hasn't grown past
     RIVER_VISIBLE_MIN_WIDTH_M yet, so the line used to stop one to three nodes short of the
     sea, a river to nowhere (issue #503). Only nodes below that floor are filled in, and they
     take the width of the drawn reach above them; a node drawn in its own right keeps its own
-    width, so a river that narrows downstream is still drawn narrowing."""
+    width, so a river that narrows downstream is still drawn narrowing.
+
+    The walk stops at the network's mouth (`mouths`, every `group_rivers` mouth_idx). A sink
+    whose spill crosses a lake is a mouth whose `flow_target` is a river node of the outflow
+    network beyond the rim, and that network is drawn or hidden on its own merits (#520)."""
     original = drawn
     drawn = drawn.copy()
     width = channel_width.astype(float).copy()
@@ -2493,7 +2605,7 @@ def _extend_drawn_rivers_downstream(hydro, drawn: np.ndarray, channel_width: np.
         node = source
         while True:
             target = int(flow_target[node])
-            if target < 0 or original[target] or drawn[target] or not is_river[target] or flow_target[target] < 0:
+            if node in mouths or target < 0 or original[target] or drawn[target] or not is_river[target] or flow_target[target] < 0:
                 break
             drawn[target] = True
             width[target] = width[node]
@@ -2505,9 +2617,9 @@ def _rivers_to_draw(world: World, hide_short_networks: bool = False) -> tuple[np
     """Selects which river segments the general-purpose map views draw, how strongly each
     tints toward RIVER_COLOR_RGB, and how much (if at all) each widens past 1px.
 
-    Returns (src_idx, color_alpha, width_frac): `src_idx` is the node index at the *upstream*
-    end of each drawn segment (its downstream end is hydro.flow_target[src_idx], guaranteed
-    >= 0). `color_alpha` is in [RIVER_COLOR_BLEND_MIN_FRACTION, 1.0], a percentile rank of this
+    Returns (src_idx, color_alpha, width_frac): `src_idx` is each drawn river node, whose flow
+    edge (`hydro.flow_target[src_idx]`, guaranteed >= 0) _draw_rivers draws as one segment, or
+    as several along a spill path (`hydrology.flow_segments`). `color_alpha` is in [RIVER_COLOR_BLEND_MIN_FRACTION, 1.0], a percentile rank of this
     segment's own channel_width among every other segment drawn in this same call -- see
     RIVER_COLOR_RGB's own comment for why a rank beats a fixed fraction here. `width_frac` is
     in [0, 1], a percentile rank of this segment's own physical discharge (not channel_width -- see
@@ -2541,13 +2653,16 @@ def _rivers_to_draw(world: World, hide_short_networks: bool = False) -> tuple[np
     if not np.any(discharge_m3_s[hydro.is_river] > RIVER_VISIBLE_MIN_FLOW_M3_S):
         return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
     drawn_members = np.zeros(len(hydro.points), dtype=bool)
-    for river in hydrology.group_rivers(hydro):
+    rivers = hydrology.group_rivers(hydro)
+    for river in rivers:
         if _river_network_is_drawn(river, hide_short_networks):
             drawn_members[river.member_idx] = True
     visible_mask &= drawn_members
     if not np.any(visible_mask):
         return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
-    visible_mask, channel_width = _extend_drawn_rivers_downstream(hydro, visible_mask, channel_width)
+    visible_mask, channel_width = _extend_drawn_rivers_downstream(
+        hydro, visible_mask, channel_width, {river.mouth_idx for river in rivers}
+    )
     candidates = np.where(visible_mask)[0]
 
     color_percentile = _percentile_rank(channel_width[candidates])
@@ -2565,8 +2680,8 @@ def _draw_rivers(
 ) -> Image.Image:
     """Draws each selected river segment (see _rivers_to_draw for which segments and how
     strongly each tints toward RIVER_COLOR_RGB) as a short line from a river node to its own
-    downstream flow target. Each segment is a real, short 3D hop between two
-    adjacent-in-the-flow-graph nodes, so _project_offset (not two independent _project_points
+    downstream flow target, or, for a spill hop, along its spill path (hydrology.flow_segments).
+    Each segment is a real, short 3D hop between two adjacent-in-the-flow-graph nodes, so _project_offset (not two independent _project_points
     calls) keeps it from being wrongly split across the antimeridian seam -- same technique
     _render_grid_arrays' own corner measurements already rely on.
 
@@ -2581,7 +2696,9 @@ def _draw_rivers(
     river_idx, color_alpha, width_frac = _rivers_to_draw(world, hide_short_networks=hide_short_networks)
     if len(river_idx) == 0:
         return image
-    target_idx = hydro.flow_target[river_idx]
+    # A spill hop is drawn along its spill path, so one node can own several segments (#520).
+    from_idx, target_idx, owner, _ = hydrology.flow_segments(hydro, river_idx)
+    color_alpha, width_frac = color_alpha[owner], width_frac[owner]
 
     width_px = np.maximum(
         np.round(pixel_scale * RIVER_LINE_WIDTH_PX * (1.0 + (RIVER_LINE_WIDTH_MAX_MULT - 1.0) * width_frac)).astype(int), 1
@@ -2595,7 +2712,7 @@ def _draw_rivers(
     halo_fill_value = np.clip(np.round(fill_value * RIVER_HALO_FILL_FRACTION), 0, 255).astype(int)
     core_width_px = np.maximum(np.round(width_px * RIVER_CORE_WIDTH_FRACTION).astype(int), 1)
 
-    from_points = _rotate(hydro.points[river_idx], view_rotation)
+    from_points = _rotate(hydro.points[from_idx], view_rotation)
     to_points = _rotate(hydro.points[target_idx], view_rotation)
     _, from_lon = geometry.xyz_to_latlon(from_points)
     from_xy = _project_points(projection, from_points)
@@ -2787,6 +2904,8 @@ def _render_map_png(  # noqa: C901
         return _render_thickness_view(world, projection, view, width, height, view_rotation)
     if view == "craton":
         return _render_craton_view(world, projection, width, height, view_rotation)
+    if view == "plumes":
+        return _render_plumes_view(world, projection, width, height, view_rotation)
     if view in LAYER_VIEWS:
         return _render_overlay_layer(world, view, projection, width, height, view_rotation)
     if view == "nodeAge":
@@ -2979,6 +3098,9 @@ ANIMATION_FPS = Fraction(1000, ANIMATION_FRAME_DURATION_MS)
 # libx264 quality knob (0 lossless .. 51 worst). 20 is visually lossless for a flat-shaded
 # map at this scale while keeping the file a small fraction of the equivalent GIF's size.
 ANIMATION_CRF = "20"
+# Same heartbeat interval world.py's generate/step streams use (#611) -- a slow frame
+# batch reads as alive, not stalled, to the frontend's 3-minute idle watchdog.
+ANIMATION_HEARTBEAT_INTERVAL_S = PROGRESS_HEARTBEAT_INTERVAL_S
 
 
 def stream_animation_mp4(
@@ -3024,9 +3146,14 @@ def stream_animation_mp4(
     step, so a caller can drive a live elapsed-time counter off the stream instead of it
     sitting frozen until the whole run (and its final world summary) completes -- then a
     final `("done", mp4_bytes, stopped_early)` carrying the complete video
-    and whether `stop_event` was what ended the run short of `num_frames`. Streaming
-    frame-by-frame lets the caller show a real progress bar -- and paint each frame onto the
-    live map -- instead of blocking the client on one opaque request that can take minutes on
+    and whether `stop_event` was what ended the run short of `num_frames`. While a
+    frame's step batch runs, yields `("heartbeat", frame, num_frames, elapsed_years)`
+    whenever more than ANIMATION_HEARTBEAT_INTERVAL_S has passed since the last yield:
+    a batch of slow steps with no other output tripped the client's idle watchdog
+    (#611), and these imageless ticks reset that timer without checkpointing or
+    rendering a partially-stepped frame. Streaming frame-by-frame lets the caller
+    show a real progress bar -- and paint each frame onto the live map -- instead of
+    blocking the client on one opaque request that can take minutes on
     a big world (up to num_frames frames, each up to steps_per_frame step_world calls + one
     render).
 
@@ -3046,28 +3173,39 @@ def stream_animation_mp4(
     stream.options = {"crf": ANIMATION_CRF, "movflags": "+faststart"}
 
     stopped_early = False
-    for i in range(num_frames):
-        if i > 0:
-            for _ in range(steps_per_frame):
-                if stop_event is not None and stop_event.is_set():
-                    stopped_early = True
+    clock = HeartbeatClock()
+    try:
+        for i in range(num_frames):
+            if i > 0:
+                for _ in range(steps_per_frame):
+                    if stop_event is not None and stop_event.is_set():
+                        stopped_early = True
+                        break
+                    step_fn(world, step_years)
+                    if clock.due():
+                        yield ("heartbeat", i + 1, num_frames, world.elapsed_years)
+                if stopped_early:
                     break
-                step_fn(world, step_years)
-            if stopped_early:
-                break
-        png_bytes = render_png(world, projection, view, width, height, view_rotation)
-        frame_img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
-        if frame_img.size != (enc_w, enc_h):
-            frame_img = frame_img.crop((0, 0, enc_w, enc_h))
-        av_frame = av.VideoFrame.from_ndarray(np.asarray(frame_img), format="rgb24")
-        for packet in stream.encode(av_frame):
-            container.mux(packet)
-        # The frame's own PNG rides along with the progress tick so the frontend can paint it
-        # straight onto the main map -- the animation runs in the background while the world
-        # is locked, so a normal /world/render for the same state would 503 (see main.py).
-        yield ("progress", i + 1, num_frames, png_bytes, world.elapsed_years)
+            png_bytes = render_png(world, projection, view, width, height, view_rotation)
+            frame_img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+            if frame_img.size != (enc_w, enc_h):
+                frame_img = frame_img.crop((0, 0, enc_w, enc_h))
+            av_frame = av.VideoFrame.from_ndarray(np.asarray(frame_img), format="rgb24")
+            for packet in stream.encode(av_frame):
+                container.mux(packet)
+            # The frame's own PNG rides along with the progress tick so the frontend can paint it
+            # straight onto the main map -- the animation runs in the background while the world
+            # is locked, so a normal /world/render for the same state would 503 (see main.py).
+            yield ("progress", i + 1, num_frames, png_bytes, world.elapsed_years)
+            # A progress line is itself proof of life for the client's watchdog.
+            clock.stamp()
 
-    for packet in stream.encode():  # flush libx264's remaining buffered frames
-        container.mux(packet)
-    container.close()
+        for packet in stream.encode():  # flush libx264's remaining buffered frames
+            container.mux(packet)
+    finally:
+        # A disconnected client abandons this generator mid-loop (see main.py's animate
+        # GeneratorExit path): the encoder context must still be closed, or each abandoned
+        # run leaks a native libx264 context. Closed exactly once -- normal completion
+        # reaches this same finally instead of closing inline above.
+        container.close()
     yield ("done", buf.getvalue(), stopped_early)

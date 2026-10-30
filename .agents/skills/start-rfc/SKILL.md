@@ -42,7 +42,9 @@ as the canonical source for acceptance, diagnosis gates and implementation-issue
   git worktree add -b <agent>/rfc-<NNNN>-<slug> ../mantle-bloom-rfc-<NNNN> origin/main
   ```
 
-  `<agent>` is `claude` or `codex`. Keep the proposal tree for RFC work. Each
+  `<agent>` is the short identifier for the agent/tool doing the work (for example,
+  `claude`, `codex`, or `muse`). Use your own identifier. Keep the proposal tree for RFC
+  work. Each
   implementation sub-issue gets its own isolated worktree and branch from `origin/main`
   through [`start-issue`](../start-issue/SKILL.md); never switch the proposal worktree to
   an issue branch.

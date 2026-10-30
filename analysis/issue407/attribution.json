@@ -1,0 +1,2687 @@
+{
+ "baseline_commit": "8ed179fd943fa52a3c5d9e5618e3e9d9a7167ae5",
+ "python": "3.14.6",
+ "constraints_sha256": "613e940e8d4ce0a993dbc27c4442f8576c832f6149c94a014b3a3ac126e0e61f",
+ "generation": "world.generate_world(seed), cratons on, all other arguments default; no control overrides",
+ "step_years": 5000000.0,
+ "every_years": 100000000.0,
+ "years": 500000000.0,
+ "split_min_age_years": 2000000.0,
+ "tap_self_test": {
+  "self_test": "pass",
+  "cases": {
+   "lithosphere_plate.deform_columns:999": {
+    "recoded_exposed": 1,
+    "exact_m3": 3.1e+16,
+    "estimated_m3": 0.0
+   },
+   "quad_tectonics._open_rift:999": {
+    "recoded_exposed": 1,
+    "exact_m3": 0.0,
+    "estimated_m3": 3.1e+16
+   }
+  }
+ },
+ "probe": {
+  "nodes": "[exposed oceanic, drowned oceanic, exposed continental]",
+  "before": {
+   "codes": [
+    1,
+    1,
+    2
+   ],
+   "hc_m": [
+    2500.0,
+    2500.0,
+    2500.0
+   ],
+   "prior_elev_m": [
+    400.0,
+    -3000.0,
+    500.0
+   ]
+  },
+  "after": {
+   "codes": [
+    2,
+    1,
+    2
+   ],
+   "hc_m": [
+    35000.0,
+    11000.0,
+    35000.0
+   ],
+   "is_volcano": [
+    true,
+    true,
+    true
+   ]
+  },
+  "constants_m": {
+   "rift_critical_thickness": 5000.0,
+   "reference_hc_continental": 35000.0,
+   "reference_hc_oceanic": 11000.0
+  },
+  "caller_would_book_juvenile_m_per_node": [
+   32500.0,
+   0.0,
+   32500.0
+  ]
+ },
+ "runs": [
+  {
+   "seed": 7,
+   "wall_s": 357.7,
+   "checkpoints": [
+    {
+     "seed": 7,
+     "variant": "on",
+     "myr": 0.0,
+     "genuine_continental_area_km2": 260216859.4905334,
+     "largest_plate_continental_area_km2": 80867949.71550173,
+     "land_fraction_node": 0.45280653250176817,
+     "plate_count": 20,
+     "mean_rotation_rate": 0.0,
+     "craton_area_km2": 103943489.90133062,
+     "craton_continental_fraction": 0.3994494826539556,
+     "craton_volume_km3": 4107197532.2866306,
+     "craton_balance_error_km3": 1.024e-06,
+     "craton_ledger_km3": {
+      "formed_m3": 0.0,
+      "rifted_m3": 0.0,
+      "subducted_m3": 0.0,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 0.0,
+      "eroded_m3": 0.0,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": 0.0,
+      "rifted_divergent_m3": 0.0,
+      "rifted_stretch_m3": 0.0,
+      "rifted_failed_m3": 0.0,
+      "initial_m3": 4107197532.2866306
+     },
+     "rift_cuts": {
+      "split_cuts": 0.0,
+      "split_cuts_through_craton": 0.0,
+      "split_band_area_m2": 0.0,
+      "split_band_craton_area_m2": 0.0,
+      "failed_rift_cuts": 0.0,
+      "failed_rift_cuts_through_craton": 0.0,
+      "failed_rift_band_area_m2": 0.0,
+      "failed_rift_band_craton_area_m2": 0.0
+     },
+     "events": {},
+     "continental_material_ledger": {
+      "initial_continental_m3": 1.1957696253874196e+19,
+      "juvenile_additions_m3": 0.0,
+      "accreted_thickened_m3": 0.0,
+      "delaminated_lower_crust_m3": 0.0,
+      "collision_subducted_m3": 0.0,
+      "collision_lower_crust_subducted_m3": 0.0,
+      "deeply_subducted_m3": 0.0,
+      "remelted_relaminated_returns_m3": 0.0,
+      "rift_thinned_m3": 0.0,
+      "numerical_unplaced_m3": 0.0,
+      "discarded_marine_sediment_m3": 0.0,
+      "overloaded_root_delaminated_m3": 0.0,
+      "topology_removed_m3": 0.0,
+      "surface_continental_derived_m3": 1.1957696253874196e+19,
+      "continental_sediment_on_oceanic_hosts_m3": 0.0,
+      "balance_error_m3": 0.0
+     },
+     "juvenile_by_caller_m3": {},
+     "melt_recodes": {
+      "erupt_calls": 0,
+      "melt_nodes": 0,
+      "recoded_exposed_oceanic": 0,
+      "reset_thickness_m": 0.0,
+      "reset_volume_exact_m3": 0.0,
+      "reset_volume_estimated_m3": 0.0
+     }
+    },
+    {
+     "seed": 7,
+     "variant": "on",
+     "myr": 100.0,
+     "genuine_continental_area_km2": 235921249.33640885,
+     "largest_plate_continental_area_km2": 35130940.0084352,
+     "land_fraction_node": 0.45853302440727456,
+     "plate_count": 27,
+     "mean_rotation_rate": 2.7228045359285113e-09,
+     "craton_area_km2": 103767650.23539904,
+     "craton_continental_fraction": 0.4398402031494539,
+     "craton_volume_km3": 4063785813.6129403,
+     "craton_balance_error_km3": -5.12e-07,
+     "craton_ledger_km3": {
+      "formed_m3": 0.0,
+      "rifted_m3": 8589386.175714891,
+      "subducted_m3": 0.0,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 25272417.642219007,
+      "eroded_m3": 8940014.295065586,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": 609900.56069007,
+      "rifted_divergent_m3": 0.0,
+      "rifted_stretch_m3": 1487475.1524750267,
+      "rifted_failed_m3": 7101911.023239863,
+      "initial_m3": 4107197532.2866306
+     },
+     "rift_cuts": {
+      "split_cuts": 8.0,
+      "split_cuts_through_craton": 7.0,
+      "split_band_area_m2": 29122241833593.906,
+      "split_band_craton_area_m2": 14613246946109.531,
+      "failed_rift_cuts": 10.0,
+      "failed_rift_cuts_through_craton": 7.0,
+      "failed_rift_band_area_m2": 39560703517030.875,
+      "failed_rift_band_craton_area_m2": 14624394043764.832
+     },
+     "events": {
+      "failed_rift": 10,
+      "split": 8,
+      "merged": 1
+     },
+     "continental_material_ledger": {
+      "initial_continental_m3": 1.1957696253874196e+19,
+      "juvenile_additions_m3": 2.323418510016575e+17,
+      "accreted_thickened_m3": 0.0,
+      "delaminated_lower_crust_m3": 1029564064606644.2,
+      "collision_subducted_m3": 7.561603611392957,
+      "collision_lower_crust_subducted_m3": 2.7693168106736268e+16,
+      "deeply_subducted_m3": 2.598014752612658e+17,
+      "remelted_relaminated_returns_m3": 1.6531089996015866e+16,
+      "rift_thinned_m3": 5.9538615354022136e+16,
+      "numerical_unplaced_m3": 300835962762.9955,
+      "discarded_marine_sediment_m3": 0.0,
+      "overloaded_root_delaminated_m3": 0.0,
+      "topology_removed_m3": 0.0,
+      "surface_continental_derived_m3": 1.1857690064755421e+19,
+      "continental_sediment_on_oceanic_hosts_m3": 1.5366193537682333e+17,
+      "balance_error_m3": -816006493855744.0
+     },
+     "juvenile_by_caller_m3": {
+      "lithosphere_plate.deform_columns:795 :: juvenile_additions_m3": 1.841993283458643e+17,
+      "lithosphere_plate.deform_columns:827 :: rift_thinned_m3": 2.3644365099130132e+16,
+      "lithosphere_plate.deform_columns:865 :: juvenile_additions_m3": 7247257863199634.0,
+      "lithosphere_plate.deform_columns:909 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._retreat:537 :: deeply_subducted_m3": 2.598014752612658e+17,
+      "quad_tectonics._book_shed_roots:418 :: delaminated_lower_crust_m3": 1029564064606644.2,
+      "crust_transfer._book:368 :: collision_lower_crust_subducted_m3": 2.7693168106736268e+16,
+      "crust_transfer._book:369 :: collision_subducted_m3": 0.0,
+      "quad_tectonics._accrete_onto_survivors:837 :: collision_subducted_m3": 7.561603611392957,
+      "quad_tectonics._open_rift:1844 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._open_rift:1891 :: juvenile_additions_m3": 3.724628927062127e+16,
+      "quad_tectonics._open_rift:1853 :: rift_thinned_m3": 6672131074729522.0,
+      "quad_tectonics._open_rift:1903 :: rift_thinned_m3": 900581625135562.5,
+      "erosion.apply_erosion:2489 :: numerical_unplaced_m3": 300835962762.9955,
+      "volcanism.apply_volcanic_activity:79 :: juvenile_additions_m3": 3274845751035794.5,
+      "lithosphere_plate.deform_columns:920 :: rift_thinned_m3": 152317757687669.6,
+      "merge_split.maybe_split_plate:837 :: rift_thinned_m3": 2.816921979733929e+16,
+      "magma_transport._scatter_write_deposits:334 :: remelted_relaminated_returns_m3": 1.6531089996015866e+16,
+      "quad_tectonics.grow_frontier:1602 :: juvenile_additions_m3": 374129770936593.4
+     },
+     "melt_recodes": {
+      "erupt_calls": 430,
+      "melt_nodes": 1402,
+      "recoded_exposed_oceanic": 0,
+      "reset_thickness_m": 0.0,
+      "reset_volume_exact_m3": 0.0,
+      "reset_volume_estimated_m3": 0.0
+     },
+     "wall_s": 59.588387966156006
+    },
+    {
+     "seed": 7,
+     "variant": "on",
+     "myr": 200.0,
+     "genuine_continental_area_km2": 221257209.1626538,
+     "largest_plate_continental_area_km2": 22497557.300089203,
+     "land_fraction_node": 0.44446533784630815,
+     "plate_count": 33,
+     "mean_rotation_rate": 2.3202988201339235e-09,
+     "craton_area_km2": 122102110.65371862,
+     "craton_continental_fraction": 0.5518559649008189,
+     "craton_volume_km3": 4603952759.535855,
+     "craton_balance_error_km3": 1.024e-06,
+     "craton_ledger_km3": {
+      "formed_m3": 593398600.1825508,
+      "rifted_m3": 13138890.500794448,
+      "subducted_m3": 0.0,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 64460862.83365447,
+      "eroded_m3": 18391632.048439883,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": 651987.550439246,
+      "rifted_divergent_m3": 7582.795677467533,
+      "rifted_stretch_m3": 6029396.681877115,
+      "rifted_failed_m3": 7101911.023239863,
+      "initial_m3": 4107197532.2866306
+     },
+     "rift_cuts": {
+      "split_cuts": 16.0,
+      "split_cuts_through_craton": 13.0,
+      "split_band_area_m2": 53777927986120.14,
+      "split_band_craton_area_m2": 22651368910588.734,
+      "failed_rift_cuts": 13.0,
+      "failed_rift_cuts_through_craton": 7.0,
+      "failed_rift_band_area_m2": 47930308726895.46,
+      "failed_rift_band_craton_area_m2": 14624394043764.832
+     },
+     "events": {
+      "failed_rift": 13,
+      "split": 16,
+      "merged": 3
+     },
+     "continental_material_ledger": {
+      "initial_continental_m3": 1.1957696253874196e+19,
+      "juvenile_additions_m3": 4.130821967516659e+17,
+      "accreted_thickened_m3": 0.0,
+      "delaminated_lower_crust_m3": 3.5027785877035908e+16,
+      "collision_subducted_m3": 142.6294603484521,
+      "collision_lower_crust_subducted_m3": 4.3602344586958376e+16,
+      "deeply_subducted_m3": 4.971222470332144e+17,
+      "remelted_relaminated_returns_m3": 1.9963777166355852e+16,
+      "rift_thinned_m3": 7.193178063970174e+16,
+      "numerical_unplaced_m3": 32101531552144.56,
+      "discarded_marine_sediment_m3": 0.0,
+      "overloaded_root_delaminated_m3": 0.0,
+      "topology_removed_m3": 0.0,
+      "surface_continental_derived_m3": 1.1737450240991572e+19,
+      "continental_sediment_on_oceanic_hosts_m3": 2.1478726903332435e+17,
+      "balance_error_m3": -5575727132184576.0
+     },
+     "juvenile_by_caller_m3": {
+      "lithosphere_plate.deform_columns:795 :: juvenile_additions_m3": 3.341856019958387e+17,
+      "lithosphere_plate.deform_columns:827 :: rift_thinned_m3": 2.7206007448190364e+16,
+      "lithosphere_plate.deform_columns:865 :: juvenile_additions_m3": 1.5225112518261278e+16,
+      "lithosphere_plate.deform_columns:909 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._retreat:537 :: deeply_subducted_m3": 4.971222470332144e+17,
+      "quad_tectonics._book_shed_roots:418 :: delaminated_lower_crust_m3": 3.5027785877035908e+16,
+      "crust_transfer._book:368 :: collision_lower_crust_subducted_m3": 4.3602344586958376e+16,
+      "crust_transfer._book:369 :: collision_subducted_m3": 0.0,
+      "quad_tectonics._accrete_onto_survivors:837 :: collision_subducted_m3": 142.6294603484521,
+      "quad_tectonics._open_rift:1844 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._open_rift:1891 :: juvenile_additions_m3": 5.545701142391323e+16,
+      "quad_tectonics._open_rift:1853 :: rift_thinned_m3": 1.250197331563787e+16,
+      "quad_tectonics._open_rift:1903 :: rift_thinned_m3": 2024877884061817.2,
+      "erosion.apply_erosion:2489 :: numerical_unplaced_m3": 32101531552144.56,
+      "volcanism.apply_volcanic_activity:79 :: juvenile_additions_m3": 4673818893303054.0,
+      "lithosphere_plate.deform_columns:920 :: rift_thinned_m3": 297623148385879.6,
+      "merge_split.maybe_split_plate:837 :: rift_thinned_m3": 2.9901298843425944e+16,
+      "magma_transport._scatter_write_deposits:334 :: remelted_relaminated_returns_m3": 1.9963777166355852e+16,
+      "quad_tectonics.grow_frontier:1602 :: juvenile_additions_m3": 3540651920350004.0
+     },
+     "melt_recodes": {
+      "erupt_calls": 996,
+      "melt_nodes": 3643,
+      "recoded_exposed_oceanic": 0,
+      "reset_thickness_m": 0.0,
+      "reset_volume_exact_m3": 0.0,
+      "reset_volume_estimated_m3": 0.0
+     },
+     "wall_s": 124.64426803588867
+    },
+    {
+     "seed": 7,
+     "variant": "on",
+     "myr": 300.0,
+     "genuine_continental_area_km2": 212238701.8292173,
+     "largest_plate_continental_area_km2": 19922999.121312007,
+     "land_fraction_node": 0.43609671848013815,
+     "plate_count": 37,
+     "mean_rotation_rate": 1.6402220749234231e-09,
+     "craton_area_km2": 124539092.19358367,
+     "craton_continental_fraction": 0.5867878531117142,
+     "craton_volume_km3": 4641259488.807462,
+     "craton_balance_error_km3": 0.0,
+     "craton_ledger_km3": {
+      "formed_m3": 682340306.2883451,
+      "rifted_m3": 17439866.15859874,
+      "subducted_m3": 8277.332975422809,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 99930888.60832569,
+      "eroded_m3": 35936371.11622303,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": -5037053.44861013,
+      "rifted_divergent_m3": 7582.795677467533,
+      "rifted_stretch_m3": 8884797.847929824,
+      "rifted_failed_m3": 8547485.514991445,
+      "initial_m3": 4107197532.2866306
+     },
+     "rift_cuts": {
+      "split_cuts": 20.0,
+      "split_cuts_through_craton": 14.0,
+      "split_band_area_m2": 67638306941713.086,
+      "split_band_craton_area_m2": 24131118996511.254,
+      "failed_rift_cuts": 18.0,
+      "failed_rift_cuts_through_craton": 9.0,
+      "failed_rift_band_area_m2": 65243001901247.805,
+      "failed_rift_band_craton_area_m2": 17584927239962.25
+     },
+     "events": {
+      "failed_rift": 18,
+      "split": 20,
+      "merged": 3
+     },
+     "continental_material_ledger": {
+      "initial_continental_m3": 1.1957696253874196e+19,
+      "juvenile_additions_m3": 5.318177200112737e+17,
+      "accreted_thickened_m3": 0.0,
+      "delaminated_lower_crust_m3": 5.2834261468626904e+16,
+      "collision_subducted_m3": 236.63139511997463,
+      "collision_lower_crust_subducted_m3": 5.528858407833754e+16,
+      "deeply_subducted_m3": 6.782221171068314e+17,
+      "remelted_relaminated_returns_m3": 2.2774887448325948e+16,
+      "rift_thinned_m3": 9.07970736307794e+16,
+      "numerical_unplaced_m3": 73001959917569.25,
+      "discarded_marine_sediment_m3": 0.0,
+      "overloaded_root_delaminated_m3": 205315590316185.4,
+      "topology_removed_m3": 0.0,
+      "surface_continental_derived_m3": 1.1626441418569994e+19,
+      "continental_sediment_on_oceanic_hosts_m3": 2.5844857482922246e+17,
+      "balance_error_m3": -8427088928993280.0
+     },
+     "juvenile_by_caller_m3": {
+      "lithosphere_plate.deform_columns:795 :: juvenile_additions_m3": 4.407656566438076e+17,
+      "lithosphere_plate.deform_columns:827 :: rift_thinned_m3": 2.7296635531024336e+16,
+      "lithosphere_plate.deform_columns:865 :: juvenile_additions_m3": 1.6406367956734456e+16,
+      "lithosphere_plate.deform_columns:909 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._retreat:537 :: deeply_subducted_m3": 6.78213839773856e+17,
+      "quad_tectonics._book_shed_roots:418 :: delaminated_lower_crust_m3": 5.2834261468626904e+16,
+      "crust_transfer._book:368 :: collision_lower_crust_subducted_m3": 5.528858407833754e+16,
+      "crust_transfer._book:369 :: collision_subducted_m3": 0.0,
+      "quad_tectonics._accrete_onto_survivors:837 :: collision_subducted_m3": 236.63139511997463,
+      "quad_tectonics._open_rift:1844 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._open_rift:1891 :: juvenile_additions_m3": 6.489691545313893e+16,
+      "quad_tectonics._open_rift:1853 :: rift_thinned_m3": 1.4043544887297632e+16,
+      "quad_tectonics._open_rift:1903 :: rift_thinned_m3": 2378320056777241.5,
+      "erosion.apply_erosion:2489 :: numerical_unplaced_m3": 73001959917569.25,
+      "volcanism.apply_volcanic_activity:79 :: juvenile_additions_m3": 5330549331682276.0,
+      "lithosphere_plate.deform_columns:920 :: rift_thinned_m3": 302281068389952.94,
+      "merge_split.maybe_split_plate:837 :: rift_thinned_m3": 4.677629208729046e+16,
+      "magma_transport._scatter_write_deposits:334 :: remelted_relaminated_returns_m3": 2.2774887448325948e+16,
+      "quad_tectonics.grow_frontier:1602 :: juvenile_additions_m3": 4418230625910341.0,
+      "erosion.apply_erosion:2397 :: overloaded_root_delaminated_m3": 205315590316185.4,
+      "cratons.attrite:538 :: deeply_subducted_m3": 8277332975422.81
+     },
+     "melt_recodes": {
+      "erupt_calls": 1603,
+      "melt_nodes": 6307,
+      "recoded_exposed_oceanic": 0,
+      "reset_thickness_m": 0.0,
+      "reset_volume_exact_m3": 0.0,
+      "reset_volume_estimated_m3": 0.0
+     },
+     "wall_s": 195.8048858642578
+    },
+    {
+     "seed": 7,
+     "variant": "on",
+     "myr": 400.0,
+     "genuine_continental_area_km2": 204923717.69503164,
+     "largest_plate_continental_area_km2": 19381516.36211389,
+     "land_fraction_node": 0.4206888224818135,
+     "plate_count": 40,
+     "mean_rotation_rate": 1.732381840704231e-09,
+     "craton_area_km2": 127192067.50182337,
+     "craton_continental_fraction": 0.6206800702840611,
+     "craton_volume_km3": 4691966976.872057,
+     "craton_balance_error_km3": -4.096e-06,
+     "craton_ledger_km3": {
+      "formed_m3": 785820106.0591573,
+      "rifted_m3": 18561914.51158665,
+      "subducted_m3": 8277.332975422809,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 134109695.9392589,
+      "eroded_m3": 55419814.557423875,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": -7049040.86751829,
+      "rifted_divergent_m3": 25476.637314660882,
+      "rifted_stretch_m3": 9988952.359280547,
+      "rifted_failed_m3": 8547485.514991445,
+      "initial_m3": 4107197532.2866306
+     },
+     "rift_cuts": {
+      "split_cuts": 23.0,
+      "split_cuts_through_craton": 14.0,
+      "split_band_area_m2": 78605041640589.28,
+      "split_band_craton_area_m2": 24131118996511.254,
+      "failed_rift_cuts": 22.0,
+      "failed_rift_cuts_through_craton": 9.0,
+      "failed_rift_band_area_m2": 79498214756400.06,
+      "failed_rift_band_craton_area_m2": 17584927239962.25
+     },
+     "events": {
+      "failed_rift": 22,
+      "split": 23,
+      "merged": 3
+     },
+     "continental_material_ledger": {
+      "initial_continental_m3": 1.1957696253874196e+19,
+      "juvenile_additions_m3": 6.291514599433929e+17,
+      "accreted_thickened_m3": 0.0,
+      "delaminated_lower_crust_m3": 6.665847514889988e+16,
+      "collision_subducted_m3": 295.85693509024173,
+      "collision_lower_crust_subducted_m3": 6.596324366173238e+16,
+      "deeply_subducted_m3": 8.413092800857476e+17,
+      "remelted_relaminated_returns_m3": 2.585574739653747e+16,
+      "rift_thinned_m3": 9.921843407114197e+16,
+      "numerical_unplaced_m3": 73370279829955.55,
+      "discarded_marine_sediment_m3": 0.0,
+      "overloaded_root_delaminated_m3": 746761880670351.5,
+      "topology_removed_m3": 0.0,
+      "surface_continental_derived_m3": 1.153013986737049e+19,
+      "continental_sediment_on_oceanic_hosts_m3": 2.7707716324148822e+17,
+      "balance_error_m3": -8594028715616256.0
+     },
+     "juvenile_by_caller_m3": {
+      "lithosphere_plate.deform_columns:795 :: juvenile_additions_m3": 5.2873426807136986e+17,
+      "lithosphere_plate.deform_columns:827 :: rift_thinned_m3": 2.9507827892652404e+16,
+      "lithosphere_plate.deform_columns:865 :: juvenile_additions_m3": 1.900954465953713e+16,
+      "lithosphere_plate.deform_columns:909 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._retreat:537 :: deeply_subducted_m3": 8.413010027527722e+17,
+      "quad_tectonics._book_shed_roots:418 :: delaminated_lower_crust_m3": 6.665847514889988e+16,
+      "crust_transfer._book:368 :: collision_lower_crust_subducted_m3": 6.596324366173238e+16,
+      "crust_transfer._book:369 :: collision_subducted_m3": 0.0,
+      "quad_tectonics._accrete_onto_survivors:837 :: collision_subducted_m3": 295.85693509024173,
+      "quad_tectonics._open_rift:1844 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._open_rift:1891 :: juvenile_additions_m3": 7.069138895627324e+16,
+      "quad_tectonics._open_rift:1853 :: rift_thinned_m3": 1.6330450267134454e+16,
+      "quad_tectonics._open_rift:1903 :: rift_thinned_m3": 2717264473193070.0,
+      "erosion.apply_erosion:2489 :: numerical_unplaced_m3": 73370279829955.55,
+      "volcanism.apply_volcanic_activity:79 :: juvenile_additions_m3": 5817056096330748.0,
+      "lithosphere_plate.deform_columns:920 :: rift_thinned_m3": 495893809189378.8,
+      "merge_split.maybe_split_plate:837 :: rift_thinned_m3": 5.016699762897291e+16,
+      "magma_transport._scatter_write_deposits:334 :: remelted_relaminated_returns_m3": 2.585574739653747e+16,
+      "quad_tectonics.grow_frontier:1602 :: juvenile_additions_m3": 4899202159880404.0,
+      "erosion.apply_erosion:2397 :: overloaded_root_delaminated_m3": 746761880670351.5,
+      "cratons.attrite:538 :: deeply_subducted_m3": 8277332975422.81
+     },
+     "melt_recodes": {
+      "erupt_calls": 2295,
+      "melt_nodes": 9623,
+      "recoded_exposed_oceanic": 0,
+      "reset_thickness_m": 0.0,
+      "reset_volume_exact_m3": 0.0,
+      "reset_volume_estimated_m3": 0.0
+     },
+     "wall_s": 273.4306080341339
+    },
+    {
+     "seed": 7,
+     "variant": "on",
+     "myr": 500.0,
+     "genuine_continental_area_km2": 198770501.96010873,
+     "largest_plate_continental_area_km2": 19352548.69438675,
+     "land_fraction_node": 0.41955366631243357,
+     "plate_count": 43,
+     "mean_rotation_rate": 1.551030305554359e-09,
+     "craton_area_km2": 129760133.5570743,
+     "craton_continental_fraction": 0.6528138344346279,
+     "craton_volume_km3": 4730096014.305737,
+     "craton_balance_error_km3": -3.072e-06,
+     "craton_ledger_km3": {
+      "formed_m3": 868212636.1703845,
+      "rifted_m3": 20258870.38029642,
+      "subducted_m3": 8277.332975422809,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 4567216.55314944,
+      "collision_reworked_m3": 158838295.34514463,
+      "eroded_m3": 72848813.9565021,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": -11207319.41679269,
+      "rifted_divergent_m3": 25476.637314660882,
+      "rifted_stretch_m3": 11626673.999196082,
+      "rifted_failed_m3": 8606719.743785676,
+      "initial_m3": 4107197532.2866306
+     },
+     "rift_cuts": {
+      "split_cuts": 26.0,
+      "split_cuts_through_craton": 14.0,
+      "split_band_area_m2": 87483939903258.73,
+      "split_band_craton_area_m2": 24131118996511.254,
+      "failed_rift_cuts": 25.0,
+      "failed_rift_cuts_through_craton": 10.0,
+      "failed_rift_band_area_m2": 88801783762536.75,
+      "failed_rift_band_craton_area_m2": 17822512773425.383
+     },
+     "events": {
+      "failed_rift": 25,
+      "split": 26,
+      "merged": 4
+     },
+     "continental_material_ledger": {
+      "initial_continental_m3": 1.1957696253874196e+19,
+      "juvenile_additions_m3": 7.358954471780991e+17,
+      "accreted_thickened_m3": 0.0,
+      "delaminated_lower_crust_m3": 7.1077200706827544e+16,
+      "collision_subducted_m3": 326.41488203762003,
+      "collision_lower_crust_subducted_m3": 7.322492532907014e+16,
+      "deeply_subducted_m3": 1.0291959273498772e+18,
+      "remelted_relaminated_returns_m3": 3.3325196037109972e+16,
+      "rift_thinned_m3": 1.0505612675832654e+17,
+      "numerical_unplaced_m3": 84388984181876.5,
+      "discarded_marine_sediment_m3": 0.0,
+      "overloaded_root_delaminated_m3": 1793258000776332.8,
+      "topology_removed_m3": 0.0,
+      "surface_continental_derived_m3": 1.143963420367256e+19,
+      "continental_sediment_on_oceanic_hosts_m3": 2.907077424150717e+17,
+      "balance_error_m3": -6850866287783936.0
+     },
+     "juvenile_by_caller_m3": {
+      "lithosphere_plate.deform_columns:795 :: juvenile_additions_m3": 6.26249584763352e+17,
+      "lithosphere_plate.deform_columns:827 :: rift_thinned_m3": 2.9915767436964492e+16,
+      "lithosphere_plate.deform_columns:865 :: juvenile_additions_m3": 2.0179493106560064e+16,
+      "lithosphere_plate.deform_columns:909 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._retreat:537 :: deeply_subducted_m3": 1.0291876500169019e+18,
+      "quad_tectonics._book_shed_roots:418 :: delaminated_lower_crust_m3": 7.1077200706827544e+16,
+      "crust_transfer._book:368 :: collision_lower_crust_subducted_m3": 7.322492532907014e+16,
+      "crust_transfer._book:369 :: collision_subducted_m3": 0.0,
+      "quad_tectonics._accrete_onto_survivors:837 :: collision_subducted_m3": 326.41488203762003,
+      "quad_tectonics._open_rift:1844 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._open_rift:1891 :: juvenile_additions_m3": 7.78694703424613e+16,
+      "quad_tectonics._open_rift:1853 :: rift_thinned_m3": 1.864618820215003e+16,
+      "quad_tectonics._open_rift:1903 :: rift_thinned_m3": 3018859703496933.5,
+      "erosion.apply_erosion:2489 :: numerical_unplaced_m3": 84388984181876.5,
+      "volcanism.apply_volcanic_activity:79 :: juvenile_additions_m3": 6231303315234932.0,
+      "lithosphere_plate.deform_columns:920 :: rift_thinned_m3": 704520300116242.5,
+      "merge_split.maybe_split_plate:837 :: rift_thinned_m3": 5.277079111559909e+16,
+      "magma_transport._scatter_write_deposits:334 :: remelted_relaminated_returns_m3": 3.3325196037109972e+16,
+      "quad_tectonics.grow_frontier:1602 :: juvenile_additions_m3": 5365595650489565.0,
+      "erosion.apply_erosion:2397 :: overloaded_root_delaminated_m3": 1793258000776332.8,
+      "cratons.attrite:538 :: deeply_subducted_m3": 8277332975422.81
+     },
+     "melt_recodes": {
+      "erupt_calls": 3179,
+      "melt_nodes": 13466,
+      "recoded_exposed_oceanic": 0,
+      "reset_thickness_m": 0.0,
+      "reset_volume_exact_m3": 0.0,
+      "reset_volume_estimated_m3": 0.0
+     },
+     "wall_s": 356.5561089515686
+    }
+   ],
+   "splits_per_checkpoint": [
+    {},
+    {
+     "failed_rift": 10,
+     "split": 8,
+     "merged": 1
+    },
+    {
+     "failed_rift": 13,
+     "split": 16,
+     "merged": 3
+    },
+    {
+     "failed_rift": 18,
+     "split": 20,
+     "merged": 3
+    },
+    {
+     "failed_rift": 22,
+     "split": 23,
+     "merged": 3
+    },
+    {
+     "failed_rift": 25,
+     "split": 26,
+     "merged": 4
+    }
+   ],
+   "caller_volumes_m3": {
+    "lithosphere_plate.deform_columns:795 :: juvenile_additions_m3": 6.26249584763352e+17,
+    "lithosphere_plate.deform_columns:827 :: rift_thinned_m3": 2.9915767436964492e+16,
+    "lithosphere_plate.deform_columns:865 :: juvenile_additions_m3": 2.0179493106560064e+16,
+    "lithosphere_plate.deform_columns:909 :: juvenile_additions_m3": 0.0,
+    "quad_tectonics._retreat:537 :: deeply_subducted_m3": 1.0291876500169019e+18,
+    "quad_tectonics._book_shed_roots:418 :: delaminated_lower_crust_m3": 7.1077200706827544e+16,
+    "crust_transfer._book:368 :: collision_lower_crust_subducted_m3": 7.322492532907014e+16,
+    "crust_transfer._book:369 :: collision_subducted_m3": 0.0,
+    "quad_tectonics._accrete_onto_survivors:837 :: collision_subducted_m3": 326.41488203762003,
+    "quad_tectonics._open_rift:1844 :: juvenile_additions_m3": 0.0,
+    "quad_tectonics._open_rift:1891 :: juvenile_additions_m3": 7.78694703424613e+16,
+    "quad_tectonics._open_rift:1853 :: rift_thinned_m3": 1.864618820215003e+16,
+    "quad_tectonics._open_rift:1903 :: rift_thinned_m3": 3018859703496933.5,
+    "erosion.apply_erosion:2489 :: numerical_unplaced_m3": 84388984181876.5,
+    "volcanism.apply_volcanic_activity:79 :: juvenile_additions_m3": 6231303315234932.0,
+    "lithosphere_plate.deform_columns:920 :: rift_thinned_m3": 704520300116242.5,
+    "merge_split.maybe_split_plate:837 :: rift_thinned_m3": 5.277079111559909e+16,
+    "magma_transport._scatter_write_deposits:334 :: remelted_relaminated_returns_m3": 3.3325196037109972e+16,
+    "quad_tectonics.grow_frontier:1602 :: juvenile_additions_m3": 5365595650489565.0,
+    "erosion.apply_erosion:2397 :: overloaded_root_delaminated_m3": 1793258000776332.8,
+    "cratons.attrite:538 :: deeply_subducted_m3": 8277332975422.81
+   },
+   "recode_summary": {
+    "erupt_calls": 3179,
+    "melt_nodes": 13466,
+    "recoded_exposed_oceanic": 0,
+    "reset_thickness_m": 0.0,
+    "reset_volume_exact_m3": 0.0,
+    "reset_volume_estimated_m3": 0.0,
+    "estimate_basis": "",
+    "prior_code_of_reset_nodes": {
+     "inherit": 0,
+     "oceanic": 0,
+     "continental": 0
+    },
+    "prior_elev_sample_m": []
+   },
+   "ledger_history": {
+    "checkpoints": [
+     {
+      "myr": 0.0,
+      "craton_volume_mkm3": 4107.197532286631,
+      "craton_area_mkm2": 103.94348990133062,
+      "genuine_continental_area_mkm2": 260.2168594905334,
+      "land_fraction": 0.45318410691105526,
+      "craton_rifted_m3_mkm3": 0.0,
+      "craton_subducted_m3_mkm3": 0.0,
+      "craton_delaminated_m3_mkm3": 0.0,
+      "craton_merge_capped_m3_mkm3": 0.0,
+      "craton_collision_reworked_m3_mkm3": 0.0,
+      "craton_eroded_m3_mkm3": 0.0,
+      "craton_topology_removed_m3_mkm3": 0.0,
+      "craton_audit_clipped_m3_mkm3": 0.0,
+      "craton_unattributed_m3_mkm3": 0.0,
+      "craton_formed_m3_mkm3": 0.0
+     },
+     {
+      "myr": 100.0,
+      "craton_volume_mkm3": 4063.7858136129403,
+      "craton_area_mkm2": 103.76765023539903,
+      "genuine_continental_area_mkm2": 235.92124933640886,
+      "land_fraction": 0.45974480761738834,
+      "craton_rifted_m3_mkm3": 8.58938617571489,
+      "craton_subducted_m3_mkm3": 0.0,
+      "craton_delaminated_m3_mkm3": 0.0,
+      "craton_merge_capped_m3_mkm3": 0.0,
+      "craton_collision_reworked_m3_mkm3": 25.272417642219008,
+      "craton_eroded_m3_mkm3": 8.940014295065586,
+      "craton_topology_removed_m3_mkm3": 0.0,
+      "craton_audit_clipped_m3_mkm3": 0.0,
+      "craton_unattributed_m3_mkm3": 0.60990056069007,
+      "craton_formed_m3_mkm3": 0.0
+     },
+     {
+      "myr": 200.0,
+      "craton_volume_mkm3": 4603.952759535855,
+      "craton_area_mkm2": 122.10211065371863,
+      "genuine_continental_area_mkm2": 221.2572091626538,
+      "land_fraction": 0.4374966582747917,
+      "craton_rifted_m3_mkm3": 13.138890500794448,
+      "craton_subducted_m3_mkm3": 0.0,
+      "craton_delaminated_m3_mkm3": 0.0,
+      "craton_merge_capped_m3_mkm3": 0.0,
+      "craton_collision_reworked_m3_mkm3": 64.46086283365447,
+      "craton_eroded_m3_mkm3": 18.39163204843988,
+      "craton_topology_removed_m3_mkm3": 0.0,
+      "craton_audit_clipped_m3_mkm3": 0.0,
+      "craton_unattributed_m3_mkm3": 0.6519875504392459,
+      "craton_formed_m3_mkm3": 593.3986001825508
+     },
+     {
+      "myr": 500.0,
+      "craton_volume_mkm3": 4730.096014305736,
+      "craton_area_mkm2": 129.76013355707428,
+      "genuine_continental_area_mkm2": 198.7705019601087,
+      "land_fraction": 0.3918602006478499,
+      "craton_rifted_m3_mkm3": 20.258870380296422,
+      "craton_subducted_m3_mkm3": 0.008277332975422809,
+      "craton_delaminated_m3_mkm3": 0.0,
+      "craton_merge_capped_m3_mkm3": 4.56721655314944,
+      "craton_collision_reworked_m3_mkm3": 158.83829534514462,
+      "craton_eroded_m3_mkm3": 72.8488139565021,
+      "craton_topology_removed_m3_mkm3": 0.0,
+      "craton_audit_clipped_m3_mkm3": 0.0,
+      "craton_unattributed_m3_mkm3": -11.207319416792691,
+      "craton_formed_m3_mkm3": 868.2126361703845
+     }
+    ],
+    "craton_loss_per_gyr": [
+     {
+      "gyr": 0,
+      "window_myr": [
+       0.0,
+       500.0
+      ],
+      "start_volume_mkm3": 4107.197532286631,
+      "rifted_m3": 0.009865057729043555,
+      "subducted_m3": 4.030647618165327e-06,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0022240062803147915,
+      "collision_reworked_m3": 0.07734631416995101,
+      "eroded_m3": 0.03547373282333681,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": -0.005457404631110185,
+      "total": 0.11945573701915414,
+      "rifted_divergent_m3": 1.240584954309567e-05,
+      "rifted_stretch_m3": 0.005661609361516673,
+      "rifted_failed_m3": 0.004191042517983786
+     }
+    ],
+    "craton_largest_jumps": {
+     "rifted_m3": [
+      {
+       "myr": 70.0,
+       "mkm3": 3.0896078296877687,
+       "share_of_live": 0.0007563931974363684
+      },
+      {
+       "myr": 20.0,
+       "mkm3": 2.122202374111221,
+       "share_of_live": 0.000517050823619398
+      },
+      {
+       "myr": 200.0,
+       "mkm3": 1.8137831773936022,
+       "share_of_live": 0.0004516099534830285
+      },
+      {
+       "myr": 90.0,
+       "mkm3": 1.723774347727198,
+       "share_of_live": 0.000422789147457611
+      },
+      {
+       "myr": 495.0,
+       "mkm3": 1.1029545939227194,
+       "share_of_live": 0.00023326068803957497
+      }
+     ],
+     "subducted_m3": [
+      {
+       "myr": 260.0,
+       "mkm3": 0.008277332975422809,
+       "share_of_live": 1.79614273502436e-06
+      }
+     ],
+     "delaminated_m3": [],
+     "merge_capped_m3": [
+      {
+       "myr": 495.0,
+       "mkm3": 4.56721655314944,
+       "share_of_live": 0.0009659074648072234
+      }
+     ],
+     "collision_reworked_m3": [
+      {
+       "myr": 205.0,
+       "mkm3": 4.863181644465677,
+       "share_of_live": 0.0010563057221629607
+      },
+      {
+       "myr": 100.0,
+       "mkm3": 4.732665815570366,
+       "share_of_live": 0.0011628279461686896
+      },
+      {
+       "myr": 210.0,
+       "mkm3": 4.508548554253801,
+       "share_of_live": 0.000979802362463643
+      },
+      {
+       "myr": 105.0,
+       "mkm3": 4.099989260658365,
+       "share_of_live": 0.0010089087980287123
+      },
+      {
+       "myr": 410.0,
+       "mkm3": 3.7401235489840805,
+       "share_of_live": 0.0007972755308777143
+      }
+     ],
+     "eroded_m3": [
+      {
+       "myr": 495.0,
+       "mkm3": 1.2075231282572598,
+       "share_of_live": 0.0002553755859697012
+      },
+      {
+       "myr": 380.0,
+       "mkm3": 1.1354985971836373,
+       "share_of_live": 0.00024232348171344202
+      },
+      {
+       "myr": 270.0,
+       "mkm3": 1.0479590362803637,
+       "share_of_live": 0.00022730970742712925
+      },
+      {
+       "myr": 360.0,
+       "mkm3": 1.0447002101728766,
+       "share_of_live": 0.00022372853131123955
+      },
+      {
+       "myr": 350.0,
+       "mkm3": 1.0294957031033785,
+       "share_of_live": 0.00022044974250430219
+      }
+     ],
+     "topology_removed_m3": [],
+     "audit_clipped_m3": [],
+     "unattributed_m3": [
+      {
+       "myr": 100.0,
+       "mkm3": 1.019589913812544,
+       "share_of_live": 0.00025051581743049106
+      },
+      {
+       "myr": 300.0,
+       "mkm3": 0.8132762809968004,
+       "share_of_live": 0.00017533713152901315
+      },
+      {
+       "myr": 305.0,
+       "mkm3": 0.7368718803399354,
+       "share_of_live": 0.0001587654993470898
+      },
+      {
+       "myr": 375.0,
+       "mkm3": 0.5684691552239042,
+       "share_of_live": 0.0001214999748861514
+      },
+      {
+       "myr": 480.0,
+       "mkm3": 0.2585531304925438,
+       "share_of_live": 5.474782992577425e-05
+      }
+     ],
+     "formed_m3": [
+      {
+       "myr": 200.0,
+       "mkm3": 593.3986001825508,
+       "share_of_live": 0.1477490350364969
+      },
+      {
+       "myr": 275.0,
+       "mkm3": 14.699111755261422,
+       "share_of_live": 0.003188070795597738
+      },
+      {
+       "myr": 280.0,
+       "mkm3": 11.967840876626969,
+       "share_of_live": 0.002588275992417824
+      },
+      {
+       "myr": 315.0,
+       "mkm3": 11.108808250126362,
+       "share_of_live": 0.002391152348549461
+      },
+      {
+       "myr": 375.0,
+       "mkm3": 10.48780861966753,
+       "share_of_live": 0.00224157893562135
+      }
+     ]
+    },
+    "continental_fluxes": [
+     {
+      "window_myr": [
+       0.0,
+       100.0
+      ],
+      "juvenile_km3_per_yr": 2.323418510016575,
+      "returns_km3_per_yr": 0.16531089996015866,
+      "sinks_km3_per_yr": 3.4806312362259364,
+      "deeply_subducted_km3_per_yr": 2.598014752612658,
+      "mean_inventory_mkm3": 11910.694176339837,
+      "on_oceanic_hosts_fraction": 0.01295884228190044
+     },
+     {
+      "window_myr": [
+       100.0,
+       500.0
+      ],
+      "juvenile_km3_per_yr": 1.258883990441104,
+      "returns_km3_per_yr": 0.041985265102735266,
+      "sinks_km3_per_yr": 2.3309217587661655,
+      "deeply_subducted_km3_per_yr": 1.9234861302215287,
+      "mean_inventory_mkm3": 11631.64212907066,
+      "on_oceanic_hosts_fraction": 0.025412328509747575
+     }
+    ]
+   },
+   "save_bytes": 66105147,
+   "save_sha256": "8ab361d20472721170e5015fc23be76f9b0d74e820d4ba645e5f609517c48ad9"
+  },
+  {
+   "seed": 11,
+   "wall_s": 291.5,
+   "checkpoints": [
+    {
+     "seed": 11,
+     "variant": "on",
+     "myr": 0.0,
+     "genuine_continental_area_km2": 161566875.96714342,
+     "largest_plate_continental_area_km2": 52195260.13147973,
+     "land_fraction_node": 0.2762121969507623,
+     "plate_count": 9,
+     "mean_rotation_rate": 0.0,
+     "craton_area_km2": 81831837.92532729,
+     "craton_continental_fraction": 0.5064889534781175,
+     "craton_volume_km3": 3164901374.6785803,
+     "craton_balance_error_km3": 0.0,
+     "craton_ledger_km3": {
+      "formed_m3": 0.0,
+      "rifted_m3": 0.0,
+      "subducted_m3": 0.0,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 0.0,
+      "eroded_m3": 0.0,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": 0.0,
+      "rifted_divergent_m3": 0.0,
+      "rifted_stretch_m3": 0.0,
+      "rifted_failed_m3": 0.0,
+      "initial_m3": 3164901374.6785803
+     },
+     "rift_cuts": {
+      "split_cuts": 0.0,
+      "split_cuts_through_craton": 0.0,
+      "split_band_area_m2": 0.0,
+      "split_band_craton_area_m2": 0.0,
+      "failed_rift_cuts": 0.0,
+      "failed_rift_cuts_through_craton": 0.0,
+      "failed_rift_band_area_m2": 0.0,
+      "failed_rift_band_craton_area_m2": 0.0
+     },
+     "events": {},
+     "continental_material_ledger": {
+      "initial_continental_m3": 6.914628709762082e+18,
+      "juvenile_additions_m3": 0.0,
+      "accreted_thickened_m3": 0.0,
+      "delaminated_lower_crust_m3": 0.0,
+      "collision_subducted_m3": 0.0,
+      "collision_lower_crust_subducted_m3": 0.0,
+      "deeply_subducted_m3": 0.0,
+      "remelted_relaminated_returns_m3": 0.0,
+      "rift_thinned_m3": 0.0,
+      "numerical_unplaced_m3": 0.0,
+      "discarded_marine_sediment_m3": 0.0,
+      "overloaded_root_delaminated_m3": 0.0,
+      "topology_removed_m3": 0.0,
+      "surface_continental_derived_m3": 6.914628709762081e+18,
+      "continental_sediment_on_oceanic_hosts_m3": 0.0,
+      "balance_error_m3": -1024.0
+     },
+     "juvenile_by_caller_m3": {},
+     "melt_recodes": {
+      "erupt_calls": 0,
+      "melt_nodes": 0,
+      "recoded_exposed_oceanic": 0,
+      "reset_thickness_m": 0.0,
+      "reset_volume_exact_m3": 0.0,
+      "reset_volume_estimated_m3": 0.0
+     }
+    },
+    {
+     "seed": 11,
+     "variant": "on",
+     "myr": 100.0,
+     "genuine_continental_area_km2": 150813554.91759092,
+     "largest_plate_continental_area_km2": 50975009.95608845,
+     "land_fraction_node": 0.28394144771454216,
+     "plate_count": 20,
+     "mean_rotation_rate": 3.098018336814528e-09,
+     "craton_area_km2": 81800904.49077566,
+     "craton_continental_fraction": 0.5423975619132786,
+     "craton_volume_km3": 3124083094.6462855,
+     "craton_balance_error_km3": -5.12e-07,
+     "craton_ledger_km3": {
+      "formed_m3": 0.0,
+      "rifted_m3": 13102014.920602504,
+      "subducted_m3": 0.0,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 13395279.078576002,
+      "eroded_m3": 13569133.16327879,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": 751852.869836647,
+      "rifted_divergent_m3": 776895.9918079992,
+      "rifted_stretch_m3": 8601125.228207076,
+      "rifted_failed_m3": 3723993.700587424,
+      "initial_m3": 3164901374.6785803
+     },
+     "rift_cuts": {
+      "split_cuts": 11.0,
+      "split_cuts_through_craton": 4.0,
+      "split_band_area_m2": 43151398935305.56,
+      "split_band_craton_area_m2": 6315793377443.625,
+      "failed_rift_cuts": 6.0,
+      "failed_rift_cuts_through_craton": 5.0,
+      "failed_rift_band_area_m2": 18204521744361.36,
+      "failed_rift_band_craton_area_m2": 8631628561079.582
+     },
+     "events": {
+      "split": 11,
+      "failed_rift": 6
+     },
+     "continental_material_ledger": {
+      "initial_continental_m3": 6.914628709762082e+18,
+      "juvenile_additions_m3": 2.7208575396015066e+17,
+      "accreted_thickened_m3": 0.0,
+      "delaminated_lower_crust_m3": 0.0,
+      "collision_subducted_m3": 0.594175235106174,
+      "collision_lower_crust_subducted_m3": 3103903619190900.0,
+      "deeply_subducted_m3": 2.9620792889071104e+17,
+      "remelted_relaminated_returns_m3": 1.452467826932898e+16,
+      "rift_thinned_m3": 5.739891079577127e+16,
+      "numerical_unplaced_m3": 1179447623989.6345,
+      "discarded_marine_sediment_m3": 0.0,
+      "overloaded_root_delaminated_m3": 0.0,
+      "topology_removed_m3": 0.0,
+      "surface_continental_derived_m3": 6.842434901198622e+18,
+      "continental_sediment_on_oceanic_hosts_m3": 8.233285882727744e+16,
+      "balance_error_m3": -2092318039644160.0
+     },
+     "juvenile_by_caller_m3": {
+      "lithosphere_plate.deform_columns:795 :: juvenile_additions_m3": 2.1745299203670755e+17,
+      "lithosphere_plate.deform_columns:827 :: rift_thinned_m3": 3.183697341941001e+16,
+      "lithosphere_plate.deform_columns:865 :: juvenile_additions_m3": 1.8579306707394332e+16,
+      "lithosphere_plate.deform_columns:909 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._retreat:537 :: deeply_subducted_m3": 2.9620792889071104e+17,
+      "quad_tectonics._book_shed_roots:418 :: delaminated_lower_crust_m3": 0.0,
+      "crust_transfer._book:368 :: collision_lower_crust_subducted_m3": 3103903619190900.0,
+      "crust_transfer._book:369 :: collision_subducted_m3": 0.0,
+      "quad_tectonics._open_rift:1844 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._open_rift:1891 :: juvenile_additions_m3": 3.0481277083600984e+16,
+      "quad_tectonics._open_rift:1853 :: rift_thinned_m3": 1.0432351113944916e+16,
+      "erosion.apply_erosion:2489 :: numerical_unplaced_m3": 1179447623989.6345,
+      "volcanism.apply_volcanic_activity:79 :: juvenile_additions_m3": 2167627255042415.8,
+      "quad_tectonics._accrete_onto_survivors:837 :: collision_subducted_m3": 0.594175235106174,
+      "lithosphere_plate.deform_columns:920 :: rift_thinned_m3": 707241010699176.2,
+      "quad_tectonics.grow_frontier:1602 :: juvenile_additions_m3": 3404550877405432.5,
+      "quad_tectonics._open_rift:1903 :: rift_thinned_m3": 970661102763120.0,
+      "magma_transport._scatter_write_deposits:334 :: remelted_relaminated_returns_m3": 1.452467826932898e+16,
+      "merge_split.maybe_split_plate:837 :: rift_thinned_m3": 1.3451684148954022e+16
+     },
+     "melt_recodes": {
+      "erupt_calls": 458,
+      "melt_nodes": 1469,
+      "recoded_exposed_oceanic": 0,
+      "reset_thickness_m": 0.0,
+      "reset_volume_exact_m3": 0.0,
+      "reset_volume_estimated_m3": 0.0
+     },
+     "wall_s": 48.47705698013306
+    },
+    {
+     "seed": 11,
+     "variant": "on",
+     "myr": 200.0,
+     "genuine_continental_area_km2": 149863538.28450927,
+     "largest_plate_continental_area_km2": 50122574.31195683,
+     "land_fraction_node": 0.2782293088472515,
+     "plate_count": 23,
+     "mean_rotation_rate": 2.5528406475672695e-09,
+     "craton_area_km2": 95418261.40938935,
+     "craton_continental_fraction": 0.6367009781141161,
+     "craton_volume_km3": 3587262796.5337486,
+     "craton_balance_error_km3": 1.024e-06,
+     "craton_ledger_km3": {
+      "formed_m3": 494791320.5073241,
+      "rifted_m3": 23987914.860511214,
+      "subducted_m3": 0.0,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 20215393.739476614,
+      "eroded_m3": 27897644.52463439,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": 328945.527533543,
+      "rifted_divergent_m3": 1261031.7564537355,
+      "rifted_stretch_m3": 13382345.87524325,
+      "rifted_failed_m3": 9344537.228814214,
+      "initial_m3": 3164901374.6785803
+     },
+     "rift_cuts": {
+      "split_cuts": 14.0,
+      "split_cuts_through_craton": 5.0,
+      "split_band_area_m2": 54668195227283.875,
+      "split_band_craton_area_m2": 7630450297998.229,
+      "failed_rift_cuts": 13.0,
+      "failed_rift_cuts_through_craton": 11.0,
+      "failed_rift_band_area_m2": 43621324253880.89,
+      "failed_rift_band_craton_area_m2": 20389174021532.043
+     },
+     "events": {
+      "split": 14,
+      "failed_rift": 13
+     },
+     "continental_material_ledger": {
+      "initial_continental_m3": 6.914628709762082e+18,
+      "juvenile_additions_m3": 4.2257737737562675e+17,
+      "accreted_thickened_m3": 0.0,
+      "delaminated_lower_crust_m3": 0.0,
+      "collision_subducted_m3": 1.677794322477296,
+      "collision_lower_crust_subducted_m3": 6107806660091508.0,
+      "deeply_subducted_m3": 4.229894794611156e+17,
+      "remelted_relaminated_returns_m3": 1.817946722026253e+16,
+      "rift_thinned_m3": 8.236076923461589e+16,
+      "numerical_unplaced_m3": 2182170507810.2793,
+      "discarded_marine_sediment_m3": 0.0,
+      "overloaded_root_delaminated_m3": 0.0,
+      "topology_removed_m3": 0.0,
+      "surface_continental_derived_m3": 6.840735336567261e+18,
+      "continental_sediment_on_oceanic_hosts_m3": 1.0918763647005384e+17,
+      "balance_error_m3": -3189980264377344.0
+     },
+     "juvenile_by_caller_m3": {
+      "lithosphere_plate.deform_columns:795 :: juvenile_additions_m3": 3.516954502959702e+17,
+      "lithosphere_plate.deform_columns:827 :: rift_thinned_m3": 3.4590943492054412e+16,
+      "lithosphere_plate.deform_columns:865 :: juvenile_additions_m3": 2.38436844554486e+16,
+      "lithosphere_plate.deform_columns:909 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._retreat:537 :: deeply_subducted_m3": 4.229894794611156e+17,
+      "quad_tectonics._book_shed_roots:418 :: delaminated_lower_crust_m3": 0.0,
+      "crust_transfer._book:368 :: collision_lower_crust_subducted_m3": 6107806660091508.0,
+      "crust_transfer._book:369 :: collision_subducted_m3": 0.0,
+      "quad_tectonics._open_rift:1844 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._open_rift:1891 :: juvenile_additions_m3": 3.987735160121237e+16,
+      "quad_tectonics._open_rift:1853 :: rift_thinned_m3": 1.5905150912881008e+16,
+      "erosion.apply_erosion:2489 :: numerical_unplaced_m3": 2182170507810.2793,
+      "volcanism.apply_volcanic_activity:79 :: juvenile_additions_m3": 2899189343871570.5,
+      "quad_tectonics._accrete_onto_survivors:837 :: collision_subducted_m3": 1.677794322477296,
+      "lithosphere_plate.deform_columns:920 :: rift_thinned_m3": 829865484802218.6,
+      "quad_tectonics.grow_frontier:1602 :: juvenile_additions_m3": 4261701679123838.0,
+      "quad_tectonics._open_rift:1903 :: rift_thinned_m3": 1659650323873389.2,
+      "magma_transport._scatter_write_deposits:334 :: remelted_relaminated_returns_m3": 1.817946722026253e+16,
+      "merge_split.maybe_split_plate:837 :: rift_thinned_m3": 2.937515902100508e+16
+     },
+     "melt_recodes": {
+      "erupt_calls": 1127,
+      "melt_nodes": 3869,
+      "recoded_exposed_oceanic": 0,
+      "reset_thickness_m": 0.0,
+      "reset_volume_exact_m3": 0.0,
+      "reset_volume_estimated_m3": 0.0
+     },
+     "wall_s": 104.39450693130493
+    },
+    {
+     "seed": 11,
+     "variant": "on",
+     "myr": 300.0,
+     "genuine_continental_area_km2": 149117893.24409664,
+     "largest_plate_continental_area_km2": 25808166.370637592,
+     "land_fraction_node": 0.2797699594046008,
+     "plate_count": 27,
+     "mean_rotation_rate": 3.25829733989341e-09,
+     "craton_area_km2": 98093429.18502572,
+     "craton_continental_fraction": 0.6578246718148903,
+     "craton_volume_km3": 3636716508.600246,
+     "craton_balance_error_km3": 2.048e-06,
+     "craton_ledger_km3": {
+      "formed_m3": 590553397.242618,
+      "rifted_m3": 27160651.32738604,
+      "subducted_m3": 0.0,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 49447594.551284105,
+      "eroded_m3": 44264455.97333388,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": -2134438.531049481,
+      "rifted_divergent_m3": 1387763.9879289968,
+      "rifted_stretch_m3": 16006992.340470973,
+      "rifted_failed_m3": 9765894.998986045,
+      "initial_m3": 3164901374.6785803
+     },
+     "rift_cuts": {
+      "split_cuts": 19.0,
+      "split_cuts_through_craton": 8.0,
+      "split_band_area_m2": 72525461778667.94,
+      "split_band_craton_area_m2": 13816354337012.32,
+      "failed_rift_cuts": 16.0,
+      "failed_rift_cuts_through_craton": 12.0,
+      "failed_rift_band_area_m2": 54790522667715.336,
+      "failed_rift_band_craton_area_m2": 21244151460585.55
+     },
+     "events": {
+      "split": 19,
+      "failed_rift": 16
+     },
+     "continental_material_ledger": {
+      "initial_continental_m3": 6.914628709762082e+18,
+      "juvenile_additions_m3": 5.4814594733168435e+17,
+      "accreted_thickened_m3": 0.0,
+      "delaminated_lower_crust_m3": 0.0,
+      "collision_subducted_m3": 4.815813446946741,
+      "collision_lower_crust_subducted_m3": 9457919501753488.0,
+      "deeply_subducted_m3": 5.220158420053165e+17,
+      "remelted_relaminated_returns_m3": 2.3789329202643304e+16,
+      "rift_thinned_m3": 9.184029397434925e+16,
+      "numerical_unplaced_m3": 4511431634076.061,
+      "discarded_marine_sediment_m3": 0.0,
+      "overloaded_root_delaminated_m3": 0.0,
+      "topology_removed_m3": 0.0,
+      "surface_continental_derived_m3": 6.86397111609444e+18,
+      "continental_sediment_on_oceanic_hosts_m3": 1.3146308794540757e+17,
+      "balance_error_m3": 725696711084032.0
+     },
+     "juvenile_by_caller_m3": {
+      "lithosphere_plate.deform_columns:795 :: juvenile_additions_m3": 4.606133747858889e+17,
+      "lithosphere_plate.deform_columns:827 :: rift_thinned_m3": 3.5409182602776364e+16,
+      "lithosphere_plate.deform_columns:865 :: juvenile_additions_m3": 2.6983661175842108e+16,
+      "lithosphere_plate.deform_columns:909 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._retreat:537 :: deeply_subducted_m3": 5.220158420053165e+17,
+      "quad_tectonics._book_shed_roots:418 :: delaminated_lower_crust_m3": 0.0,
+      "crust_transfer._book:368 :: collision_lower_crust_subducted_m3": 9457919501753488.0,
+      "crust_transfer._book:369 :: collision_subducted_m3": 0.0,
+      "quad_tectonics._open_rift:1844 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._open_rift:1891 :: juvenile_additions_m3": 5.02367982825632e+16,
+      "quad_tectonics._open_rift:1853 :: rift_thinned_m3": 2.0858051356463184e+16,
+      "erosion.apply_erosion:2489 :: numerical_unplaced_m3": 4511431634076.061,
+      "volcanism.apply_volcanic_activity:79 :: juvenile_additions_m3": 3373526625315638.5,
+      "quad_tectonics._accrete_onto_survivors:837 :: collision_subducted_m3": 4.815813446946741,
+      "lithosphere_plate.deform_columns:920 :: rift_thinned_m3": 1115211276364336.8,
+      "quad_tectonics.grow_frontier:1602 :: juvenile_additions_m3": 6938586462074020.0,
+      "quad_tectonics._open_rift:1903 :: rift_thinned_m3": 2400938236472409.5,
+      "magma_transport._scatter_write_deposits:334 :: remelted_relaminated_returns_m3": 2.3789329202643304e+16,
+      "merge_split.maybe_split_plate:837 :: rift_thinned_m3": 3.2056910502272996e+16
+     },
+     "melt_recodes": {
+      "erupt_calls": 1997,
+      "melt_nodes": 7199,
+      "recoded_exposed_oceanic": 0,
+      "reset_thickness_m": 0.0,
+      "reset_volume_exact_m3": 0.0,
+      "reset_volume_estimated_m3": 0.0
+     },
+     "wall_s": 162.97574281692505
+    },
+    {
+     "seed": 11,
+     "variant": "on",
+     "myr": 400.0,
+     "genuine_continental_area_km2": 148711408.10676786,
+     "largest_plate_continental_area_km2": 25992626.82117209,
+     "land_fraction_node": 0.2832234029559057,
+     "plate_count": 28,
+     "mean_rotation_rate": 2.7885747262414975e-09,
+     "craton_area_km2": 100395936.22444664,
+     "craton_continental_fraction": 0.6751058140231382,
+     "craton_volume_km3": 3683187061.7388697,
+     "craton_balance_error_km3": 2.048e-06,
+     "craton_ledger_km3": {
+      "formed_m3": 669614958.8647746,
+      "rifted_m3": 30882897.50165663,
+      "subducted_m3": 0.0,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 68235824.6282711,
+      "eroded_m3": 57434880.04160024,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": -5224330.367040793,
+      "rifted_divergent_m3": 1457625.4659742774,
+      "rifted_stretch_m3": 17392283.785895295,
+      "rifted_failed_m3": 12032988.24978703,
+      "initial_m3": 3164901374.6785803
+     },
+     "rift_cuts": {
+      "split_cuts": 23.0,
+      "split_cuts_through_craton": 10.0,
+      "split_band_area_m2": 89632268739218.39,
+      "split_band_craton_area_m2": 14326863781101.295,
+      "failed_rift_cuts": 21.0,
+      "failed_rift_cuts_through_craton": 16.0,
+      "failed_rift_band_area_m2": 71042927123092.52,
+      "failed_rift_band_craton_area_m2": 25915423979794.1
+     },
+     "events": {
+      "split": 23,
+      "failed_rift": 21,
+      "merged": 1
+     },
+     "continental_material_ledger": {
+      "initial_continental_m3": 6.914628709762082e+18,
+      "juvenile_additions_m3": 6.641554542851837e+17,
+      "accreted_thickened_m3": 0.0,
+      "delaminated_lower_crust_m3": 0.0,
+      "collision_subducted_m3": 5.397706764576345,
+      "collision_lower_crust_subducted_m3": 1.2762736405999822e+16,
+      "deeply_subducted_m3": 6.443814817965372e+17,
+      "remelted_relaminated_returns_m3": 2.7474569154096976e+16,
+      "rift_thinned_m3": 1.0532241703510611e+17,
+      "numerical_unplaced_m3": 8054417157214.91,
+      "discarded_marine_sediment_m3": 0.0,
+      "overloaded_root_delaminated_m3": 0.0,
+      "topology_removed_m3": 0.0,
+      "surface_continental_derived_m3": 6.846119986549403e+18,
+      "continental_sediment_on_oceanic_hosts_m3": 1.5209995926302058e+17,
+      "balance_error_m3": 2335943002840064.0
+     },
+     "juvenile_by_caller_m3": {
+      "lithosphere_plate.deform_columns:795 :: juvenile_additions_m3": 5.659318789918033e+17,
+      "lithosphere_plate.deform_columns:827 :: rift_thinned_m3": 3.631239180059481e+16,
+      "lithosphere_plate.deform_columns:865 :: juvenile_additions_m3": 2.866554079013398e+16,
+      "lithosphere_plate.deform_columns:909 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._retreat:537 :: deeply_subducted_m3": 6.443814817965372e+17,
+      "quad_tectonics._book_shed_roots:418 :: delaminated_lower_crust_m3": 0.0,
+      "crust_transfer._book:368 :: collision_lower_crust_subducted_m3": 1.2762736405999822e+16,
+      "crust_transfer._book:369 :: collision_subducted_m3": 0.0,
+      "quad_tectonics._open_rift:1844 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._open_rift:1891 :: juvenile_additions_m3": 5.770998356991272e+16,
+      "quad_tectonics._open_rift:1853 :: rift_thinned_m3": 2.5286690262295324e+16,
+      "erosion.apply_erosion:2489 :: numerical_unplaced_m3": 8054417157214.91,
+      "volcanism.apply_volcanic_activity:79 :: juvenile_additions_m3": 3960700457240190.5,
+      "quad_tectonics._accrete_onto_survivors:837 :: collision_subducted_m3": 5.397706764576345,
+      "lithosphere_plate.deform_columns:920 :: rift_thinned_m3": 1238905323431883.0,
+      "quad_tectonics.grow_frontier:1602 :: juvenile_additions_m3": 7887350476093501.0,
+      "quad_tectonics._open_rift:1903 :: rift_thinned_m3": 3053370186141071.0,
+      "magma_transport._scatter_write_deposits:334 :: remelted_relaminated_returns_m3": 2.7474569154096976e+16,
+      "merge_split.maybe_split_plate:837 :: rift_thinned_m3": 3.943105946264314e+16
+     },
+     "melt_recodes": {
+      "erupt_calls": 2873,
+      "melt_nodes": 10742,
+      "recoded_exposed_oceanic": 0,
+      "reset_thickness_m": 0.0,
+      "reset_volume_exact_m3": 0.0,
+      "reset_volume_estimated_m3": 0.0
+     },
+     "wall_s": 225.62065482139587
+    },
+    {
+     "seed": 11,
+     "variant": "on",
+     "myr": 500.0,
+     "genuine_continental_area_km2": 144670122.4810094,
+     "largest_plate_continental_area_km2": 25087603.39165365,
+     "land_fraction_node": 0.2796004842615012,
+     "plate_count": 33,
+     "mean_rotation_rate": 2.05198886860645e-09,
+     "craton_area_km2": 101673026.06744796,
+     "craton_continental_fraction": 0.702792147568648,
+     "craton_volume_km3": 3685559330.5422482,
+     "craton_balance_error_km3": 3.072e-06,
+     "craton_ledger_km3": {
+      "formed_m3": 716182157.0318041,
+      "rifted_m3": 34533347.22716078,
+      "subducted_m3": 0.0,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 93989504.72204818,
+      "eroded_m3": 70113946.42058636,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": -3112597.201657049,
+      "rifted_divergent_m3": 1486884.9219768154,
+      "rifted_stretch_m3": 18700634.359003063,
+      "rifted_failed_m3": 14345827.946180865,
+      "initial_m3": 3164901374.6785803
+     },
+     "rift_cuts": {
+      "split_cuts": 28.0,
+      "split_cuts_through_craton": 11.0,
+      "split_band_area_m2": 108192370585656.17,
+      "split_band_craton_area_m2": 16061149182896.77,
+      "failed_rift_cuts": 24.0,
+      "failed_rift_cuts_through_craton": 18.0,
+      "failed_rift_band_area_m2": 79874024062397.33,
+      "failed_rift_band_craton_area_m2": 30360931185745.273
+     },
+     "events": {
+      "split": 28,
+      "failed_rift": 24,
+      "merged": 1
+     },
+     "continental_material_ledger": {
+      "initial_continental_m3": 6.914628709762082e+18,
+      "juvenile_additions_m3": 7.422915948148024e+17,
+      "accreted_thickened_m3": 0.0,
+      "delaminated_lower_crust_m3": 0.0,
+      "collision_subducted_m3": 6.658730739257833,
+      "collision_lower_crust_subducted_m3": 1.7847146849709336e+16,
+      "deeply_subducted_m3": 7.585252169977393e+17,
+      "remelted_relaminated_returns_m3": 3.13857376786211e+16,
+      "rift_thinned_m3": 1.1355794720939272e+17,
+      "numerical_unplaced_m3": 8576903512177.485,
+      "discarded_marine_sediment_m3": 0.0,
+      "overloaded_root_delaminated_m3": 0.0,
+      "topology_removed_m3": 0.0,
+      "surface_continental_derived_m3": 6.801118154191201e+18,
+      "continental_sediment_on_oceanic_hosts_m3": 1.6464352733720656e+17,
+      "balance_error_m3": 2750999896049664.0
+     },
+     "juvenile_by_caller_m3": {
+      "lithosphere_plate.deform_columns:795 :: juvenile_additions_m3": 6.359592109397533e+17,
+      "lithosphere_plate.deform_columns:827 :: rift_thinned_m3": 3.661200589014999e+16,
+      "lithosphere_plate.deform_columns:865 :: juvenile_additions_m3": 2.9133024540485424e+16,
+      "lithosphere_plate.deform_columns:909 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._retreat:537 :: deeply_subducted_m3": 7.585252169977393e+17,
+      "quad_tectonics._book_shed_roots:418 :: delaminated_lower_crust_m3": 0.0,
+      "crust_transfer._book:368 :: collision_lower_crust_subducted_m3": 1.7847146849709336e+16,
+      "crust_transfer._book:369 :: collision_subducted_m3": 0.0,
+      "quad_tectonics._open_rift:1844 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._open_rift:1891 :: juvenile_additions_m3": 6.33756500378183e+16,
+      "quad_tectonics._open_rift:1853 :: rift_thinned_m3": 2.758723839598925e+16,
+      "erosion.apply_erosion:2489 :: numerical_unplaced_m3": 8576903512177.485,
+      "volcanism.apply_volcanic_activity:79 :: juvenile_additions_m3": 4224653880675525.0,
+      "quad_tectonics._accrete_onto_survivors:837 :: collision_subducted_m3": 6.658730739257833,
+      "lithosphere_plate.deform_columns:920 :: rift_thinned_m3": 1245131580357024.5,
+      "quad_tectonics.grow_frontier:1602 :: juvenile_additions_m3": 9599055416069530.0,
+      "quad_tectonics._open_rift:1903 :: rift_thinned_m3": 3479808612248774.5,
+      "magma_transport._scatter_write_deposits:334 :: remelted_relaminated_returns_m3": 3.13857376786211e+16,
+      "merge_split.maybe_split_plate:837 :: rift_thinned_m3": 4.463376273064781e+16
+     },
+     "melt_recodes": {
+      "erupt_calls": 3759,
+      "melt_nodes": 14478,
+      "recoded_exposed_oceanic": 0,
+      "reset_thickness_m": 0.0,
+      "reset_volume_exact_m3": 0.0,
+      "reset_volume_estimated_m3": 0.0
+     },
+     "wall_s": 290.373028755188
+    }
+   ],
+   "splits_per_checkpoint": [
+    {},
+    {
+     "split": 11,
+     "failed_rift": 6
+    },
+    {
+     "split": 14,
+     "failed_rift": 13
+    },
+    {
+     "split": 19,
+     "failed_rift": 16
+    },
+    {
+     "split": 23,
+     "failed_rift": 21,
+     "merged": 1
+    },
+    {
+     "split": 28,
+     "failed_rift": 24,
+     "merged": 1
+    }
+   ],
+   "caller_volumes_m3": {
+    "lithosphere_plate.deform_columns:795 :: juvenile_additions_m3": 6.359592109397533e+17,
+    "lithosphere_plate.deform_columns:827 :: rift_thinned_m3": 3.661200589014999e+16,
+    "lithosphere_plate.deform_columns:865 :: juvenile_additions_m3": 2.9133024540485424e+16,
+    "lithosphere_plate.deform_columns:909 :: juvenile_additions_m3": 0.0,
+    "quad_tectonics._retreat:537 :: deeply_subducted_m3": 7.585252169977393e+17,
+    "quad_tectonics._book_shed_roots:418 :: delaminated_lower_crust_m3": 0.0,
+    "crust_transfer._book:368 :: collision_lower_crust_subducted_m3": 1.7847146849709336e+16,
+    "crust_transfer._book:369 :: collision_subducted_m3": 0.0,
+    "quad_tectonics._open_rift:1844 :: juvenile_additions_m3": 0.0,
+    "quad_tectonics._open_rift:1891 :: juvenile_additions_m3": 6.33756500378183e+16,
+    "quad_tectonics._open_rift:1853 :: rift_thinned_m3": 2.758723839598925e+16,
+    "erosion.apply_erosion:2489 :: numerical_unplaced_m3": 8576903512177.485,
+    "volcanism.apply_volcanic_activity:79 :: juvenile_additions_m3": 4224653880675525.0,
+    "quad_tectonics._accrete_onto_survivors:837 :: collision_subducted_m3": 6.658730739257833,
+    "lithosphere_plate.deform_columns:920 :: rift_thinned_m3": 1245131580357024.5,
+    "quad_tectonics.grow_frontier:1602 :: juvenile_additions_m3": 9599055416069530.0,
+    "quad_tectonics._open_rift:1903 :: rift_thinned_m3": 3479808612248774.5,
+    "magma_transport._scatter_write_deposits:334 :: remelted_relaminated_returns_m3": 3.13857376786211e+16,
+    "merge_split.maybe_split_plate:837 :: rift_thinned_m3": 4.463376273064781e+16
+   },
+   "recode_summary": {
+    "erupt_calls": 3759,
+    "melt_nodes": 14478,
+    "recoded_exposed_oceanic": 0,
+    "reset_thickness_m": 0.0,
+    "reset_volume_exact_m3": 0.0,
+    "reset_volume_estimated_m3": 0.0,
+    "estimate_basis": "",
+    "prior_code_of_reset_nodes": {
+     "inherit": 0,
+     "oceanic": 0,
+     "continental": 0
+    },
+    "prior_elev_sample_m": []
+   },
+   "ledger_history": {
+    "checkpoints": [
+     {
+      "myr": 0.0,
+      "craton_volume_mkm3": 3164.9013746785804,
+      "craton_area_mkm2": 81.83183792532729,
+      "genuine_continental_area_mkm2": 161.5668759671434,
+      "land_fraction": 0.276981044791297,
+      "craton_rifted_m3_mkm3": 0.0,
+      "craton_subducted_m3_mkm3": 0.0,
+      "craton_delaminated_m3_mkm3": 0.0,
+      "craton_merge_capped_m3_mkm3": 0.0,
+      "craton_collision_reworked_m3_mkm3": 0.0,
+      "craton_eroded_m3_mkm3": 0.0,
+      "craton_topology_removed_m3_mkm3": 0.0,
+      "craton_audit_clipped_m3_mkm3": 0.0,
+      "craton_unattributed_m3_mkm3": 0.0,
+      "craton_formed_m3_mkm3": 0.0
+     },
+     {
+      "myr": 100.0,
+      "craton_volume_mkm3": 3124.0830946462856,
+      "craton_area_mkm2": 81.80090449077566,
+      "genuine_continental_area_mkm2": 150.81355491759092,
+      "land_fraction": 0.2910206280365902,
+      "craton_rifted_m3_mkm3": 13.102014920602505,
+      "craton_subducted_m3_mkm3": 0.0,
+      "craton_delaminated_m3_mkm3": 0.0,
+      "craton_merge_capped_m3_mkm3": 0.0,
+      "craton_collision_reworked_m3_mkm3": 13.395279078576003,
+      "craton_eroded_m3_mkm3": 13.56913316327879,
+      "craton_topology_removed_m3_mkm3": 0.0,
+      "craton_audit_clipped_m3_mkm3": 0.0,
+      "craton_unattributed_m3_mkm3": 0.7518528698366469,
+      "craton_formed_m3_mkm3": 0.0
+     },
+     {
+      "myr": 200.0,
+      "craton_volume_mkm3": 3587.2627965337488,
+      "craton_area_mkm2": 95.41826140938934,
+      "genuine_continental_area_mkm2": 149.8635382845093,
+      "land_fraction": 0.28127486597722756,
+      "craton_rifted_m3_mkm3": 23.987914860511214,
+      "craton_subducted_m3_mkm3": 0.0,
+      "craton_delaminated_m3_mkm3": 0.0,
+      "craton_merge_capped_m3_mkm3": 0.0,
+      "craton_collision_reworked_m3_mkm3": 20.215393739476614,
+      "craton_eroded_m3_mkm3": 27.89764452463439,
+      "craton_topology_removed_m3_mkm3": 0.0,
+      "craton_audit_clipped_m3_mkm3": 0.0,
+      "craton_unattributed_m3_mkm3": 0.328945527533543,
+      "craton_formed_m3_mkm3": 494.7913205073241
+     },
+     {
+      "myr": 500.0,
+      "craton_volume_mkm3": 3685.559330542248,
+      "craton_area_mkm2": 101.67302606744796,
+      "genuine_continental_area_mkm2": 144.67012248100943,
+      "land_fraction": 0.283515692903571,
+      "craton_rifted_m3_mkm3": 34.53334722716078,
+      "craton_subducted_m3_mkm3": 0.0,
+      "craton_delaminated_m3_mkm3": 0.0,
+      "craton_merge_capped_m3_mkm3": 0.0,
+      "craton_collision_reworked_m3_mkm3": 93.98950472204818,
+      "craton_eroded_m3_mkm3": 70.11394642058636,
+      "craton_topology_removed_m3_mkm3": 0.0,
+      "craton_audit_clipped_m3_mkm3": 0.0,
+      "craton_unattributed_m3_mkm3": -3.112597201657049,
+      "craton_formed_m3_mkm3": 716.1821570318041
+     }
+    ],
+    "craton_loss_per_gyr": [
+     {
+      "gyr": 0,
+      "window_myr": [
+       0.0,
+       500.0
+      ],
+      "start_volume_mkm3": 3164.9013746785804,
+      "rifted_m3": 0.021822700387096838,
+      "subducted_m3": 0.0,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 0.059394902775820956,
+      "eroded_m3": 0.044307191991224036,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": -0.0019669473599145926,
+      "total": 0.12355784779422724,
+      "rifted_divergent_m3": 0.0009396090089081021,
+      "rifted_stretch_m3": 0.011817514762779775,
+      "rifted_failed_m3": 0.009065576615408934
+     }
+    ],
+    "craton_largest_jumps": {
+     "rifted_m3": [
+      {
+       "myr": 140.0,
+       "mkm3": 3.258635014500404,
+       "share_of_live": 0.0010459863556934034
+      },
+      {
+       "myr": 40.0,
+       "mkm3": 2.7007686969967093,
+       "share_of_live": 0.0008576366356823371
+      },
+      {
+       "myr": 25.0,
+       "mkm3": 2.361619284000905,
+       "share_of_live": 0.0007474434469214266
+      },
+      {
+       "myr": 355.0,
+       "mkm3": 2.231513580245972,
+       "share_of_live": 0.0006130459123924961
+      },
+      {
+       "myr": 35.0,
+       "mkm3": 1.7266049326298232,
+       "share_of_live": 0.0005476883111105561
+      }
+     ],
+     "subducted_m3": [],
+     "delaminated_m3": [],
+     "merge_capped_m3": [],
+     "collision_reworked_m3": [
+      {
+       "myr": 275.0,
+       "mkm3": 3.769397181159511,
+       "share_of_live": 0.001035610918902494
+      },
+      {
+       "myr": 270.0,
+       "mkm3": 2.874718634296313,
+       "share_of_live": 0.0007900887166479114
+      },
+      {
+       "myr": 460.0,
+       "mkm3": 2.864625509420708,
+       "share_of_live": 0.0007770032139478339
+      },
+      {
+       "myr": 465.0,
+       "mkm3": 2.6704391461039783,
+       "share_of_live": 0.00072503089370749
+      },
+      {
+       "myr": 280.0,
+       "mkm3": 2.6354222307119444,
+       "share_of_live": 0.0007247288849572315
+      }
+     ],
+     "eroded_m3": [
+      {
+       "myr": 205.0,
+       "mkm3": 1.0835244876127317,
+       "share_of_live": 0.00030204770296163
+      },
+      {
+       "myr": 210.0,
+       "mkm3": 1.052145594622884,
+       "share_of_live": 0.0002934364669681457
+      },
+      {
+       "myr": 215.0,
+       "mkm3": 1.009080722012952,
+       "share_of_live": 0.0002816123763674694
+      },
+      {
+       "myr": 220.0,
+       "mkm3": 0.9648071682452783,
+       "share_of_live": 0.00026897407554648384
+      },
+      {
+       "myr": 225.0,
+       "mkm3": 0.8795595217621066,
+       "share_of_live": 0.0002450035564068681
+      }
+     ],
+     "topology_removed_m3": [],
+     "audit_clipped_m3": [],
+     "unattributed_m3": [
+      {
+       "myr": 485.0,
+       "mkm3": 1.0411932561221122,
+       "share_of_live": 0.00028274449547823014
+      },
+      {
+       "myr": 425.0,
+       "mkm3": 0.6631313903116808,
+       "share_of_live": 0.00018007797316766543
+      },
+      {
+       "myr": 490.0,
+       "mkm3": 0.5595184446732797,
+       "share_of_live": 0.00015186491246966329
+      },
+      {
+       "myr": 25.0,
+       "mkm3": 0.45161430025290705,
+       "share_of_live": 0.00014293419415519626
+      },
+      {
+       "myr": 30.0,
+       "mkm3": 0.447641091191922,
+       "share_of_live": 0.00014189267187765468
+      }
+     ],
+     "formed_m3": [
+      {
+       "myr": 200.0,
+       "mkm3": 494.7913205073241,
+       "share_of_live": 0.15993072531820277
+      },
+      {
+       "myr": 245.0,
+       "mkm3": 15.07639793020308,
+       "share_of_live": 0.004175016032900535
+      },
+      {
+       "myr": 360.0,
+       "mkm3": 14.496822635275006,
+       "share_of_live": 0.003983989995947195
+      },
+      {
+       "myr": 265.0,
+       "mkm3": 9.307304789677978,
+       "share_of_live": 0.0025627078710897568
+      },
+      {
+       "myr": 370.0,
+       "mkm3": 9.22508715171659,
+       "share_of_live": 0.0025220242624872696
+      }
+     ]
+    },
+    "continental_fluxes": [
+     {
+      "window_myr": [
+       0.0,
+       100.0
+      ],
+      "juvenile_km3_per_yr": 2.7208575396015067,
+      "returns_km3_per_yr": 0.1452467826932898,
+      "sinks_km3_per_yr": 3.5671192275329724,
+      "deeply_subducted_km3_per_yr": 2.962079288907111,
+      "mean_inventory_mkm3": 6869.322579978567,
+      "on_oceanic_hosts_fraction": 0.012032684273379758
+     },
+     {
+      "window_myr": [
+       100.0,
+       500.0
+      ],
+      "juvenile_km3_per_yr": 1.1755146021366294,
+      "returns_km3_per_yr": 0.0421526485232303,
+      "sinks_km3_per_yr": 1.333067413017641,
+      "deeply_subducted_km3_per_yr": 1.1557932202675707,
+      "mean_inventory_mkm3": 6841.286241687081,
+      "on_oceanic_hosts_fraction": 0.024208302753238407
+     }
+    ]
+   },
+   "save_bytes": 65466937,
+   "save_sha256": "80fafd3dd98fe363e849eb1f0df57ff17627f2d8a6856e10afafa694b93d6f8e"
+  },
+  {
+   "seed": 2024,
+   "wall_s": 316.7,
+   "checkpoints": [
+    {
+     "seed": 2024,
+     "variant": "on",
+     "myr": 0.0,
+     "genuine_continental_area_km2": 123361433.57027568,
+     "largest_plate_continental_area_km2": 39371238.07353878,
+     "land_fraction_node": 0.17384027536552246,
+     "plate_count": 11,
+     "mean_rotation_rate": 0.0,
+     "craton_area_km2": 46379442.30845822,
+     "craton_continental_fraction": 0.3759638727125938,
+     "craton_volume_km3": 1726580743.6123111,
+     "craton_balance_error_km3": 0.0,
+     "craton_ledger_km3": {
+      "formed_m3": 0.0,
+      "rifted_m3": 0.0,
+      "subducted_m3": 0.0,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 0.0,
+      "eroded_m3": 0.0,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": 0.0,
+      "rifted_divergent_m3": 0.0,
+      "rifted_stretch_m3": 0.0,
+      "rifted_failed_m3": 0.0,
+      "initial_m3": 1726580743.6123111
+     },
+     "rift_cuts": {
+      "split_cuts": 0.0,
+      "split_cuts_through_craton": 0.0,
+      "split_band_area_m2": 0.0,
+      "split_band_craton_area_m2": 0.0,
+      "failed_rift_cuts": 0.0,
+      "failed_rift_cuts_through_craton": 0.0,
+      "failed_rift_band_area_m2": 0.0,
+      "failed_rift_band_craton_area_m2": 0.0
+     },
+     "events": {},
+     "continental_material_ledger": {
+      "initial_continental_m3": 6.523220982903407e+18,
+      "juvenile_additions_m3": 0.0,
+      "accreted_thickened_m3": 0.0,
+      "delaminated_lower_crust_m3": 0.0,
+      "collision_subducted_m3": 0.0,
+      "collision_lower_crust_subducted_m3": 0.0,
+      "deeply_subducted_m3": 0.0,
+      "remelted_relaminated_returns_m3": 0.0,
+      "rift_thinned_m3": 0.0,
+      "numerical_unplaced_m3": 0.0,
+      "discarded_marine_sediment_m3": 0.0,
+      "overloaded_root_delaminated_m3": 0.0,
+      "topology_removed_m3": 0.0,
+      "surface_continental_derived_m3": 6.523220982903407e+18,
+      "continental_sediment_on_oceanic_hosts_m3": 0.0,
+      "balance_error_m3": 0.0
+     },
+     "juvenile_by_caller_m3": {},
+     "melt_recodes": {
+      "erupt_calls": 0,
+      "melt_nodes": 0,
+      "recoded_exposed_oceanic": 0,
+      "reset_thickness_m": 0.0,
+      "reset_volume_exact_m3": 0.0,
+      "reset_volume_estimated_m3": 0.0
+     }
+    },
+    {
+     "seed": 2024,
+     "variant": "on",
+     "myr": 100.0,
+     "genuine_continental_area_km2": 123286698.54943821,
+     "largest_plate_continental_area_km2": 20736635.273007117,
+     "land_fraction_node": 0.20763775574243756,
+     "plate_count": 19,
+     "mean_rotation_rate": 3.14103784084177e-09,
+     "craton_area_km2": 46715954.551330715,
+     "craton_continental_fraction": 0.37892128754342086,
+     "craton_volume_km3": 1705667294.5645802,
+     "craton_balance_error_km3": 0.0,
+     "craton_ledger_km3": {
+      "formed_m3": 0.0,
+      "rifted_m3": 8946258.936526045,
+      "subducted_m3": 0.0,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 3953176.558103012,
+      "eroded_m3": 8014013.553102021,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": 0.0,
+      "rifted_divergent_m3": 0.0,
+      "rifted_stretch_m3": 8541874.514754184,
+      "rifted_failed_m3": 404384.42177186225,
+      "initial_m3": 1726580743.6123111
+     },
+     "rift_cuts": {
+      "split_cuts": 9.0,
+      "split_cuts_through_craton": 3.0,
+      "split_band_area_m2": 37900105138175.664,
+      "split_band_craton_area_m2": 5884194994569.248,
+      "failed_rift_cuts": 10.0,
+      "failed_rift_cuts_through_craton": 1.0,
+      "failed_rift_band_area_m2": 35631036125495.94,
+      "failed_rift_band_craton_area_m2": 879080749809.5321
+     },
+     "events": {
+      "failed_rift": 10,
+      "split": 9,
+      "merged": 1
+     },
+     "continental_material_ledger": {
+      "initial_continental_m3": 6.523220982903407e+18,
+      "juvenile_additions_m3": 2.6130781629574086e+17,
+      "accreted_thickened_m3": 0.0,
+      "delaminated_lower_crust_m3": 0.0,
+      "collision_subducted_m3": 0.694952043188868,
+      "collision_lower_crust_subducted_m3": 1.2016496885094892e+16,
+      "deeply_subducted_m3": 2.007517732645556e+17,
+      "remelted_relaminated_returns_m3": 1.2190680324351896e+16,
+      "rift_thinned_m3": 4.705141915334888e+16,
+      "numerical_unplaced_m3": 3012213451077.2563,
+      "discarded_marine_sediment_m3": 0.0,
+      "overloaded_root_delaminated_m3": 0.0,
+      "topology_removed_m3": 0.0,
+      "surface_continental_derived_m3": 6.537561350763054e+18,
+      "continental_sediment_on_oceanic_hosts_m3": 9.02595076598231e+16,
+      "balance_error_m3": 664572756004864.0
+     },
+     "juvenile_by_caller_m3": {
+      "lithosphere_plate.deform_columns:827 :: rift_thinned_m3": 3.3897019940258496e+16,
+      "lithosphere_plate.deform_columns:865 :: juvenile_additions_m3": 1.0512419543514418e+16,
+      "lithosphere_plate.deform_columns:909 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._retreat:537 :: deeply_subducted_m3": 2.007517732645556e+17,
+      "quad_tectonics._open_rift:1844 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._open_rift:1891 :: juvenile_additions_m3": 3.64227165672114e+16,
+      "lithosphere_plate.deform_columns:795 :: juvenile_additions_m3": 2.0745830403227872e+17,
+      "quad_tectonics._book_shed_roots:418 :: delaminated_lower_crust_m3": 0.0,
+      "crust_transfer._book:368 :: collision_lower_crust_subducted_m3": 1.2016496885094892e+16,
+      "crust_transfer._book:369 :: collision_subducted_m3": 0.0,
+      "quad_tectonics._accrete_onto_survivors:837 :: collision_subducted_m3": 0.694952043188868,
+      "quad_tectonics._open_rift:1853 :: rift_thinned_m3": 6484820408763974.0,
+      "erosion.apply_erosion:2489 :: numerical_unplaced_m3": 3012213451077.2563,
+      "volcanism.apply_volcanic_activity:79 :: juvenile_additions_m3": 2763544051952711.5,
+      "quad_tectonics.grow_frontier:1602 :: juvenile_additions_m3": 4150832100783201.0,
+      "merge_split.maybe_split_plate:837 :: rift_thinned_m3": 6103922075327390.0,
+      "quad_tectonics._open_rift:1903 :: rift_thinned_m3": 270999560663691.28,
+      "lithosphere_plate.deform_columns:920 :: rift_thinned_m3": 294657168335318.4,
+      "magma_transport._scatter_write_deposits:334 :: remelted_relaminated_returns_m3": 1.2190680324351896e+16
+     },
+     "melt_recodes": {
+      "erupt_calls": 472,
+      "melt_nodes": 2018,
+      "recoded_exposed_oceanic": 0,
+      "reset_thickness_m": 0.0,
+      "reset_volume_exact_m3": 0.0,
+      "reset_volume_estimated_m3": 0.0
+     },
+     "wall_s": 45.34887385368347
+    },
+    {
+     "seed": 2024,
+     "variant": "on",
+     "myr": 200.0,
+     "genuine_continental_area_km2": 129840233.49414149,
+     "largest_plate_continental_area_km2": 18532982.258340046,
+     "land_fraction_node": 0.22218796250616674,
+     "plate_count": 29,
+     "mean_rotation_rate": 3.099367187507821e-09,
+     "craton_area_km2": 59614137.71983947,
+     "craton_continental_fraction": 0.4591345541790736,
+     "craton_volume_km3": 2117333279.0356803,
+     "craton_balance_error_km3": 0.0,
+     "craton_ledger_km3": {
+      "formed_m3": 436257560.3831633,
+      "rifted_m3": 14056603.848756718,
+      "subducted_m3": 0.0,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 14106517.805575946,
+      "eroded_m3": 19625322.245851073,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": -2283418.940389508,
+      "rifted_divergent_m3": 0.0,
+      "rifted_stretch_m3": 13652219.426984856,
+      "rifted_failed_m3": 404384.42177186225,
+      "initial_m3": 1726580743.6123111
+     },
+     "rift_cuts": {
+      "split_cuts": 20.0,
+      "split_cuts_through_craton": 6.0,
+      "split_band_area_m2": 72360960627003.9,
+      "split_band_craton_area_m2": 9287706852566.773,
+      "failed_rift_cuts": 13.0,
+      "failed_rift_cuts_through_craton": 1.0,
+      "failed_rift_band_area_m2": 44364179787824.43,
+      "failed_rift_band_craton_area_m2": 879080749809.5321
+     },
+     "events": {
+      "failed_rift": 13,
+      "split": 20,
+      "merged": 2
+     },
+     "continental_material_ledger": {
+      "initial_continental_m3": 6.523220982903407e+18,
+      "juvenile_additions_m3": 4.1500349865015014e+17,
+      "accreted_thickened_m3": 0.0,
+      "delaminated_lower_crust_m3": 0.0,
+      "collision_subducted_m3": 4.61475284969405,
+      "collision_lower_crust_subducted_m3": 2.068846565444662e+16,
+      "deeply_subducted_m3": 3.440200854034292e+17,
+      "remelted_relaminated_returns_m3": 1.915256880542461e+16,
+      "rift_thinned_m3": 5.642833112271424e+16,
+      "numerical_unplaced_m3": 3876871646018.001,
+      "discarded_marine_sediment_m3": 0.0,
+      "overloaded_root_delaminated_m3": 0.0,
+      "topology_removed_m3": 0.0,
+      "surface_continental_derived_m3": 6.537578009876633e+18,
+      "continental_sediment_on_oceanic_hosts_m3": 1.3524359191293006e+17,
+      "balance_error_m3": 1341718569888768.0
+     },
+     "juvenile_by_caller_m3": {
+      "lithosphere_plate.deform_columns:827 :: rift_thinned_m3": 3.5090015056843708e+16,
+      "lithosphere_plate.deform_columns:865 :: juvenile_additions_m3": 1.2938716135867884e+16,
+      "lithosphere_plate.deform_columns:909 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._retreat:537 :: deeply_subducted_m3": 3.440200854034292e+17,
+      "quad_tectonics._open_rift:1844 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._open_rift:1891 :: juvenile_additions_m3": 5.206188961402938e+16,
+      "lithosphere_plate.deform_columns:795 :: juvenile_additions_m3": 3.4194302799394726e+17,
+      "quad_tectonics._book_shed_roots:418 :: delaminated_lower_crust_m3": 0.0,
+      "crust_transfer._book:368 :: collision_lower_crust_subducted_m3": 2.068846565444662e+16,
+      "crust_transfer._book:369 :: collision_subducted_m3": 0.0,
+      "quad_tectonics._accrete_onto_survivors:837 :: collision_subducted_m3": 4.61475284969405,
+      "quad_tectonics._open_rift:1853 :: rift_thinned_m3": 1.1116847800144012e+16,
+      "erosion.apply_erosion:2489 :: numerical_unplaced_m3": 3876871646018.001,
+      "volcanism.apply_volcanic_activity:79 :: juvenile_additions_m3": 3462328014705922.5,
+      "quad_tectonics.grow_frontier:1602 :: juvenile_additions_m3": 4597536891598744.0,
+      "merge_split.maybe_split_plate:837 :: rift_thinned_m3": 8825037517634124.0,
+      "quad_tectonics._open_rift:1903 :: rift_thinned_m3": 1095754429974291.1,
+      "lithosphere_plate.deform_columns:920 :: rift_thinned_m3": 300676318118263.7,
+      "magma_transport._scatter_write_deposits:334 :: remelted_relaminated_returns_m3": 1.915256880542461e+16
+     },
+     "melt_recodes": {
+      "erupt_calls": 1375,
+      "melt_nodes": 5956,
+      "recoded_exposed_oceanic": 0,
+      "reset_thickness_m": 0.0,
+      "reset_volume_exact_m3": 0.0,
+      "reset_volume_estimated_m3": 0.0
+     },
+     "wall_s": 102.27802181243896
+    },
+    {
+     "seed": 2024,
+     "variant": "on",
+     "myr": 300.0,
+     "genuine_continental_area_km2": 132193475.21648917,
+     "largest_plate_continental_area_km2": 14215099.696884453,
+     "land_fraction_node": 0.23174407874500152,
+     "plate_count": 35,
+     "mean_rotation_rate": 3.607954708622637e-09,
+     "craton_area_km2": 61884568.195696145,
+     "craton_continental_fraction": 0.4681363289250827,
+     "craton_volume_km3": 2156711764.844605,
+     "craton_balance_error_km3": 0.0,
+     "craton_ledger_km3": {
+      "formed_m3": 517708540.8049005,
+      "rifted_m3": 21580801.07674792,
+      "subducted_m3": 0.0,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 30470403.877536755,
+      "eroded_m3": 40727677.125957154,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": -5201362.507635412,
+      "rifted_divergent_m3": 0.0,
+      "rifted_stretch_m3": 20437825.029618133,
+      "rifted_failed_m3": 1142976.0471297887,
+      "initial_m3": 1726580743.6123111
+     },
+     "rift_cuts": {
+      "split_cuts": 27.0,
+      "split_cuts_through_craton": 8.0,
+      "split_band_area_m2": 93519834542360.6,
+      "split_band_craton_area_m2": 13294749959083.092,
+      "failed_rift_cuts": 15.0,
+      "failed_rift_cuts_through_craton": 2.0,
+      "failed_rift_band_area_m2": 50149196618826.25,
+      "failed_rift_band_craton_area_m2": 2209556861117.425
+     },
+     "events": {
+      "failed_rift": 15,
+      "split": 27,
+      "merged": 2
+     },
+     "continental_material_ledger": {
+      "initial_continental_m3": 6.523220982903407e+18,
+      "juvenile_additions_m3": 5.5791805604623194e+17,
+      "accreted_thickened_m3": 0.0,
+      "delaminated_lower_crust_m3": 0.0,
+      "collision_subducted_m3": 6.069385127595596,
+      "collision_lower_crust_subducted_m3": 2.8721281435049108e+16,
+      "deeply_subducted_m3": 4.572914813697179e+17,
+      "remelted_relaminated_returns_m3": 2.2705925409731624e+16,
+      "rift_thinned_m3": 6.912204036403184e+16,
+      "numerical_unplaced_m3": 7949955400791.362,
+      "discarded_marine_sediment_m3": 0.0,
+      "overloaded_root_delaminated_m3": 0.0,
+      "topology_removed_m3": 0.0,
+      "surface_continental_derived_m3": 6.552584752261943e+18,
+      "continental_sediment_on_oceanic_hosts_m3": 1.82193229553303e+17,
+      "balance_error_m3": 3882541026772992.0
+     },
+     "juvenile_by_caller_m3": {
+      "lithosphere_plate.deform_columns:827 :: rift_thinned_m3": 3.6440964911852504e+16,
+      "lithosphere_plate.deform_columns:865 :: juvenile_additions_m3": 1.460938906064159e+16,
+      "lithosphere_plate.deform_columns:909 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._retreat:537 :: deeply_subducted_m3": 4.572914813697179e+17,
+      "quad_tectonics._open_rift:1844 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._open_rift:1891 :: juvenile_additions_m3": 6.0815244575364184e+16,
+      "lithosphere_plate.deform_columns:795 :: juvenile_additions_m3": 4.710848581978446e+17,
+      "quad_tectonics._book_shed_roots:418 :: delaminated_lower_crust_m3": 0.0,
+      "crust_transfer._book:368 :: collision_lower_crust_subducted_m3": 2.8721281435049108e+16,
+      "crust_transfer._book:369 :: collision_subducted_m3": 0.0,
+      "quad_tectonics._accrete_onto_survivors:837 :: collision_subducted_m3": 6.069385127595596,
+      "quad_tectonics._open_rift:1853 :: rift_thinned_m3": 1.4527188430201418e+16,
+      "erosion.apply_erosion:2489 :: numerical_unplaced_m3": 7949955400791.362,
+      "volcanism.apply_volcanic_activity:79 :: juvenile_additions_m3": 4310496948700530.0,
+      "quad_tectonics.grow_frontier:1602 :: juvenile_additions_m3": 7098067263680282.0,
+      "merge_split.maybe_split_plate:837 :: rift_thinned_m3": 1.5847213081130056e+16,
+      "quad_tectonics._open_rift:1903 :: rift_thinned_m3": 1833407112664277.5,
+      "lithosphere_plate.deform_columns:920 :: rift_thinned_m3": 473266828183782.94,
+      "magma_transport._scatter_write_deposits:334 :: remelted_relaminated_returns_m3": 2.2705925409731624e+16
+     },
+     "melt_recodes": {
+      "erupt_calls": 2621,
+      "melt_nodes": 11379,
+      "recoded_exposed_oceanic": 0,
+      "reset_thickness_m": 0.0,
+      "reset_volume_exact_m3": 0.0,
+      "reset_volume_estimated_m3": 0.0
+     },
+     "wall_s": 166.4177439212799
+    },
+    {
+     "seed": 2024,
+     "variant": "on",
+     "myr": 400.0,
+     "genuine_continental_area_km2": 136104570.00871336,
+     "largest_plate_continental_area_km2": 13408580.620383887,
+     "land_fraction_node": 0.24215095839320105,
+     "plate_count": 40,
+     "mean_rotation_rate": 3.765937952210782e-09,
+     "craton_area_km2": 65139884.976035066,
+     "craton_continental_fraction": 0.47860174696459373,
+     "craton_volume_km3": 2250029709.759583,
+     "craton_balance_error_km3": 0.0,
+     "craton_ledger_km3": {
+      "formed_m3": 637792318.3694283,
+      "rifted_m3": 24381918.71606769,
+      "subducted_m3": 0.0,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 37688540.49964585,
+      "eroded_m3": 57474255.51407776,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": -5201362.507635412,
+      "rifted_divergent_m3": 0.0,
+      "rifted_stretch_m3": 23087198.941047743,
+      "rifted_failed_m3": 1294719.7750199477,
+      "initial_m3": 1726580743.6123111
+     },
+     "rift_cuts": {
+      "split_cuts": 31.0,
+      "split_cuts_through_craton": 8.0,
+      "split_band_area_m2": 104957266048455.03,
+      "split_band_craton_area_m2": 13294749959083.092,
+      "failed_rift_cuts": 20.0,
+      "failed_rift_cuts_through_craton": 3.0,
+      "failed_rift_band_area_m2": 66787658133610.0,
+      "failed_rift_band_craton_area_m2": 2580739451414.2256
+     },
+     "events": {
+      "failed_rift": 20,
+      "split": 31,
+      "merged": 2
+     },
+     "continental_material_ledger": {
+      "initial_continental_m3": 6.523220982903407e+18,
+      "juvenile_additions_m3": 6.99868984435189e+17,
+      "accreted_thickened_m3": 0.0,
+      "delaminated_lower_crust_m3": 0.0,
+      "collision_subducted_m3": 10.858143364693458,
+      "collision_lower_crust_subducted_m3": 3.676588609698171e+16,
+      "deeply_subducted_m3": 5.942577027848301e+17,
+      "remelted_relaminated_returns_m3": 2.48782654848246e+16,
+      "rift_thinned_m3": 7.42737906529911e+16,
+      "numerical_unplaced_m3": 15104867091694.238,
+      "discarded_marine_sediment_m3": 0.0,
+      "overloaded_root_delaminated_m3": 0.0,
+      "topology_removed_m3": 0.0,
+      "surface_continental_derived_m3": 6.546648603226718e+18,
+      "continental_sediment_on_oceanic_hosts_m3": 1.942045446335631e+17,
+      "balance_error_m3": 3992854805193728.0
+     },
+     "juvenile_by_caller_m3": {
+      "lithosphere_plate.deform_columns:827 :: rift_thinned_m3": 3.6597112561861384e+16,
+      "lithosphere_plate.deform_columns:865 :: juvenile_additions_m3": 1.4982067195386088e+16,
+      "lithosphere_plate.deform_columns:909 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._retreat:537 :: deeply_subducted_m3": 5.942577027848301e+17,
+      "quad_tectonics._open_rift:1844 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._open_rift:1891 :: juvenile_additions_m3": 6.708674832657093e+16,
+      "lithosphere_plate.deform_columns:795 :: juvenile_additions_m3": 6.042643645649906e+17,
+      "quad_tectonics._book_shed_roots:418 :: delaminated_lower_crust_m3": 0.0,
+      "crust_transfer._book:368 :: collision_lower_crust_subducted_m3": 3.676588609698171e+16,
+      "crust_transfer._book:369 :: collision_subducted_m3": 0.0,
+      "quad_tectonics._accrete_onto_survivors:837 :: collision_subducted_m3": 10.858143364693458,
+      "quad_tectonics._open_rift:1853 :: rift_thinned_m3": 1.5996582944937136e+16,
+      "erosion.apply_erosion:2489 :: numerical_unplaced_m3": 15104867091694.238,
+      "volcanism.apply_volcanic_activity:79 :: juvenile_additions_m3": 4742710674824565.0,
+      "quad_tectonics.grow_frontier:1602 :: juvenile_additions_m3": 8793093673416807.0,
+      "merge_split.maybe_split_plate:837 :: rift_thinned_m3": 1.8974609021585004e+16,
+      "quad_tectonics._open_rift:1903 :: rift_thinned_m3": 2202930878382788.2,
+      "lithosphere_plate.deform_columns:920 :: rift_thinned_m3": 502555246224973.8,
+      "magma_transport._scatter_write_deposits:334 :: remelted_relaminated_returns_m3": 2.48782654848246e+16
+     },
+     "melt_recodes": {
+      "erupt_calls": 4140,
+      "melt_nodes": 17909,
+      "recoded_exposed_oceanic": 0,
+      "reset_thickness_m": 0.0,
+      "reset_volume_exact_m3": 0.0,
+      "reset_volume_estimated_m3": 0.0
+     },
+     "wall_s": 238.06541109085083
+    },
+    {
+     "seed": 2024,
+     "variant": "on",
+     "myr": 500.0,
+     "genuine_continental_area_km2": 137609502.3067221,
+     "largest_plate_continental_area_km2": 13619567.992753586,
+     "land_fraction_node": 0.24998489882210811,
+     "plate_count": 43,
+     "mean_rotation_rate": 4.157037379598234e-09,
+     "craton_area_km2": 67388905.5478932,
+     "craton_continental_fraction": 0.4897111349017742,
+     "craton_volume_km3": 2312792257.8004975,
+     "craton_balance_error_km3": -5.12e-07,
+     "craton_ledger_km3": {
+      "formed_m3": 723166036.0367956,
+      "rifted_m3": 24969591.473516677,
+      "subducted_m3": 0.0,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 46950710.17817976,
+      "eroded_m3": 70802524.02458347,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": -5768303.827670948,
+      "rifted_divergent_m3": 0.0,
+      "rifted_stretch_m3": 23674871.69849673,
+      "rifted_failed_m3": 1294719.7750199477,
+      "initial_m3": 1726580743.6123111
+     },
+     "rift_cuts": {
+      "split_cuts": 36.0,
+      "split_cuts_through_craton": 9.0,
+      "split_band_area_m2": 122167730573103.47,
+      "split_band_craton_area_m2": 13984716376244.97,
+      "failed_rift_cuts": 26.0,
+      "failed_rift_cuts_through_craton": 3.0,
+      "failed_rift_band_area_m2": 81411634208264.39,
+      "failed_rift_band_craton_area_m2": 2580739451414.2256
+     },
+     "events": {
+      "failed_rift": 26,
+      "split": 36,
+      "merged": 2
+     },
+     "continental_material_ledger": {
+      "initial_continental_m3": 6.523220982903407e+18,
+      "juvenile_additions_m3": 7.798612134504547e+17,
+      "accreted_thickened_m3": 0.0,
+      "delaminated_lower_crust_m3": 0.0,
+      "collision_subducted_m3": 12.278938425313788,
+      "collision_lower_crust_subducted_m3": 4.1673447484239544e+16,
+      "deeply_subducted_m3": 7.014509765133722e+17,
+      "remelted_relaminated_returns_m3": 2.658043784780709e+16,
+      "rift_thinned_m3": 7.761604889716907e+16,
+      "numerical_unplaced_m3": 18190265763287.75,
+      "discarded_marine_sediment_m3": 0.0,
+      "overloaded_root_delaminated_m3": 0.0,
+      "topology_removed_m3": 0.0,
+      "surface_continental_derived_m3": 6.512769328943297e+18,
+      "continental_sediment_on_oceanic_hosts_m3": 1.9235334580956643e+17,
+      "balance_error_m3": 3865357902172160.0
+     },
+     "juvenile_by_caller_m3": {
+      "lithosphere_plate.deform_columns:827 :: rift_thinned_m3": 3.679818979719494e+16,
+      "lithosphere_plate.deform_columns:865 :: juvenile_additions_m3": 1.6331960450418288e+16,
+      "lithosphere_plate.deform_columns:909 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._retreat:537 :: deeply_subducted_m3": 7.014509765133722e+17,
+      "quad_tectonics._open_rift:1844 :: juvenile_additions_m3": 0.0,
+      "quad_tectonics._open_rift:1891 :: juvenile_additions_m3": 7.1449761858869624e+16,
+      "lithosphere_plate.deform_columns:795 :: juvenile_additions_m3": 6.760434953560306e+17,
+      "quad_tectonics._book_shed_roots:418 :: delaminated_lower_crust_m3": 0.0,
+      "crust_transfer._book:368 :: collision_lower_crust_subducted_m3": 4.1673447484239544e+16,
+      "crust_transfer._book:369 :: collision_subducted_m3": 0.0,
+      "quad_tectonics._accrete_onto_survivors:837 :: collision_subducted_m3": 12.278938425313788,
+      "quad_tectonics._open_rift:1853 :: rift_thinned_m3": 1.847675229884346e+16,
+      "erosion.apply_erosion:2489 :: numerical_unplaced_m3": 18190265763287.75,
+      "volcanism.apply_volcanic_activity:79 :: juvenile_additions_m3": 5052150423073680.0,
+      "quad_tectonics.grow_frontier:1602 :: juvenile_additions_m3": 1.0983845362062326e+16,
+      "merge_split.maybe_split_plate:837 :: rift_thinned_m3": 1.897460902167535e+16,
+      "quad_tectonics._open_rift:1903 :: rift_thinned_m3": 2829319145303440.0,
+      "lithosphere_plate.deform_columns:920 :: rift_thinned_m3": 537178634152067.44,
+      "magma_transport._scatter_write_deposits:334 :: remelted_relaminated_returns_m3": 2.658043784780709e+16
+     },
+     "melt_recodes": {
+      "erupt_calls": 5695,
+      "melt_nodes": 25134,
+      "recoded_exposed_oceanic": 0,
+      "reset_thickness_m": 0.0,
+      "reset_volume_exact_m3": 0.0,
+      "reset_volume_estimated_m3": 0.0
+     },
+     "wall_s": 315.6733980178833
+    }
+   ],
+   "splits_per_checkpoint": [
+    {},
+    {
+     "failed_rift": 10,
+     "split": 9,
+     "merged": 1
+    },
+    {
+     "failed_rift": 13,
+     "split": 20,
+     "merged": 2
+    },
+    {
+     "failed_rift": 15,
+     "split": 27,
+     "merged": 2
+    },
+    {
+     "failed_rift": 20,
+     "split": 31,
+     "merged": 2
+    },
+    {
+     "failed_rift": 26,
+     "split": 36,
+     "merged": 2
+    }
+   ],
+   "caller_volumes_m3": {
+    "lithosphere_plate.deform_columns:827 :: rift_thinned_m3": 3.679818979719494e+16,
+    "lithosphere_plate.deform_columns:865 :: juvenile_additions_m3": 1.6331960450418288e+16,
+    "lithosphere_plate.deform_columns:909 :: juvenile_additions_m3": 0.0,
+    "quad_tectonics._retreat:537 :: deeply_subducted_m3": 7.014509765133722e+17,
+    "quad_tectonics._open_rift:1844 :: juvenile_additions_m3": 0.0,
+    "quad_tectonics._open_rift:1891 :: juvenile_additions_m3": 7.1449761858869624e+16,
+    "lithosphere_plate.deform_columns:795 :: juvenile_additions_m3": 6.760434953560306e+17,
+    "quad_tectonics._book_shed_roots:418 :: delaminated_lower_crust_m3": 0.0,
+    "crust_transfer._book:368 :: collision_lower_crust_subducted_m3": 4.1673447484239544e+16,
+    "crust_transfer._book:369 :: collision_subducted_m3": 0.0,
+    "quad_tectonics._accrete_onto_survivors:837 :: collision_subducted_m3": 12.278938425313788,
+    "quad_tectonics._open_rift:1853 :: rift_thinned_m3": 1.847675229884346e+16,
+    "erosion.apply_erosion:2489 :: numerical_unplaced_m3": 18190265763287.75,
+    "volcanism.apply_volcanic_activity:79 :: juvenile_additions_m3": 5052150423073680.0,
+    "quad_tectonics.grow_frontier:1602 :: juvenile_additions_m3": 1.0983845362062326e+16,
+    "merge_split.maybe_split_plate:837 :: rift_thinned_m3": 1.897460902167535e+16,
+    "quad_tectonics._open_rift:1903 :: rift_thinned_m3": 2829319145303440.0,
+    "lithosphere_plate.deform_columns:920 :: rift_thinned_m3": 537178634152067.44,
+    "magma_transport._scatter_write_deposits:334 :: remelted_relaminated_returns_m3": 2.658043784780709e+16
+   },
+   "recode_summary": {
+    "erupt_calls": 5695,
+    "melt_nodes": 25134,
+    "recoded_exposed_oceanic": 0,
+    "reset_thickness_m": 0.0,
+    "reset_volume_exact_m3": 0.0,
+    "reset_volume_estimated_m3": 0.0,
+    "estimate_basis": "",
+    "prior_code_of_reset_nodes": {
+     "inherit": 0,
+     "oceanic": 0,
+     "continental": 0
+    },
+    "prior_elev_sample_m": []
+   },
+   "ledger_history": {
+    "checkpoints": [
+     {
+      "myr": 0.0,
+      "craton_volume_mkm3": 1726.5807436123112,
+      "craton_area_mkm2": 46.379442308458216,
+      "genuine_continental_area_mkm2": 123.36143357027566,
+      "land_fraction": 0.17594160250188012,
+      "craton_rifted_m3_mkm3": 0.0,
+      "craton_subducted_m3_mkm3": 0.0,
+      "craton_delaminated_m3_mkm3": 0.0,
+      "craton_merge_capped_m3_mkm3": 0.0,
+      "craton_collision_reworked_m3_mkm3": 0.0,
+      "craton_eroded_m3_mkm3": 0.0,
+      "craton_topology_removed_m3_mkm3": 0.0,
+      "craton_audit_clipped_m3_mkm3": 0.0,
+      "craton_unattributed_m3_mkm3": 0.0,
+      "craton_formed_m3_mkm3": 0.0
+     },
+     {
+      "myr": 100.0,
+      "craton_volume_mkm3": 1705.6672945645803,
+      "craton_area_mkm2": 46.71595455133072,
+      "genuine_continental_area_mkm2": 123.2866985494382,
+      "land_fraction": 0.2181101766630274,
+      "craton_rifted_m3_mkm3": 8.946258936526045,
+      "craton_subducted_m3_mkm3": 0.0,
+      "craton_delaminated_m3_mkm3": 0.0,
+      "craton_merge_capped_m3_mkm3": 0.0,
+      "craton_collision_reworked_m3_mkm3": 3.953176558103012,
+      "craton_eroded_m3_mkm3": 8.014013553102021,
+      "craton_topology_removed_m3_mkm3": 0.0,
+      "craton_audit_clipped_m3_mkm3": 0.0,
+      "craton_unattributed_m3_mkm3": 0.0,
+      "craton_formed_m3_mkm3": 0.0
+     },
+     {
+      "myr": 200.0,
+      "craton_volume_mkm3": 2117.3332790356803,
+      "craton_area_mkm2": 59.61413771983947,
+      "genuine_continental_area_mkm2": 129.84023349414147,
+      "land_fraction": 0.2377860476463122,
+      "craton_rifted_m3_mkm3": 14.056603848756717,
+      "craton_subducted_m3_mkm3": 0.0,
+      "craton_delaminated_m3_mkm3": 0.0,
+      "craton_merge_capped_m3_mkm3": 0.0,
+      "craton_collision_reworked_m3_mkm3": 14.106517805575946,
+      "craton_eroded_m3_mkm3": 19.625322245851073,
+      "craton_topology_removed_m3_mkm3": 0.0,
+      "craton_audit_clipped_m3_mkm3": 0.0,
+      "craton_unattributed_m3_mkm3": -2.2834189403895078,
+      "craton_formed_m3_mkm3": 436.25756038316325
+     },
+     {
+      "myr": 500.0,
+      "craton_volume_mkm3": 2312.7922578004977,
+      "craton_area_mkm2": 67.3889055478932,
+      "genuine_continental_area_mkm2": 137.6095023067221,
+      "land_fraction": 0.26129300828564134,
+      "craton_rifted_m3_mkm3": 24.969591473516676,
+      "craton_subducted_m3_mkm3": 0.0,
+      "craton_delaminated_m3_mkm3": 0.0,
+      "craton_merge_capped_m3_mkm3": 0.0,
+      "craton_collision_reworked_m3_mkm3": 46.95071017817976,
+      "craton_eroded_m3_mkm3": 70.80252402458348,
+      "craton_topology_removed_m3_mkm3": 0.0,
+      "craton_audit_clipped_m3_mkm3": 0.0,
+      "craton_unattributed_m3_mkm3": -5.768303827670947,
+      "craton_formed_m3_mkm3": 723.1660360367956
+     }
+    ],
+    "craton_loss_per_gyr": [
+     {
+      "gyr": 0,
+      "window_myr": [
+       0.0,
+       500.0
+      ],
+      "start_volume_mkm3": 1726.5807436123112,
+      "rifted_m3": 0.028923746040716163,
+      "subducted_m3": 0.0,
+      "delaminated_m3": 0.0,
+      "merge_capped_m3": 0.0,
+      "collision_reworked_m3": 0.0543857683480827,
+      "eroded_m3": 0.08201472683687196,
+      "topology_removed_m3": 0.0,
+      "audit_clipped_m3": 0.0,
+      "unattributed_m3": -0.006681765505623142,
+      "total": 0.1586424757200477,
+      "rifted_divergent_m3": 0.0,
+      "rifted_stretch_m3": 0.0274239959944934,
+      "rifted_failed_m3": 0.0014997500462227626
+     }
+    ],
+    "craton_largest_jumps": {
+     "rifted_m3": [
+      {
+       "myr": 80.0,
+       "mkm3": 3.656757261741618,
+       "share_of_live": 0.0021290019584155034
+      },
+      {
+       "myr": 275.0,
+       "mkm3": 2.245013507331349,
+       "share_of_live": 0.0010451638598366682
+      },
+      {
+       "myr": 75.0,
+       "mkm3": 1.548278705747241,
+       "share_of_live": 0.0008999709539297723
+      },
+      {
+       "myr": 85.0,
+       "mkm3": 1.351371048770315,
+       "share_of_live": 0.0007889222521896444
+      },
+      {
+       "myr": 90.0,
+       "mkm3": 1.1499812029331997,
+       "share_of_live": 0.0006722840856763844
+      }
+     ],
+     "subducted_m3": [],
+     "delaminated_m3": [],
+     "merge_capped_m3": [],
+     "collision_reworked_m3": [
+      {
+       "myr": 265.0,
+       "mkm3": 2.403362634145841,
+       "share_of_live": 0.0011200702564124645
+      },
+      {
+       "myr": 270.0,
+       "mkm3": 1.8676101926360986,
+       "share_of_live": 0.0008700527495713518
+      },
+      {
+       "myr": 275.0,
+       "mkm3": 1.703114874028735,
+       "share_of_live": 0.0007928834769466679
+      },
+      {
+       "myr": 255.0,
+       "mkm3": 1.5795809692466334,
+       "share_of_live": 0.00073824326106208
+      },
+      {
+       "myr": 260.0,
+       "mkm3": 1.4231001721354835,
+       "share_of_live": 0.0006643572841394883
+      }
+     ],
+     "eroded_m3": [
+      {
+       "myr": 285.0,
+       "mkm3": 1.225594180532597,
+       "share_of_live": 0.0005696195576141077
+      },
+      {
+       "myr": 275.0,
+       "mkm3": 1.179195681068778,
+       "share_of_live": 0.0005489734050614205
+      },
+      {
+       "myr": 295.0,
+       "mkm3": 1.1635524092706144,
+       "share_of_live": 0.0005394718497111409
+      },
+      {
+       "myr": 290.0,
+       "mkm3": 1.1600255357736795,
+       "share_of_live": 0.0005385466164730052
+      },
+      {
+       "myr": 250.0,
+       "mkm3": 1.1420024915314093,
+       "share_of_live": 0.000534483954534453
+      }
+     ],
+     "topology_removed_m3": [],
+     "audit_clipped_m3": [],
+     "unattributed_m3": [
+      {
+       "myr": 250.0,
+       "mkm3": 0.5572483012437198,
+       "share_of_live": 0.00026080527662155094
+      },
+      {
+       "myr": 445.0,
+       "mkm3": 0.039554632307743656,
+       "share_of_live": 1.7361214945714932e-05
+      },
+      {
+       "myr": 170.0,
+       "mkm3": 0.007693292770524044,
+       "share_of_live": 4.547802952001692e-06
+      },
+      {
+       "myr": 415.0,
+       "mkm3": 0.0001347056511035189,
+       "share_of_live": 5.961718046513417e-08
+      }
+     ],
+     "formed_m3": [
+      {
+       "myr": 200.0,
+       "mkm3": 436.25756038316325,
+       "share_of_live": 0.25923404998619043
+      },
+      {
+       "myr": 365.0,
+       "mkm3": 15.100634433392168,
+       "share_of_live": 0.006876514658482155
+      },
+      {
+       "myr": 395.0,
+       "mkm3": 12.607896599063158,
+       "share_of_live": 0.005643614463414282
+      },
+      {
+       "myr": 460.0,
+       "mkm3": 12.142522477866054,
+       "share_of_live": 0.005313426743595568
+      },
+      {
+       "myr": 275.0,
+       "mkm3": 8.66481991490686,
+       "share_of_live": 0.00403389850327393
+      }
+     ]
+    },
+    "continental_fluxes": [
+     {
+      "window_myr": [
+       0.0,
+       100.0
+      ],
+      "juvenile_km3_per_yr": 2.6130781629574087,
+      "returns_km3_per_yr": 0.12190680324351895,
+      "sinks_km3_per_yr": 2.598227015164504,
+      "deeply_subducted_km3_per_yr": 2.0075177326455558,
+      "mean_inventory_mkm3": 6529.97960029831,
+      "on_oceanic_hosts_fraction": 0.01380629608153324
+     },
+     {
+      "window_myr": [
+       100.0,
+       500.0
+      ],
+      "juvenile_km3_per_yr": 1.2963834928867846,
+      "returns_km3_per_yr": 0.035974393808637976,
+      "sinks_km3_per_yr": 1.402339904110234,
+      "deeply_subducted_km3_per_yr": 1.2517480081220413,
+      "mean_inventory_mkm3": 6541.389840077674,
+      "on_oceanic_hosts_fraction": 0.029534800957057072
+     }
+    ]
+   },
+   "save_bytes": 67590639,
+   "save_sha256": "475aeed46d7adce55faf6549be33253fdb42328726adda35409b7312c1cf64a7"
+  }
+ ]
+}

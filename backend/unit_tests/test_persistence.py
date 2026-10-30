@@ -1,8 +1,13 @@
+import io
+import json
 import pickle
+import zipfile
 
 import numpy as np
 import pytest
 from app import legacy_conversion, persistence, sparse_quad_patch
+from app.collision_polarity import PlateCollisionMasks, PolarityFrame
+from app.hydroclimate import climate
 from app.elevation_lines import line_spacing_rad
 from app.world import generate_world, step_world
 
@@ -19,6 +24,15 @@ def _line_pickle(payload) -> bytes:
     """`payload` pickled the way a build that still had the line classes pickled it."""
     with retired_class_names():
         return pickle.dumps(payload)
+
+
+def test_manifest_name_round_trips_and_defaults_to_none():
+    # #652: File > Save stamps the record name into the v5 manifest; a save
+    # written without one (checkpoints, old saves) reports None.
+    world = generate_world(seed=42, num_plates=4, node_density=0.5, climate_density=0.5, fluid_density=0.5)
+    assert persistence.load_world_name(persistence.save_world_bytes(world, name="Epsilon Andretti b")) == "Epsilon Andretti b"
+    assert persistence.load_world_name(persistence.save_world_bytes(world)) is None
+    assert persistence.load_world_name(b"definitely not a saved world") is None
 
 
 def test_round_trip_preserves_a_freshly_generated_world():
@@ -38,13 +52,44 @@ def test_round_trip_preserves_a_freshly_generated_world():
         assert np.array_equal(loaded_plate.collect("elevation"), original_plate.collect("elevation"))
 
 
-def test_round_trip_preserves_state_only_a_step_would_populate():
-    # collision_progress/climate_cache/hydrology_cache/events are all empty/None on a freshly
-    # generated world -- step it first so the round trip has to actually carry a dict and the
-    # two cache dataclasses, not just empty defaults.
+def test_load_world_file_matches_load_world_bytes(tmp_path):
+    # The upload route spools large saves to disk instead of holding the whole body in RAM
+    # (#648): loading from a file object must give the same world as loading from bytes.
+    world = generate_world(seed=3, num_plates=4, node_density=0.5, climate_density=0.5, fluid_density=0.5)
+    path = tmp_path / "world.mbworld"
+    data = persistence.save_world_bytes(world)
+    path.write_bytes(data)
+    with open(path, "rb") as handle:
+        loaded = persistence.load_world_file(handle)
+    assert loaded.seed == world.seed
+    assert loaded.elapsed_years == world.elapsed_years
+    assert len(loaded.plates) == len(world.plates)
+    assert np.array_equal(loaded.plates[0].collect("elevation"), world.plates[0].collect("elevation"))
+    # Compare the serialized members, not the whole ZIP archive: ZIP headers carry
+    # modification times at two-second resolution, so equivalent saves can differ if
+    # they straddle a timestamp tick. A save/load round trip is not byte-stable in
+    # general -- backfills normalize older state on the way in -- so compare the two
+    # load paths against each other, not against the pre-save world.
+    file_archive = zipfile.ZipFile(io.BytesIO(persistence.save_world_bytes(loaded)))
+    bytes_archive = zipfile.ZipFile(
+        io.BytesIO(persistence.save_world_bytes(persistence.load_world_bytes(data)))
+    )
+    with file_archive, bytes_archive:
+        assert file_archive.namelist() == bytes_archive.namelist()
+        assert [file_archive.read(name) for name in file_archive.namelist()] == [
+            bytes_archive.read(name) for name in bytes_archive.namelist()
+        ]
+
+
+def test_round_trip_keeps_step_read_caches():
+    # v5 saves (#596) keep every cache the next step reads before refreshing it -- the
+    # H9 gate requires a post-load step to land on identical authoritative state. Only
+    # the erosion cache (overwritten whole by every erosion call) and derived scratch
+    # are dropped.
     world = generate_world(seed=7, num_plates=6)
     step_world(world, 5_000_000)
     step_world(world, 5_000_000)
+    assert world.climate_cache is not None and world.hydrology_cache is not None
 
     loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
 
@@ -52,12 +97,39 @@ def test_round_trip_preserves_state_only_a_step_would_populate():
     assert loaded.steps_taken == world.steps_taken == 2
     assert loaded.collision_progress == world.collision_progress
     assert loaded.events == world.events
-    assert (loaded.climate_cache is None) == (world.climate_cache is None)
-    assert (loaded.hydrology_cache is None) == (world.hydrology_cache is None)
-    if world.climate_cache is not None:
-        assert np.allclose(loaded.climate_cache.elevation_m, world.climate_cache.elevation_m)
-    if world.hydrology_cache is not None:
-        assert np.allclose(loaded.hydrology_cache.elevation, world.hydrology_cache.elevation)
+    assert loaded.hydrology_cache_step == world.hydrology_cache_step == 2
+    assert loaded.hydrology_cache is not None
+    np.testing.assert_array_equal(loaded.hydrology_cache.elevation, world.hydrology_cache.elevation)
+    assert loaded.climate_cache is not None
+    np.testing.assert_array_equal(loaded.climate_cache.precipitation_mm, world.climate_cache.precipitation_mm)
+    assert loaded.atmosphere_cfd_state is not None
+    assert loaded.erosion_cache is None
+    assert loaded.land_kdtree_cache is None
+
+
+def test_loading_a_save_drops_pre_node_key_collision_polarity_frame():
+    # Older saves can contain a polarity frame that torque reads before rebuilding the
+    # collision prepass. Without stable per-node keys, those masks cannot be aligned safely.
+    world = generate_world(seed=7, num_plates=4)
+    mask = PlateCollisionMasks(
+        lower=np.zeros(1, dtype=bool),
+        upper=np.zeros(1, dtype=bool),
+        front_id=np.full(1, -1, dtype=np.int32),
+        node_keys=np.zeros(1, dtype=np.int64),
+        continental=np.zeros(1, dtype=bool),
+        retreat_eligible=np.zeros(1, dtype=bool),
+        run_eligible=np.zeros(1, dtype=bool),
+        retreatable=np.zeros(1, dtype=bool),
+        override=np.zeros(1, dtype=bool),
+    )
+    del mask.node_keys  # reproduce a frame saved before #633 added stable cell keys
+    world.collision_polarity_frame = PolarityFrame(0.0, {0: mask}, {})
+
+    # Old pickle saves restore dataclass __dict__ directly and do not recreate new fields.
+    data = pickle.dumps({"format": persistence.SAVE_FORMAT, "version": 2, "world": world})
+    loaded = persistence.load_world_bytes(data)
+
+    assert loaded.collision_polarity_frame is None
 
 
 def test_loading_a_world_pickled_before_steps_taken_existed_defaults_to_zero():
@@ -69,6 +141,26 @@ def test_loading_a_world_pickled_before_steps_taken_existed_defaults_to_zero():
 
     loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
     assert loaded.steps_taken == 0
+
+
+def test_loading_a_world_pickled_before_plumes_existed_defaults_plume_fields():
+    # A save from before RFC 0007 carries no plume schedule, stream, or LIP counter.
+    # The stream/schedule backfill to empty and the plain-int counter falls through
+    # to the class attribute, so the world loads plume-free with zero events.
+    world = generate_world(seed=3, num_plates=4)
+    del world.__dict__["mantle_plumes"]
+    del world.__dict__["plume_stream"]
+    del world.__dict__["plume_heads_emplaced"]
+    # A genuine pre-plume plate carries no heat key at all, so pop it to exercise
+    # the lazy-materialization path, not just a present-but-zero array.
+    for plate in world.plates:
+        plate._fields.pop("plume_heat_myr", None)
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert loaded.mantle_plumes == []
+    assert loaded.plume_stream == {}
+    assert loaded.plume_heads_emplaced == 0
+    assert np.all(loaded.plates[0].collect("plume_heat_myr") == 0.0)
 
 
 def test_loading_a_world_pickled_before_removed_points_log_existed_defaults_to_empty():
@@ -134,6 +226,24 @@ def test_loading_a_save_drops_the_retired_line_engine_state():
     assert "gap_fill_algorithm" not in loaded.__dict__
 
 
+def test_loading_a_save_with_unitless_cached_humidity_converts_it_to_g_per_kg():
+    # Issue #522: saves before humidity had units cache `humidity`, a unitless index. Loading
+    # converts it by the factor the index's constants were converted by, and keeps the cached
+    # precipitation the next step's transpiration source reads.
+    world = generate_world(seed=3, num_plates=4)
+    cache = climate.compute_climate_cached(world)
+    precipitation = cache.precipitation_mm.copy()
+    cache.__dict__["humidity"] = np.full_like(cache.__dict__.pop("humidity_g_kg"), 0.5)
+
+    # The migration path is for pre-v5 pickle saves (v5 never carries a cache); build a
+    # version-2 envelope the way those saves hold it.
+    data = pickle.dumps({"format": persistence.SAVE_FORMAT, "version": 2, "world": world})
+    loaded = persistence.load_world_bytes(data)
+    assert "humidity" not in vars(loaded.climate_cache)
+    np.testing.assert_allclose(loaded.climate_cache.humidity_g_kg, 0.5 * climate.HUMIDITY_INDEX_G_KG)
+    np.testing.assert_array_equal(loaded.climate_cache.precipitation_mm, precipitation)
+
+
 def test_loading_a_save_with_the_old_water_column_budget_rebuilds_it_in_m3():
     # Issue #257: saves before the budget was area-weighted carry `ocean_water_column_m`
     # (summed metres over nominal-area nodes). Loading drops it and re-snapshots the budget
@@ -186,10 +296,10 @@ def test_loading_another_programs_envelope_raises():
 
 def test_saves_carry_a_format_version_envelope():
     world = generate_world(seed=3, num_plates=4)
-    envelope = pickle.loads(persistence.save_world_bytes(world))
+    manifest = json.loads(zipfile.ZipFile(io.BytesIO(persistence.save_world_bytes(world))).read("manifest.json"))
 
-    assert envelope["format"] == persistence.SAVE_FORMAT
-    assert envelope["version"] == persistence.SAVE_FORMAT_VERSION
+    assert manifest["format"] == persistence.SAVE_FORMAT
+    assert manifest["version"] == persistence.SAVE_FORMAT_VERSION
 
 
 def test_old_hydroclimate_pickle_module_paths_resolve_to_moved_classes():
@@ -233,7 +343,8 @@ def test_loading_an_envelope_with_an_invalid_version_raises(version):
 def test_saves_declare_their_surface_and_the_loader_checks_it():
     lines = _line_world()
     quad = generate_world(seed=3, num_plates=4)
-    assert pickle.loads(persistence.save_world_bytes(quad))["surface"] == "quad"
+    manifest = json.loads(zipfile.ZipFile(io.BytesIO(persistence.save_world_bytes(quad))).read("manifest.json"))
+    assert manifest["surface"] == "quad"
 
     lying = _line_pickle({"format": persistence.SAVE_FORMAT, "version": 3, "surface": "quad", "world": lines})
     with pytest.raises(persistence.CorruptSaveError, match="declares a 'quad' world"):
@@ -377,3 +488,18 @@ def test_a_save_from_before_belt_marks_loads_with_no_belts_and_unchanged_cratons
         assert np.all(new.collect("belt_formed_years") == BELT_UNMARKED_YEARS)
         np.testing.assert_array_equal(new.collect("craton_crust_m"), old.collect("craton_crust_m"))
         np.testing.assert_array_equal(new.collect("craton_formed_years"), old.collect("craton_formed_years"))
+
+
+def test_save_kind_sniffs_v5_and_pickle():
+    world = generate_world(seed=42, num_plates=2, node_density=0.5)
+
+    assert persistence.save_kind(persistence.save_world_bytes(world)) == "v5"
+    assert persistence.save_kind(persistence.save_exact_bytes(world)) == "v5"
+    assert persistence.save_kind(persistence.save_compact_bytes(world)) == "v5"
+    assert persistence.save_kind(pickle.dumps({"format": persistence.SAVE_FORMAT, "version": 2, "world": world})) == "pickle"
+    assert persistence.save_kind(pickle.dumps(world)) == "pickle"
+    # Kind is a content sniff, not a validity check: garbage sniffs as pickle and
+    # only `load_world_bytes` decides whether bytes actually load.
+    assert persistence.save_kind(b"not a save at all") == "pickle"
+    with pytest.raises(persistence.CorruptSaveError):
+        persistence.load_world_bytes(b"not a save at all")

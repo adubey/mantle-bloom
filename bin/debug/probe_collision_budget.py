@@ -661,8 +661,8 @@ def install(probe: Probe) -> None:
         absorb = next(p for p in world.plates if p.plate_id == id_absorb)
         probe.on_merge(keep, absorb, lambda: merge_with_audit(world, id_keep, id_absorb))
 
-    def tapped_maybe_split_plate(world, plate):
-        result = maybe_split_plate(world, plate)
+    def tapped_maybe_split_plate(world, plate, *args, **kwargs):
+        result = maybe_split_plate(world, plate, *args, **kwargs)
         probe.on_split(plate, result)
         return result
 

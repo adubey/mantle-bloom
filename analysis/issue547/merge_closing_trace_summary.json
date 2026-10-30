@@ -1,0 +1,662 @@
+{
+  "controls": {
+    "baseline_commit": "f04cbc0772eca6d2484f7477b20004deb368206c",
+    "candidate_commit": "d553c3cfc05db4372d0bb33ec7e58aa2390b793b",
+    "initial_state_sha256": "5547b6574520e61259a4c7d736d311e9113c1f46509f942388801f32cb402e52",
+    "initial_states_match": true,
+    "node_density": 4.0,
+    "seed": 748935664,
+    "step_myr": 2.0,
+    "stop_myr": 26.0
+  },
+  "final_state": {
+    "baseline": {
+      "elapsed_myr": 26.0,
+      "ledger": {
+        "continental_balance_error_m3": 1024.0,
+        "craton_balance_error_m3": 512.0,
+        "hm_closure_error_m3": {
+          "all": 410561338368.0,
+          "continental_node": -4159.9375,
+          "oceanic_node": 410561344255.9375
+        },
+        "mobile_cover_balance_error_m3": -32.0
+      },
+      "plate_count": 17
+    },
+    "candidate": {
+      "elapsed_myr": 26.0,
+      "ledger": {
+        "continental_balance_error_m3": 0.0,
+        "craton_balance_error_m3": 256.0,
+        "hm_closure_error_m3": {
+          "all": 23840576372480.0,
+          "continental_node": 3136.0,
+          "oceanic_node": 23840576369664.0
+        },
+        "mobile_cover_balance_error_m3": -32.0
+      },
+      "plate_count": 18
+    }
+  },
+  "first_solve_after_merge": {
+    "blocked_contacts": {
+      "baseline": 0,
+      "candidate": 0
+    },
+    "classification_differences": [
+      {
+        "classification_counts": {
+          "convergent_nodes": {
+            "baseline": 195,
+            "candidate": 193
+          },
+          "divergent_nodes": {
+            "baseline": 437,
+            "candidate": 438
+          },
+          "subducting_nodes": {
+            "baseline": 195,
+            "candidate": 193
+          },
+          "transform_nodes": {
+            "baseline": 68,
+            "candidate": 71
+          }
+        },
+        "plate_id": 0,
+        "solved_rate_cm_per_yr": {
+          "baseline": 2.512593082240609,
+          "candidate": 2.570311321827086
+        }
+      },
+      {
+        "classification_counts": {
+          "contested_nodes": {
+            "baseline": 3,
+            "candidate": 2
+          },
+          "convergent_nodes": {
+            "baseline": 185,
+            "candidate": 189
+          },
+          "divergent_nodes": {
+            "baseline": 316,
+            "candidate": 308
+          },
+          "overlap_nodes": {
+            "baseline": 3,
+            "candidate": 2
+          },
+          "subducting_nodes": {
+            "baseline": 183,
+            "candidate": 187
+          }
+        },
+        "plate_id": 1,
+        "solved_rate_cm_per_yr": {
+          "baseline": 1.731328364223992,
+          "candidate": 1.7601111027193317
+        }
+      },
+      {
+        "classification_counts": {
+          "contested_nodes": {
+            "baseline": 5,
+            "candidate": 4
+          },
+          "convergent_nodes": {
+            "baseline": 318,
+            "candidate": 238
+          },
+          "divergent_nodes": {
+            "baseline": 325,
+            "candidate": 318
+          },
+          "overlap_nodes": {
+            "baseline": 5,
+            "candidate": 4
+          },
+          "subducting_nodes": {
+            "baseline": 314,
+            "candidate": 236
+          },
+          "transform_nodes": {
+            "baseline": 740,
+            "candidate": 843
+          }
+        },
+        "plate_id": 2,
+        "solved_rate_cm_per_yr": {
+          "baseline": 0.7538773425916334,
+          "candidate": 0.9643894791809512
+        }
+      },
+      {
+        "classification_counts": {
+          "convergent_nodes": {
+            "baseline": 21,
+            "candidate": 20
+          },
+          "divergent_nodes": {
+            "baseline": 393,
+            "candidate": 384
+          },
+          "subducting_nodes": {
+            "baseline": 21,
+            "candidate": 20
+          },
+          "transform_nodes": {
+            "baseline": 327,
+            "candidate": 328
+          }
+        },
+        "plate_id": 3,
+        "solved_rate_cm_per_yr": {
+          "baseline": 1.0861424455086262,
+          "candidate": 1.0917481620707261
+        }
+      },
+      {
+        "classification_counts": {
+          "contested_nodes": {
+            "baseline": 38,
+            "candidate": 33
+          },
+          "convergent_nodes": {
+            "baseline": 847,
+            "candidate": 814
+          },
+          "divergent_nodes": {
+            "baseline": 5,
+            "candidate": 6
+          },
+          "overlap_nodes": {
+            "baseline": 38,
+            "candidate": 33
+          },
+          "subducting_nodes": {
+            "baseline": 824,
+            "candidate": 795
+          },
+          "transform_nodes": {
+            "baseline": 1070,
+            "candidate": 1126
+          }
+        },
+        "plate_id": 4,
+        "solved_rate_cm_per_yr": {
+          "baseline": 0.44230337070233505,
+          "candidate": 0.45619476480573595
+        }
+      },
+      {
+        "classification_counts": {
+          "contested_nodes": {
+            "baseline": 1,
+            "candidate": 3
+          },
+          "convergent_nodes": {
+            "baseline": 72,
+            "candidate": 15
+          },
+          "divergent_nodes": {
+            "baseline": 259,
+            "candidate": 263
+          },
+          "overlap_nodes": {
+            "baseline": 1,
+            "candidate": 3
+          },
+          "subducting_nodes": {
+            "baseline": 71,
+            "candidate": 12
+          },
+          "transform_nodes": {
+            "baseline": 362,
+            "candidate": 423
+          }
+        },
+        "plate_id": 5,
+        "solved_rate_cm_per_yr": {
+          "baseline": 1.7540939843160865,
+          "candidate": 1.645352353332389
+        }
+      },
+      {
+        "classification_counts": {
+          "contested_nodes": {
+            "baseline": 18,
+            "candidate": 17
+          },
+          "convergent_nodes": {
+            "baseline": 509,
+            "candidate": 507
+          },
+          "divergent_nodes": {
+            "baseline": 129,
+            "candidate": 140
+          },
+          "overlap_nodes": {
+            "baseline": 18,
+            "candidate": 17
+          },
+          "subducting_nodes": {
+            "baseline": 502,
+            "candidate": 499
+          },
+          "transform_nodes": {
+            "baseline": 238,
+            "candidate": 234
+          }
+        },
+        "plate_id": 6,
+        "solved_rate_cm_per_yr": {
+          "baseline": 1.9266796958080996,
+          "candidate": 1.8511400046198805
+        }
+      },
+      {
+        "classification_counts": {
+          "contested_nodes": {
+            "baseline": 2,
+            "candidate": 1
+          },
+          "convergent_nodes": {
+            "baseline": 342,
+            "candidate": 349
+          },
+          "divergent_nodes": {
+            "baseline": 149,
+            "candidate": 148
+          },
+          "overlap_nodes": {
+            "baseline": 2,
+            "candidate": 1
+          },
+          "subducting_nodes": {
+            "baseline": 341,
+            "candidate": 349
+          },
+          "transform_nodes": {
+            "baseline": 127,
+            "candidate": 120
+          }
+        },
+        "plate_id": 7,
+        "solved_rate_cm_per_yr": {
+          "baseline": 2.090097669278003,
+          "candidate": 2.0034047244766433
+        }
+      },
+      {
+        "classification_counts": {
+          "contested_nodes": {
+            "baseline": 0,
+            "candidate": 1
+          },
+          "convergent_nodes": {
+            "baseline": 80,
+            "candidate": 35
+          },
+          "divergent_nodes": {
+            "baseline": 654,
+            "candidate": 641
+          },
+          "overlap_nodes": {
+            "baseline": 0,
+            "candidate": 1
+          },
+          "subducting_nodes": {
+            "baseline": 80,
+            "candidate": 34
+          },
+          "transform_nodes": {
+            "baseline": 777,
+            "candidate": 832
+          }
+        },
+        "plate_id": 8,
+        "solved_rate_cm_per_yr": {
+          "baseline": 1.1315425267324934,
+          "candidate": 1.0209111086936549
+        }
+      },
+      {
+        "classification_counts": {
+          "contested_nodes": {
+            "baseline": 0,
+            "candidate": 1
+          },
+          "convergent_nodes": {
+            "baseline": 121,
+            "candidate": 98
+          },
+          "divergent_nodes": {
+            "baseline": 24,
+            "candidate": 21
+          },
+          "overlap_nodes": {
+            "baseline": 0,
+            "candidate": 1
+          },
+          "subducting_nodes": {
+            "baseline": 121,
+            "candidate": 97
+          },
+          "transform_nodes": {
+            "baseline": 1161,
+            "candidate": 1185
+          }
+        },
+        "plate_id": 9,
+        "solved_rate_cm_per_yr": {
+          "baseline": 0.9310734062121413,
+          "candidate": 0.9261895928795649
+        }
+      },
+      {
+        "classification_counts": {
+          "contested_nodes": {
+            "baseline": 3,
+            "candidate": 2
+          },
+          "convergent_nodes": {
+            "baseline": 280,
+            "candidate": 288
+          },
+          "divergent_nodes": {
+            "baseline": 457,
+            "candidate": 455
+          },
+          "overlap_nodes": {
+            "baseline": 3,
+            "candidate": 2
+          },
+          "subducting_nodes": {
+            "baseline": 278,
+            "candidate": 287
+          },
+          "transform_nodes": {
+            "baseline": 80,
+            "candidate": 73
+          }
+        },
+        "plate_id": 10,
+        "solved_rate_cm_per_yr": {
+          "baseline": 4.132984636714808,
+          "candidate": 4.122846533966676
+        }
+      },
+      {
+        "classification_counts": {
+          "contested_nodes": {
+            "baseline": 1,
+            "candidate": 0
+          },
+          "convergent_nodes": {
+            "baseline": 280,
+            "candidate": 277
+          },
+          "divergent_nodes": {
+            "baseline": 346,
+            "candidate": 352
+          },
+          "overlap_nodes": {
+            "baseline": 1,
+            "candidate": 0
+          },
+          "subducting_nodes": {
+            "baseline": 279,
+            "candidate": 277
+          },
+          "transform_nodes": {
+            "baseline": 104,
+            "candidate": 103
+          }
+        },
+        "plate_id": 11,
+        "solved_rate_cm_per_yr": {
+          "baseline": 4.215814574929698,
+          "candidate": 4.2129188115215594
+        }
+      },
+      {
+        "classification_counts": {
+          "contested_nodes": {
+            "baseline": 2,
+            "candidate": 4
+          },
+          "convergent_nodes": {
+            "baseline": 135,
+            "candidate": 142
+          },
+          "divergent_nodes": {
+            "baseline": 170,
+            "candidate": 169
+          },
+          "overlap_nodes": {
+            "baseline": 2,
+            "candidate": 4
+          },
+          "subducting_nodes": {
+            "baseline": 133,
+            "candidate": 138
+          },
+          "transform_nodes": {
+            "baseline": 358,
+            "candidate": 351
+          }
+        },
+        "plate_id": 13,
+        "solved_rate_cm_per_yr": {
+          "baseline": 1.3567908832128999,
+          "candidate": 1.2740737935752773
+        }
+      },
+      {
+        "classification_counts": {
+          "convergent_nodes": {
+            "baseline": 451,
+            "candidate": 449
+          },
+          "divergent_nodes": {
+            "baseline": 301,
+            "candidate": 300
+          },
+          "subducting_nodes": {
+            "baseline": 451,
+            "candidate": 449
+          },
+          "transform_nodes": {
+            "baseline": 31,
+            "candidate": 34
+          }
+        },
+        "plate_id": 14,
+        "solved_rate_cm_per_yr": {
+          "baseline": 0.839139963512912,
+          "candidate": 0.8542768369554912
+        }
+      }
+    ],
+    "driving_torque_norm_nm": {
+      "baseline": 6.236722959494106e+26,
+      "candidate": 6.195538145791579e+26
+    },
+    "elapsed_myr_before_step": 16.0,
+    "plates": {
+      "baseline": 14,
+      "candidate": 14
+    },
+    "plates_with_different_boundary_counts": 14,
+    "solver_converged": {
+      "baseline": true,
+      "candidate": true
+    },
+    "step": 9
+  },
+  "first_topology_divergence": {
+    "baseline": {
+      "elapsed_myr": 22.0,
+      "message": "Plate 4 split into plates 4 and 17.",
+      "step": 11
+    },
+    "candidate": {
+      "elapsed_myr": 24.0,
+      "message": "Plate 16 split into plates 16 and 17.",
+      "step": 12
+    }
+  },
+  "handoff": {
+    "absorbed_plate": 12,
+    "baseline_survivor_omega_after_merge": [
+      -1.6573061498893598e-09,
+      8.172329546104937e-10,
+      2.3628041846705473e-09
+    ],
+    "candidate_survivor_omega_after_merge": [
+      -1.9593669907890332e-10,
+      5.883471476165506e-09,
+      -5.485955271922607e-10
+    ],
+    "elapsed_myr": 14.0,
+    "pre_merge_omega": {
+      "absorb_omega": [
+        -2.143275234028107e-09,
+        -3.6998681887318816e-09,
+        2.7096080071750075e-09
+      ],
+      "keep_omega": [
+        -1.9593669907890332e-10,
+        5.883471476165506e-09,
+        -5.485955271922607e-10
+      ]
+    },
+    "step": 7,
+    "survivor_plate": 4
+  },
+  "interpretation": "The merge-rate assignment differs at 14 Myr. At the 16 Myr solve, plate boundary classifications already differ while both solvers converge. The event paths first differ at 22 Myr (baseline split of plate 4); candidate has no split then and next splits plate 16 at 24 Myr. This is consistent with a lagged-rate-to-classification/topology pathway; it does not by itself attribute the entire 50 Myr contact-closing delta to one event.",
+  "scope": "Follow-up trace of the >10% contact-closing pair from RFC 0012 #547 current-main replay",
+  "topology_through_26_myr": {
+    "baseline": [
+      {
+        "elapsed_myr": 2.0,
+        "message": "Plate 0 split into plates 0 and 8.",
+        "step": 1
+      },
+      {
+        "elapsed_myr": 4.0,
+        "message": "Plate 2 split into plates 2 and 9.",
+        "step": 2
+      },
+      {
+        "elapsed_myr": 8.0,
+        "message": "Plate 0 split into plates 0 and 10.",
+        "step": 4
+      },
+      {
+        "elapsed_myr": 10.0,
+        "message": "Plate 10 split into plates 10 and 11.",
+        "step": 5
+      },
+      {
+        "elapsed_myr": 12.0,
+        "message": "Plate 4 split into plates 4 and 12.",
+        "step": 6
+      },
+      {
+        "elapsed_myr": 14.0,
+        "message": "Plates 4 and 12 collided and merged into plate 4 after 2 million years.",
+        "step": 7
+      },
+      {
+        "elapsed_myr": 14.0,
+        "message": "Plate 3 split into plates 3 and 13.",
+        "step": 7
+      },
+      {
+        "elapsed_myr": 16.0,
+        "message": "Plate 0 split into plates 0 and 14.",
+        "step": 8
+      },
+      {
+        "elapsed_myr": 18.0,
+        "message": "Plate 6 split into plates 6 and 15.",
+        "step": 9
+      },
+      {
+        "elapsed_myr": 20.0,
+        "message": "Plate 4 split into plates 4 and 16.",
+        "step": 10
+      },
+      {
+        "elapsed_myr": 22.0,
+        "message": "Plate 4 split into plates 4 and 17.",
+        "step": 11
+      }
+    ],
+    "candidate": [
+      {
+        "elapsed_myr": 2.0,
+        "message": "Plate 0 split into plates 0 and 8.",
+        "step": 1
+      },
+      {
+        "elapsed_myr": 4.0,
+        "message": "Plate 2 split into plates 2 and 9.",
+        "step": 2
+      },
+      {
+        "elapsed_myr": 8.0,
+        "message": "Plate 0 split into plates 0 and 10.",
+        "step": 4
+      },
+      {
+        "elapsed_myr": 10.0,
+        "message": "Plate 10 split into plates 10 and 11.",
+        "step": 5
+      },
+      {
+        "elapsed_myr": 12.0,
+        "message": "Plate 4 split into plates 4 and 12.",
+        "step": 6
+      },
+      {
+        "elapsed_myr": 14.0,
+        "message": "Plates 4 and 12 collided and merged into plate 4 after 2 million years.",
+        "step": 7
+      },
+      {
+        "elapsed_myr": 14.0,
+        "message": "Plate 3 split into plates 3 and 13.",
+        "step": 7
+      },
+      {
+        "elapsed_myr": 16.0,
+        "message": "Plate 0 split into plates 0 and 14.",
+        "step": 8
+      },
+      {
+        "elapsed_myr": 18.0,
+        "message": "Plate 6 split into plates 6 and 15.",
+        "step": 9
+      },
+      {
+        "elapsed_myr": 20.0,
+        "message": "Plate 4 split into plates 4 and 16.",
+        "step": 10
+      },
+      {
+        "elapsed_myr": 24.0,
+        "message": "Plate 16 split into plates 16 and 17.",
+        "step": 12
+      },
+      {
+        "elapsed_myr": 26.0,
+        "message": "Plate 17 split into plates 17 and 18.",
+        "step": 13
+      }
+    ]
+  }
+}

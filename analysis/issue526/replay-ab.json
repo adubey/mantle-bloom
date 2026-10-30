@@ -1,0 +1,224 @@
+{
+ "command": "bin/debug/replay_surface_wind.py <local-save> --myr 10 --checkpoint-myr 2.5",
+ "step_years": 100000,
+ "saves": {
+  "seed628977350-226.7Myr": {
+   "save_sha256": "4e1e2ee34d0d39da31dd2e4a715c5b83d1b5043d6b77336cbda8ac9b42b32189",
+   "main": {
+    "commit": "0fc4901",
+    "runtime_s": 1006.4,
+    "peak_rss_mb": 1847.5,
+    "checkpoints": [
+     {
+      "myr": 2.5,
+      "weathering_m3_since_last": 236009316983423.7,
+      "wind_land_m_s": 3.8407,
+      "wind_ocean_m_s": 8.1544,
+      "current_ocean_mean": 9.2762,
+      "precipitation_mm": 1299.1437,
+      "precipitation_land_mm": 297.2378,
+      "land_area_fraction": 0.1622,
+      "land_mean_elevation_m": 3255.376
+     },
+     {
+      "myr": 5.0,
+      "weathering_m3_since_last": 235453150649342.53,
+      "wind_land_m_s": 3.8479,
+      "wind_ocean_m_s": 8.1541,
+      "current_ocean_mean": 8.9928,
+      "precipitation_mm": 1293.9037,
+      "precipitation_land_mm": 282.543,
+      "land_area_fraction": 0.1617,
+      "land_mean_elevation_m": 3229.9837
+     },
+     {
+      "myr": 7.5,
+      "weathering_m3_since_last": 224905007334560.88,
+      "wind_land_m_s": 3.8596,
+      "wind_ocean_m_s": 8.1543,
+      "current_ocean_mean": 9.1763,
+      "precipitation_mm": 1308.4598,
+      "precipitation_land_mm": 288.2616,
+      "land_area_fraction": 0.1613,
+      "land_mean_elevation_m": 3210.8555
+     },
+     {
+      "myr": 10.0,
+      "weathering_m3_since_last": 228298573054013.8,
+      "wind_land_m_s": 3.8557,
+      "wind_ocean_m_s": 8.1544,
+      "current_ocean_mean": 8.9617,
+      "precipitation_mm": 1300.3812,
+      "precipitation_land_mm": 303.8863,
+      "land_area_fraction": 0.161,
+      "land_mean_elevation_m": 3184.8495
+     }
+    ]
+   },
+   "branch": {
+    "commit": "ff373af",
+    "runtime_s": 734.2,
+    "peak_rss_mb": 1967.0,
+    "checkpoints": [
+     {
+      "myr": 2.5,
+      "weathering_m3_since_last": 224261032788831.0,
+      "wind_land_m_s": 3.0845,
+      "wind_ocean_m_s": 7.0188,
+      "current_ocean_mean": 8.052,
+      "precipitation_mm": 1278.1548,
+      "precipitation_land_mm": 290.8746,
+      "land_area_fraction": 0.1622,
+      "land_mean_elevation_m": 3256.4008,
+      "land_biome_agreement_vs_baseline": 0.9486
+     },
+     {
+      "myr": 5.0,
+      "weathering_m3_since_last": 226480361072663.97,
+      "wind_land_m_s": 3.0888,
+      "wind_ocean_m_s": 7.0185,
+      "current_ocean_mean": 7.8913,
+      "precipitation_mm": 1274.5121,
+      "precipitation_land_mm": 278.6375,
+      "land_area_fraction": 0.1617,
+      "land_mean_elevation_m": 3230.1295,
+      "land_biome_agreement_vs_baseline": 0.9477
+     },
+     {
+      "myr": 7.5,
+      "weathering_m3_since_last": 220007267237066.22,
+      "wind_land_m_s": 3.083,
+      "wind_ocean_m_s": 7.0196,
+      "current_ocean_mean": 8.0413,
+      "precipitation_mm": 1288.6107,
+      "precipitation_land_mm": 286.9393,
+      "land_area_fraction": 0.1612,
+      "land_mean_elevation_m": 3212.661,
+      "land_biome_agreement_vs_baseline": 0.9371
+     },
+     {
+      "myr": 10.0,
+      "weathering_m3_since_last": 224292351827696.28,
+      "wind_land_m_s": 3.0914,
+      "wind_ocean_m_s": 7.0194,
+      "current_ocean_mean": 7.7319,
+      "precipitation_mm": 1280.5665,
+      "precipitation_land_mm": 300.3147,
+      "land_area_fraction": 0.1611,
+      "land_mean_elevation_m": 3182.0401,
+      "land_biome_agreement_vs_baseline": 0.9387
+     }
+    ]
+   }
+  },
+  "seed910211954-220.2Myr": {
+   "save_sha256": "bd4874092efc805e8b174e115fe567c82d35fc2ee606686938b5b6eb96b060d2",
+   "main": {
+    "commit": "0fc4901",
+    "runtime_s": 1225.7,
+    "peak_rss_mb": 7371.2,
+    "checkpoints": [
+     {
+      "myr": 2.5,
+      "weathering_m3_since_last": 989365255009065.0,
+      "wind_land_m_s": 4.8156,
+      "wind_ocean_m_s": 8.0699,
+      "current_ocean_mean": 8.5383,
+      "precipitation_mm": 1158.6059,
+      "precipitation_land_mm": 480.3188,
+      "land_area_fraction": 0.3222,
+      "land_mean_elevation_m": 2042.4748
+     },
+     {
+      "myr": 5.0,
+      "weathering_m3_since_last": 1037918165009748.1,
+      "wind_land_m_s": 4.8342,
+      "wind_ocean_m_s": 8.0822,
+      "current_ocean_mean": 8.541,
+      "precipitation_mm": 1159.2637,
+      "precipitation_land_mm": 486.8028,
+      "land_area_fraction": 0.3225,
+      "land_mean_elevation_m": 2006.8671
+     },
+     {
+      "myr": 7.5,
+      "weathering_m3_since_last": 1043026352025210.8,
+      "wind_land_m_s": 5.3763,
+      "wind_ocean_m_s": 7.9588,
+      "current_ocean_mean": 8.5685,
+      "precipitation_mm": 1156.5142,
+      "precipitation_land_mm": 527.3622,
+      "land_area_fraction": 0.3524,
+      "land_mean_elevation_m": 1485.059
+     },
+     {
+      "myr": 10.0,
+      "weathering_m3_since_last": 1060349090308485.2,
+      "wind_land_m_s": 4.863,
+      "wind_ocean_m_s": 8.0964,
+      "current_ocean_mean": 8.6199,
+      "precipitation_mm": 1150.8177,
+      "precipitation_land_mm": 482.3769,
+      "land_area_fraction": 0.3212,
+      "land_mean_elevation_m": 1972.2842
+     }
+    ]
+   },
+   "branch": {
+    "commit": "ff373af",
+    "runtime_s": 1135.8,
+    "peak_rss_mb": 6825.6,
+    "checkpoints": [
+     {
+      "myr": 2.5,
+      "weathering_m3_since_last": 1029115983965928.2,
+      "wind_land_m_s": 3.9927,
+      "wind_ocean_m_s": 6.9078,
+      "current_ocean_mean": 7.2853,
+      "precipitation_mm": 1137.5744,
+      "precipitation_land_mm": 461.974,
+      "land_area_fraction": 0.3222,
+      "land_mean_elevation_m": 2043.0885,
+      "land_biome_agreement_vs_baseline": 0.9362
+     },
+     {
+      "myr": 5.0,
+      "weathering_m3_since_last": 1063129587943799.2,
+      "wind_land_m_s": 4.02,
+      "wind_ocean_m_s": 6.9211,
+      "current_ocean_mean": 7.2594,
+      "precipitation_mm": 1138.3242,
+      "precipitation_land_mm": 470.2369,
+      "land_area_fraction": 0.3231,
+      "land_mean_elevation_m": 2003.0545,
+      "land_biome_agreement_vs_baseline": 0.9273
+     },
+     {
+      "myr": 7.5,
+      "weathering_m3_since_last": 1105463219515441.0,
+      "wind_land_m_s": 4.0299,
+      "wind_ocean_m_s": 6.9283,
+      "current_ocean_mean": 7.2851,
+      "precipitation_mm": 1137.4448,
+      "precipitation_land_mm": 475.4393,
+      "land_area_fraction": 0.3221,
+      "land_mean_elevation_m": 1997.2906,
+      "land_biome_agreement_vs_baseline": 0.6727
+     },
+     {
+      "myr": 10.0,
+      "weathering_m3_since_last": 1100216049527611.6,
+      "wind_land_m_s": 4.0237,
+      "wind_ocean_m_s": 6.9352,
+      "current_ocean_mean": 7.3445,
+      "precipitation_mm": 1137.1905,
+      "precipitation_land_mm": 479.6779,
+      "land_area_fraction": 0.3208,
+      "land_mean_elevation_m": 1982.4446,
+      "land_biome_agreement_vs_baseline": 0.9132
+     }
+    ]
+   }
+  }
+ }
+}

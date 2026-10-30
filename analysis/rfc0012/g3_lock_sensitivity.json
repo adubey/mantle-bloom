@@ -1,0 +1,55 @@
+{
+  "seed": 326494039,
+  "model_commit": "9f51c5781a6f9ec6cc173d73b71a7f24c3c3a47b",
+  "step_myr": 1.0,
+  "steps": 500,
+  "elapsed_myr": 500.0,
+  "trace_complete": true,
+  "runtime_seconds": 1470.8501004579011,
+  "actual_merges": 1,
+  "continuous_lock_episode_sensitivity": [
+    {
+      "epsilon_cm_per_yr": 0.25,
+      "longest_episode_myr": 99.0,
+      "episodes_meeting_tau": {"1.0": 88, "10.0": 18, "25.0": 10, "50.0": 3, "75.0": 1, "100.0": 0}
+    },
+    {
+      "epsilon_cm_per_yr": 0.5,
+      "longest_episode_myr": 340.0,
+      "episodes_meeting_tau": {"1.0": 206, "10.0": 52, "25.0": 15, "50.0": 7, "75.0": 3, "100.0": 3}
+    },
+    {
+      "epsilon_cm_per_yr": 1.0,
+      "longest_episode_myr": 408.0,
+      "episodes_meeting_tau": {"1.0": 206, "10.0": 80, "25.0": 21, "50.0": 8, "75.0": 5, "100.0": 3}
+    },
+    {
+      "epsilon_cm_per_yr": 2.0,
+      "longest_episode_myr": 442.0,
+      "episodes_meeting_tau": {"1.0": 208, "10.0": 90, "25.0": 22, "50.0": 8, "75.0": 5, "100.0": 3}
+    },
+    {
+      "epsilon_cm_per_yr": 5.0,
+      "longest_episode_myr": 442.0,
+      "episodes_meeting_tau": {"1.0": 204, "10.0": 91, "25.0": 22, "50.0": 8, "75.0": 5, "100.0": 3}
+    },
+    {
+      "epsilon_cm_per_yr": 10.0,
+      "longest_episode_myr": 442.0,
+      "episodes_meeting_tau": {"1.0": 204, "10.0": 91, "25.0": 22, "50.0": 8, "75.0": 5, "100.0": 3}
+    }
+  ],
+  "observed_merge_lock_qualification": {
+    "0.25": {"events": 0, "qualifying_tau_myr": []},
+    "0.5": {"events": 0, "qualifying_tau_myr": []},
+    "1.0": {"events": 1, "qualifying_tau_myr": [1, 10]},
+    "2.0": {"events": 1, "qualifying_tau_myr": [1, 10, 25]},
+    "5.0": {"events": 1, "qualifying_tau_myr": [1, 10, 25]},
+    "10.0": {"events": 1, "qualifying_tau_myr": [1, 10, 25]}
+  },
+  "glacier_max_depth_warnings": 6,
+  "raw_trace_sha256": "015d4bb77b5eb5e3c8fa20f18d12adba259c9e7d12a3f2a943f89926477f3dfc",
+  "trace_script_sha256": "f926813e3129352b9933db40438ba912c208ef55405604c389a3d70e1b3d75d4",
+  "summary_script_sha256": "482f56f9c6bb216b083d0f58b509f3a96ac9ab26b0a05b0ea0d6823a12c5b840",
+  "method_note": "Maximum absolute nodal closing speed among at least four close continental contacts; missing qualifying contacts break an episode. Full-horizon trace; one seed and one observed merge do not select a production trigger."
+}

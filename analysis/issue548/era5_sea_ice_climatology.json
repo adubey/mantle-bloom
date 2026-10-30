@@ -1,0 +1,243 @@
+{
+ "source": "https://storage.googleapis.com/weatherbench2/datasets/era5-hourly-climatology/1990-2019_6h_240x121_equiangular_with_poles_conservative.zarr",
+ "mask_source": "https://storage.googleapis.com/weatherbench2/datasets/era5/1959-2023_01_10-6h-240x121_equiangular_with_poles_conservative.zarr",
+ "extent_threshold": 0.15,
+ "ocean_cells_without_value": 1812,
+ "ocean_cells_without_value_after_fill": 44,
+ "unfilled": {
+  "daily_extent": {
+   "north": {
+    "min_day_of_year": 248,
+    "min_extent_mkm2": 5.841,
+    "max_day_of_year": 81,
+    "max_extent_mkm2": 10.812
+   },
+   "south": {
+    "min_day_of_year": 50,
+    "min_extent_mkm2": 3.212,
+    "max_day_of_year": 265,
+    "max_extent_mkm2": 18.227
+   }
+  },
+  "ice_half_the_year_mkm2": {
+   "north": 8.943,
+   "south": 12.791
+  },
+  "states": {
+   "north": {
+    "ocean_mkm2": 153.379,
+    "perennial_mkm2": 5.841,
+    "seasonal_mkm2": 5.078,
+    "ocean_poleward_50_perennial_share": 0.211,
+    "perennial_edge_deg": 76.67,
+    "all_ice_edge_deg": 70.65,
+    "perennial_edge_by_longitude": {
+     "columns": 240,
+     "min": 70.5,
+     "p05": 72.0,
+     "median": 79.5,
+     "p95": 84.0,
+     "max": 85.5
+    },
+    "bands": [
+     {
+      "band": "40-50",
+      "ocean_mkm2": 16.345,
+      "perennial_share": 0.0,
+      "seasonal_share": 0.018
+     },
+     {
+      "band": "50-60",
+      "ocean_mkm2": 11.474,
+      "perennial_share": 0.0,
+      "seasonal_share": 0.125
+     },
+     {
+      "band": "60-70",
+      "ocean_mkm2": 4.623,
+      "perennial_share": 0.0,
+      "seasonal_share": 0.214
+     },
+     {
+      "band": "70-80",
+      "ocean_mkm2": 8.265,
+      "perennial_share": 0.332,
+      "seasonal_share": 0.285
+     },
+     {
+      "band": "80-90",
+      "ocean_mkm2": 3.313,
+      "perennial_share": 0.928,
+      "seasonal_share": 0.0
+     }
+    ]
+   },
+   "south": {
+    "ocean_mkm2": 204.714,
+    "perennial_mkm2": 3.025,
+    "seasonal_mkm2": 15.515,
+    "ocean_poleward_50_perennial_share": 0.067,
+    "perennial_edge_deg": 70.5,
+    "all_ice_edge_deg": 60.85,
+    "perennial_edge_by_longitude": {
+     "columns": 240,
+     "min": 63.0,
+     "p05": 66.0,
+     "median": 73.5,
+     "p95": 90.0,
+     "max": 90.0
+    },
+    "bands": [
+     {
+      "band": "40-50",
+      "ocean_mkm2": 32.049,
+      "perennial_share": 0.0,
+      "seasonal_share": 0.0
+     },
+     {
+      "band": "50-60",
+      "ocean_mkm2": 22.911,
+      "perennial_share": 0.0,
+      "seasonal_share": 0.093
+     },
+     {
+      "band": "60-70",
+      "ocean_mkm2": 18.509,
+      "perennial_share": 0.06,
+      "seasonal_share": 0.675
+     },
+     {
+      "band": "70-80",
+      "ocean_mkm2": 3.573,
+      "perennial_share": 0.535,
+      "seasonal_share": 0.248
+     },
+     {
+      "band": "80-90",
+      "ocean_mkm2": 0.0,
+      "perennial_share": null,
+      "seasonal_share": null
+     }
+    ]
+   }
+  }
+ },
+ "coast_filled": {
+  "daily_extent": {
+   "north": {
+    "min_day_of_year": 250,
+    "min_extent_mkm2": 6.998,
+    "max_day_of_year": 67,
+    "max_extent_mkm2": 15.162
+   },
+   "south": {
+    "min_day_of_year": 50,
+    "min_extent_mkm2": 4.058,
+    "max_day_of_year": 265,
+    "max_extent_mkm2": 19.998
+   }
+  },
+  "ice_half_the_year_mkm2": {
+   "north": 12.154,
+   "south": 14.503
+  },
+  "states": {
+   "north": {
+    "ocean_mkm2": 153.379,
+    "perennial_mkm2": 6.978,
+    "seasonal_mkm2": 8.302,
+    "ocean_poleward_50_perennial_share": 0.252,
+    "perennial_edge_deg": 75.29,
+    "all_ice_edge_deg": 62.07,
+    "perennial_edge_by_longitude": {
+     "columns": 240,
+     "min": 69.0,
+     "p05": 70.5,
+     "median": 78.0,
+     "p95": 84.0,
+     "max": 84.0
+    },
+    "bands": [
+     {
+      "band": "40-50",
+      "ocean_mkm2": 16.345,
+      "perennial_share": 0.0,
+      "seasonal_share": 0.04
+     },
+     {
+      "band": "50-60",
+      "ocean_mkm2": 11.474,
+      "perennial_share": 0.0,
+      "seasonal_share": 0.194
+     },
+     {
+      "band": "60-70",
+      "ocean_mkm2": 4.623,
+      "perennial_share": 0.011,
+      "seasonal_share": 0.468
+     },
+     {
+      "band": "70-80",
+      "ocean_mkm2": 8.265,
+      "perennial_share": 0.435,
+      "seasonal_share": 0.394
+     },
+     {
+      "band": "80-90",
+      "ocean_mkm2": 3.313,
+      "perennial_share": 1.0,
+      "seasonal_share": 0.0
+     }
+    ]
+   },
+   "south": {
+    "ocean_mkm2": 204.714,
+    "perennial_mkm2": 3.8,
+    "seasonal_mkm2": 16.524,
+    "ocean_poleward_50_perennial_share": 0.084,
+    "perennial_edge_deg": 69.53,
+    "all_ice_edge_deg": 60.04,
+    "perennial_edge_by_longitude": {
+     "columns": 240,
+     "min": 63.0,
+     "p05": 64.5,
+     "median": 72.0,
+     "p95": 90.0,
+     "max": 90.0
+    },
+    "bands": [
+     {
+      "band": "40-50",
+      "ocean_mkm2": 32.049,
+      "perennial_share": 0.0,
+      "seasonal_share": 0.0
+     },
+     {
+      "band": "50-60",
+      "ocean_mkm2": 22.911,
+      "perennial_share": 0.0,
+      "seasonal_share": 0.093
+     },
+     {
+      "band": "60-70",
+      "ocean_mkm2": 18.509,
+      "perennial_share": 0.07,
+      "seasonal_share": 0.719
+     },
+     {
+      "band": "70-80",
+      "ocean_mkm2": 3.573,
+      "perennial_share": 0.7,
+      "seasonal_share": 0.3
+     },
+     {
+      "band": "80-90",
+      "ocean_mkm2": 0.0,
+      "perennial_share": null,
+      "seasonal_share": null
+     }
+    ]
+   }
+  }
+ }
+}

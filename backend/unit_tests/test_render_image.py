@@ -11,6 +11,7 @@ from app.hydroclimate import climate, hydrology
 from app.world import World, generate_world, step_world
 
 from .quad_fixtures import quad_plate
+from .river_fixtures import spill_hop_fields
 
 
 def _world(seed=1, num_plates=10, continental_fraction=0.4):
@@ -237,6 +238,32 @@ def test_render_png_is_decodable_at_requested_size():
         assert image.size == (320, 180)
 
 
+def test_plumes_view_marks_active_heads_and_heat_halo():
+    """RFC 0007 (#583): the plumes debug view paints the heat halo and marks
+    active head centres, unlike a plume-free world."""
+    from app import plumes
+
+    world = _world()
+    world.plume_stream = {"head": [10**9, 1e18], "tail": [10**9, 1e18]}
+    plain = np.asarray(Image.open(io.BytesIO(render_image.render_png(world, "behrmann", "plumes", 320, 180))))
+    world.mantle_plumes = [plumes.MantlePlume(
+        plume_id=0,
+        position=tuple(float(v) for v in world.plates[0].all_points_and_elevation()[0][0]),
+        born_years=2e6,
+        head_volume_m3=7e15,
+        head_remaining_m3=7e15,
+        head_end_years=5e6,
+        tail_flux_m3_per_yr=0.0,
+        tail_end_years=5e6,
+    )]
+    world.elapsed_years = 3e6
+    plumes.apply(world, 1e6)
+    assert world.plates[0].collect("plume_heat_myr").max() > 0.0
+    headed = np.asarray(Image.open(io.BytesIO(render_image.render_png(world, "behrmann", "plumes", 320, 180))))
+    assert headed.shape == plain.shape
+    assert np.any(headed != plain)
+
+
 def test_overlay_layers_are_transparent_except_where_painted():
     world = generate_world(7, num_plates=10, continental_fraction=0.4)
     cratons.ensure_initialized(world)
@@ -348,6 +375,44 @@ def test_stream_animation_mp4_stop_event_can_interrupt_mid_frame_batch():
 
     done = messages[-1]
     assert done[2] is True  # stopped_early
+
+
+def test_stream_animation_mp4_sends_a_heartbeat_while_a_frame_batch_runs_slowly(monkeypatch):
+    # GitHub issue #611: a frame's batch of slow steps with no other output tripped the
+    # client's idle watchdog, which aborts the stream as stalled. A heartbeat must flow
+    # whenever a step lands more than ANIMATION_HEARTBEAT_INTERVAL_S after the last line.
+    world = _world()
+    now = [0.0]
+
+    def _fast_clock():
+        now[0] += render_image.ANIMATION_HEARTBEAT_INTERVAL_S + 1.0
+        return now[0]
+
+    monkeypatch.setattr("app.world._monotonic", _fast_clock)
+    messages = list(render_image.stream_animation_mp4(
+        world, "behrmann", "elevation", 64, 64, None, 100_000, 3, 2,
+    ))
+    assert [m[0] for m in messages] == ["progress", "heartbeat", "heartbeat", "heartbeat", "progress", "done"]
+    heartbeats = [m for m in messages if m[0] == "heartbeat"]
+    assert all(m[1] == 2 and m[2] == 2 for m in heartbeats)  # frame 2's batch, of 2
+    assert [m[3] for m in heartbeats] == sorted(m[3] for m in heartbeats)  # elapsed climbs
+
+
+def test_stream_animation_mp4_stays_silent_between_frames_when_steps_are_fast():
+    # The mirror: fast batches already emit a progress line per frame, so no
+    # heartbeat should pad the stream.
+    world = _world()
+    step_calls = []
+
+    def _fast_step(w, years):
+        step_calls.append(years)
+
+    messages = list(render_image.stream_animation_mp4(
+        world, "behrmann", "elevation", 64, 64, None, 100_000, 3, 2,
+        step_fn=_fast_step,
+    ))
+    assert [m[0] for m in messages] == ["progress", "progress", "done"]
+    assert len(step_calls) == 3  # (2 - 1) * 3 real, individual step_fn calls
 
 
 def test_geomorph_colors_diverge_around_zero():
@@ -738,6 +803,50 @@ def test_draw_rivers_wide_segment_has_a_dimmer_halo_than_its_own_core(monkeypatc
     # what an all-one-fill single-pass line (see the width-floor test above) would show instead.
     halo_ring_px = int(is_river_px.sum()) - int(near_full_color.sum())
     assert halo_ring_px > int(near_full_color.sum()) * 0.2
+
+
+def test_draw_rivers_stops_a_spill_hop_at_the_lake_it_crosses(monkeypatch):
+    # Issue #520: sink 2 spills across lake nodes 3-4 to node 6 beyond rim 5. Its line must stop
+    # at the lake, not run on across it. Nodes 0-2 are drawn, node 0 dimmer, so the line from
+    # the sink also shows that each segment takes its own node's color (`owner`).
+    world = World(seed=0, plates=[])
+    world.hydrology_cache = spill_hop_fields(lake_m=15.0)
+    monkeypatch.setattr(
+        render_image,
+        "_rivers_to_draw",
+        lambda w, hide_short_networks=False: (np.array([0, 1, 2]), np.array([0.3, 1.0, 1.0]), np.zeros(3)),
+    )
+    scale, offset_x, offset_y = 2500.0, 20.0, 50.0
+    image = Image.new("RGB", (240, 100), render_image.BACKGROUND_RGB)
+    image = render_image._draw_rivers(image, world, "behrmann", scale, offset_x, offset_y, 1.0, np.eye(3))
+    pixels = np.asarray(image).astype(np.int64)
+    background = np.array(render_image.BACKGROUND_RGB)
+    node_px = render_image._to_pixels(scale, offset_x, offset_y, render_image._project_points("behrmann", world.hydrology_cache.points))
+
+    def color_at(a: int, b: int) -> np.ndarray:
+        x, y = np.round((node_px[a] + node_px[b]) / 2).astype(int)
+        return pixels[y, x]
+
+    assert np.any(color_at(1, 2) != background)
+    assert np.any(color_at(2, 3) != background)
+    assert np.all(color_at(4, 5) == background)
+    assert np.all(color_at(5, 6) == background)
+    assert np.abs(color_at(0, 1) - background).sum() < np.abs(color_at(2, 3) - background).sum()
+
+
+def test_rivers_to_draw_does_not_carry_a_river_across_a_lake_into_a_hidden_outflow():
+    # Issue #520: sink 2's spill crosses the lake into node 6's own network. That outflow is
+    # below the discharge floor and its channel below the width floor, so it isn't drawn; the
+    # inflow's downstream fill-in (#503) must stop at its own mouth rather than draw node 6.
+    world = World(seed=0, plates=[])
+    fields = spill_hop_fields(lake_m=15.0)
+    fields.discharge_m3_s[[0, 1, 2]] = render_image.RIVER_VISIBLE_MIN_FLOW_M3_S * 2
+    fields.discharge_m3_s[6] = render_image.RIVER_VISIBLE_MIN_FLOW_M3_S / 2
+    fields.channel_width[6] = render_image.RIVER_VISIBLE_MIN_WIDTH_M / 2
+    world.hydrology_cache = fields
+
+    src_idx, _, _ = render_image._rivers_to_draw(world)
+    assert sorted(src_idx.tolist()) == [0, 1, 2]
 
 
 def _linear_rivers_world(mouth_widths):

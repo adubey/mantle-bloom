@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import tempfile
 import threading
 import time
@@ -41,7 +42,18 @@ RAILWAY_VOLUME_ENV = "RAILWAY_VOLUME_MOUNT_PATH"
 
 WORLD_FILE = "world.mbworld"
 STATUS_FILE = "run_status.json"
+ANIMATION_PROGRESS_FILE = "animation_progress.json"
 STATUS_VERSION = 1
+# The multi-world registry index (#563): metadata for every world whose
+# checkpoint lives under `WORLDS_DIR/<world_id>/` in the same root.
+WORLDS_INDEX_FILE = "worlds.json"
+WORLDS_DIR = "worlds"
+INDEX_VERSION = 1
+
+
+class RegistryIndexError(ValueError):
+    """The registry index exists but cannot be trusted. Startup must fail its
+    health check rather than silently start with an empty registry."""
 # The full app's default "Years per step" (App.tsx), for a status written before any Play.
 DEFAULT_STEP_YEARS = 100_000.0
 # Prefix of in-progress writes. Any left behind were cut off by a killed process.
@@ -72,6 +84,60 @@ class CheckpointStore:
         directory = os.environ.get(CHECKPOINT_DIR_ENV, "").strip() or os.environ.get(RAILWAY_VOLUME_ENV, "").strip()
         return cls(directory) if directory else None
 
+    # Registry IDs are uuid4 hex; anything else reaching a per-world path would
+    # be a tampered index turning rmtree/replay-log setup into a path traversal.
+    _WORLD_ID_PATTERN = re.compile(r"[0-9a-f]{32}")
+
+    @staticmethod
+    def _is_timestamp(value: object) -> bool:
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+    def for_world(self, world_id: str) -> CheckpointStore:
+        """The store for one world's checkpoint subdirectory (#563)."""
+        if not self._WORLD_ID_PATTERN.fullmatch(world_id):
+            raise RegistryIndexError(f"refusing suspicious world_id {world_id!r}")
+        return CheckpointStore(self.directory / WORLDS_DIR / world_id)
+
+    @property
+    def index_path(self) -> Path:
+        return self.directory / WORLDS_INDEX_FILE
+
+    def save_index(self, records: list[dict]) -> None:
+        """Atomically replace the registry index. Called on record create,
+        rename, publish/unpublish, import and delete -- not on every step."""
+        data = json.dumps({"version": INDEX_VERSION, "worlds": records})
+        self._replace(self.index_path, data.encode())
+
+    def load_index(self) -> list[dict] | None:
+        """The registry index records, or None when no index exists yet (a
+        pre-multi-world checkpoint directory). Raises RegistryIndexError when
+        an index exists but is unreadable or malformed."""
+        path = self.index_path
+        if not path.exists():
+            return None
+        try:
+            payload = json.loads(path.read_text())
+            if payload.get("version") != INDEX_VERSION or not isinstance(payload.get("worlds"), list):
+                raise ValueError(f"unexpected contents {payload!r}")
+            for record in payload["worlds"]:
+                if (
+                    not isinstance(record, dict)
+                    or not isinstance(record.get("world_id"), str)
+                    or not self._WORLD_ID_PATTERN.fullmatch(record["world_id"])
+                    # Timestamps are read with float() at restore: a non-numeric
+                    # one would raise outside any try and fail startup for every
+                    # world, so reject it here where the index fails closed.
+                    # (bool is an int subclass; a True timestamp is nonsense too.)
+                    or not isinstance(record.get("name"), str)
+                    or not isinstance(record.get("is_public"), bool)
+                    or not self._is_timestamp(record.get("created_at"))
+                    or not self._is_timestamp(record.get("updated_at"))
+                ):
+                    raise ValueError(f"unexpected record {record!r}")
+        except Exception as exc:  # noqa: BLE001 - any bad index must fail closed
+            raise RegistryIndexError(f"can't read registry index {path}: {exc}") from exc
+        return payload["worlds"]
+
     @property
     def world_path(self) -> Path:
         return self.directory / WORLD_FILE
@@ -82,7 +148,7 @@ class CheckpointStore:
 
     def save_world(self, world: World) -> None:
         """Replace the world checkpoint. The caller holds the world lock, so the world can't
-        change while it's pickled."""
+        change while it's serialized."""
         started = time.monotonic()
         data = persistence.save_world_bytes(world)
         self._replace(self.world_path, data)
@@ -94,6 +160,27 @@ class CheckpointStore:
     def save_status(self, status: RunStatus) -> None:
         data = json.dumps({"version": STATUS_VERSION, "running": status.running, "step_years": status.step_years})
         self._replace(self.status_path, data.encode())
+
+    def save_animation_progress(self, payload: dict) -> None:
+        """Record one completed animation frame for a later recovery (#638): written
+        next to the per-frame world checkpoint, cleared when a run finishes with a
+        video. Advisory only -- readers treat anything unexpected as absent."""
+        self._replace(self.directory / ANIMATION_PROGRESS_FILE, json.dumps(payload).encode())
+
+    def load_animation_progress(self) -> dict | None:
+        """The last recorded animation progress, or None when no interrupted run is
+        recoverable. Never raises: a missing, corrupt or foreign-shaped file just
+        means nothing to recover."""
+        try:
+            payload = json.loads((self.directory / ANIMATION_PROGRESS_FILE).read_bytes())
+        except (OSError, ValueError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def clear_animation_progress(self) -> None:
+        """Forget a finished run's progress: its video exists, so there is nothing
+        left to recover."""
+        (self.directory / ANIMATION_PROGRESS_FILE).unlink(missing_ok=True)
 
     def load(self) -> tuple[World | None, RunStatus]:
         """The checkpointed world (None if there isn't a usable one) and run status. Never
@@ -123,7 +210,10 @@ class CheckpointStore:
             _logger.warning("checkpoint: no saved world in %s; starting without one", self.directory)
             return None
         try:
-            world = persistence.load_world_bytes(path.read_bytes())
+            # Stream from disk: a checkpoint is a whole world, and holding its bytes
+            # beside the world it builds doubles restore-time RAM (#648).
+            with open(path, "rb") as checkpoint_file:
+                world = persistence.load_world_file(checkpoint_file)
         except Exception as exc:  # noqa: BLE001 - any unreadable file must leave the server startable
             aside = path.with_name(f"{path.name}.invalid-{int(time.time())}")
             _logger.error(

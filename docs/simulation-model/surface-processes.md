@@ -69,8 +69,10 @@ silently depends on grid resolution) -- which is why `RAIN_EROSION_COEFFICIENT` 
 by order-of-magnitude reasoning against the then-current direct convergent uplift rate
 (`CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`, 800 m/Myr, since retired for Hc-driven uplift) and checked against real slope/precipitation distributions from an actual run,
 rather than reused from a value tuned against a different scale.
-`WEATHERING_COEFFICIENT` needed no such rescaling, since wind speed already uses a directly
-comparable scale (`MERIDIONAL_BASE_SPEED = 6.0`) unaffected by the slope re-derivation. River
+`WEATHERING_COEFFICIENT` needed no such rescaling, since wind speed is a physical 10 m speed
+in m/s (the [surface-wind contract](climate.md#surface-wind-contract)) unaffected by the slope
+re-derivation; it is 3.6 m per (m/s) per Myr, recalibrated when the wind moved to m/s so land
+weathering volume held ([#526](https://github.com/adubey/mantle-bloom/issues/526)). River
 erosion depends on physical catchment discharge (see [Hydrology](hydrology.md#hydrology-rivers-and-lakes-hydrologypy)), converted to a
 fixed reference-cell scale before the stream-power law. `RIVER_EROSION_COEFFICIENT` was
 originally derived by order of magnitude and checked against channel-depth growth; issue
@@ -92,8 +94,8 @@ law produced (see the formula below).
   monotonically non-decreasing, land-only, capped purely as a sanity bound (not a
   physically-derived limit).
 - **Weathering** = `WEATHERING_COEFFICIENT * wind_speed * humidity_norm * relief_factor *
-  dt_myr`, where `humidity_norm` is humidity clipped to `[0, 1]` against
-  `HUMIDITY_REFERENCE`, and `relief_factor = clip(slope / WEATHERING_RELIEF_REFERENCE_SLOPE,
+  dt_myr`, where `humidity_norm` is humidity (g/kg) over
+  `HUMIDITY_REFERENCE_G_KG` (`climate.HUMIDITY_INDEX_G_KG`, 12.3 g/kg), clipped to `[0, 1]`, and `relief_factor = clip(slope / WEATHERING_RELIEF_REFERENCE_SLOPE,
   0, 1)` (same normalize-and-saturate idiom as `humidity_norm`). `relief_factor` is a
   mantle-bloom-original addition -- added after a real bug: unlike rain/river erosion (both already `*
   slope`), weathering originally had no relief dependence at all, so a flat, low-lying coastal
@@ -264,12 +266,12 @@ nodes sitting right at a glacier's edge (ice-free themselves, with at least one 
 neighbor) received roughly 7x the mean sediment deposit of ordinary land elsewhere.
 
 **Landslide debris runs out by gravity ([issue #275](https://github.com/adubey/mantle-bloom/issues/275) phase 4).**
-Seismic erosion's debris doesn't join the water-routed pool. That pool stops dead at a frozen
-node, because hydrology gives frozen land no flow target, and nearly every column at
-`MAX_CRUSTAL_THICKNESS_M` is a frozen summit. So its landslide debris used to settle straight
-back where it came from, and the highest collision belts never lost any net rock.
-`_route_mass_wasting` instead hands each node's debris to its lowest strictly-lower neighbour on
-the bare-rock surface, frozen or not, with no lake-spill or ice edges. Debris leaves its source.
+Seismic erosion's debris doesn't join the water-routed pool: it moves by gravity, not with
+water. (That pool also used to stop dead at a frozen node, where nearly every column at
+`MAX_CRUSTAL_THICKNESS_M` sits, so landslide debris settled straight back where it came from and
+the highest collision belts never lost any net rock. Water now flows on through cold nodes, RFC
+0014 D2(b), #539.) `_route_mass_wasting` hands each node's debris to its lowest strictly-lower
+neighbour on the bare-rock surface, with no lake-spill or ice edges. Debris leaves its source.
 From the first node downslope, a share settles wherever it passes. None settles on ground at or
 above `MASS_WASTING_RUNOUT_SLOPE` (0.005, a mountain flank), all of it on flat ground, and a
 linear share in between: the foreland basin at the foot of the range. A column within
@@ -525,7 +527,7 @@ root.
   reason continental subsidence is no longer a one-way loss of dry land.
 - **Node-count creep** (the continental boundary ratchet) grows total represented area; the
   same water volume over more ocean area also lowers the stand, which is physically right.
-- The `POST /world/controls` sea-level slider now calls `eustasy.set_sea_level_via_water_
+- The `POST /worlds/{world_id}/controls` sea-level slider now calls `eustasy.set_sea_level_via_water_
   budget`: "put sea level at X" is interpreted as "add or remove ocean water until the
   *current* hypsometry floats at X", and that new `V` is then conserved going forward (a
   glacio-eustatic / bigger-ocean change, not a one-frame override the next step erases).
@@ -548,7 +550,7 @@ more strongly or weakly. These are calibration controls, not new physical laws.
 The long-run land budget is a tug-of-war between a handful of erosion, deposition, uplift and
 volcanism processes whose individual hard-coded rates can't be recalibrated for one seed
 without regressing another. Twelve **dimensionless multipliers** on `World` let the user
-retune a *live* world and watch the result, via the "Controls" window / `POST /world/controls`
+retune a *live* world and watch the result, via the "Controls" window / `POST /worlds/{world_id}/controls`
 (same immediate-`climate_cache`-recompute path as `sea_level_m`/`solar_multiplier`). Every one
 defaults to `1.0`, and `1.0` is **byte-identical** to the code before the knobs existed (plain
 IEEE `*1.0`; verified by `test_tuning_knobs.py` and an old-pickle load). Negative values are

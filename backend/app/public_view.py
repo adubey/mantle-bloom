@@ -13,12 +13,19 @@ limit, not an anti-abuse control.
 Only a request that actually runs the simulation is charged. Each step request names the world
 revision its viewer is looking at. If the world has already moved past it (another viewer, or
 the owner, stepped since), or another guest's step is already running, the request is answered
-with the resulting world without computing anything, and costs nothing.
+with the resulting world without computing anything, and costs nothing. A request refused
+because the owner holds the world waits up to `GUEST_OWNER_STEP_WAIT_S` for their step to
+land and shares that too: viewers asking for the same advance get one result however it was
+computed (#653).
 
 Every viewer shares the one world, so the work of following it is shared too (#374): each
 change to the world publishes a new revision through `WorldFeed`, which viewers long-poll
 instead of each asking for steps or renders of their own, and `RenderCache` renders each view
-once per revision however many viewers ask for it.
+once per revision however many viewers ask for it. A computing guest step also publishes its
+live (fraction, phase) to the session's progress slot, waking the long poll without a new
+revision, which is what drives /view's wait progress bar mid-step; each animation frame
+publishes its revision the same way, so viewers watch the owner's recording step by step
+instead of nothing until it ends (#653).
 """
 
 from __future__ import annotations
@@ -39,6 +46,14 @@ GUEST_STEP_LIMIT = 30
 GUEST_STEP_YEARS = 100_000.0
 GUEST_PROJECTION = "eckert4"
 GUEST_VIEWS = ("elevation", "biome", "combined")
+# The image /view itself asks for (Viewer.tsx's fixed combined view at
+# MAX_DISPLAY_WIDTH * RENDER_SCALE): the one PNG the server pre-renders into the
+# RenderCache on every published change, so the first viewer after a step hits
+# cache instantly (#658). Kept as server constants -- not negotiated per request --
+# so there is exactly one eager image per revision.
+GUEST_DEFAULT_VIEW = "combined"
+GUEST_DEFAULT_WIDTH = 2200
+GUEST_DEFAULT_HEIGHT = 1222
 # The viewer renders at 2x its 1100x611 display size; a little headroom past that, but well
 # under the admin cap, since a guest render holds the world lock.
 GUEST_MAX_RENDER_PX = 2400
@@ -48,6 +63,19 @@ GUEST_MAX_RENDER_PX = 2400
 GUEST_LOCK_WAIT_S = 10.0
 # How long a guest's step waits on another guest's step that's already running.
 GUEST_INFLIGHT_WAIT_S = 300.0
+# How long a guest refused as busy waits for the owner's step or animation frame to
+# land and shares it, before failing with 503 (#653). Owner steps are the same
+# advance the viewer asked for, so sharing beats refusing; past this window the
+# request fails rather than pin a worker thread for the whole owner run.
+GUEST_OWNER_STEP_WAIT_S = 60.0
+# Poll granularity of that wait: the feed revision is a cheap mutex read.
+GUEST_OWNER_STEP_POLL_S = 0.5
+# How many guest requests may queue behind an already-running guest step. Each waiter
+# pins a worker thread for up to GUEST_INFLIGHT_WAIT_S, and this route is public: without
+# a cap, one burst during a slow step can occupy the whole AnyIO worker pool and starve
+# the owner's own synchronous routes. Excess waiters get a 503 at once (the viewer's
+# poll backs off and retries). Sized to leave headroom in the default 40-thread pool.
+GUEST_MAX_WAITERS = 8
 # How long GET /public/world?after=... holds a viewer's request open waiting for a new
 # revision. Kept under the idle timeout of common proxies, so the request ends on our terms.
 GUEST_POLL_WAIT_S = 25.0
@@ -109,6 +137,14 @@ class WorldFeed:
         with self._mutex:
             waiters, self._waiters = self._waiters, []
         _wake_all(waiters)
+
+    def has_waiters(self) -> bool:
+        """A viewer is following this world right now. Gates the viewer preview
+        pre-render (#658): with an audience the render pays for itself on the next
+        poll; without one it is pure cost on every change. Best-effort by nature --
+        a waiter arriving mid-render just renders on demand as before."""
+        with self._mutex:
+            return bool(self._waiters)
 
     async def wait_past(self, seen: str, timeout_s: float, changed: Callable[[], bool] | None = None) -> None:
         """Return once the revision differs from `seen` or `changed()` is true, or after
@@ -209,6 +245,13 @@ class GuestStepCoordinator:
     def __init__(self) -> None:
         self._mutex = threading.Lock()
         self._inflight: threading.Event | None = None
+        self._waiter_slots = threading.BoundedSemaphore(GUEST_MAX_WAITERS)
+
+    def busy(self) -> bool:
+        """A guest step is computing right now. Lets delete refuse while one is
+        in flight instead of detaching the session underneath it."""
+        with self._mutex:
+            return self._inflight is not None
 
     def request_step(
         self,
@@ -240,8 +283,16 @@ class GuestStepCoordinator:
                     break
             # Another guest's step is running. Wait for it, then decide again: normally the
             # world has moved past `seen_revision` and this request is served for free.
-            if not inflight.wait(inflight_wait_s):
+            # The wait takes a bounded slot first: an unbounded crowd of waiters would
+            # pin a worker thread each for up to inflight_wait_s and starve the owner's
+            # routes of threads.
+            if not self._waiter_slots.acquire(blocking=False):
                 return StepOutcome("busy")
+            try:
+                if not inflight.wait(inflight_wait_s):
+                    return StepOutcome("busy")
+            finally:
+                self._waiter_slots.release()
         try:
             compute()
         finally:

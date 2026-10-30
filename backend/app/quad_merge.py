@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import cratons, geometry, lithosphere, mantle, rheology
+from . import cratons, geometry, lithosphere, rheology
 from .elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_INHERIT, CRUST_TYPE_OCEANIC
 from .lithosphere_plate import SUTURE_ACCRETION_MAX_HC_M
 from .surface_fields import CRATON_UNFORMED_YEARS, SURFACE_FIELDS, RemapClass, majority_history
@@ -79,32 +79,18 @@ def merge(
     `absorb`'s territory and fields are remapped onto `keep`'s lattice by exact area (see the
     module docstring). `other_points_xyz` are every other live plate's nodes (world xyz),
     which `keep` doesn't grow over; nor does it grow into any of `other_plates`' cells. With
-    `world`, the cells the suture welds are marked as belt (RFC 0009).
+    `world`, the cells the suture welds are marked as belt (RFC 0009). The caller chooses
+    the survivor: collision merges keep the lower plate ID, while forced overlap merges keep
+    the plate with more nodes. The retained plate's rate can therefore be either faster
+    or slower than the absorbed plate's rate until the next solve (RFC 0012, #547).
 
-    `omega` conserves angular momentum through the transfer: both plates' momentum before,
-    solved against the merged plate's own inertia after -- the remap moves material to new
-    cell centres, so the sum of the two plates' inertias isn't the merged plate's. Crust
-    stacked over the suture cap that can't be placed elsewhere on the plate takes its
-    momentum with it; that is absorbed material, so it leaves moving with `absorb`."""
-    momentum = lithosphere.angular_momentum(_inertia(keep), keep.omega) + lithosphere.angular_momentum(_inertia(absorb), absorb.omega)
+    Plate motion is solved from the merged plate's new loads on the next motion pass; this
+    topology change transfers material but does not assign a rate (RFC 0012, #547)."""
     if absorb.node_count():
-        lost, welded = _transfer(keep, absorb, np.asarray(other_points_xyz, dtype=float).reshape(-1, 3), other_plates)
+        welded = _transfer(keep, absorb, np.asarray(other_points_xyz, dtype=float).reshape(-1, 3), other_plates)
         if world is not None:
             cratons.mark_belt(world, keep, welded)
-        momentum = momentum - lithosphere.angular_momentum(lost, absorb.omega)
-    keep.set_omega(mantle.clamp_rate(lithosphere.omega_from_angular_momentum(_inertia(keep), momentum)))
     keep.reset_age()
-
-
-def _inertia(plate: "PlateWithSparseQuadPatch") -> np.ndarray:
-    return lithosphere.moment_of_inertia_tensor(
-        plate.all_points_and_elevation()[0],
-        plate.collect("crustal_thickness_m"),
-        plate.collect("mantle_lithosphere_thickness_m"),
-        lithosphere.node_crust_density(plate.collect("crust_type_code"), plate.crust_type),
-        0.0,
-        area_m2=plate.node_areas_m2(),
-    )
 
 
 def subsample_cells(plate: "PlateWithSparseQuadPatch", per_side: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -259,10 +245,9 @@ def _transfer(
     absorb: "PlateWithSparseQuadPatch",
     other_points_xyz: np.ndarray,
     other_plates: Sequence["PlateWithSparseQuadPatch"] = (),
-) -> tuple[np.ndarray, np.ndarray]:
-    """Remap `absorb` onto `keep` in place. Returns the inertia tensor of the mass the caps
-    removed (zero when nothing was capped), and the welded cells: those stacked at the suture
-    and those the stacking overflow was placed on (`merge` marks them as belt)."""
+) -> np.ndarray:
+    """Remap `absorb` onto `keep` in place and return welded cells: those stacked at the
+    suture and those the stacking overflow was placed on (`merge` marks them as belt)."""
     source, absorb_local, sub_area = subsample_cells(absorb, MERGE_REMAP_SUBSAMPLES)
     sub_world = geometry.to_world(absorb.frame, absorb_local)
     sub_local = geometry.to_local(keep.frame, sub_world)
@@ -431,7 +416,7 @@ def _transfer(
     old_hc = own_values("crustal_thickness_m")
     old_hm = own_values("mantle_lithosphere_thickness_m")
     hc, hm = out["crustal_thickness_m"], out["mantle_lithosphere_thickness_m"]
-    uncapped_hc, uncapped_hm = hc.copy(), hm.copy()
+    uncapped_hc = hc.copy()
     stacked = ~is_new & ((hc != old_hc) | (hm != old_hm))
     hc[stacked] = np.maximum(old_hc[stacked], np.minimum(hc[stacked], SUTURE_ACCRETION_MAX_HC_M))
     hm[stacked] = np.maximum(old_hm[stacked], np.minimum(hm[stacked], lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M))
@@ -440,8 +425,7 @@ def _transfer(
     hc[is_new] = np.clip(hc[is_new], lithosphere.MIN_CRUSTAL_THICKNESS_M, SUTURE_ACCRETION_MAX_HC_M)
     hm[is_new] = np.clip(hm[is_new], lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M, lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
     overflow = np.where(stacked | is_new, np.maximum(uncapped_hc - hc, 0.0), 0.0)
-    capped_hc = hc.copy()
-    spread, placed = _place_stacking_overflow(keep, out, overflow, target_area)
+    spread = _place_stacking_overflow(keep, out, overflow, target_area)
 
     # Elevation: isostasy from the new column plus the carried erosion/texture residual, as in
     # `coarsen_cells`; on a stacked column both plates' residuals blend by area.
@@ -464,17 +448,7 @@ def _transfer(
     cratons.keep_belts_off_cratons(out)
     keep.set_fields_on_plate(**out)
 
-    # The mass the caps removed (negative where a floor added some), as an inertia tensor at
-    # the cells it was removed from. Overflow the placement kept on the plate didn't leave:
-    # the merged inertia already holds it where it landed.
-    return lithosphere.moment_of_inertia_tensor(
-        keep.all_points_and_elevation()[0],
-        uncapped_hc - capped_hc - placed * overflow,
-        uncapped_hm - hm,
-        density,
-        0.0,
-        area_m2=target_area,
-    ), stacked | spread
+    return stacked | spread
 
 
 def _keep_craton_continental(keep: "PlateWithSparseQuadPatch", out: dict[str, np.ndarray]) -> None:
@@ -501,12 +475,13 @@ def _place_stacking_overflow(
     above the capped column is the overflow's own: it goes with the overflow and keeps its
     oldest date, so welding two cratons doesn't destroy any (#340). What can't be placed
     leaves its material and craton above the column for `merge_split.merge_plates` and its
-    craton audit to book. Returns the cells whose Hc the placement changed and the share of
-    `overflow` it placed, the same share on every overflowing cell."""
+    craton audit to book. Returns the cells whose Hc the placement changed."""
     volume = float(overflow @ areas)
     if volume <= 0.0:
-        return np.zeros(len(overflow), dtype=bool), 0.0
+        return np.zeros(len(overflow), dtype=bool)
     out.setdefault("continental_material_m", np.zeros(len(overflow)))
+    out.setdefault("plateau_crust_m", np.zeros(len(overflow)))
+    out.setdefault("buoyant_crust_time_m_yr", np.zeros(len(overflow)))
     from . import quad_tectonics
     from .elevation_lines import effective_is_continental_from_codes
 
@@ -518,6 +493,25 @@ def _place_stacking_overflow(
     moving = material * share
     material_volume = float(moving @ areas)
     material -= moving
+    # Buoyant-crust tracers ride the overflow like any other Hc share (RFC 0007,
+    # issue #581). Overflow receivers are continental, so a nonzero carried share
+    # converts at the next phase audit or accretion pass, not here: the merge
+    # machinery is world-free. The arc channel rides symmetrically once RFC 0006
+    # registers it (`out` carries no `arc_crust_m` key until then).
+    plateau = out["plateau_crust_m"]
+    moment = out["buoyant_crust_time_m_yr"]
+    arc = out.get("arc_crust_m")
+    zeros = np.zeros(len(hc))
+    moving_plateau = plateau * share
+    moving_arc = arc * share if arc is not None else None
+    moving_moment = moment * share
+    overflow_plateau_m3 = float(moving_plateau @ areas)
+    overflow_arc_m3 = float(moving_arc @ areas) if moving_arc is not None else 0.0
+    overflow_moment_m3_yr = float(moving_moment @ areas)
+    plateau -= moving_plateau
+    if arc is not None:
+        arc -= moving_arc
+    moment -= moving_moment
     # The craton summed past the capped column (craton on craton) can only be overflow; it is
     # never more than the overflow, so no receiver ends up with craton above its Hc.
     craton = out.get("craton_crust_m")
@@ -541,6 +535,14 @@ def _place_stacking_overflow(
     placed = quad_tectonics._carry_material(material, areas, hc - hc_before, volume, material_volume)
     # The unplaced share stays on the overflowing cells, in proportion.
     material += (1.0 - placed) * moving
+    placed_tracers = quad_tectonics._carry_tracers(
+        plateau, arc if arc is not None else zeros, moment, areas, hc - hc_before, volume,
+        overflow_plateau_m3, overflow_arc_m3, overflow_moment_m3_yr,
+    )
+    plateau += (1.0 - placed_tracers) * moving_plateau
+    if arc is not None:
+        arc += (1.0 - placed_tracers) * moving_arc
+    moment += (1.0 - placed_tracers) * moving_moment
     if craton_volume > 0.0:
         before = craton.copy()
         quad_tectonics._carry_material(craton, areas, hc - hc_before, volume, craton_volume)
@@ -555,7 +557,7 @@ def _place_stacking_overflow(
                 points = keep.surface_nodes().local_xyz
                 _, nearest = cKDTree(points[sources]).query(points[gained])
                 formed[gained] = np.minimum(formed[gained], formed[sources][nearest])
-    return changed, placed
+    return changed
 
 
 def _materialised(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatch") -> list[str]:

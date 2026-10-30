@@ -14,15 +14,19 @@ from . import geometry, lithosphere, noise, rheology, torque
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from .hydroclimate import biomes, climate, hydrology
 from .plates import PLANET_RADIUS_KM, collect_all_elevation, gather_node_positions
-from .hydroclimate.erosion import climate_grid_indices
+from .hydroclimate.erosion import MAX_CHANNEL_DEPTH_M, climate_grid_indices
 
 if TYPE_CHECKING:
     from .world import World
 
-FIRST_MOTION_STEP_YEARS = 5_000_000.0
 INITIAL_GLACIER_DEPTH_M = 150.0
 INITIAL_GLACIER_MIN_ELEVATION_M = 2_500.0
 INITIAL_GLACIER_MAX_TEMPERATURE_C = -3.0
+# The drainage history the generated terrain stands for, in the bootstrap's breach budget and
+# basin filling (`hydrology.compute_hydrology`'s `history_years`). One long step's worth: the
+# saves we measured drain like Earth after a single 1 Myr step, while the zero-duration
+# bootstrap left 50-65% of unfrozen land draining to closed sinks (#218).
+INITIAL_DRAINAGE_HISTORY_YEARS = 1_000_000.0
 OROGEN_SEARCH_RADIUS_KM = 250.0
 OROGEN_SECTION_LENGTH_KM = 1_000.0
 OROGEN_MAX_RELIEF_M = 3_200.0
@@ -109,10 +113,7 @@ def apply_predicted_orogens(world: "World") -> None:
     """Seed narrow, high ridges on weak land beside initially converging contacts."""
     spacing = line_spacing_rad(world.node_density)
     reach = OROGEN_SEARCH_RADIUS_KM / PLANET_RADIUS_KM
-    predicted = {
-        plate.plate_id: torque.predict_plate_motion(plate, world, world.plates, FIRST_MOTION_STEP_YEARS)
-        for plate in world.plates
-    }
+    predicted = torque.solve_plates_quasistatic(world)
     relief_by_plate = {
         plate.plate_id: np.zeros(len(plate.cell_keys), dtype=float) for plate in world.plates
     }
@@ -346,7 +347,7 @@ def initialize_river_channels(world: "World") -> None:
     )
     fields = hydrology.compute_hydrology(
         world, precipitation, temperature, 0.0, node_cloud=node_cloud,
-        seasonal_amplitude_at_nodes=seasonal,
+        seasonal_amplitude_at_nodes=seasonal, history_years=INITIAL_DRAINAGE_HISTORY_YEARS,
     )
     discharge = fields.discharge_m3_s if fields.discharge_m3_s is not None else np.zeros(len(points))
     rejected_straight = _reject_long_straight_channel_nodes(fields)
@@ -354,31 +355,24 @@ def initialize_river_channels(world: "World") -> None:
     world.climate_cache = climate_fields
     world.hydrology_cache = fields
     world.hydrology_cache_step = world.steps_taken
+    # The bootstrap's breach notches persist like a step's (erosion.py), so the first step's
+    # passages still drain the pits the bootstrap cut through.
+    notch = fields.breach_notch_m if len(fields.breach_notch_m) == len(points) else np.zeros(len(points))
+    per_node = {
+        "glacier_depth": fields.glacier_depth,
+        "lake_depth": fields.lake_depth,
+        "breach_notch_depth_m": np.where(fields.is_ocean, 0.0, np.clip(notch, 0.0, MAX_CHANNEL_DEPTH_M)),
+    }
     eligible = fields.is_river
     if np.any(eligible):
         river_discharge = discharge[eligible]
         rank = np.zeros(len(points))
         order = np.argsort(river_discharge, kind="stable")
         rank[np.flatnonzero(eligible)[order]] = np.linspace(0.0, 1.0, len(order))
-        depth = np.where(eligible, 20.0 + 100.0 * rank**1.7, 0.0)
-        width = np.where(eligible, 80.0 + 1_200.0 * rank**1.4, 0.0)
-        fields.channel_width = width
-        offset = 0
-        for plate in plates_in_order:
-            count = len(plate.cell_keys)
-            plate.set_fields_on_plate(
-                channel_depth=depth[offset : offset + count],
-                channel_width=width[offset : offset + count],
-                glacier_depth=fields.glacier_depth[offset : offset + count],
-                lake_depth=fields.lake_depth[offset : offset + count],
-            )
-            offset += count
-    else:
-        offset = 0
-        for plate in plates_in_order:
-            count = len(plate.cell_keys)
-            plate.set_fields_on_plate(
-                glacier_depth=fields.glacier_depth[offset : offset + count],
-                lake_depth=fields.lake_depth[offset : offset + count],
-            )
-            offset += count
+        per_node["channel_depth"] = np.where(eligible, 20.0 + 100.0 * rank**1.7, 0.0)
+        per_node["channel_width"] = fields.channel_width = np.where(eligible, 80.0 + 1_200.0 * rank**1.4, 0.0)
+    offset = 0
+    for plate in plates_in_order:
+        count = len(plate.cell_keys)
+        plate.set_fields_on_plate(**{name: values[offset : offset + count] for name, values in per_node.items()})
+        offset += count

@@ -604,6 +604,7 @@ COLUMN_FIELDS = (
     "elev_change_reason",
     "crust_type_code",
     "craton_crust_m",
+    "plume_heat_myr",
     "continental_material_m",
     "mobile_cover_m",
     "mobile_cover_continental_m",
@@ -813,7 +814,9 @@ def deform_columns(
         infl = fault_influence[divergent]
         # A craton resists the thinning itself (cratons.CRATON_RIFT_RESISTANCE), so it only
         # melts through once its own, slower thinning crosses the rift threshold.
-        resisted = cratons.rift_resistance(craton[divergent])
+        # Plume heat weakens that resistance for the heated fraction of the step
+        # (RFC 0007, #582); with no heat this is exactly rift_resistance.
+        resisted = cratons.heated_rift_resistance(craton, fields["plume_heat_myr"], years)[divergent]
         old_hc = hc[divergent]
         hc[divergent] = old_hc + infl * (1.0 - resisted) * (new_hc - old_hc)
         hm[divergent] = hm[divergent] + infl * (1.0 - resisted) * (new_hm - hm[divergent])
@@ -1004,6 +1007,7 @@ def deform_columns(
         "elev_change_reason": reason,
         "crust_type_code": crust_type_code,
         "craton_crust_m": new_craton,
+        "plume_heat_myr": fields["plume_heat_myr"],
         "continental_material_m": continental_material,
         "mobile_cover_m": cover,
         "mobile_cover_continental_m": np.minimum(cover_material, continental_material),

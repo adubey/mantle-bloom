@@ -1,0 +1,185 @@
+{
+  "arms": {
+    "baseline": {
+      "final_plate_count": 12,
+      "ledger_closure": {
+        "continental_balance_error_m3": 0.0,
+        "craton_balance_error_m3": 256.0,
+        "hm_closure_error_m3": {
+          "all": -512.0,
+          "continental_node": 5872.5,
+          "oceanic_node": -1536.0
+        },
+        "mobile_cover_balance_error_m3": 30.0
+      },
+      "plate6_attempts": [
+        {
+          "cluster_label_counts": null,
+          "elapsed_myr": 2.3,
+          "internal_stress": 0.0745574919750744,
+          "omega_rad_per_year": [
+            6.7897392743494505e-09,
+            -7.430585614603197e-10,
+            -2.460693326938971e-09
+          ],
+          "outcome": "no_split",
+          "pole_separation_rad_per_year": null,
+          "pole_separation_threshold_rad_per_year": 4.303931887634605e-09,
+          "radius_rad": 0.6918807469133966,
+          "refined_side_nodes": null,
+          "refinement_succeeded": null,
+          "relax": 0.31449124859699845,
+          "residual_rms_m_per_s": 6.271610123559138e-09,
+          "residual_threshold_m_per_s": 6.455897831451907e-09,
+          "size_frac": 0.31449124859699845,
+          "stress_frac": 0.0248524973250248
+        },
+        {
+          "cluster_label_counts": [
+            4878,
+            2828
+          ],
+          "elapsed_myr": 2.4,
+          "internal_stress": 0.07786792974131487,
+          "omega_rad_per_year": [
+            5.591323846885136e-09,
+            -8.433295398548308e-10,
+            -1.9391653495346917e-09
+          ],
+          "outcome": "split",
+          "pole_separation_rad_per_year": 6.296235336406528e-09,
+          "pole_separation_threshold_rad_per_year": 4.30419578185243e-09,
+          "radius_rad": 0.6917882770599995,
+          "refined_side_nodes": [
+            4108,
+            3598
+          ],
+          "refinement_succeeded": true,
+          "relax": 0.3144492168454543,
+          "residual_rms_m_per_s": 7.0612717928756465e-09,
+          "residual_threshold_m_per_s": 6.456293672778645e-09,
+          "size_frac": 0.3144492168454543,
+          "stress_frac": 0.02595597658043829
+        }
+      ],
+      "runtime_seconds": 119.52,
+      "split_events": [
+        {
+          "elapsed_myr": 2.0,
+          "event": "Plate 0 split into plates 0 and 8."
+        },
+        {
+          "elapsed_myr": 2.1,
+          "event": "Plate 2 split into plates 2 and 9."
+        },
+        {
+          "elapsed_myr": 2.2,
+          "event": "Plate 4 split into plates 4 and 10."
+        },
+        {
+          "elapsed_myr": 2.4,
+          "event": "Plate 6 split into plates 6 and 11."
+        }
+      ]
+    },
+    "candidate": {
+      "final_plate_count": 12,
+      "ledger_closure": {
+        "continental_balance_error_m3": 0.0,
+        "craton_balance_error_m3": 0.0,
+        "hm_closure_error_m3": {
+          "all": -8192.0,
+          "continental_node": 7893.0,
+          "oceanic_node": -1024.0
+        },
+        "mobile_cover_balance_error_m3": 4.0
+      },
+      "plate6_attempts": [
+        {
+          "cluster_label_counts": [
+            5024,
+            2689
+          ],
+          "elapsed_myr": 2.3,
+          "internal_stress": 0.07455720747810482,
+          "omega_rad_per_year": [
+            6.5338873418458906e-09,
+            -1.0863115831957237e-09,
+            -1.890605089824191e-09
+          ],
+          "outcome": "split",
+          "pole_separation_rad_per_year": 6.358171202291738e-09,
+          "pole_separation_threshold_rad_per_year": 4.303931887634603e-09,
+          "radius_rad": 0.6918807469133968,
+          "refined_side_nodes": [
+            4101,
+            3612
+          ],
+          "refinement_succeeded": true,
+          "relax": 0.31449124859699856,
+          "residual_rms_m_per_s": 6.8530342288561075e-09,
+          "residual_threshold_m_per_s": 6.4558978314519055e-09,
+          "size_frac": 0.31449124859699856,
+          "stress_frac": 0.024852402492701608
+        },
+        {
+          "cluster_label_counts": null,
+          "elapsed_myr": 2.4,
+          "internal_stress": 0.002389169965874729,
+          "omega_rad_per_year": [
+            4.072389476443497e-09,
+            -1.1995088614564086e-09,
+            -1.7300576726959153e-09
+          ],
+          "outcome": "no_split",
+          "pole_separation_rad_per_year": null,
+          "pole_separation_threshold_rad_per_year": 4.913941695813576e-09,
+          "radius_rad": 0.4781302600784443,
+          "refined_side_nodes": null,
+          "refinement_succeeded": null,
+          "relax": 0.21733193639929282,
+          "residual_rms_m_per_s": null,
+          "residual_threshold_m_per_s": 7.370912543720364e-09,
+          "size_frac": 0.21733193639929282,
+          "stress_frac": 0.0007963899886249097
+        }
+      ],
+      "runtime_seconds": 120.83,
+      "split_events": [
+        {
+          "elapsed_myr": 2.0,
+          "event": "Plate 0 split into plates 0 and 8."
+        },
+        {
+          "elapsed_myr": 2.1,
+          "event": "Plate 2 split into plates 2 and 9."
+        },
+        {
+          "elapsed_myr": 2.2,
+          "event": "Plate 4 split into plates 4 and 10."
+        },
+        {
+          "elapsed_myr": 2.3,
+          "event": "Plate 6 split into plates 6 and 11."
+        }
+      ]
+    }
+  },
+  "controls": {
+    "baseline_commit": "402f00944251f383e7baf5ef7b418e8d606cde63",
+    "candidate_commit": "9804addb2b1f29c53b4e22c473db18220c74a248",
+    "hash_seed": 0,
+    "horizon_myr": 2.4,
+    "node_density": 4.0,
+    "seed": 748935664,
+    "step_myr": 0.1
+  },
+  "interpretation": "Supported: at the 2.3 Myr split decision, candidate RMS exceeds its threshold while baseline RMS is below threshold; at the next step baseline clears the residual and later gates. The trace establishes a split-gate contribution but not its uniqueness or the counterfactual effect of omega alone.",
+  "question": "Does the stored-rate-dependent split gate explain the first different topology event?",
+  "validity": {
+    "generated_mantle_centers_equal": true,
+    "generated_plate_fields_equal": true,
+    "plate6_gate_snapshots_through_2_2_myr_equal": true,
+    "split_events_through_2_2_myr_equal": true
+  }
+}

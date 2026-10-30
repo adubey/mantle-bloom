@@ -64,7 +64,7 @@ The render route turns the current world into a picture. It samples the stored t
 projects the samples to screen coordinates, and paints the selected map layer as a PNG. This
 display step does not change the simulation.
 
-`GET /world/render` returns a PNG, base64-encoded, rendered entirely server-side --
+`GET /worlds/{world_id}/render` returns a PNG, base64-encoded, rendered entirely server-side --
 `render_image.py` computes the same projected coordinates and drawing rules
 `MapCanvas.tsx` used to compute client-side from raw JSON, but paints them into a Pillow
 image instead of shipping the coordinates over the wire for the browser to draw. The
@@ -91,7 +91,7 @@ far the nearest real data happens to be), and project the whole grid the same wa
 everything else is projected. This is a one-time resample purely for rendering -- it never
 touches `world.plates`, so it has no bearing on the mass-conservation properties the rest
 of the model is built around (see [Why not a grid](foundations.md#why-not-a-grid)); a fresh grid is
-computed from scratch on every `/world/render` call.
+computed from scratch on every `/worlds/{world_id}/render` call.
 
 `GRID_SPACING_KM = 100` is a fixed, display-oriented constant, deliberately decoupled from
 `plates.TARGET_LINE_SPACING_KM` (the simulation's physics resolution) -- the grid only
@@ -190,7 +190,7 @@ for why that distinction matters and how it's enforced.
 position immediately before it's projected to pixels (`_rotate`, `p @ view_rotation.T`) --
 render grid cell positions, plate boundaries/poles/rotation-arc points, climate's whole grid,
 wind/current arrows, swell markers, platesDetail's node dots. It travels from the frontend to
-`GET /world/render` as a `rotation` query param (9 comma-separated floats, row-major, default
+`GET /worlds/{world_id}/render` as a `rotation` query param (9 comma-separated floats, row-major, default
 identity -- see `main.py`'s `_parse_view_rotation`) and is never stored on `World`: it's
 client-local view state, sent fresh with every render call, exactly like `projection`/`view`
 already were, not simulation state. This means it isn't reset by stepping or regenerating,
@@ -295,7 +295,7 @@ It draws from structured data returned by the server, so selection can follow th
 instead of relying on a colored map image.
 
 A second interactive map mode, structurally different from every other view: `GET
-/world/plates` returns plate outlines and metadata as plain JSON (not a baked PNG), and
+/worlds/{world_id}/plates` returns plate outlines and metadata as plain JSON (not a baked PNG), and
 `frontend/src/PlateInspector.tsx` renders and drives the interaction entirely client-side --
 reusing the same `rotationDrag.ts` gesture as `MapCanvas.tsx` (rotating still works
 identically in both views, and the two share one lifted `rotation` state in `App.tsx`, so
@@ -310,7 +310,7 @@ backdrop at all: overlapping plates are meant to be visible where their ellipses
 selected plate draws last, on top, at higher opacity with a crisp white outline.
 
 **Every plate's individual node points are also drawn**, not just its outline/ellipse --
-`GET /world/plates`'s `points` field is every node's own position (`Plate.
+`GET /worlds/{world_id}/plates`'s `points` field is every node's own position (`Plate.
 all_points_and_elevation()`'s points, not just the outline loop), rounded to 6 decimal places
 before serializing (plenty for a unit sphere -- sub-meter at planet scale -- and it matters
 now that a payload can carry tens of thousands of points per world, not just the much shorter
@@ -373,7 +373,7 @@ otherwise only diagnosable with an ad-hoc script. See `docs/api-reference.md#get
 **Click-to-select is a server round trip, not client-side point-in-polygon.** The client
 unprojects the click (through whatever view rotation is currently active --
 `rotation.ts`'s `unproject`, plus a `matTranspose` since a rotation matrix's inverse is its
-own transpose) to a true (lat, lon) and asks `GET /world/plate_at`, which reuses the exact
+own transpose) to a true (lat, lon) and asks `GET /worlds/{world_id}/plate_at`, which reuses the exact
 same nearest-node `cKDTree` lookup the render grid already uses
 (`plates.collect_all_points`/`nearest_plate_id`) to find the owning plate. This is more
 robust than projected-polygon hit-testing would be (which risks the same antimeridian-seam
@@ -401,10 +401,10 @@ An interactive map mode, same "raw JSON, client renders it" philosophy as
 [River Inspector](hydrology.md#river-inspector) / [Lake Inspector](hydrology.md#lake-inspector). It merges the old
 PNG "Plates" view and the standalone "Fault lines" inspector into one canvas
 (`frontend/src/PlatesAndFaults.tsx`): plate outlines / bounding ellipses / node points from
-`GET /world/plates` with click-to-select + Tab/Shift+Tab cycling and a metadata sidebar
-(speed, Euler pole, ...), the intraplate faults + fault systems from `GET /world/faults`
+`GET /worlds/{world_id}/plates` with click-to-select + Tab/Shift+Tab cycling and a metadata sidebar
+(speed, Euler pole, ...), the intraplate faults + fault systems from `GET /worlds/{world_id}/faults`
 drawn over them (display-only -- selecting a plate emphasises its own strands), and an
-earthquake (`GET /world/earthquakes`) + volcano (`GET /world/volcanoes`) activity overlay
+earthquake (`GET /worlds/{world_id}/earthquakes`) + volcano (`GET /worlds/{world_id}/volcanoes`) activity overlay
 toggled together from the sidebar. The same `rotationDrag.ts` gesture, rotation shared with
 `MapCanvas` via one lifted `App.tsx` state. The dedicated "Plate Inspector" map mode
 (plates only, no faults/overlay) is still available separately.
@@ -413,7 +413,7 @@ toggled together from the sidebar. The same `rotationDrag.ts` gesture, rotation 
 persistent identity for their whole lifetime (a monotonic `World.next_fault_id` counter).
 
 **`distance_from_boundary_km`** is recomputed live per call (nearest cross-plate node via one
-`cKDTree` per plate, built once per `/world/faults` call), separate from the stored
+`cKDTree` per plate, built once per `/worlds/{world_id}/faults` call), separate from the stored
 `birth_distance_from_boundary_km` -- so the sidebar can show a fault drifting away from (or
 toward) a boundary as its plate moves.
 
@@ -429,13 +429,13 @@ inspectors use). Same per-edge antimeridian
 longitude-unwrap as the River Inspector (`ScreenProjector.segment`). Reuses the `coastline_segments` already
 fetched for the River / Lake inspectors -- this view has no other land/ocean cue.
 
-**Fault systems** (`fault_systems` in the same `/world/faults` payload -- see
+**Fault systems** (`fault_systems` in the same `/worlds/{world_id}/faults` payload -- see
 [Faults](tectonics.md#faults)) draw *under* the strand family: a broad translucent belt (the zone the
 strands scatter across) plus a thin dashed centerline for the master lineament, regime-
 colored. Selecting a strand highlights its parent system's belt and shows the system's
 regime / length / age in the sidebar -- there's no separate system hit-test; the strands are
 what you click.
 
-**Click-to-select** is a server round trip (`GET /world/fault_at`), nearest-trace within a
+**Click-to-select** is a server round trip (`GET /worlds/{world_id}/fault_at`), nearest-trace within a
 120 km threshold -- there's no shape to point-in-polygon test, only sparse polylines, so a
 min-distance hit-test is the natural fit (as with `river_at` / `lake_at`).

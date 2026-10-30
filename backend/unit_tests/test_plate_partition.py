@@ -13,7 +13,7 @@ SPACING = line_spacing_rad(1.0)
 
 @pytest.fixture(scope="module")
 def layout() -> ContinentLayout:
-    return cratons_first_layout(7, land_fraction=0.29).layout
+    return cratons_first_layout(1, land_fraction=0.29).layout
 
 
 def test_every_point_has_one_owner_and_every_plate_is_connected(layout):

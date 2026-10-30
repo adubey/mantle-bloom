@@ -66,9 +66,25 @@ overridden or compressed; open space can be filled as the plate edge advances. T
 geometric checks decide how the plate's cells change. A separate motion calculation helps
 distinguish convergence, spreading, and sliding near the boundary.
 
-The implementation uses two operations each step: `Plate.shift` rotates the plate, and
-`Plate.deform` updates its columns and territory. The detailed rules below describe how those
-operations work.
+The motion phase runs once for the whole world through
+`torque.shift_plates_quasistatic(world, years)`. It gathers each plate's force inputs from
+the same pre-step geometry, assembles a `3P × 3P` drag system, solves all angular rates, and
+then rotates every plate. Basal and slab drag contribute plate-local blocks. Contact drag
+contributes a symmetric pair block formed by averaging both sides' discretized matrices;
+a missing side contributes zero, so one side cannot silently double the effective drag. Both
+sides receive equal-and-opposite resistance without reading a neighbour's newly updated rate.
+Pinned debug plates are eliminated from the unknowns, while their prescribed rates remain in
+the free plates' drag and contact equations. The blocked-collision pilot can apply a
+shared compressive load capped by candidate yield strength; closing beyond that capacity
+remains for the deformation pass. The bounded contact solver uses the minimum-norm rate when
+resistance leaves a free mode, reports unbalanced torque through diagnostics, and does not
+impose a minimum plate rate or clamp the solved rate. Rates are limited by the modeled basal,
+slab, pair-contact, and blocked-contact resistance only; the model has no universal physical
+speed bound yet. The high-rate outlier pathway, including stress-driven conversion of part of
+a plate to magma, remains a follow-up investigation (#494).
+
+After all plates rotate, `Plate.deform` updates their columns and territories. The per-plate
+territory reconciliation still runs in a freshly randomized order each turn.
 
 The simulation no longer uses boundary velocity alone to decide how every node changes.
 Geometric overlap detects contested territory, while an open, unclaimed space indicates
@@ -82,20 +98,18 @@ implements them.
 
 ### Implementation details: plate motion and deformation
 
-Each plate runs two operations every step, in this order:
+`torque.shift_plates_quasistatic` assembles motion from the pre-step plate configuration,
+solves all angular rates simultaneously, and rotates each plate without resampling its carried
+nodes. The per-plate displacement bound `D` is the greatest angular distance any node moved
+during the batch. `Plate.deform` then reconciles each rotated footprint against the sphere
+minus every other live plate's territory. Deformation runs once per plate in a freshly
+randomized order every turn, as described below.
 
-1. **`shift(world, years)`** -- refit the plate's Euler pole from the mantle-flow field
-   (damped toward the new target, same fit-then-clamp as generation-time, see [Mantle
-   flow](foundations.md#mantle-flow-mantlepy)), then rotate rigidly by `years` at that rate: exact for every node
-   the plate carries, no resampling (see [Plate-local frames](foundations.md#plate-local-frames)). Returns
-   `D`, the greatest angular distance any of the plate's own nodes actually moved this
-   step -- a real, physically grounded bound on how much crust could plausibly have been
-   created, destroyed, or stretched this turn. Runs for every plate; order doesn't matter
-   here, since rotating one plate only ever touches its own `frame`.
-2. **`deform(world, other_plates, years, D)`** -- reconcile the plate's actual post-`shift`
-   footprint against the footprint it's entitled to occupy: the sphere minus every *other*
-   currently-live plate's own territory (its active cells). Runs once per plate, in a **freshly randomized order every turn** -- the reason
-   is explained below.
+The G2 contact pilot's blocked-edge classification comes from the preceding frozen
+`collision_polarity_frame`, remapped by stable cell key. A newly created cell has no inherited
+blocked-edge classification until a later frame. Its candidate force capacity is 5×10¹² N/m
+for deformable continental material, rising linearly to 1.5×10¹³ N/m with the weaker side's
+craton strength. These are pilot values, not universal collision strengths.
 
 A node is **contested** if it's now geometrically contained in some other live plate's
 territory (`Plate.contains_batch`, checked only for nodes a cheap bounding-sphere prefilter
@@ -457,7 +471,7 @@ phase should stay empty. A nonzero entry means some writer upstream is missing i
 
 Every node's onset year is also stamped onto its
 `overlap_onset_years` field each step (`merge_split.update_overlap_tracking`) and
-surfaced as `since_years` in `GET /world/plates` and the `overlapAge` debug render view --
+surfaced as `since_years` in `GET /worlds/{world_id}/plates` and the `overlapAge` debug render view --
 see [debugging.md](../debugging/map-views.md#overlapage-render-view-plate-overlap-onset).
 
 **Consuming a continent-continent overlap (2026-09).** A contested continental edge
@@ -484,6 +498,15 @@ passes `FORCED_MERGE_SUSTAINED_YEARS` it is fused regardless of the size/closing
 already merged a ready closing-rate pair). Separately, `_merge_probability` now also lifts a
 large pair's odds toward certainty in proportion to `|omega_a - omega_b| / MAX_PLATE_RATE` --
 a fast, decisive convergence merges more readily than a slow oblique graze.
+
+**Motion after a merge (RFC 0012, #547).** A merge changes plate identity, geometry, and
+material; it does not assign a new angular rate. `quad_merge.merge` leaves the surviving
+plate's last solved `omega` in place as the lagged kinematic estimate for the next motion
+pass. Boundary classifications and rate-dependent loads on that pass may therefore reflect
+the retained rate; the quasi-static solver then replaces it using the merged plate's current
+loads and resistance. The merge does not blend the absorbed plate's angular momentum or clamp
+the result to a minimum speed. This follows RFC 0012's staggered timestep and does not claim
+that the retained rate is the merged plate's new equilibrium.
 
 ## Quad deformation
 
@@ -600,7 +623,7 @@ over-thickened crust of a suture or a standing orogen goes through these process
   delamination-eligible. A delamination-eligible column has at least `DELAMINATION_MIN_ROOT_M`
   (10 km) of crust below `ECLOGITE_DEPTH_M` (50 km) and a Moho at least
   `DELAMINATION_MIN_MOHO_C` (750 C), or as much restite instead (below). All of these read
-  the lagged temperature. `/world/stats` reports the area in each state
+  the lagged temperature. `/worlds/{world_id}/stats` reports the area in each state
   (`crust_state_area_m2`).
 - **Anatexis** (`anatexis`, each quad step before collapse). The crust hotter than
   `MELT_ONSET_MOHO_C` is the melting zone. That is everything below the 750 C isotherm, taking
@@ -670,7 +693,7 @@ over-thickened crust of a suture or a standing orogen goes through these process
   measured fractions: the partition varies along strike, and India-Asia mass balances that
   put the loss near half the converged crust are disputed. The defaults keep collision loss
   close to issue #276's calibration. They are checked at the start of each step's deform
-  pass, so bad values fail before any plate deforms. `/world/stats` reports them under
+  pass, so bad values fail before any plate deforms. `/worlds/{world_id}/stats` reports them under
   `suture_crust_transfer`. `crust_transfer.transfer_column` takes a column as volumes plus a
   world-frame front, so terrane docking (#321) can reuse it.
 - **Suture accretion** (`quad_tectonics._place_suture_crust`). A front's consumed Hc tries each
@@ -759,7 +782,7 @@ over-thickened crust of a suture or a standing orogen goes through these process
   The flow is subcycled at a Courant number of 0.1, so 1 x 4 Myr and 16 x 0.25 Myr give the
   same result to within 1-2% of the relief.
 
-`world.orogenic_relief_budget` (also in `/world/stats`) accumulates the Hc volume each stage
+`world.orogenic_relief_budget` (also in `/worlds/{world_id}/stats`) accumulates the Hc volume each stage
 handled: `suture_donated_m3`, `suture_belt_placed_m3`, `escape_attempted_m3` /
 `escape_placed_m3`, `delamination_attempted_m3` / `delamination_completed_m3`,
 `far_field_placed_m3`, `foreland_spill_placed_m3`, `overrider_placed_m3`,
@@ -873,7 +896,7 @@ routine per-step motion.
   proximity-and-closing-rate check in `find_continental_collision_pairs` at some point
   without ever accumulating the sustained duration needed to actually merge -- logging every
   one of those would flood the console with events that don't end up mattering. The API
-  returns the full current log on every `/world/generate` and `/world/step` call (see
+  returns the full current log on every `/worlds/{world_id}/generate` and `/worlds/{world_id}/step` call (see
   api-reference.md) for the frontend's collapsible console.
 - **Split.** Each plate's mantle-flow samples are clustered into two groups
   (`scipy.cluster.vq.kmeans2`, k=2) and a separate Euler pole is fit to each. If a single
@@ -950,7 +973,12 @@ routine per-step motion.
   -- the attempt relieved some pressure, but the underlying size/overlap forcing is usually
   still there next step). Computed alongside `update_overlap_progress` in
   `merge_split.update_overlap_tracking`, reusing the same whole-sphere `compute_node_overlap`
-  read the `overlapAge` view already needs -- no separate pass.
+  read the `overlapAge` view already needs -- no separate pass. A plate that takes a
+  continental plume head also carries `PLUME_HEAD_STRESS` of extra stress per arrival
+  (`plumes._credit_head_stress`, RFC 0007 #582) -- heat weakens the craton, and the kick
+  pushes the plate toward the split gates. Both knobs are provisional, tuned in #584;
+  the head-following 20 Myr split fraction stays well below its provisional target at
+  their defaults (see `analysis/issue582`).
 
   **Overlap severity also scales uplift and slowdown directly (2026-09).** Two more local,
   already-available-fraction severity signals, both scoped to continent-continent collision
@@ -1223,6 +1251,15 @@ teal. A save from before belt marks loads with no belts and its cratons unchange
   `cratons.rift_resistance`, clamped to [0, 1];
 - donates only `1 - CRATON_STRETCH_RESISTANCE` of its share of a rift's stretched footprint,
   with fresh magmatic crust filling the rest (`quad_tectonics._allocate_stretch`);
+- thins faster under a mantle plume (RFC 0007, #582). While a column carries plume heat
+  (`plume_heat_myr`, topped to `PLUME_HEAT_MYR` near an active head and counting down
+  from there), its craton strength is scaled by `1 - PLUME_CRATON_WEAKENING`, with the
+  rift-resistance product clamped exactly as above (`cratons.heated_rift_resistance`).
+  A step that outlasts the remaining heat weakens only the heated fraction, so the
+  weakening fades gradually as the halo expires rather than switching off. It applies
+  to divergent thinning, rift-advance and gap-fill stretch donors, and failed rifts;
+  a head born mid-step tops up above `PLUME_HEAT_MYR` so the post-decay halo is exact
+  regardless of step partition. Tails stamp no heat, so weakening is head-only;
 - never flows, melts or delaminates (`orogeny.py`); an orogen ponds against it;
 - is never consumed whole by boundary retreat (`cratons.retreat_allowed`). At a collision
   front it jams: the weaker crust around it takes the shortening, and craton against craton
@@ -1285,6 +1322,30 @@ One without any is dropped as before, and so is one no plate touches, booking it
 moves each donor's material with the crust it gives up, balancing the transfer by cell
 volume.
 
+## Mantle plumes
+
+RFC 0007. A Cox-modulated event stream (`plumes.py`, index-keyed so changing
+`plume_multiplier` never reshuffles kept events) delivers plume heads that
+emplace flood-basalt plateaus and tails that feed hotspot tracks, each placed
+by interval overlap so any step length delivers exactly (`plumes.apply`).
+Tails stamp no tracer and stay out of the juvenile budget's plume routes;
+heads and tails on continental crust can dock as terranes (`terranes.py`).
+While a head is active its halo cells carry `plume_heat_myr` (topped to
+`PLUME_HEAT_MYR` pre-decay -- a head born mid-step tops higher so the post-decay
+halo is exact -- counting down 20 Myr), which weakens craton-rooted rift
+resistance in divergent thinning, rift-advance and gap-fill stretch donors,
+and failed rifts -- and every continental head arrival adds `PLUME_HEAD_STRESS`
+to the host plate's breakup stress. Both knobs are provisional (tuned in
+#584); the breakup comparator in `analysis/issue582` reports the head-following
+split fraction against the #407 background. The "plumes" debug view
+(`render_image.py`) paints the halo and plateau with live head/tail footprints.
+The cross-section route (`show_plumes`, RFC 0007 #669) renders the same live
+plumes where they intersect the section arc: head ellipse over its footprint
+band, tail ellipse with a continues-below tick for the deep conduit. A head
+whose centre lies off the section plane still paints its footprint band where
+the arc cuts it -- only the ellipse needs the centre within the corridor -- so
+an absent band means no live head cuts the section.
+
 ## Volcanism
 
 Volcanoes can form where new crust rises at separating plates and where magma is produced
@@ -1296,7 +1357,10 @@ module: a periodic whole-sphere *detection* pass that spawned brand-new "volcani
 plates, plus a per-step *eruption* pass. The detection half is gone -- volcano creation is
 now inline in `deform()`'s own overstretched-rift handling (see [Plate motion: shift and
 deform](#boundary-evolution)) -- and `volcanism.py` now holds only the per-step eruption
-lifecycle, which is unchanged.
+lifecycle, which is unchanged. Mantle-plume flood basalts are not volcano nodes: heads
+emplace plateau crust directly through [Mantle plumes](#mantle-plumes), with plateau
+thickness tracked per node (`plateau_crust_m`) rather than erupted over a volcano's
+active life.
 
 **Creation.** A node becomes a volcano (`is_volcano=True`, plus a fresh
 `volcano_active_years_remaining` draw from `VOLCANO_ACTIVE_MIN/MAX_YEARS`, 100k-1M years) one
@@ -1555,7 +1619,7 @@ only the largest `BOUNDARY_FAULT_MAX_QUAKES_PER_STEP` are retained (they are num
 (5 Myr) at the top of the step. `erosion.py`'s seismic-erosion term is multiplied by
 `_earthquake_erosion_multiplier` -- `1 + Σ EARTHQUAKE_EROSION_PEAK_BOOST·10^(Mw −
 EARTHQUAKE_EROSION_MW_REF)·recency·taper` over nearby epicentres, a landsliding burst that
-fades over the retention window. Exposed via `GET /world/earthquakes`, with each quake's
+fades over the retention window. Exposed via `GET /worlds/{world_id}/earthquakes`, with each quake's
 `trigger` (`"tectonic"` or `"ice_unloading"`).
 
 **Ice-unloading triggered earthquakes (`trigger_unloading_earthquakes`, issue #275 phase 5).**

@@ -15,7 +15,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 from scipy.spatial import cKDTree
 
-from . import faults, geometry, mantle, orogeny, plates
+from . import faults, geometry, mantle, orogeny, plates, plumes
 from .elevation_lines import (
     CRUST_TYPE_CONTINENTAL,
     CRUST_TYPE_INHERIT,
@@ -33,6 +33,11 @@ MANTLE_LITHOSPHERE = (66, 90, 90)
 ASTHENOSPHERE = (117, 108, 148)
 MAGMA_PALETTE = ((201, 61, 61), (244, 122, 60), (255, 214, 90))
 SEA_LEVEL_COLOR = (83, 159, 203)
+# Plume markers reuse the magma hues (per UX request): the head band/ellipse
+# shares the stored-melt orange and the tail the weak-magma red. The legend's
+# separate "Mantle plume" / "Plume tail" keys disambiguate them from vents.
+PLUME_HEAD_FILL = (244, 122, 60)
+PLUME_TAIL_COLOR = (201, 61, 61)
 
 
 def _world_surface(world) -> tuple[np.ndarray, dict[str, np.ndarray], np.ndarray]:
@@ -121,6 +126,82 @@ def _mix(color: tuple[int, int, int] | np.ndarray, other: tuple[int, int, int], 
     return tuple(np.clip(np.asarray(color) * (1.0 - amount) + np.asarray(other) * amount, 0, 255).astype(int))
 
 
+def _plume_markers(world, sample_xyz: np.ndarray, spacing_km: float) -> list[tuple[int, str]]:
+    """Live plume markers per section sample: (sample index, role).
+
+    Roles are `"head"` (nearest sample to a head-stage plume), `"head_footprint"`
+    (further samples inside the head's emplacement radius), and `"tail"` (nearest
+    sample to a tail-stage plume). The head ellipse and tail glyphs require the
+    plume centre within the same corridor rule as `_parcel_markers`, but the
+    footprint band is drawn wherever the section cuts it -- a head just outside
+    the corridor still paints its band, only without the ellipse. The deep tail
+    conduit below the 350 km section is drawn as a continues-below tick by the
+    renderer (RFC 0007). Head and tail stages are disjoint by construction
+    (`tail_start_years == head_end_years`), so a head-stage plume never shows
+    a conduit tick.
+    """
+    live = [p for p in (getattr(world, "mantle_plumes", ()) or ()) if p is not None]
+    if len(sample_xyz) == 0 or not live:
+        return []
+    elapsed = float(getattr(world, "elapsed_years", 0.0) or 0.0)
+    positions = np.asarray([tuple(float(v) for v in p.position) for p in live], dtype=float)
+    norms = np.linalg.norm(positions, axis=1)
+    norms[norms <= 0.0] = 1.0
+    dots = np.clip((positions / norms[:, None]) @ sample_xyz.T, -1.0, 1.0)
+    nearest = np.argmax(dots, axis=1)
+    distance_km = np.arccos(dots[np.arange(len(live)), nearest]) * PLANET_RADIUS_KM
+    corridor_km = max(spacing_km * 1.5, 1.0)
+    markers: list[tuple[int, str]] = []
+    unit = positions / norms[:, None]
+    for rank, (plume, index, dist) in enumerate(zip(live, nearest, distance_km)):
+        if not np.isfinite(dist):
+            continue
+        head_live = (
+            not plume.is_tail_only
+            and plume.born_years <= elapsed < plume.head_end_years
+        )
+        tail_live = (
+            plume.tail_flux_m3_per_yr > 0.0
+            and plume.tail_start_years <= elapsed < plume.tail_end_years
+        )
+        if head_live:
+            radius_m = plumes.head_kernel_radius_m(
+                plumes.head_footprint_area_m2(plume.head_volume_m3)
+            )
+            # along-arc distance in km (radius_m is meters -- see the /1000).
+            along_km = np.arccos(np.clip(sample_xyz @ unit[rank], -1.0, 1.0)) * PLANET_RADIUS_KM
+            inside = np.flatnonzero(along_km <= radius_m / 1000.0)
+            if dist > corridor_km:
+                # Centre off-section: show where the plane cuts the footprint,
+                # but no head ellipse.
+                markers.extend((int(other), "head_footprint") for other in inside)
+            else:
+                for other in inside:
+                    if int(other) != int(index):
+                        markers.append((int(other), "head_footprint"))
+                markers.append((int(index), "head"))
+        elif tail_live and dist <= corridor_km:
+            markers.append((int(index), "tail"))
+    return markers
+
+
+# Marker priority when plumes share a sample: heads read first, then tails,
+# then footprint extent.
+_PLUME_ROLE_PRIORITY = {"head": 0, "tail": 1, "head_footprint": 2}
+
+
+def _merge_plume_markers(world, sample_xyz: np.ndarray, spacing_km: float) -> dict[int, str]:
+    """Merge plume markers with head > tail > footprint priority, so a later
+    plume's footprint never overwrites an earlier plume's head/tail marker
+    at a shared sample."""
+    merged: dict[int, str] = {}
+    for sample_index, role in _plume_markers(world, sample_xyz, spacing_km):
+        incumbent = merged.get(sample_index)
+        if incumbent is None or _PLUME_ROLE_PRIORITY[role] < _PLUME_ROLE_PRIORITY[incumbent]:
+            merged[sample_index] = role
+    return merged
+
+
 def _parcel_markers(world, sample_xyz: np.ndarray, spacing_km: float) -> list[tuple[int, float]]:
     parcels = getattr(world, "pending_magma_parcels", ()) or ()
     if not parcels:
@@ -149,9 +230,34 @@ def _boundary_sample_indices(world, sample_xyz: np.ndarray, node_xyz: np.ndarray
     return np.flatnonzero(sampled_plate_ids[1:] != sampled_plate_ids[:-1]) + 1
 
 
+def _draw_plume_marker(draw, role, x, x0, x1, top, lith_end_y, bottom_y, floor_y, center) -> None:
+    """One plume marker: head gets an ellipse over its footprint band, a tail
+    gets an ellipse plus a continues-below tick (the deep conduit extends past
+    the 350 km section, so no full conduit is drawn).
+
+    The render loop calls this once per pixel column, so the footprint band
+    tiles across its sample's columns on every call -- but the ellipse, tick
+    line and arrowhead paint only when `center` (the sample's own column) to
+    avoid smearing one glyph across the whole sample width.
+    """
+    if role == "head_footprint":
+        draw.rectangle((x0, round(top) - 4, x1, round(top)), fill=PLUME_HEAD_FILL)
+    elif role == "head":
+        draw.rectangle((x0, round(top) - 4, x1, round(top)), fill=PLUME_HEAD_FILL)
+        if center:
+            draw.ellipse((x - 4, top - 9, x + 4, top - 1), fill=PLUME_HEAD_FILL, outline=(45, 24, 24))
+    elif role == "tail":
+        if center:
+            draw.ellipse((x - 3, top - 7, x + 3, top - 1), fill=PLUME_TAIL_COLOR, outline=(45, 24, 24))
+            base = min(bottom_y, floor_y)
+            draw.line((x, lith_end_y, x, base), fill=PLUME_TAIL_COLOR, width=1)
+            draw.polygon(((x, base), (x - 3, base - 6), (x + 3, base - 6)), fill=PLUME_TAIL_COLOR)
+
+
 def render_png_base64(
     world, plane_angle_deg: float, position_index: int, width: int, height: int,
     *, show_boundaries: bool = False, show_faults: bool = False,
+    show_plumes: bool = False,
 ) -> tuple[str, dict]:
     """Render the selected arc from current surface columns and return PNG plus metadata."""
     spacing_km = line_spacing_rad(world.node_density) * PLANET_RADIUS_KM
@@ -193,6 +299,11 @@ def render_png_base64(
     )
     x_pixel = np.arange(width)
     nearest = np.clip(np.searchsorted(x_samples, x_pixel, side="right") - 1, 0, len(x_samples) - 1)
+    # First pixel column owned by each sample: searchsorted(..., side="right")
+    # hands column x to the sample at or left of x, so ceil(x_samples[i]) is
+    # always visited and always owned by i (round() could land on i-1's column
+    # when the fractional part exceeds 0.5, silently dropping that glyph).
+    owner = np.ceil(x_samples).astype(int)
 
     image = Image.new("RGB", (width, height), (14, 20, 34))
     draw = ImageDraw.Draw(image)
@@ -200,6 +311,7 @@ def render_png_base64(
     # plotting rectangle made the frame read as an asthenosphere block (#360).
     points_for_parcels = sample_xyz
     marker_by_sample = dict(_parcel_markers(world, points_for_parcels, spacing_km))
+    plume_by_sample = _merge_plume_markers(world, sample_xyz, spacing_km) if show_plumes else {}
     fault_samples: set[int] = set()
     if show_faults:
         by_id = {plate.plate_id: plate for plate in world_plates}
@@ -294,6 +406,12 @@ def render_png_base64(
             strength = marker_by_sample[i]
             color = MAGMA_PALETTE[min(2, int(strength * 3))]
             draw.ellipse((x - 3, top - 5, x + 3, top + 1), fill=color, outline=(45, 24, 24))
+        role = plume_by_sample.get(i)
+        if role is not None:
+            _draw_plume_marker(
+                draw, role, x, x0, x1, top, round(lith_end), round(bottom),
+                height - margin_bottom, center=(x == owner[i]),
+            )
         if volcano[i]:
             color = (237, 126, 60) if active_vent[i] else (183, 190, 193)
             draw.polygon(((x, top - 2), (x - 3, top - 8), (x + 3, top - 8)), fill=color, outline=(32, 29, 38))

@@ -23,6 +23,12 @@ Support the project: [Buy Me a Coffee](https://buymeacoffee.com/mantlebloom).
   `bin/debug` scripts.
 - **[docs/packaging.md](docs/packaging.md)** -- building the single-process desktop binary
   (`bin/package.sh`).
+- **[planning/launch-readiness.md](planning/launch-readiness.md)** -- cross-cutting launch
+  goals, known tracking links, dependencies and decisions still to make.
+- **[docs/hosting.md](docs/hosting.md)** -- current hosted deployment and the limits
+  of its single-world design.
+- **[planning/marketing.md](planning/marketing.md)** -- audience, channels and launch ideas.
+- **[planning/monetization.md](planning/monetization.md)** -- advertising and monetization research.
 
 ## Getting started
 
@@ -55,7 +61,7 @@ versions on purpose, run `./bin/pin_deps.sh` and commit the diff.
 Builds the frontend and starts the **single-process app** in the background on `:8000` --
 FastAPI serves the frontend bundle from its own origin (`backend/app/desktop.py`), the same
 setup `bin/package.sh` freezes into a binary. Waits for it to respond, then prints the URL.
-Open `http://localhost:8000`, click **Generate World**, then **Step** or **Play**.
+Open `http://localhost:8000`, click **Add** then **Generate**, then **Step** or **Play**.
 
 For active frontend work, `--dev` runs the **two-process** setup instead -- uvicorn plus
 the Vite dev server (hot module reload) on `:5173`:

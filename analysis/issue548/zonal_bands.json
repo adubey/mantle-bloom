@@ -1,0 +1,118 @@
+{
+ "zonal_bands": {
+  "tilt_15": {
+   "Fw1.3_DDF5.5": {
+    "perennial_from_deg": 63.625,
+    "freezing_from_deg": 54.875
+   },
+   "Fw1.3_DDF8": {
+    "perennial_from_deg": 64.375,
+    "freezing_from_deg": 54.875
+   },
+   "Fw1.3_DDF20": {
+    "perennial_from_deg": 65.375,
+    "freezing_from_deg": 54.875
+   },
+   "Fw2_DDF5.5": {
+    "perennial_from_deg": 63.875,
+    "freezing_from_deg": 54.875
+   },
+   "Fw2_DDF8": {
+    "perennial_from_deg": 64.375,
+    "freezing_from_deg": 54.875
+   },
+   "Fw2_DDF20": {
+    "perennial_from_deg": 65.625,
+    "freezing_from_deg": 54.875
+   },
+   "Fw2.7_DDF5.5": {
+    "perennial_from_deg": 63.875,
+    "freezing_from_deg": 54.875
+   },
+   "Fw2.7_DDF8": {
+    "perennial_from_deg": 64.625,
+    "freezing_from_deg": 54.875
+   },
+   "Fw2.7_DDF20": {
+    "perennial_from_deg": 65.625,
+    "freezing_from_deg": 54.875
+   }
+  },
+  "tilt_23.5": {
+   "Fw1.3_DDF5.5": {
+    "perennial_from_deg": 66.625,
+    "freezing_from_deg": 51.125
+   },
+   "Fw1.3_DDF8": {
+    "perennial_from_deg": 67.625,
+    "freezing_from_deg": 51.125
+   },
+   "Fw1.3_DDF20": {
+    "perennial_from_deg": 69.875,
+    "freezing_from_deg": 51.125
+   },
+   "Fw2_DDF5.5": {
+    "perennial_from_deg": 66.875,
+    "freezing_from_deg": 51.125
+   },
+   "Fw2_DDF8": {
+    "perennial_from_deg": 67.875,
+    "freezing_from_deg": 51.125
+   },
+   "Fw2_DDF20": {
+    "perennial_from_deg": 69.875,
+    "freezing_from_deg": 51.125
+   },
+   "Fw2.7_DDF5.5": {
+    "perennial_from_deg": 66.875,
+    "freezing_from_deg": 51.125
+   },
+   "Fw2.7_DDF8": {
+    "perennial_from_deg": 67.875,
+    "freezing_from_deg": 51.125
+   },
+   "Fw2.7_DDF20": {
+    "perennial_from_deg": 69.875,
+    "freezing_from_deg": 51.125
+   }
+  },
+  "tilt_35": {
+   "Fw1.3_DDF5.5": {
+    "perennial_from_deg": 77.375,
+    "freezing_from_deg": 45.875
+   },
+   "Fw1.3_DDF8": {
+    "perennial_from_deg": 81.375,
+    "freezing_from_deg": 45.875
+   },
+   "Fw1.3_DDF20": {
+    "perennial_from_deg": null,
+    "freezing_from_deg": 45.875
+   },
+   "Fw2_DDF5.5": {
+    "perennial_from_deg": 77.625,
+    "freezing_from_deg": 45.875
+   },
+   "Fw2_DDF8": {
+    "perennial_from_deg": 81.875,
+    "freezing_from_deg": 45.875
+   },
+   "Fw2_DDF20": {
+    "perennial_from_deg": null,
+    "freezing_from_deg": 45.875
+   },
+   "Fw2.7_DDF5.5": {
+    "perennial_from_deg": 78.125,
+    "freezing_from_deg": 45.875
+   },
+   "Fw2.7_DDF8": {
+    "perennial_from_deg": 82.125,
+    "freezing_from_deg": 45.875
+   },
+   "Fw2.7_DDF20": {
+    "perennial_from_deg": null,
+    "freezing_from_deg": 45.875
+   }
+  }
+ }
+}

@@ -1,0 +1,56 @@
+{
+  "issue": 587,
+  "seed": 997271774,
+  "save": "mantle-bloom-seed997271774-87400000y.mbworld",
+  "save_sha256": "08ad9461d9585e92be93a58d81e326c7e4b685ae7d462135d01b0e9931ed762b",
+  "horizon_myr": 43.1,
+  "steps": 431,
+  "step_years": 100000,
+  "baseline_commit": "f04cbc0772eca6d2484f7477b20004deb368206c",
+  "branch_code_commit": "244ea48f4a9ece9f358d2bde691d1623fed082a8",
+  "primary_metric": "continental area at endpoint",
+  "expected_direction": "no reliable directional prediction",
+  "expected_magnitude": "within 2%",
+  "decision_threshold_relative": 0.02,
+  "noise_basis": "approximately ±2% continental area at 43 Myr in issue #315",
+  "controls": [
+    "same save bytes",
+    "same seed and timestep",
+    "same replay script and horizon"
+  ],
+  "status": "complete",
+  "results": {
+    "endpoint_myr": 130.5,
+    "runs": {
+      "origin_main": {
+        "commit": "f04cbc0772eca6d2484f7477b20004deb368206c",
+        "continental_area_km2": 264942577.55540594,
+        "land_area_km2": 152129137.84783354,
+        "emergent_continental_area_km2": 151208070.7356651,
+        "hm_cap_area_km2": 15331120.96148928,
+        "hm_ledger_residual_km3": -142315.5439505577,
+        "runtime_seconds": 3272.1356720924377,
+        "peak_memory_mb": 1741.328125
+      },
+      "rfc_0014_d1a": {
+        "commit": "244ea48f4a9ece9f358d2bde691d1623fed082a8",
+        "continental_area_km2": 264986124.1781639,
+        "land_area_km2": 151873845.07974288,
+        "emergent_continental_area_km2": 150955594.75417674,
+        "hm_cap_area_km2": 15155672.643308172,
+        "hm_ledger_residual_km3": 0.00000476837158203125,
+        "runtime_seconds": 3528.9523561000824,
+        "peak_memory_mb": 1611.140625
+      }
+    },
+    "relative_change": {
+      "continental_area_percent": 0.01643624937892607,
+      "land_area_percent": -0.1678131958823159,
+      "emergent_continental_area_percent": -0.1669725565970226
+    },
+    "decision": "continental area changed by 0.0164%, within the preregistered 2% threshold",
+    "runtime_interpretation": "single unpaired runs; timing difference is not interpreted as a performance result",
+    "warnings": "Both runs emitted intermittent glacier-depth warnings for one node reaching GLACIER_MAX_DEPTH_M with 0 km^3 shed as meltwater.",
+    "launch_note": "The first baseline launch failed because Numba could not locate a writable cache directory in its managed worktree; both reported runs used NUMBA_CACHE_DIR in scratch."
+  }
+}

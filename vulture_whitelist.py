@@ -5,6 +5,9 @@
 
 initial_continental_m3  # unused variable (backend/app/continental_ledger.py:40)  # noqa: F821
 juvenile_additions_m3  # unused variable (backend/app/continental_ledger.py:41)  # noqa: F821
+juvenile_flood_basalt_m3  # unused variable (backend/app/continental_ledger.py:49)  # noqa: F821
+juvenile_hotspot_m3  # unused variable (backend/app/continental_ledger.py:50)  # noqa: F821
+juvenile_plateau_m3  # unused variable (backend/app/continental_ledger.py:51)  # noqa: F821
 accreted_thickened_m3  # unused variable (backend/app/continental_ledger.py:42)  # noqa: F821
 delaminated_lower_crust_m3  # unused variable (backend/app/continental_ledger.py:43)  # noqa: F821
 collision_subducted_m3  # unused variable (backend/app/continental_ledger.py:47)  # noqa: F821
@@ -90,3 +93,6 @@ _.pix_fmt  # unused attribute (bin/debug/profile_animation_60m.py:72)  # noqa: F
 _.options  # unused attribute (bin/debug/profile_animation_60m.py:73)  # noqa: F821
 _.__defaults__  # unused attribute (bin/debug/sweep_lib.py:148)  # noqa: F821
 _.__defaults__  # unused attribute (bin/debug/sweep_lib.py:149)  # noqa: F821
+# False positives: BaseHTTPRequestHandler dispatches do_<METHOD> by name (#685).
+_.do_GET  # unused method (bin/debug/layout_explorer.py:207)  # noqa: F821
+_.do_POST  # unused method (bin/debug/layout_explorer.py:213)  # noqa: F821

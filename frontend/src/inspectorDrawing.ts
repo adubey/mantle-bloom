@@ -62,11 +62,11 @@ export function strokeCoastline(
 // Click-to-select and Tab cycling for the two plate views (PlateInspector, PlatesAndFaults),
 // as InspectorCanvas's onPick/onCycle.
 export function plateSelection(
-  plates: PlateSummary[], selectedPlateId: number | null, onSelectPlate: (id: number | null) => void,
+  worldId: string, plates: PlateSummary[], selectedPlateId: number | null, onSelectPlate: (id: number | null) => void,
 ) {
   return {
     onPick: (latDeg: number, lonDeg: number) =>
-      fetchPlateAt(latDeg, lonDeg).then(({ plate_id }) => onSelectPlate(plate_id)),
+      fetchPlateAt(worldId, latDeg, lonDeg).then(({ plate_id }) => onSelectPlate(plate_id)),
     onCycle: (backwards: boolean) => {
       const next = cycleId(plates.map((p) => p.plate_id), selectedPlateId, backwards);
       if (next != null) onSelectPlate(next);

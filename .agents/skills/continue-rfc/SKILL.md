@@ -33,9 +33,9 @@ revision use [`rfc-authoring`](../rfc-authoring/SKILL.md); for a review use
   has one block per registered worktree: `worktree` gives its root path, `branch` gives
   the checked-out ref when attached, and `HEAD` gives its commit. Match the branch and
   commit to the RFC/PR or reported run; the output does not say which agent owns a tree.
-  If using Codex, also inspect attached worktrees/artifacts when available; verify their
+  If the agent host exposes attached worktrees or artifacts, inspect them too; verify their
   root, branch, commit and dirty state against the porcelain listing before treating them as
-  evidence.
+  evidence. The available inventory depends on the host/tool, not the agent's identity.
 - A path in the output is the root of that checkout, not the location of a file inside it.
   Resolve repo-relative paths from that root: for example, for `analysis/issue<N>/README.md`,
   inspect `<worktree-root>/analysis/issue<N>/README.md`, or run

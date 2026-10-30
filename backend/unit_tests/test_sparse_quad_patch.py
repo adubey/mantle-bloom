@@ -2,7 +2,10 @@
 exact containment, persistence, and generation from the shared tiling (issue #228 Phase 2).
 The representation-neutral `PlateSurface` contract is tested in test_plate_surface_contract.py."""
 
+import io
+import json
 import pickle
+import zipfile
 
 import numpy as np
 import pytest
@@ -23,6 +26,7 @@ from app.sparse_quad_patch import (
     parent_cell_keys,
     unpack_cell_keys,
 )
+from app.torque import shift_plates_quasistatic
 from app.world import generate_world
 
 N = 12
@@ -266,8 +270,8 @@ def test_generated_quad_plates_tile_the_sphere_from_the_shared_tiling():
 def test_quad_world_round_trips_through_the_versioned_save_format():
     world = generate_world(seed=5, num_plates=5)
     data = persistence.save_world_bytes(world)
-    envelope = pickle.loads(data)
-    assert envelope["version"] == persistence.SAVE_FORMAT_VERSION
+    manifest = json.loads(zipfile.ZipFile(io.BytesIO(data)).read("manifest.json"))
+    assert manifest["version"] == persistence.SAVE_FORMAT_VERSION
 
     loaded = persistence.load_world_bytes(data)
     assert all(isinstance(p, PlateWithSparseQuadPatch) for p in loaded.plates)
@@ -277,12 +281,12 @@ def test_quad_world_round_trips_through_the_versioned_save_format():
             np.testing.assert_array_equal(restored.collect(name), original.collect(name))
 
 
-def test_quad_plate_uses_shared_torque_pipeline_for_rigid_motion():
+def test_quad_world_uses_shared_torque_pipeline_for_rigid_motion():
     world = generate_world(seed=5, num_plates=5)
     plate = world.plates[0]
     topology0, geometry0 = plate.topology_revision, plate.geometry_revision
 
-    displacement = plate.shift(world, 1_000_000)
+    displacement = shift_plates_quasistatic(world, 1_000_000)[plate.plate_id]
 
     assert np.isfinite(displacement)
     assert np.all(np.isfinite(plate.omega))
@@ -608,6 +612,34 @@ def test_a_full_strength_craton_resists_a_failed_rift_like_a_divergent_one():
     assert np.any(plain_hc > 0.0)
     np.testing.assert_allclose(craton_hc, (1.0 - cratons.CRATON_RIFT_RESISTANCE) * plain_hc, rtol=1e-12)
     np.testing.assert_allclose(craton_hm, (1.0 - cratons.CRATON_RIFT_RESISTANCE) * plain_hm, rtol=1e-12)
+
+
+def test_a_heated_craton_resists_a_failed_rift_less(monkeypatch):
+    """RFC 0007 (#582): plume heat scales a craton's failed-rift resistance by
+    (1 - PLUME_CRATON_WEAKENING) for the heated fraction of the step."""
+    from app import cratons, plumes
+
+    monkeypatch.setattr(plumes, "PLUME_CRATON_WEAKENING", 0.5)
+
+    def thinning(heat_myr):
+        keys = pack_cell_keys(np.zeros(5, dtype=int), np.arange(4, 9), np.full(5, 5))
+        plate = PlateWithSparseQuadPatch(
+            7, np.eye(3), "continental", N, keys,
+            fields={
+                "elevation": np.full(5, 1000.0),
+                "crustal_thickness_m": np.full(5, 35_000.0),
+                "mantle_lithosphere_thickness_m": np.full(5, 100_000.0),
+                "craton_crust_m": np.full(5, cratons.CRATON_FULL_STRENGTH_HC_M),
+                "plume_heat_myr": np.full(5, heat_myr),
+            },
+        )
+        plate.apply_failed_rift(np.array([0.0, 1.0, 0.0]), spacing_rad=0.1, step_years=1_000_000)
+        return 35_000.0 - plate.collect("crustal_thickness_m")
+
+    cold = thinning(0.0)
+    hot = thinning(20.0)
+    assert np.any(cold > 0.0)
+    np.testing.assert_allclose(hot, 2.5 * cold, rtol=1e-12)
 
 
 def test_a_failed_rift_marks_exactly_its_thinned_band_as_belt():

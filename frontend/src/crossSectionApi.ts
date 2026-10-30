@@ -1,7 +1,7 @@
 import { asJson } from "./apiResponse.js";
 
 export interface CrossSectionResponse {
-  // Raw PNG bytes, base64-encoded, following the /world/render image response convention.
+  // Raw PNG bytes, base64-encoded, following the /worlds/{world_id}/render image response convention.
   image_base64: string;
 }
 
@@ -13,6 +13,7 @@ export function crossSectionUrl(
   height: number,
   showBoundaries = false,
   showFaults = false,
+  showPlumes = false,
 ): string {
   const params = new URLSearchParams({
     plane_angle_deg: String(planeAngleDeg),
@@ -22,7 +23,8 @@ export function crossSectionUrl(
   });
   if (showBoundaries) params.set("show_boundaries", "true");
   if (showFaults) params.set("show_faults", "true");
-  return `${apiBase}/world/cross-section?${params}`;
+  if (showPlumes) params.set("show_plumes", "true");
+  return `${apiBase}/cross-section?${params}`;
 }
 
 export function requestCrossSection(
@@ -35,7 +37,8 @@ export function requestCrossSection(
   fetcher: typeof fetch = fetch,
   showBoundaries = false,
   showFaults = false,
+  showPlumes = false,
 ): Promise<CrossSectionResponse> {
-  return fetcher(crossSectionUrl(apiBase, planeAngleDeg, positionIndex, width, height, showBoundaries, showFaults), { signal })
+  return fetcher(crossSectionUrl(apiBase, planeAngleDeg, positionIndex, width, height, showBoundaries, showFaults, showPlumes), { signal })
     .then(asJson<CrossSectionResponse>);
 }

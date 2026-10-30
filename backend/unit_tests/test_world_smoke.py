@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from app.world import generate_world, step_world
+from app.world import generate_world, generate_world_progress, step_world
 
 # Coarse settings throughout -- this is a smoke test (nothing crashes, state stays finite and
 # in a sane range across several real steps), not a physics-precision test; see
@@ -15,6 +15,21 @@ def stepped_world():
     for _ in range(3):
         step_world(world, 3_000_000.0)
     return world
+
+
+def test_generate_world_progress_labels_each_phase():
+    # The run overlay's phase text (#629): one label per phase boundary, with the
+    # first phase naming the layout branch that actually ran.
+    for cratons_first, first in ((False, "Creating continents"), (True, "Creating cratons")):
+        messages = [
+            m for m in generate_world_progress(seed=11, cratons_first=cratons_first, **_COARSE_KWARGS)
+            if m[0] == "progress"
+        ]
+        assert [(fraction, phase) for _, fraction, phase in messages] == [
+            (pytest.approx(1 / 3), first),
+            (pytest.approx(2 / 3), "Starting mantle convection"),
+            (pytest.approx(1.0), "Seeding climate and oceans"),
+        ]
 
 
 def test_generate_world_produces_plates_with_finite_elevation():
@@ -49,6 +64,32 @@ def test_step_world_populates_hydrology_and_climate_caches(stepped_world):
     world = stepped_world
     assert world.climate_cache is not None
     assert world.hydrology_cache is not None
+
+
+def test_finish_generation_baseline_solves_fresh_after_the_cfd_state_exists(monkeypatch):
+    # The elapsed_years=0 baseline must be solved after init_atmosphere_cfd populates
+    # World.atmosphere_cfd_state: compute_climate reads that state to pick its
+    # air-temperature path (cold-start compute_air_temperature with no state yet,
+    # compute_air_temperature_diagnostic once it exists), so lending record_stats the
+    # pre-state bootstrap snapshot would silently move stats_history[0] (#376 review).
+    # finish_generation therefore solves twice -- the bootstrap seed, released right
+    # after (see the `del terrain` there, which is the actual peak-RAM saving), then the
+    # baseline -- and a freshly generated world still reads as "no step has run yet".
+    from app.hydroclimate import climate
+
+    calls = 0
+    real_compute_climate = climate.compute_climate
+
+    def counting(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return real_compute_climate(*args, **kwargs)
+
+    monkeypatch.setattr(climate, "compute_climate", counting)
+    world = generate_world(seed=11, **_COARSE_KWARGS)
+    assert calls == 2
+    assert world.climate_cache is None
+    assert len(world.stats_history) == 1
 
 
 def test_isostasy_derived_elevation_matches_hc_hm_state_at_generation():

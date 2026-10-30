@@ -69,7 +69,7 @@ import importlib
 import io
 import pickle
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, BinaryIO
 
 import numpy as np
 from scipy.sparse import coo_matrix
@@ -207,24 +207,38 @@ class LegacyRecord:
         self.__dict__.update(state)
 
 
+class _LegacyUnpickler(pickle.Unpickler):
+    """An `Unpickler` that loads retired (module, class) pairs as `LegacyRecord`s. Built
+    over whatever binary file it is handed, so saves can stream from disk instead of from
+    a bytes object held in RAM (see persistence.load_world_file)."""
+
+    def __init__(self, file: BinaryIO, retired: frozenset[tuple[str, str]]):
+        super().__init__(file)
+        self._retired = retired
+        self._stand_ins: dict[tuple[str, str], type] = {}
+
+    def find_class(self, module: str, name: str):
+        if (module, name) in self._retired:
+            if (module, name) not in self._stand_ins:
+                self._stand_ins[(module, name)] = type(name, (LegacyRecord,), {"legacy_class": f"{module}.{name}"})
+            return self._stand_ins[(module, name)]
+        prefix = "app."
+        if module.startswith(prefix) and module[len(prefix):] in MOVED_MODULES:
+            moved_module = importlib.import_module(f"app.hydroclimate.{module[len(prefix):]}")
+            if hasattr(moved_module, name):
+                return getattr(moved_module, name)
+        return super().find_class(module, name)
+
+
 def legacy_unpickler(data: bytes, retired: frozenset[tuple[str, str]] = LEGACY_LINE_CLASSES) -> pickle.Unpickler:
     """An `Unpickler` that loads the `retired` (module, class) pairs as `LegacyRecord`s."""
-    stand_ins: dict[tuple[str, str], type] = {}
+    return _LegacyUnpickler(io.BytesIO(data), retired)
 
-    class _Unpickler(pickle.Unpickler):
-        def find_class(self, module: str, name: str):
-            if (module, name) in retired:
-                if (module, name) not in stand_ins:
-                    stand_ins[(module, name)] = type(name, (LegacyRecord,), {"legacy_class": f"{module}.{name}"})
-                return stand_ins[(module, name)]
-            prefix = "app."
-            if module.startswith(prefix) and module[len(prefix):] in MOVED_MODULES:
-                moved_module = importlib.import_module(f"app.hydroclimate.{module[len(prefix):]}")
-                if hasattr(moved_module, name):
-                    return getattr(moved_module, name)
-            return super().find_class(module, name)
 
-    return _Unpickler(io.BytesIO(data))
+def legacy_file_unpickler(file: BinaryIO, retired: frozenset[tuple[str, str]] = LEGACY_LINE_CLASSES) -> pickle.Unpickler:
+    """`legacy_unpickler` over an already-open binary file: unpickling streams from disk,
+    so the whole save never sits in RAM as bytes alongside the world it builds."""
+    return _LegacyUnpickler(file, retired)
 
 
 def is_line_plate(plate: object) -> bool:

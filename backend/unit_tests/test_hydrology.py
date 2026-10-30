@@ -1,3 +1,5 @@
+import pickle
+
 import numpy as np
 import pytest
 from app import geometry
@@ -7,6 +9,7 @@ from app.plates import collect_all_accounting_areas_m2
 from app.world import World, generate_world, step_world
 
 from .quad_fixtures import quad_plate
+from .river_fixtures import DRY_SPILL_PATH, segment_pairs, spill_hop_fields
 
 
 def _row(count: int) -> np.ndarray:
@@ -32,6 +35,113 @@ def _flow_line_plate_with_lake(plate_id, theta, elevation, lake_depth, glacier_d
 def _normalize(v):
     v = np.asarray(v, dtype=float)
     return v / np.linalg.norm(v)
+
+
+def test_precipitation_source_partition_accounts_for_dry_wet_and_partial_cells():
+    precipitation_mm = np.array([800.0, 800.0, 800.0])
+    evaporation_mm = np.array([600.0, 600.0, 600.0])
+    areas_m2 = np.array([1.0e6, 2.0e6, 3.0e6])
+    wet_fraction = np.array([0.0, 1.0, 0.25])
+
+    wet_rain, dry_runoff, dry_et = hydrology._partition_precipitation_sources(
+        precipitation_mm, evaporation_mm, areas_m2, wet_fraction
+    )
+
+    liquid_input = precipitation_mm / 1000.0 * areas_m2
+    assert wet_rain[0] == 0.0 and dry_runoff[0] > 0.0
+    assert wet_rain[1] == pytest.approx(liquid_input[1])
+    assert dry_runoff[1] == 0.0 and dry_et[1] == 0.0
+    assert wet_rain[2] == pytest.approx(liquid_input[2] * 0.25)
+    assert dry_runoff[2] == pytest.approx(
+        breaching.runoff_mm(precipitation_mm[2:3], evaporation_mm[2:3])[0] / 1000.0 * areas_m2[2] * 0.75
+    )
+    assert wet_rain + dry_runoff + dry_et == pytest.approx(liquid_input)
+
+
+def test_external_water_sources_keep_their_own_transit_loss_rules():
+    elevation = np.array([2.0, 1.0, 0.0])
+    is_ocean = np.zeros(3, dtype=bool)
+    targets = np.array([1, 2, -1])
+    dry_loss = np.array([0.1, 0.2, 0.3])
+    transit_loss = np.full(3, 0.2)
+    routed = hydrology._route_external_water_sources(
+        elevation, is_ocean, targets, np.array([100.0, 0.0, 0.0]),
+        np.array([100.0, 0.0, 0.0]), np.array([100.0, 0.0, 0.0]), dry_loss, transit_loss,
+    )
+
+    assert routed["dry_runoff"][1][2] == pytest.approx(100.0 * 0.9 * 0.8 * 0.7)
+    assert routed["meltwater"][1][2] == pytest.approx(100.0 * 0.8**3)
+    assert routed["wet_precip"][1][2] == pytest.approx(100.0)
+
+
+def test_compute_hydrology_exposes_wet_precipitation_once_in_external_supply():
+    theta = 0.05 * np.arange(40)
+    elevation = np.full(40, 300.0)
+    elevation[0:15] = -100.0
+    elevation[28:31] = -60.0
+    prev_lake_depth = np.zeros(40)
+    prev_lake_depth[28:31] = 35.0
+    world = World(seed=0, plates=[_flow_line_plate_with_lake(0, theta, elevation, prev_lake_depth)])
+    precipitation = np.full(40, 800.0)
+    fields = hydrology.compute_hydrology(world, precipitation, np.full(40, 15.0), years=100_000)
+
+    wet_fraction = hydrology._lagged_lake_wet_fraction(prev_lake_depth, fields.hypsometry)
+    wet_fraction[fields.is_ocean] = 0.0
+    areas = fields.hypsometry.area_m2
+    expected_direct_rain = float((precipitation / 1000.0 * areas * wet_fraction).sum())
+    assert fields.lake_external_wet_precip_m3_per_yr.sum() == pytest.approx(expected_direct_rain)
+    assert fields.lake_external_supply_m3_per_yr == pytest.approx(
+        fields.lake_external_wet_precip_m3_per_yr
+        + fields.lake_external_dry_runoff_m3_per_yr
+        + fields.lake_external_meltwater_m3_per_yr
+    )
+
+
+def test_seasonal_lake_inputs_leave_dry_land_budyko_pet_unchanged():
+    theta = 0.05 * np.arange(40)
+    elevation = np.linspace(100.0, -100.0, 40)
+    world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+    precipitation = np.full(40, 800.0)
+    temperature = np.full(40, 5.0)
+
+    steady = hydrology.compute_hydrology(
+        world, precipitation, temperature, years=100_000, seasonal_amplitude_at_nodes=np.zeros(40)
+    )
+    seasonal = hydrology.compute_hydrology(
+        world, precipitation, temperature, years=100_000, seasonal_amplitude_at_nodes=np.full(40, 20.0)
+    )
+
+    assert seasonal.lake_external_dry_runoff_m3_per_yr == pytest.approx(
+        steady.lake_external_dry_runoff_m3_per_yr
+    )
+
+
+def test_lake_temperature_uses_lagged_water_surface_and_connected_ocean_mask():
+    elevation = np.array([-100.0, -100.0, 200.0])
+    previous_depth = np.array([64.0, 64.0, 0.0])
+    hypsometry = lakes.CellHypsometry(
+        elevation=elevation,
+        area_m2=np.ones(3),
+        relief_m=np.array([100.0, 100.0, 0.0]),
+        reference_area_m2=1.0,
+    )
+
+    water_temperature = hydrology._lake_water_surface_temperature_c(
+        air_temperature_at_bed_c=np.full(3, 10.0),
+        ocean_temperature_c=np.full(3, 5.0),
+        is_ocean=np.array([False, True, False]),
+        elevation_m=elevation,
+        previous_lake_depth_m=previous_depth,
+        hypsometry=hypsometry,
+    )
+
+    # A mean depth of 64 m in a cell with 100 m sub-cell relief puts its water surface at
+    # -40 m, not bed elevation + mean depth (RFC 0014's shared hypsometry contract).
+    # The enclosed below-sea-level lake uses air temperature there; connected ocean uses ocean.
+    assert water_temperature[0] == pytest.approx(10.0 - 6.5 * 0.06)
+    assert water_temperature[1] == pytest.approx(5.0)
+    # A newly formed lake has no previous water level, so this step uses the bed-level air temp.
+    assert water_temperature[2] == pytest.approx(10.0)
 
 
 def _river_inspector_fields():
@@ -110,15 +220,14 @@ def test_compute_flow_direction_sink_redirects_once_lake_reaches_spill_point():
     filled = np.array([50.0, 50.0, 20.0, -10.0])
     spill = np.array([2, 2, 3, -1])
 
-    not_frozen = np.zeros(4, dtype=bool)
     not_yet_full, not_yet_spilling = hydrology._compute_flow_direction(
-        elevation, is_ocean, neighbor_idx, np.zeros(4), filled, spill, np.zeros(4), not_frozen
+        elevation, is_ocean, neighbor_idx, np.zeros(4), filled, spill, np.zeros(4)
     )
     assert not_yet_full[0] == -1  # water surface 30 < 50, still a plain sink
     assert not not_yet_spilling[0]
 
     now_full, now_spilling = hydrology._compute_flow_direction(
-        elevation, is_ocean, neighbor_idx, np.array([25.0, 0.0, 0.0, 0.0]), filled, spill, np.zeros(4), not_frozen
+        elevation, is_ocean, neighbor_idx, np.array([25.0, 0.0, 0.0, 0.0]), filled, spill, np.zeros(4)
     )
     assert now_full[0] == 2  # water surface 30+25=55 >= 50 -- redirects to spill_target
     assert now_spilling[0]
@@ -135,187 +244,10 @@ def test_compute_flow_direction_a_wet_sink_spills_over_a_rim_at_its_own_floor():
     spill = np.array([2, 2, 3, -1])
 
     flow_target, should_spill = hydrology._compute_flow_direction(
-        elevation, is_ocean, neighbor_idx, np.array([-0.7, 0.0, 0.0, 0.0]), filled, spill, np.zeros(4), np.zeros(4, dtype=bool)
+        elevation, is_ocean, neighbor_idx, np.array([-0.7, 0.0, 0.0, 0.0]), filled, spill, np.zeros(4)
     )
     assert flow_target[0] == 2
     assert should_spill[0]
-
-
-def _spill_basins(elevation, forest, governing, evaporation=0.0, frozen=None, neighbor_idx=None):
-    n = len(elevation)
-    if neighbor_idx is None:  # a chain: each node's neighbours are the nodes either side of it
-        neighbor_idx = np.stack([np.maximum(np.arange(n) - 1, 0), np.minimum(np.arange(n) + 1, n - 1)], axis=1)
-    return hydrology.SpillBasins(
-        forest, governing, lakes.CellHypsometry(elevation, np.ones(n), np.zeros(n), 1.0), neighbor_idx,
-        np.zeros(n), np.full(n, evaporation), np.zeros(n, dtype=bool) if frozen is None else frozen,
-    )
-
-
-def _route_for(elevation, is_ocean, source):
-    return lambda targets: hydrology.route_downstream(elevation, is_ocean, targets, source)
-
-
-def test_spill_within_step_carries_a_river_through_a_chain_of_dry_pits():
-    # 5 -> pit B (4) -> 3 -> pit A (2) -> 1 -> ocean. Both pits start dry, so the lagged spill
-    # test holds the river in B. This step's 1,000 m^3/yr fills each pit's few m^3 of room many
-    # times over, so both open and the river reaches the sea within the step (#503).
-    elevation = np.array([-10.0, 5.0, 3.0, 10.0, 6.0, 20.0])
-    is_ocean = np.array([True, False, False, False, False, False])
-    pit_a = lakes.Lake(0, np.array([2, 3]), 3.0, 3.0, 5.0, outlet_node_idx=2, sink_node_idx=2, outlet_target_idx=1)
-    pit_b = lakes.Lake(1, np.array([4, 5]), 6.0, 6.0, 10.0, outlet_node_idx=4, sink_node_idx=4, outlet_target_idx=3)
-    flow_target = np.array([-1, 0, -1, 2, -1, 4])
-    source = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 1000.0])
-    no_spill = np.zeros(6, dtype=bool)
-
-    targets, spilling, _, _, through, _ = hydrology._spill_within_step(
-        _spill_basins(elevation, [pit_a, pit_b], [pit_a, pit_b]), flow_target, no_spill,
-        elevation.copy(), np.full(6, -1), _route_for(elevation, is_ocean, source), years=1000.0,
-    )
-    assert targets[4] == 3 and targets[2] == 1
-    assert spilling[4] and spilling[2]
-    assert through[1] == pytest.approx(1000.0)
-
-    # In a desert, a lake at B's rim would evaporate more than the river brings: B holds it.
-    targets, spilling, _, _, through, _ = hydrology._spill_within_step(
-        _spill_basins(elevation, [pit_a, pit_b], [pit_a, pit_b], evaporation=2000.0), flow_target, no_spill,
-        elevation.copy(), np.full(6, -1), _route_for(elevation, is_ocean, source), years=1000.0,
-    )
-    assert targets[4] == -1 and not spilling[4]
-    assert through[1] == 0.0
-
-
-def test_spill_within_step_opens_a_40_pit_chain_in_one_sweep():
-    # Pits p_k (2k + 2) step down toward the sea, each spilling over rim r_k (2k + 1) into the
-    # pit below. Swept from the highest floor down, water released by each pit counts toward
-    # the next, so all 40 open at once instead of one per round (a 32-round cap left this
-    # chain stranded, #503).
-    pits = 40
-    n = 2 * pits + 2
-    elevation = np.empty(n)
-    elevation[0] = -10.0
-    for k in range(pits + 1):
-        elevation[2 * k + 1] = 10.0 * k + 5.0
-        if k < pits:
-            elevation[2 * k + 2] = 10.0 * k + 3.0
-    is_ocean = np.zeros(n, dtype=bool)
-    is_ocean[0] = True
-    flow_target = np.full(n, -1)
-    flow_target[1] = 0
-    chain = []
-    for k in range(pits):
-        pit, rim, upstream = 2 * k + 2, 2 * k + 1, 2 * k + 3
-        flow_target[upstream] = pit
-        chain.append(lakes.Lake(k, np.array([pit, upstream]), elevation[pit], elevation[pit], elevation[rim],
-                                outlet_node_idx=pit, sink_node_idx=pit, outlet_target_idx=rim))
-    source = np.zeros(n)
-    source[-1] = 1000.0
-
-    targets, _, _, _, through, _ = hydrology._spill_within_step(
-        _spill_basins(elevation, chain, chain), flow_target, np.zeros(n, dtype=bool), elevation.copy(),
-        np.full(n, -1), _route_for(elevation, is_ocean, source), years=1000.0,
-    )
-    assert all(targets[2 * k + 2] == 2 * k + 1 for k in range(pits))
-    assert through[1] == pytest.approx(1000.0)
-
-
-def test_spill_within_step_counts_shallow_margin_evaporation_against_a_fill():
-    # Pit node 2 has 2 m of sub-cell relief and its rim 1 m above its centre, so a lake at the
-    # rim floods 75% of it, and that shallow margin evaporates 30% faster (lakes.
-    # SHALLOW_EVAPORATION_BOOST): 806,250 m^3/yr in all, 750,000 without the boost. The river
-    # brings 778,000 m^3/yr, so the lake balances below the rim and the pit holds -- as
-    # lakes.resolve_lakes will also find (#503).
-    elevation = np.array([-10.0, 5.0, 3.0, 20.0])
-    is_ocean = np.array([True, False, False, False])
-    pit = lakes.Lake(0, np.array([2]), 3.0, 3.0, 4.0, outlet_node_idx=2, sink_node_idx=2, outlet_target_idx=1)
-    basins = hydrology.SpillBasins(
-        [pit], [pit], lakes.CellHypsometry(elevation, np.ones(4), np.array([0.0, 0.0, 2.0, 0.0]), 1.0),
-        np.stack([np.maximum(np.arange(4) - 1, 0), np.minimum(np.arange(4) + 1, 3)], axis=1),
-        np.zeros(4), np.array([0.0, 0.0, 1.0e6, 0.0]), np.zeros(4, dtype=bool),
-    )
-    source = np.array([0.0, 0.0, 0.0, 778_000.0])
-    targets, spilling, _, _, through, _ = hydrology._spill_within_step(
-        basins, np.array([-1, 0, -1, 2]), np.zeros(4, dtype=bool), elevation.copy(), np.full(4, -1),
-        _route_for(elevation, is_ocean, source), years=1.0e6,
-    )
-    assert targets[2] == -1 and not spilling[2]
-    assert through[1] == 0.0
-
-
-def test_spill_within_step_frozen_water_does_not_fill_a_warm_sink():
-    # One lake covers sink 2 (warm) and sink 4 (frozen). The river reaches only the frozen
-    # sink, where it settles as river ice, so no liquid water fills the lake and its warm sink
-    # stays closed (#503).
-    elevation = np.array([-10.0, 5.0, 2.0, 30.0, 3.0])
-    is_ocean = np.array([True, False, False, False, False])
-    warm = lakes.Lake(0, np.array([2]), 2.0, 2.0, 4.0, outlet_node_idx=2, sink_node_idx=2, outlet_target_idx=4)
-    frozen_pit = lakes.Lake(1, np.array([3, 4]), 3.0, 3.0, 4.0, outlet_node_idx=4, sink_node_idx=4, outlet_target_idx=2)
-    pair = lakes.Lake(2, np.array([2, 3, 4]), 2.0, 4.0, 5.0, children=[warm, frozen_pit], outlet_node_idx=2, outlet_target_idx=1)
-    frozen = np.array([False, False, False, False, True])
-    source = np.array([0.0, 0.0, 0.0, 1000.0, 0.0])
-
-    targets, spilling, _, _, through, _ = hydrology._spill_within_step(
-        _spill_basins(elevation, [pair], [pair], frozen=frozen), np.array([-1, 0, -1, 4, -1]), np.zeros(5, dtype=bool),
-        elevation.copy(), np.full(5, -1), _route_for(elevation, is_ocean, source), years=1000.0,
-    )
-    assert targets[2] == -1 and not spilling[2]
-    assert targets[4] == -1  # the frozen sink itself never routes on
-    assert through[1] == 0.0
-
-
-def test_spill_within_step_unites_sibling_basins_that_spill_into_each_other():
-    # Sibling pits A (node 2) and B (node 3) both reached their shared saddle, so each spills
-    # into the other and the water circles. United at their parent, the pair either spills once
-    # at the parent's rim (to node 1, then the sea) or holds the water as one lake (#503).
-    elevation = np.array([-10.0, 5.0, 2.0, 3.0])
-    is_ocean = np.array([True, False, False, False])
-    pit_a = lakes.Lake(0, np.array([2]), 2.0, 2.0, 4.0, outlet_node_idx=2, sink_node_idx=2, outlet_target_idx=3)
-    pit_b = lakes.Lake(1, np.array([3]), 3.0, 3.0, 4.0, outlet_node_idx=3, sink_node_idx=3, outlet_target_idx=2)
-    pair = lakes.Lake(2, np.array([2, 3]), 2.0, 4.0, 5.0, children=[pit_a, pit_b], outlet_node_idx=2, outlet_target_idx=1)
-    circling = np.array([-1, 0, 3, 2])
-    spilling = np.array([False, False, True, True])
-    source = np.array([0.0, 0.0, 100.0, 100.0])
-
-    def run(years):
-        return hydrology._spill_within_step(
-            _spill_basins(elevation, [pair], [pit_a, pit_b]), circling, spilling,
-            np.array([-10.0, 5.0, 4.0, 4.0]), np.array([-1, 0, 3, 2]), _route_for(elevation, is_ocean, source), years=years,
-        )
-
-    targets, now_spilling, filled, spill_to, through, _ = run(years=1000.0)  # 200,000 m^3 >> 5 m^3 of room
-    assert hydrology.flow_cycles(targets) == []
-    assert targets[2] == 1 and targets[3] == 1
-    assert list(filled[2:]) == [5.0, 5.0] and list(spill_to[2:]) == [1, 1]
-    assert through[1] == pytest.approx(200.0)
-
-    targets, now_spilling, _, _, through, settled = run(years=0.01)  # 2 m^3 < 5 m^3 of room
-    assert hydrology.flow_cycles(targets) == []
-    # Held as one lake, the water pools at its lowest sink (node 2), not split between both.
-    assert targets[3] == 2 and targets[2] == -1 and not now_spilling[2]
-    assert settled[2] == pytest.approx(200.0)
-
-
-def test_spill_within_step_sends_a_channel_back_down_the_catchment_it_belongs_to():
-    # Pit A (node 1) drains at its floor over to node 2, in basin B's catchment. Node 2's
-    # steepest descent is B's outlet path (node 4, then the sea), but an old channel leads it to
-    # node 3, which drains back into A: a cycle across two separate root basins, which share no
-    # ancestor to unite in. Node 2 follows its steepest descent instead, and the water reaches
-    # the sea (#503).
-    elevation = np.array([-10.0, 4.0, 6.0, 5.0, 2.0])
-    is_ocean = np.array([True, False, False, False, False])
-    neighbor_idx = np.array([[1, 4], [2, 3], [3, 4], [1, 2], [2, 0]])
-    pit_a = lakes.Lake(0, np.array([1, 3]), 4.0, 4.0, 4.0, outlet_node_idx=1, sink_node_idx=1, outlet_target_idx=2)
-    basin_b = lakes.Lake(1, np.array([2, 4]), 2.0, 2.0, 6.0, outlet_node_idx=4, sink_node_idx=4, outlet_target_idx=0)
-    circling = np.array([-1, 2, 3, 1, 0])
-    source = np.array([0.0, 100.0, 0.0, 0.0, 0.0])
-
-    targets, _, _, _, through, _ = hydrology._spill_within_step(
-        _spill_basins(elevation, [pit_a, basin_b], [pit_a, basin_b], neighbor_idx=neighbor_idx), circling,
-        np.array([False, True, False, False, False]), np.array([-10.0, 4.0, 6.0, 5.0, 2.0]), np.array([-1, 2, -1, -1, -1]),
-        _route_for(elevation, is_ocean, source), years=1000.0,
-    )
-    assert hydrology.flow_cycles(targets) == []
-    assert targets[2] == 4
-    assert through[4] == pytest.approx(100.0)
 
 
 def test_flow_cycles_lists_each_cycle_once():
@@ -323,28 +255,6 @@ def test_flow_cycles_lists_each_cycle_once():
     cycles = sorted(sorted(c.tolist()) for c in hydrology.flow_cycles(flow_target))
     assert cycles == [[0, 1, 2], [5, 6]]
     assert hydrology.flow_cycles(np.array([-1, 0, 1])) == []
-
-
-def test_compute_flow_direction_frozen_node_blocks_flow_even_on_unobstructed_terrain():
-    # Node 2 (elevation 20) has a real downhill neighbor (node 3, the ocean) with nothing
-    # blocking it -- filled_elevation[2] is exactly its own elevation, so if the frozen
-    # override were folded into the same is_sink/should_spill check the redirect above uses,
-    # forcing node 2's flow_target to -1 would make it trivially satisfy
-    # water_surface(20) >= filled_elevation(20) and get redirected right back onto its own
-    # ordinary downhill neighbor via spill_target -- silently undoing the freeze. The override
-    # must instead apply to the final flow_target, after that check has already run.
-    elevation = np.array([30.0, 50.0, 20.0, -10.0])
-    is_ocean = np.array([False, False, False, True])
-    neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
-    filled = np.array([50.0, 50.0, 20.0, -10.0])
-    spill = np.array([2, 2, 3, -1])
-    is_frozen = np.array([False, False, True, False])
-
-    flow_target, should_spill = hydrology._compute_flow_direction(
-        elevation, is_ocean, neighbor_idx, np.zeros(4), filled, spill, np.zeros(4), is_frozen
-    )
-    assert flow_target[2] == -1  # frozen -- blocked, not redirected to its own ordinary neighbor
-    assert not should_spill[2]  # should_spill itself still reflects genuine basin-spill only
 
 
 def test_route_downstream_accumulates_along_a_chain():
@@ -495,6 +405,66 @@ def test_compute_hydrology_breaches_a_shallow_pit_instead_of_ponding_it(monkeypa
     assert not arid.breach_notch_m.any()
 
 
+def _plateau_pit_run(precipitation_mm: float, temperature_c: float, years: float = 0.0, **kw):
+    """The 20 m pit on a 100 m plateau above, by default in a zero-duration pass like
+    generation's river bootstrap (#218), with `kw` passed on to compute_hydrology."""
+    theta = 0.05 * np.arange(40)
+    elevation = np.full(40, 100.0)
+    elevation[0:15] = -100.0
+    elevation[28:31] = 80.0
+    world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+    return hydrology.compute_hydrology(world, np.full(40, precipitation_mm), np.full(40, temperature_c), years=years, **kw)
+
+
+def _reaches_ocean(fields, node: int) -> bool:
+    for _ in range(len(fields.flow_target)):
+        if fields.is_ocean[node]:
+            return True
+        if fields.flow_target[node] < 0:
+            return False
+        node = int(fields.flow_target[node])
+    return False
+
+
+def test_compute_hydrology_history_years_gives_a_zero_duration_pass_a_breach_budget(monkeypatch):
+    # With no time to carve, the wet pit ends its river; `history_years` gives the breach
+    # budget a span of its own.
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", True)
+    instant = _plateau_pit_run(2000.0, 10.0)
+    assert not instant.breach_notch_m.any()
+    assert not _reaches_ocean(instant, 29)
+
+    history = _plateau_pit_run(2000.0, 10.0, history_years=100_000)
+    assert history.breach_notch_m.max() == pytest.approx(20.0)
+    assert history.lake_depth[28:31].max() == 0.0
+    assert _reaches_ocean(history, 29)
+
+
+def test_compute_hydrology_history_years_does_not_advance_lake_storage(monkeypatch):
+    # D1b integrates lake storage over `years`; `history_years` supplies a carving history only.
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
+    instant = _plateau_pit_run(2000.0, 10.0)
+    assert not _reaches_ocean(instant, 29)
+
+    history = _plateau_pit_run(2000.0, 10.0, history_years=100_000)
+    assert not _reaches_ocean(history, 29)
+    assert not history.lake_depth.any()
+    assert history.discharge_m3_s[29] == 0.0
+
+
+def test_compute_hydrology_history_years_leaves_ice_on_the_zero_length_step(monkeypatch):
+    # Cold and snowy: snow makes ice over the step's own `years` only, so a
+    # zero-duration pass grows none, whatever span basins get to fill.
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", True)
+    instant = _plateau_pit_run(1000.0, -10.0)
+    history = _plateau_pit_run(1000.0, -10.0, history_years=1_000_000)
+    np.testing.assert_array_equal(history.glacier_depth, instant.glacier_depth)
+    assert not history.glacier_depth.any()
+    # Over a real step the same climate does grow ice, so the check above has teeth.
+    stepped = _plateau_pit_run(1000.0, -10.0, years=100_000)
+    assert stepped.glacier_depth.any()
+
+
 def test_compute_hydrology_populates_is_sea_once_a_basin_stays_flooded():
     # Same interior-pit fixture as the test above. is_sea is derived from *last* step's own
     # flooded extent (lakes._classify_tier), so it can't promote on the very first pass -- but
@@ -535,7 +505,7 @@ def test_compute_hydrology_end_to_end_on_a_small_synthetic_world():
 
     precipitation_at_nodes = np.full(12, 800.0)
     temperature_at_nodes = np.full(12, 15.0)  # well above freezing -- no glaciation involved
-    fields = hydrology.compute_hydrology(world, precipitation_at_nodes, temperature_at_nodes, years=1_000_000)
+    fields = hydrology.compute_hydrology(world, precipitation_at_nodes, temperature_at_nodes, years=1)
 
     assert len(fields.points) == 12
     assert fields.is_ocean.tolist() == [False] * 9 + [True] * 3
@@ -590,7 +560,7 @@ def test_compute_hydrology_spilling_lake_erodes_its_outlet_from_its_own_surface_
 
     precipitation_at_nodes = np.full(22, 10.0)  # small -- the breach term should dominate
     temperature_at_nodes = np.full(22, 15.0)
-    fields = hydrology.compute_hydrology(world, precipitation_at_nodes, temperature_at_nodes, years=1_000_000)
+    fields = hydrology.compute_hydrology(world, precipitation_at_nodes, temperature_at_nodes, years=1)
 
     # A single-node lake (only node 10 is above LAKE_MIN_VISIBLE_DEPTH_M), so the breach term
     # there is exactly one component-size's worth of LAKE_BREACH_EROSION_COEFFICIENT --
@@ -605,11 +575,8 @@ def test_compute_hydrology_spilling_lake_also_erodes_its_own_rim_when_that_is_th
     # higher side of the governing boundary edge -- higher than the far side outside the lake
     # (15, elevation 200) that `max_depth` would otherwise appear to come from (confirmed
     # directly: `lakes.build_lake_hierarchy` on this exact layout gives max_depth=210 via
-    # outlet_node_idx=11, not 200 via outlet_target_idx=15). Before the rim_node_idx fix, the
-    # breach surge only ever rode `spill_target` from the sink (10) to the far side (15) --
-    # bypassing 11 entirely -- so the *actual* dam (11) never got a drop of erosive flow no
-    # matter how long the lake spilled. lake_depth[10]=170 puts the sink's water surface at
-    # 50+170=220, over the 210 cap, so it's actively spilling this step.
+    # outlet_node_idx=11, not 200 via outlet_target_idx=15). The one-year fixture starts with
+    # enough stored water to export surplus through this rim and exercise both erosion sites.
     d = 0.002
     elevation = np.array(
         [500.0, 480.0, 460.0, 440.0, 420.0, 400.0, 380.0, 360.0, 340.0, 320.0]
@@ -620,13 +587,13 @@ def test_compute_hydrology_spilling_lake_also_erodes_its_own_rim_when_that_is_th
     n = len(elevation)
     theta = d * np.arange(n)
     lake_depth = np.zeros(n)
-    lake_depth[10] = 170.0
+    lake_depth[10] = 300.0
     plate = _flow_line_plate_with_lake(0, theta, elevation, lake_depth)
     world = World(seed=0, plates=[plate])
 
     precipitation_at_nodes = np.full(n, 10.0)  # small -- the breach term should dominate
     temperature_at_nodes = np.full(n, 15.0)
-    fields = hydrology.compute_hydrology(world, precipitation_at_nodes, temperature_at_nodes, years=1_000_000)
+    fields = hydrology.compute_hydrology(world, precipitation_at_nodes, temperature_at_nodes, years=1)
 
     # Both sides of the true bottleneck now carry roughly one component-size's worth of
     # LAKE_BREACH_EROSION_COEFFICIENT -- the lake's own rim (11, previously untouched) just as
@@ -634,6 +601,15 @@ def test_compute_hydrology_spilling_lake_also_erodes_its_own_rim_when_that_is_th
     assert fields.flow_accum[11] >= hydrology.LAKE_BREACH_EROSION_COEFFICIENT
     assert fields.flow_accum[11] < hydrology.LAKE_BREACH_EROSION_COEFFICIENT * 1.1
     assert fields.flow_accum[15] >= hydrology.LAKE_BREACH_EROSION_COEFFICIENT
+    lake = fields.lake_forest[0]
+    assert fields.should_spill[lake.sink_node_idx]
+    assert lake.is_spilling
+    assert fields.flow_target[lake.sink_node_idx] == lake.outlet_target_idx
+    assert fields.discharge_m3_s[lake.outlet_target_idx] > 0.0
+    from app import main
+
+    inspector = main._lake_basin_summary(fields, lake, 0, [], {}, is_lake=True)
+    assert inspector["is_spilling"]
 
 
 def test_breach_surge_drives_flow_accum_but_never_physical_discharge(monkeypatch):
@@ -652,7 +628,7 @@ def test_breach_surge_drives_flow_accum_but_never_physical_discharge(monkeypatch
 
     def run():
         world = World(seed=0, plates=[_flow_line_plate_with_lake(0, 0.002 * np.arange(n), elevation, lake_depth)])
-        return hydrology.compute_hydrology(world, np.full(n, 10.0), np.full(n, 15.0), years=1_000_000)
+        return hydrology.compute_hydrology(world, np.full(n, 10.0), np.full(n, 15.0), years=1)
 
     surged = run()
     assert surged.breach_surge[10] == pytest.approx(hydrology.LAKE_BREACH_EROSION_COEFFICIENT)
@@ -661,7 +637,9 @@ def test_breach_surge_drives_flow_accum_but_never_physical_discharge(monkeypatch
     assert np.all(calm.breach_surge == 0.0)
     assert surged.flow_accum[10] > calm.flow_accum[10] + 0.9 * surged.breach_surge[10]
     assert np.array_equal(surged.discharge_m3_s, calm.discharge_m3_s)
-    assert surged.discharge_m3_s[10] > 0.0  # the lake's own runoff still passes through
+    # External supply now enters storage; only surplus leaves at the hierarchy outlet (#588).
+    assert surged.discharge_m3_s[10] == 0.0
+    assert surged.lake_water_ledger.residual_m3 == pytest.approx(0.0, abs=1.0e6)
 
 
 def test_breach_surge_never_sizes_lake_silt(monkeypatch):
@@ -685,7 +663,7 @@ def test_breach_surge_never_sizes_lake_silt(monkeypatch):
 
     def run():
         world = World(seed=0, plates=[_flow_line_plate_with_lake(0, 0.002 * np.arange(n), elevation, lake_depth)])
-        return hydrology.compute_hydrology(world, np.full(n, 2000.0), np.full(n, 5.0), years=1_000_000)
+        return hydrology.compute_hydrology(world, np.full(n, 2000.0), np.full(n, 5.0), years=1)
 
     surged = run()
     assert surged.breach_surge[10] > 0.0
@@ -696,10 +674,9 @@ def test_breach_surge_never_sizes_lake_silt(monkeypatch):
     assert np.array_equal(surged.silt_deposited, calm.silt_deposited)
 
 
-def test_a_spilling_sink_loses_the_same_transit_share_as_any_node():
-    # The single-node spilling lake above. Physical water has one transit-loss rule (issue
-    # #355): the spilling sink loses its share like any other node. Only the legacy routing
-    # exempts it, for the breach surge's sake.
+def test_a_lake_sink_stores_external_supply_instead_of_passing_full_inflow():
+    # The single-node lake above. External sources reach its storage, while only overflow leaves
+    # the lake and enters downstream discharge (issue #588).
     elevation = np.array(
         [500.0, 480.0, 460.0, 440.0, 420.0, 400.0, 380.0, 360.0, 340.0, 320.0]
         + [50.0]
@@ -710,45 +687,38 @@ def test_a_spilling_sink_loses_the_same_transit_share_as_any_node():
     lake_depth = np.zeros(n)
     lake_depth[10] = 160.0
     world = World(seed=0, plates=[_flow_line_plate_with_lake(0, 0.002 * np.arange(n), elevation, lake_depth)])
-    fields = hydrology.compute_hydrology(world, np.full(n, 10.0), np.full(n, 15.0), years=1_000_000)
+    fields = hydrology.compute_hydrology(world, np.full(n, 10.0), np.full(n, 15.0), years=1)
 
     assert fields.breach_surge[10] > 0.0
-    loss = hydrology.river_transit_loss_fraction(np.array([15.0]), np.array([False]))[0]
-    assert loss > 0.0
-    runoff_m3_s = breaching.runoff_mm(np.array([10.0]), breaching.open_water_evaporation_mm(np.array([15.0])))[0] / 1000.0
-    runoff_m3_s *= _node_areas(world)[10] / hydrology.SECONDS_PER_YEAR
     inflow_m3_s = float(fields.discharge_m3_s[fields.flow_target == 10].sum())
     assert inflow_m3_s > 0.0
-    assert fields.discharge_m3_s[10] == pytest.approx((inflow_m3_s + runoff_m3_s) * (1.0 - loss), rel=1e-12)
+    # The sink's external supply is now balanced into storage, evaporation and overflow;
+    # discharge at the lake itself contains no full-inflow pass-on (#588).
+    assert fields.discharge_m3_s[10] == 0.0
+    assert fields.lake_water_ledger.residual_m3 == pytest.approx(0.0, abs=1.0e6)
 
 
-def test_frozen_river_ice_is_the_physical_water_settling_at_frozen_sinks():
-    # Warm uplands drain into a frozen band: each frozen land node is a dead end, so the
-    # physical water reaching it settles there and freezes at the glacier exchange rate
-    # (WATER_TO_ICE, issue #355). The ice per year doesn't depend on step length, and
-    # the breach surge never reaches it.
+def test_rivers_flow_on_through_a_cold_band_to_the_sea():
+    # Warm uplands drain through a band below 0 C on the annual mean to the sea. The band's
+    # nodes used to be dead ends where the water froze at WATER_TO_ICE, 1/50,000 of its
+    # volume, so nearly all of it was deleted (#355, #519). Now it flows on and reaches the
+    # ocean less only the transit loss (RFC 0014 D2(b), #539).
     theta = 0.002 * np.arange(12)
     elevation = 500.0 - 60.0 * np.arange(12)
     temperature = np.where(np.arange(12) < 6, 15.0, -10.0)
-    per_year = []
-    for years in (100_000, 1_000_000):
-        world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
-        fields = hydrology.compute_hydrology(world, np.full(12, 800.0), temperature, years=years)
-        frozen_land = (temperature < 0.0) & ~fields.is_ocean
-        assert np.all(fields.flow_target[frozen_land] == -1)
-        settled_m3 = float(fields.discharge_m3_s[frozen_land].sum()) * hydrology.SECONDS_PER_YEAR * years
-        assert settled_m3 > 0.0
-        ledger = fields.ice.ledger
-        assert ledger.frozen_river_capped_m3 == 0.0
-        assert ledger.frozen_river_ice_m3 == pytest.approx(hydrology.WATER_TO_ICE * settled_m3, rel=1e-9)
-        per_year.append(ledger.frozen_river_ice_m3 / years)
-    assert per_year[1] == pytest.approx(per_year[0], rel=1e-6)  # snowmelt on the cold band varies a hair
+    world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+    fields = hydrology.compute_hydrology(world, np.full(12, 800.0), temperature, years=100_000)
+    cold_land = (temperature < 0.0) & ~fields.is_ocean
+    assert np.all(fields.flow_target[cold_land] >= 0)
+    upland_m3_s = float(fields.discharge_m3_s[5])
+    keep = np.prod(1.0 - hydrology.river_transit_loss_fraction(temperature[cold_land], np.zeros(int(cold_land.sum()), dtype=bool)))
+    assert upland_m3_s > 0.0
+    assert float(fields.discharge_m3_s[fields.is_ocean].sum()) >= upland_m3_s * keep * (1.0 - 1e-9)
 
 
 def test_discharge_carries_the_ice_ledgers_meltwater_exactly_once_at_any_step_length():
-    # An all-land chain under 200 m of melting ice: every node is frozen, so each is its own
-    # sink and the discharge summed over nodes is each node's own meltwater. That's the
-    # ledger's meltwater (surface and basal melt, overflow, capped ice, bare-ground snow; not
+    # An all-land chain under 200 m of melting ice, draining to its lowest node. The discharge
+    # arriving at that sink is the ledger's meltwater (surface and basal melt, overflow, capped ice, bare-ground snow; not
     # calving) spread over the step, in m^3/s (issue #355).
     theta = 0.002 * np.arange(12)
     elevation = 900.0 - 60.0 * np.arange(12)
@@ -758,10 +728,17 @@ def test_discharge_carries_the_ice_ledgers_meltwater_exactly_once_at_any_step_le
             world, np.full(12, 100.0), np.full(12, -6.0), years=years, seasonal_amplitude_at_nodes=np.full(12, 18.0)
         )
         ledger = fields.ice.ledger
-        assert not np.any(fields.is_ocean) and np.all(fields.flow_target == -1)
+        sink = fields.flow_target == -1
+        assert not np.any(fields.is_ocean) and np.count_nonzero(sink) == 1
         assert ledger.surface_melt_m3 > 0.0 and ledger.basal_melt_m3 > 0.0
-        routed_m3 = float(fields.discharge_m3_s.sum()) * hydrology.SECONDS_PER_YEAR * years
-        assert routed_m3 == pytest.approx(ledger.meltwater_m3, rel=1e-9)
+        assert fields.lake_external_meltwater_m3_per_yr.sum() > 0.0
+        assert np.all(fields.discharge_m3_s >= 0.0)
+        assert fields.lake_water_ledger.residual_m3 == pytest.approx(0.0, abs=1.0e5)
+        assert fields.lake_external_meltwater_m3_per_yr.sum() == pytest.approx(
+            ledger.meltwater_m3 / years, rel=1e-9
+        )
+        assert fields.lake_external_wet_precip_m3_per_yr.sum() == 0.0
+        assert fields.lake_external_dry_runoff_m3_per_yr.sum() == 0.0
 
 
 def test_discharge_from_fixed_rainfall_does_not_depend_on_step_length():
@@ -825,12 +802,11 @@ def test_compute_flow_direction_prefers_an_existing_channel_over_the_literal_ste
     filled = np.array([30.0, 20.0, 25.0])
     spill = np.full(3, -1)
 
-    not_frozen = np.zeros(3, dtype=bool)
-    steepest, _ = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, np.zeros(3), not_frozen)
+    steepest, _ = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, np.zeros(3))
     assert steepest[0] == 1  # no channel anywhere -- plain steepest descent
 
     channel_depth = np.array([0.0, 0.0, 50.0])  # node 2's channel is well-established
-    channelized, _ = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, channel_depth, not_frozen)
+    channelized, _ = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, channel_depth)
     assert channelized[0] == 2  # prefers the channelized neighbor even though it's less steep
 
 
@@ -844,7 +820,7 @@ def test_compute_flow_direction_ignores_a_barely_established_channel():
     spill = np.full(3, -1)
     channel_depth = np.array([0.0, 0.0, hydrology.CHANNEL_PREFERENCE_THRESHOLD_M - 1.0])
 
-    result, _ = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, channel_depth, np.zeros(3, dtype=bool))
+    result, _ = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, channel_depth)
     assert result[0] == 1
 
 
@@ -874,6 +850,29 @@ def test_seasonal_positive_degrees_limits():
     assert np.all(np.diff(hydrology.seasonal_positive_degrees(np.full_like(amps, -6.0), amps)[21:]) > 0.0)
 
 
+def test_seasonal_lake_ice_helpers_match_analytic_cycle_and_are_continuous():
+    means = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
+    amplitude = np.full_like(means, 2.0)
+    fraction = hydrology.seasonal_fraction_above(means, amplitude)
+    assert fraction == pytest.approx([0.0, 1.0 / 3.0, 0.5, 2.0 / 3.0, 1.0])
+    assert hydrology.seasonal_open_mean_c(np.array([-1.0]), np.array([2.0]))[0] == pytest.approx(
+        -1.0 + 2.0 * np.sin(np.pi / 3.0) / (np.pi / 3.0)
+    )
+    assert hydrology.seasonal_freezing_degrees(np.array([-1.0]), np.array([2.0]))[0] == pytest.approx(
+        2.0 / 3.0 + np.sqrt(3.0) / np.pi
+    )
+    # Zero amplitude and threshold-touching limits are defined; the open-season mean tends
+    # to the threshold as the ice-free fraction tends to zero.
+    assert hydrology.seasonal_fraction_above(np.array([-1.0, 0.0, 1.0]), np.zeros(3)) == pytest.approx(
+        [0.0, 0.5, 1.0]
+    )
+    epsilon = 1e-8
+    near = hydrology.seasonal_open_mean_c(np.array([-2.0 - epsilon, -2.0, -2.0 + epsilon]), np.full(3, 2.0))
+    assert np.all(np.isfinite(near))
+    assert near[1] == pytest.approx(0.0)
+    assert near[2] == pytest.approx(0.0, abs=1e-5)
+
+
 def test_compute_hydrology_threads_seasonal_amplitude_into_glacier_melt():
     d = 0.002
     theta = d * np.arange(12)
@@ -897,88 +896,124 @@ def test_compute_hydrology_threads_seasonal_amplitude_into_glacier_melt():
     assert melting.closing_m3 < still.closing_m3
 
 
-def test_compute_hydrology_freezes_an_existing_lake_when_cold():
-    # A single evenly-spaced, tightly-packed 16-point chain -- dense enough that every
-    # point's FLOW_NEIGHBOR_COUNT=8 nearest neighbors really are just its ~4 closest
-    # chain-neighbors on each side (keeping the whole chain one connected graph end to end,
-    # so basin-spill can still find a real path to the ocean at the far end), with a genuine
-    # local dip at index 7 -- lower than every one of its own 8 nearest neighbors, so it's a
-    # real sink, not just a low point somewhere along a monotonic slope.
-    d = 0.002
-    theta = d * np.arange(16)
-    elevation = np.array(
-        [500, 450, 400, 350, 300, 250, 200, 50, 300, 250, 200, 150, 100, 50, 10, -50], dtype=float
+@pytest.mark.parametrize("cold", [slice(28, 31), slice(33, 34)], ids=["cold-pit", "one-cold-member"])
+def test_compute_hydrology_keeps_a_lake_where_its_water_is_cold(cold, monkeypatch):
+    # A closed 360 m pit (nodes 28-30) on a 300 m plateau, fed by warm rain on the plateau.
+    # Liquid water isn't frozen by the annual mean (RFC 0014 D2(b), #539): water reaching a pit
+    # below 0 C pools as a lake there, and a lake with one cold member in its catchment keeps
+    # its balance. Both used to dry: the pit's water froze into the ice at WATER_TO_ICE, and
+    # `lakes._resolve` dried a whole lake when any member was frozen, so the water its inflow
+    # brought was booked nowhere (#519).
+    theta = 0.05 * np.arange(40)
+    elevation = np.full(40, 300.0)
+    elevation[0:15] = -100.0
+    elevation[28:31] = -60.0
+    temperature = np.full(40, 15.0)
+    temperature[cold] = -10.0
+    world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+
+    # Isolate D2(b): D2(c) surface losses can exhaust an unsupplied reservoir over a million years.
+    monkeypatch.setattr(hydrology, "LAKE_ICE_SUBLIMATION_M_PER_YR", 0.0)
+    fields = hydrology.compute_hydrology(world, np.full(40, 800.0), temperature, years=1_000_000)
+    assert not fields.is_ocean[28:31].any()
+    assert fields.lake_depth[28:31].max() > 0.0
+    ledger = fields.ice.ledger
+    assert ledger.closing_m3 <= ledger.opening_m3 + ledger.accumulation_m3  # no water became ice
+
+def test_compute_hydrology_sublimates_covered_lake_ice_and_closes_its_ledger(monkeypatch):
+    theta = 0.05 * np.arange(40)
+    elevation = np.full(40, 300.0)
+    elevation[0:15] = -100.0
+    elevation[28:31] = -60.0
+    temperature = np.full(40, 15.0)
+    temperature[28:31] = -10.0
+    precipitation = np.full(40, 100.0)
+    world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+    years = 1_000.0
+    monkeypatch.setattr(hydrology, "LAKE_ICE_SUBLIMATION_M_PER_YR", 1e-4)
+
+    with_sublimation = hydrology.compute_hydrology(
+        world, precipitation, temperature, years=years, seasonal_amplitude_at_nodes=np.zeros(40)
     )
-    lake_depth = np.zeros(16)
-    lake_depth[7] = 30.0
-    plate = _flow_line_plate_with_lake(0, theta, elevation, lake_depth)
-    world = World(seed=0, plates=[plate])
-
-    precipitation = np.full(16, 500.0)
-    cold_temperature = np.full(16, -20.0)  # everywhere well below freezing
-
-    fields = hydrology.compute_hydrology(world, precipitation, cold_temperature, years=1_000_000)
-    assert np.isfinite(fields.filled_elevation[7])  # confirms the sink really is graph-connected to the ocean
-
-    assert fields.lake_depth[7] == 0.0  # the lake froze, not still sitting there as water
-    # Its water joined the ice instead (issue #353: into its ice body, which may reshape it), at
-    # the glacier model's water-to-ice rate, as frozen river water does -- not 1:1, which let
-    # real-unit lake water outgrow all snowfall ~35x (#503).
-    assert fields.ice.ledger.frozen_lake_m3 == pytest.approx(hydrology.WATER_TO_ICE * 30.0 * _node_areas(world)[7])
-    assert fields.ice.ledger.closing_m3 >= fields.ice.ledger.frozen_lake_m3
-
-
-def test_compute_hydrology_freezes_a_lake_below_freezing_even_above_glacier_accumulation_temp():
-    # Same fixture as the -20C test above, but at a mild -3C, just below FREEZE_POINT_C (0,
-    # the real freezing point). A lake here must still freeze solid: freezing is gated on the
-    # annual mean, independent of the seasonal cycle glacier melt uses.
-    d = 0.002
-    theta = d * np.arange(16)
-    elevation = np.array(
-        [500, 450, 400, 350, 300, 250, 200, 50, 300, 250, 200, 150, 100, 50, 10, -50], dtype=float
+    monkeypatch.setattr(hydrology, "LAKE_ICE_SUBLIMATION_M_PER_YR", 0.0)
+    without_sublimation = hydrology.compute_hydrology(
+        world, precipitation, temperature, years=years, seasonal_amplitude_at_nodes=np.zeros(40)
     )
-    lake_depth = np.zeros(16)
-    lake_depth[7] = 30.0
-    plate = _flow_line_plate_with_lake(0, theta, elevation, lake_depth)
+
+    assert with_sublimation.lake_depth[28:31].max() > 0.0
+    assert np.any(with_sublimation.lake_ice_m[28:31] > 0.0)
+    assert with_sublimation.lake_water_ledger.sublimation_m3 > 0.0
+    assert without_sublimation.lake_water_ledger.sublimation_m3 == 0.0
+    assert abs(with_sublimation.lake_water_ledger.residual_m3) <= 1e-9 * (
+        with_sublimation.lake_water_ledger.external_supply_m3
+    )
+
+
+@pytest.mark.parametrize(
+    "cold", [slice(28, 31), slice(33, 34), slice(20, 34)], ids=["cold-pit", "one-cold-member", "cold-band"]
+)
+def test_compute_hydrology_delivers_every_drop_of_liquid_water_past_cold_nodes(cold, monkeypatch):
+    # The closed pit of the test above, with evaporation off and every warm node at 0 C, so no
+    # water is lost from lakes or in transit (river_transit_loss_fraction is 0 at or below
+    # 0 C). The pit fills to its rim in the first step; from then on every m^3 of liquid
+    # runoff and meltwater must reach the ocean, wherever the cold nodes are (RFC 0014 D2(b),
+    # #539). On main the frozen nodes deleted 58% (cold pit), 4% (one cold member) and 53%
+    # (cold band) of it.
+    monkeypatch.setattr(breaching, "open_water_evaporation_mm", lambda t: np.zeros_like(np.asarray(t, dtype=float)))
+    monkeypatch.setattr(hydrology, "LAKE_ICE_SUBLIMATION_M_PER_YR", 0.0)
+    theta = 0.05 * np.arange(40)
+    elevation = np.full(40, 300.0)
+    elevation[0:15] = -100.0
+    elevation[28:31] = -60.0
+    temperature = np.zeros(40)
+    temperature[cold] = -10.0
+    precipitation = np.full(40, 800.0)
+    plate = _flow_line_plate(0, theta, elevation)
     world = World(seed=0, plates=[plate])
+    areas = _node_areas(world)
+    years = 10_000.0
 
-    precipitation = np.full(16, 500.0)
-    mildly_cold_temperature = np.full(16, -3.0)  # just below FREEZE_POINT_C
+    for _ in range(2):
+        fields = hydrology.compute_hydrology(world, precipitation, temperature, years=years)
+        plate.set_fields_on_plate(lake_depth=fields.lake_depth, glacier_depth=fields.glacier_depth)
+    assert fields.lake_depth[28:31].min() > 0.0  # the pit holds a lake
+    liquid_m3 = float(np.dot(np.where((temperature < 0.0) | fields.is_ocean, 0.0, precipitation) / 1000.0, areas))
+    source_m3 = liquid_m3 + fields.ice.ledger.meltwater_m3 / years  # Budyko runoff is all of it with no evaporation
+    ocean_m3 = float(fields.discharge_m3_s[fields.is_ocean].sum()) * hydrology.SECONDS_PER_YEAR
+    ledger = fields.lake_water_ledger
+    stored_or_lost_m3_per_year = (
+        ledger.storage_change_m3 + ledger.ice_storage_change_m3 + ledger.evaporation_m3
+        + ledger.sublimation_m3
+    ) / years
+    assert ocean_m3 == pytest.approx(source_m3 - stored_or_lost_m3_per_year, rel=1e-9)
+    assert abs(ledger.residual_m3) <= 1e-9 * ledger.external_supply_m3
 
-    fields = hydrology.compute_hydrology(world, precipitation, mildly_cold_temperature, years=1_000_000)
-    assert fields.lake_depth[7] == 0.0  # frozen solid despite being only mildly cold
-    assert fields.ice.ledger.frozen_lake_m3 > 0.0
 
-
-def test_compute_hydrology_freezing_river_blocks_flow_and_banks_ice_at_the_freeze_point():
-    # Same 12-node monotonic-descent chain as the end-to-end test, but just cold enough (-3C)
-    # to freeze. No liquid water should
-    # reach the ocean at all this step -- it's blocked and frozen in place instead.
+def test_compute_hydrology_banks_a_cold_chains_snow_as_ice():
+    # Same 12-node monotonic-descent chain as the end-to-end test, just below freezing (-3C)
+    # with no seasonal swing: every drop falls as snow and none melts, so no liquid water
+    # reaches the ocean and the snow stays on the ground as ice (issue #353: gathered into its
+    # ice body).
     d = 0.002
     theta = d * np.arange(12)
     elevation = 500.0 - 60.0 * np.arange(12)
     plate = _flow_line_plate(0, theta, elevation)
     world = World(seed=0, plates=[plate])
 
-    precipitation_at_nodes = np.full(12, 800.0)
-    temperature_at_nodes = np.full(12, -3.0)
-    fields = hydrology.compute_hydrology(world, precipitation_at_nodes, temperature_at_nodes, years=1_000_000)
-
-    land = ~fields.is_ocean
-    assert np.all(fields.flow_target[land] == -1)  # every land node frozen -- nothing routes onward
-    assert np.all(fields.water_deposited[fields.is_ocean] == 0.0)  # so nothing reaches the ocean this step
-    # The snow stays on the ground as ice instead (issue #353: gathered into its ice body).
+    fields = hydrology.compute_hydrology(world, np.full(12, 800.0), np.full(12, -3.0), years=1_000_000)
     ledger = fields.ice.ledger
+    # Only a trace of the ice's own meltwater moves; no rain does.
+    ocean_m3 = float(fields.discharge_m3_s[fields.is_ocean].sum()) * hydrology.SECONDS_PER_YEAR * 1_000_000
+    assert ocean_m3 <= ledger.meltwater_m3 * (1.0 + 1e-9)
     assert ledger.accumulation_m3 > 0.0
-    assert float(np.dot(fields.glacier_depth, _node_areas(world))) == pytest.approx(ledger.closing_m3 + ledger.frozen_river_ice_m3)
+    assert float(np.dot(fields.glacier_depth, _node_areas(world))) == pytest.approx(ledger.closing_m3)
 
 
 def test_compute_hydrology_snows_on_an_ice_cap_above_freezing_but_lets_its_water_drain():
-    # Same 12-node descending chain as the freezing-river test, at a sampled temperature of
+    # Same 12-node descending chain as the cold-chain test, at a sampled temperature of
     # +2C -- above freezing. A bare chain routes rain to the sea. An otherwise-identical chain
     # that already carries a real ice cap (200 m of glacier) still takes its precipitation as
-    # snow, but liquid water on it isn't frozen in place: it drains downhill, and none settles
-    # as river ice. Freezing it there let a river rebuild a warm ice plug every step (#503).
+    # snow, but liquid water on it isn't frozen in place: it drains downhill. Freezing it there let a river rebuild a warm ice plug every step (#503).
     d = 0.002
     theta = d * np.arange(12)
     elevation = 500.0 - 60.0 * np.arange(12)  # last two nodes are below sea level -> ocean
@@ -996,7 +1031,6 @@ def test_compute_hydrology_snows_on_an_ice_cap_above_freezing_but_lets_its_water
     iced_land = ~iced_fields.is_ocean
     assert np.all(iced_fields.flow_target[iced_land] >= 0)  # water on the warm cap drains downhill
     assert iced_fields.ice.ledger.accumulation_m3 > 0.0  # the precipitation still lands as snow
-    assert iced_fields.ice.ledger.frozen_river_ice_m3 == 0.0  # and no water freezes where it settles
 
 
 def test_group_rivers_groups_confluence_and_finds_max_flow_mouth():
@@ -1134,6 +1168,103 @@ def test_group_rivers_on_a_real_monotonic_chain_is_one_unbranched_network():
     assert rivers[0].num_tributaries == 0
     assert rivers[0].mouth_type == "ocean"
     assert fields.is_ocean[fields.flow_target[rivers[0].mouth_idx]]
+
+
+def _is_neighbour_pair(fields, a: int, b: int) -> bool:
+    return b in fields.neighbor_idx[a] or a in fields.neighbor_idx[b]
+
+
+def test_a_spill_hop_across_a_lake_ends_the_river_at_the_lake():
+    fields = spill_hop_fields(lake_m=15.0)
+
+    rivers = sorted(hydrology.group_rivers(fields), key=lambda r: r.mouth_idx)
+    inflow, outflow = rivers
+    assert sorted(inflow.member_idx.tolist()) == [0, 1, 2]
+    assert (inflow.mouth_idx, inflow.mouth_type) == (2, "lake")
+    assert outflow.member_idx.tolist() == [6]
+    assert outflow.mouth_type == "ocean"
+
+    _, _, _, crosses_lake = hydrology.flow_segments(fields, inflow.member_idx)
+    pairs = segment_pairs(fields, inflow.member_idx)
+    # Drawn into the lake's edge and no further: nothing across the water or beyond the rim.
+    assert pairs == {(0, 1), (1, 2), (2, 3)}
+    assert all(_is_neighbour_pair(fields, a, b) for a, b in pairs)
+    assert crosses_lake.tolist() == [m == 2 for m in inflow.member_idx.tolist()]
+
+
+def test_a_spill_hop_over_a_dry_basin_is_drawn_along_its_spill_path():
+    # A pre-#520 cache has no should_spill; the hop is still found from spill_target.
+    fields = spill_hop_fields(lake_m=0.0, store_should_spill=False)
+
+    rivers = hydrology.group_rivers(fields)
+    assert len(rivers) == 1
+    assert sorted(rivers[0].member_idx.tolist()) == [0, 1, 2, 6]
+
+    assert segment_pairs(fields, rivers[0].member_idx) == {(0, 1), (1, 2), (6, 7)} | DRY_SPILL_PATH
+    step_m = geometry.angular_distance(fields.points[0], fields.points[1]) * hydrology.PLANET_RADIUS_KM * 1000.0
+    assert rivers[0].length_m == pytest.approx(7 * step_m, rel=1e-3)
+
+
+def test_a_united_lake_pooling_hop_is_found_from_should_spill():
+    # A united lake's sinks are routed to its lowest sink, not to their spill_target
+    # after same-step hierarchy resolution, so only should_spill marks the hop.
+    fields = spill_hop_fields(lake_m=0.0)
+    fields.spill_target[2] = 5
+
+    assert segment_pairs(fields, [2]) == DRY_SPILL_PATH
+
+
+def test_a_spill_hop_over_a_one_way_rim_edge_still_follows_its_spill_path():
+    # k-NN is directed: here only node 6 lists rim 5 as a neighbour, not the other way round.
+    fields = spill_hop_fields(lake_m=0.0)
+    fields.neighbor_idx[5] = [4, 4]
+
+    rivers = hydrology.group_rivers(fields)
+    assert len(rivers) == 1
+    assert rivers[0].mouth_type == "ocean"
+    assert segment_pairs(fields, [2]) == DRY_SPILL_PATH
+
+
+def test_a_spill_hop_with_no_spill_path_keeps_its_straight_segment():
+    # Node 6 is reachable only through the ocean, so there's no spill path over land.
+    fields = spill_hop_fields(lake_m=0.0)
+    fields.neighbor_idx[5] = [4, 4]
+    fields.neighbor_idx[6] = [7, 7]
+
+    _, _, _, crosses_lake = hydrology.flow_segments(fields, np.array([2]))
+    assert segment_pairs(fields, [2]) == {(2, 6)}
+    assert not crosses_lake[0]
+    rivers = hydrology.group_rivers(fields)
+    assert len(rivers) == 1
+    assert rivers[0].mouth_type == "ocean"
+
+
+def test_a_spill_path_never_climbs_past_the_deepest_notch_above_the_spill_level():
+    # The routed spill level is 40 m; a rim more than BREACH_MAX_NOTCH_M above that can't be
+    # the pass routing used, so the search gives up and the straight segment stays.
+    fields = spill_hop_fields(lake_m=0.0)
+    fields.filled_elevation[2] = 40.0
+    fields.elevation[5] = 40.0 + breaching.BREACH_MAX_NOTCH_M + 1.0
+
+    assert segment_pairs(fields, [2]) == {(2, 6)}
+
+
+def test_spill_paths_are_cached_per_fields_and_left_out_of_saves():
+    fields = spill_hop_fields(lake_m=0.0)
+    hydrology.group_rivers(fields)
+    assert set(fields._spill_path_cache.paths) == {2}
+
+    restored = pickle.loads(pickle.dumps(fields))
+    assert "_spill_path_cache" not in restored.__dict__
+    assert segment_pairs(restored, [2]) == DRY_SPILL_PATH
+
+
+def test_a_spill_hop_from_a_sink_under_visible_water_draws_nothing():
+    fields = spill_hop_fields(lake_m=15.0, sink_m=15.0)
+
+    _, _, _, crosses_lake = hydrology.flow_segments(fields, np.array([2]))
+    assert segment_pairs(fields, [2]) == set()
+    assert crosses_lake[0]
 
 
 def test_compute_river_speed_increases_with_slope_and_flow():
@@ -1277,9 +1408,10 @@ def test_physical_water_accounts_for_transit_loss_lake_retention_and_ocean_arriv
     assert source_m3_per_yr.sum() == pytest.approx(evaporated + settled.sum())
 
 
-def test_ice_ledger_closes_across_steps_with_frozen_river_ice_a_step_late():
-    # Cold, snowy uplands above a band whose summers melt snow that refreezes in place as
-    # river ice: that ice is added after the solve and joins next step's opening volume.
+def test_ice_ledger_closes_across_steps_and_meltwater_never_refreezes_as_river_ice():
+    # Cold, snowy uplands above a band whose summers melt snow. That meltwater used to settle on
+    # the band and refreeze as river ice, added after the solve; now it flows on as water (RFC
+    # 0014 D2(b), #539), and each step's closing ice is the next step's opening.
     d = 0.002
     theta = d * np.arange(12)
     elevation = 500.0 - 60.0 * np.arange(12)
@@ -1293,11 +1425,11 @@ def test_ice_ledger_closes_across_steps_with_frozen_river_ice_a_step_late():
     for _ in range(2):
         fields = hydrology.compute_hydrology(world, precipitation, temperature, years=1_000_000, seasonal_amplitude_at_nodes=amplitude)
         ledgers.append(fields.ice.ledger)
-        assert float(np.dot(fields.glacier_depth, areas)) == pytest.approx(fields.ice.ledger.closing_m3 + fields.ice.ledger.frozen_river_ice_m3)
+        assert float(np.dot(fields.glacier_depth, areas)) == pytest.approx(fields.ice.ledger.closing_m3)
         plate.set_fields_on_plate(glacier_depth=fields.glacier_depth)
     first, second = ledgers
-    assert first.frozen_river_ice_m3 > 0.0
-    assert second.opening_m3 == pytest.approx(first.closing_m3 + first.frozen_river_ice_m3)
+    assert first.meltwater_m3 > 0.0
+    assert second.opening_m3 == pytest.approx(first.closing_m3)
 
 
 def test_ice_flow_target_follows_the_ice_surface_on_the_ice_and_the_ground_off_it():

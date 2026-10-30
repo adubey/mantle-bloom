@@ -3,8 +3,8 @@
 These views appear under Map View → "Debug >" when the page is loaded with
 [`?deb`](debug-ui.md#the-deb-url-flag).
 
-Like every other render view, most of these are just `GET /world/render?view=...` PNGs (see
-[api-reference.md](../api-reference.md)'s `/world/render`), billed the same as any render and
+Like every other render view, most of these are just `GET /worlds/{world_id}/render?view=...` PNGs (see
+[api-reference.md](../api-reference.md)'s `/worlds/{world_id}/render`), billed the same as any render and
 carrying no simulation side effects. Three of the ten entries in the group --
 **Plate Inspector**, **Rivers**, and **Lake Inspector** -- are client-rendered JSON views
 instead; they're primarily feature/inspection tools rather than diagnostic-metric views, but
@@ -102,17 +102,17 @@ thin the smear.
 
 ## Points (`platesDetail`)
 
-`GET /world/render?view=platesDetail` draws each plate's raw terrain nodes (quad cell centres)
+`GET /worlds/{world_id}/render?view=platesDetail` draws each plate's raw terrain nodes (quad cell centres)
 as dots coloured by elevation (not the smoothed territory fill that the "Plates & Faults" view
 uses). It is the fastest way to *see* lattice-level damage -- stray one-cell "teeth", ragged or
 overlapping plate edges -- against the actual elevation field. Clicking a dot
-(`GET /world/elevation_point_at`) reports the nearest node's plate, plate-local `phi`/`theta`
+(`GET /worlds/{world_id}/elevation_point_at`) reports the nearest node's plate, plate-local `phi`/`theta`
 and elevation, and marks it on the map. See
-[api-reference.md](../api-reference.md) (`GET /world/render`) for the full view list.
+[api-reference.md](../api-reference.md) (`GET /worlds/{world_id}/render`) for the full view list.
 
 ## Erosion & Deposition (`geomorph`)
 
-`GET /world/render?view=geomorph` colours every node by its net elevation change over the
+`GET /worlds/{world_id}/render?view=geomorph` colours every node by its net elevation change over the
 last step -- `erosion.ErosionResult.net_elevation_change_m` (post-erosion elevation minus
 pre-erosion, so erosion minus every deposition pathway plus the small flatten/lake-siltation
 terms; *not* tectonic deform, isostasy, or volcanism), retained on `World.erosion_cache`
@@ -134,7 +134,7 @@ rather than erroring.
 
 ## `elevReason` render view (last elevation change)
 
-`GET /world/render?view=elevReason` colours every node by its
+`GET /worlds/{world_id}/render?view=elevReason` colours every node by its
 `elev_change_reason` field -- one categorical
 `elevation_lines.ELEV_CHANGE_*` code per node recording *which process last moved that node's
 elevation* by more than `ELEV_CHANGE_MIN_DELTA_M` (2 m in a step). Warm hues = crust being
@@ -167,7 +167,7 @@ since -- reads all-NONE and fills in over the next few steps. `ELEV_CHANGE_MIN_D
 
 ## `overlapAge` render view (plate overlap onset)
 
-`GET /world/render?view=overlapAge` draws a muted land/ocean backdrop (same grid as
+`GET /worlds/{world_id}/render?view=overlapAge` draws a muted land/ocean backdrop (same grid as
 Elevation) overlaid with one dot per node that is **currently** sitting on top of another
 plate's territory, coloured by how long it has been --
 `world.elapsed_years - overlap_onset_years`
@@ -179,7 +179,7 @@ resolves). Clamped at 60 Myr.
 `overlap_onset_years` is a per-node surface field stamped every step by
 `merge_split.update_overlap_tracking`, which goes through the same
 `plates.compute_node_overlap` the Plate Inspector's own overlap fractions use -- so the map,
-the `since_years` number in `GET /world/plates` / `App.tsx` (`#21 (15%, since 178 My)`), and
+the `since_years` number in `GET /worlds/{world_id}/plates` / `App.tsx` (`#21 (15%, since 178 My)`), and
 `python -m app.plate_diagnostics`'s `21 -> 0  15.2%  since 178.0 My` line are all the same
 underlying node set. A save written before the field existed loads with every onset at its
 default and shows an all-backdrop map / `since` omitted until it is stepped. An all-backdrop map on a stepped world is the healthy case.
@@ -193,7 +193,7 @@ classified and a deep overlap just sat.
 
 ## Added/removed points (`nodeAge`)
 
-`GET /world/render?view=nodeAge` draws the same muted land/ocean backdrop as `overlapAge`,
+`GET /worlds/{world_id}/render?view=nodeAge` draws the same muted land/ocean backdrop as `overlapAge`,
 overlaid with two independent dot layers: warm dots (pale yellow -> amber -> burnt orange ->
 dark rust) for still-live nodes created recently, and cool dots (pale blue -> sky blue -> deep
 blue -> navy) for nodes no longer part of any plate that were removed recently
@@ -230,10 +230,10 @@ the common case between bursts of boundary activity, *not* necessarily unhealthy
 empty `overlapAge` is (that view's empty case specifically means "no stuck overlaps," a
 positive signal; this one's empty case just means "quiet right now").
 
-### Click-to-inspect -- `GET /world/node_at`
+### Click-to-inspect -- `GET /worlds/{world_id}/node_at`
 
-Clicking a point on the `nodeAge` view calls `GET /world/node_at?lat_deg&lon_deg`, which --
-unlike `/world/sample_at` (climate-grid lookup) -- reports the actual nearest live
+Clicking a point on the `nodeAge` view calls `GET /worlds/{world_id}/node_at?lat_deg&lon_deg`, which --
+unlike `/worlds/{world_id}/sample_at` (climate-grid lookup) -- reports the actual nearest live
 node's own plate-local `phi`/`theta` (recovered by inverse-transforming its
 world position through its owning plate's frame, which round-trips exactly to the node's own
 creation-time value), elevation, and `node_created_years`, plus -- independently, since a
@@ -245,7 +245,7 @@ both plate ownership and per-node fields needn't build the k-d tree twice).
 
 ## Cratons (`craton`)
 
-`GET /world/render?view=craton` (Debug > Cratons) colours every node by its craton state
+`GET /worlds/{world_id}/render?view=craton` (Debug > Cratons) colours every node by its craton state
 (`render_image._render_craton_view` / `craton_colors`, see `cratons.py`). Deep red marks
 cratons that predate the run, seeded at generation. Orange marks cratons that formed during
 it. Both fade toward grey as a column's cratonic share thins. Ordinary continental crust is
@@ -274,18 +274,18 @@ the writer behind an audit clip (`probe_craton_clips.py`) and the cause of a mer
 The remaining four entries in the "Debug >" group are documented as their own feature views,
 not here:
 
-- **Plate Inspector** (`GET /world/plates`, `frontend/src/PlateInspector.tsx`) plots every
+- **Plate Inspector** (`GET /worlds/{world_id}/plates`, `frontend/src/PlateInspector.tsx`) plots every
   plate's nodes and outline client-side and reports the same motion / shape / overlap numbers
   the CLI plate dump does -- see [Plate Inspector diagnostic fields](#plate-inspector-fields)
   below for the field walkthrough, and
   [simulation-model/rendering-and-inspectors.md#plate-inspector](../simulation-model/rendering-and-inspectors.md#plate-inspector) for the panel
   layout and bounding-ellipse fit.
-- **Rivers** and **Lake Inspector** (`GET /world/rivers` / `GET /world/lakes`,
+- **Rivers** and **Lake Inspector** (`GET /worlds/{world_id}/rivers` / `GET /worlds/{world_id}/lakes`,
   `RiverInspector.tsx` / `LakeInspector.tsx`) render flow networks and lake basins from raw
   JSON -- see
   [simulation-model/hydrology.md#river-inspector](../simulation-model/hydrology.md#river-inspector) and
   [simulation-model/hydrology.md#lake-inspector](../simulation-model/hydrology.md#lake-inspector).
-- **Plates & Faults** (`GET /world/faults`, `GET /world/earthquakes`,
+- **Plates & Faults** (`GET /worlds/{world_id}/faults`, `GET /worlds/{world_id}/earthquakes`,
   `frontend/src/PlatesAndFaults.tsx`) merges plate outlines with the fault-trace and
   earthquake overlays. Its Overlays panel also toggles faults, cratons and a translucent
   ocean/lake layer (cratons show through it), and clicking the legend's Cratons row isolates
@@ -306,7 +306,7 @@ of its own nodes, and `since_years` -- the earliest `elapsed_years` any still-ov
 first went over another plate; `main._plate_overlaps` / the `overlap_onset_years` field,
 see the `overlapAge` view above), and `collisions` (`world.collision_progress` timers
 involving the plate). Full field reference: [api-reference.md](../api-reference.md)
-(`GET /world/plates`).
+(`GET /worlds/{world_id}/plates`).
 
 Use the Inspector for the *visual* read -- concentric rings (pole winding), a plate's dots
 sitting inside a neighbour's (overlap), a long straight sawtooth chord across open ocean (an
@@ -316,10 +316,10 @@ over-extended lattice) -- and `python -m app.plate_diagnostics` for the numbers 
 
 Two tools were scoped out but never started:
 
-1. **A map-view render of the stranded-basin report.** `GET /world/stranded_basins` already
+1. **A map-view render of the stranded-basin report.** `GET /worlds/{world_id}/stranded_basins` already
    returns `centroid_xyz`/`floor_xyz` ready for one -- currently the report is CLI/JSON-only
    (see [`python -m app.hydroclimate.stranded_basins`](offline-cli.md#stranded-basins-cli)), with no map view to
    see the basins in place.
-2. **A `/world/sample_at` field for the `geomorph` / `elevReason` click-popup.** The popup is
-   only wired for elevation/biome/combined today (see `GET /world/sample_at` in
+2. **A `/worlds/{world_id}/sample_at` field for the `geomorph` / `elevReason` click-popup.** The popup is
+   only wired for elevation/biome/combined today (see `GET /worlds/{world_id}/sample_at` in
    [api-reference.md](../api-reference.md)).

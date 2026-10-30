@@ -13,7 +13,7 @@ show. This page indexes the tools for that. The details are on the pages under
 | [Debug map views](debugging/map-views.md) | the Map View "Debug >" group: speckle, platesDetail, geomorph, elevReason, overlapAge, nodeAge, cratons, the Plate Inspector |
 | [`bin/debug` scripts](#bin-debug-scripts) | about 70 checked-in measurement, probe and replay scripts, indexed below |
 
-For map images of a saved world, use `GET /world/render?view=...`
+For map images of a saved world, use `GET /worlds/{world_id}/render?view=...`
 ([api-reference.md](api-reference.md)) or `bin/debug/render_craton_map.py --load` for a plain
 plates-and-cratons map. Record the save or seed, elapsed time and view with the image.
 
@@ -73,6 +73,7 @@ cratons sit (RFC 0009).
 | [`measure_belt_marks.py`](debugging/scripts-craton-layout.md#measure_belt_markspy) | belt area, formation audit and step-time cost of belt marks |
 | [`render_craton_map.py`](debugging/scripts-craton-layout.md#render_craton_mappy) | a plain map of plates, crust and cratons from a seed or save |
 | [`render_layout_sheets.py`](debugging/scripts-craton-layout.md#render_layout_sheetspy) | contact sheets of cratons-first layouts at t = 0 |
+| [`layout_explorer.py`](debugging/scripts-craton-layout.md#layout_explorerpy) | how the cratons-first layout knobs change many seeds' layouts, interactively in a browser |
 | [`render_earth_cratons.py`](debugging/scripts-craton-layout.md#render_earth_cratonspy) | Earth's plates over its cratons, as a reference figure |
 
 ### Collisions and plate motion
@@ -95,38 +96,18 @@ cratons sit (RFC 0009).
 ### Rifting and thin-shell diagnostics
 
 [Rifting and thin-shell scripts](debugging/scripts-rifting.md): RFC 0010's connected-source
-Gate 2 load, mesh and capacity diagnostics, plus Gate 3 average-stress history sensitivities.
+Gate 2 load, mesh and capacity diagnostics.
 
 | Script | Answers |
 |---|---|
 | [`audit_gate2_assumption_basis.py`](debugging/scripts-rifting.md#audit_gate2_assumption_basispy) | independent heat-flow, strain-rate and stress-assumption scales |
-| [`audit_gate3_miyakejima_reference_profiles.py`](debugging/scripts-rifting.md#audit_gate3_miyakejima_reference_profilespy) | compact NOAA terrain trace and auxiliary Hughes GPS displacement digitization for the Miyakejima benchmark |
 | [`benchmark_gate2_coupled_shell.py`](debugging/scripts-rifting.md#benchmark_gate2_coupled_shellpy) | manufactured force, torque and resultant checks across a shared two-plate mesh |
 | [`calibrate_gate2_capacity.py`](debugging/scripts-rifting.md#calibrate_gate2_capacitypy) | column-capacity scales against published benchmarks and matched loads |
-| [`calibrate_gate3_average_stress.py`](debugging/scripts-rifting.md#calibrate_gate3_average_stresspy) | average-stress damage sensitivity, timestep partitioning and synthetic segment growth/linkage |
 | [`diagnose_gate2_column_envelope.py`](debugging/scripts-rifting.md#diagnose_gate2_column_envelopepy) | depth-integrated normal-fault and ductile lithosphere capacity scenarios |
-| [`evaluate_gate3_growth_history.py`](debugging/scripts-rifting.md#evaluate_gate3_growth_historypy) | one-hop collar extension, nucleation, adjacency growth and linkage screen for held-out RFC 0010 histories |
-| [`evaluate_gate3_spatial_history.py`](debugging/scripts-rifting.md#evaluate_gate3_spatial_historypy) | spatial damage patch sizes and material associations for held-out RFC 0010 histories |
-| [`test_gate3_magma_process_zone.py`](debugging/scripts-rifting.md#test_gate3_magma_process_zonepy) | paired dike-assisted damage and mesh sensitivity of a nonlocal stress process zone |
-| [`prototype_gate3_resolved_dike_tip.py`](debugging/scripts-rifting.md#prototype_gate3_resolved_dike_tippy) | 0.5 km elastic cutout around a pressurized dike tip with matched coarse displacement boundaries |
-| [`prototype_gate3_resolved_dike_damage.py`](debugging/scripts-rifting.md#prototype_gate3_resolved_dike_damagepy) | prestressed dike-tip damage coupling and aperture-compatibility screen |
-| [`prototype_gate3_cohesive_dike_interface.py`](debugging/scripts-rifting.md#prototype_gate3_cohesive_dike_interfacepy) | prestressed seam-stiffness sweep, pressure recalibration and event-scale damage response |
-| [`prototype_gate3_frictional_fault.py`](debugging/scripts-rifting.md#prototype_gate3_frictional_faultpy) | Coulomb fault prestress and dike-tip stress-transfer sensitivity across mesh spacings |
-| [`prototype_gate3_coupled_dike_fault_history.py`](debugging/scripts-rifting.md#prototype_gate3_coupled_dike_fault_historypy) | staged pressure history, carried Coulomb slip, and reduced dike/fault energy sensitivity |
-| [`prototype_gate3_finite_reservoir_tip_advance.py`](debugging/scripts-rifting.md#prototype_gate3_finite_reservoir_tip_advancepy) | fixed-mesh tip advance with finite-source pressure feedback and mesh comparison |
-| [`prototype_gate3_mapped_3d_fault_transfer.py`](debugging/scripts-rifting.md#prototype_gate3_mapped_3d_fault_transferpy) | mapped 3-D Miyakejima dike-to-fault elastic stress-transfer and quadrature sensitivity |
-| [`prototype_gate3_2d_viscoplastic_section.py`](debugging/scripts-rifting.md#prototype_gate3_2d_viscoplastic_sectionpy) | local 2-D stress transfer with layered brittle–ductile rheology |
-| [`run_gate3_2d_viscoplastic_transient.py`](debugging/scripts-rifting.md#run_gate3_2d_viscoplastic_transientpy) | short paired thinning-feedback sequence on the 2-D section prototype |
-| [`verify_gate3_material_advection.py`](debugging/scripts-rifting.md#verify_gate3_material_advectionpy) | manufactured affine marker-trajectory and finite-strain update check |
-| [`verify_gate3_marker_grid_transfer.py`](debugging/scripts-rifting.md#verify_gate3_marker_grid_transferpy) | manufactured marker/grid transfer loop with prescribed grid velocity |
-| [`run_gate3_section_marker_coupling.py`](debugging/scripts-rifting.md#run_gate3_section_marker_couplingpy) | FE section velocity advects markers and feeds material/thinning state into the next solve |
-| [`run_gate3_section_marker_moving_mesh.py`](debugging/scripts-rifting.md#run_gate3_section_marker_moving_meshpy) | moving FE mesh with full marker coverage and marker-state feedback |
-| [`audit_gate3_section_stress_basis.py`](debugging/scripts-rifting.md#audit_gate3_section_stress_basispy) | fixed-kinematics sensitivity of local brittle-plastic and creep stress targets |
 | [`replay_gate2_assumption_screen.py`](debugging/scripts-rifting.md#replay_gate2_assumption_screenpy) | crossed K0, mantle-rheology and pore-pressure scenarios on fixed loads |
 | [`replay_gate2_capacity.py`](debugging/scripts-rifting.md#replay_gate2_capacitypy) | thin-shell loads and capacity alternatives on the pinned Gate 1 events |
 | [`replay_gate2_coupled_event.py`](debugging/scripts-rifting.md#replay_gate2_coupled_eventpy) | pair-level stress sensitivity to contact loads and rigid-mode projections |
 | [`sensitivity_gate2_capacity.py`](debugging/scripts-rifting.md#sensitivity_gate2_capacitypy) | one-factor capacity sensitivity on captured node loads |
-| [`sweep_gate3_candidate_loads.py`](debugging/scripts-rifting.md#sweep_gate3_candidate_loadspy) | event-snapshot and cumulative node-history sensitivity sweeps for RFC 0010 Gate 3 |
 | [`validate_thin_shell_plate_meshes.py`](debugging/scripts-rifting.md#validate_thin_shell_plate_meshespy) | generated-plate mesh coverage, curved-surface and edge-condition checks |
 
 ### Crust and mantle budgets
@@ -167,13 +148,19 @@ Gate 2 load, mesh and capacity diagnostics, plus Gate 3 average-stress history s
 | Script | Answers |
 |---|---|
 | [`measure_river_endings.py`](debugging/scripts-water-ice.md#measure_river_endingspy) | rivers that reach neither sea nor lake |
+| [`measure_river_hops.py`](debugging/scripts-water-ice.md#measure_river_hopspy) | river lines drawn across lakes by spill hops |
 | [`measure_discharge_calibration.py`](debugging/scripts-water-ice.md#measure_discharge_calibrationpy) | river and glacier calibration on one save in two trees |
 | [`measure_lake_silt.py`](debugging/scripts-water-ice.md#measure_lake_siltpy) | lake area, volume and silt |
+| [`trace_lake_drainage_phases.py`](debugging/scripts-water-ice.md#trace_lake_drainage_phasespy) | modeled lake catchments through selected replay phases |
+| [`gate_lake_partition.py`](debugging/scripts-water-ice.md#gate_lake_partitionpy) | RFC 0014 G7 lake-solver response to fixed-forcing timestep partitions |
+| [`gate_lake_ice_cap.py`](debugging/scripts-water-ice.md#gate_lake_ice_cappy) | RFC 0014 G5 lake ice-cap equilibrium and sensitivities |
+| [`gate_lake_endpoint.py`](debugging/scripts-water-ice.md#gate_lake_endpointpy) | RFC 0014 G1 endpoint-vs-C qualification under D2(c) |
 | [`measure_breaching.py`](debugging/scripts-water-ice.md#measure_breachingpy) | depression breaching on and off |
 | [`measure_ice_sheet.py`](debugging/scripts-water-ice.md#measure_ice_sheetpy) | glacier extent, volume, erosion and the ice ledger |
 | [`measure_seasonal_melt.py`](debugging/scripts-water-ice.md#measure_seasonal_meltpy) | glaciated land by annual-mean temperature |
 | [`measure_ice_loading.py`](debugging/scripts-water-ice.md#measure_ice_loadingpy) | isostatic ice-load deflection |
 | [`measure_meltwater_faults.py`](debugging/scripts-water-ice.md#measure_meltwater_faultspy) | earthquakes triggered by ice unloading |
+| [`measure_climate_fields.py`](debugging/scripts-water-ice.md#measure_climate_fieldspy) | temperature, humidity and precipitation by latitude band in two trees |
 
 ### Surface, saves, sweeps and profiling
 

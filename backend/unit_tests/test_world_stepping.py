@@ -1,16 +1,25 @@
 import numpy as np
 from app.hydroclimate import climate
-from app.world import generate_world, step_world
+from app.torque import shift_plates_quasistatic
+from app.world import PROGRESS_HEARTBEAT_INTERVAL_S, generate_world, generate_world_progress, step_world, step_world_progress
 
 
 def test_generate_world_starts_plates_at_rest():
     # Motion is torque-driven (see torque.py) rather than fit from the mantle flow field at
-    # generation time -- a freshly generated world's plates haven't yet resolved any torque
-    # balance, so they start at rest and only acquire an omega once step_world's own
-    # Plate.shift runs.
+    # generation time. Freshly generated plates acquire omega in the first coupled step.
     world = generate_world(seed=10, num_plates=8)
     rates = [np.linalg.norm(p.omega) for p in world.plates]
     assert all(r == 0.0 for r in rates)
+
+
+def test_coupled_motion_returns_zero_displacement_for_empty_plates():
+    world = generate_world(seed=10, num_plates=4)
+    empty = world.plates[0]
+    empty._keys = np.array([], dtype=np.int64)
+
+    distances = shift_plates_quasistatic(world, years=1_000_000)
+
+    assert distances[empty.plate_id] == 0.0
 
 
 def test_generate_world_records_baseline_stats_without_leaking_a_climate_cache():
@@ -35,6 +44,44 @@ def test_step_world_skips_recording_stats_when_climate_is_off():
     step_world(world, years=1_000_000)
     assert world.climate_cache is None
     assert len(world.stats_history) == 1
+
+
+def test_step_world_progress_labels_phases_in_order():
+    # The run overlay's phase text (#629): per-pass labels plus one label per tail
+    # phase boundary, fractions non-decreasing to exactly 1.0.
+    world = generate_world(seed=10, num_plates=8)
+    progress = [m for m in step_world_progress(world, years=1_000_000) if m[0] == "progress"]
+    fractions = [fraction for _, fraction, _ in progress]
+    assert fractions[-1] == 1.0
+    assert all(b >= a for a, b in zip(fractions, fractions[1:]))
+    phases = [phase for _, _, phase in progress]
+    assert phases[0] == "Moving plates"
+    assert phases[-1] == "Balancing sea level"
+    assert "Raising mantle plumes" in phases
+    ordered = [
+        "Moving plates",
+        "Reshaping plates",
+        "Merging and splitting plates",
+        "Filling seafloor gaps",
+        "Resolving glaciers",
+        "Raising volcanoes",
+        "Forming natural resources",
+        "Balancing sea level",
+    ]
+    positions = [phases.index(phase) for phase in ordered]
+    assert positions == sorted(positions)
+
+
+def test_step_world_progress_with_everything_off_labels_only_the_final_pass():
+    # Movement and climate off: no per-plate units and no tail phases, so the only
+    # labels are the sea-level pass's own boundary and completion lines.
+    world = generate_world(seed=10, num_plates=8)
+    world.simulate_plate_movement = False
+    world.simulate_climate_biomes = False
+    assert list(step_world_progress(world, years=1_000_000)) == [
+        ("progress", 0.0, "Balancing sea level"),
+        ("progress", 1.0, "Balancing sea level"),
+    ]
 
 
 def test_step_world_gives_plates_nonzero_omega():
@@ -100,9 +147,7 @@ def test_step_world_at_doubled_climate_density_does_not_crash_and_uses_the_finer
 
 
 def test_pinned_omega_overrides_the_real_torque_balance():
-    """World.pinned_omegas (the "Debugging Worlds" tab's scripted-motion mechanism) should
-    make Plate.shift use the pinned value verbatim, bypassing torque.shift_plate's
-    own torque-balance recompute entirely -- not just happen to produce the same result."""
+    """World.pinned_omegas prescribes one plate's rate while the other plates still solve."""
     world = generate_world(seed=10, num_plates=8)
     pinned_plate = world.plates[0]
     pinned_omega = np.array([0.0, 0.0, 0.05])
@@ -224,3 +269,61 @@ def test_step_world_ends_with_every_column_inside_its_caps(monkeypatch):
     clamp = world.phase_budget["column_cap_clamp"]["scopes"]["all"]
     assert clamp["sum_hc_after"] > clamp["sum_hc_before"]
     assert clamp["sum_hm_after"] != clamp["sum_hm_before"]
+
+
+def test_step_world_progress_sends_heartbeats_from_its_slow_tail(monkeypatch):
+    # GitHub issue #611: the tail past the plate loops (topology, climate/erosion,
+    # caps, sea level) has no per-plate loop of its own, so a slow step went silent.
+    # An overdue tick must fire at each slow sub-boundary carrying the tail fraction --
+    # while a fast step stays exactly as silent as before. Progress lines are tagged
+    # ("progress", fraction, phase) (#629); heartbeats stay ("heartbeat", fraction).
+    world = generate_world(seed=10, num_plates=8)
+    now = [0.0]
+
+    def _fast_clock():
+        now[0] += PROGRESS_HEARTBEAT_INTERVAL_S + 1.0
+        return now[0]
+
+    monkeypatch.setattr("app.world._monotonic", _fast_clock)
+    messages = list(step_world_progress(world, 1_000_000))
+    progress = [m for m in messages if m[0] == "progress"]
+    heartbeats = [m for m in messages if m[0] == "heartbeat"]
+    assert len(progress) == 2 * 8 + 8  # per-plate units plus one labeled line per tail phase
+    fractions = [m[1] for m in progress]
+    assert fractions == sorted(fractions) and fractions[-1] == 1.0
+    assert len(heartbeats) == 4  # topology, erosion, geology, caps
+    assert all(m[1] == fractions[-2] for m in heartbeats)  # tail fraction, no progress implied
+
+
+def test_step_world_progress_stays_silent_between_ticks_when_fast():
+    # The mirror: a fast step's own per-plate ticks already prove life, so no
+    # heartbeat should pad the stream (progress lines still carry their labels, #629).
+    world = generate_world(seed=10, num_plates=8)
+    messages = list(step_world_progress(world, 1_000_000))
+    assert all(m[0] == "progress" for m in messages)
+    assert len(messages) == 2 * 8 + 8
+    assert "Moving magma" not in [m[2] for m in messages]  # interval-gated: step 1 isn't its turn
+
+
+def test_step_world_progress_labels_interval_gated_tail_passes():
+    # Interval-gated tail passes label only on their own steps (#629): with steps_taken
+    # at 3, the increment to 4 fires the magma-transport interval.
+    world = generate_world(seed=10, num_plates=8)
+    world.steps_taken = 3
+    progress = [m for m in step_world_progress(world, years=1_000_000) if m[0] == "progress"]
+    assert "Moving magma" in [phase for _, _, phase in progress]
+
+
+def test_generate_world_progress_sends_heartbeats_from_its_slow_tail(monkeypatch):
+    # Same #611 reasoning for world creation: the relief/soil/finish-bootstrap
+    # sub-calls subdivide the final third so a multi-minute generation reads as alive.
+    now = [0.0]
+
+    def _fast_clock():
+        now[0] += PROGRESS_HEARTBEAT_INTERVAL_S + 1.0
+        return now[0]
+
+    monkeypatch.setattr("app.world._monotonic", _fast_clock)
+    messages = list(generate_world_progress(seed=10, num_plates=8))
+    assert [m[0] for m in messages] == ["progress", "progress", "heartbeat", "heartbeat", "heartbeat", "progress", "done"]
+    assert [m[1] for m in messages if m[0] != "done"] == [1 / 3, 2 / 3, 3 / 4, 5 / 6, 11 / 12, 1.0]

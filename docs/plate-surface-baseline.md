@@ -111,7 +111,7 @@ or merged. "Current" is what the line code does today; "Phase 3" is the proposed
 | `volcano_active_years_remaining` | Countdown | interp / nearest / nearest | Max on coarsen. Interpolating a countdown invents partial lifetimes. |
 | `elev_change_reason` | Categorical, diagnostic | nearest | Vote. Prefer structural codes (collision…fault, see `ELEV_CHANGE_STRUCTURAL_OVERRIDE_M_PER_MYR`) over geomorphic ones on ties. |
 | `overlap_onset_years` | History, diagnostic (0 = not overlapping) | nearest | Min over non-zero children. Recomputed each step by `merge_split.update_overlap_tracking`. |
-| `node_created_years` | **Write-once** (−1 sentinel = predates tracking) | nearest | Min over set children. Must survive every operation; the "Added/Removed Points" view and `GET /world/node_at` depend on it. |
+| `node_created_years` | **Write-once** (−1 sentinel = predates tracking) | nearest | Min over set children. Must survive every operation; the "Added/Removed Points" view and `GET /worlds/{world_id}/node_at` depend on it. |
 
 Positions (`phi`, `theta` for lines) are not fields: they are topology. Rigid rotation changes
 only `Plate.frame` and must never resample anything.
@@ -133,7 +133,7 @@ remapped. Split and merge already define them (`_plates_from_node_masks`,
 | `collision_progress`, `overlap_progress` | `(plate_id, plate_id)` | Yes |
 | `hydrology_cache`, `erosion_cache`, `node_*_cache`, `climate_cache` | global node order at build time | Derived. They must be invalidated whenever topology or node order changes, not just on rotation. |
 | RNG streams in `lithosphere_plate._erupt_melted_nodes`, `_ignite_early_rift_volcanoes`, `volcanism.apply_volcanic_activity` | `(seed, year, plate_id, line_index)` | **No.** See §4.4. |
-| `GET /world/elevation_point`, `/world/elevation_point_at` | `line_index` into `sorted_nonempty_lines` | UI API. Needs a representation-neutral node address. |
+| `GET /worlds/{world_id}/elevation_point`, `/worlds/{world_id}/elevation_point_at` | `line_index` into `sorted_nonempty_lines` | UI API. Needs a representation-neutral node address. |
 
 ## 3. Invariants and proposed tolerances
 

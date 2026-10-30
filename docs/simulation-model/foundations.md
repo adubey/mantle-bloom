@@ -212,9 +212,10 @@ Behind a flag, a random world (no sketch, no premade world) is laid out cratons 
 (`continent_layout.CRATONS_FIRST_DEFAULT = False`) until the RFC's gate G3 decides whether it
 replaces the tiling above; `generate_plates(..., cratons_first=True)` or
 `world.generate_world(..., cratons_first=True)` turns it on. The Generate World dialog's
-Random tab exposes this as the “Craton-first terrain” checkbox, and `POST /world/generate`
-accepts the `cratons_first` field. Sketch and premade worlds always keep plates first, since
-their geography comes from a drawing or from data.
+Random tab enables it by default (Advanced settings is the only place to turn it off),
+and `POST /worlds/{world_id}/generate` accepts the `cratons_first` field. Sketch and
+premade worlds always keep plates first, since their geography comes from a drawing or
+from data.
 
 `lithosphere_plate.cratons_first_layout` builds the layout before any plate exists, on a
 whole-sphere cell lattice at the world's node spacing (`layout_lattice.lattice`). Steps 1-3
@@ -222,7 +223,7 @@ are `continent_layout.build_geography`; the relief fields are drawn next and giv
 mask (continental crust whose relief sample clears the land threshold); steps 4-5 are
 `plate_partition.partition_plates`, which reads that mask:
 
-1. **Continents.** 2-6 centres (`CONTINENT_COUNT_RANGE`), Poisson-disc sampled
+1. **Continents.** 4-7 centres (`CONTINENT_COUNT_RANGE`), Poisson-disc sampled
    `CONTINENT_SPACING_KM = 4000` apart. `continental_fraction` is a share of the surface here,
    clamped to 0.05-0.9 and defaulting to `plates.CONTINENTAL_AREA_FRACTION = 0.5`; a
    Dirichlet draw (`CONTINENT_SIZE_CONCENTRATION = 2`) splits that area between continents.
@@ -284,8 +285,8 @@ raised to at least `cratons.CRATON_HOST_MIN_HC_M` and seeded as craton
 ([cratons](tectonics.md#cratons)). The layout measures over 40 seeds are in
 [analysis/issue462](../../analysis/issue462/README.md).
 
-For cratons-first worlds, `world.generate_world` then asks
-`torque.predict_plate_motion` for each plate's first-step angular velocity without applying
+For cratons-first worlds, `world.generate_world` solves all plates together with
+`torque.solve_plates_quasistatic` for their first-step angular velocities without applying
 the rotation. `initial_terrain.apply_predicted_orogens` finds above-sea-level continental
 contacts that are converging, selects a relatively straight section up to 1,000 km long, then
 places a short ridge on the less-cratonic plate (sections with more than 100 km RMS bend are
@@ -299,7 +300,11 @@ erosion. Generation keeps the plates at their original positions and elapsed tim
 After the atmosphere bootstrap,
 `initial_terrain.initialize_river_channels` computes climate and one zero-duration hydrology
 routing pass; it persists channels on routed river nodes, with depth scaled from 20 to 120 m
-by discharge. Its initial river mask and channel fields omit routes that stay within 10 degrees
+by discharge. The pass gives depression breaching and basin filling a drainage history of
+`INITIAL_DRAINAGE_HISTORY_YEARS` (1 Myr, `compute_hydrology`'s `history_years`), since the
+generated terrain stands for a history it never ran: with no time to carve or fill, every pit
+ended a river (#218). Ice and every other rate still see a zero-length step. The breach
+notches it cuts persist in `breach_notch_depth_m`, as a step's do. Its initial river mask and channel fields omit routes that stay within 10 degrees
 of straight for more than 400 km. Cold land above 2,500 m receives a 150 m initial ice cap,
 leaving the rest of the relief available to later erosion. This generation-only initialization
 is implemented in `initial_terrain.py` (#477).
@@ -314,16 +319,16 @@ A cratons-first world can replace its noise-shaped continental relief with relie
 a synthetic tectonic history (#218). It is off by default
 (`synthetic_relief.SYNTHETIC_RELIEF_DEFAULT = False`); `generate_world(...,
 cratons_first=True, synthetic_relief=True)`, the `synthetic_relief` field of
-`POST /world/generate`, or the Generate World dialog's "Relief from a synthetic history"
-checkbox (shown under "Craton-first terrain") turns it on. It has no effect without the
-cratons-first layout. `world.generate_world` builds the layout once, passes it to plate
+`POST /worlds/{world_id}/generate`, or the Generate World dialog's Random tab, which
+enables it by default alongside "Craton-first terrain" (both turn off only in Advanced
+settings), turns it on. It has no effect without the cratons-first layout. `world.generate_world` builds the layout once, passes it to plate
 generation, and then runs `apply_synthetic_relief` in place of
 `initial_terrain.apply_lowland_spherical_relief` and `apply_predicted_orogens`. Initial soil,
 rivers, ice and the craton and continental ledgers are seeded afterwards, on the new
 coastline.
 
 The pass reads the layout's cratons and continents and the first predicted plate motion
-(`torque.predict_plate_motion` over 5 Myr, read-only), and sets a target elevation for every
+(`torque.solve_plates_quasistatic`, read-only), and sets a target elevation for every
 continental-crust node:
 
 - **Sutures.** Two cratons on the same continent are a pair when they are some node's two
@@ -371,6 +376,27 @@ continental-crust node:
 - **Submerged continental crust.** A shelf deepens from 20 m to 150 m over a noise-varied
   80-300 km (narrowed on leading edges), then drops up to 1.8 km more over 400 km toward
   marginal-plateau depth. Within 100 km of the oceanic contact it slopes to -3.2 km.
+- **Drainage.** `drain_land` then fills most of the large, low closed basins the land
+  surface leaves between the coastal rise, the regional noise and the belts. A closed basin
+  is found by a priority flood from the world ocean (`hydrology.connected_ocean_mask`) over
+  the hydrology graph's 8 nearest neighbours, and its area sums the nodes' accounting areas.
+  - A basin of at least `DRAIN_FILL_MIN_AREA_KM2` (80,000 km²) that spills below
+    `DRAIN_KEEP_SPILL_M` (500 m) is raised until every node in it has a strictly lower
+    neighbour leading to the sea, climbing `DRAIN_GRADIENT_M_PER_KM` (0.01 m/km) from where
+    it drains.
+  - A seeded random set of those basins stays closed, like the Caspian, Aral, Chad or Eyre
+    basins: about `DRAIN_KEEP_LOW_SHARE` (1.7%) of land, within `DRAIN_KEEP_LOW_BAND`
+    (0.5-1.5 times that). A basin holding a submerged hole enclosed by land counts toward
+    it and always stays closed, since filling it would move the coastline.
+  - Higher basins (intermontane and plateau basins) and smaller ones stay closed and drain
+    to their own floor.
+
+  The river bootstrap's breach and water balance decide whether a closed basin holds a lake
+  or spills. The fill is sediment: the crust it adds over the undrained surface is booked as
+  `mobile_cover_m` (and its continental share), and a cratonic core's `craton_crust_m` stays
+  below it. Without this pass, about twice Earth's land area lay in closed depressions,
+  almost all in large low basins. The thresholds and the kept share follow Earth's basin
+  sizes and spill levels at node scale (`bin/debug/measure_earth_depressions.py`).
 
 All noise is `noise.IsotropicSphereNoise`, which sums 32 random-direction waves per octave.
 `SphereNoise`'s single wave per octave draws parallel stripes across a continent.
@@ -384,7 +410,8 @@ not changed:
 - The isostasy has no depleted, buoyant keel that would justify a thicker lid under shields.
 
 Cratonic cores stay within the craton host window, `cratons.CRATON_HOST_MIN_HC_M` to
-`CRATON_HOST_MAX_HC_M` (28-50 km), and `craton_crust_m` is reset to their new Hc. A core's
+`CRATON_HOST_MAX_HC_M` (28-50 km), and `craton_crust_m` is reset to their new Hc, less any
+basin fill on them. A core's
 crust doesn't flow, melt or delaminate, so a thicker core would keep an orogenic plateau for
 good. Young relief (young sutures, cordilleras, collision belts) starts with the
 `moho_thermal_lag_c` of crust just buried from the reference column (`orogeny.bury_moho`),
@@ -396,11 +423,15 @@ collapse-mobile from the first step.
 **Limits.** Oceanic crust is left as generated. GDH1 age-depth bathymetry, ridges and trenches
 need thermal buoyancy the column model does not have: an 11 km oceanic column floats no
 shallower than about -4.4 km at the 2 km Hm floor, so a -2.6 km ridge cannot be backed.
-Measured on seeds 447276134, 373936961, 910211954 and 374464662 at node density 4:
-- land p50 is 330-473 m (Earth 423 m), and 5-9% of land is above 2 km (Earth 11%);
-- lowland relief at 100 km is 150-157 m (Earth 166-173 m at node scale);
-- lakes cover 7-10% of land, against Earth's ~2%, because the scour pits and platform basins
-  are sub-grid features that form node-sized closed basins.
+Measured on seeds 447276134, 373936961, 910211954 and 374464662 at node density 4
+(`analysis/issue218/`):
+- land p50 is 365-513 m (Earth 423 m), and 5-8% of land is above 2 km (Earth 11%);
+- lowland relief at 100 km is 139-141 m (Earth 166-173 m at node scale); filling basins
+  flattens their floors;
+- 9-14% of land lies in a closed depression deeper than 1 m and 3-5% deeper than 100 m
+  (Earth 10% and 4%), and lakes cover 1.4-1.9% of land (Earth ~2%);
+- 34-51% of unfrozen land drains to a closed basin rather than the sea (Earth ~19%
+  endorheic), mostly in arid land: median land precipitation at t = 0 is 55-226 mm/yr.
 
 At the default `continental_fraction` (0.5 of the surface), a third of the ocean is shallower
 than 3 km (Earth 24%), because about 30% of the ocean floor is continental crust; 0.4 brings
@@ -418,7 +449,7 @@ The Generate World dialog's "Human-made" tab (alongside the default "Random" tab
 everything above unchanged) lets the user draw a coastline in-app (`SketchEditor.tsx`, a
 full-screen canvas: a coast pen, an eraser, and optional river/mountain pens) or load a
 coastline image drawn elsewhere, instead of generating land/sea from noise. Both paths hand
-the backend the same kind of PNG (`POST /world/generate`'s `sketch.image_base64`) under one
+the backend the same kind of PNG (`POST /worlds/{world_id}/generate`'s `sketch.image_base64`) under one
 shared convention: a mostly-white image, the coastline drawn as a near-black outline (strokes,
 not filled regions), with an optional blue-ish river stroke and brown/orange-ish mountain
 stroke. Land vs. sea is therefore never painted directly -- `worldsketch.parse_sketch_image`
@@ -538,6 +569,12 @@ shortcut. These limits help readers judge what the simulation can and cannot exp
 
 Deliberate scoping decisions for v1 (elevation only), each an acceptable line to draw rather
 than an oversight:
+
+- **Plume heat is a countdown, not diffusing temperature.** Conductivity, advection of
+  heat with the deforming lithosphere, and the plume's own thermal evolution are all
+  folded into the `plume_heat_myr` halo and the `PLUME_CRATON_WEAKENING` factor (see
+  [Mantle plumes](tectonics.md#mantle-plumes)), and a head arrival adds breakup stress
+  as a lump `PLUME_HEAD_STRESS` rather than integrating a time-varying load;
 
 - **Two plates' lattices can't tile a shared boundary exactly.** Each plate's cells sit in
   its own rotated frame, so whole cells leave a thin uncovered or doubly-covered margin where

@@ -102,3 +102,96 @@ Seed 910211954 stepped to 10 Myr in 1 Myr steps (`--step-myr 1,5,10`), with and 
 - Unbacked elevation grows equally in both runs (up to ~800 m on ~10% of nodes by 10 Myr),
   from stepping processes that move elevation without Hc (`back_elevation_gain_fields`
   documents this). It is not introduced by generation.
+
+## Initial drainage
+
+Generated worlds drained far less land to the sea at t = 0 than any stepped world.
+`drainage.json` holds the numbers below. Measures are per node, as above.
+
+- *Closed drainage* is land whose routed water ends somewhere other than the ocean. Rivers
+  stop at a node below freezing, so ends at a frozen node are counted apart.
+- *Depression depth* is how far water at a land node must rise before it can reach the
+  ocean, from a priority flood over the hydrology graph. The Earth reference floods
+  `earth_relief_10m` box-averaged to ~55 km (`bin/debug/measure_earth_depressions.py`).
+
+**Cause 1: the river bootstrap had no time.** `initialize_river_channels` ran one hydrology
+pass with `years=0`. That pass gave depression breaching no carving budget and let no basin
+fill within the step (`_spill_within_step`), so every pit ended a river. The pass now gives
+those two a drainage history of 1 Myr (`INITIAL_DRAINAGE_HISTORY_YEARS`); ice and the other
+rates still see a zero-length step. Before is the same code with the history set to 0, which
+matches origin/main `34fb86f`.
+
+| world (4 seeds) | unfrozen closed drainage | frozen-end drainage | lakes, share of land |
+|---|---|---|---|
+| cratons-first, before | 0.31–0.48 | 0.12–0.48 | 0.006–0.033 |
+| cratons-first, after | 0.24–0.42 | 0.14–0.49 | 0.004–0.030 |
+| synthetic relief, before | 0.55–0.70 | 0.17–0.29 | 0.061–0.106 |
+| synthetic relief, after | 0.48–0.64 | 0.18–0.29 | 0.060–0.086 |
+| saves (6–220 My) after one 1 Myr step | 0.05–0.26 | 0.14–0.53 | 0.004–0.066 |
+| Earth | ~0.19 (endorheic) | — | ~0.02 |
+
+A second bootstrap pass with the climate held fixed changes little (0.483 → 0.466 on
+910211954 with synthetic relief), so routing settles in one pass. A second pass with the
+climate recomputed lowers closed drainage further (to 0.32–0.50 with synthetic relief),
+because the new lakes wet the climate.
+
+**What remains is climate and terrain.** At t = 0, median land precipitation is 55–226 mm/yr,
+and 52–72% of land gets under 250 mm (saves: 155–354 mm and 44–59%). About 70% of the
+remaining closed drainage lies in that arid land, where the breach gate's water balance
+keeps basins closed, as it should. Synthetic relief also roughly doubles Earth's area of
+closed depressions:
+
+| share of land in a closed depression deeper than | 1 m | 100 m | 250 m | 500 m |
+|---|---|---|---|---|
+| Earth (~55 km) | 0.100 | 0.040 | 0.015 | 0.006 |
+| synthetic relief | 0.20–0.24 | 0.09–0.11 | 0.032–0.035 | 0.004–0.010 |
+| cratons-first | 0.07–0.12 | 0.012–0.038 | 0.001–0.016 | 0–0.008 |
+
+Removing one synthetic-relief component at a time (seeds 910211954 and 447276134): interior
+hills (shield, hill-country and plains noise) are the main source of depression area
+(100 m share 0.087–0.105 → 0.032–0.065); orogens make the deep basins (250 m share
+0.033–0.035 → 0.011); glacial pits and platform basins barely matter.
+
+**Draining the synthetic surface.** The excess closed-depression area is not small pits. By
+basin size, generated basins under 20 nodes cover 4.0–4.2% of land (Earth 4.3% under 20
+cells), but basins of 20 or more nodes cover 15–20% (Earth 5.8%), and most spill below
+500 m. High basins are, if anything, scarcer than on Earth (spill at 1 km or more: 0.5–1.8%,
+Earth 3.2%). On Earth, 1.7% of land lies in 12 closed basins of 80,000 km² or more that
+spill below 500 m (the largest ~413,000 km²).
+
+`synthetic_relief.drain_land` therefore fills closed basins of at least 80,000 km² (~20
+nodes at density 4) that spill below 500 m, by a priority flood from the world ocean with a
+0.01 m/km drainage gradient (Barnes et al. 2014), except a seeded random set of them
+covering about 1.7% of land (0.5–1.5 times that). It leaves high and small basins, and
+basins around enclosed submerged holes, to the bootstrap's breach and water balance. The
+fill is booked as mobile cover. Seeds and Earth as above; "before" is this branch with
+`drain_land` stubbed out.
+
+| density | surface | unfrozen closed drainage | lakes | depression > 1 m / > 100 m / > 250 m / > 500 m | lowland relief at 100 km (m) | land p50 (m) |
+|---|---|---|---|---|---|---|
+| 4x (4 seeds) | before | 0.48–0.64 | 0.060–0.086 | 0.19–0.24 / 0.09–0.11 / 0.032–0.035 / 0.004–0.010 | 148–159 | 350–482 |
+| | after | 0.34–0.51 | 0.014–0.019 | 0.089–0.140 / 0.034–0.048 / 0.013–0.027 / 0.003–0.007 | 139–141 | 365–513 |
+| 2x (2 seeds) | before | 0.67–0.70 | 0.073–0.076 | 0.17–0.21 / 0.06–0.11 / 0.010–0.042 / 0–0.006 | 139–148 | 394–396 |
+| | after | 0.48–0.55 | 0.017–0.030 | 0.099–0.118 / 0.029–0.054 / 0.006–0.026 / 0–0.004 | 131–133 | 398–417 |
+| 1x (2 seeds) | before | 0.62–0.70 | 0.066–0.067 | 0.14–0.18 / 0.06–0.09 / 0.011–0.028 / 0–0.005 | 160–171 | 389–440 |
+| | after | 0.42–0.51 | 0.022 | 0.064–0.089 / 0.027–0.044 / 0.005–0.018 / 0–0.003 | 151–153 | 393–462 |
+| Earth | | ~0.19 | ~0.02 | 0.100 / 0.040 / 0.015 / 0.006 | 166–173 | 423 |
+
+- Depressions and lakes now sit near Earth at every density. The land fraction, the share
+  above 2 km and the column backing are unchanged, and generation is no slower.
+- Lowland relief falls by about 12%, because filled basins have flat floors.
+- Unfrozen closed drainage stays above Earth's, mostly in the arid t = 0 climate's small dry
+  pits and the kept large basins.
+- The "before" depression rows were measured with an earlier `_drainage` that flooded along
+  each node's own neighbour list rather than in reverse. On test spheres the two give the
+  same shares.
+
+After ten 100 kyr steps (the app's default step) on origin/main `34fb86f` and on this branch:
+
+| seed | lakes | unfrozen closed drainage | depression > 1 m / > 100 m |
+|---|---|---|---|
+| 910211954, origin/main → branch | 0.093 → 0.039 | 0.26 → 0.23 | 0.197 / 0.082 → 0.141 / 0.045 |
+| 447276134, origin/main → branch | 0.143 → 0.052 | 0.38 → 0.32 | 0.237 / 0.110 → 0.149 / 0.035 |
+
+Lakes and shallow depressions grow over the first Myr of 100 kyr steps (from 1.4–1.9% and
+9–14% at t = 0), as stepping roughens the surface.

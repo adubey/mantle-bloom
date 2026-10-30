@@ -16,12 +16,14 @@ implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), eac
 | [0004](0004-proto-cratons.md) | Proto-cratons: restarting craton formation | Withdrawn (superseded by 0009) |
 | [0005](0005-continental-recycling-balance.md) | Balance continental recycling at trenches | Draft |
 | [0006](0006-intra-oceanic-arcs.md) | Intra-oceanic arcs: new continent from the ocean | Draft |
-| [0007](0007-mantle-plumes-and-plateaus.md) | Mantle plumes: oceanic plateaus, flood basalts and hotspot tracks | Draft |
+| [0007](0007-mantle-plumes-and-plateaus.md) | Mantle plumes: oceanic plateaus, flood basalts and hotspot tracks | Accepted |
 | [0008](0008-craton-collision-jamming.md) | Cratons jam collisions: braking and fusion | Accepted |
 | [0009](0009-craton-mosaic.md) | Cratons first: continents built from cratonic cores, plates placed around them | Accepted (revised after G1) |
 | [0010](0010-rifts-follow-weak-lithosphere.md) | Rifts follow weak lithosphere | Accepted |
 | [0011](https://github.com/adubey/mantle-bloom/blob/claude/rfc-0011-contact-strength/rfc/0011-contact-strength.md) | Collisions are held by lithospheric strength | Draft |
-| [0012](0012-physics-first-simulation.md) | Physics-first simulation | Accepted |
+| [0012](0012-physics-first-simulation.md) | Physics-first simulation | Implemented |
+| [0014](0014-lake-water-volume-and-freezing.md) | Lakes conserve their water: in-step fill-spill-merge, seasonal freezing and water-surface temperature | Accepted |
+| [0015](0015-frozen-water-in-physical-units.md) | Frozen water in physical units: glacier mass balance, ice flow and meltwater, freezing lakes and rivers, ocean ice and polar snow | Accepted |
 
 RFCs 0001–0007 come from one investigation: a 19.2 Gyr run (seed 456862899) that lost
 almost all of its continental crust and all of its cratons. The run is used as a stress

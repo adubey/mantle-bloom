@@ -22,10 +22,15 @@ interface Props {
   onDebugDiagnosticsChange: (v: boolean) => void;
   onTuningChange: (key: TuningKey, v: number) => void;
   onTuningReset: () => void;
+  // The selected world's identity, edited on the World tab (#597).
+  worldName: string;
+  isPublic: boolean;
+  onWorldNameChange: (name: string) => void;
+  onWorldPublicChange: (isPublic: boolean) => void;
   onClose: () => void;
 }
 
-type TabKey = "climate" | "erosion" | "tectonics";
+type TabKey = "climate" | "erosion" | "tectonics" | "world";
 
 // The geomorphic-budget tuning knobs, grouped and assigned to a Controls tab. Every one is a
 // dimensionless multiplier on backend app/world.py's matching World.*_multiplier (1.0 ==
@@ -78,6 +83,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "climate", label: "Climate" },
   { key: "erosion", label: "Erosion" },
   { key: "tectonics", label: "Tectonics" },
+  { key: "world", label: "World" },
 ];
 
 const ICE_AGE_MAX_YEARS = 1_000_000;
@@ -96,7 +102,7 @@ const selectStyle = {
 // Real-time controls for World's live-adjustable properties (see backend app/world.py's
 // World.sea_level_m/World.solar_multiplier/World.ice_age_period_years/
 // World.simulate_plate_movement/World.simulate_climate_biomes/World.wind_model and its
-// tuning-knob field group, plus main.py's /world/controls) -- unlike the "Generate World"
+// tuning-knob field group, plus main.py's /worlds/{world_id}/controls) -- unlike the "Generate World"
 // dialog's sliders, these apply to the *current* world immediately, no regenerate needed.
 // Controlled from App.tsx's own state (not local state here) since the same values also need
 // to reset on a fresh Generate. Grouped into Climate / Erosion / Tectonics tabs.
@@ -120,6 +126,10 @@ export default function ControlsModal({
   onDebugDiagnosticsChange,
   onTuningChange,
   onTuningReset,
+  worldName,
+  isPublic,
+  onWorldNameChange,
+  onWorldPublicChange,
   onClose,
 }: Props) {
   const [tab, setTab] = useState<TabKey>("climate");
@@ -207,6 +217,46 @@ export default function ControlsModal({
           ))}
         </div>
 
+        {tab === "world" && (
+          <div>
+            <label style={{ display: "block", marginBottom: 12, fontSize: 12 }}>
+              Name
+              <input
+                key={worldName}
+                type="text"
+                defaultValue={worldName}
+                onBlur={(e) => {
+                  const name = e.target.value.trim();
+                  if (!name) {
+                    // Blank names are rejected: restore the current one.
+                    e.currentTarget.value = worldName;
+                    return;
+                  }
+                  if (name !== worldName) onWorldNameChange(name);
+                }}
+                style={{
+                  width: "100%",
+                  marginTop: 4,
+                  boxSizing: "border-box",
+                  background: "#0f1424",
+                  color: "#e6e8ef",
+                  border: "1px solid #333",
+                  borderRadius: 4,
+                  padding: "4px 6px",
+                  fontSize: 13,
+                }}
+              />
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <input type="checkbox" checked={isPublic} onChange={(e) => onWorldPublicChange(e.target.checked)} />{" "}
+              Public
+            </label>
+            <div style={{ fontSize: 11, color: "#999", marginTop: 6 }}>
+              Public worlds list on /view for anyone to watch.
+            </div>
+          </div>
+        )}
+
         {tab === "climate" && (
           <div>
             <label style={{ display: "block", marginBottom: 16 }}>
@@ -278,7 +328,7 @@ export default function ControlsModal({
               </select>
               <div style={{ fontSize: 11, color: "#999", marginTop: 8 }}>
                 {windModel === "diagnostic"
-                  ? "Skips the shallow-water solve -- much faster steps, ~85-90% of the CFD biome map. Wind/temperature maps show the closed-form field."
+                  ? "Skips the shallow-water solve -- much faster steps, approximating the CFD climate. Wind/temperature maps show the closed-form field."
                   : "Genuine time-integrated shallow-water solve -- the largest single cost of a step at high fluid-dynamics resolution."}
               </div>
             </div>

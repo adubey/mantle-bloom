@@ -361,13 +361,9 @@ def angular_momentum(inertia_tensor: np.ndarray, omega: np.ndarray) -> np.ndarra
 
 
 def omega_from_angular_momentum(inertia_tensor: np.ndarray, angular_momentum_vec: np.ndarray) -> np.ndarray:
-    """Inverts `angular_momentum` -- used both by torque integration (alpha = I^-1 tau) and
-    by merge blending (conserve L, not omega, across a fusion -- see torque.merge_omega)."""
+    """Solve the inertia system for angular velocity, with a damped fallback for degenerate plates."""
     try:
         return np.linalg.solve(inertia_tensor, angular_momentum_vec)
     except np.linalg.LinAlgError:
-        # A plate with too few/degenerate nodes (near-empty, or all nodes collinear) can give
-        # a singular tensor -- fall back to a damped least-squares solve rather than crashing
-        # a whole step_world call over one edge-case plate.
         inertia_reg = inertia_tensor + 1e-6 * np.trace(inertia_tensor) * np.eye(3)
         return np.linalg.solve(inertia_reg, angular_momentum_vec)

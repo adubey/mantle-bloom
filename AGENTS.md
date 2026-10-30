@@ -2,8 +2,8 @@
 
 An Earth-like planet simulator. The plate tectonics, climate and biosphere simulation and the
 FastAPI routes are in `backend/app/` (Python, numpy/scipy/numba). The React + TypeScript
-canvas viewer is in `frontend/src/`. There's one human author, and most changes come from
-Claude Code and Codex agents, one GitHub issue per branch.
+canvas viewer is in `frontend/src/`. There's one human author, and changes may come from
+different coding agents, with one GitHub issue per branch.
 
 Before changing the model, read [docs/architecture.md](docs/architecture.md) (module map,
 request flow), [docs/simulation-model.md](docs/simulation-model.md), and
@@ -49,7 +49,9 @@ Run from the repo root (or worktree root).
 ## Workflow
 
 - **One issue branch and worktree per issue, branched off `origin/main`.** Name the branch
-  `<agent>/issue-<N>-<slug>`, where `<agent>` is `claude` or `codex`. RFCs are large
+  `<agent>/issue-<N>-<slug>`, where `<agent>` is the short identifier of the agent/tool
+  doing the work (for example, `claude`, `codex`, or `muse`). Use your own identifier; don't
+  present yourself as another agent. RFCs are large
   decisions tracked by a parent issue with sub-issues; each sub-issue gets its own isolated
   issue worktree. Never switch the RFC proposal worktree to an issue branch. Use
   `start-rfc` to begin or advance an RFC workstream, `continue-rfc` to reconstruct an RFC
@@ -67,10 +69,18 @@ Run from the repo root (or worktree root).
   this limit regardless of the skill used.
 - **Reviews:** when a PR's author reports its tests passing, don't rerun them. Run targeted
   checks they couldn't have covered instead.
+- **GitHub CLI authentication:** `gh` in the restricted command sandbox may report an
+  invalid `default` token even when the user's macOS Keychain login is valid. For GitHub
+  CLI commands, use the less restricted host context by default so `gh` can use the
+  Keychain-backed credential. The user has authorized this for Codex agents working in this
+  repository; don't ask again. This authorizes the execution context, not GitHub actions:
+  follow the usual task authorization and workflow limits for writes. A sandbox
+  `gh auth status` failure alone is not evidence that the user's token is invalid.
 - **Merging is the user's job.** Open the PR and stop: never run `gh pr merge`. `main` only
   takes changes through a PR with the `backend` and `frontend` checks green, and refuses
-  force pushes and deletion, for everyone. Every branch outside `claude/*` and `codex/*` is
-  the user's: don't push to, rebase, force-push or delete it. Force-push (with
+  force pushes and deletion, for everyone. Only push to, rebase, force-push or delete the
+  current task's own agent branch; never infer ownership just from a branch prefix. Branches
+  belonging to another task or the user must be left alone. Force-push (with
   `--force-with-lease`) only your own agent branch.
 - **Never discard work you didn't create.** Don't run `git reset --hard`, `git checkout --`,
   `git restore`, `git clean`, `git stash`, `git branch -D`, `git worktree remove --force` or
@@ -83,8 +93,9 @@ Run from the repo root (or worktree root).
   worktrees of the clone share it. Never copy its
   contents or personal paths into a commit, issue, PR, or checked-in report. Keep durable
   run labels, checksums, commands, and findings in the appropriate analysis report or RFC.
-- Skills for these workflows, shared by Claude Code and Codex, are in `.agents/skills/`
-  (`.claude/skills` links there): `explore-problem`, `create-issue`, `start-issue`,
+- Tool-agnostic skills for these workflows are in `.agents/skills/`; Claude Code's
+  `.claude/skills` links there. Any coding agent working in this repo can use them:
+  `explore-problem`, `create-issue`, `start-issue`,
   `start-rfc`, `continue-rfc`, `project-management`, `replay-ab`,
   `pre-push-check`, `rfc-authoring`, `rfc-review`, `complete-rfc`, `documentation`.
 

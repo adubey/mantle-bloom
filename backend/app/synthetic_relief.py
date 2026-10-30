@@ -21,6 +21,8 @@ the layout and the first predicted plate motion and backs the result with crusta
   shields and lowlands get glacial-scour pits.
 - **Submerged continental crust.** A shelf near the coast, deepening to marginal-plateau
   depth far from it, with a slope at the crust edge.
+- **Drainage.** Large, low closed basins are filled until they drain to the sea, as sediment
+  fills a basin; high and small basins stay closed (`drain_land`).
 
 Every changed column is backed: Hc comes from `lithosphere.crustal_thickness_for_elevation`
 on the column's existing Hm, and elevation is then re-derived from the column, so the
@@ -37,25 +39,28 @@ than about -4.4 km, so a -2.6 km ridge can't be backed (#218).
 
 from __future__ import annotations
 
+import heapq
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 from . import cratons, lithosphere, orogeny, rheology, torque
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
+from .hydroclimate.hydrology import FLOW_NEIGHBOR_COUNT, connected_ocean_mask
 from .noise import IsotropicSphereNoise
-from .plates import PLANET_RADIUS_KM
+from .plates import PLANET_RADIUS_KM, collect_all_accounting_areas_m2
 
 if TYPE_CHECKING:
     from .continent_layout import ContinentLayout
     from .world import World
 
-# Off until an RFC settles its open questions (ocean relief, lake share, early evolution;
+# Off until an RFC settles its open questions (ocean relief, early evolution;
 # see #218's exploration summary). Cratons-first only.
 SYNTHETIC_RELIEF_DEFAULT = False
-FIRST_MOTION_STEP_YEARS = 5_000_000.0
 # Boundary nodes within this distance of another plate read that contact's regime; at least
 # REGIME_REACH_SPACINGS node spacings, so a coarse world still finds its contacts (principle 4).
 REGIME_REACH_KM = 150.0
@@ -123,6 +128,24 @@ GLACIAL_PIT_M = 60.0
 INTERIOR_COAST_FADE_KM = 150.0
 OROGEN_INTERIOR_FADE_M = 1_500.0
 MIN_LAND_M = 5.0
+# Drainage. Before this pass, generated land held about twice Earth's area of closed
+# depressions, almost all of it in large basins spilling below 500 m: interior bowls between
+# the coastal rise, regional noise and belts, which became lakes or ended rivers (#218).
+# Large (DRAIN_FILL_MIN_AREA_KM2 or more) closed basins spilling below DRAIN_KEEP_SPILL_M are
+# filled, as sediment fills a basin, to drain along a gradient this gentle (the Amazon
+# lowlands fall ~0.02 m/km), except for a seeded random set of them kept closed, like the
+# Caspian, Aral, Chad or Eyre basins: about DRAIN_KEEP_LOW_SHARE of land, within
+# DRAIN_KEEP_LOW_BAND of it. Higher basins stay closed, like the Tarim, the Great Basin or the
+# Altiplano, and so do smaller ones, whose area already matches Earth's. The river
+# bootstrap's breach and water balance decide whether a closed basin drains. Earth at ~55 km
+# (analysis/issue218, bin/debug/measure_earth_depressions.py): 6.5% of land lies in closed
+# basins spilling at 500 m or more, 4.3% in basins under 20 cells, and 1.7% in 12 basins of
+# 80,000 km^2 or more spilling below 500 m.
+DRAIN_GRADIENT_M_PER_KM = 0.01
+DRAIN_KEEP_SPILL_M = 500.0
+DRAIN_FILL_MIN_AREA_KM2 = 80_000.0
+DRAIN_KEEP_LOW_SHARE = 0.017
+DRAIN_KEEP_LOW_BAND = (0.5, 1.5)
 
 # Submerged continental crust: shelf to ~150 m, then marginal-plateau depths further out,
 # and a slope down to the oceanic contact at the crust edge.
@@ -146,6 +169,7 @@ class _Cloud:
     craton: np.ndarray
     plate_id: np.ndarray
     omega: np.ndarray  # (N, 3) each node's plate's predicted angular velocity, rad/yr
+    area_km2: np.ndarray
 
 
 def _smoothstep(t: np.ndarray) -> np.ndarray:
@@ -174,7 +198,10 @@ def _gather(world: "World", omegas: dict[int, np.ndarray]) -> _Cloud:
         parts["plate_id"].append(np.full(len(points), plate.plate_id))
         parts["omega"].append(np.tile(omegas[plate.plate_id], (len(points), 1)))
     joined = {k: np.concatenate(v) for k, v in parts.items()}
-    return _Cloud(joined["points"], joined["elevation"], joined["continental"], joined["craton"], joined["plate_id"], joined["omega"])
+    area_km2 = collect_all_accounting_areas_m2(world.plates, line_spacing_rad(world.node_density)) / 1e6
+    return _Cloud(
+        joined["points"], joined["elevation"], joined["continental"], joined["craton"], joined["plate_id"], joined["omega"], area_km2
+    )
 
 
 def _collision_contacts(world: "World", omegas: dict[int, np.ndarray]) -> np.ndarray:
@@ -270,6 +297,101 @@ def suture_relief(
         if cls == SUTURE_YOUNG:
             young = np.maximum(young, r)
     return relief, young
+
+
+def _flood(order_edges, seeds_level: np.ndarray, elevation: np.ndarray, gradient: np.ndarray | None) -> np.ndarray:
+    """Priority flood from every node with a finite `seeds_level`: the lowest level each node
+    can drain at, rising by `gradient` (m per edge, per entry of `order_edges`'s data) along
+    each step. `order_edges` lists, for each node, the nodes that hold it as a neighbour."""
+    indptr, indices = order_edges.indptr.tolist(), order_edges.indices.tolist()
+    rise = [0.0] * len(indices) if gradient is None else gradient.tolist()
+    level = seeds_level.tolist()
+    z = elevation.tolist()
+    heap = [(level[i], i) for i in np.flatnonzero(np.isfinite(seeds_level)).tolist()]
+    heapq.heapify(heap)
+    while heap:
+        here, i = heapq.heappop(heap)
+        if here > level[i]:
+            continue
+        for e in range(indptr[i], indptr[i + 1]):
+            j = indices[e]
+            reach = max(z[j], here + rise[e])
+            if reach < level[j]:
+                level[j] = reach
+                heapq.heappush(heap, (reach, j))
+    return np.asarray(level)
+
+
+def _kept_basin_floors(
+    closed: np.ndarray, hole: np.ndarray, undirected, z: np.ndarray, spill: np.ndarray, area_km2: np.ndarray,
+    land_km2: float, rng: np.random.Generator,
+) -> np.ndarray:
+    """The floor node of every closed basin that stays closed (see DRAIN_*): high or small
+    basins, basins holding an enclosed submerged hole (which can't be filled without moving
+    the coastline), and a random set of large low ones, taken in a shuffled order while their
+    area, holes' basins included, stays within the upper band, until it reaches
+    DRAIN_KEEP_LOW_SHARE of land. If that leaves it under the lower band, the smallest large
+    low basin left is kept too."""
+    nodes = np.flatnonzero(closed)
+    _, basin = connected_components(undirected[closed][:, closed], directed=False)
+    order = np.lexsort((z[nodes], basin))
+    first = np.r_[True, basin[order][1:] != basin[order][:-1]]
+    floors = nodes[order][first]  # each basin's lowest node, by basin label
+    area = np.bincount(basin, weights=area_km2[nodes])
+    holed = np.bincount(basin, weights=hole[nodes].astype(float)) > 0
+    large_low = ~holed & (spill[floors] < DRAIN_KEEP_SPILL_M) & (area >= DRAIN_FILL_MIN_AREA_KM2)
+    keep = ~large_low
+    target = DRAIN_KEEP_LOW_SHARE * land_km2
+    low, high = (f * target for f in DRAIN_KEEP_LOW_BAND)
+    kept_km2 = float(area[holed].sum())
+    candidates = np.flatnonzero(large_low)
+    for b in rng.permutation(candidates).tolist():
+        if kept_km2 >= target:
+            break
+        if kept_km2 + area[b] <= high:
+            keep[b] = True
+            kept_km2 += area[b]
+    left = candidates[~keep[candidates]]
+    if kept_km2 < low and len(left):
+        keep[left[np.argmin(area[left])]] = True
+    return floors[keep]
+
+
+def drain_land(points: np.ndarray, elevation: np.ndarray, land: np.ndarray, area_km2: np.ndarray, seed: int) -> np.ndarray:
+    """`elevation` (m above sea level) with land raised so that every land node has a strictly
+    lower neighbour among its `hydrology.FLOW_NEIGHBOR_COUNT` nearest, leading to the world
+    ocean, except inside the closed basins that stay closed (`_kept_basin_floors`), which drain
+    to their own lowest node instead. Raised ground climbs `DRAIN_GRADIENT_M_PER_KM` from
+    where it drains. `area_km2` is each node's area; which large low basins stay closed comes
+    from an rng keyed by `seed`. Sea nodes are unchanged."""
+    n = len(points)
+    k = min(FLOW_NEIGHBOR_COUNT, n - 1)
+    if k < 1 or not land.any() or land.all():
+        return elevation
+    chord, neighbours = cKDTree(points).query(points, k=k + 1, workers=-1)
+    chord, neighbours = chord[:, 1:], neighbours[:, 1:]
+    # Reverse adjacency: water reaching node i can have come from any node listing i.
+    src = np.repeat(np.arange(n), k)
+    km = 2.0 * np.arcsin(np.clip(chord.ravel() / 2.0, 0.0, 1.0)) * PLANET_RADIUS_KM
+    reverse = coo_matrix((km, (neighbours.ravel(), src)), shape=(n, n)).tocsr()
+    reverse.sort_indices()
+    z = np.where(land, elevation, np.minimum(np.nan_to_num(elevation, nan=0.0), 0.0))
+    # Water drains to the world ocean as hydrology sees it; a submerged hole enclosed by land
+    # is a closed basin there, so it is one here too.
+    ocean = connected_ocean_mask(points, z, 0.0, neighbours) & ~land
+    hole = ~land & ~ocean
+    seeds = np.where(ocean, z, np.inf)
+
+    spill = _flood(reverse, seeds, z, None)
+    closed = (land | hole) & (spill > z) | hole
+    if closed.any():
+        undirected = coo_matrix((np.ones(n * k), (src, neighbours.ravel())), shape=(n, n)).tocsr()
+        land_km2 = float(area_km2[land].sum())
+        kept = _kept_basin_floors(closed, hole, undirected, z, spill, area_km2, land_km2, np.random.default_rng((seed, 0x218D)))
+        seeds[kept] = z[kept]
+    level = _flood(reverse, seeds, z, DRAIN_GRADIENT_M_PER_KM * reverse.data)
+    # A node no flood reaches (a k-NN cluster listing only itself) keeps its elevation.
+    return np.where(land & np.isfinite(level), level, elevation)
 
 
 def land_mask(potential: np.ndarray, continental: np.ndarray, n_land: int) -> np.ndarray:
@@ -392,8 +514,8 @@ def _interior_relief(cloud: _Cloud, noise: _Noise, base: np.ndarray, d_coast: np
 
 
 def _target_elevation(cloud, noise, layout, seed, n_land, collision_contact):
-    """(target elevation relative to sea level, land mask, young share) per node; oceanic
-    nodes get NaN (left as generated)."""
+    """(target elevation relative to sea level, the same before `drain_land`, young share) per
+    node; oceanic nodes get NaN (left as generated)."""
     p = cloud.points
     oceanic = ~cloud.continental
     d_edge, edge_index = _distance_km(p[oceanic], p)
@@ -422,8 +544,9 @@ def _target_elevation(cloud, noise, layout, seed, n_land, collision_contact):
     t = _smoothstep(1.0 - d_edge / CRUST_EDGE_SLOPE_KM)
     z_sea = np.minimum((1.0 - t) * z_shelf + t * CRUST_EDGE_DEPTH_M, MAX_SUBMERGED_M)
 
-    target = np.where(land, z_land, z_sea)
-    return np.where(cloud.continental, target, np.nan), land, young_share
+    undrained = np.where(land, z_land, z_sea)
+    target = drain_land(p, undrained, land, cloud.area_km2, seed)
+    return np.where(cloud.continental, target, np.nan), np.where(cloud.continental, undrained, np.nan), young_share
 
 
 def back_columns(
@@ -448,12 +571,12 @@ def apply_synthetic_relief(world: "World", layout: "ContinentLayout") -> None:
     """Replace continental relief on a freshly generated cratons-first world with relief from
     a synthetic tectonic history, backed by Hc (see the module docstring). Keeps the land
     node count; leaves oceanic crust, plates and elapsed time untouched."""
-    omegas = {p.plate_id: torque.predict_plate_motion(p, world, world.plates, FIRST_MOTION_STEP_YEARS) for p in world.plates}
+    omegas = torque.solve_plates_quasistatic(world)
     cloud = _gather(world, omegas)
     if not cloud.continental.any():
         return
     n_land = int((cloud.elevation > world.sea_level_m).sum())
-    target, _, young_share = _target_elevation(
+    target, undrained, young_share = _target_elevation(
         cloud, _Noise.for_seed(world.seed), layout, world.seed, n_land, _collision_contacts(world, omegas)
     )
     offset = 0
@@ -463,14 +586,22 @@ def apply_synthetic_relief(world: "World", layout: "ContinentLayout") -> None:
         offset += n
         craton_m = plate.collect("craton_crust_m")
         core = craton_m > 0.0
-        hc, lag = back_columns(
-            target[sl] + world.sea_level_m,
+        columns = (
             plate.collect("crustal_thickness_m"),
             plate.collect("mantle_lithosphere_thickness_m"),
             lithosphere.node_crust_density(plate.collect("crust_type_code"), plate.crust_type),
             core,
             young_share[sl],
         )
-        # A generated core is cratonic through its whole crust (cratons.seed_cores).
-        plate.set_fields_on_plate(crustal_thickness_m=hc, moho_thermal_lag_c=lag, craton_crust_m=np.where(core, hc, craton_m))
+        hc, lag = back_columns(target[sl] + world.sea_level_m, *columns)
+        # What drain_land raised is basin fill: loose sediment on top of the column, the crust
+        # it took over the undrained surface (erosion and breaching cut it at the weak-rock rate).
+        fill = np.clip(hc - back_columns(undrained[sl] + world.sea_level_m, *columns)[0], 0.0, hc)
+        # A generated core is cratonic through its whole crust (cratons.seed_cores), below any
+        # basin fill on it, which is platform cover.
+        plate.set_fields_on_plate(
+            crustal_thickness_m=hc, moho_thermal_lag_c=lag, craton_crust_m=np.where(core, hc - fill, craton_m),
+            mobile_cover_m=plate.collect("mobile_cover_m") + fill,
+            mobile_cover_continental_m=plate.collect("mobile_cover_continental_m") + fill,
+        )
         lithosphere.sync_plate_elevation(plate)

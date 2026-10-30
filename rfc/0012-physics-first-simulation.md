@@ -1,11 +1,20 @@
 # RFC 0012: Physics-first simulation
 
-- **Status:** Accepted (2026-10-16)
-- **Date:** 2026-10-16
-- **Related:** #464 (tracking), #465 (gate G1); RFCs [0009](0009-craton-mosaic.md)
+- **Status:** Implemented (2026-10-29)
+- **Date:** 2026-10-16 (implemented 2026-10-29)
+- **Related:** #464 (tracking), #465 (gate G1), #535 (gate G3); RFCs [0009](0009-craton-mosaic.md)
   (cratons-first layout), [0010](0010-rifts-follow-weak-lithosphere.md) (rift routing), and
   [0011](https://github.com/adubey/mantle-bloom/blob/claude/rfc-0011-contact-strength/rfc/0011-contact-strength.md)
-  (collision resistance); design principles 1–5 and 8–9
+  (collision resistance); [#682](https://github.com/adubey/mantle-bloom/issues/682)
+  (adaptive timestep investigation); design principles 1–5 and 8–9
+
+## Outcome
+
+The accepted implementation path is complete. G1 and boundary-load normalization were recorded in #465 and #468; the reduced quasi-static contact pilot landed in [PR #491](https://github.com/adubey/mantle-bloom/pull/491), with G2 accepted by the project owner with the caveats below; G3's rift/transform transfer diagnostics are recorded in #535; and merge-rate ownership plus its matched characterization landed in [PR #684](https://github.com/adubey/mantle-bloom/pull/684), completing [#547](https://github.com/adubey/mantle-bloom/issues/547). Evidence is retained in [analysis/rfc0012](../analysis/rfc0012/README.md) and [analysis/issue547](../analysis/issue547/README.md).
+
+The selected implementation adds no persistent state. Existing saves remain compatible; the G2 state inputs and derived layer partition are documented in “Cost and saves.” The merge behavior is described in [the tectonics model documentation](../docs/simulation-model/tectonics.md). The targeted quasi-static, torque, merge, persistence and save tests passed (168 tests); the RFC 0012 implementation PR's affected test gate passed 1,827 tests, and both its backend and frontend CI checks passed.
+
+Results retain their limits: merge-only timestep sensitivity is mixed and does not establish timestep invariance. G2's density-4 runtime evidence is provisional: matched cProfile medians showed +6.1%, while an earlier five-step phase-tapped sample showed +94.8%. The owner accepted G2 without a clean unprofiled repeat; this RFC does not claim a definitive runtime bound. G3 demonstrates diagnostic transferability only; a production integrated-strength law was not selected. Split-rate assignments remain deferred to RFC 0010. The quiet-host, extreme-rate and adaptive-step follow-ups remain in [#493](https://github.com/adubey/mantle-bloom/issues/493), [#494](https://github.com/adubey/mantle-bloom/issues/494) and [#682](https://github.com/adubey/mantle-bloom/issues/682), respectively.
 
 ## Problem
 
@@ -43,8 +52,8 @@ the scale needed by the global motion solve, and retain the invariants that matt
 
 **Design principles at issue:** process-specific physics at clear interfaces (principle 8),
 stated model boundaries and scales (principle 1), efficient approximations (principle 2),
-timestep robustness (principle 3), explicit units and conservation (principles 5–6), and
-verification separated from validation (principle 9).
+timestep behavior is measured and reported (principle 3), explicit units and conservation
+(principles 5–6), and verification separated from validation (principle 9).
 
 The first diagnosis is to identify the rules that currently stand in for forces or material
 response. G1 will extend and verify this inventory against the named code paths before
@@ -475,6 +484,44 @@ material-ledger closure, step-size sensitivity, and runtime. A pilot that only r
 geometric event count does not pass. At node density 4, median total step time must increase
 by no more than 10% over the matched baseline.
 
+*G2 outcome (2026-10-22; implementation and replay results: [analysis/rfc0012](../analysis/rfc0012/README.md)).*
+The reduced simultaneous contact pilot and its equation-level tests are implemented on the
+G2 branch. The ridge and collision column-GPE scale checks land within the expected regional
+orders of magnitude under the documented density/geometry sweeps. Four-seed generated-world
+replays show higher 500 Myr land fraction in three seeds and nearly unchanged land in one.
+The 500 Myr 0.1/1 Myr comparison passes its preregistered land-fraction gates: the largest
+per-run endpoint shift is 1.205 percentage points and the mean G2 land advantage changes by
+0.614 points. A matched density-4 baseline/G2 cProfile pair measured a 6.1% median increase,
+below the ≤10% target. The earlier five-step phase-tapped G2 sample measured +94.8%; the
+three-step profiled samples are small and differ methodologically. By project-owner decision,
+the runtime gate is accepted provisionally without another unprofiled replay, with this
+measurement conflict recorded as a caveat. Profiling places `shift_plates_quasistatic` at about
+0.66 s per step and `solve_quasistatic_contacts` at about 0.003 s; the coupled solver itself
+is not the runtime hotspot.
+
+**G2 is closed as a supported reduced-interface pilot, with follow-up caveats; this is not a
+claim that every original numerical acceptance bound passed.** Ledger traces reconcile the
+zero subduction/merge-cap entries as actual outcomes, and the merge-opportunity diagnostic
+shows far fewer sustained convergent candidates and merges in G2; it does not isolate contact
+braking as the only cause of the changed geology. The full-horizon timestep gate established
+land-fraction robustness, not robustness of every ledger or topology metric. High-rate
+outliers on very small remnant plates remain assigned to #494, and early craton formation and
+the geometric/clock quiet gate remain assigned to #493. These follow-ups do not block moving
+to G3, but G2's land increase is a diagnostic outcome, not validation. See the full evidence
+and caveats in [analysis/rfc0012](../analysis/rfc0012/README.md).
+
+The four-seed formation-timer sensitivity keeps the G2 host gate fixed and varies only the
+200 Myr waiting period to 100 and 300 Myr. Cumulative formation at 400 Myr decreases
+monotonically for every seed (four-seed sum 4,564 → 3,233 → 2,330 million km³), with each
+run's first pulse at its selected threshold. This shows the timer strongly controls the
+early cohort and supports investigating formation timing as a contributor to the excess
+craton. It does not establish a preferred geological duration or validate the geometric/Hc
+host gate as a measure of low deformation. A physical quiet-gate diagnostic should measure
+host strain/deformation history before changing the rule. Seed 580014012 repeatedly reaches
+the 5 km glacier-depth cap; its absolute craton result remains climate-limited in
+interpretation. G2 is closed with the disposition and outstanding follow-ups recorded above;
+G3 must still test transferability to rifting and transform motion.
+
 **Gate G3: transferability.** Exercise the contract against at least one divergent/rifting and
 one transform case before declaring it the general tectonic interface. For rifting, calculate
 net tensile force across a candidate cut from boundary loads and basal traction, then initiate
@@ -489,6 +536,51 @@ duration τ; the diagnostic must report sensitivity to ε and τ. These threshol
 constitutive choices are not fixed by this RFC. If rifting or transform motion requires
 incompatible or meaningless shared fields, keep a narrower mechanical interface and document
 the process-specific extension.
+
+*G3 result (2026-10-23, #535, [analysis/rfc0012](../analysis/rfc0012/README.md)).*
+The merged G2 active-set solver can express the same bounded load/rate/capacity equation for a
+directionally oriented rift cut and a transform segment: synthetic cases converge with equal-
+and-opposite loads, hold below capacity, and yield above it. A paired weak/strong cut sweep
+localizes extension on the weak segment first, then activates the stronger segment after its
+larger capacity is exceeded. The interface remains process-specific at the constitutive and
+assembly layers: the current production caller supplies contact-normal loads, and a rift or
+transform adapter must supply its own signed direction, net driving load, and capacity. G3
+added a prescribed vertically integrated strength envelope: at a 20 km crust, 100 km total
+lithosphere, 650°C Moho and 1300°C LAB, its candidate capacity is `4.491e12 N/m`; 15 km and
+30 km crust profiles give `4.192e12` and `4.918e12 N/m`. This shows the shared solve responds to
+a depth-integrated, temperature/thickness-dependent capacity, but the profile is an assumed
+diagnostic end member, not derived from `World` fields or calibrated against observations. A
+reduced 1,000 km cross-section with 40 prescribed 25 km columns widens from 50 km active at
+`4.30e12 N/m` to 350 km at `4.80e12 N/m`, then 1,000 km at `4.95e12 N/m`. This is a frozen
+strength-heterogeneity sweep under uniform membrane force, not a Buck-style thin-sheet model:
+it omits lateral stress transfer, strain weakening, thermal evolution, and buoyancy. As an
+order-of-magnitude screen only, the 100 km model zone at `4.40e12 N/m` matches the reported
+about-100-km Kenya Rift surface-to-upper-mantle/thinning zone, and the 350 km zone at
+`4.80e12 N/m` falls within the reported 300–600 km Basin and Range rifting province
+[[Braile et al., 1994]](#ref-braile1994) [[Matthews & Anderson, 1973]](#ref-matthews1973).
+These observations describe unlike geological features and neither is the probe's positive-rate
+width; the 1,000 km activation at `4.95e12 N/m` exceeds the Basin and Range scale and exposes
+the imposed outer-profile threshold jump. This dimensional comparison is not geological
+validation or calibration. No ledger check is useful for this frozen synthetic screen: it
+changes no material and calls no production rifting writer, so there is no transfer to audit.
+Ledger closure is separately checked in the world-level rift evolution diagnostic. A 500 Myr
+current-model replay at 1 Myr steps measures
+production divergent-thinning support at 10 Myr checkpoints. Aggregate area-equivalent widths
+had a 72 km median and 93 km maximum; the widest connected component was 213 km. The component
+share ≥100 km had a 2.8% median and 10.1% maximum checkpoint share; no connected component
+reached 300 km at a sampled checkpoint. The 10 Myr sampling can miss shorter events, and active
+thinning width is not full basin/province width. The continental material ledger closed at every
+checkpoint, with a maximum relative rift-path residual of 1.1e-15. Six glacier depth-cap warnings
+also occurred. This is descriptive current-model evidence only: production still does not use
+the synthetic integrated-strength law. The complete current-main merge trace records one
+sustained-collision merger at 141 Myr; its maximum absolute local rate was 0.643 cm/yr. Under
+the retrospective lock metric, the fusion qualifies at ε = 1 cm/yr through τ = 10 Myr, and at
+ε = 2–10 cm/yr through τ = 25 Myr; it fails at τ = 50 Myr for every tested ε. This single-seed,
+single-merger result demonstrates sensitivity without selecting a production trigger or
+changing topology. Together with the synthetic rift/transform cases, geological scale screen,
+and world ledger checks, G3's diagnostic acceptance criteria are met. This does not validate a
+production integrated-strength law or select a general implementation plan. See the reproducible
+synthetic, world-rift, and complete lock-sensitivity outputs in the analysis report.
 
 No full implementation plan is selected until G1–G3 are recorded. RFC 0011 can proceed as a
 process-specific change if its own gates justify it; its implementation should not assume
@@ -616,14 +708,14 @@ this pilot.
 
 ## Acceptance criteria
 
-- [ ] **G1 first:** verify the Problem inventory against code; record force, torque, traction,
+- [x] **G1 first:** verify the Problem inventory against code; record force, torque, traction,
       units, ownership, feedback, current costs and rule replacement for convergence,
       subduction, rifting, transform motion, basal drag, ridge push, topology, and deformation.
       The proposed boundary-load normalization varies by no more than 10% across node density,
       band width, and repeated-row synthetic cases. Each retained proxy is tied to a named
       design principle and measurable outcome; each retired rule is checked against accepted
       geology metrics.
-- [ ] **G2:** compare the simultaneous quasi-static contact pilot against current behavior on
+- [x] **G2 (closed with caveats by the project owner, 2026-10-22):** compare the simultaneous quasi-static contact pilot against current behavior on
       synthetic no-load/no-resistance, unbalanced-torque/no-resistance, symmetric-action/
       reaction, zero-slip compressive contact, yield, and Tibet-like cases, plus matched
       replays. The no-load/no-resistance case solves to zero motion; an unbalanced torque with
@@ -639,30 +731,35 @@ this pilot.
       ΔGPE integrated along a stated oceanic ridge segment with the order of 2.5×10¹² N/m.
       These are regional Indian-plate magnitude checks, not universal targets or calibration
       values; vary geometry and layer densities. Do not tune a single column to match either
-      regional estimate.
-- [ ] The pilot's accumulated force response, mean plate rate, relative contact motion,
-      deformation, Hc/Hm distributions, land fraction, and material ledgers agree within 10%
-      across 0.1, 1, and 2 Myr steps, except for discrete topology events. For these, report
-      event-time differences and whether their ordering changes. Use `bin/debug/compare_physics_first_steps.py`
-      (new candidate diagnostic) on generated worlds with seeds 326494039, 748935664,
-      580014012, and 111065103, at the same endpoints and node density. Do not use 5 Myr as
-      an acceptance step: the issue #452 step-size check fails at that step.
-- [ ] **G3** reports whether the same interface can express a rift and a transform response;
+      regional estimate. The owner accepted the pilot to proceed to G3 while recording these
+      exceptions to the original strict bounds: the ≤10% density-4 runtime result is based on
+      a three-step-per-model cProfile pair (+6.1%) that conflicts with a five-step phase-tapped
+      G2 result (+94.8%); no clean unprofiled repeat was run. The full-horizon timestep check
+      passed its land-fraction gates, but did not establish ≤10% agreement for all force,
+      motion, deformation, Hc/Hm, ledger, and topology metrics. Long-run high-rate remnant
+      behavior and early craton/quiet-gate behavior are deferred to #494 and #493. This marks
+      the gate disposition, not a claim that every original numerical bound passed.
+- [x] **Timestep sensitivity is characterized, not a pass/fail invariance gate:** on matched
+      generated worlds at the same endpoints and node density, report the arithmetic mean of
+      each continuous metric across the four preregistered seeds separately for baseline and
+      pilot at 0.1, 1, and 2 Myr; include per-seed values/spread and the relative changes from
+      0.1 Myr. Report topology event-time/order differences separately and check ledger
+      closure per run. Do not require a ≤10% cross-timestep difference and do not claim
+      timestep invariance. The merge-only comparison and its observed mixed results are
+      recorded in #547. Do not use 5 Myr as an acceptance step: the issue #452 step-size check
+      fails at that step. Further investigation of adaptive stepping near predicted collisions
+      is tracked separately in [#682](https://github.com/adubey/mantle-bloom/issues/682).
+- [x] **G3** reports whether the same interface can express a rift and a transform response;
       any process-specific extension is documented with a physical reason. Rifting diagnostics
       compare whether extension widens or stays localized as the force needed to continue
       extension changes; Buck (1991) supports that widening/localization relationship, not a
-      universal rift-stall rule.
-- [ ] Any pilot that consumes material properties identifies the upper-crust, lower-crust,
-      and lithospheric-mantle derived state it reads. Any composition fractions are bounded
-      and material transfers conserve layer budgets. Temperature and any optional fluid state
-      have an explicit update cadence and timestep-sensitivity result. The G2 contact pilot
-      adds no persistent per-node state and no encoded save-size growth. If a later age pilot
-      adds one seafloor-age field, its encoded save-size growth stays below 5% across
-      representative saved worlds, with lifecycle cost reported separately from runtime.
-- [ ] Any implementation selected by the gates has equation-level tests, save compatibility
-      for new persistent state, updated simulation docs, and measured runtime at density 4.
-- [ ] No process is accepted solely because software tests pass; its force law and outcome
-      are compared with a stated physical benchmark or a clearly labeled design hypothesis.
+      universal rift-stall rule. Compare active-width scales with at least one narrow and one
+      broad geological example while matching definitions and labeling this as a scale screen,
+      not calibration. Any world-level rift evolution or material-changing implementation must
+      close the principle-6 rift ledgers against its cellwise inventory.
+- [x] Any pilot that consumes material properties identifies the upper-crust, lower-crust, and lithospheric-mantle derived state it reads. Any composition fractions are bounded and material transfers conserve layer budgets. Temperature and any optional fluid state have an explicit update cadence and timestep-sensitivity result. The G2 contact pilot adds no persistent per-node state and no encoded save-size growth. If a later age pilot adds one seafloor-age field, its encoded save-size growth stays below 5% across representative saved worlds, with lifecycle cost reported separately from runtime. The G2 layer inputs/derived partition are documented above; it introduces no composition fractions or new temperature/fluid state. No seafloor-age pilot was selected.
+- [x] Any implementation selected by the gates has equation-level tests, save compatibility for new persistent state, updated simulation docs, and measured runtime at density 4. The density-4 runtime measurement is provisional as described under G2; no new persistent state or save migration was required.
+- [x] No process is accepted solely because software tests pass; its force law and outcome are compared with a stated physical benchmark or a clearly labeled design hypothesis.
 
 ## Falsification criteria
 
@@ -678,8 +775,7 @@ this pilot.
   deformation controls the target outcome, add a deformable plate-region model for that
   question rather than tuning boundary forces to compensate.
 - **Coupled physics is too costly.** If a reduced solve cannot stay within the runtime budget
-  without violating force balance, timestep robustness, or material conservation, narrow the
-  coupled scope or choose a cheaper physically justified closure. Do not replace the missing
+  without violating force balance or material conservation, narrow the coupled scope or choose a cheaper physically justified closure. Do not replace the missing
   response with an arbitrary geometric trigger.
 - **The force law is not identifiable from available evidence.** If sensitivity runs show
   multiple plausible laws produce indistinguishable observables, leave the mechanism
@@ -743,6 +839,18 @@ this pilot.
 - Buck, W. R. (1991). Modes of continental lithospheric extension.
   *Journal of Geophysical Research: Solid Earth*, 96(B12), 20161–20178.
   [doi:10.1029/91JB01485](https://doi.org/10.1029/91JB01485)
+
+### Braile et al 1994
+
+- <a id="ref-braile1994"></a>Braile, L. W., Wang, B., Daudt, C. R., Keller, G. R., & Patel, J. P. (1994). Modeling the
+  2-D seismic velocity structure across the Kenya rift. *Tectonophysics*, 236(1–4), 251–269.
+  [doi:10.1016/0040-1951(94)90179-1](https://doi.org/10.1016/0040-1951(94)90179-1)
+
+### Matthews Anderson 1973
+
+- <a id="ref-matthews1973"></a>Matthews, V., & Anderson, C. E. (1973). Yellowstone convection plume and break-up of the
+  Western United States. *Nature*, 243, 158–159.
+  [doi:10.1038/243158a0](https://doi.org/10.1038/243158a0)
 
 ### Stewart Trinkle 1996
 

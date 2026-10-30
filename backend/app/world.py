@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import time
 
 import numpy as np
 from scipy.spatial import cKDTree
@@ -20,6 +21,8 @@ from . import (
     mantle,
     merge_split,
     phase_budget,
+    plumes,
+    terranes,
     torque,
     worldsketch,
 )
@@ -69,6 +72,7 @@ TUNING_MULTIPLIER_FIELDS = (
     "collision_uplift_reach_multiplier",
     "volcanism_multiplier",
     "fault_relief_multiplier",
+    "plume_multiplier",
 )
 
 
@@ -77,6 +81,11 @@ class World:
     seed: int
     plates: list[Plate] = field(default_factory=list)
     mantle_centers: list[mantle.ConvectionCenter] = field(default_factory=list)
+    # Mantle plume population (RFC 0007, plumes.py): discrete long-lived events fixed
+    # in the world frame, plus the next event index and arrival time per stream (head,
+    # tail-only). Mutable defaults, so old saves are backfilled (see persistence.py).
+    mantle_plumes: list = field(default_factory=list)
+    plume_stream: dict = field(default_factory=dict)
     elapsed_years: float = 0.0
     next_plate_id: int = 0
     # Count of step_world calls on this world. Drives the cadence of merge_split.py's
@@ -91,6 +100,9 @@ class World:
     # Persistent craton source/sink accounts, one per formation and destruction mechanism;
     # live craton volume is derived from nodes' craton_crust_m. See cratons.py.
     craton_ledger: dict[str, float] = field(default_factory=dict)
+    # Persistent buoyant-crust accounts keyed by source (arc, plume_head, plume_tail);
+    # live volumes are derived from nodes' plateau/arc tracers. See terranes.py.
+    buoyant_crust_ledger: dict[str, dict] = field(default_factory=terranes.new_ledger)
     # Cumulative attempted / completed volume (m^3) of each orogenic relief process: suture
     # belts, tectonic escape, delamination, collapse and ductile flow. See orogeny.py.
     orogenic_relief_budget: dict[str, float] = field(default_factory=dict)
@@ -105,7 +117,7 @@ class World:
     # sutures (crust_transfer.py), reset with phase_budget.
     suture_transfer_stats: dict = field(default_factory=dict)
     # A fixed per-world property, like `seed` -- set once at generation and read again on
-    # every future climate render (see climate.py's compute_insolation), not rendering/cache
+    # every future climate render (see climate.py's compute_heating_index), not rendering/cache
     # state. The one deliberate exception to climate being otherwise fully stateless.
     axial_tilt_deg: float = DEFAULT_AXIAL_TILT_DEG
     # Another fixed per-world property: which Premade-worlds tab entry (if any) this world
@@ -216,9 +228,8 @@ class World:
     # interval you want to measure. A `default_factory` field -> backfilled on load (see
     # persistence._backfill_added_fields).
     phase_budget: dict = field(default_factory=dict)
-    # Debug-world-only: plate_id -> a fixed world-frame angular velocity (rad/s) that
-    # Plate.shift uses verbatim every step, bypassing torque.shift_plate's own
-    # torque-balance recompute entirely for that plate (see torque.py) -- the "Debugging
+    # Debug-world-only: plate_id -> a fixed world-frame angular velocity (rad/yr) used as a
+    # fixed degree of freedom in the coupled solve (see torque.py) -- the "Debugging
     # Worlds" tab's scripted-motion mechanism (see debug_worlds.py), so a tiny hand-built
     # scenario moves exactly as scripted every step rather than however real ridge-push/
     # slab-pull/basal-drag against world.mantle_centers happens to settle it. Empty for every
@@ -312,8 +323,9 @@ class World:
     # (`collision_polarity.PolarityFrame`), set by the prepass before any plate deforms and
     # left in place until the next step's prepass replaces it.
     collision_polarity_frame: object | None = None
-    # Step-scoped scratch, None outside the passes that use it: the boundary searches the
-    # prepass shares with deform() (`torque.BoundarySearchCache`), and the (parent, child)
+    # Step-scoped scratch, None outside the passes that use it: motion creates the boundary
+    # cache, the post-rotation prepass repopulates it, and deform() shares those searches
+    # (`torque.BoundarySearchCache`); also the (parent, child)
     # plate-id pairs topology changes record (`collision_polarity.note_lineage`).
     boundary_search_cache: object | None = None
     topology_lineage: list | None = None
@@ -411,7 +423,8 @@ class World:
     # -- unlike axial_tilt_deg/node_density (fixed at generation), these are meant to be
     # tweaked mid-simulation. sea_level_m replaces the bare `elevation <= 0.0` convention
     # every is_ocean check in this codebase used to hardcode (climate.py, hydrology.py);
-    # solar_multiplier scales climate.py's own SUNLIGHT constant. Changing
+    # solar_multiplier scales climate.py's own SUNLIGHT constant (and the W/m² insolation
+    # diagnostic's SOLAR_CONSTANT_W_M2). Changing
     # either forces an immediate climate_cache recompute (see main.py's controls route) so
     # /world/render and /world/stats reflect it right away, without waiting for a step.
     sea_level_m: float = 0.0
@@ -477,6 +490,16 @@ class World:
     # deformation. Meaningful only in "fault"/"both" mode, where it directly controls how sharp
     # fault-line ridges/scarps read relative to the surrounding boundary swell.
     fault_relief_multiplier: float = 1.0
+    # Mantle plume production (RFC 0007, plumes.py): scales stream acceptance against
+    # the stream ceiling. At 0 no plume ever spawns, reproducing a matched plume-off
+    # run. Plain-scalar default, so an older pickle falls through to 1.0.
+    plume_multiplier: float = 1.0
+    # Cox clustering variant of the plume arrival process (sensitivity case only).
+    plume_cox_modulation: bool = False
+    # Cumulative mantle-plume head arrivals -- LIP events (RFC 0007, #583).
+    # Incremented in `plumes.apply`'s fresh-arrival loop, read by stats.
+    # Plain-scalar default, so an older pickle loads with 0.
+    plume_heads_emplaced: int = 0
     # How a consumed lower-plate continental column splits at a polarized collision front
     # (issue #320, crust_transfer.py). Shares of the crust below the mobile cover, which all
     # goes with the scraped share. Scraped: thrust onto the upper plate's frontal belt.
@@ -512,17 +535,20 @@ class World:
     # docs/simulation-model/climate.md#fd-performance). "diagnostic" (default): skip that solve entirely
     # and let climate.compute_climate rebuild wind/air-temperature from its own closed-form
     # ABL-style formulas (compute_wind + compute_air_temperature_diagnostic) every call, the same
-    # way it already does during the pre-CFD cold-start bootstrap. Reproduces ~85-90% of the land
-    # biome map and precipitation within ~10% for a fraction of the cost -- see
-    # docs/simulation-model/climate.md#wind-model and GitHub issue #118 -- so it's the default; opt into "cfd"
+    # way it already does during the pre-CFD cold-start bootstrap. It approximates the CFD's
+    # climate for a fraction of the cost (how closely: docs/simulation-model/climate.md#wind-model,
+    # GitHub issues #118 and #529) -- so it's the default; opt into "cfd"
     # via Controls for the full solve. atmosphere_cfd_state is still kept in sync (init'd at
-    # generation, never cleared) so switching to "cfd" mid-session resumes from a real, if
-    # now-stale, state rather than a cold start.
+    # generation, never cleared except by a compact save, which drops it) so switching
+    # to "cfd" mid-session resumes from a real, if now-stale, state rather than a cold
+    # start; the first cfd step after a compact load cold-starts it again instead.
     wind_model: str = "diagnostic"
     # Atmospheric wind-solver state -- see docs/simulation-model/climate.md#ocean-atmospheric-fluid-dynamics.
     # Always on, not a mode: generate_world populates it immediately after constructing this
-    # World (atmosphere_cfd.init_atmosphere_cfd) and it's never re-initialized or cleared again
-    # for the rest of this world's life -- step_world's own _advance_fluid_dynamics just keeps
+    # World (atmosphere_cfd.init_atmosphere_cfd) and nothing re-initializes or clears it
+    # again for the rest of this world's life, except a compact save (which drops it;
+    # the first cfd step then cold-starts it from a fresh diagnostic snapshot) --
+    # step_world's own _advance_fluid_dynamics just keeps
     # advancing it by a fixed SECONDS_PER_TECTONIC_STEP (one simulated day) every tectonics
     # step, gated on simulate_climate_biomes the same way erosion/hydrology already are.
     # climate.py's compute_climate sources wind_u/wind_v (and air_temperature_c) from this
@@ -532,7 +558,8 @@ class World:
     # solved -- they're diagnostic in climate.py every step (the ocean shallow-water solver was
     # retired for lack of a stable operating point; see climate.py's module docstring). Typed
     # `| None` only because a dataclass field default can't construct it inline -- never
-    # actually `None` once generate_world has returned.
+    # actually `None` once generate_world has returned, except on a compact-loaded world
+    # before its first cfd step rebuilds it.
     atmosphere_cfd_state: atmosphere_cfd.AtmosphereCFDState | None = None
 
     def log_event(self, message: str) -> None:
@@ -640,6 +667,41 @@ def _build_land_kdtree(world: World) -> cKDTree | None:
     return cKDTree(land_points, balanced_tree=False, compact_nodes=False)
 
 
+# Longest a streamed generate/step/animation run goes without yielding a line while one
+# phase runs (#611): a multi-minute phase with no other output looks stalled -- the
+# animate endpoint's client aborts such a stream outright, and every other stream's
+# progress bar sits frozen. A third of animate's 3-minute idle watchdog, so a slow
+# phase reads as alive, not stalled.
+PROGRESS_HEARTBEAT_INTERVAL_S = 60.0
+
+
+def _monotonic() -> float:
+    # Indirection for time.monotonic so tests can pin the heartbeat clock (#611).
+    return time.monotonic()
+
+
+class HeartbeatClock:
+    """Overdue-gated heartbeat ticks for the streamed generate/step/animation runs
+    (#611). One clock per generator; `due()` reports whether
+    PROGRESS_HEARTBEAT_INTERVAL_S has passed since the last emitted line (progress or
+    heartbeat alike), stamping the new time when it has. Callers yield their own tick
+    shape when it returns true, so each stream keeps its own message contract."""
+    def __init__(self) -> None:
+        self.last_emit = _monotonic()
+
+    def stamp(self) -> None:
+        """Mark a non-heartbeat line emitted: restart the window from now, so a
+        progress line is itself proof of life for the client's watchdog."""
+        self.last_emit = _monotonic()
+
+    def due(self) -> bool:
+        now = _monotonic()
+        if now - self.last_emit >= PROGRESS_HEARTBEAT_INTERVAL_S:
+            self.last_emit = now
+            return True
+        return False
+
+
 def generate_world(seed: int, **options) -> World:
     """Generate a world, taking `generate_world_progress`'s options (see its docstring for
     what each one means) and returning the finished World without the progress reports."""
@@ -668,10 +730,18 @@ def generate_world_progress(
     cratons_first: bool | None = None,
     synthetic_relief: bool | None = None,
 ):
-    """Generate a world, yielding `("progress", fraction)` at each of its three natural phase
-    boundaries -- plate/site generation, mantle-center fitting, then the `finish_generation`
-    bootstrap -- before a final `("done", world)` carrying the finished World, same
-    progress/done contract as render_image.stream_animation_mp4. `generate_world` just drains
+    """Generate a world, yielding `("progress", fraction, phase)` at each of its three
+    natural phase boundaries -- plate/site generation, mantle-center fitting, then the
+    `finish_generation` bootstrap -- before a final `("done", world)` carrying the finished
+    World, same progress/done contract as render_image.stream_animation_mp4. The phase is
+    a human-readable label for the run overlay (#629): "Creating cratons" when the
+    cratons-first layout is in play, else "Creating continents", then "Starting mantle
+    convection" and "Seeding climate and oceans". Between those boundaries, an
+    overdue-gated `("heartbeat", fraction)` tick fires wherever a slow sub-phase runs
+    with no other output (#611): reaching *into* plate generation for finer progress
+    would mean instrumenting lithosphere_plate.generate_plates itself, but the relief,
+    soil and finish-bootstrap sub-calls subdivide far enough to keep a multi-minute
+    generation reading as alive. `generate_world` just drains
     this to completion and returns the `done` payload. Necessarily coarser-grained than
     step_world_progress's per-plate resolution: unlike a step's shift()/deform() loops,
     nothing here naturally subdivides further without reaching into
@@ -720,6 +790,7 @@ def generate_world_progress(
     `synthetic_relief` (default `synthetic_relief.SYNTHETIC_RELIEF_DEFAULT`) replaces that
     layout's continental relief with relief from a synthetic tectonic history (#218, see
     synthetic_relief.py); it applies only when the cratons-first layout does."""
+    clock = HeartbeatClock()
     if cratons_first is None:
         cratons_first = lithosphere_plate.continent_layout.CRATONS_FIRST_DEFAULT
     if synthetic_relief is None:
@@ -741,7 +812,10 @@ def generate_world_progress(
         cratons_first=cratons_first,
         cratons_first_setup=layout_setup,
     )
-    yield ("progress", 1 / 3)
+    if lithosphere_plate.uses_cratons_first_layout(cratons_first, sketch, premade_world_id):
+        yield ("progress", 1 / 3, "Creating cratons")
+    else:
+        yield ("progress", 1 / 3, "Creating continents")
 
     rng = np.random.default_rng(seed)
     if premade_world_id in ("earth", "pangaea"):
@@ -759,7 +833,7 @@ def generate_world_progress(
         mantle_centers = real_plates.fit_mantle_centers(real_plate_list, candidates, rng)
     else:
         mantle_centers = mantle.generate_convection_centers(rng, n_centers=num_mantle_centers)
-    yield ("progress", 2 / 3)
+    yield ("progress", 2 / 3, "Starting mantle convection")
 
     world = World(
         seed=seed,
@@ -783,9 +857,9 @@ def generate_world_progress(
     else:
         initial_terrain.apply_lowland_spherical_relief(world)
 
-        # The cratons-first layout has explicit plate boundaries, so use the torque solver's
-        # read-only first-step prediction to seed modest convergent-belt relief. The prediction
-        # informs terrain only; plate positions and elapsed time remain at generation state.
+        # The cratons-first layout has explicit plate boundaries, so use the coupled solver's
+        # read-only first-step rates to seed modest convergent-belt relief. The solve informs
+        # terrain only; plate positions and elapsed time remain at generation state.
         if cratons_first:
             initial_terrain.apply_predicted_orogens(world)
 
@@ -793,34 +867,59 @@ def generate_world_progress(
     # synthetic pass moves it (#218); the others keep every node's land/sea side.
     if initial_soil_maturity is not None:
         geology.seed_initial_soil(world.plates, seed, initial_soil_maturity)
+    # 3/4: relief and soil behind us, into the finish bootstrap. Arbitrary equal
+    # subdivision of the final third, same fiction as the thirds themselves (#611).
+    if clock.due():
+        yield ("heartbeat", 3 / 4)
 
     n_continents = sum(1 for p in plates if p.crust_type == "continental")
-    finish_generation(
+    for tick in finish_generation(
         world, f"World generated with {len(plates)} plates ({n_continents} continental).",
         initialize_rivers=bool(cratons_first),
-    )
-    yield ("progress", 1.0)
+    ):
+        yield tick
+    yield ("progress", 1.0, "Seeding climate and oceans")
     yield ("done", world)
 
 
-def finish_generation(world: World, log_message: str, initialize_rivers: bool = False) -> None:
+def finish_generation(world: World, log_message: str, initialize_rivers: bool = False):
     """Shared tail every world-generation path (`generate_world`, `debug_worlds.
     generate_debug_world`) runs once `world.plates` is populated: bootstrap the permanent
     atmosphere wind-solver state, snapshot the eustatic water budget from the flat starting
     sea level, and log the one generation event. Pulled out of `generate_world` so the
     "Debugging Worlds" tab's scripted scenarios get the exact same bootstrap without
-    duplicating it."""
+    duplicating it.
+
+    A generator, yielding overdue-gated `("heartbeat", fraction)` ticks at its slow
+    sub-calls (#611) -- the climate solve and the CFD init can each run minutes with no
+    other output. Fractions are generate_world_progress's final-third ladder (5/6, 11/12);
+    callers that don't stream just drain it."""
+    clock = HeartbeatClock()
     # See World.atmosphere_cfd_state's own comment for why it's populated here,
     # unconditionally, rather than lazily. `terrain` is the diagnostic bootstrap snapshot the
     # wind solver is seeded from (compute_wind's own latitude-banded field), before the state
     # it will read from every step after exists.
     height, width = climate.grid_dimensions(world.climate_density)
     terrain = climate.compute_climate(world, height, width)
+    if clock.due():
+        yield ("heartbeat", 5 / 6)
     world.atmosphere_cfd_state = atmosphere_cfd.init_atmosphere_cfd(world, terrain)
+    if clock.due():
+        yield ("heartbeat", 11 / 12)
 
     # Snapshot the ocean water volume from the flat starting sea level -- from here on
     # step_world re-solves sea_level_m against this fixed budget every step (see eustasy.py).
     eustasy.initialize_water_budget(world)
+
+    # Release the bootstrap snapshot before the baseline stats entry runs its own
+    # full-density solve below: holding both at once doubles this phase's peak allocation,
+    # which is what tips a hosted generate over a small container's RAM cap (#376). The
+    # snapshot is deliberately *not* lent to record_stats via climate_cache: compute_climate
+    # reads world.atmosphere_cfd_state to pick its air-temperature path (cold-start
+    # compute_air_temperature with no state yet, compute_air_temperature_diagnostic once
+    # the state above exists), so the baseline must solve fresh after the state it has
+    # always seen -- reusing this pre-state snapshot would silently move stats_history[0].
+    del terrain
 
     if initialize_rivers:
         # Seed first-step routing and river channels as part of generation, not as a later
@@ -871,35 +970,51 @@ def _advance_fluid_dynamics(world: World, node_cloud: tuple[np.ndarray, list[Pla
     terrain = climate.compute_climate(
         world, *climate.grid_dimensions(world.fluid_density), node_cloud=node_cloud, skip_moisture=True
     )
+    if world.atmosphere_cfd_state is None:
+        # A compact save drops the CFD state; cold-start it so the first post-load
+        # step rebuilds it (#596). Seeded from a climate_density snapshot, exactly
+        # like generation (`finish_generation`) rather than the fluid_density
+        # snapshot above: the solver grid is fluid_density either way, but the
+        # source detail propagates, and the seed-resolution imprint on wind and
+        # temperature persists for the world's life.
+        seed_terrain = climate.compute_climate(world, *climate.grid_dimensions(world.climate_density))
+        world.atmosphere_cfd_state = atmosphere_cfd.init_atmosphere_cfd(world, seed_terrain)
     atmosphere_cfd.refresh_forcing(world, world.atmosphere_cfd_state, terrain)
     atmosphere_cfd.step_atmosphere_cfd(world, world.atmosphere_cfd_state, atmosphere_cfd.SECONDS_PER_TECTONIC_STEP)
 
 
-def step_world(world: World, years: float) -> None:
+def step_world(world: World, years: float, *, motion_diagnostics: list[dict] | None = None) -> None:
     """Advance the world by `years` -- thin wrapper draining step_world_progress to
     completion for callers that don't need its per-plate progress (every caller but main.py's
     streaming /world/step endpoint). See step_world_progress for what actually runs; this
     function's own former docstring, describing that same behavior, now lives there."""
-    for _ in step_world_progress(world, years):
+    for _ in step_world_progress(world, years, motion_diagnostics=motion_diagnostics):
         pass
 
 
-def step_world_progress(world: World, years: float):  # noqa: C901
+def step_world_progress(world: World, years: float, *, motion_diagnostics: list[dict] | None = None):  # noqa: C901
     """Generator form of step_world, advancing the world by `years` exactly as it did before
-    this function existed, but yielding a fraction-complete float (0 to 1) after each
-    per-plate `shift()`/`deform()` call -- main.py's /world/step endpoint streams these
-    directly to the client as NDJSON progress lines (see render_image.stream_animation_mp4
-    for the same streaming-generator shape elsewhere in this codebase). The two per-plate
+    this function existed, but yielding `("progress", fraction, phase)` tuples --
+    fraction-complete (0 to 1) plus a human-readable label for the run overlay (#629) --
+    after each per-plate `shift()`/`deform()` call and at each phase boundary of the
+    tail, plus overdue-gated `("heartbeat", fraction)` ticks wherever a slow tail
+    sub-phase runs with no other output (#611) -- same fraction the progress line would
+    carry, no progress implied. main.py's /world/step endpoint streams these directly
+    to the client as NDJSON progress lines (see render_image.stream_animation_mp4
+    for the same streaming-generator shape elsewhere in this codebase). Consumers that
+    only drain (step_world, the replay log, _drain_progress) ignore all three shapes
+    alike. The two per-plate
     passes are treated as `2 * len(world.plates)` equal-weight units (plus one more for
     everything after them -- topology changes, climate/erosion/volcanism, sea level -- which
     has no comparable natural subdivision), not a measured cost split, but plate movement
     dominates a step's runtime on any world large enough for progress to matter, so this
-    still tracks real, if coarse, completion.
+    still tracks real, if coarse, completion. Boundary labels reuse the current fraction
+    (no units are consumed by naming the next phase), so fractions stay non-decreasing.
 
-    Plate movement (skippable via World.simulate_plate_movement) is two per-plate passes:
-    `Plate.shift(world, years)` for every plate (integrate the torque balance and rotate
-    rigidly), then `deform(world, other_plates, years, D)` for every plate in a freshly
-    randomized order each turn (Mohr-Coulomb yield/isostasy -- see quad_tectonics.py).
+    Plate movement (skippable via World.simulate_plate_movement) is a coupled solve and
+    batch rotation through `torque.shift_plates_quasistatic`, then
+    `deform(world, other_plates, years, D)` for every plate in a freshly randomized order
+    each turn (Mohr-Coulomb yield/isostasy -- see quad_tectonics.py).
     Randomizing the processing order each turn is what keeps two neighbors from both claiming
     the same contested/unclaimed space in the same turn.
 
@@ -937,22 +1052,31 @@ def step_world_progress(world: World, years: float):  # noqa: C901
     # that's a single unit rather than further subdivided.
     total_units = (2 * len(world.plates) if world.simulate_plate_movement else 0) + 1
     done_units = 0
+    clock = HeartbeatClock()
     # Cratons (cratons.py): every phase that can thin or remove crust is bracketed by a
     # PhaseAudit that books any cratonic volume it lost to that phase's mechanism.
     cratons.ensure_initialized(world)
     craton_ledger_before = dict(world.craton_ledger)
     craton_live_before = cratons.live_volume_m3(world)
     if world.simulate_plate_movement:
-        distances = {}
-        for plate in world.plates:
-            distances[plate.plate_id] = plate.shift(world, years)
+        # RFC 0012 G2: assemble all plate torques and drag from one frozen pre-step snapshot,
+        # solve the coupled system, then apply every rotation. The per-plate progress units
+        # remain the same even though the solve/rotation batch is simultaneous.
+        motion_result = {}
+        distances = torque.shift_plates_quasistatic(
+            world,
+            years,
+            diagnostics=motion_result if motion_diagnostics is not None else None,
+        )
+        if motion_diagnostics is not None:
+            motion_diagnostics.append({"step": world.steps_taken, "elapsed_years": world.elapsed_years, **motion_result})
+        for _plate in world.plates:
             done_units += 1
-            yield done_units / total_units
+            yield ("progress", done_units / total_units, "Moving plates")
         # Collision polarity prepass (issue #318): every plate has moved and none has deformed,
         # so record subduction evidence and freeze each continental front's lower/upper plate
-        # now, independent of the deform order below. Its boundary searches stay cached for
-        # deform() -- see torque.BoundarySearchCache.
-        world.boundary_search_cache = torque.BoundarySearchCache()
+        # now, independent of the deform order below. Rotation invalidated the motion-phase
+        # node trees; this prepass repopulates the cache for the following deformation pass.
         collision_polarity.observe_contacts(world, years)
         # Fail before any plate deforms, not at the first polarized front mid-pass.
         crust_transfer.partition(world)
@@ -968,12 +1092,17 @@ def step_world_progress(world: World, years: float):  # noqa: C901
         audit = cratons.PhaseAudit(world)
         for plate in order:
             others = [p for p in world.plates if p.plate_id != plate.plate_id]
-            plate.deform(world, others, years, distances[plate.plate_id])
+            plate.deform(world, others, years, distances.get(plate.plate_id, 0.0))
             done_units += 1
-            yield done_units / total_units
+            yield ("progress", done_units / total_units, "Reshaping plates")
         collision_polarity.finish_deform_pass(world)
         world.suture_root_capacity = None
         audit.settle("audit_clipped_m3")
+        # Buoyant-crust tracers (RFC 0007, issue #581): the deform pass instruments
+        # thinning, melt-through, docking and conversion directly; the audit holds
+        # anything they missed (ceiling-overflow moves, crust-type changes) to the
+        # column bounds, booking corrections to `clipped_m3`.
+        terranes.audit_world(world, "tectonic")
         # Intraplate faults: age/spawn/retire and apply their own relief, on top of (never
         # replacing) deform()'s boundary classification -- see faults.py. Before topology
         # changes so a fresh fault's relief is in place when merge/split geometry is judged.
@@ -990,13 +1119,26 @@ def step_world_progress(world: World, years: float):  # noqa: C901
         # Topology: merges and splits conserve craton volume by remap; a plate or
         # stranded fragment removed outright takes its craton with it (failed rifts book their
         # own thinning, see merge_split.maybe_split_plate).
+        yield ("progress", done_units / total_units, "Merging and splitting plates")
         audit = cratons.PhaseAudit(world)
         frames_before = collision_polarity.begin_topology(world)
+        buoyant_live_before = terranes.world_live_volumes_m3(world)
         for message in merge_split.apply_topology_changes(world, years):
             world.log_event(message)
         # Hand collision evidence and front records to the plates now carrying them.
         collision_polarity.end_topology(world, frames_before)
         audit.settle("unattributed_m3", "topology_removed_m3")
+        # Merge remaps conserve tracers, but a plate removed outright takes its
+        # live buoyant crust with it: book the vanished volumes to the dedicated
+        # in-balance `topology_removed_m3` sink (the continental ledger's
+        # `topology_removed_m3` precedent), so the books close without touching
+        # `unattributed_m3` (RFC 0007, #581).
+        buoyant_ledger = terranes.ensure_ledger(world)
+        buoyant_live_after = terranes.world_live_volumes_m3(world)
+        for source, before in buoyant_live_before.items():
+            lost = before - buoyant_live_after.get(source, 0.0)
+            if lost > 0.0:
+                terranes.record(buoyant_ledger, source, "topology_removed_m3", lost)
         # Re-home faults onto surviving plates after any merge/split, drop subducted ones.
         faults.reconcile_faults(world)
         # Stamp/clear the `overlap_onset_years` field and advance World.overlap_progress
@@ -1009,7 +1151,8 @@ def step_world_progress(world: World, years: float):  # noqa: C901
         if world.debug_diagnostics:
             spacing_rad = line_spacing_rad(world.node_density)
             before_gap_fill = {p.plate_id: phase_budget.snapshot(p, spacing_rad) for p in world.plates}
-        for message in gaps.fill_gaps_by_growing_neighbours(world):
+        yield ("progress", done_units / total_units, "Filling seafloor gaps")
+        for message in gaps.fill_gaps_by_growing_neighbours(world, years=years):
             world.log_event(message)
         if world.debug_diagnostics:
             for plate in world.plates:
@@ -1039,9 +1182,19 @@ def step_world_progress(world: World, years: float):  # noqa: C901
         # pass writes into destination lines by (plate_id, line_index) and running it earlier
         # could target a line that subducts, splits, or merges away in this same step.
         if world.steps_taken % magma_transport.MAGMA_TRANSPORT_INTERVAL_STEPS == 0:
+            yield ("progress", done_units / total_units, "Moving magma")
             for message in magma_transport.run_magma_transport(world, world.magma_transport_banked_years / 1_000_000.0):
                 world.log_event(message)
             world.magma_transport_banked_years = 0.0
+        # Mantle plumes (RFC 0007, plumes.py): a whole-sphere pass after topology has
+        # settled for this step, same reasoning as magma_transport above. Interval
+        # overlap makes any step length exact; multiplier 0 is a strict no-op.
+        yield ("progress", done_units / total_units, "Raising mantle plumes")
+        plumes.apply(world, years)
+        # Topology behind us; climate/erosion ahead. The tail has no per-plate loop,
+        # so an overdue tick here is the only sign of life a slow step sends (#611).
+        if clock.due():
+            yield ("heartbeat", done_units / total_units)
 
     erosion_result = None
     if world.simulate_climate_biomes:
@@ -1051,6 +1204,7 @@ def step_world_progress(world: World, years: float):  # noqa: C901
         # climate.py/erosion.py/hydrology.py still reads fresh off world.plates itself) --
         # see plates.gather_node_positions's own docstring for why this was worth factoring
         # out. Skipped entirely, alongside erosion below, when simulate_climate_biomes is off.
+        yield ("progress", done_units / total_units, "Resolving glaciers")
         node_cloud = gather_node_positions(world.plates)
         # Same "fixed for the rest of this step" reasoning as node_cloud above applies to
         # land_kdtree_cache -- reset here, then lazily rebuilt on whichever future caller
@@ -1067,6 +1221,9 @@ def step_world_progress(world: World, years: float):  # noqa: C901
         audit = cratons.PhaseAudit(world)
         erosion_result = erosion.apply_erosion(world, years, node_cloud=node_cloud)
         audit.settle("eroded_m3")
+        # Erosion thins columns without touching tracers: the audit holds them to
+        # the new bounds, booking erosion's share as "eroded" (RFC 0007, #581).
+        terranes.audit_world(world, "eroded")
         if world.debug_diagnostics:
             for plate in world.plates:
                 before = before_erosion.get(plate.plate_id)
@@ -1078,26 +1235,43 @@ def step_world_progress(world: World, years: float):  # noqa: C901
         # can trigger ruptures on nearby faults and scars (see faults.trigger_unloading_earthquakes).
         if erosion_result is not None:
             faults.trigger_unloading_earthquakes(world, erosion_result.points, erosion_result.ice_load_change_pa, years)
+        # Erosion (the slowest tail call on a big world) behind us; volcanism and
+        # resource formation ahead -- same overdue tick, same reason as above (#611).
+        if clock.due():
+            yield ("heartbeat", done_units / total_units)
     if world.simulate_plate_movement:
+        yield ("progress", done_units / total_units, "Raising volcanoes")
         volcanism.apply_volcanic_activity(world, years)
     if erosion_result is not None:
+        yield ("progress", done_units / total_units, "Forming natural resources")
         geology.apply_resource_formation(world, years, erosion_result)
         # Reconcile the stranded-basin tracker against this step's freshly-rebuilt depression
         # hierarchy (world.hydrology_cache, just set by erosion) -- only on a step that
         # actually recomputed hydrology, so persistence timers count simulated hydrology steps.
         stranded_basins.reconcile_world_tracks(world)
+    # Volcanism and geology behind us; caps, craton clocks and sea level ahead (#611).
+    if clock.due():
+        yield ("heartbeat", done_units / total_units)
 
     # Every Hc/Hm writer has run for this step: hold each column to its caps (issue #256), so
     # the hard invariant holds even where a writer misses one. Sea level below then sees the
     # clamped hypsometry. Its audit also catches every unaudited writer since the erosion
     # phase, so what it clips is audit_clipped, not delamination (#340).
+    yield ("progress", done_units / total_units, "Balancing sea level")
     audit = cratons.PhaseAudit(world)
     _clamp_column_caps(world)
     audit.settle("audit_clipped_m3")
+    # Column caps are the last Hc writer of the step: hold tracers to the final
+    # columns (RFC 0007, issue #581).
+    terranes.audit_world(world, "capped")
     # Advance the craton formation clocks against this step's final columns, then report any
     # mechanism that destroyed a noticeable share of the cratons this step.
     cratons.update(world, years)
     cratons.log_destruction(world, craton_ledger_before, craton_live_before)
+    # Last slow block behind us; only sea level, stats and the final progress tick
+    # ahead. Same overdue tick (#611).
+    if clock.due():
+        yield ("heartbeat", done_units / total_units)
 
     # Eustatic sea level: re-solve world.sea_level_m against this step's final hypsometry,
     # holding the conserved ocean water volume fixed (see eustasy.py). Unconditional -- both
@@ -1107,4 +1281,4 @@ def step_world_progress(world: World, years: float):  # noqa: C901
 
     world.record_stats()
     done_units += 1
-    yield done_units / total_units
+    yield ("progress", done_units / total_units, "Balancing sea level")

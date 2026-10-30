@@ -350,6 +350,29 @@ def test_a_craton_resists_divergent_thinning_and_books_what_it_loses(monkeypatch
     assert world.craton_ledger["rifted_divergent_m3"] == world.craton_ledger["rifted_m3"]
 
 
+def test_plume_heat_lets_divergent_thinning_cut_a_craton_faster(monkeypatch):
+    """RFC 0007 (#582): a heated craton cell thins (1 - (1-W)*R)/(1 - R) as much as
+    an unheated one, and the heat column passes through deform_columns unchanged."""
+    from app import plumes
+    from app.lithosphere_plate import COLUMN_FIELDS
+
+    monkeypatch.setattr(plumes, "PLUME_CRATON_WEAKENING", 0.5)
+    plate = _plate(1, _block((10, 12), (10, 11)))
+    world = _unseeded(monkeypatch, plate)
+    _set_craton(plate, np.array([True, True]))
+    heat = np.array([0.0, 20.0])
+    plate.set_fields_on_plate(plume_heat_myr=heat)
+    fields = {name: plate.collect(name) for name in COLUMN_FIELDS}
+    rate = -0.05 / rheology.SECONDS_PER_YEAR
+
+    out = deform_columns(world, plate, _divergent_ctx(2, rate), fields, lambda: None, plate.node_areas_m2(), 0, 1_000_000)
+
+    thinned = fields["crustal_thickness_m"] - out["crustal_thickness_m"]
+    assert thinned[0] > 0.0
+    assert thinned[1] == pytest.approx(2.5 * thinned[0], rel=1e-9)
+    np.testing.assert_array_equal(out["plume_heat_myr"], heat)
+
+
 def test_rift_stretch_draws_less_from_a_craton_and_books_its_thinning(monkeypatch):
     def opened(with_craton):
         plate = _plate(1, _block((10, 20), (20, 21)))
@@ -376,6 +399,37 @@ def test_rift_stretch_draws_less_from_a_craton_and_books_its_thinning(monkeypatc
     assert world.craton_ledger["rifted_stretch_m3"] == world.craton_ledger["rifted_m3"]
     # What the craton withheld is fresh magmatic crust: the new cell is thinner, not missing.
     assert craton.collect("crustal_thickness_m")[new] < plain.collect("crustal_thickness_m")[new]
+
+
+def test_rift_stretch_draws_more_from_a_heated_craton(monkeypatch):
+    """RFC 0007 (#582): plume heat weakens a cratonic stretch donor, so the rift
+    takes more from heated craton than cold craton but still less than from
+    craton-free crust."""
+    from app import plumes
+
+    monkeypatch.setattr(plumes, "PLUME_CRATON_WEAKENING", 0.5)
+
+    def opened(craton, heated):
+        plate = _plate(1, _block((10, 20), (20, 21)))
+        world = _unseeded(monkeypatch, plate)
+        if craton:
+            _set_craton(plate, np.ones(plate.node_count(), dtype=bool))
+        if heated:
+            plate.set_fields_on_plate(plume_heat_myr=np.full(plate.node_count(), 20.0))
+        inserted = plate.insert_cells(pack_cell_keys(np.array([0]), np.array([20]), np.array([20])))
+        assert inserted[0]
+        new = plate._index_of_keys(pack_cell_keys(np.array([0]), np.array([20]), np.array([20])))
+        before = plate.collect("crustal_thickness_m")
+        quad_tectonics._open_rift(plate, world, 1, new, new, np.array([1.0]), 1_000_000)
+        old = np.ones(plate.node_count(), dtype=bool)
+        old[new] = False
+        loss = float(np.dot(before[old] - plate.collect("crustal_thickness_m")[old], plate.node_areas_m2()[old]))
+        return loss
+
+    free_loss = opened(False, False)
+    cold_loss = opened(True, False)
+    hot_loss = opened(True, True)
+    assert 0.0 < cold_loss < hot_loss < free_loss
 
 
 def _retreat_ctx(plate, shrinkable, accrete):
@@ -489,7 +543,7 @@ def test_a_relocated_terrane_keeps_its_craton_and_material_on_its_new_footprint_
     craton_before = _volume(plate, "craton_crust_m")
     material_before = _volume(plate, "continental_material_m")
 
-    quad_tectonics._accrete_onto_survivors(plate, donors, ~donors, world, terranes=donors)
+    quad_tectonics._accrete_onto_survivors(plate, donors, ~donors, world, terrane_mask=donors)
 
     survivors = ~donors
     terrane = (plate.collect("crust_type_code") == CRUST_TYPE_CONTINENTAL) & survivors
@@ -629,6 +683,33 @@ def test_rift_thinning_factors_stay_in_unit_range(monkeypatch, resistance):
     for taper in np.linspace(0.0, 1.0, 11):
         factor = np.clip(1.0 - FAILED_RIFT_THINNING_FRACTION * taper * (1.0 - resisted), 0.0, 1.0)
         assert np.all((factor >= 1.0 - FAILED_RIFT_THINNING_FRACTION) & (factor <= 1.0))
+
+
+def test_plume_heat_weakens_rift_resistance_with_interval_overlap(monkeypatch):
+    """RFC 0007 (#582): while `plume_heat_myr` covers the step, craton strength is
+    scaled by (1 - PLUME_CRATON_WEAKENING) with the product clamped like
+    `rift_resistance`; a step extending beyond the remaining heat scales the
+    weakening by remaining/step."""
+    from app import plumes
+
+    monkeypatch.setattr(plumes, "PLUME_CRATON_WEAKENING", 0.5)
+    full = cratons.CRATON_FULL_STRENGTH_HC_M
+    craton = np.array([0.0, 0.5 * full, full, 2.0 * full])
+    plain = cratons.rift_resistance(craton)
+    step_years = 1e6  # 1 Myr step; plume_heat_myr is in Myr.
+    weakened = cratons.heated_rift_resistance(craton, np.full(4, 20.0), step_years)
+    # Heating halves effective resistance at 0.5 (issue #582 Done-when).
+    assert weakened == pytest.approx(0.5 * plain, rel=1e-12)
+    assert np.all((weakened >= 0.0) & (weakened <= 1.0))
+    # No heat: identical to rift_resistance.
+    assert cratons.heated_rift_resistance(craton, np.zeros(4), step_years) == pytest.approx(plain, rel=1e-12)
+    # Half the step heated: half the weakening.
+    half = cratons.heated_rift_resistance(craton, np.full(4, 0.5), step_years)
+    assert half == pytest.approx((plain + weakened) / 2.0, rel=1e-12)
+    # Even an out-of-range knob cannot push resistance out of [0, 1].
+    monkeypatch.setattr(plumes, "PLUME_CRATON_WEAKENING", 2.0)
+    extreme = cratons.heated_rift_resistance(craton, np.full(4, 20.0), 1.0)
+    assert np.all((extreme >= 0.0) & (extreme <= 1.0))
 
 
 def test_record_rejects_negative_or_unknown_entries():

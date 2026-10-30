@@ -1,6 +1,6 @@
 # The hosted app (#376): one container serving the built frontend and the FastAPI backend from
 # one origin, as the desktop build does. Railway builds it as .railway/railway.ts configures;
-# see docs/HOSTING.md for the variables and volume it needs.
+# see docs/hosting.md for the variables and volume it needs.
 
 # Node 20 matches CI's frontend job (.github/workflows/test.yml).
 FROM node:20-slim AS frontend
@@ -30,9 +30,9 @@ ENV MANTLE_BLOOM_FRONTEND_DIST=/app/frontend/dist \
     MANTLE_BLOOM_LOCAL_NO_LOGIN=0
 
 # Runs as root: Railway mounts the checkpoint volume root-owned, and a non-root user can't
-# write to it (docs/HOSTING.md).
+# write to it (docs/hosting.md).
 #
-# One process: the world lives in its memory, so more workers would each hold a different
-# world. Railway injects PORT. The graceful-shutdown cap ends viewers' 25 s long polls on a
-# redeploy instead of waiting them out; the checkpoint is already on disk.
+# One process: the worlds live in its memory, so more workers would each hold a
+# different registry. Railway injects PORT. The graceful-shutdown cap ends viewers' 25 s
+# long polls on a redeploy instead of waiting them out; the checkpoint is already on disk.
 CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port \"${PORT:-8080}\" --timeout-graceful-shutdown 5"]

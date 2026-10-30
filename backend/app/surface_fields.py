@@ -59,10 +59,16 @@ SURFACE_FIELDS: dict[str, SurfaceField] = {
     "channel_depth": _field(float, 0.0, RemapClass.INTENSIVE),
     "channel_width": _field(float, 0.0, RemapClass.INTENSIVE, coupled_to=("channel_depth",)),
     "lake_depth": _field(float, 0.0, RemapClass.EXTENSIVE),
+    # Lake ice is a disjoint water-equivalent reservoir (RFC 0014 D2(c), #632).
+    "lake_ice_m": _field(float, 0.0, RemapClass.EXTENSIVE),
     "glacier_depth": _field(float, 0.0, RemapClass.EXTENSIVE),
     "silt_depth": _field(float, 0.0, RemapClass.EXTENSIVE),
     "is_volcano": _field(bool, False, RemapClass.BOOLEAN_PROVENANCE),
     "volcano_active_years_remaining": _field(float, 0.0, RemapClass.COUNTDOWN),
+    # Mantle plume heating for RFC 0010's craton weakening (RFC 0007, plumes.py):
+    # time left on plume weakening, in Myr. Counted down by plumes.apply, not by
+    # the remap machinery -- COUNTDOWN only governs refinement/coarsening here.
+    "plume_heat_myr": _field(float, 0.0, RemapClass.COUNTDOWN),
     "soil_depth": _field(float, 0.0, RemapClass.EXTENSIVE),
     "soil_mineral_content": _field(float, 0.0, RemapClass.INTENSIVE, coupled_to=("soil_depth",)),
     "soil_organic_content": _field(float, 0.0, RemapClass.INTENSIVE, coupled_to=("soil_depth",)),
@@ -85,6 +91,13 @@ SURFACE_FIELDS: dict[str, SurfaceField] = {
     # craton); the formation clock blends.
     "craton_crust_m": _field(float, 0.0, RemapClass.EXTENSIVE),
     "craton_formed_years": _field(float, CRATON_UNFORMED_YEARS, RemapClass.HISTORY, sentinel=CRATON_UNFORMED_YEARS),
+    # Buoyant-crust tracers (terranes.py, shared RFCs 0006/0007). Oceanic-plateau and
+    # island-arc shares of Hc: extensive so every remap conserves their volume.
+    # `arc_crust_m` is RFC 0006's registration; the age moment accumulates here first
+    # (RFC 0007 lands first; RFC 0006's age moment adds thickness x emplacement time
+    # into the same field, and age reads out volume-weighted).
+    "plateau_crust_m": _field(float, 0.0, RemapClass.EXTENSIVE),
+    "buoyant_crust_time_m_yr": _field(float, 0.0, RemapClass.EXTENSIVE),
     "stable_continental_myr": _field(float, 0.0, RemapClass.CLOCK),
     # When the column last became a belt -- welded in a collision or stretched by a rift --
     # so it never forms craton (cratons.mark_belt, RFC 0009). Majority by area, not HISTORY:

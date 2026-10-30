@@ -128,3 +128,34 @@ def test_balance_treats_relaminated_returns_as_a_surface_source():
         world, plate, delta, "remelted_relaminated_returns_m3"
     )
     continental_ledger.assert_closed(world)
+
+
+def test_juvenile_sub_accounts_sum_under_the_parent():
+    """RFC 0007 (#581): plume juvenile books to its sub-account and to the
+    `juvenile_additions_m3` total; other juvenile books to the parent alone."""
+    world = _quad_world()
+    continental_ledger.ensure_initialized(world)
+    plate = world.plates[0]
+    plate.set_fields_on_plate(
+        crustal_thickness_m=plate.collect("crustal_thickness_m") + 200.0
+    )
+    areas = plate.node_areas_m2()
+    bookings = {
+        "juvenile_flood_basalt_m3": np.array([100.0, 0.0]),
+        "juvenile_hotspot_m3": np.array([0.0, 50.0]),
+        "juvenile_plateau_m3": np.array([25.0, 25.0]),
+    }
+    expected_subs = {}
+    for account, delta in bookings.items():
+        continental_ledger.add_material_thickness(world, plate, delta, account)  # type: ignore[arg-type]
+        expected_subs[account] = float(np.dot(delta, areas))
+    ledger = world.continental_material_ledger
+    for account, expected in expected_subs.items():
+        assert ledger[account] == pytest.approx(expected)
+    assert ledger["juvenile_additions_m3"] == pytest.approx(sum(expected_subs.values()))
+    # Direct parent bookings (arc volcanism, rifts) stay parent-only.
+    continental_ledger.record(world, "juvenile_additions_m3", 7.0)
+    assert ledger["juvenile_additions_m3"] == pytest.approx(sum(expected_subs.values()) + 7.0)
+    for account in continental_ledger.JUVENILE_SUB_ACCOUNTS:
+        assert account in continental_ledger.LEDGER_KEYS
+    continental_ledger.assert_closed(world)
