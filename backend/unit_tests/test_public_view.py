@@ -643,3 +643,69 @@ def test_duplicate_concurrent_step_requests_run_the_step_once(guest, steps, monk
     # A later request against the new revision is a new step.
     assert _step(guest, results[0]["world"]["revision"]).json()["computed"] is True
     assert len(steps) == 2
+
+
+def test_world_state_answers_while_the_session_lock_is_held(guest, steps):
+    # A step holds the lock for minutes, and this async route must not freeze the event loop.
+    result = {}
+    with _S.lock:
+        reader = threading.Thread(
+            target=lambda: result.update(guest.get(f"/public/worlds/{_S.world_id}/world").json()),
+            daemon=True,
+        )
+        reader.start()
+        reader.join(5)
+    assert result["name"] == "public-test"
+
+
+def test_viewer_long_poll_wakes_on_a_rename(guest, steps, monkeypatch):
+    monkeypatch.setattr(main, "_record_json", lambda session: {})  # The stand-in world has no plates.
+    revision = _revision(guest)
+    result = {}
+    poller = threading.Thread(target=lambda: result.update(guest.get(f"/public/worlds/{_S.world_id}/world", params={"after": revision}).json()))
+    poller.start()
+    time.sleep(0.05)
+    assert poller.is_alive()
+    assert _local().patch(f"/worlds/{_S.world_id}", json={"name": "renamed"}).status_code == 200
+    poller.join(5)
+    assert result["name"] == "renamed"
+    assert result["world"]["revision"] == revision
+    assert guest.get("/public/worlds").json()["worlds"][0]["name"] == "renamed"
+
+
+def test_regenerate_keeps_the_old_name_until_its_world_is_published(guest, steps):
+    main._apply_generate_identity(_S, "next-planet", None)
+    assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["name"] == "public-test"
+    main._set_world(_S, _S.world)
+    assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["name"] == "next-planet"
+
+
+def test_viewer_long_poll_refuses_a_world_made_private_while_waiting(guest, steps, monkeypatch):
+    monkeypatch.setattr(main, "_record_json", lambda session: {})  # The stand-in world has no plates.
+    revision = _revision(guest)
+    status = []
+    poller = threading.Thread(target=lambda: status.append(guest.get(f"/public/worlds/{_S.world_id}/world", params={"after": revision}).status_code))
+    poller.start()
+    time.sleep(0.05)
+    assert poller.is_alive()
+    assert _local().patch(f"/worlds/{_S.world_id}", json={"is_public": False}).status_code == 200
+    poller.join(5)
+    assert status == [404]
+
+
+def test_visibility_toggle_does_not_publish_a_queued_regenerates_name(guest, steps, monkeypatch):
+    monkeypatch.setattr(main, "_record_json", lambda session: {})  # The stand-in world has no plates.
+    main._apply_generate_identity(_S, "next-planet", None)
+    assert _local().patch(f"/worlds/{_S.world_id}", json={"is_public": True}).status_code == 200
+    assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["name"] == "public-test"
+
+
+def test_failed_regenerate_publishes_its_rename(guest, steps, monkeypatch):
+    def failing_generate(*_args, **_kwargs):
+        raise ValueError("no room")
+        yield
+
+    monkeypatch.setattr(main, "generate_world_progress", failing_generate)
+    response = _local().post(f"/worlds/{_S.world_id}/generate", json={"seed": 1, "name": "next-planet"})
+    assert '"type": "error"' in response.text
+    assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["name"] == "next-planet"

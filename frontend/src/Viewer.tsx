@@ -60,38 +60,32 @@ function useDisplayWidth(): number {
   return width;
 }
 
-function formatMyr(years: number): string {
-  return `${(years / 1e6).toFixed(1)} Myr`;
-}
-
-// "Randomization", not "creation": a world starts from a randomized state, with no
-// planetary cooling history behind it (#711).
-function formatAge(years: number): string {
-  return `${(years / 1e6).toFixed(1)} Million years since randomization`;
+function formatMillionYears(years: number): string {
+  return `${(years / 1e6).toFixed(1)} Million years`;
 }
 
 function refusalMessage(err: unknown): string {
   if (err instanceof PublicStepRefused && err.status === 503) {
     return "The world is busy with another run right now. Try again in a moment.";
   }
-  return `Step failed: ${err instanceof Error ? err.message : String(err)}`;
+  return `Advance failed: ${err instanceof Error ? err.message : String(err)}`;
 }
 
 function AllowanceNote({ state, demo = false }: { state: PublicState; demo?: boolean }) {
   if (demo) {
-    return state.steps_remaining === 0 ? <span role="status">Out of quota for stepping world.</span> : null;
+    return state.steps_remaining === 0 ? <span role="status">Out of advances for this world.</span> : null;
   }
-  if (state.steps_remaining === null) return <span style={{ opacity: 0.7 }}>Unlimited steps (signed in)</span>;
+  if (state.steps_remaining === null) return <span style={{ opacity: 0.7 }}>Unlimited advances (signed in)</span>;
   if (state.steps_remaining > 0) {
     return (
       <span style={{ opacity: 0.7 }}>
-        {state.steps_remaining} of {state.step_limit} steps left in this browser
+        {state.steps_remaining} of {state.step_limit} advances left in this browser
       </span>
     );
   }
   return (
     <span role="status">
-      You've used all {state.step_limit} of this browser's simulation steps.{" "}
+      You've used all {state.step_limit} of this browser's advances.{" "}
       <a href={REPO_URL}><GitHubIcon />GitHub</a> to run your own worlds.
     </span>
   );
@@ -191,15 +185,16 @@ export default function Viewer() {
         padding: `24px ${PAGE_GUTTER}px`,
       }}
     >
-      <header style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 12, marginBottom: 12 }}>
-        <div>
+      <header style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <h1 style={{ fontSize: 22, margin: 0 }}>Mantle-Bloom</h1>
           <p style={{ opacity: 0.7, margin: "2px 0 0" }}>Geophysics-aware random worldbuilder.</p>
         </div>
-        <span style={{ flex: 1 }} />
-        <a href={REPO_URL}><GitHubIcon />GitHub</a>
-        <a href={COFFEE_URL} target="_blank" rel="noreferrer">☕ Buy me a coffee</a>
-        <AccountLink />
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
+          <a href={REPO_URL}><GitHubIcon />Source (GitHub)</a>
+          <a href={COFFEE_URL} target="_blank" rel="noreferrer">☕ Buy me a coffee</a>
+          <AccountLink />
+        </div>
       </header>
       {worlds && worlds.length > 1 && (
         <label style={{ display: "block", marginBottom: 12 }}>
@@ -208,7 +203,7 @@ export default function Viewer() {
             {worlds.map((w) => (
               <option key={w.world_id} value={w.world_id}>
                 {w.name}
-                {w.running ? " ● live" : ""} · {formatMyr(w.elapsed_years)}
+                {w.running ? " ● live" : ""} · {formatMillionYears(w.elapsed_years)}
               </option>
             ))}
           </select>
@@ -259,8 +254,8 @@ function WorldView({ worldId }: { worldId: WorldId }) {
   // without stepping itself (#374). Restarted on every revision change,
   // including this viewer's own steps. A poll answer that only carries new
   // step progress (same revision) still commits: that is the wait progress
-  // bar's live feed (#653).
-  const progressKeyRef = useRef<string | null>(null);
+  // bar's live feed (#653). So does a rename or a run starting or stopping (#711).
+  const followKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!loaded) return;
     const seen = revision ?? "";
@@ -269,12 +264,16 @@ function WorldView({ worldId }: { worldId: WorldId }) {
     const poll = () => {
       fetchPublicState(worldId, seen, controller.signal, isDemo).then(
         (next) => {
-          const progressKey = JSON.stringify(next.step_progress ?? null);
-          if ((next.world?.revision ?? "") === seen && progressKey === progressKeyRef.current) poll();
-          else {
-            progressKeyRef.current = progressKey;
-            setState(next);
+          const followKey = JSON.stringify([next.name, next.running, next.step_progress ?? null]);
+          const sameRevision = (next.world?.revision ?? "") === seen;
+          if (sameRevision && followKey === followKeyRef.current) {
+            poll();
+            return;
           }
+          followKeyRef.current = followKey;
+          setState(next);
+          // Only a new revision restarts this effect; otherwise keep following (#711).
+          if (sameRevision) poll();
         },
         () => {
           // Back off on errors (server restarting, network blip) rather than spinning.
@@ -349,26 +348,24 @@ function WorldView({ worldId }: { worldId: WorldId }) {
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <span>
           <strong>{state.name}</strong>
-          <span style={{ opacity: 0.7 }}> · {formatAge(worldState.elapsed_years)}</span>
+          <span style={{ opacity: 0.7 }}> · {formatMillionYears(worldState.elapsed_years)} elapsed</span>
         </span>
         {state.running && <span style={{ color: "#7dffa8" }}>● Live</span>}
-        <span style={{ flex: 1 }} />
-        {!isDemo && (
-          <>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, marginLeft: "auto", textAlign: "right" }}>
+          {!isDemo && (
             <button onClick={step} disabled={stepping || exhausted}>
               {stepping ? "Advancing..." : `Advance ${state.step_years.toLocaleString("en-US")} years`}
             </button>
-            <AllowanceNote state={state} />
-          </>
-        )}
-        {isDemo && <AllowanceNote state={state} demo />}
+          )}
+          <AllowanceNote state={state} demo={isDemo} />
+        </div>
       </div>
       {notice && <p style={{ opacity: 0.8 }}>{notice}</p>}
       {state.step_progress && (
         <div style={{ marginBottom: 12 }}>
           <ProgressBar
-            label="Step in progress"
-            text={`Step in progress: ${state.step_progress.phase}`}
+            label="Advance in progress"
+            text={`Advance in progress: ${state.step_progress.phase}`}
             fraction={state.step_progress.fraction}
           />
         </div>

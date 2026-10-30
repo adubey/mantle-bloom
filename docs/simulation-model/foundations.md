@@ -2,7 +2,7 @@
 
 [Back to the Simulation Model index](../simulation-model.md).
 
-Mantle Bloom stores terrain on cells that belong to plates. When a plate moves, its cells
+Mantle-Bloom stores terrain on cells that belong to plates. When a plate moves, its cells
 move with it. A **cell** represents a small patch of the planet's surface, and a **plate** is
 the connected region of crust that moves together in this model. The diagrams show the
 curved cell mesh and the elevation carried by those cells. They are teaching schematics,
@@ -31,7 +31,7 @@ the simulation stores and moves its surface.
 
 ## Why not a grid
 
-Mantle Bloom does not store its simulated terrain on a single latitude-longitude grid. Such
+Mantle-Bloom does not store its simulated terrain on a single latitude-longitude grid. Such
 a grid is easy to draw, but its cells become narrow near the poles and it would not move
 with the plates. Pole cells need an artificial
 full-clique patch to be mutually adjacent, falloff radii need a

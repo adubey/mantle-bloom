@@ -6,7 +6,7 @@ normal-faulting increment with Arrhenius power-law creep, integrates the weaker 
 stress through representative lithosphere columns, and reports sensitivity to missing
 thermal, fluid, composition, strain-rate, friction and background-stress state.
 
-The reference columns use Mantle Bloom's Hc/Hm, densities, surface/base temperatures,
+The reference columns use Mantle-Bloom's Hc/Hm, densities, surface/base temperatures,
 conductivity and crustal heat-production proxy. The constitutive examples are model
 parameterizations from Chen & Gerya (2016), drawing on Ranalli (1995), plus a weak mafic-
 granulite lower-crust alternative using Wang et al. (2012). Mantle wet/dry flow

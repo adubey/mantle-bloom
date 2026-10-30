@@ -63,7 +63,7 @@ def main() -> None:
 
     from app.main import app
 
-    print(f"mantle-bloom running at {url}  (Ctrl+C to quit)", flush=True)
+    print(f"Mantle-Bloom running at {url}  (Ctrl+C to quit)", flush=True)
     # MANTLE_BLOOM_NO_BROWSER=1 keeps this from spawning a tab -- bin/restart.sh sets it so a
     # dev restart doesn't open a new browser window every time.
     if not os.environ.get("MANTLE_BLOOM_NO_BROWSER"):

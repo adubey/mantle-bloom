@@ -1,6 +1,6 @@
 ---
 name: continue-rfc
-description: Resume, pick up, or continue work on an existing Mantle Bloom RFC or RFC-linked issue. Reconstruct its state, worktree, evidence and next action before changing anything.
+description: Resume, pick up, or continue work on an existing Mantle-Bloom RFC or RFC-linked issue. Reconstruct its state, worktree, evidence and next action before changing anything.
 ---
 
 # Continue an RFC workstream

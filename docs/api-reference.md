@@ -46,7 +46,8 @@ Open to anyone, for the logged-out `/view` page (#373). See
 - `GET /public/worlds/{world_id}/world`: `{"name", "world": {"revision", "seed", "elapsed_years"},
   "running": bool, "steps_remaining": int | null, "step_limit": 30, "step_years": 100000,
   "step_progress": {"fraction", "phase"} | null}`.
-  `steps_remaining` is null (unlimited) for the admin. `revision` is an
+  `name` is the planet's name, which changes with a rename or once a regenerate's new world
+  is published. `steps_remaining` is null (unlimited) for the admin. `revision` is an
   opaque string that changes whenever the world does (#374). `step_progress` is a guest
   step's live position, whoever triggered it -- the wait progress bar's feed -- or null
   when no step is computing (#653). `404` for a private,
@@ -55,7 +56,8 @@ Open to anyone, for the logged-out `/view` page (#373). See
   revision differs from `after`, or for at most 25 s (then answered with the unchanged
   world). Viewers poll this to pick up steps that other viewers or the owner take. The poll
   also answers early when a guest step publishes new progress without a new revision yet,
-  so the wait progress bar moves mid-step (#653).
+  so the wait progress bar moves mid-step (#653), and on an owner rename or visibility change.
+  A world that went private during the wait answers `404`.
 - `GET /public/worlds/{world_id}/render?view=elevation|biome&width=&height=`: like `/worlds/{world_id}/render`, but always
   Eckert IV at the default orientation, with width and height at most 2400. It returns
   `{"revision", "seed", "elapsed_years", "image_base64"}`. Each view and size is rendered once

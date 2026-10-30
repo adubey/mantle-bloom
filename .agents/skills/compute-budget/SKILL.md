@@ -1,6 +1,6 @@
 ---
 name: compute-budget
-description: Decide whether a Mantle Bloom replay, probe, sweep, stress run or unit test run can start now or must wait for other agents, and choose its test parallelism. Use before starting any compute-heavy or RAM-heavy run.
+description: Decide whether a Mantle-Bloom replay, probe, sweep, stress run or unit test run can start now or must wait for other agents, and choose its test parallelism. Use before starting any compute-heavy or RAM-heavy run.
 ---
 
 # Compute budget
