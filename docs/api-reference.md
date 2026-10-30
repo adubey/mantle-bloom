@@ -547,17 +547,22 @@ pole-crossing plane. `position_index` selects one of 120 evenly spaced centers a
 circle in `[0, 119]`. `show_boundaries` and `show_faults` optionally draw surface markers
 where the arc crosses plate boundaries and fault traces. `show_plumes` optionally draws
 live mantle plumes intersecting the section: a head-stage plume gets an ellipse over its
-surface footprint band, and a tail-stage plume gets an ellipse plus a continues-below tick
-for the deep conduit (head and tail stages never overlap, so a head never shows a conduit).
+surface footprint band, and a tail-stage plume gets an ellipse plus a schematic 60 km radius
+conduit, domed under the lithosphere and open at the section floor because it continues
+below 350 km (head and tail stages never overlap, so a head never shows a conduit).
 `width` and `height` use the same `[1,
 main.MAX_RENDER_DIMENSION_PX]` limit as `/worlds/{world_id}/render`. `404` means there is no current world;
 `409` means the world has no active surface nodes. The JSON response contains `image_base64`
 (PNG), `world_revision`, `elapsed_years`, the request's plane and position, `arc_length_km`,
 `section_depth_km`, and `vertical_exaggeration`.
 
-The PNG samples existing per-column surface fields along the selected 3,000 km arc at a rate
-derived from `World.node_density`. Categorical crust type is nearest-node sampled, with no
-cross-boundary blending. Crust and mantle-lithosphere thickness are drawn from their stored
+The PNG samples existing per-column surface fields along the selected 3,000 km arc about once
+per drawn column. Continuous fields (elevation, crust and mantle-lithosphere thickness, ice,
+thermal lag) blend nearby nodes within two line spacings of `World.node_density`, so sharp
+peaks and trenches read lower than their stored values. Categorical crust type and volcano
+flags are nearest-node sampled, with no cross-boundary blending, and biome display colors
+interpolate between climate cells. Geometry is drawn at 3× and filtered down, with text added
+at output size. Crust and mantle-lithosphere thickness are drawn from their stored
 columns; the crustal temperature profile is illustrative and melt eligibility is hatched
 separately. The mantle below the stored lithosphere is schematic. Pending magma parcel origins
 and stored volcano vents are shown at the surface. Tangential mantle-flow directions are
