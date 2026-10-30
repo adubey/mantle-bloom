@@ -11,8 +11,9 @@ description: Measure a Mantle Bloom change by replaying a saved world (.mbworld)
    frontend Save location `/Users/$USER/Downloads`. Precedence is explicit path, existing
    environment variable, then the setup default. Keep `$USER` literal in shared instructions
    and never write a resolved personal path into a report, issue, PR or commit. Do not scan
-   other personal directories. If the named save is missing, ask the user; don't substitute
-   another save. Record each save's SHA-256 (`shasum -a 256`), since earlier analyses cite it.
+   other personal directories. If the named save is missing, try
+   `bin/b2_saves.py pull <name>` ([`b2-saves`](../b2-saves/SKILL.md)), then ask the user;
+   don't substitute another save. Record each save's SHA-256 (`shasum -a 256`), since earlier analyses cite it.
 
 2. **Pick the replay script.** Reuse one from `bin/debug/` and read its docstring first.
    `attribute_hm_ratchet.py` is the general one: it reports checkpoints, Hc/Hm and crust
