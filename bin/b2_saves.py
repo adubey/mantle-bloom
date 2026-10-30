@@ -70,6 +70,7 @@ LOG_FILE = STATE_DIR / "b2_saves.log"
 HASH_CACHE = STATE_DIR / "b2_sha1_cache.json"
 # Cron must not depend on a worktree that can vanish, so it runs a private copy.
 INSTALLED_SCRIPT = Path.home() / ".local" / "share" / "mantle-bloom" / "b2_saves.py"
+SYSTEM_PYTHON = "/usr/bin/python3"
 CRON_MARKER = "# mantle-bloom-b2-saves"
 # Hourly, not daily: a sleeping laptop skips cron, and a run with nothing to do is cheap.
 CRON_SCHEDULE = "17 * * * *"
@@ -573,8 +574,13 @@ def without_cron_line(crontab: str) -> str:
 
 
 def stable_python() -> str:
-    """The interpreter behind any venv: a worktree's venv can vanish, and cron would fail."""
-    return getattr(sys, "_base_executable", None) or sys.executable
+    """An interpreter that outlives this shell: a venv can vanish, and so can Homebrew's
+    versioned path after an upgrade, and either would silently stop the cron job."""
+    try:
+        subprocess.run([SYSTEM_PYTHON, "--version"], capture_output=True, check=True)
+        return SYSTEM_PYTHON
+    except (OSError, subprocess.CalledProcessError):
+        return getattr(sys, "_base_executable", None) or sys.executable
 
 
 def cron_line(python: str, script: Path, log: Path) -> str:

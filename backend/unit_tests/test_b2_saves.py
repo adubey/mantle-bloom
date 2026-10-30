@@ -300,10 +300,16 @@ def test_config_reads_the_env_file_and_the_environment_wins(tmp_path):
     assert b2.missing_settings(cfg) == ["B2_APPLICATION_KEY"]
 
 
-def test_cron_uses_the_interpreter_behind_a_venv(monkeypatch):
+def test_cron_prefers_the_system_python_over_a_venv(monkeypatch):
+    monkeypatch.setattr(b2, "SYSTEM_PYTHON", sys.executable)
+    assert b2.stable_python() == sys.executable
+
+
+def test_cron_without_a_system_python_uses_the_interpreter_behind_a_venv(monkeypatch):
+    monkeypatch.setattr(b2, "SYSTEM_PYTHON", "/nonexistent/python3")
     monkeypatch.setattr(b2.sys, "executable", "/worktree/.venv/bin/python3")
-    monkeypatch.setattr(b2.sys, "_base_executable", "/usr/bin/python3", raising=False)
-    assert b2.stable_python() == "/usr/bin/python3"
+    monkeypatch.setattr(b2.sys, "_base_executable", "/base/python3", raising=False)
+    assert b2.stable_python() == "/base/python3"
 
 
 def test_cron_line_replacement_keeps_other_jobs():
