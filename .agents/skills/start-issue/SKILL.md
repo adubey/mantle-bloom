@@ -28,8 +28,9 @@ description: Set up an isolated branch, worktree, venv and ports for a Mantle Bl
    git worktree add -b <agent>/issue-<N>-<slug> ../mantle-bloom-issue-<N> origin/main
    ```
 
-   `<agent>` is `claude` or `codex`; `<slug>` is two to four words, e.g.
-   `claude/issue-320-crust-transfer`. For an RFC-linked issue, use an RFC-specific path
+   `<agent>` is the short identifier for the agent/tool doing the work (for example,
+   `claude`, `codex`, or `muse`); use your own identifier. `<slug>` is two to four words,
+   e.g. `muse/issue-320-crust-transfer`. For an RFC-linked issue, use an RFC-specific path
    while creating the issue branch directly from `origin/main`:
 
    ```bash
