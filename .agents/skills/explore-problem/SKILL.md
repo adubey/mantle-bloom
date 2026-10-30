@@ -89,10 +89,8 @@ or a changed hypothesis. Its `## Exploration summary` is the complete account.
   preregistration and every probe outcome, including null results, together in that
   record. Name relevant conservation, accounting or other model invariants as validity
   checks; a probe that breaks one is invalid for evaluating its hypothesis. Follow
-  [Pre-register the comparison](../replay-ab/SKILL.md#4-pre-register-the-comparison),
-  [Run the replay](../replay-ab/SKILL.md#5-run-the-replay), and
-  [Interpret the comparison](../replay-ab/SKILL.md#6-interpret-the-comparison) in
-  `replay-ab` for run ordering and interpretation, and the
+  steps 4 to 6 of [`replay-ab`](../replay-ab/SKILL.md) (Pre-register the comparison, Run the
+  replay, and Interpret the comparison) for run ordering and interpretation, and the
   one-at-a-time limit in `AGENTS.md`. A causal probe asks whether a proposed mechanism
   explains an observation and is judged against its preregistered prediction. A candidate
   fix asks whether a particular implementation meets acceptance criteria; that belongs in
