@@ -64,6 +64,12 @@ function formatMyr(years: number): string {
   return `${(years / 1e6).toFixed(1)} Myr`;
 }
 
+// "Randomization", not "creation": a world starts from a randomized state, with no
+// planetary cooling history behind it (#711).
+function formatAge(years: number): string {
+  return `${(years / 1e6).toFixed(1)} Million years since randomization`;
+}
+
 function refusalMessage(err: unknown): string {
   if (err instanceof PublicStepRefused && err.status === 503) {
     return "The world is busy with another run right now. Try again in a moment.";
@@ -186,7 +192,10 @@ export default function Viewer() {
       }}
     >
       <header style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 12, marginBottom: 12 }}>
-        <h1 style={{ fontSize: 22, margin: 0 }}>Mantle Bloom</h1>
+        <div>
+          <h1 style={{ fontSize: 22, margin: 0 }}>Mantle-Bloom</h1>
+          <p style={{ opacity: 0.7, margin: "2px 0 0" }}>Geophysics-aware random worldbuilder.</p>
+        </div>
         <span style={{ flex: 1 }} />
         <a href={REPO_URL}><GitHubIcon />GitHub</a>
         <a href={COFFEE_URL} target="_blank" rel="noreferrer">☕ Buy me a coffee</a>
@@ -338,13 +347,16 @@ function WorldView({ worldId }: { worldId: WorldId }) {
   return (
     <>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginBottom: 12 }}>
-        <span style={{ opacity: 0.7 }}>{formatMyr(worldState.elapsed_years)} elapsed</span>
+        <span>
+          <strong>{state.name}</strong>
+          <span style={{ opacity: 0.7 }}> · {formatAge(worldState.elapsed_years)}</span>
+        </span>
         {state.running && <span style={{ color: "#7dffa8" }}>● Live</span>}
         <span style={{ flex: 1 }} />
         {!isDemo && (
           <>
             <button onClick={step} disabled={stepping || exhausted}>
-              {stepping ? "Stepping..." : `Step ${state.step_years / 1000} kyr`}
+              {stepping ? "Advancing..." : `Advance ${state.step_years.toLocaleString("en-US")} years`}
             </button>
             <AllowanceNote state={state} />
           </>

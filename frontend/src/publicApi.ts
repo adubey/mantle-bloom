@@ -28,6 +28,8 @@ export interface PublicStepProgress {
 }
 
 export interface PublicState {
+  // The planet's name, on the state itself so /view can always show it (#711).
+  name: string;
   world: PublicWorld | null;
   // Whether the selected world's run loop is on (#597).
   running: boolean;

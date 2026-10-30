@@ -99,7 +99,7 @@ async def _lifespan(_app: FastAPI):
             _logger.warning("replay log: shutting down with records still unwritten")
 
 
-app = FastAPI(title="mantle-bloom", lifespan=_lifespan)
+app = FastAPI(title="Mantle-Bloom", lifespan=_lifespan)
 
 # FRONTEND_PORT lets bin/restart.sh --frontend-port point CORS at a non-default frontend
 # port; 5174 stays allowed alongside it since that's Vite dev's own fallback when its primary
@@ -2681,6 +2681,8 @@ async def public_world(world_id: str, request: Request, after: str | None = None
     _, remaining = _guest_allowance(request, guest_demo)
     progress = session.guest_step_progress()
     return {
+        # Read without session.lock: a step can hold it for minutes, and this route is async.
+        "name": session.name,
         "world": session.feed.summary(),
         "running": _session_running(session),
         "steps_remaining": remaining,

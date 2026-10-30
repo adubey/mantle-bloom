@@ -43,7 +43,7 @@ Open to anyone, for the logged-out `/view` page (#373). See
   that is currently stepping (#597): `{"worlds": [{"world_id", "name",
   "running", "revision", "seed", "elapsed_years"}]}`. A private world drops back
   out of the list when its run stops.
-- `GET /public/worlds/{world_id}/world`: `{"world": {"revision", "seed", "elapsed_years"},
+- `GET /public/worlds/{world_id}/world`: `{"name", "world": {"revision", "seed", "elapsed_years"},
   "running": bool, "steps_remaining": int | null, "step_limit": 30, "step_years": 100000,
   "step_progress": {"fraction", "phase"} | null}`.
   `steps_remaining` is null (unlimited) for the admin. `revision` is an

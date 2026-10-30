@@ -114,6 +114,7 @@ def test_running_private_world_is_visible_while_it_runs(guest, monkeypatch):
             (session.world_id, "private-live", True)
         ]
         body = guest.get(f"/public/worlds/{session.world_id}/world").json()
+        assert body["name"] == "private-live"
         assert body["world"]["seed"] == 11
         assert body["running"] is True
         monkeypatch.setattr(
