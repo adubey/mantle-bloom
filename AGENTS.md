@@ -27,6 +27,7 @@ Run from the repo root (or worktree root).
 | Dead code and duplicate code | `./bin/quality_check.sh` |
 | Run the app | `./bin/restart.sh --port <P>`, or add `--dev --frontend-port <Q>` for Vite HMR |
 | Stop the app | `./bin/stop.sh --port <P> [--frontend-port <Q>]` |
+| List, fetch or upload saves across machines | `bin/b2_saves.py list`, `pull <name>`, `push <file>` (`b2-saves` skill) |
 
 - The three test scripts pick their worker count from free memory and idle cores, and CI
   stays on `-n auto`. Pass `-n N` to set it yourself.
@@ -105,7 +106,7 @@ Run from the repo root (or worktree root).
   `.claude/skills` links there. Any coding agent working in this repo can use them:
   `explore-problem`, `create-issue`, `start-issue`,
   `start-rfc`, `continue-rfc`, `edit-rfc`, `project-management`, `compute-budget`,
-  `replay-ab`, `pre-push-check`, `rfc-authoring`, `rfc-review`, `complete-rfc`,
+  `replay-ab`, `b2-saves`, `pre-push-check`, `rfc-authoring`, `rfc-review`, `complete-rfc`,
   `documentation`.
 
 ## Conventions
