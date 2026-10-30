@@ -7,8 +7,8 @@ neighbor stresses. See the [RFC](../../rfc/0010-rifts-follow-weak-lithosphere.md
 [issue 487 findings](../../analysis/issue487/README.md).
 
 Run scripts from the repository root with the worktree's `backend/.venv/bin/python`. Several tools
-replay a full world and use substantial memory. Run one replay at a time and do not run it alongside
-a test suite. Keep full saves and captures in scratch space; the compact outputs and findings belong
+replay a full world and use substantial memory, so follow the
+[`compute-budget` skill](../../.agents/skills/compute-budget/SKILL.md) before starting one. Keep full saves and captures in scratch space; the compact outputs and findings belong
 in `analysis/issue487/`. Each script's module docstring gives its complete usage and arguments.
 
 ### `audit_gate2_assumption_basis.py`
@@ -55,7 +55,7 @@ friction angle and is a limiting sensitivity, not a measured stress estimate or 
 Replays seeds 7, 11 and 2024 against the pinned Gate 1 source with diagnostic helpers overlaid. It
 checks that candidate identities match Gate 1, builds a shell load for each craton-crossing event,
 and compares physical column scenarios with a labeled phenomenological capacity alternative. The
-capacity scores do not feed back into the replay. Use one seed at a time when memory is limited and
+capacity scores do not feed back into the replay. Follow the compute-budget skill before each seed, and
 check the output's baseline count-match fields before interpreting results.
 
 ### `replay_gate2_coupled_event.py`

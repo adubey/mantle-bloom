@@ -33,8 +33,8 @@ description: Measure a Mantle Bloom change by replaying a saved world (.mbworld)
    is near measured variability, plan to replicate both baseline and branch runs and report
    each arm's spread.
 
-5. **Run the replay.** Run one replay at a time, and never run replay work alongside a unit
-   or stress test. A 43 Myr replay of the seed 997271774 save takes about 40 minutes. Run it
+5. **Run the replay.** Run the arms one after the other, and follow
+   [`compute-budget`](../compute-budget/SKILL.md) before starting each. A 43 Myr replay of the seed 997271774 save takes about 40 minutes. Run it
    in the background, and write outputs to a scratch directory, not the repo:
 
    ```bash

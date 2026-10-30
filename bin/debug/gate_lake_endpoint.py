@@ -9,7 +9,7 @@ incoming-transfer, capped-overflow, invalid, and unsampled bodies are counted as
 This is an offline qualification screen; its per-body transient measurements are not available
 to production code and must not be treated as a production eligibility cache.
 
-Run one save at a time, never alongside another replay, probe, or test:
+Follow the compute-budget skill before starting each save:
 
     backend/.venv/bin/python bin/debug/gate_lake_endpoint.py \\
         ~/Downloads/mantle-bloom-seed910211954-220200000y.mbworld \\

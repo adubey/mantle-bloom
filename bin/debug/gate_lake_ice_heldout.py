@@ -5,7 +5,7 @@ Advance one preregistered held-out save through ten production 100 kyr world ste
 Record the combined liquid/ice ledger and local lake-ice bounds without tuning. This driver
 accepts only the three held-out saves registered on RFC 0014 issue #538.
 
-Run one save at a time and never alongside another replay or test:
+Follow the compute-budget skill before starting each save:
 
     PYTHONPATH=backend backend/.venv/bin/python bin/debug/gate_lake_ice_heldout.py \
         <held-out-save> --myr 1 --step-years 100000 --checkpoint-myr 0.1 \

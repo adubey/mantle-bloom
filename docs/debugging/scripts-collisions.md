@@ -6,8 +6,8 @@ rules, and how rotation rate moves land. The model is in
 [simulation-model/tectonics.md](../simulation-model/tectonics.md).
 
 Each probe replays a full world in one process and only taps the step, so nothing it measures
-feeds back into the run. Run one replay at a time: each holds a full world in memory
-(0.6–2.7 GB). See [Running the scripts](../debugging.md#running-the-scripts).
+feeds back into the run. Each holds a full world in memory, so follow the
+[`compute-budget` skill](../../.agents/skills/compute-budget/SKILL.md) before starting one. See [Running the scripts](../debugging.md#running-the-scripts).
 
 ## Contacts and collisions
 

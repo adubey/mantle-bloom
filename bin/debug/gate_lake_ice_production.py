@@ -7,7 +7,7 @@ and peak memory at each checkpoint. Unlike gate_lake_ice_cap.py, this does not h
 terrain, or lake depth fixed: it calls `world.step_world` and reads the resulting production
 state. Never use an RFC 0014 held-out save here.
 
-Run one save at a time, and never alongside a replay or test:
+Follow the compute-budget skill before starting each save:
 
     PYTHONPATH=backend backend/.venv/bin/python bin/debug/gate_lake_ice_production.py \\
         <local-save> --myr 10 --step-years 100000 --checkpoint-myr 0.1 \\

@@ -11,7 +11,7 @@ cut band against physical column-capacity scenarios and the labeled belt-weakeni
 Capacity scores do not feed back into the world, so both alternatives see identical loads,
 cut events, and states. This is a diagnostic replay, not an A/B of production behavior.
 
-Run at most two seeds at once, never alongside unit/stress tests:
+Follow the compute-budget skill before starting each seed:
 
     PYTHONHASHSEED=0 PYTHONPATH=backend backend/.venv/bin/python \
         bin/debug/replay_gate2_capacity.py --seed 7 --out /tmp/issue487-g2-seed7.json

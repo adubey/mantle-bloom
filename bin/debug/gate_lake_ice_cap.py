@@ -7,7 +7,7 @@ thickness, converted to water equivalent, minus the existing glacier positive-de
 and a constant sublimation flux. Physical ice is capped at 2 m; the water-equivalent cap is
 also limited by available lake water. Climate and bathymetry are held fixed for this screen.
 
-Usage (one save at a time; do not run beside a replay or test):
+Usage (follow the compute-budget skill before starting each save):
 
     backend/.venv/bin/python bin/debug/gate_lake_ice_cap.py \
         ~/Downloads/mantle-bloom-seed910211954-220200000y.mbworld \

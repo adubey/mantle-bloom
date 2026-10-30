@@ -21,18 +21,21 @@ Run from the repo root (or worktree root).
 | Unit tests for what changed (required before push) | `./bin/affected_test.sh --base origin/main` |
 | Full unit suite (CI runs it on a schedule) | `./bin/unit_test.sh` (extra args go to pytest, e.g. `-k biome`) |
 | Slow full-simulation tests | `./bin/stress_test.sh` |
+| Run now or wait, and test workers | `python3 bin/compute_budget.py check --run sim\|unit\|stress` |
 | Python lint (incl. complexity) | `backend/.venv/bin/ruff check` |
 | Frontend lint (incl. complexity), typecheck and build | `cd frontend && npm run lint && npm run build` |
 | Dead code and duplicate code | `./bin/quality_check.sh` |
 | Run the app | `./bin/restart.sh --port <P>`, or add `--dev --frontend-port <Q>` for Vite HMR |
 | Stop the app | `./bin/stop.sh --port <P> [--frontend-port <Q>]` |
 
+- The three test scripts pick their worker count from free memory and idle cores, and CI
+  stays on `-n auto`. Pass `-n N` to set it yourself.
 - `affected_test.sh` maps changed files to tests through the import graph, and falls back
   to the full suite on its own when that mapping can't be trusted (an `__init__.py`, a data
   file, a dependency pin).
 - The affected tests, ruff and `quality_check.sh` are the gate before pushing -- the same
   checks CI (`.github/workflows/test.yml`) runs on every PR, plus the frontend checks. You
-  don't need to run the full suite (~1,300 tests, about 12 minutes) locally: it runs four
+  don't need to run the full suite (about 2,000 tests, about 14 minutes) locally: it runs four
   times a day and the stress tests nightly (`full-suite.yml`). A failure there opens a
   "Scheduled full test run is failing" issue, which takes priority over new work.
 - **Quality gates are ratchets.** Functions over the complexity cap of 20 carry a
@@ -64,9 +67,11 @@ Run from the repo root (or worktree root).
 - **Before/after comparisons** use a task-specific detached `origin/main` worktree. Never
   share or reuse another task's baseline worktree. Never use `git stash`: the stash is
   shared by every worktree, including the user's.
-- **Replays and scratch simulation probes are RAM-heavy** (0.6–2.7 GB each). Run only one
-  replay or probe at a time, never alongside another such run or a unit or stress test. Follow
-  this limit regardless of the skill used.
+- **Compute budget:** each agent runs at most one heavy run at a time, whatever skill it's
+  using: a replay, probe, sweep, stress test run, or unit or affected test run. Before
+  starting one, follow the [`compute-budget` skill](.agents/skills/compute-budget/SKILL.md),
+  which decides from free memory whether to start now or wait for other agents, and how many
+  test workers to use. A mature-world replay peaks near 6 GB.
 - **Reviews:** when a PR's author reports its tests passing, don't rerun them. Run targeted
   checks they couldn't have covered instead.
 - **GitHub CLI authentication:** `gh` in the restricted command sandbox may report an
@@ -96,7 +101,7 @@ Run from the repo root (or worktree root).
 - Tool-agnostic skills for these workflows are in `.agents/skills/`; Claude Code's
   `.claude/skills` links there. Any coding agent working in this repo can use them:
   `explore-problem`, `create-issue`, `start-issue`,
-  `start-rfc`, `continue-rfc`, `project-management`, `replay-ab`,
+  `start-rfc`, `continue-rfc`, `project-management`, `compute-budget`, `replay-ab`,
   `pre-push-check`, `rfc-authoring`, `rfc-review`, `complete-rfc`, `documentation`.
 
 ## Conventions
