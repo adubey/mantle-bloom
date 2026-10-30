@@ -466,7 +466,23 @@ The event definition, footprint and amplitude cutoffs, duration cases and accoun
 frozen in an issue comment before a new probe.
 
 The prescribed-axis path trials and static coarse shell-response maps above remain useful exploratory
-mechanism/visualization work. They do not identify a current source or demonstrate broad, persistent
-rifting load. No new simulation probe has been run under the revised gate yet. The scope is recorded
-in [issue #699](https://github.com/adubey/mantle-bloom/issues/699) and the revised Gate 3b text in
+mechanism/visualization work. They do not isolate the current contribution or demonstrate broad,
+persistent rifting load. The preregistered first screen selects the seed-11 density-4 largest
+connected continental plate before inspecting response fields, isolates the existing basal-drag
+source against full-force and no-basal-drag controls, and follows matching 2-Myr and 1-Myr histories
+through 30 Myr. A candidate event requires one edge-connected area of cells with Gate 2
+`N_ext/N_cap >= 1` covering at least 25% of the plate's continental area at every 2-Myr output over
+at least 10 Myr. The 25% and 10-Myr values are operational cutoffs. Report 10/20/30-Myr snapshots,
+directional coherence, craton/belt overlap, and sensitivity across the documented Gate 2 capacity
+scenarios; do not tune capacity or current amplitude.
+
+Validity checks require force and torque transfer residuals at or below 1%, shell equilibrium
+residual at or below 1%, and separate source/mantle/drag and shell elastic-work accounts with
+energy residuals at or below 5%. Equal-and-opposite mantle reaction is booked. Rigid plate work and
+non-rigid shell deformation work stay separate. A candidate failing any accounting check is
+ineligible. The preregistration and timestep-arm clarification are in issue comments
+[6528140164](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6528140164) and
+[6528145896](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6528145896). No new
+simulation probe has run under this preregistration yet. The gate scope is recorded in
+[issue #699](https://github.com/adubey/mantle-bloom/issues/699) and the revised Gate 3b text in
 [RFC 0010](../../rfc/0010-rifts-follow-weak-lithosphere.md).
