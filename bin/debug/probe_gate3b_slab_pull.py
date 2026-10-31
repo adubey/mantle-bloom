@@ -25,6 +25,7 @@ from app import cratons, geometry, lithosphere, torque, world as world_mod
 import probe_gate3b_component_shell as shell_audit
 import probe_gate3b_midplate_current as current_audit
 import replay_gate2_capacity as capacity_audit
+import gate3b_diagnostic_common as shared
 
 SEEDS = (7, 11, 2024)
 DENSITY = 4.0
@@ -150,15 +151,6 @@ def _select(world):
     ]
 
 
-def _slice_map(initial_plate, initial_candidate):
-    nodes = initial_plate.surface_nodes()
-    keys = nodes.node_ids[:, 0].view(np.int64)
-    coord = initial_candidate["coord"]
-    edges = np.linspace(float(coord.min()), float(coord.max()), SLICE_COUNT + 1)
-    bins = np.clip(np.digitize(coord, edges[1:-1]), 0, SLICE_COUNT - 1)
-    return {int(key): int(bin_id) for key, bin_id in zip(keys, bins)}, edges
-
-
 def _mass_slices(plate, key_to_bin, edges, initial_points, initial_bins):
     nodes = plate.surface_nodes()
     keys = nodes.node_ids[:, 0].view(np.int64)
@@ -219,7 +211,6 @@ def _shell_snapshot(world, plate, field):
 
 def _checkpoint(world, plate, key_to_bin, edges, initial_points, initial_bins):
     field, _inputs, _subducting = _field_and_inputs(world, plate)
-    points = geometry.normalize(field.points_xyz)
     bins, slices = _mass_slices(plate, key_to_bin, edges, initial_points, initial_bins)
     terms = {
         "slab_pull": field.slab_pull_n,
@@ -305,8 +296,7 @@ def run(out_path: Path):
             "selection": selection_log,
             "elapsed_wall_seconds": time.perf_counter() - started,
         }
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        shared.write_json_report(out_path, report)
         return report
 
     seed, world, plate = chosen
@@ -391,8 +381,7 @@ def run(out_path: Path):
         "elapsed_wall_seconds": time.perf_counter() - started,
         "interpretation_limit": "The production split gate clusters mantle-flow disagreement and is not triggered by the diagnostic shell demand; split time is secondary and does not establish slab-pull causation.",
     }
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    shared.write_json_report(out_path, report)
     return report
 
 

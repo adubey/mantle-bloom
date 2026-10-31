@@ -437,7 +437,7 @@ class PlateWithSparseQuadPatch(Plate):
     @property
     def deformation_gradient(self) -> np.ndarray:
         """Cumulative local finite-strain map used to place the plate's material cells."""
-        gradient = np.asarray(self.__dict__.get("_deformation_gradient", np.eye(3)), dtype=float).view()
+        gradient = np.asarray(self._deformation_gradient, dtype=float).view()
         if gradient.shape != (3, 3) or not np.all(np.isfinite(gradient)):
             raise ValueError("plate deformation gradient must be a finite 3x3 matrix")
         gradient.flags.writeable = False

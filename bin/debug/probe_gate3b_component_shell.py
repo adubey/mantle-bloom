@@ -19,12 +19,10 @@ import time
 from pathlib import Path
 
 import numpy as np
-from scipy.sparse import csr_matrix
-from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from app import cratons, elevation_lines, geometry, lithosphere, mantle, thin_shell, torque, world as world_mod
-from app.elevation_lines import line_spacing_rad
+from app import cratons, geometry, lithosphere, mantle, thin_shell, torque, world as world_mod
+import gate3b_diagnostic_common as shared
 import validate_thin_shell_plate_meshes as mesh_validation
 
 SEED = 11
@@ -37,51 +35,14 @@ PLACEHOLDER_CAPACITY_N_PER_M = 1e10
 
 
 def _largest_continental_component(world):
-    components = []
-    for plate in world.plates:
-        continental = elevation_lines.effective_is_continental_from_codes(
-            plate.collect("crust_type_code"), plate.crust_type == "continental"
-        )
-        indices = np.flatnonzero(continental)
-        if not len(indices):
-            continue
-        adjacency = plate.adjacency()
-        rows = np.repeat(np.arange(plate.node_count(), dtype=np.int64), np.diff(adjacency.offsets))
-        cols = adjacency.neighbours.astype(np.int64, copy=False)
-        local_index = np.full(plate.node_count(), -1, dtype=np.int64)
-        local_index[indices] = np.arange(len(indices), dtype=np.int64)
-        keep = continental[rows] & continental[cols]
-        graph = csr_matrix(
-            (np.ones(int(keep.sum())), (local_index[rows[keep]], local_index[cols[keep]])),
-            shape=(len(indices), len(indices)),
-        )
-        count, labels = connected_components(graph, directed=False)
-        areas = plate.node_areas_m2()[indices]
-        for label in range(count):
-            selected = indices[labels == label]
-            area = float(areas[labels == label].sum())
-            components.append((area, plate, selected))
+    components = shared.edge_connected_continental_components(world)
     if not components:
         raise ValueError("generated world has no edge-connected continental component")
-    return max(components, key=lambda row: row[0])
+    return components[0]
 
 
 def _production_force_field(world, plate):
-    spacing = line_spacing_rad(world.node_density)
-    reach = torque.boundary_force_reach_rad(spacing)
-    cache = getattr(world, "boundary_search_cache", None)
-    neighbours = plate.get_neighbours(world.plates)
-    inputs = torque.gather_boundary_force_inputs(plate, neighbours, spacing, reach, cache)
-    _convergent, divergent, _transform, contested = torque.classify_boundary_nodes(
-        plate, neighbours, inputs, reach, cache
-    )
-    collision = torque.continental_contact_mask(plate, inputs, contested)
-    subducting = torque.subducting_boundary_mask(plate, inputs, reach)
-    craton_contact = torque.contact_craton_m(plate, neighbours, inputs)
-    jam = torque.contact_jam_factor(plate, world, neighbours, inputs, reach)
-    return torque.gather_per_node_force_field(
-        plate, world, inputs, spacing, subducting, divergent, collision, craton_contact, jam
-    )
+    return shared.production_force_field(world, plate)
 
 
 def _representatives(points, areas, count):
@@ -375,11 +336,8 @@ def main():
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     report = run(args.seed, args.density)
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    compact = {key: value for key, value in report.items() if key != "cases"}
-    compact["cases"] = {name: [{k: v for k, v in row.items() if k not in ("source_force_n", "transferred_force_n", "source_torque_nm", "transferred_torque_nm")} for row in rows] for name, rows in report["cases"].items()}
-    print(json.dumps({"out": str(args.out), **compact}, sort_keys=True))
+    shared.write_json_report(args.out, report)
+    print(json.dumps({"out": str(args.out), "case_count": len(report["cases"])}, sort_keys=True))
 
 
 if __name__ == "__main__":

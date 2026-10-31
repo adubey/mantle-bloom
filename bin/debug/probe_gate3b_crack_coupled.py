@@ -21,9 +21,8 @@ from pathlib import Path
 import numpy as np
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
-from scipy.spatial import cKDTree
-
-from app import cratons, elevation_lines, geometry, lithosphere, mantle, thin_shell, torque, world as world_mod
+from app import cratons, elevation_lines, geometry, torque, world as world_mod
+import gate3b_diagnostic_common as shared
 import probe_gate3b_component_shell as shell_audit
 import probe_gate3b_midplate_current as current_audit
 import probe_gate3b_slab_pull as slab_screen
@@ -145,33 +144,11 @@ def _opening_capacity_demand(plate, source_force):
 
 def _edge_cut_candidate(plate, cracked, extension_direction, stress_pa, yield_pa, areas):
     """A split candidate requires supported failed cell links to disconnect the plate graph."""
-    adjacency = plate.adjacency()
     n = plate.node_count()
-    rows = np.repeat(np.arange(n, dtype=np.int64), np.diff(adjacency.offsets))
-    cols = adjacency.neighbours.astype(np.int64, copy=False)
-    pairs = np.unique(np.sort(np.column_stack((rows, cols)), axis=1), axis=0)
-    points, _ = plate.all_points_and_elevation()
-    edge_direction = points[pairs[:, 1]] - (
-        np.sum(points[pairs[:, 1]] * points[pairs[:, 0]], axis=1)[:, None] * points[pairs[:, 0]]
+    failed_edges, count, labels, _sizes, _pairs = shared.local_failure_components(
+        plate, cracked, extension_direction, stress_pa, yield_pa,
+        RESIDUAL_STRENGTH_FRACTION,
     )
-    edge_direction = geometry.normalize(edge_direction)
-    opening_a = np.abs(np.sum(edge_direction * extension_direction[pairs[:, 0]], axis=1))
-    opening_b = np.abs(np.sum(edge_direction * extension_direction[pairs[:, 1]], axis=1))
-    # Use the edge-local opening direction and residual-strength support at both cells.
-    supported = (opening_a > 0.5) & (opening_b > 0.5)
-    supported &= (
-        stress_pa[pairs[:, 0]] > RESIDUAL_STRENGTH_FRACTION * yield_pa[pairs[:, 0]]
-    ) & (
-        stress_pa[pairs[:, 1]] > RESIDUAL_STRENGTH_FRACTION * yield_pa[pairs[:, 1]]
-    )
-    failed_pairs = supported & cracked[pairs[:, 0]] & cracked[pairs[:, 1]]
-    surviving = pairs[~failed_pairs]
-    graph_rows = np.concatenate((surviving[:, 0], surviving[:, 1]))
-    graph_cols = np.concatenate((surviving[:, 1], surviving[:, 0]))
-    graph = csr_matrix((np.ones(len(graph_rows)), (graph_rows, graph_cols)), shape=(n, n))
-    if not len(surviving):
-        return None
-    count, labels = connected_components(graph, directed=False)
     component_area = np.bincount(labels, weights=areas, minlength=count)
     order = np.argsort(component_area)[::-1]
     total_area = float(areas.sum())
@@ -194,7 +171,7 @@ def _edge_cut_candidate(plate, cracked, extension_direction, stress_pa, yield_pa
         return None
     return {
         "intact_connected_components": int(count),
-        "failed_adjacency_link_count": int(failed_pairs.sum()),
+        "failed_adjacency_link_count": int(len(failed_edges)),
         "daughter_area_km2": [value / 1.0e6 for value in daughter_areas],
         "daughter_area_fraction": [value / total_area for value in daughter_areas],
         "retained_cell_area_fraction": retained_fraction,
@@ -204,42 +181,25 @@ def _edge_cut_candidate(plate, cracked, extension_direction, stress_pa, yield_pa
 
 
 def _connectivity_summary(plate, cracked, extension_direction, stress_pa, yield_pa, areas):
-    adjacency = plate.adjacency()
     n = plate.node_count()
-    rows = np.repeat(np.arange(n, dtype=np.int64), np.diff(adjacency.offsets))
-    cols = adjacency.neighbours.astype(np.int64, copy=False)
-    pairs = np.unique(np.sort(np.column_stack((rows, cols)), axis=1), axis=0)
-    points, _ = plate.all_points_and_elevation()
-    edge_direction = points[pairs[:, 1]] - (
-        np.sum(points[pairs[:, 1]] * points[pairs[:, 0]], axis=1)[:, None] * points[pairs[:, 0]]
+    failed_edges, count, labels, _sizes, pairs = shared.local_failure_components(
+        plate, cracked, extension_direction, stress_pa, yield_pa,
+        RESIDUAL_STRENGTH_FRACTION,
     )
-    edge_direction = geometry.normalize(edge_direction)
-    opening_a = np.abs(np.sum(edge_direction * extension_direction[pairs[:, 0]], axis=1))
-    opening_b = np.abs(np.sum(edge_direction * extension_direction[pairs[:, 1]], axis=1))
-    supported = (opening_a > 0.5) & (opening_b > 0.5)
-    supported &= (
-        stress_pa[pairs[:, 0]] > RESIDUAL_STRENGTH_FRACTION * yield_pa[pairs[:, 0]]
-    ) & (
-        stress_pa[pairs[:, 1]] > RESIDUAL_STRENGTH_FRACTION * yield_pa[pairs[:, 1]]
-    )
-    failed_pairs = supported & cracked[pairs[:, 0]] & cracked[pairs[:, 1]]
-    surviving = pairs[~failed_pairs]
-    graph_rows = np.concatenate((surviving[:, 0], surviving[:, 1]))
-    graph_cols = np.concatenate((surviving[:, 1], surviving[:, 0]))
-    graph = csr_matrix((np.ones(len(graph_rows)), (graph_rows, graph_cols)), shape=(n, n))
-    count, labels = connected_components(graph, directed=False)
     component_areas = np.bincount(labels, weights=areas, minlength=count)
     sorted_areas = np.sort(component_areas)[::-1]
     crack_nodes = np.flatnonzero(cracked)
     if len(crack_nodes):
-        crack_edge_mask = cracked[rows] & cracked[cols]
-        crack_graph = csr_matrix((np.ones(int(crack_edge_mask.sum())),
-                                  (rows[crack_edge_mask], cols[crack_edge_mask])), shape=(n, n))
+        crack_edge_mask = cracked[pairs[:, 0]] & cracked[pairs[:, 1]]
+        crack_edges = pairs[crack_edge_mask]
+        crack_rows = np.concatenate((crack_edges[:, 0], crack_edges[:, 1]))
+        crack_cols = np.concatenate((crack_edges[:, 1], crack_edges[:, 0]))
+        crack_graph = csr_matrix((np.ones(len(crack_rows)), (crack_rows, crack_cols)), shape=(n, n))
         crack_count, _ = connected_components(crack_graph[crack_nodes][:, crack_nodes], directed=False)
     else:
         crack_count = 0
     return {
-        "failed_adjacency_link_count": int(failed_pairs.sum()),
+        "failed_adjacency_link_count": int(len(failed_edges)),
         "failed_cell_count": int(cracked.sum()),
         "failed_cell_area_fraction": float(areas[cracked].sum() / max(float(areas.sum()), 1.0)),
         "failed_cell_component_count": int(crack_count),
@@ -283,25 +243,11 @@ def _source_and_target(world):
     candidate = slab_screen._bilateral_candidate(world, plate)
     if not candidate:
         raise RuntimeError("target plate no longer meets bilateral slab-pull precondition")
-    native_centers = list(world.mantle_centers)
-    native_p95 = float(mantle.rad_per_yr_to_cm_per_yr(np.percentile(
-        np.linalg.norm(mantle.flow_at(candidate["points"], native_centers), axis=1), 95.0
-    )))
-    source_geometry = current_audit._source_geometry(
-        plate, shell_audit.line_spacing_rad(DENSITY)
-    )
-    centers, scale = current_audit._scaled_source_centers(
-        source_geometry["source_centers_unit_strength"], candidate["points"], native_p95
-    )
-    world.mantle_centers = native_centers + centers
-    field, inputs, subducting = slab_screen._field_and_inputs(world, plate)
-    source_velocity_m_s = (
-        mantle.flow_at(geometry.normalize(field.points_xyz), centers)
-        * lithosphere.PLANET_RADIUS_M / torque.SECONDS_PER_YEAR
-    )
-    midline_force = (
-        torque.ASTHENOSPHERE_VISCOSITY_PA_S / torque.SHEAR_ZONE_THICKNESS_M
-        * field.areas_m2[:, None] * source_velocity_m_s
+    (_native_centers, native_p95, _source_geometry, centers, scale, field, inputs,
+     subducting, midline_force) = shared.add_native_midline_source(
+        world, plate, candidate["points"], current_audit._source_geometry,
+        current_audit._scaled_source_centers, slab_screen._field_and_inputs,
+        shell_audit.line_spacing_rad(DENSITY),
     )
     # Keep the complete production force field (including the bilateral slab terms) and
     # scale only the new midline-current traction in the later sweep arms.
@@ -493,8 +439,7 @@ def run(out_path: Path):
         "capacity_cases": outcomes,
         "elapsed_wall_seconds": time.perf_counter() - started,
     }
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    shared.write_json_report(out_path, report)
     return report
 
 

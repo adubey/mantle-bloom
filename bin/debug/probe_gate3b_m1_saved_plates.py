@@ -22,10 +22,8 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from scipy.sparse import csr_matrix
-from scipy.sparse.csgraph import connected_components
-
-from app import cratons, elevation_lines, geometry, lithosphere, mantle, orogeny, persistence, torque
+from app import cratons, elevation_lines, geometry, lithosphere, orogeny, persistence, torque
+import gate3b_diagnostic_common as shared
 import probe_gate3b_crack_coupled as diagnostic
 import probe_gate3b_component_shell as shell_audit
 import probe_gate3b_midplate_current as current_audit
@@ -77,25 +75,11 @@ def _target(world, plate_id):
     points, areas, center, axis = slab_screen._principal_axis(plate)
     candidate = {"points": points, "areas": areas, "center_xyz": center,
                  "axis_xyz": axis, "coord": points @ axis}
-    native_centers = list(world.mantle_centers)
-    native_p95 = float(mantle.rad_per_yr_to_cm_per_yr(np.percentile(
-        np.linalg.norm(mantle.flow_at(candidate["points"], native_centers), axis=1), 95.0
-    )))
-    source_geometry = current_audit._source_geometry(
-        plate, shell_audit.line_spacing_rad(float(world.node_density))
-    )
-    centers, scale = current_audit._scaled_source_centers(
-        source_geometry["source_centers_unit_strength"], candidate["points"], native_p95
-    )
-    world.mantle_centers = native_centers + centers
-    field, inputs, subducting = slab_screen._field_and_inputs(world, plate)
-    source_velocity_m_s = (
-        mantle.flow_at(geometry.normalize(field.points_xyz), centers)
-        * lithosphere.PLANET_RADIUS_M / torque.SECONDS_PER_YEAR
-    )
-    midline_force = (
-        torque.ASTHENOSPHERE_VISCOSITY_PA_S / torque.SHEAR_ZONE_THICKNESS_M
-        * field.areas_m2[:, None] * source_velocity_m_s
+    (_native_centers, native_p95, _source_geometry, _centers, scale, field, inputs,
+     subducting, midline_force) = shared.add_native_midline_source(
+        world, plate, candidate["points"], current_audit._source_geometry,
+        current_audit._scaled_source_centers, slab_screen._field_and_inputs,
+        shell_audit.line_spacing_rad(float(world.node_density)),
     )
     bilateral = slab_screen._bilateral_candidate(world, plate)
     return plate, candidate, bilateral, native_p95, scale, field, midline_force, inputs, subducting
@@ -110,44 +94,15 @@ def _stage_for(elapsed_myr):
 
 
 def _components(plate, cracked, direction, stress, yield_strength):
-    adjacency = plate.adjacency()
-    n = plate.node_count()
-    rows = np.repeat(np.arange(n, dtype=np.int64), np.diff(adjacency.offsets))
-    cols = adjacency.neighbours.astype(np.int64, copy=False)
-    pairs = np.unique(np.sort(np.column_stack((rows, cols)), axis=1), axis=0)
-    points, _ = plate.all_points_and_elevation()
-    edge = points[pairs[:, 1]] - (
-        np.sum(points[pairs[:, 1]] * points[pairs[:, 0]], axis=1)[:, None]
-        * points[pairs[:, 0]]
+    broken, count, labels, sizes, _pairs = shared.local_failure_components(
+        plate, cracked, direction, stress, yield_strength,
+        diagnostic.RESIDUAL_STRENGTH_FRACTION,
     )
-    edge = geometry.normalize(edge)
-    opens_a = np.abs(np.sum(edge * direction[pairs[:, 0]], axis=1))
-    opens_b = np.abs(np.sum(edge * direction[pairs[:, 1]], axis=1))
-    supported = (opens_a > 0.5) & (opens_b > 0.5)
-    supported &= stress[pairs[:, 0]] > diagnostic.RESIDUAL_STRENGTH_FRACTION * yield_strength[pairs[:, 0]]
-    supported &= stress[pairs[:, 1]] > diagnostic.RESIDUAL_STRENGTH_FRACTION * yield_strength[pairs[:, 1]]
-    broken = pairs[supported & cracked[pairs[:, 0]] & cracked[pairs[:, 1]]]
-    keep = np.ones(len(pairs), dtype=bool)
-    if len(broken):
-        broken_key = broken[:, 0] * n + broken[:, 1]
-        pair_key = pairs[:, 0] * n + pairs[:, 1]
-        keep = ~np.isin(pair_key, broken_key, assume_unique=True)
-    survivors = pairs[keep]
-    graph = csr_matrix((np.ones(2 * len(survivors)),
-                        (np.r_[survivors[:, 0], survivors[:, 1]],
-                         np.r_[survivors[:, 1], survivors[:, 0]])), shape=(n, n))
-    count, labels = connected_components(graph, directed=False)
-    sizes = np.bincount(labels, minlength=count)
     return broken, count, labels, sizes
 
 
 def _map_coords(points):
-    xyz = geometry.normalize(points)
-    lon = np.degrees(np.arctan2(xyz[:, 1], xyz[:, 0]))
-    lat = np.degrees(np.arcsin(np.clip(xyz[:, 2], -1.0, 1.0)))
-    center = np.degrees(np.angle(np.mean(np.exp(1j * np.radians(lon)))))
-    lon = (lon - center + 180.0) % 360.0 - 180.0 + center
-    return xyz, lon, lat
+    return shared.map_spherical_coordinates(points)
 
 
 def _draw_image(path, title, plate, candidate, field, subducting, snapshot):

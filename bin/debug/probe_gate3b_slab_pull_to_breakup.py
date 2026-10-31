@@ -248,6 +248,29 @@ def _write(path, report):
     path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _target_topology_change(new_events, target_plate_id, elapsed_myr, report):
+    split_for_target = None
+    merged_target = False
+    for _event_year, message in new_events:
+        split = re.match(r"Plate (\d+) split into plates (\d+) and (\d+)\.", message)
+        if split and int(split.group(1)) == target_plate_id:
+            split_for_target = (int(split.group(2)), int(split.group(3)), message)
+            break
+        merge = re.match(
+            r"Plates (\d+) and (\d+) (?:collided and merged|had overlapped so long they fused) into plate (\d+)",
+            message,
+        )
+        if merge and target_plate_id in (int(merge.group(1)), int(merge.group(2))):
+            target_plate_id = int(merge.group(3))
+            merged_target = True
+            report.setdefault("target_topology_transitions", []).append({
+                "elapsed_myr_after_startup": elapsed_myr,
+                "new_tracked_plate_id": target_plate_id,
+                "message": message,
+            })
+    return split_for_target, target_plate_id, merged_target
+
+
 def run(out_path: Path):
     started = time.perf_counter()
     world = world_mod.generate_world(SEED, node_density=DENSITY, cratons_first=True, synthetic_relief=False)
@@ -320,25 +343,9 @@ def run(out_path: Path):
                 "elapsed_myr_after_startup": float((event_year - STARTUP_YEARS) / 1e6),
                 "message": message,
             })
-        split_for_target = None
-        merged_target_this_step = False
-        for _event_year, message in new_events:
-            split = re.match(r"Plate (\d+) split into plates (\d+) and (\d+)\.", message)
-            if split and int(split.group(1)) == target_plate_id:
-                split_for_target = (int(split.group(2)), int(split.group(3)), message)
-                break
-            merge = re.match(
-                r"Plates (\d+) and (\d+) (?:collided and merged|had overlapped so long they fused) into plate (\d+)",
-                message,
-            )
-            if merge and target_plate_id in (int(merge.group(1)), int(merge.group(2))):
-                target_plate_id = int(merge.group(3))
-                merged_target_this_step = True
-                report.setdefault("target_topology_transitions", []).append({
-                    "elapsed_myr_after_startup": elapsed_myr,
-                    "new_tracked_plate_id": target_plate_id,
-                    "message": message,
-                })
+        split_for_target, target_plate_id, merged_target_this_step = _target_topology_change(
+            new_events, target_plate_id, elapsed_myr, report
+        )
         if split_for_target is not None:
             report["breakup_time_myr_after_startup"] = elapsed_myr
             daughter_rows = []

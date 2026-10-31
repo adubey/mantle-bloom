@@ -16,11 +16,8 @@ import argparse
 import json
 from pathlib import Path
 
-import numpy as np
-from scipy.sparse import csr_matrix
-from scipy.sparse.csgraph import connected_components
-
-from app import cratons, elevation_lines, world as world_mod
+from app import cratons, world as world_mod
+import gate3b_diagnostic_common as shared
 
 
 def run(seed: int, density: float) -> dict:
@@ -29,34 +26,11 @@ def run(seed: int, density: float) -> dict:
     )
     world.simulate_climate_biomes = False
     cratons.ensure_initialized(world)
-    components: list[tuple[float, object, np.ndarray]] = []
-    for plate in world.plates:
-        continental = elevation_lines.effective_is_continental_from_codes(
-            plate.collect("crust_type_code"), plate.crust_type == "continental"
-        )
-        indices = np.flatnonzero(continental)
-        if not len(indices):
-            continue
-        adjacency = plate.adjacency()
-        rows = np.repeat(np.arange(plate.node_count(), dtype=np.int64), np.diff(adjacency.offsets))
-        cols = adjacency.neighbours.astype(np.int64, copy=False)
-        local_index = np.full(plate.node_count(), -1, dtype=np.int64)
-        local_index[indices] = np.arange(len(indices), dtype=np.int64)
-        keep = continental[rows] & continental[cols]
-        graph = csr_matrix(
-            (np.ones(int(keep.sum())), (local_index[rows[keep]], local_index[cols[keep]])),
-            shape=(len(indices), len(indices)),
-        )
-        count, labels = connected_components(graph, directed=False)
-        area_by_node = plate.node_areas_m2()[indices]
-        for label in range(count):
-            selected = indices[labels == label]
-            area = float(area_by_node[labels == label].sum())
-            components.append((area, plate, selected))
+    components = shared.edge_connected_continental_components(world)
 
     if not components:
         raise ValueError("generated world has no edge-connected continental component")
-    area_m2, plate, selected = max(components, key=lambda row: row[0])
+    area_m2, plate, selected = components[0]
     result = {
         "schema_version": 1,
         "title": "RFC 0010 Gate 3b rift-potential accounting preflight",
@@ -102,8 +76,7 @@ def main() -> None:
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     report = run(args.seed, args.density)
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    shared.write_json_report(args.out, report)
     print(json.dumps({"out": str(args.out), **report}, sort_keys=True))
 
 

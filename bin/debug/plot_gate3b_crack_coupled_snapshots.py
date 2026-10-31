@@ -13,10 +13,8 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from scipy.sparse import csr_matrix
-from scipy.sparse.csgraph import connected_components
-
-from app import cratons, elevation_lines, geometry, world as world_mod
+from app import cratons, elevation_lines, world as world_mod
+import gate3b_diagnostic_common as shared
 import probe_gate3b_crack_coupled as diagnostic
 import probe_gate3b_slab_pull as slab_screen
 import replay_gate2_capacity as capacity_audit
@@ -45,30 +43,11 @@ def _load_fields():
 
 
 def _failed_link_components(plate, cracked, direction, stress, yield_strength):
-    adjacency = plate.adjacency()
-    n = plate.node_count()
-    rows = np.repeat(np.arange(n, dtype=np.int64), np.diff(adjacency.offsets))
-    cols = adjacency.neighbours.astype(np.int64, copy=False)
-    pairs = np.unique(np.sort(np.column_stack((rows, cols)), axis=1), axis=0)
-    points, _ = plate.all_points_and_elevation()
-    edge = points[pairs[:, 1]] - (
-        np.sum(points[pairs[:, 1]] * points[pairs[:, 0]], axis=1)[:, None]
-        * points[pairs[:, 0]]
+    broken, count, labels, _sizes, _pairs = shared.local_failure_components(
+        plate, cracked, direction, stress, yield_strength,
+        diagnostic.RESIDUAL_STRENGTH_FRACTION,
     )
-    edge = geometry.normalize(edge)
-    opens_at_a = np.abs(np.sum(edge * direction[pairs[:, 0]], axis=1))
-    opens_at_b = np.abs(np.sum(edge * direction[pairs[:, 1]], axis=1))
-    supported = (opens_at_a > 0.5) & (opens_at_b > 0.5)
-    residual = diagnostic.RESIDUAL_STRENGTH_FRACTION
-    supported &= (stress[pairs[:, 0]] > residual * yield_strength[pairs[:, 0]])
-    supported &= (stress[pairs[:, 1]] > residual * yield_strength[pairs[:, 1]])
-    failed = supported & cracked[pairs[:, 0]] & cracked[pairs[:, 1]]
-    survivors = pairs[~failed]
-    graph_rows = np.concatenate((survivors[:, 0], survivors[:, 1]))
-    graph_cols = np.concatenate((survivors[:, 1], survivors[:, 0]))
-    graph = csr_matrix((np.ones(len(graph_rows)), (graph_rows, graph_cols)), shape=(n, n))
-    count, labels = connected_components(graph, directed=False)
-    return pairs[failed], count, labels
+    return broken, count, labels
 
 
 def _snapshots(plate, field, demands, directions):
@@ -123,12 +102,7 @@ def _snapshots(plate, field, demands, directions):
 
 
 def _map_projection(points):
-    xyz = geometry.normalize(points)
-    lon = np.degrees(np.arctan2(xyz[:, 1], xyz[:, 0]))
-    lat = np.degrees(np.arcsin(np.clip(xyz[:, 2], -1.0, 1.0)))
-    center = np.degrees(np.angle(np.mean(np.exp(1j * np.radians(lon)))))
-    lon = (lon - center + 180.0) % 360.0 - 180.0 + center
-    return xyz, lon, lat
+    return shared.map_spherical_coordinates(points)
 
 
 def _slab_vectors(field, xyz, candidate, subducting):

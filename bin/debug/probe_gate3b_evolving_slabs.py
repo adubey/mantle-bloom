@@ -25,8 +25,6 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from scipy.spatial import cKDTree
-
 from app import geometry, lithosphere, mantle, persistence, torque
 from app import slab_body as slab_model
 import probe_gate3b_crack_coupled as damage_model
@@ -34,7 +32,6 @@ import probe_gate3b_component_shell as shell_audit
 import probe_gate3b_midplate_current as current_audit
 import probe_gate3b_slab_pull as slab_screen
 import probe_gate3b_m1_saved_plates as saved_screen
-import replay_gate2_capacity as capacity_audit
 
 PLATE_ID = 14
 STEP_YEARS = 2_000_000.0
@@ -147,8 +144,6 @@ def _create_bodies(plate, initial):
         down_dip = geometry.normalize(side_axis - np.dot(side_axis, centroid) * centroid)
         anchor_index = int(indices[np.argmax(np.linalg.norm(initial["force_field"].slab_pull_n[indices], axis=1))])
         trench = geometry.normalize(points[anchor_index])
-        local_trench = geometry.to_local(plate.frame, trench)
-        local_dip = geometry.to_local(plate.frame, down_dip)
         source_area = float(areas[indices].sum())
         source_volume = float(np.dot(areas[indices], source_thickness[indices]))
         source_mass = float(np.dot(areas[indices], source_mass_density[indices]))
@@ -503,7 +498,6 @@ def run(save_path: Path, out_path: Path, image_path: Path):
     # Retain material-frame damage support and the original craton mask on all clones.
     template._gate3b_initial_thickness = np.asarray(original_thickness, dtype=float).copy()
     template._gate3b_initial_craton = np.asarray(original_craton, dtype=bool).copy()
-    template._gate3b_initial_continental = np.asarray(original_continental, dtype=bool).copy()
     capacity_fields, capacity_reference = damage_model._capacity_fields(original_continental)
     results = []
     for capacity_name in ("p10", "median", "p90"):

@@ -20,8 +20,8 @@ from pathlib import Path
 import numpy as np
 from scipy.spatial import cKDTree
 
-from app import cratons, geometry, lithosphere, thin_shell, torque, world as world_mod
-from app.elevation_lines import line_spacing_rad
+from app import cratons, geometry, lithosphere, thin_shell, world as world_mod
+import gate3b_diagnostic_common as shared
 import validate_thin_shell_plate_meshes as mesh_validation
 
 
@@ -33,21 +33,7 @@ CAPACITY_PLACEHOLDER_N_PER_M = 1e10
 
 
 def _source_force_field(world, plate):
-    spacing = line_spacing_rad(world.node_density)
-    reach = torque.boundary_force_reach_rad(spacing)
-    cache = getattr(world, "boundary_search_cache", None)
-    neighbours = plate.get_neighbours(world.plates)
-    inputs = torque.gather_boundary_force_inputs(plate, neighbours, spacing, reach, cache)
-    _convergent, divergent, _transform, contested = torque.classify_boundary_nodes(
-        plate, neighbours, inputs, reach, cache
-    )
-    collision = torque.continental_contact_mask(plate, inputs, contested)
-    subducting = torque.subducting_boundary_mask(plate, inputs, reach)
-    craton_contact = torque.contact_craton_m(plate, neighbours, inputs)
-    jam = torque.contact_jam_factor(plate, world, neighbours, inputs, reach)
-    return torque.gather_per_node_force_field(
-        plate, world, inputs, spacing, subducting, divergent, collision, craton_contact, jam
-    )
+    return shared.production_force_field(world, plate)
 
 
 def _farthest_representatives(points: np.ndarray, areas: np.ndarray, count: int) -> np.ndarray:
