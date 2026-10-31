@@ -95,7 +95,7 @@ def _representatives(points, areas, count):
     return selected
 
 
-def _plate_shell(plate, component_indices, force_points, source_force, cap):
+def _plate_shell(plate, component_indices, force_points, source_force, cap, *, include_demand=False):
     """Solve on the complete production plate; retain the continent as an evaluation mask."""
     source_points = geometry.normalize(np.asarray(force_points, dtype=float))
     source_areas = plate.node_areas_m2()
@@ -200,7 +200,7 @@ def _plate_shell(plate, component_indices, force_points, source_force, cap):
         "equilibrium_pass": bool(equilibrium <= 0.01),
         "shell_energy_pass": bool(energy_residual <= 0.05),
     }
-    return {
+    result = {
         "target_representatives": cap,
         "representative_count": int(len(rep_points)),
         "shell_node_count": int(len(used)),
@@ -229,6 +229,21 @@ def _plate_shell(plate, component_indices, force_points, source_force, cap):
         "accounting_pass": bool(all(checks.values())),
         "continental_component_demand_quantiles_n_per_m": np.quantile(finite, [0.5, 0.9, 0.95, 0.99]).tolist(),
     }
+    if include_demand:
+        result["component_demand_n_per_m"] = component_demand.tolist()
+        stress = shell.stress_resultant_n_per_m
+        matrices = np.empty((len(stress), 2, 2), dtype=float)
+        matrices[:, 0, 0] = stress[:, 0]
+        matrices[:, 1, 1] = stress[:, 1]
+        matrices[:, 0, 1] = matrices[:, 1, 0] = stress[:, 2]
+        _principal_values, principal_vectors = np.linalg.eigh(matrices)
+        first, second = thin_shell._tangent_basis(rep_points[used])
+        principal_xyz = (
+            first * principal_vectors[:, 0, 1, None]
+            + second * principal_vectors[:, 1, 1, None]
+        )
+        result["component_principal_extension_xyz"] = principal_xyz[component_mesh_map].tolist()
+    return result
 
 
 def _drag_energy(world, plate, indices, force):

@@ -584,3 +584,338 @@ preflight. All six source/cap cases passed again, with identical force, torque, 
 work, area-coverage, and basal-energy residuals. The repeated run took 14.29 seconds. This confirms
 the rebase did not change the accounting result; the persistence history and rift-potential screen
 remain unrun.
+
+### Midplate upwelling-line persistence screen (2026-10-30)
+
+The owner clarified the source geometry: use an interior line through the plate rather than a
+minimum cut. Before inspecting response, the diagnostic selects the area-weighted centroid and
+principal axis of the seed-11 density-4 largest connected continental component, then lays a
+great-circle chord through that center. The selected component covers 116.47 million km². Its
+geometry-only chord is 15,531 km long. Positive convection centers are evenly spaced along the
+chord; two parallel rows of negative centers, each half the total upwelling strength, represent
+balanced return flow on opposite sides. The prescribed current is fixed in the world frame and
+superposed on native mantle centers. Its source-only p95 flow speed is swept over 0, 1, 2, 4, 8,
+16 and 32 cm/yr. The existing basal-drag law supplies the plate load. This is a simplified,
+depth-averaged current pattern, not a resolved convection model.
+
+Each arm starts from the same generated world with climate disabled and runs 30 Myr at 2 Myr
+steps. The event screen requires a single edge-connected continental area with Gate 2
+`N_ext/N_cap >= 1` to cover at least 25% of the selected component at every output for at least
+10 Myr. Capacity cases use the frozen Gate 2 p10 / median / p90 values (6.25e12 / 1.38e13 /
+2.86e13 N/m). The starting cell selection is followed through quad refinement and coarsening by
+cell-key lineage. Accounting is checked at every valid output.
+
+No tested arm produced a persistent event. At 16 cm/yr the largest connected over-capacity
+footprint was 1.75% of the component under the p10 capacity scenario, at 20 Myr, and it was zero
+again at 30 Myr. At 32 cm/yr the p10 footprint grew to 24.89% at 28 Myr, just below the frozen
+25% cutoff; the median footprint was 0.45% and p90 remained zero. The 32 cm/yr shell solve then
+failed on a degenerate triangle at 30 Myr. Its valid outputs through 28 Myr passed accounting,
+but the arm is incomplete and cannot qualify as an event. No 1 Myr partition check was triggered
+because no arm passed the screen.
+
+Across all valid outputs, minimum production-plate area coverage was 98.87%; maximum force-
+transfer residual was below `5e-15`, torque-transfer residual 0.211%, shell-equilibrium residual
+0.0355%, shell-work residual 0.223%, and basal-drag energy residual below `6e-15`. These pass the
+frozen accounting limits. The 32 cm/yr terminal mesh failure is a numerical limitation at the
+highest tested load, not a failed accounting check at earlier outputs.
+
+This screen supports the proposed broad-source experiment but finds no qualifying rift potential
+in the fully completed arms. The near-threshold p10 result at 32 cm/yr motivates a separately
+preregistered follow-up around that load and a fix or explicit eligibility rule for the terminal
+mesh degeneracy. The source sweep measures loading only: it does not accumulate local cracks,
+form a split, or establish that this source is geophysically realistic. The full per-output record
+is [`midplate-current-seed11-density4.json`](midplate-current-seed11-density4.json); reproduce it
+with [`probe_gate3b_midplate_current.py`](../../bin/debug/probe_gate3b_midplate_current.py).
+
+### Higher-current extension (2026-10-30)
+
+Following the 32 cm/yr near-threshold result, the same source geometry and event/accounting rules
+were preregistered for additional source-only p95 targets of 40, 48, 64, 96 and 128 cm/yr in
+[issue comment 6535540600](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6535540600).
+The previous 0–32 cm/yr arms were reused without rerunning. All five added 2 Myr arms completed
+30 Myr and passed accounting.
+
+The p10 capacity case qualified at 48 cm/yr: its largest connected over-capacity region covered
+at least 25% of the selected continental area at each 2 Myr output from 16 through 30 Myr, a
+14 Myr interval. The same p10 screen also qualified at 64, 96 and 128 cm/yr, beginning at 2 Myr
+for those arms. The 40 cm/yr arm had brief p10 crossings at 16, 18 and 28 Myr but no persistent
+interval. No arm qualified under the median or p90 capacity scenarios. At 128 cm/yr the median
+case briefly exceeded 25% at scattered outputs, but never persisted for 10 Myr. The first
+qualifying level in the tested sequence is therefore 48 cm/yr **for the low-capacity p10
+scenario only**; this is not a robust threshold across capacity uncertainty.
+
+The preregistered 1 Myr comparison does not validate that result. At 40 cm/yr, the shell mesh
+became degenerate at 12 Myr. At 48 cm/yr, the p10 footprint exceeded 25% from 6 through 12 Myr,
+only a 6 Myr interval, then the shell mesh became degenerate at 14 Myr. Because the finer-step
+arm ended before it could show the unchanged 10 Myr persistence rule, the event is timestep
+unresolved and remains provisional. The mesh failure is not an accounting failure: every valid
+checkpoint before it passed the frozen accounting limits.
+
+This extension finds the requested load level for one permissive capacity scenario, but not a
+capacity-robust or timestep-validated rift potential. The p90 case stayed below the area cutoff
+even at the highest tested speed. The next gate work is to resolve the high-load mesh degeneracy
+before accepting the coarse-step event; do not interpret the large imposed speeds as calibrated
+or realistic magma currents. No crack accumulation or plate split is part of these probes.
+
+### Bilateral slab-pull screen (2026-10-30)
+
+Following the owner's slab-pull hypothesis, the preregistered diagnostic in [issue comment 6536923913](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6536923913) kept each generated world's native mantle centers and added no synthetic convection. It tested cratons-first seeds 7, 11 and 2024 in order at density 4, with a 2 Myr startup and a 30 Myr history at 2 Myr steps. Seed 7 failed its known 20-plate partition setup; seed 11 had no eligible bilateral target. Seed 2024 selected the largest eligible plate: plate 0, 43.31 million km².
+
+Eligibility required active down-going boundary cells in both outer fifths of the geometry-only principal axis, neighbors with lower mean column mass per area on both sides, and slab-pull resultants pointing outward in opposite axial directions. The selected target met those rules, but its end loads were very uneven: outward axial projections were `5.68e18 N` and `7.33e16 N` (the weaker side was 1.3% of the stronger side). The run is therefore a valid asymmetric bilateral case, not a strong test of balanced two-ended pulling.
+
+No production split was recorded through 32 Myr elapsed world time (30 Myr after startup); breakup time is right-censored at 30 Myr of measured history. The diagnostic shell's largest connected over-capacity footprint was 1.03% under the Gate 2 p10 capacity (at 28 Myr), 0.00% under p90, and no capacity case met the unchanged 25%-for-10-Myr event screen. At 32 Myr the p10 over-capacity cells were scattered across the central bins (under 1% of individual slice area); no slice approached the event criterion. Across checkpoints, shell accounting passed: area coverage was at least 99.04%, force-transfer residual below `2e-15`, torque-transfer residual below 0.08%, equilibrium residual below 0.0054%, and elastic-work residual below 0.12%.
+
+At 32 Myr the center bins had less slab-pull force per mass than the ends. Axial bins 4 and 5 measured `1.89e-3` and `2.19e-3 N/kg`, while end bins 0 and 9 measured `29.88e-3` and `19.63e-3 N/kg`. These are force-to-mass diagnostics in the quasi-static solver, not plate accelerations. The shell response spread inward over time, but did not put a substantial connected region above even the low-capacity anchor. This run does not falsify balanced slab-pull rifting: the eligible plate's two end loads were strongly asymmetric, only one generated seed supplied an eligible target, and the existing production breakup rule does not consume shell failure.
+
+| Gate 2 capacity case | Capacity (N/m) | Peak connected over-capacity footprint | Time of peak | 25% for 10 Myr? |
+|---|---:|---:|---:|---|
+| p10 | `6.25e12` | 1.03% | 28 Myr | No |
+| p90 | `2.86e13` | 0.00% | 2 Myr (tie; remained zero) | No |
+
+The 10-slice mass, crust/mantle volume, slab-pull force per mass and local shell response are in [`slab-pull-bilateral-screen.json`](slab-pull-bilateral-screen.json). Reproduce with [`probe_gate3b_slab_pull.py`](../../bin/debug/probe_gate3b_slab_pull.py):
+
+```bash
+PYTHONHASHSEED=0 PYTHONPATH=backend:bin/debug NUMBA_CACHE_DIR=<private-cache> \
+  backend/.venv/bin/python bin/debug/probe_gate3b_slab_pull.py \
+  --out analysis/issue699/slab-pull-bilateral-screen.json
+```
+
+The run used commit `e585d153089237eebc9797b1dd993334221c92d1`; compact output SHA-256: `815004a4f08e4bdbf026226245dd2338593cbaefe535b847cac0d445b8564f5f`.
+
+At the 32 Myr checkpoint, the ten fixed material bins were:
+
+| Axial slice | Mass (`10^21 kg`) | Lithosphere volume (`10^6 km³`) | Slab-pull resultant (`10^18 N`) | Slab pull / mass (`10^-3 N/kg`) | Area above p10 capacity | Area above p90 capacity |
+|---:|---:|---:|---:|---:|---:|---:|
+| 0 (end) | 0.103 | 32.3 | 3.068 | 29.876 | 0.00% | 0.00% |
+| 1 | 0.923 | 295.5 | 9.022 | 9.777 | 0.00% | 0.00% |
+| 2 | 1.566 | 499.1 | 4.350 | 2.777 | 0.00% | 0.00% |
+| 3 | 1.903 | 603.5 | 2.322 | 1.220 | 0.00% | 0.00% |
+| 4 (center) | 1.654 | 525.0 | 3.129 | 1.892 | 0.00% | 0.00% |
+| 5 (center) | 1.026 | 323.7 | 2.250 | 2.192 | 0.98% | 0.00% |
+| 6 | 0.805 | 250.3 | 3.352 | 4.166 | 2.39% | 0.00% |
+| 7 | 0.681 | 211.9 | 2.439 | 3.583 | 2.38% | 0.00% |
+| 8 | 0.403 | 125.7 | 1.289 | 3.200 | 0.00% | 0.00% |
+| 9 (opposite end) | 0.140 | 43.5 | 2.740 | 19.625 | 0.00% | 0.00% |
+
+The 32 Myr bin-level p10 exceedances in slices 5–7 are small and do not form a broad connected path. Slice 4's median extensional demand was 2.76e12 N/m and slice 5's was 2.85e12 N/m at this checkpoint, below the p10 capacity of 6.25e12 N/m. The full p10/p90 demand histories remain in the JSON.
+
+### Slab pull plus geometric midline upwelling to breakup (2026-10-30)
+
+The follow-up was preregistered in [issue comment 6537681467](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6537681467), with an event-triggered daughter-shell measurement added in [comment 6537720137](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6537720137). It regenerated seed 2024 at density 4, used the same 2 Myr startup and selected plate 0, then added the prior geometry-only midline source in the mantle frame. Its source-only p95 speed was matched to the starting native mantle flow: 7.845 cm/yr. The source geometry was an 8,438 km chord with 20 upwelling centers and two 20-center return-flow rows. No high-speed sweep was run.
+
+The tracked production plate completed a split at 8 Myr after startup: `Plate 0 split into plates 0 and 14.` The run stopped at that event. Plate 0 had failed-rift events at 2, 4 and 6 Myr before the completed split. The split is the production mantle-flow disagreement gate plus its existing stochastic outcome; it is not a local crack-accumulation event. The p10 connected over-capacity footprint at the daughters was 0.00% for plate 0 and 8.50% for plate 14; the p90 footprints were 0.00% and 0.19%. Both daughter shell accounting checks passed. Neither daughter met the existing 25% footprint screen.
+
+At 6 Myr, immediately before the split step, the active subducting front measured 10,099 km across the tracked plate. The production pull law's effective down-dip sink length is fixed at 250 km. The model has no changing 3D slab-body length, so 250 km is a constitutive assumption, while the measured front length is the represented trench extent. The active down-going columns averaged 33.9–41.1 km thick by slice. The measured Moho temperature is the model's conductive column proxy including thermal lag; it is not a full crust/mantle temperature field.
+
+| Slice | Mass (`10^21 kg`) | Lithosphere volume (`10^6 km³`) | Mean total thickness (km) | Mean active slab-column thickness (km) | Mean Moho temperature (°C) | Active slab-front length (km) |
+|---:|---:|---:|---:|---:|---:|---:|
+| 0 (end) | 0.107 | 33.8 | 43.6 | 37.4 | 473 | 1,157 |
+| 1 | 0.950 | 304.9 | 74.0 | 41.1 | 553 | 2,849 |
+| 2 | 1.496 | 478.0 | 77.0 | 37.9 | 518 | 1,327 |
+| 3 | 1.810 | 575.3 | 86.6 | 38.3 | 475 | 604 |
+| 4 (center) | 1.623 | 515.9 | 93.7 | 37.4 | 474 | 558 |
+| 5 (center) | 0.965 | 305.4 | 60.3 | 37.0 | 453 | 634 |
+| 6 | 0.606 | 190.3 | 35.7 | 36.7 | 404 | 765 |
+| 7 | 0.487 | 153.1 | 35.5 | 34.8 | 408 | 496 |
+| 8 | 0.340 | 107.2 | 36.8 | 33.9 | 434 | 841 |
+| 9 (opposite end) | 0.152 | 47.8 | 36.3 | 34.6 | 425 | 866 |
+
+| Slice | Slab-pull resultant (`10^18 N`) | Slab pull / mass (`10^-3 N/kg`) | Midline-source basal-drag resultant (`10^18 N`) | Midline force / mass (`10^-3 N/kg`) |
+|---:|---:|---:|---:|---:|
+| 0 | 3.47 | 32.43 | 0.42 | 3.97 |
+| 1 | 7.35 | 7.73 | 0.26 | 0.28 |
+| 2 | 2.78 | 1.86 | 0.16 | 0.11 |
+| 3 | 1.69 | 0.94 | 0.01 | 0.01 |
+| 4 | 1.65 | 1.02 | 0.12 | 0.07 |
+| 5 | 1.60 | 1.66 | 0.10 | 0.10 |
+| 6 | 2.14 | 3.53 | 0.06 | 0.10 |
+| 7 | 1.07 | 2.19 | 0.16 | 0.34 |
+| 8 | 0.70 | 2.06 | 0.68 | 1.99 |
+| 9 | 1.81 | 11.92 | 0.43 | 2.84 |
+
+Slice thickness and temperature did not vary monotonically: for example, slices 6–7 averaged about 36 km total thickness and 404–408 °C, while the 94 km center slice averaged 474 °C. This is the current model's Moho proxy with its thermal-lag state, so it does not establish that thinner rock is always hotter in the simulation. The measured forces are source-attributed quasi-static loads; N/kg is not acceleration.
+
+The completed split occurred much earlier than in the native-current-only 30 Myr screen, but it does not establish that slab pull caused the split. The source added to the mantle flow field can trip the existing flow-fit split rule, while the daughter shell response remained below the broad p10 screen. This is evidence that a modest, native-speed midline source plus existing production dynamics can produce a split in this seed; it is not evidence that the model accumulated a physically resolved slab-driven rift. The first attempted run used cross-plate cell-key matching and falsely attributed plate 7's split to plate 0; that run was excluded. The reported rerun tracks the selected plate ID through merge events and checks the logged split parent.
+
+Reproduce with [`probe_gate3b_slab_pull_to_breakup.py`](../../bin/debug/probe_gate3b_slab_pull_to_breakup.py):
+
+```bash
+PYTHONHASHSEED=0 PYTHONPATH=backend:bin/debug NUMBA_CACHE_DIR=<private-cache> \
+  backend/.venv/bin/python bin/debug/probe_gate3b_slab_pull_to_breakup.py \
+  --out analysis/issue699/slab-pull-to-breakup-seed2024-density4.json
+```
+
+The run used commit `e585d153089237eebc9797b1dd993334221c92d1`; compact output SHA-256: `0aec5f77e9547d7e976c3f839bc2681a6c693dbfefccfdde111c0b22834545af`. Full 2 Myr force, thickness, temperature and topology histories are in [`slab-pull-to-breakup-seed2024-density4.json`](slab-pull-to-breakup-seed2024-density4.json).
+
+### Coupled local damage and crack-link split screen (2026-10-30)
+
+The preceding 8 Myr production split did not test the owner's required causal sequence: production
+splitting still uses mantle-flow clustering and a stochastic outcome. This controlled diagnostic
+therefore starts from the same generated seed-2024, density-4, plate-0 bilateral candidate after
+the 2 Myr startup, computes production slab pull plus the geometric midline current, advances a
+Gate 3a local damage state under an increasing load, and permits a diagnostic split only if failed
+local adjacency links make exactly two viable connected daughters.
+
+This is a fixed-geometry mechanics experiment, not a production-history replay. The initial
+force pattern and plate geometry remain fixed through the damage history; source amplitudes are
+raised every 10 Myr and the final load is held to 1 Gyr. Slab pull is bracketed by multiplying
+the production 250 km effective sink length through 500, 1,000 and 2,000 km. This is only a
+constitutive force bracket: the model does not represent a changing 3D slab body. The selected
+plate's active down-going front length is 9,132 km. Midline current is held at native strength
+first, then raised to 2x and 4x. The native midline p95 is 7.845 cm/yr.
+
+The damage law uses the Gate 3a local-feedback scenario values (`epsilon_onset=0.25`,
+`epsilon_fail=1.25`, `eta=9e21 Pa·s`, residual strength 1/3), not calibrated production
+parameters. Capacity anchors are assigned by crust type: Gate 2 continental p10, median and p90
+anchors to continental cells, and mature-oceanic anchors to noncontinental cells. The simulation
+does not represent oceanic seafloor age, so mature oceanic is a fixed scenario assumption. A cell
+becomes locally failed at `epsilon_fail`. An adjacency link is removed only when both adjacent
+cells have failed, the current load exceeds residual strength at both cells, and the link's
+opening projection exceeds 0.5 against each endpoint's principal extension axis. Every cell is
+retained. A split candidate requires exactly two connected components of at least 10% of initial
+plate area each. These directional and daughter-size cutoffs are diagnostic conventions, not
+geological constants.
+
+| Effective slab sink / midline current | Principal-demand p10 / p50 / p90 (10^12 N/m) | Shell accounts |
+|---|---:|---|
+| 250 km / 1x | 0.00 / 0.35 / 1.08 | Pass |
+| 500 km / 1x | 0.16 / 0.77 / 1.75 | Pass |
+| 1,000 km / 1x | 0.52 / 2.02 / 3.89 | Pass |
+| 2,000 km / 1x | 1.29 / 4.88 / 8.28 | Pass |
+| 2,000 km / 2x | 1.30 / 4.85 / 8.73 | Pass |
+| 2,000 km / 4x | 1.42 / 4.92 / 9.54 | Pass |
+
+| Effective slab sink / midline current | Largest connected over-capacity footprint / whole plate (p10 / median / p90) | Continental subset (p10 / median / p90) |
+|---|---:|---:|
+| 250 km / 1x | 0.5% / 0.0% / 0.0% | 0.0% / 0.0% / 0.0% |
+| 500 km / 1x | 5.5% / 0.0% / 0.0% | 0.0% / 0.0% / 0.0% |
+| 1,000 km / 1x | 18.2% / 5.0% / 0.1% | 0.0% / 0.0% / 0.0% |
+| 2,000 km / 1x | 70.0% / 45.6% / 6.2% | 30.3% / 0.0% / 0.0% |
+| 2,000 km / 2x | 72.1% / 47.3% / 7.6% | 37.1% / 0.0% / 0.0% |
+| 2,000 km / 4x | 75.3% / 49.4% / 8.8% | 47.9% / 2.2% / 0.0% |
+
+The whole-plate 25%-for-10-Myr footprint screen first qualifies at the 2,000 km slab-sink
+stage for p10 and median capacities; p90 does not qualify. The continental-only denominator is
+22.35% of the plate, so its screen qualifies only for p10 at the largest slab-sink stage. This
+capacity footprint is a load screen, not proof that the plate has opened into a rift.
+
+| Capacity case | Failed cells at 1 Gyr | Failed area of whole plate | Plate components after link removal | Two largest components | Viable split? |
+|---|---:|---:|---:|---:|---|
+| p10 | 7,912 | 75.5% | 3,294 | 36.8% / 1.2% | No |
+| Median | 5,674 | 54.2% | 2,043 | 60.6% / 3.4% | No |
+| p90 | 1,910 | 17.4% | 404 | 95.7% / 0.3% | No |
+
+The corrected per-crust run creates broad overload and extensive local damage in the p10 and
+median cases. Yet it does not generate a rift: failed links fragment the adjacency graph into
+hundreds or thousands of pieces, and even the second-largest component remains below the required
+10% daughter area in all three cases. The failure is in the local-crack-to-coherent-split closure;
+the registered load screen alone is insufficient. A connected crack-growth or segment-linkage
+rule is still needed. Thus the diagnostic has exercised the proposed causal sequence but has not
+produced the split required to close Gate 3b, and it is not yet integrated into the production
+simulation.
+
+The plate map below shows the last one-component state (18 Myr) and the first graph-disconnected
+state (20 Myr): the p10 case goes from one component to six, but the detached pieces are tiny and
+do not qualify as a viable plate split. Gold circles mark craton cells, red crosses local failures,
+orange strokes the nine failed adjacency links that separate components, and arrows sampled
+slab-pull directions from both bilateral flanks (navy and teal, sampled separately). Equal arrow
+lengths show direction only, not relative force. The numbered purple callouts show each component's location and cell count:
+the largest has 10,716 cells; the other five have 1, 1, 1, 1 and 2 cells. Arrow lengths are schematic.
+Recreate it with [`plot_gate3b_crack_coupled_snapshots.py`](../../bin/debug/plot_gate3b_crack_coupled_snapshots.py).
+
+![Gate 3b crack-coupled diagnostic at 18 and 20 Myr](crack-coupled-components.png)
+
+All six shell load solves passed accounting. Plate-area coverage was 99.83%; maximum force,
+torque, equilibrium and elastic-work residuals were 1.9e-15, 7.1e-4, 4.4e-5 and 7.6e-5.
+No daughter split occurred, so this probe records no topology or material transfer. It does not
+close Gate 3b, and the earlier flow-fit production split remains non-causal evidence.
+
+Reproduce with [`probe_gate3b_crack_coupled.py`](../../bin/debug/probe_gate3b_crack_coupled.py):
+
+```bash
+PYTHONHASHSEED=0 PYTHONPATH=backend:bin/debug NUMBA_CACHE_DIR=<private-cache> \
+  backend/.venv/bin/python bin/debug/probe_gate3b_crack_coupled.py \
+  --out analysis/issue699/crack-coupled-edge-links-seed2024-density4.json
+```
+
+The run used commit `e585d153089237eebc9797b1dd993334221c92d1`; corrected compact output
+SHA-256: `305f7eca787541c48f79e3558e3143e6d4c9c05ee90e89a6bcafdcab81507c91`. An earlier
+run incorrectly applied continental capacity values to all crust types; its output is superseded
+and not gate evidence. The cell-removal and force-scaling-bug outputs are also retained with
+`exploratory` / `excluded` names. The load-extension preregistration, link-rule clarification,
+initial outcome and capacity-assignment correction were posted in [issue comments 6538295063](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6538295063),
+[6538313795](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6538313795),
+[6538349095](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6538349095), and
+[6538373105](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6538373105).
+
+### M1 20 Myr comparison across four saved plates (2026-10-30)
+
+Each named plate was loaded from its saved world and run through the same frozen-geometry M1
+damage diagnostic for 20 Myr, with a 2 Myr step. The measured production force field and a
+geometrically centered midline source were held on the saved geometry. The native midline source
+was matched to that plate's native mantle-flow p95. Slab sink length was 250 km through 10 Myr,
+500 km from 10–20 Myr, and 1,000 km for the final 2 Myr; midline current stayed at 1x. Each
+strength scenario (p10, median, p90) had its own local-damage history. The images show p10,
+the weakest capacity scenario. These are diagnostic damage runs, not 20 Myr steps of the full
+tectonic world or production rift events.
+
+| Seed / plate (saved age) | p10: components; two largest (cells, area %) | Median: components; two largest (cells, area %) | p90: components; two largest (cells, area %) | p10: cracked cells / plate area; failed links |
+|---|---|---|---|---|
+| 447276134 / 14 (116.3 Myr) | 57; 2,103 (93.0%) / 18 (0.8%) | 5; 2,264 (99.8%) / 1 (<0.1%) | 2; 2,267 (100.0%) / 1 (<0.1%) | 440 / 18.8%; 428 |
+| 373936961 / 0 (244.4 Myr) | 84; 5,192 (94.4%) / 16 (0.3%) | 39; 5,308 (96.7%) / 15 (0.3%) | 11; 5,468 (99.7%) / 5 (0.1%) | 2,134 / 38.8%; 2,045 |
+| 295569319 / 11 (180.0 Myr) | 1; 9,594 (100.0%) / 0 (0.0%) | 1; 9,594 (100.0%) / 0 (0.0%) | 1; 9,594 (100.0%) / 0 (0.0%) | 22 / 0.2%; 8 |
+| 373936961 / 40 (244.4 Myr) | 359; 2,010 (69.6%) / 154 (4.3%) | 100; 2,740 (94.6%) / 28 (0.9%) | 22; 2,861 (98.5%) / 28 (0.8%) | 1,285 / 43.6%; 1,537 |
+
+None passes the diagnostic split rule: two components each at least 10% of plate area, with at least
+80% of initial area retained in those two daughters. Plate 40's p10 case comes closest by area,
+but its second-largest component is 4.3%; the other cases' second-largest components are all below
+1%. Several runs create many disconnected graph fragments, which records crack/link damage rather
+than a coherent rift. Plate 11 barely cracks at all under these 20 Myr loads.
+
+| Seed / plate | Native mantle flow p95 (cm/yr) | Slab pull side A / B (10^18 N) | Resultant angle / balance | Active slab front (km) | Effective sink length (km) | Midline resultant (10^18 N) | Lighter-neighbor bilateral check |
+|---|---:|---:|---:|---:|---:|---:|---|
+| 447276134 / 14 | 5.69 | 4.156 / 2.487 | 152.2° / 0.598 | 5,131 | 250 → 1,000 | 0.498 | Pass |
+| 373936961 / 0 | 3.13 | 0.153 / 0.731 | 33.7° / 0.209 | 16,875 | 250 → 1,000 | 0.160 | Fail |
+| 295569319 / 11 | 2.15 | 1.321 / 4.008 | 95.1° / 0.330 | 8,889 | 250 → 1,000 | 0.540 | Fail |
+| 373936961 / 40 | 4.40 | 5.806 / 3.190 | 146.6° / 0.549 | 5,710 | 250 → 1,000 | 0.193 | Pass |
+
+The bilateral check is the original M1 screen's requirement for outward slab pull at both ends
+against lighter neighboring columns. The two failures are still included because these four plates
+were the requested comparison set; the table exposes that precondition. Side A and B are the
+outer 20% bands along each plate's geometric long axis. The angle is between their three-dimensional
+slab-pull resultants; balance is weaker divided by stronger resultant. The forces do not point
+nearly opposite on every candidate: plate 0's side-band resultants are only 33.7° apart. Sink length
+is a force-law parameter, not measured 3D slab length.
+
+| Seed / plate | Mass (10^21 kg) | Crust / mantle-lithosphere volume (10^6 km³) | Mean total / active slab-column thickness (km) | Mean Moho temperature (°C) | p10 shell coverage | Max torque / equilibrium / energy residual |
+|---|---:|---:|---:|---:|---:|---|
+| 447276134 / 14 | 3.523 | 311.55 / 810.43 | 111.36 / 95.98 | 480 | 98.63% | 4.15e-4 / 1.77e-5 / 4.68e-4 |
+| 373936961 / 0 | 6.723 | 663.16 / 1,479.44 | 101.66 / 190.28 | 678 | 99.26% | 5.91e-4 / 2.59e-5 / 3.35e-6 |
+| 295569319 / 11 | 12.290 | 883.24 / 2,994.97 | 101.18 / 51.14 | 481 | 99.54% | 8.34e-4 / 6.67e-5 / 3.96e-3 |
+| 373936961 / 40 | 1.815 | 118.71 / 445.86 | 45.88 / 44.06 | 305 | 98.77% | 4.19e-4 / 3.63e-5 / 1.13e-3 |
+
+All twelve shell load solves passed the accounting check. The reported temperature is the saved
+model's conductive Moho proxy with thermal lag. Ten equal-axis slice records, including per-slice
+mass, volumes, thickness, temperature, active trench length, slab pull and midline drag, are in
+each JSON result. Degenerate near-zero-area Delaunay slivers in the saved meshes were excluded at
+the shell solver's own element-area cutoff; remaining shell meshes covered at least 98.63% of each
+plate and passed force, torque, equilibrium and work accounting.
+
+The four images show final 20 Myr p10 states, including craton cells, locally failed cells,
+intercomponent failed links and sampled slab-pull directions from both axis-end bands. Arrow length
+is schematic and shows direction only.
+
+![M1 final state, seed 447276134 plate 14](m1-saved-447276134-14.png)
+
+![M1 final state, seed 373936961 plate 0](m1-saved-373936961-0.png)
+
+![M1 final state, seed 295569319 plate 11](m1-saved-295569319-11.png)
+
+![M1 final state, seed 373936961 plate 40](m1-saved-373936961-40.png)
+
+Reproduce each case in a separate process using [`probe_gate3b_m1_saved_plates.py`](../../bin/debug/probe_gate3b_m1_saved_plates.py)
+and its `--case`, `--out`, and `--image` arguments. The result JSON files are
+[`m1-saved-447276134-14.json`](m1-saved-447276134-14.json),
+[`m1-saved-373936961-0.json`](m1-saved-373936961-0.json),
+[`m1-saved-295569319-11.json`](m1-saved-295569319-11.json), and
+[`m1-saved-373936961-40.json`](m1-saved-373936961-40.json).
