@@ -24,6 +24,7 @@ implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), eac
 | [0012](0012-physics-first-simulation.md) | Physics-first simulation | Implemented |
 | [0014](0014-lake-water-volume-and-freezing.md) | Lakes conserve their water: in-step fill-spill-merge, seasonal freezing and water-surface temperature | Accepted (revised 2026-10-30 after G9; revised 2026-10-29 after G7) |
 | [0015](0015-frozen-water-in-physical-units.md) | Frozen water in physical units: glacier mass balance, ice flow and meltwater, freezing lakes and rivers, ocean ice and polar snow | Accepted |
+| [0016](0016-effective-land-water-store.md) | Effective land-water storage and upstream groundwater feedback | Draft |
 
 RFCs 0001–0007 come from one investigation: a 19.2 Gyr run (seed 456862899) that lost
 almost all of its continental crust and all of its cratons. The run is used as a stress
