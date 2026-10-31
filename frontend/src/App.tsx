@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import {
-  animateWorld, createWorld, deleteWorld, fetchAnimationRecovery, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchRunState, fetchStats, fetchStatsHistory, fetchSuggestedName, fetchVolcanoes, fetchWorldSummary, fetchWorlds, generateDebugWorld, generateWorld, patchWorld, renderWorld, setRunState, stopAnimation, updateControls,
+  animateWorld, createWorld, deleteWorld, fetchAnimationRecovery, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchRunState, fetchStats, fetchStatsHistory, fetchSuggestedName, fetchVolcanoes, fetchWorldSummary, fetchWorlds, generateDebugWorld, generateWorld, patchWorld, renderWorld, setRunState, stopAnimation, updateControls, worldLabel,
   RunStateRefused, TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
@@ -24,6 +24,7 @@ import StatsModal from "./StatsModal";
 import ControlsModal from "./ControlsModal";
 import AdvancedSettingsModal from "./AdvancedSettingsModal";
 import FileModal from "./FileModal";
+import ManageWorldsModal from "./ManageWorldsModal";
 import AnimationModal from "./AnimationModal";
 import AnimationStoppedModal, { type FailedAnimation } from "./AnimationStoppedModal";
 import SaveAnimationModal from "./SaveAnimationModal";
@@ -614,6 +615,7 @@ export default function App() {
   const [tuning, setTuning] = useState<TuningMultipliers>(DEFAULT_TUNING);
   const [showControlsModal, setShowControlsModal] = useState(false);
   const [showFileModal, setShowFileModal] = useState(false);
+  const [showManageWorlds, setShowManageWorlds] = useState(false);
   // The Record toolbar button's dialog (see AnimationModal.tsx) -- separate from showFileModal
   // now that recording isn't nested inside "File...".
   const [showAnimationModal, setShowAnimationModal] = useState(false);
@@ -1286,6 +1288,12 @@ export default function App() {
     selectWorld(record.world_id);
   }, [refreshWorlds, selectWorld]);
 
+  // Rejects on failure, so each caller reports it in its own place.
+  const handleRenameWorld = useCallback(async (id: WorldId, name: string) => {
+    await patchWorld(id, { name });
+    await refreshWorlds();
+  }, [refreshWorlds]);
+
   // The Controls modal's World tab: renaming and publishing apply to the
   // selected world immediately (#597). A blank name keeps the current one.
   const handleWorldNameChange = useCallback(async (name: string) => {
@@ -1293,12 +1301,11 @@ export default function App() {
     if (!id) return;
     setError(null);
     try {
-      await patchWorld(id, { name });
-      await refreshWorlds();
+      await handleRenameWorld(id, name);
     } catch (e) {
       setError(String(e));
     }
-  }, [refreshWorlds]);
+  }, [handleRenameWorld]);
 
   const handleWorldPublicChange = useCallback(async (isPublic: boolean) => {
     const id = worldIdRef.current;
@@ -1312,25 +1319,27 @@ export default function App() {
     }
   }, [refreshWorlds]);
 
+  // The Manage Worlds dialog's Delete, on any world rather than just the selected
+  // one. A failed delete rejects so the dialog can show it. Past that the world is
+  // gone whatever else fails, so a failed refresh falls back to the local list
+  // (the poll corrects it) and the selection still moves off the deleted world.
   const handleDeleteWorld = useCallback(async (id: WorldId) => {
-    setError(null);
-    try {
-      await deleteWorld(id);
-      const list = await refreshWorlds();
-      if (worldIdRef.current === id) {
-        if (list.length === 0) {
-          // No worlds left: drop the stale ?world= so a reload shows the
-          // empty state instead of a deleted ID.
-          const url = new URL(window.location.href);
-          url.searchParams.delete("world");
-          window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
-        }
-        selectWorld(list[0]?.world_id ?? null);
-      }
-    } catch (e) {
-      setError(String(e));
+    await deleteWorld(id);
+    const list = await refreshWorlds().catch(() => {
+      const remaining = worlds.filter((w) => w.world_id !== id);
+      setWorlds(remaining);
+      return remaining;
+    });
+    if (list.length === 0 || worldIdFromSearch(window.location.search) === id) {
+      // Drop the stale ?world= so a reload shows the empty state instead of a
+      // deleted ID. Not only for the selected world: picking "Select a world…"
+      // leaves the URL as it was.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("world");
+      window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
     }
-  }, [refreshWorlds, selectWorld]);
+    if (worldIdRef.current === id) selectWorld(list[0]?.world_id ?? null);
+  }, [refreshWorlds, selectWorld, worlds]);
 
   const handleGenerate = useCallback(async () => {
     // Null until the world being generated into is known: the selection may
@@ -1634,7 +1643,7 @@ export default function App() {
           <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
             <legend style={{ fontSize: 11 }}>World</legend>
             {worlds.length === 0 ? (
-              <div style={{ opacity: 0.7, marginBottom: 6 }}>No worlds yet.</div>
+              <div style={{ opacity: 0.7, marginBottom: 6 }}>No worlds have been created yet.</div>
             ) : (
               <select
                 value={worldId ?? ""}
@@ -1651,9 +1660,7 @@ export default function App() {
                 <option value="">Select a world…</option>
                 {worlds.map((w) => (
                   <option key={w.world_id} value={w.world_id}>
-                    {w.name}
-                    {w.summary ? "" : " (empty)"}
-                    {w.run?.running ? " ▶" : ""}
+                    {worldLabel(w)}
                   </option>
                 ))}
               </select>
@@ -1663,16 +1670,12 @@ export default function App() {
                 Create...
               </button>
               <button
-                onClick={() => {
-                  if (worldId && window.confirm("Delete this world and its checkpoint? This cannot be undone.")) {
-                    handleDeleteWorld(worldId);
-                  }
-                }}
-                disabled={!worldId || busy || animating || playing}
+                onClick={() => setShowManageWorlds(true)}
+                disabled={worlds.length === 0 || busy || animating || playing}
                 style={{ flex: 1, fontSize: 12 }}
-                title="Delete the selected world"
+                title="Rename or delete worlds"
               >
-                Delete
+                Manage...
               </button>
             </div>
           </fieldset>
@@ -2127,7 +2130,7 @@ export default function App() {
             </div>
           )}
           {error && (
-            <ModalShell title="Something went wrong" onClose={() => setError(null)}>
+            <ModalShell title="Something went wrong" onClose={() => setError(null)} zIndex={300}>
               <p style={{ margin: "0 0 12px" }}>{error}</p>
               <div style={{ display: "flex", justifyContent: "flex-end" }}>
                 <button type="button" onClick={() => setError(null)}>
@@ -2793,6 +2796,16 @@ export default function App() {
           mapWrapperRef={mapWrapperRef}
           onClose={() => setShowFileModal(false)}
           onWorldImported={handleWorldImported}
+        />
+      )}
+
+      {showManageWorlds && (
+        <ManageWorldsModal
+          worlds={worlds}
+          selectedWorldId={worldId}
+          onRename={handleRenameWorld}
+          onDelete={handleDeleteWorld}
+          onClose={() => setShowManageWorlds(false)}
         />
       )}
 

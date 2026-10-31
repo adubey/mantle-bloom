@@ -916,6 +916,10 @@ def delete_world(world_id: str) -> dict:
         raise HTTPException(status_code=409, detail="a guest step is in progress on this world; try again in a moment")
     if session.runner is not None and session.runner.stepping():
         raise HTTPException(status_code=409, detail="a run step is under way on this world; try again in a moment")
+    # Between steps the checks above pass, so a run started from another tab would
+    # lose its world to a Manage Worlds list that hasn't polled it yet.
+    if _session_running(session):
+        raise HTTPException(status_code=409, detail="this world is running; stop it first")
     # Mark first: streams that queued at the compute gate before this delete re-check
     # `deleted` under the session lock when their turn arrives and bail out instead
     # of working on a detached session (see each _stream's check). A runner waking

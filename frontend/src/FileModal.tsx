@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import type { MapView, WorldImportConflict, WorldRecord } from "./api";
 import { exportHexGrid, importWorld, saveWorld, WorldImportConflictError } from "./api";
 import ModalShell from "./ModalShell";
+import { useModalAction } from "./useModalAction";
 
 // Matching backend app/geodesic.py's FREQUENCY_CHOICES/tile_count (10*frequency**2 + 2).
 const HEX_FREQUENCY_OPTIONS: { frequency: number; label: string }[] = [
@@ -41,25 +42,12 @@ export default function FileModal({
   worldId, hasWorld, seed, elapsedYears, mapView, mapWrapperRef,
   onClose, onWorldImported,
 }: Props) {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { busy, error, runAction } = useModalAction();
   // A file whose import hit a taken name, awaiting the user's pick of the
   // dialog's three options: keep both, rename, or cancel (#652).
   const [conflict, setConflict] = useState<{ file: File; conflict: WorldImportConflict } | null>(null);
   const [hexFrequency, setHexFrequency] = useState(DEFAULT_HEX_FREQUENCY);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const runAction = useCallback(async (name: string, action: () => Promise<void>) => {
-    setBusy(name);
-    setError(null);
-    try {
-      await action();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(null);
-    }
-  }, []);
 
   const handleSaveWorld = useCallback(() => runAction("save", async () => {
     const blob = await saveWorld(worldId);

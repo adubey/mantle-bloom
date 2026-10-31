@@ -39,10 +39,15 @@ export function patchWorld(worldId: WorldId, patch: { name?: string; is_public?:
   }).then(asJson<WorldRecord>);
 }
 
-export function deleteWorld(worldId: WorldId): Promise<void> {
-  return fetch(W(worldId, ""), { method: "DELETE" }).then((resp) => {
-    if (!resp.ok) throw new Error(`delete failed: ${resp.status}`);
-  });
+// A 404 means another tab got there first, which is the outcome asked for.
+export async function deleteWorld(worldId: WorldId): Promise<void> {
+  const resp = await fetch(W(worldId, ""), { method: "DELETE" });
+  if (resp.status !== 404) await asJson(resp);
+}
+
+/** A world's name as the World selector and Manage Worlds dialog list it. */
+export function worldLabel(world: WorldRecord): string {
+  return `${world.name}${world.summary ? "" : " (empty)"}${world.run?.running ? " ▶" : ""}`;
 }
 
 export type { CrossSectionResponse } from "./crossSectionApi";

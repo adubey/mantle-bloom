@@ -98,8 +98,9 @@ the v5 manifest for `POST /worlds/import` to restore (#652):
   records (default 4).
 - `PATCH /worlds/{world_id}` renames (`{"name"}`) or changes visibility
   (`{"is_public"}`).
-- `DELETE /worlds/{world_id}` stops the world and removes its record and
-  checkpoint. `409` while a generate, step, or animation is in progress on it.
+- `DELETE /worlds/{world_id}` removes the world's record and checkpoint. `409`
+  while its run loop is on, or while a generate, step, or animation is in progress
+  on it.
 
 ## `POST /worlds/{world_id}/generate`
 
