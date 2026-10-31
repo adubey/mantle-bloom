@@ -516,7 +516,15 @@ class LandWaterLedger:
     lake_liquid_change_m3: float
     lake_ice_change_m3: float
     stranded_overflow_m3: float
-    residual_m3: float
+
+    @property
+    def residual_m3(self) -> float:
+        return (
+            self.rain_m3 + self.meltwater_m3 - self.dry_et_m3 - self.river_evaporation_m3
+            - self.lake_evaporation_m3 - self.lake_sublimation_m3 - self.ocean_export_m3
+            - self.river_storage_change_m3 - self.lake_liquid_change_m3 - self.lake_ice_change_m3
+            - self.stranded_overflow_m3
+        )
 
 
 # Residence-time ceiling for a reach with almost no flow: an engineering regularization so
@@ -2154,8 +2162,6 @@ def compute_hydrology(
         river_route.ledger.ocean_export_m3 + phase_ledger.overflow_to_ocean_m3
         + float(wet_settled[is_ocean].sum()) * interval_years
     )
-    river_storage_change_m3 = river_ledger.final_storage_m3 - river_ledger.initial_storage_m3
-    stranded_overflow_m3 = overflow_route.ledger.land_settlement_m3
     land_water_ledger = None if not has_interval else LandWaterLedger(
         rain_m3=rain_m3,
         meltwater_m3=meltwater_m3,
@@ -2164,16 +2170,10 @@ def compute_hydrology(
         lake_evaporation_m3=phase_ledger.evaporation_m3,
         lake_sublimation_m3=phase_ledger.sublimation_m3,
         ocean_export_m3=ocean_export_m3,
-        river_storage_change_m3=river_storage_change_m3,
+        river_storage_change_m3=river_ledger.final_storage_m3 - river_ledger.initial_storage_m3,
         lake_liquid_change_m3=phase_ledger.storage_change_m3,
         lake_ice_change_m3=phase_ledger.ice_storage_change_m3,
-        stranded_overflow_m3=stranded_overflow_m3,
-        residual_m3=(
-            rain_m3 + meltwater_m3 - dry_et_total_m3 - river_ledger.evaporation_m3
-            - phase_ledger.evaporation_m3 - phase_ledger.sublimation_m3 - ocean_export_m3
-            - river_storage_change_m3 - phase_ledger.storage_change_m3
-            - phase_ledger.ice_storage_change_m3 - stranded_overflow_m3
-        ),
+        stranded_overflow_m3=overflow_route.ledger.land_settlement_m3,
     )
     through_m3[leaf_sinks] = 0.0
 

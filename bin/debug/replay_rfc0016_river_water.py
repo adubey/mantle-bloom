@@ -138,7 +138,7 @@ def main() -> None:
             "elapsed_myr": world.elapsed_years / 1e6,
             "runtime_s": seconds,
             "river": asdict(river),
-            "land_rain_only": asdict(land),
+            "land_rain_only": {**asdict(land), "residual_m3": land.residual_m3},
             "lake": {
                 key: getattr(lake, key)
                 for key in ("external_supply_m3", "evaporation_m3", "overflow_out_m3", "residual_m3")

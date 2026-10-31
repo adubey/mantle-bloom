@@ -98,21 +98,6 @@ lake_nodes = lake_depth > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
 eligible = (~np.asarray(fields.is_ocean, dtype=bool)) & ~lake_nodes & (target >= 0)
 positive = eligible & np.isfinite(q) & (q > 0.0)
 
-# Raymond et al. (2012) SI hydraulic-geometry fit: U = 0.19 Q^0.29.
-raymond_u = 0.19 * np.power(q[positive], 0.29)
-raymond_tau = length_m[positive] / raymond_u
-
-# Jobson (1996) national peak-tracer regression. With Qa=Q, Q'a=1; this is a
-# sensitivity to a missing long-term mean-flow input, not a calibrated mean velocity.
-qa = q[positive]
-da = np.maximum(contributing_area[positive], 1.0)
-da_prime = np.power(da, 1.25) * np.sqrt(9.80665) / qa
-jobson_u = 0.094 + 0.0143 * np.power(da_prime, 0.919) * np.power(1.0, -0.469) * np.power(
-    np.maximum(slope[positive], 0.0), 0.159
-) * (q[positive] / da)
-jobson_tau = length_m[positive] / jobson_u
-
-
 def summary(values: np.ndarray) -> dict[str, float | list[float]]:
     return {
         "min": float(np.min(values)),

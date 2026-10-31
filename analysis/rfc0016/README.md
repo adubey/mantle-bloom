@@ -2,14 +2,15 @@
 
 ## G0 preflight
 
-Status: in progress; checkpoint preflight and a provisional Raymond mean-velocity choice are
-recorded. Persistent reach state and closure diagnostics are implemented in this worktree, but
-the G0 control ledger and cap sensitivity remain open.
+Status: **blocked; do not start G1.** The persistent river inventory and all reach transfers
+close, and the control reproduces every registered event, but the rain-only land budget closes
+only by naming 3.2–5.8% of A and B's input as stranded lake overflow, a defect in the control
+(see [G0 control replay](#g0-control-replay)). Full rain-plus-snow closure also still needs RFC 0015.
 
 RFC 0016 is accepted in PR #724 and tracked by #723. G0 implementation is tracked by
-[#725](https://github.com/adubey/mantle-bloom/issues/725). The G0 worktree is based on
-`origin/main` at `929d70c4f6b1c01e2c9a1994c17ea86a2d76e272`; the registered RFC 0016 source
-commit is `f4438e1c85042de789bd464ce5d2f58c8c0717eb`.
+[#725](https://github.com/adubey/mantle-bloom/issues/725). The G0 branch is based on
+`origin/main` at `0f4aac8f`, which has no simulation change from the registered RFC 0016 source
+commit `f4438e1c85042de789bd464ce5d2f58c8c0717eb`.
 
 ### Current model interfaces
 
@@ -27,20 +28,20 @@ commit is `f4438e1c85042de789bd464ce5d2f58c8c0717eb`.
 - Existing `channel_depth` and `channel_width` are geomorphic incision/width outputs; neither
   describes active wetted geometry.
 
-### Provisional G0 implementation
+### G0 implementation
 
-The worktree adds persistent extensive `river_water_m`, updated by an exact constant-inflow
-linear reservoir on each routed reach. The central residence estimate uses Raymond et al.'s
-`U=0.19Q^0.29` relation and a configurable maximum residence time (default one year). A
-zero-state checkpoint initializes each reach from routed `Qτ`; subsequent steps use its
-persisted water volume. The update returns per-reach inflow, gross outflow, routed outflow,
-evaporation and transfer residual arrays, plus a whole-network ledger. Water released from
-prior river inventory and delivered to lakes has a separate lake-ledger source category.
-Eustasy includes the stored river inventory as trapped surface water.
+Each routed reach holds persistent extensive `river_water_m`, updated by the exact constant-inflow
+linear reservoir. The central travel time uses Raymond et al.'s `U=0.19Q^0.29` with a one-year
+maximum. A save with no river state starts from its saved `Qτ`; lake-covered nodes, sinks and flow
+cycles hold no water and pass it on. A steady reach delivers exactly what `route_downstream` does,
+source by source, which a unit test holds. Exported lake overflow runs a second reservoir pass,
+so an outlet river holds its share, and released river water is its own lake-ledger source.
+Eustasy counts the inventory as trapped water.
 
-Static checks pass (Python compilation, Ruff and `git diff --check`). No G0 replay has run yet:
-the latest machine-wide compute-budget check returned WAIT because another mature replay holds
-the available memory reserve. Full rain-plus-snow closure remains dependent on RFC 0015.
+The first implementation changed the control, and no replay of it exists. It charged dry runoff
+the full transit loss, ended water at every visible lake (including floor-draining ones), dropped
+wet flow from discharge, and left outlet rivers with no inventory. Those were fixed before the
+replays below.
 
 ### Source-supported velocity candidates
 
@@ -80,7 +81,7 @@ production source:
 | Window | Registered checkpoint SHA-256 | Recreated checkpoint SHA-256 | Reproduced target ΔV (km³) | Max normalized lake-ledger residual | Peak RSS (MB) |
 |---|---|---|---:|---:|---:|
 | A | `e4b0b4f09b87584aa7f77045f0f079f2309de0132049915a9aeb5589add27340` | `9882568e681a0f9f207e3302453b3a92f18865d5640d7baa8d9d8eb09ab4633e` | +495,623.986 | 5.82e-13 | 7,465 |
-| B | `86fb5b7d2044846ac751906ff996184c7abe5454c93b39033bd82338e8749544` | `759d83107ae87d34d825b4836addc922d414089774f90757e0838899f0d56daed` | +131,625.097 | 1.33e-13 | 7,725 |
+| B | `86fb5b7d2044846ac751906ff996184c7abe5454c93b39033bd82338e8749544` | `759d83107ae87d34d825b4836addc922d414089774f90739ea00e6a9c9dff5b5` | +131,625.097 | 1.33e-13 | 7,725 |
 | C | `041b7430a6cf8867f2e2c76f18c3328e440add585ee4a2e4b3055e7766c2217e` | `38cc6ff2054cde2db3a65ac0a3e08a09e854175735512b9c8c40ba7a76c6190c` | −261,586.996 | 1.38e-12 | 7,196 |
 
 The v5 checkpoint is a ZIP archive whose manifest entry gets a current-time ZIP timestamp
@@ -133,17 +134,90 @@ sensitivity report. This is sufficient to proceed with the conservative reach-st
 implementation; the comparison remains an uncertainty bound rather than a calibrated river
 model.
 
-### Next G0 actions
+The window B hash above was garbled in earlier copies of this report and in #725's handoff
+comment. The value here is `shasum` of the file.
 
-1. Replay the provisional Raymond implementation on the validated A/B/C checkpoints and record
-   control inventory and closure.
-2. Quantify 0.1-, 1- and 10-year cap sensitivity and the Jobson peak-tracer sensitivity on A/B/C before interpreting inventory or
-   lake-feeder effects.
-3. Use the validated A/B/C replacement checkpoints for the G0 control ledger, with their
-   producer/production commits and replacement hashes recorded in every run report.
-4. Report rain-only control closure while marking the full G0 ledger dependent on RFC 0015.
+## G0 control replay
 
-Checkpoint reconstruction and event validation replays have run at `5d666dd` and `f4438e1`.
-Read-only velocity sensitivities have run on A/B/C. The provisional residence-time estimate is
-recorded; this branch has not yet produced G0 inventory or ledger replay results, paired
-treatment results, or test results.
+Source commit `9e9c76bc`, on the replacement checkpoints in the table above, four 100 kyr steps
+with the ice-age cycle off, as #680 registered them. Arms: Raymond with 0.1-, 1- and 10-year
+residence caps, and Jobson with a 1-year cap. Whole-run values are in
+[`g0-control-summary.json`](g0-control-summary.json). Replay JSON and per-reach arrays (the central
+arm) are outside the repository, under `g0-9e9c76bc/` in the private captures; their `SHA256SUMS`
+has SHA-256 `b73811ca9c65639bfd23171dfe1dc82a190419b0b2b3cb1ad7b3b811d4cc263d`.
+
+```bash
+backend/.venv/bin/python bin/debug/replay_rfc0016_river_water.py <checkpoint.mbworld> \
+  --anchors analysis/rfc0016/target-anchor-window-<w>.json --myr 0.4 --step-years 100000 \
+  --checkpoint-myr 0.1 --velocity <raymond|jobson> --residence-cap-years <cap> \
+  [--reach-dir <captures>/reaches-<w>] --out <captures>/window-<w>-<velocity>-cap<cap>.json
+```
+
+**The control is unchanged.** Target volumes match the registered event, and global lake volume
+stays within 1.6 km³ of the `f4438e1` run, out of about 2–4 million km³, in every arm.
+
+| Window | Target V before→after event (km³) | ΔV (km³) | Registered ΔV (km³) | Median step, this / `f4438e1` (s) |
+|---|---:|---:|---:|---:|
+| A | 383,558.5 (registered)→879,182.5 | +495,624.0 | +495,624 | 7.7 / 7.6 |
+| B | 115,361.0→246,986.1 | +131,625.1 | +131,625 | 7.7 / 7.5 |
+| C | 264,786.7→3,199.7 | −261,587.0 | −261,587.0 (recreated); −261,592 (registered) | 10.0 / 9.8 |
+
+Step times are indicative only, since other agents' runs overlapped some arms. Peak RSS reached
+7.9 GB. A's anchor is dry at the first output, so its starting volume comes from #680.
+
+**River inventory and transfers close.**
+
+| Window | Inventory start→end, central (km³) | Jobson start→end (km³) | Largest reach identity error (m³) | River residual (share of input) | Largest inter-step inventory drift (m³) |
+|---|---:|---:|---:|---:|---:|
+| A | 229.8→241.5 | 459.6→464.2 | 46 | 9.9e-17 | 4.5e4 |
+| B | 237.6→267.7 | 451.4→610.4 | 71 | 2.1e-16 | 3.3e6 |
+| C | 448.0→462.3 | 741.2→771.9 | 39 | 1.9e-16 | 6.2e7 |
+
+The reach error is `V₁ − V₀ − (IΔt − O)`, recomputed from the saved arrays, where a reach passes up
+to about 1e17 m³ per step. Drift is the inventory change between one hydrology step and the next,
+from tectonics and remapping; at most 0.014% of the inventory. The inventory is about 1e-7 of the
+water entering rivers in a step, so it is a negligible term in the land budget.
+
+The 0.1- and 10-year caps give the same inventory to the reported precision: only near-dry
+reaches reach a cap. Jobson raises the inventory 1.7–2.3×, matching the checkpoint estimate. Neither
+moves target-lake supply: new dry runoff to the target is identical across arms to 2 decimals (m³/yr
+×1e9), and water released from river storage is about 1e3–1e4 m³/yr against up to 5e11. In window C
+the target lake receives effectively no routed supply in these steps.
+
+**The rain-only land ledger does not pass.** After separating the named defect, the residual is
+tiny, but the defect is not a sink the RFC's ledger allows.
+
+| Window | Interval input (km³) | Unexplained residual | Stranded overflow, whole run | Stranded overflow, worst step | Lake residual | Scaled melt share |
+|---|---:|---:|---:|---:|---:|---:|
+| A | 2.54e10 | 2.3e-8 | **5.77%** | 6.10% | 5.6e-13 | 1.6e-5 |
+| B | 2.62e10 | 2.0e-5 | **3.16%** | 5.25% | 1.3e-13 | 1.4e-5 |
+| C | 3.17e10 | 8.8e-11 | **0.11%** | 0.34% | 1.4e-12 | 1.3e-5 |
+
+**Cause.** The lake solver debits overflow when it leaves the lake system, then
+`compute_hydrology` routes it along `flow_target`. Water that ends anywhere but the ocean is credited
+to nothing. `bin/debug/measure_rfc0016_unclaimed_settlement.py` traced window A's first step:
+all of the 3.33e17 m³ residual is overflow settling on land, against 5.88e17 m³ exported, and the
+runoff pass loses none of its supply. 2.60e17 m³ of it lands on one dry basin node at −4,721 m,
+on the cycle `8606→8605→8604→8648→8690→8650→8606`, which closes through leaf sink 8690's own spill
+edge. `route_downstream` keeps a cycle's remainder like a sink, and nothing reads it. This
+predates G0: `f4438e1` routes the same water and drops it the same way, unseen, because its lake
+ledger closes before this routing and its old report of ocean overflow is a separate number.
+
+This is design principle 4's failure: a volume leaves one reservoir and reaches none. Rerouting
+it would send supply to lakes that don't receive it today and would change the registered events,
+so it is not a G0 control change. It should be decided as its own control fix, and A/B/C
+reproduced again afterwards.
+
+### G0 status
+
+| Check | Result |
+|---|---|
+| Two preregistered velocity parameterizations, residence cap | Met, with Jobson as a labelled sensitivity (peak tracer velocity, `Qa=Q`) |
+| Persistent reach state and conservative update | Met |
+| Initial state from saved `Qτ`, recorded as initial state | Met |
+| Checkpoints | Replacement hashes, event validated; the registered files are lost |
+| Control windows, per-reach records, target supply | Met |
+| Rain-only ledger | **Not met**: closes only with stranded overflow named (A 5.77%, B 3.16%, C 0.11%) |
+| Full rain-plus-snow ledger ≤0.1% | **Blocked** on RFC 0015 |
+
+G1 stays closed under RFC 0016's stop rule until both open rows pass.
