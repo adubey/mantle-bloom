@@ -1653,6 +1653,7 @@ def test_lake_outlet_river_holds_exported_overflow_as_inventory():
     assert ledger.lake_overflow_m3 > 0.0
     assert ledger.lake_overflow_m3 == pytest.approx(fields.lake_water_ledger.overflow_out_m3, rel=1e-9)
     assert abs(fields.land_water_ledger.residual_m3) <= 1e-9 * fields.land_water_ledger.rain_m3
+    assert fields.land_water_ledger.stranded_overflow_m3 == 0.0
     assert fields.river_water_m[5:9].min() > 0.0
 
 

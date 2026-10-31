@@ -100,7 +100,8 @@ Three kinds of water/forcing move along `flow_target`:
   `river_water_ledger` exposes network closure and the maximum per-reach update residual, and
   water released from prior storage into a lake is its own lake-ledger source. `land_water_ledger`
   closes rain, melt, dry ET, evaporation, ocean export and river plus lake storage for one
-  step. It is RFC 0016 G0's rain-only interim budget: frozen precipitation and ice storage are
+  step, and names exported overflow that stranded on land, mostly on a flow cycle through a spill
+  edge, as a known control defect. It is RFC 0016 G0's rain-only interim budget: frozen precipitation and ice storage are
   outside it and melt is still in scaled glacier units, so full closure depends on RFC 0015.
 - **Glacier meltwater** is the ice ledger's per-step volume (`IceLedger.meltwater_m3`: surface
   and basal melt, overflow, ice shed at the depth guard, and snow melting on bare ground)

@@ -144,6 +144,7 @@ def main() -> None:
                 for key in ("external_supply_m3", "evaporation_m3", "overflow_out_m3", "residual_m3")
             },
             "normalized_land_residual": abs(land.residual_m3) / external,
+            "normalized_stranded_overflow": land.stranded_overflow_m3 / external,
             "normalized_lake_residual": abs(lake.residual_m3) / max(lake.external_supply_m3, 1.0),
             "normalized_river_residual": abs(river.residual_m3) / max(river.input_m3, 1.0),
             "inter_step_river_drift_m3": drift,

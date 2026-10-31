@@ -499,7 +499,10 @@ class LandWaterLedger:
     """RFC 0016 G0 rain-only land budget for one step, in m^3 (#725). This is an interim
     boundary: snow accumulation and ice storage are outside it, and `meltwater_m3` still enters
     in the scaled glacier units RFC 0015 replaces, so its closure is not the full G0 gate.
-    `residual_m3` is what the river, lake and sink interfaces failed to hand on."""
+    `stranded_overflow_m3` is exported lake overflow that ended on land instead of the ocean,
+    mostly on a flow cycle through a spill edge. The lake ledger has debited it and nothing
+    credits it: a control defect, named here rather than closed (#725). `residual_m3` is what
+    is left after it."""
 
     rain_m3: float
     meltwater_m3: float
@@ -511,6 +514,7 @@ class LandWaterLedger:
     river_storage_change_m3: float
     lake_liquid_change_m3: float
     lake_ice_change_m3: float
+    stranded_overflow_m3: float
     residual_m3: float
 
 
@@ -2148,6 +2152,7 @@ def compute_hydrology(
         + float(wet_settled[is_ocean].sum()) * interval_years
     )
     river_storage_change_m3 = river_ledger.final_storage_m3 - river_ledger.initial_storage_m3
+    stranded_overflow_m3 = overflow_route.ledger.land_settlement_m3
     land_water_ledger = None if not has_interval else LandWaterLedger(
         rain_m3=rain_m3,
         meltwater_m3=meltwater_m3,
@@ -2159,11 +2164,12 @@ def compute_hydrology(
         river_storage_change_m3=river_storage_change_m3,
         lake_liquid_change_m3=phase_ledger.storage_change_m3,
         lake_ice_change_m3=phase_ledger.ice_storage_change_m3,
+        stranded_overflow_m3=stranded_overflow_m3,
         residual_m3=(
             rain_m3 + meltwater_m3 - dry_et_total_m3 - river_ledger.evaporation_m3
             - phase_ledger.evaporation_m3 - phase_ledger.sublimation_m3 - ocean_export_m3
             - river_storage_change_m3 - phase_ledger.storage_change_m3
-            - phase_ledger.ice_storage_change_m3
+            - phase_ledger.ice_storage_change_m3 - stranded_overflow_m3
         ),
     )
     through_m3[leaf_sinks] = 0.0
