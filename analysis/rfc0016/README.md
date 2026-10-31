@@ -2,8 +2,9 @@
 
 ## G0 preflight
 
-Status: in progress; checkpoint preflight is complete, but G0 river-source selection and the
-control ledger remain open.
+Status: in progress; checkpoint preflight and a provisional Raymond mean-velocity choice are
+recorded. Persistent reach state and closure diagnostics are implemented in this worktree, but
+the G0 control ledger and cap sensitivity remain open.
 
 RFC 0016 is accepted in PR #724 and tracked by #723. G0 implementation is tracked by
 [#725](https://github.com/adubey/mantle-bloom/issues/725). The G0 worktree is based on
@@ -25,6 +26,21 @@ commit is `f4438e1c85042de789bd464ce5d2f58c8c0717eb`.
   state on eligible routed edges even if that edge falls below the rendering `is_river` cutoff.
 - Existing `channel_depth` and `channel_width` are geomorphic incision/width outputs; neither
   describes active wetted geometry.
+
+### Provisional G0 implementation
+
+The worktree adds persistent extensive `river_water_m`, updated by an exact constant-inflow
+linear reservoir on each routed reach. The central residence estimate uses Raymond et al.'s
+`U=0.19Q^0.29` relation and a configurable maximum residence time (default one year). A
+zero-state checkpoint initializes each reach from routed `Qτ`; subsequent steps use its
+persisted water volume. The update returns per-reach inflow, gross outflow, routed outflow,
+evaporation and transfer residual arrays, plus a whole-network ledger. Water released from
+prior river inventory and delivered to lakes has a separate lake-ledger source category.
+Eustasy includes the stored river inventory as trapped surface water.
+
+Static checks pass (Python compilation, Ruff and `git diff --check`). No G0 replay has run yet:
+the latest machine-wide compute-budget check returned WAIT because another mature replay holds
+the available memory reserve. Full rain-plus-snow closure remains dependent on RFC 0015.
 
 ### Source-supported velocity candidates
 
@@ -119,9 +135,9 @@ model.
 
 ### Next G0 actions
 
-1. Implement persistent conservative reach state and per-reach transfer/closure readouts using
-   the provisional Raymond estimate, Jobson fast sensitivity and stated residence-time caps.
-2. Quantify 0.1-, 1- and 10-year cap sensitivity on A/B/C before interpreting inventory or
+1. Replay the provisional Raymond implementation on the validated A/B/C checkpoints and record
+   control inventory and closure.
+2. Quantify 0.1-, 1- and 10-year cap sensitivity and the Jobson peak-tracer sensitivity on A/B/C before interpreting inventory or
    lake-feeder effects.
 3. Use the validated A/B/C replacement checkpoints for the G0 control ledger, with their
    producer/production commits and replacement hashes recorded in every run report.
@@ -129,4 +145,5 @@ model.
 
 Checkpoint reconstruction and event validation replays have run at `5d666dd` and `f4438e1`.
 Read-only velocity sensitivities have run on A/B/C. The provisional residence-time estimate is
-now recorded; no G0 inventory or ledger replay, paired treatment, or tests have run.
+recorded; this branch has not yet produced G0 inventory or ledger replay results, paired
+treatment results, or test results.

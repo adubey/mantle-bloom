@@ -37,7 +37,7 @@ runs the same three algorithms directly on it.
 its grid, so a persistent field like `channel_depth` needs deliberate semi-Lagrangian
 advection every step just to keep following the crust. mantle-bloom's terrain nodes already
 rotate exactly with their own plate, so `channel_depth`, `channel_width`, `lake_depth`,
-`silt_depth` (see [Lakes](#lakes-are-an-explicit-tree) below), and `glacier_depth` (see
+`river_water_m`, `silt_depth` (see [Lakes](#lakes-are-an-explicit-tree) below), and `glacier_depth` (see
 [Glaciation](#glaciation-hydrologypy)), stored as ordinary parallel arrays over the plate's cells right
 alongside `elevation` itself (see [Why not a grid](foundations.md#why-not-a-grid)), get that same "just
 works" persistence for free -- no advection scheme needed, since rotating a plate never
@@ -83,6 +83,18 @@ Three kinds of water/forcing move along `flow_target`:
   loss; `overflow_to_ocean_m3` reports the routed amount after that loss and is not substituted
   into the residual. Routed through-flow plus exported lake overflow is river discharge,
   `HydrologyFields.discharge_m3_s`, in m^3/s.
+  River water is also persistent state (`river_water_m`, water-equivalent depth per terrain
+  cell, remapped as an extensive field). Each routed reach uses `τ = L / U`, where `L` is its
+  flow-edge length and the provisional mean-velocity estimate is `U = 0.19 Q^0.29` m/s from
+  Raymond et al. (2012). Residence time is bounded to 1 second–1 year; the one-year maximum is
+  an engineering cap for dry reaches, not a measured value. For interval-mean inflow `I`, the
+  reservoir applies the exact constant-inflow update `V₁ = V₀ exp(−Δt/τ) + Iτ(1−exp(−Δt/τ))`,
+  then routes `V₀ + IΔt − V₁` onward. A zero-state old save is initialized from the current
+  routed discharge times `τ`; a reach with no routed discharge starts empty. `river_water_ledger`
+  exposes whole-network closure and the maximum per-reach update residual. Water released from
+  prior river storage and delivered to a lake is recorded as its own lake-ledger source term.
+  RFC 0016 G0 still requires a rain-only checkpoint closure report; full snow and glacier closure
+  depends on RFC 0015's physical water accounting.
 - **Glacier meltwater** is the ice ledger's per-step volume (`IceLedger.meltwater_m3`: surface
   and basal melt, overflow, ice shed at the depth guard, and snow melting on bare ground)
   divided by the step length (`hydrology.meltwater_m3_per_yr`). Melted ice is booked as
