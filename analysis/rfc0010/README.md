@@ -107,3 +107,49 @@ weaker seams, which is RFC 0009's proposal.
   thinning along the boundary afterwards (#388), which this probe doesn't follow.
 - "Craton-free" is strict: any craton node within ±312 km of the cut. A thinner band or a
   minimum craton thickness would count more cuts as clear.
+
+## Rift settings and routes (2026-10-31)
+
+Exploration for the detected-rift revision, not gate evidence. `bin/debug/probe_rift_settings.py`
+looks for the four rift settings on saved worlds, then routes a rift from each site with cratons
+forbidden. The great circle through the same site and direction is the baseline. Thresholds are
+design choices, and no replay was run: each row is one snapshot, so these are not rates.
+
+Saves, from the private B2 bucket and not available for download: seeds 317739385 (86 Myr),
+447276134 (116), 308161711 (121), 628977350 (227) and 373936961 (244). Compact result:
+[`rift-settings.json`](rift-settings.json).
+
+| Setting | Sites | Separating route | Craton cells crossed by route | Line crosses craton | Median tortuosity | Median smaller daughter |
+|---|---:|---:|---:|---:|---:|---:|
+| Active | 0 (no plumes in any save) | — | — | — | — | — |
+| Passive | 16 | 16 | 0 | 7 of 16 | 1.21 | 44% |
+| Rollback | 0 | — | — | — | — | — |
+| Transtension | 117 | 64 | 0 | 29 of the 64; 75 of 117 | 1.33 | 15.6% |
+
+No route divided a craton. Of the 53 transtension failures, 51 found no arm and 2 made a daughter
+below 5%. 42 of the 117 sites began on a craton or its buffer, including 34 of the 53 failures. Tortuosity is route length over the
+great-circle distance between its ends. The probe's `meets_min_nodes` field fails on most rows,
+including near-even splits, because `SPLIT_MIN_NODES` scales with density and not plate size.
+
+![A routed rift bending around a craton on seed 317739385](rift-route-around-craton.png)
+
+*Plate 5 of seed 317739385 at 86 Myr. Gold cells are craton; the red route divides the plate into
+blue and green daughters. Tortuosity 1.49.*
+
+**Why two settings found nothing.** All 16 local saves have zero plumes, so active rifting was not
+tested. Rollback is a real gap: every oceanic node counts as down-going, so an ocean-ocean front has
+no upper plate. Only 134 and 184 of 1,922 and 9,445 ocean-facing convergent nodes qualified on the
+two worlds checked, and on the 244 Myr world 37.5% of those moved away from the trench faster
+than 1 cm/yr, in runs too short for the 300 km front.
+
+**What this does not show.** Transtension is over-counted, with 70 of 117 sites from one world,
+because a front is broken into fragments. The sites are snapshots, not sustained settings. The
+route was not run in a history, so this does not measure plate count, craton loss or daughter
+motion after the split. Rollback's upper-plate signal is a proxy: upper-plate motion does not explain
+every subduction zone [Heuret & Lallemand, 2005](https://doi.org/10.1016/j.pepi.2004.08.022).
+
+```bash
+PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_rift_settings.py \
+  --saves <saves> --out analysis/rfc0010/rift-settings.json --image-dir <private-dir>
+```
+

@@ -77,3 +77,14 @@ Builds representative meshes from generated plates and checks clipping/coverage,
 loads on the original curved mesh and a shallow-cap mapping, localized and paired clamp sensitivity,
 and an independent spherical-shell solution. Its capacity response sweep checks a phenomenological
 rule's behavior only; the chosen values are not physical strength estimates.
+
+### `probe_rift_settings.py`
+
+Looks for active, passive, rollback and transtension rift settings on saved worlds, routes a
+craton-free rift from each site, and compares it with the great circle through that site. Read-only.
+
+```bash
+PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_rift_settings.py \
+    --saves <a.mbworld> <b.mbworld> --out /tmp/rift-settings.json --image-dir /tmp/rift-images
+```
+
