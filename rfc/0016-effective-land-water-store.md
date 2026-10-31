@@ -1,8 +1,8 @@
 # RFC 0016: Effective land-water storage and upstream groundwater feedback
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Date:** 2026-10-30
-- **Related:** #718 (exploration); #680 (standalone follow-up on hold; formerly RFC 0014 G8); [PR #721](https://github.com/adubey/mantle-bloom/pull/721) (RFC 0014 withdrawal proposal); #675 (flicker characterization); #544 (RFC 0015 tracking); RFC 0015 (accepted); design principles 1, 3, 4, 5, 6, 8 and 9
+- **Related:** #718 (exploration); #723 (tracking); #680 (standalone follow-up on hold; formerly RFC 0014 G8); [PR #721](https://github.com/adubey/mantle-bloom/pull/721) (RFC 0014 withdrawal proposal); #675 (flicker characterization); #544 (RFC 0015 tracking); RFC 0015 (accepted); design principles 1, 3, 4, 5, 6, 8 and 9
 
 ## Problem
 
