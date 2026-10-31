@@ -40,9 +40,13 @@ commit is `f4438e1c85042de789bd464ce5d2f58c8c0717eb`.
    unless G0 establishes a defensible mapping for residence time. [USGS report](https://pubs.usgs.gov/publication/wri964013)
 
 The candidate comparison still needs an operational drainage-area and mean-annual-discharge
-definition for Jobson's equation in this model. Those inputs are not yet registered. No
-velocity range or parameterization is frozen, and no river inventory should be interpreted
-as accepted until that definition and the paired inventory sensitivity are recorded.
+definition for Jobson's equation in this model. Drainage area can be accumulated from node
+areas along the flow graph, but the model has no long-term mean annual discharge per reach;
+substituting the current 100 kyr interval-mean flow for `Qa` would be an additional assumption.
+Raymond's equation also needs a registered rule for a dry reach that still holds river water:
+`Q = 0` gives zero velocity and infinite residence time. No velocity range or parameterization
+is frozen, and no river inventory should be interpreted as accepted until the low-flow rule
+and paired inventory sensitivity are recorded.
 
 ### Checkpoint and accounting readiness
 
