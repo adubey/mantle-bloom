@@ -2,7 +2,7 @@
 
 This is an experimental reduced-order body model. A ribbon carries consumed lithosphere
 through a small set of down-dip stations, evolves its centerline under buoyancy, bending and
-viscous mantle drag, and transmits the integrated buoyant tension at its plate attachment.
+viscous mantle drag, and transmits an axial tension balance at its plate attachment.
 It does not solve mantle flow or represent a full 3-D continuum.
 """
 
@@ -44,6 +44,10 @@ class SlabBody:
     source_mantle_lithosphere_volume_m3: float = 0.0
     source_continental_material_m3: float = 0.0
     source_craton_crust_m3: float = 0.0
+    # Slab material with no surface source in this screen: rock consumed before the save
+    # (not retained by production) and length fed at the trench by convergence (#699).
+    antecedent_volume_m3: float = 0.0
+    kinematic_inflow_volume_m3: float = 0.0
 
     def __post_init__(self) -> None:
         self.trench_local_xyz = geometry.normalize(np.asarray(self.trench_local_xyz, dtype=float))
@@ -74,6 +78,8 @@ class SlabBody:
             self.source_mantle_lithosphere_volume_m3,
             self.source_continental_material_m3,
             self.source_craton_crust_m3,
+            self.antecedent_volume_m3,
+            self.kinematic_inflow_volume_m3,
         ) < 0.0:
             raise ValueError("slab provenance volumes must be nonnegative")
 
@@ -141,7 +147,8 @@ def create_slab_body(
     """Create a bounded ribbon whose volume is supplied by consumed surface columns.
 
     The caller owns the transfer of `source_cell_keys` out of the surface mesh and must
-    make their summed rock volume equal the returned ``consumed_volume_m3``. Dip is measured
+    make their summed rock volume plus ``antecedent_volume_m3`` equal the returned
+    ``consumed_volume_m3``. Dip is measured
     below horizontal; temperatures and density anomaly are explicit scenario inputs.
     """
     if station_count < 3 or not 0.0 < dip_degrees < 90.0:
@@ -201,10 +208,9 @@ def create_slab_body(
 def attachment_force_local_n(body: SlabBody) -> tuple[np.ndarray, np.ndarray]:
     """Return the last beam-equilibrium hinge force and its equal-and-opposite reaction.
 
-    The force is set by :func:`advance_slab_body` from the constrained-node residual,
-    including buoyancy, bending, viscous drag, and the registered convergence driver.
-    It is projected into the plate tangent plane because the membrane cannot accept a
-    radial load. Before the first advance, no solved hinge load is available.
+    The force is set by :func:`advance_slab_body` from the ribbon's axial tension,
+    projected into the plate tangent plane because the membrane cannot accept a radial
+    load. Before the first advance, no solved hinge load is available.
     """
     if not body.attached:
         zero = np.zeros(3)
@@ -399,6 +405,30 @@ def apply_slab_load_to_plate_geometry(
     }
 
 
+def _active_path(body: SlabBody) -> tuple[float, float]:
+    """Return ribbon length and depth drop above the force-active depth.
+
+    Segments crossing that depth are clipped by interpolation, so the axial budget does
+    not jump when a station crosses it (#699).
+    """
+    points = body.centerline_local_xyz_m
+    depth = PLANET_RADIUS_M - np.linalg.norm(points, axis=1)
+    clipped = np.minimum(depth, body.max_depth_m)
+    span = np.diff(depth)
+    fraction = np.divide(np.diff(clipped), span, out=np.ones_like(span), where=np.abs(span) > 0.0)
+    lengths = np.linalg.norm(np.diff(points, axis=0), axis=1)
+    return float(np.sum(lengths * fraction)), float(np.sum(np.diff(clipped)))
+
+
+def _extended_path(path: np.ndarray, extension_m: float) -> np.ndarray:
+    """Lengthen a polyline along its tip tangent and resample its stations uniformly."""
+    tip = path[-1] + extension_m * geometry.normalize(path[-1] - path[-2])
+    extended = np.vstack((path, tip))
+    arc = np.concatenate(([0.0], np.cumsum(np.linalg.norm(np.diff(extended, axis=0), axis=1))))
+    stations = np.linspace(0.0, arc[-1], len(path))
+    return np.column_stack([np.interp(stations, arc, extended[:, axis]) for axis in range(3)])
+
+
 def advance_slab_body(
     body: SlabBody,
     years: float,
@@ -406,18 +436,29 @@ def advance_slab_body(
     mantle_viscosity_pa_s: float,
     shear_zone_thickness_m: float,
     convergence_speed_m_per_s: float = 0.0,
+    axial_drag_factor: float = 1.0,
 ) -> dict[str, float]:
-    """Advance body bending under buoyancy with an implicit overdamped beam solve.
+    """Advance a ribbon and solve its hinge load from an axial force balance.
 
-    The first station stays attached to the plate. Bending resists motion away from the
-    initial centerline; mantle viscosity resists each station's velocity. The update is
-    implicit in both resistances, so large geological timesteps do not destabilize the
-    station chain.
+    The ribbon is inextensible down-dip. Its active weight along the path, less mantle
+    drag on its sliding at the convergence speed, is the tension it can transmit. A
+    negative balance is not a push on the plate: the slab cannot be sunk by its own weight
+    at that speed, so the remainder is booked as driver force and the hinge carries none.
+    Weight normal to the path and bending evolve the centerline through an implicit
+    overdamped beam solve. The earlier chain of free nodes had no axial member: its weight
+    went to each node's own drag, and its hinge load was stretch against the reference
+    line, a factor of 1e-7 of the weight (#699).
+
+    Convergence lengthens the tip rather than stretching the first segment. The inflow is
+    booked in `kinematic_inflow_volume_m3` because this screen does not move the plate into
+    the trench. `axial_drag_factor` scales only the axial drag, to bracket gross slab pull.
     """
     if years <= 0.0 or not np.isfinite(years):
         raise ValueError("years must be finite and positive")
     if mantle_viscosity_pa_s <= 0.0 or shear_zone_thickness_m <= 0.0 or convergence_speed_m_per_s < 0.0:
         raise ValueError("mantle viscosity and shear-zone thickness must be positive")
+    if axial_drag_factor < 0.0:
+        raise ValueError("axial drag factor must be nonnegative")
     points = body.centerline_local_xyz_m
     count = len(points)
     dt_s = years * SECONDS_PER_YEAR
@@ -439,68 +480,122 @@ def advance_slab_body(
     buoyancy[~active] = 0.0
     free = slice(1, count)
     segment_directions = geometry.normalize(np.diff(points, axis=0))
-    conveyor_directions = np.empty_like(points)
-    conveyor_directions[0] = segment_directions[0]
-    conveyor_directions[-1] = segment_directions[-1]
-    conveyor_directions[1:-1] = geometry.normalize(segment_directions[:-1] + segment_directions[1:])
-    conveyor_velocity = convergence_speed_m_per_s * conveyor_directions
-    conveyor_velocity[0] = 0.0
-    conveyor_force = drag * conveyor_velocity
+    tangents = np.empty_like(points)
+    tangents[0] = segment_directions[0]
+    tangents[-1] = segment_directions[-1]
+    tangents[1:-1] = geometry.normalize(segment_directions[:-1] + segment_directions[1:])
+    normal_buoyancy = buoyancy - np.einsum("ij,ij->i", buoyancy, tangents)[:, None] * tangents
     system = stiffness[free, free] + np.eye(count - 1) * drag_over_dt
     rhs = (
         drag_over_dt * points[free]
-        + buoyancy[free]
-        + conveyor_force[free]
+        + normal_buoyancy[free]
         + (stiffness @ body.reference_centerline_local_xyz_m)[free]
         - stiffness[free, 0, None] * body.trench_local_xyz[None, :] * PLANET_RADIUS_M
     )
     updated = points.copy()
     updated[free] = np.linalg.solve(system, rhs)
     updated[0] = body.trench_local_xyz * PLANET_RADIUS_M
-    advected_distance = convergence_speed_m_per_s * dt_s
-    # Convergence is a registered conveyor drive in the same overdamped beam system,
-    # rather than a post-solve translation that stretches the first segment while pinning
-    # the hinge. Its work and force enter the same residual as buoyancy and drag (#699).
     velocity = (updated - points) / dt_s
     displacement = updated - points
     bending_force = -(stiffness @ (updated - body.reference_centerline_local_xyz_m))
     drag_force = -drag * velocity
-    convergence_work_j = float(np.sum(conveyor_force * displacement))
-    buoyancy_work_j = float(np.sum(buoyancy * displacement))
-    external_work_j = buoyancy_work_j + convergence_work_j
+    beam_work_j = float(np.sum(normal_buoyancy * displacement))
     drag_dissipation_j = float(drag * np.sum(velocity**2) * dt_s)
     before_delta = points - body.reference_centerline_local_xyz_m
     after_delta = updated - body.reference_centerline_local_xyz_m
     bend_energy_before_j = 0.5 * float(np.sum(before_delta * (stiffness @ before_delta)))
     bend_energy_after_j = 0.5 * float(np.sum(after_delta * (stiffness @ after_delta)))
     bending_work_j = float(np.sum((stiffness @ after_delta) * displacement))
-    work_scale = max(abs(external_work_j), drag_dissipation_j, abs(bend_energy_after_j - bend_energy_before_j), 1.0)
-    residual = abs(external_work_j - drag_dissipation_j - bending_work_j) / work_scale
-    force_residual = buoyancy + conveyor_force + bending_force + drag_force
-    support_reaction = -force_residual[0]
-    tangent_force = force_residual[0] - np.dot(force_residual[0], body.trench_local_xyz) * body.trench_local_xyz
+    beam_scale = max(abs(beam_work_j), drag_dissipation_j, abs(bending_work_j), 1.0)
+    beam_residual = abs(beam_work_j - drag_dissipation_j - bending_work_j) / beam_scale
+    beam_force_residual = (normal_buoyancy + bending_force + drag_force)[1:]
+
+    path_length = float(np.sum(np.linalg.norm(np.diff(points, axis=0), axis=1)))
+    line_weight_n_per_m = float(
+        np.dot(body.density_anomaly_kg_m3, body.station_volume_m3) * GRAVITY_M_S2 / path_length
+    )
+    active_length_m, active_depth_m = _active_path(body)
+    axial_buoyancy_n = line_weight_n_per_m * active_depth_m
+    axial_drag_n = (
+        axial_drag_factor * mantle_viscosity_pa_s * body.width_m * active_length_m
+        * convergence_speed_m_per_s / shear_zone_thickness_m
+    )
+    axial_balance_n = axial_buoyancy_n - axial_drag_n
+    tension_n = max(axial_balance_n, 0.0) if body.attached else 0.0
+    driver_force_n = max(-axial_balance_n, 0.0) if body.attached else 0.0
+    distance_m = convergence_speed_m_per_s * dt_s
+    axial_buoyancy_work_j = axial_buoyancy_n * distance_m
+    axial_drag_work_j = axial_drag_n * distance_m
+    hinge_work_j = tension_n * distance_m
+    driver_work_j = driver_force_n * distance_m
+    axial_scale = max(axial_buoyancy_work_j, axial_drag_work_j, 1.0)
+    if body.attached:
+        axial_residual = abs(
+            axial_buoyancy_work_j + driver_work_j - axial_drag_work_j - hinge_work_j
+        ) / axial_scale
+    else:
+        axial_residual = 0.0
+
+    # The membrane takes only the tension's tangent part. The root shear goes into plate
+    # flexure and the mantle reaction at the bend: adding it clamps the hinge, and a clamp
+    # holds a hanging slab vertically, cancelling the in-plane pull (#699).
+    radial_hinge = body.trench_local_xyz
+    hinge_load = tension_n * tangents[0]
+    hinge_radial_n = float(np.dot(hinge_load, radial_hinge))
+    tangent_force = hinge_load - hinge_radial_n * radial_hinge
     body.last_attachment_force_local_n = tangent_force if body.attached else np.zeros(3)
+    # The beam solve is linear, so a sinking path would lengthen without limit. Restore
+    # each segment's length from the hinge outward to keep the ribbon inextensible (#699).
+    segment_lengths = np.linalg.norm(np.diff(points, axis=0), axis=1)
+    solved_directions = geometry.normalize(np.diff(updated, axis=0))
+    updated = updated[0] + np.vstack((
+        np.zeros(3), np.cumsum(solved_directions * segment_lengths[:, None], axis=0)
+    ))
+    if distance_m > 0.0:
+        volume_before_m3 = body.consumed_volume_m3
+        inflow_m3 = distance_m * volume_before_m3 / path_length
+        extended = _extended_path(updated, distance_m)
+        body.reference_centerline_local_xyz_m = _extended_path(
+            body.reference_centerline_local_xyz_m, distance_m
+        )
+        share = np.linalg.norm(np.diff(extended, axis=0), axis=1)
+        station_length = np.empty(count)
+        station_length[0] = 0.5 * share[0]
+        station_length[-1] = 0.5 * share[-1]
+        station_length[1:-1] = 0.5 * (share[:-1] + share[1:])
+        # Normalize to the booked total: beam sag also lengthens the path, and that is
+        # not new material (#699).
+        body.station_volume_m3 = station_length * (volume_before_m3 + inflow_m3) / station_length.sum()
+        body.kinematic_inflow_volume_m3 += inflow_m3
+        updated = extended
     body.centerline_local_xyz_m = updated
     body.deep_reservoir_volume_m3 = float(body.station_volume_m3[~body.active_station_mask].sum())
     return {
-        "buoyancy_work_j": buoyancy_work_j,
-        "convergence_driver_work_j": convergence_work_j,
-        "total_external_work_j": external_work_j,
+        "beam_normal_buoyancy_work_j": beam_work_j,
         "mantle_drag_dissipation_j": drag_dissipation_j,
         "bending_energy_before_j": bend_energy_before_j,
         "bending_energy_after_j": bend_energy_after_j,
         "bending_work_j": bending_work_j,
-        "work_residual_fraction": residual,
+        "beam_work_residual_fraction": beam_residual,
+        "axial_buoyancy_force_n": axial_buoyancy_n,
+        "axial_mantle_drag_force_n": axial_drag_n,
+        "hinge_tension_n": tension_n,
+        "plate_driver_force_n": driver_force_n,
+        "axial_buoyancy_work_j": axial_buoyancy_work_j,
+        "axial_mantle_drag_work_j": axial_drag_work_j,
+        "hinge_work_j": hinge_work_j,
+        "plate_driver_work_j": driver_work_j,
+        "axial_work_residual_fraction": axial_residual,
+        "work_residual_fraction": max(beam_residual, axial_residual),
         "max_station_speed_m_per_s": float(np.linalg.norm(velocity, axis=1).max(initial=0.0)),
-        "max_station_displacement_m": float(np.linalg.norm(updated - points, axis=1).max(initial=0.0)),
-        "advected_distance_m": float(advected_distance),
-        "work_balance_excludes_kinematic_advection": False,
-        "convergence_driver_force_resultant_n": float(np.linalg.norm(conveyor_force.sum(axis=0))),
+        "max_station_displacement_m": float(np.linalg.norm(displacement, axis=1).max(initial=0.0)),
+        "advected_distance_m": float(distance_m),
+        "active_length_m": active_length_m,
+        "active_depth_m": active_depth_m,
         "attachment_force_local_n": body.last_attachment_force_local_n.copy(),
-        "attachment_reaction_local_n": support_reaction,
-        "beam_force_residual_n": float(np.linalg.norm(force_residual[1:])),
-        "bending_force_resultant_n": float(np.linalg.norm(bending_force.sum(axis=0))),
-        "mantle_drag_force_resultant_n": float(np.linalg.norm(drag_force.sum(axis=0))),
-        "buoyancy_force_resultant_n": float(np.linalg.norm(buoyancy.sum(axis=0))),
+        "attachment_reaction_local_n": -body.last_attachment_force_local_n,
+        "hinge_radial_support_n": hinge_radial_n,
+        "hinge_bending_shear_n": float(np.linalg.norm(bending_force[0])),
+        "beam_force_residual_n": float(np.linalg.norm(beam_force_residual)),
         "station_radius_min_m": float(radius.min(initial=PLANET_RADIUS_M)),
     }

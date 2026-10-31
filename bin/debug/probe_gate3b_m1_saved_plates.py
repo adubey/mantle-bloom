@@ -25,7 +25,6 @@ from PIL import Image, ImageDraw, ImageFont
 from app import cratons, elevation_lines, geometry, lithosphere, orogeny, persistence, torque
 import gate3b_diagnostic_common as shared
 import probe_gate3b_crack_coupled as diagnostic
-import probe_gate3b_component_shell as shell_audit
 import probe_gate3b_midplate_current as current_audit
 import probe_gate3b_slab_pull as slab_screen
 import validate_thin_shell_plate_meshes as mesh_validation
@@ -79,7 +78,7 @@ def _target(world, plate_id):
      subducting, midline_force) = shared.add_native_midline_source(
         world, plate, candidate["points"], current_audit._source_geometry,
         current_audit._scaled_source_centers, slab_screen._field_and_inputs,
-        shell_audit.line_spacing_rad(float(world.node_density)),
+        elevation_lines.line_spacing_rad(float(world.node_density)),
     )
     bilateral = slab_screen._bilateral_candidate(world, plate)
     return plate, candidate, bilateral, native_p95, scale, field, midline_force, inputs, subducting
@@ -279,7 +278,7 @@ def run(case_name, out_path, image_path):
     rho_c = lithosphere.node_crust_density(plate.collect("crust_type_code"), plate.crust_type)
     column_mass = areas * (hc * rho_c + hm * 3300.0)
     moho_c = orogeny.moho_temperature_c(hc, hm, plate.collect("moho_thermal_lag_c"))
-    front_length = torque.boundary_node_length_m(inputs, shell_audit.line_spacing_rad(float(world.node_density)))
+    front_length = torque.boundary_node_length_m(inputs, elevation_lines.line_spacing_rad(float(world.node_density)))
     slice_edges = np.linspace(float(coordinate.min()), float(coordinate.max()), 11)
     slice_ids = np.clip(np.digitize(coordinate, slice_edges[1:-1]), 0, 9)
     slice_metrics = []
@@ -314,7 +313,7 @@ def run(case_name, out_path, image_path):
         "mean_moho_temperature_c": float(np.average(moho_c, weights=areas)),
         "native_mantle_flow_p95_cm_per_yr": native_p95, "midline_source_scale": float(source_scale),
         "slab_sink_length_km": float(torque.SUBDUCTION_LSINK_M/1000),
-        "active_slab_front_length_km": float(torque.boundary_node_length_m(inputs, shell_audit.line_spacing_rad(float(world.node_density)))[subducting].sum()/1000),
+        "active_slab_front_length_km": float(torque.boundary_node_length_m(inputs, elevation_lines.line_spacing_rad(float(world.node_density)))[subducting].sum()/1000),
         "bilateral_slab_sides": side_metrics,
         "axis_end_slab_resultant_separation_deg": slab_angle,
         "weaker_to_stronger_axis_end_slab_resultant_ratio": min(side_magnitudes)/max(side_magnitudes) if max(side_magnitudes) > 0 else 0.0,

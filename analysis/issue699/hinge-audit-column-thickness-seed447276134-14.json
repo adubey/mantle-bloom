@@ -1,0 +1,2861 @@
+{
+  "duration_myr": 20.0,
+  "fronts": [
+    {
+      "bending_rigidity_nm2": 4.318084401929863e+30,
+      "cases": {
+        "measured_conveyor": {
+          "0.5_myr": [
+            {
+              "active_buoyant_weight_n": 1.8501807999485608e+20,
+              "body_length_m": 950143.5157473626,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 0.5,
+              "first_segment_length_m": 135735.0027731064,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.8828628451412374e+20,
+              "body_length_m": 966925.8954347235,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 1.0,
+              "first_segment_length_m": 138132.05790449813,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.9155442103678363e+20,
+              "body_length_m": 983704.2946669132,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 1.5,
+              "first_segment_length_m": 140529.18370303384,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.9482251920833243e+20,
+              "body_length_m": 1000475.0215329482,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 2.0,
+              "first_segment_length_m": 142925.72276562883,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.9809061183060056e+20,
+              "body_length_m": 1017234.9200948579,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 2.5,
+              "first_segment_length_m": 145321.14691270422,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 2.0135873943983912e+20,
+              "body_length_m": 1033981.264511121,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 3.0,
+              "first_segment_length_m": 147715.00705316677,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.7314532463705712e+20,
+              "body_length_m": 1050711.6728877232,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 3.5,
+              "first_segment_length_m": 150106.91762955836,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.759094328412706e+20,
+              "body_length_m": 1067428.1862719262,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 4.0,
+              "first_segment_length_m": 152496.53902425207,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.786743655623926e+20,
+              "body_length_m": 1084124.61270486,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 4.5,
+              "first_segment_length_m": 154884.08980692027,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.8143952338455108e+20,
+              "body_length_m": 1100799.2232208159,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 5.0,
+              "first_segment_length_m": 157268.70077618072,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.8420489377802197e+20,
+              "body_length_m": 1117450.2814009003,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 5.5,
+              "first_segment_length_m": 159650.15851622546,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.8697052284345952e+20,
+              "body_length_m": 1134076.076061314,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 6.0,
+              "first_segment_length_m": 162028.23949826413,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.8973646773390577e+20,
+              "body_length_m": 1150674.9651118717,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 6.5,
+              "first_segment_length_m": 164402.71233085476,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.9250278956077013e+20,
+              "body_length_m": 1167245.3835426003,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 7.0,
+              "first_segment_length_m": 166773.34833573565,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.9526955167859478e+20,
+              "body_length_m": 1183785.838573546,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 7.5,
+              "first_segment_length_m": 169139.92623582258,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.6202703794896496e+20,
+              "body_length_m": 1200294.901272806,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 8.0,
+              "first_segment_length_m": 171502.23346937,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.6428838851129672e+20,
+              "body_length_m": 1216791.0759454635,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 8.5,
+              "first_segment_length_m": 173859.98048495047,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.665517435994127e+20,
+              "body_length_m": 1233265.000396347,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 9.0,
+              "first_segment_length_m": 176215.64186903837,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.6881618169038065e+20,
+              "body_length_m": 1249715.444345676,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 9.5,
+              "first_segment_length_m": 178567.97239134842,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.7108144148048327e+20,
+              "body_length_m": 1266141.5913815135,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 10.0,
+              "first_segment_length_m": 180916.88708955108,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.733474382592212e+20,
+              "body_length_m": 1282542.7736802294,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 10.5,
+              "first_segment_length_m": 183262.3284548067,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.756141499973e+20,
+              "body_length_m": 1298918.3914226226,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 11.0,
+              "first_segment_length_m": 185604.23073343458,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.7788158205653975e+20,
+              "body_length_m": 1315267.8769596266,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 11.5,
+              "first_segment_length_m": 187942.52021924924,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.8014975315727e+20,
+              "body_length_m": 1331590.678486172,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 12.0,
+              "first_segment_length_m": 190277.11854556363,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.8241868907907416e+20,
+              "body_length_m": 1347886.252063041,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 12.5,
+              "first_segment_length_m": 192607.94521649965,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.8468841959463115e+20,
+              "body_length_m": 1364154.0574080027,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 13.0,
+              "first_segment_length_m": 194934.91905600825,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.8695897688227938e+20,
+              "body_length_m": 1380393.5555767787,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 13.5,
+              "first_segment_length_m": 197257.95891311235,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.8923039466079512e+20,
+              "body_length_m": 1396604.2076924387,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 14.0,
+              "first_segment_length_m": 199576.98395125434,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.489423159080807e+20,
+              "body_length_m": 1412785.4742957868,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 14.5,
+              "first_segment_length_m": 201891.91373130542,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.5070680412349216e+20,
+              "body_length_m": 1428981.0934532012,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 15.0,
+              "first_segment_length_m": 204202.1491794485,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.5247352417914795e+20,
+              "body_length_m": 1445169.0490948872,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 15.5,
+              "first_segment_length_m": 206513.79926413274,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.5424175225707554e+20,
+              "body_length_m": 1461345.5632014528,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 16.0,
+              "first_segment_length_m": 208824.13019659492,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.5601100947833533e+20,
+              "body_length_m": 1477508.8103037407,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 16.5,
+              "first_segment_length_m": 211132.8068584438,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.577811296863813e+20,
+              "body_length_m": 1493657.4635412716,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 17.0,
+              "first_segment_length_m": 213439.67193462086,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.5955205804033137e+20,
+              "body_length_m": 1509790.458178599,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 17.5,
+              "first_segment_length_m": 215744.57009631133,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.6132377914092477e+20,
+              "body_length_m": 1525906.9076862233,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 18.0,
+              "first_segment_length_m": 218047.34961408787,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.6309629218968555e+20,
+              "body_length_m": 1542006.0542154328,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 18.5,
+              "first_segment_length_m": 220347.87077214275,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.648696021200115e+20,
+              "body_length_m": 1558087.2330438972,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 19.0,
+              "first_segment_length_m": 222646.00870231676,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.666437163741139e+20,
+              "body_length_m": 1574149.846008709,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 19.5,
+              "first_segment_length_m": 224941.6525405924,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.6841864372997715e+20,
+              "body_length_m": 1590193.3417318524,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 20.0,
+              "first_segment_length_m": 227234.70311887967,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            }
+          ],
+          "1_myr": [
+            {
+              "active_buoyant_weight_n": 1.8828626334296123e+20,
+              "body_length_m": 966926.860591267,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 1.0,
+              "first_segment_length_m": 138132.0889180445,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.9482242291112483e+20,
+              "body_length_m": 1000476.6874677624,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 2.0,
+              "first_segment_length_m": 142925.6150254482,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 2.0135832006194764e+20,
+              "body_length_m": 1033986.4215067866,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 3.0,
+              "first_segment_length_m": 147716.8768436824,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.759090487322943e+20,
+              "body_length_m": 1067438.0394350477,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 4.0,
+              "first_segment_length_m": 152502.32496533424,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.814358172117791e+20,
+              "body_length_m": 1100821.947211124,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 5.0,
+              "first_segment_length_m": 157279.1855911343,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.8696453429362717e+20,
+              "body_length_m": 1134118.2643929047,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 6.0,
+              "first_segment_length_m": 162045.99606103788,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.924941694598144e+20,
+              "body_length_m": 1167315.4083925327,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 7.0,
+              "first_segment_length_m": 166800.16350773736,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.620147015176617e+20,
+              "body_length_m": 1200402.1165816279,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 8.0,
+              "first_segment_length_m": 171540.17333280732,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.66533121126596e+20,
+              "body_length_m": 1233420.8022436062,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 9.0,
+              "first_segment_length_m": 176263.52059346015,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.7105740168255416e+20,
+              "body_length_m": 1266348.0229164867,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 10.0,
+              "first_segment_length_m": 180976.36187334158,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.75584787388135e+20,
+              "body_length_m": 1299179.10105476,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 11.0,
+              "first_segment_length_m": 185676.04605210343,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.801148279775263e+20,
+              "body_length_m": 1331909.8540645048,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 12.0,
+              "first_segment_length_m": 190362.17458409443,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.8464756691668088e+20,
+              "body_length_m": 1364536.1386920814,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 13.0,
+              "first_segment_length_m": 195034.20512654353,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.891831878772231e+20,
+              "body_length_m": 1397053.7556421915,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 14.0,
+              "first_segment_length_m": 199691.52537632297,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.5066351169829857e+20,
+              "body_length_m": 1429458.4489388645,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 15.0,
+              "first_segment_length_m": 204333.49981901326,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.541863863206487e+20,
+              "body_length_m": 1461872.395945982,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 16.0,
+              "first_segment_length_m": 208956.32318079335,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.5771665990527697e+20,
+              "body_length_m": 1494233.25795518,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 17.0,
+              "first_segment_length_m": 213578.80498286334,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.6125139488997156e+20,
+              "body_length_m": 1526532.238390388,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 18.0,
+              "first_segment_length_m": 218193.8917521707,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.6478947729332863e+20,
+              "body_length_m": 1558763.2607261725,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 19.0,
+              "first_segment_length_m": 222800.71472821617,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.683306965057308e+20,
+              "body_length_m": 1590921.3456002965,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 20.0,
+              "first_segment_length_m": 227398.38397365037,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            }
+          ],
+          "2_myr": [
+            {
+              "active_buoyant_weight_n": 1.9482239437450327e+20,
+              "body_length_m": 1000477.8175246362,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 2.0,
+              "first_segment_length_m": 142924.42762254784,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.7590701761134327e+20,
+              "body_length_m": 1067463.1378610223,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 4.0,
+              "first_segment_length_m": 152506.28730034077,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.8695717391007675e+20,
+              "body_length_m": 1134194.5876830628,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 6.0,
+              "first_segment_length_m": 162067.544354904,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.6199648718385886e+20,
+              "body_length_m": 1200583.5642368363,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 8.0,
+              "first_segment_length_m": 171591.54454758592,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.7102272771570978e+20,
+              "body_length_m": 1266675.823374081,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 10.0,
+              "first_segment_length_m": 181061.84463451567,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.800624231630182e+20,
+              "body_length_m": 1332414.0565770874,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 12.0,
+              "first_segment_length_m": 190488.76904733744,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.8911047331551275e+20,
+              "body_length_m": 1397767.2066466766,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 14.0,
+              "first_segment_length_m": 199866.04391246004,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.5410989664688973e+20,
+              "body_length_m": 1462701.9729899957,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 16.0,
+              "first_segment_length_m": 209189.29374888103,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.6113641766508082e+20,
+              "body_length_m": 1527528.339086299,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 18.0,
+              "first_segment_length_m": 218439.83546943322,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            },
+            {
+              "active_buoyant_weight_n": 1.6818517368081685e+20,
+              "body_length_m": 1592086.8182687717,
+              "down_dip_alignment": 0.0,
+              "elapsed_myr": 20.0,
+              "first_segment_length_m": 227672.80597237442,
+              "hinge_force_n": 0.0,
+              "hinge_over_weight": 0.0,
+              "hinge_per_trench_length_n_per_m": 0.0
+            }
+          ]
+        },
+        "no_conveyor": {
+          "0.5_myr": [
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621714,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 0.5,
+              "first_segment_length_m": 133337.66583784818,
+              "hinge_force_n": 9.713595856037257e+19,
+              "hinge_over_weight": 0.5344483342244923,
+              "hinge_per_trench_length_n_per_m": 19133413001690.8
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621715,
+              "down_dip_alignment": 0.9999999999999998,
+              "elapsed_myr": 1.0,
+              "first_segment_length_m": 133337.66583784818,
+              "hinge_force_n": 9.263266889939511e+19,
+              "hinge_over_weight": 0.5096709428906341,
+              "hinge_per_trench_length_n_per_m": 18246374852001.125
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621717,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 1.5,
+              "first_segment_length_m": 133337.66583784806,
+              "hinge_force_n": 8.88729558193999e+19,
+              "hinge_over_weight": 0.48898475805706815,
+              "hinge_per_trench_length_n_per_m": 17505803140005.334
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621718,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 2.0,
+              "first_segment_length_m": 133337.66583784833,
+              "hinge_force_n": 8.543438840418602e+19,
+              "hinge_over_weight": 0.47006553746753255,
+              "hinge_per_trench_length_n_per_m": 16828489285645.7
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621718,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 2.5,
+              "first_segment_length_m": 133337.6658378484,
+              "hinge_force_n": 8.218159443962246e+19,
+              "hinge_over_weight": 0.45216845443359116,
+              "hinge_per_trench_length_n_per_m": 16187768266820.113
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621716,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 3.0,
+              "first_segment_length_m": 133337.66583784853,
+              "hinge_force_n": 7.906867128965066e+19,
+              "hinge_over_weight": 0.43504094967913653,
+              "hinge_per_trench_length_n_per_m": 15574598384588.334
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621714,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 3.5,
+              "first_segment_length_m": 133337.66583784868,
+              "hinge_force_n": 7.607949793224045e+19,
+              "hinge_over_weight": 0.418594324297011,
+              "hinge_per_trench_length_n_per_m": 14985804191082.402
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621715,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 4.0,
+              "first_segment_length_m": 133337.6658378489,
+              "hinge_force_n": 7.320789075063726e+19,
+              "hinge_over_weight": 0.40279455562739885,
+              "hinge_per_trench_length_n_per_m": 14420167664727.578
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621714,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 4.5,
+              "first_segment_length_m": 133337.66583784902,
+              "hinge_force_n": 7.045083753296347e+19,
+              "hinge_over_weight": 0.387625070285488,
+              "hinge_per_trench_length_n_per_m": 13877095473304.188
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.948262171,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 5.0,
+              "first_segment_length_m": 133337.6658378491,
+              "hinge_force_n": 6.780615301024264e+19,
+              "hinge_over_weight": 0.3730738447798587,
+              "hinge_per_trench_length_n_per_m": 13356157172160.572
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621709,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 5.5,
+              "first_segment_length_m": 133337.66583784937,
+              "hinge_force_n": 6.52716564758202e+19,
+              "hinge_over_weight": 0.3591288807212817,
+              "hinge_per_trench_length_n_per_m": 12856923215311.127
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.948262171,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 6.0,
+              "first_segment_length_m": 133337.66583784975,
+              "hinge_force_n": 6.284489381190144e+19,
+              "hinge_over_weight": 0.34577667539472934,
+              "hinge_per_trench_length_n_per_m": 12378910201448.89
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621711,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 6.5,
+              "first_segment_length_m": 133337.6658378501,
+              "hinge_force_n": 6.052306682574338e+19,
+              "hinge_over_weight": 0.3330018329625275,
+              "hinge_per_trench_length_n_per_m": 11921566954900.062
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621714,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 7.0,
+              "first_segment_length_m": 133337.66583785,
+              "hinge_force_n": 5.830304702530125e+19,
+              "hinge_over_weight": 0.3207871402588543,
+              "hinge_per_trench_length_n_per_m": 11484277239090.133
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621716,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 7.5,
+              "first_segment_length_m": 133337.66583785028,
+              "hinge_force_n": 5.6181424675697754e+19,
+              "hinge_over_weight": 0.3091138367016109,
+              "hinge_per_trench_length_n_per_m": 11066369419470.982
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621718,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 8.0,
+              "first_segment_length_m": 133337.66583785065,
+              "hinge_force_n": 5.4154571099202e+19,
+              "hinge_over_weight": 0.29796195707094003,
+              "hinge_per_trench_length_n_per_m": 10667128735096.164
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621716,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 8.5,
+              "first_segment_length_m": 133337.6658378506,
+              "hinge_force_n": 5.2218703326301544e+19,
+              "hinge_over_weight": 0.2873106872236107,
+              "hinge_per_trench_length_n_per_m": 10285810033304.111
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621711,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 9.0,
+              "first_segment_length_m": 133337.6658378508,
+              "hinge_force_n": 5.036994545002719e+19,
+              "hinge_over_weight": 0.27713870166848664,
+              "hinge_per_trench_length_n_per_m": 9921649855022.648
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621711,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 9.5,
+              "first_segment_length_m": 133337.66583785048,
+              "hinge_force_n": 4.860438382309147e+19,
+              "hinge_over_weight": 0.26742446726475644,
+              "hinge_per_trench_length_n_per_m": 9573877307258.04
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.948262171,
+              "down_dip_alignment": 0.9999999999999998,
+              "elapsed_myr": 10.0,
+              "first_segment_length_m": 133337.66583785074,
+              "hinge_force_n": 4.691811484025324e+19,
+              "hinge_over_weight": 0.25814650612359796,
+              "hinge_per_trench_length_n_per_m": 9241723475054.574
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621707,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 10.5,
+              "first_segment_length_m": 133337.6658378503,
+              "hinge_force_n": 4.530728499991529e+19,
+              "hinge_over_weight": 0.24928361602968238,
+              "hinge_per_trench_length_n_per_m": 8924429312651.494
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.948262171,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 11.0,
+              "first_segment_length_m": 133337.6658378506,
+              "hinge_force_n": 4.376812349930902e+19,
+              "hinge_over_weight": 0.28459951221173696,
+              "hinge_per_trench_length_n_per_m": 8621252063938.821
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621714,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 11.5,
+              "first_segment_length_m": 133337.66583785033,
+              "hinge_force_n": 4.229696793192206e+19,
+              "hinge_over_weight": 0.27503341425296746,
+              "hinge_per_trench_length_n_per_m": 8331470324223.384
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621715,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 12.0,
+              "first_segment_length_m": 133337.6658378505,
+              "hinge_force_n": 4.080356646078223e+19,
+              "hinge_over_weight": 0.26532266368287744,
+              "hinge_per_trench_length_n_per_m": 8037306684432.959
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621716,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 12.5,
+              "first_segment_length_m": 133337.66583785065,
+              "hinge_force_n": 3.934431795403885e+19,
+              "hinge_over_weight": 0.2558339906484617,
+              "hinge_per_trench_length_n_per_m": 7749870345044.097
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621718,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 13.0,
+              "first_segment_length_m": 133337.66583785045,
+              "hinge_force_n": 3.797069722691791e+19,
+              "hinge_over_weight": 0.24690210694755954,
+              "hinge_per_trench_length_n_per_m": 7479300588290.703
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621718,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 13.5,
+              "first_segment_length_m": 133337.6658378505,
+              "hinge_force_n": 3.6693486458471227e+19,
+              "hinge_over_weight": 0.2385971230316454,
+              "hinge_per_trench_length_n_per_m": 7227721240281.193
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.948262172,
+              "down_dip_alignment": 0.9999999999999998,
+              "elapsed_myr": 14.0,
+              "first_segment_length_m": 133337.6658378509,
+              "hinge_force_n": 3.550497325653195e+19,
+              "hinge_over_weight": 0.23086888954833268,
+              "hinge_per_trench_length_n_per_m": 6993613147998.021
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.948262172,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 14.5,
+              "first_segment_length_m": 133337.66583785057,
+              "hinge_force_n": 3.439359978952798e+19,
+              "hinge_over_weight": 0.2236422524136748,
+              "hinge_per_trench_length_n_per_m": 6774699700717.922
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621716,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 15.0,
+              "first_segment_length_m": 133337.66583785028,
+              "hinge_force_n": 3.3349035716554666e+19,
+              "hinge_over_weight": 0.21685003922576412,
+              "hinge_per_trench_length_n_per_m": 6568946073419.286
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.948262172,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 15.5,
+              "first_segment_length_m": 133337.6658378502,
+              "hinge_force_n": 3.2363101202289074e+19,
+              "hinge_over_weight": 0.21043906111204325,
+              "hinge_per_trench_length_n_per_m": 6374741038191.88
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621716,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 16.0,
+              "first_segment_length_m": 133337.66583785042,
+              "hinge_force_n": 3.1429462415506936e+19,
+              "hinge_over_weight": 0.20436813272727142,
+              "hinge_per_trench_length_n_per_m": 6190836984876.779
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621714,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 16.5,
+              "first_segment_length_m": 133337.66583785063,
+              "hinge_force_n": 3.0543137830074892e+19,
+              "hinge_over_weight": 0.19860486200630453,
+              "hinge_per_trench_length_n_per_m": 6016252674411.736
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621709,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 17.0,
+              "first_segment_length_m": 133337.6658378507,
+              "hinge_force_n": 2.970009130664116e+19,
+              "hinge_over_weight": 0.19312300420299183,
+              "hinge_per_trench_length_n_per_m": 5850193085856.054
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621705,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 17.5,
+              "first_segment_length_m": 133337.6658378504,
+              "hinge_force_n": 2.889694629605967e+19,
+              "hinge_over_weight": 0.1879006035156425,
+              "hinge_per_trench_length_n_per_m": 5691993121440.693
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621708,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 18.0,
+              "first_segment_length_m": 133337.66583785057,
+              "hinge_force_n": 2.8130796420350226e+19,
+              "hinge_over_weight": 0.18291876140145105,
+              "hinge_per_trench_length_n_per_m": 5541080295640.638
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621711,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 18.5,
+              "first_segment_length_m": 133337.66583785013,
+              "hinge_force_n": 2.7399082346445173e+19,
+              "hinge_over_weight": 0.17816083595566107,
+              "hinge_per_trench_length_n_per_m": 5396950482308.188
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621711,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 19.0,
+              "first_segment_length_m": 133337.66583785025,
+              "hinge_force_n": 2.669951172430457e+19,
+              "hinge_over_weight": 0.17361192131411787,
+              "hinge_per_trench_length_n_per_m": 5259152144435.744
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621717,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 19.5,
+              "first_segment_length_m": 133337.66583785007,
+              "hinge_force_n": 2.603000641205157e+19,
+              "hinge_over_weight": 0.16925850448798005,
+              "hinge_per_trench_length_n_per_m": 5127275938795.575
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621718,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 20.0,
+              "first_segment_length_m": 133337.6658378498,
+              "hinge_force_n": 2.5388666815748575e+19,
+              "hinge_over_weight": 0.16508823348532245,
+              "hinge_per_trench_length_n_per_m": 5000947691746.095
+            }
+          ],
+          "1_myr": [
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621714,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 1.0,
+              "first_segment_length_m": 133337.66583784804,
+              "hinge_force_n": 9.713595856037257e+19,
+              "hinge_over_weight": 0.5344483342244923,
+              "hinge_per_trench_length_n_per_m": 19133413001690.8
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621711,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 2.0,
+              "first_segment_length_m": 133337.66583784795,
+              "hinge_force_n": 8.907291837284803e+19,
+              "hinge_over_weight": 0.4900849649750984,
+              "hinge_per_trench_length_n_per_m": 17545190882471.658
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621707,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 3.0,
+              "first_segment_length_m": 133337.66583784783,
+              "hinge_force_n": 8.237697545326343e+19,
+              "hinge_over_weight": 0.45324345342291605,
+              "hinge_per_trench_length_n_per_m": 16226253557767.834
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621705,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 4.0,
+              "first_segment_length_m": 133337.66583784772,
+              "hinge_force_n": 7.629846600513343e+19,
+              "hinge_over_weight": 0.4197991008137657,
+              "hinge_per_trench_length_n_per_m": 15028935557004.34
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621702,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 5.0,
+              "first_segment_length_m": 133337.66583784754,
+              "hinge_force_n": 7.069011309605733e+19,
+              "hinge_over_weight": 0.38894157992837847,
+              "hinge_per_trench_length_n_per_m": 13924226919142.977
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621702,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 6.0,
+              "first_segment_length_m": 133337.66583784737,
+              "hinge_force_n": 6.551745232267475e+19,
+              "hinge_over_weight": 0.360481265387657,
+              "hinge_per_trench_length_n_per_m": 12905338997907.697
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621697,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 7.0,
+              "first_segment_length_m": 133337.66583784693,
+              "hinge_force_n": 6.076123848687305e+19,
+              "hinge_over_weight": 0.3343122688653257,
+              "hinge_per_trench_length_n_per_m": 11968480958995.264
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621695,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 8.0,
+              "first_segment_length_m": 133337.66583784737,
+              "hinge_force_n": 5.639965906095703e+19,
+              "hinge_over_weight": 0.3103145764214937,
+              "hinge_per_trench_length_n_per_m": 11109356266836.479
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621697,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 9.0,
+              "first_segment_length_m": 133337.66583784705,
+              "hinge_force_n": 5.240689939475901e+19,
+              "hinge_over_weight": 0.28834615417926107,
+              "hinge_per_trench_length_n_per_m": 10322880065416.402
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621702,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 10.0,
+              "first_segment_length_m": 133337.66583784687,
+              "hinge_force_n": 4.875468613326121e+19,
+              "hinge_over_weight": 0.2682514403084248,
+              "hinge_per_trench_length_n_per_m": 9603483193875.184
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621703,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 11.0,
+              "first_segment_length_m": 133337.66583784722,
+              "hinge_force_n": 4.541399368127758e+19,
+              "hinge_over_weight": 0.29530168113061894,
+              "hinge_per_trench_length_n_per_m": 8945448318400.035
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621704,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 12.0,
+              "first_segment_length_m": 133337.66583784742,
+              "hinge_force_n": 4.235636039674493e+19,
+              "hinge_over_weight": 0.2754196100769193,
+              "hinge_per_trench_length_n_per_m": 8343169190178.756
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621701,
+              "down_dip_alignment": 0.9999999999999998,
+              "elapsed_myr": 13.0,
+              "first_segment_length_m": 133337.6658378478,
+              "hinge_force_n": 3.940042038673141e+19,
+              "hinge_over_weight": 0.2561987932422591,
+              "hinge_per_trench_length_n_per_m": 7760921154970.877
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.94826217,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 14.0,
+              "first_segment_length_m": 133337.6658378478,
+              "hinge_force_n": 3.674564387314601e+19,
+              "hinge_over_weight": 0.23893627339012272,
+              "hinge_per_trench_length_n_per_m": 7237994977946.045
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621701,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 15.0,
+              "first_segment_length_m": 133337.6658378477,
+              "hinge_force_n": 3.4404490833024586e+19,
+              "hinge_over_weight": 0.22371307074945884,
+              "hinge_per_trench_length_n_per_m": 6776844970464.866
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621703,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 16.0,
+              "first_segment_length_m": 133337.66583784734,
+              "hinge_force_n": 3.2323453999702823e+19,
+              "hinge_over_weight": 0.21018125763283343,
+              "hinge_per_trench_length_n_per_m": 6366931506966.912
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621703,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 17.0,
+              "first_segment_length_m": 133337.6658378472,
+              "hinge_force_n": 3.0454075705575305e+19,
+              "hinge_over_weight": 0.19802574105793846,
+              "hinge_per_trench_length_n_per_m": 5998709609658.847
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621704,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 18.0,
+              "first_segment_length_m": 133337.66583784696,
+              "hinge_force_n": 2.8761343305254023e+19,
+              "hinge_over_weight": 0.18701885346669767,
+              "hinge_per_trench_length_n_per_m": 5665282641966.335
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621704,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 19.0,
+              "first_segment_length_m": 133337.6658378473,
+              "hinge_force_n": 2.721973742745453e+19,
+              "hinge_over_weight": 0.17699465672791334,
+              "hinge_per_trench_length_n_per_m": 5361623910607.452
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621708,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 20.0,
+              "first_segment_length_m": 133337.66583784757,
+              "hinge_force_n": 2.580958484940019e+19,
+              "hinge_over_weight": 0.1678252269289702,
+              "hinge_per_trench_length_n_per_m": 5083858270867.115
+            }
+          ],
+          "2_myr": [
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621716,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 2.0,
+              "first_segment_length_m": 133337.66583784804,
+              "hinge_force_n": 9.713595856037257e+19,
+              "hinge_over_weight": 0.5344483342244923,
+              "hinge_per_trench_length_n_per_m": 19133413001690.8
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621712,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 4.0,
+              "first_segment_length_m": 133337.66583784824,
+              "hinge_force_n": 8.274448463260182e+19,
+              "hinge_over_weight": 0.45526551272639776,
+              "hinge_per_trench_length_n_per_m": 16298643896159.6
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621714,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 6.0,
+              "first_segment_length_m": 133337.6658378487,
+              "hinge_force_n": 7.110171586945526e+19,
+              "hinge_over_weight": 0.391206245041741,
+              "hinge_per_trench_length_n_per_m": 14005302619355.16
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621714,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 8.0,
+              "first_segment_length_m": 133337.66583784856,
+              "hinge_force_n": 6.11616308956087e+19,
+              "hinge_over_weight": 0.3365152538263677,
+              "hinge_per_trench_length_n_per_m": 12047348490984.662
+            },
+            {
+              "active_buoyant_weight_n": 1.8174995100568712e+20,
+              "body_length_m": 933361.9482621711,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 10.0,
+              "first_segment_length_m": 133337.66583784833,
+              "hinge_force_n": 5.271921009882577e+19,
+              "hinge_over_weight": 0.29006450789731514,
+              "hinge_per_trench_length_n_per_m": 10384397651430.074
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621709,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 12.0,
+              "first_segment_length_m": 133337.66583784806,
+              "hinge_force_n": 4.558834368643789e+19,
+              "hinge_over_weight": 0.29643538124055213,
+              "hinge_per_trench_length_n_per_m": 8979791013988.979
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621709,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 14.0,
+              "first_segment_length_m": 133337.6658378485,
+              "hinge_force_n": 3.956822230774593e+19,
+              "hinge_over_weight": 0.2572899148405995,
+              "hinge_per_trench_length_n_per_m": 7793974037804.709
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621709,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 16.0,
+              "first_segment_length_m": 133337.6658378486,
+              "hinge_force_n": 3.4379210257278923e+19,
+              "hinge_over_weight": 0.22354868537146197,
+              "hinge_per_trench_length_n_per_m": 6771865314075.707
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621709,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 18.0,
+              "first_segment_length_m": 133337.6658378488,
+              "hinge_force_n": 3.020574204419917e+19,
+              "hinge_over_weight": 0.1964109668057474,
+              "hinge_per_trench_length_n_per_m": 5949793939542.939
+            },
+            {
+              "active_buoyant_weight_n": 1.5378846983668167e+20,
+              "body_length_m": 933361.9482621704,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 20.0,
+              "first_segment_length_m": 133337.66583784908,
+              "hinge_force_n": 2.6797679434179854e+19,
+              "hinge_over_weight": 0.17425025076742173,
+              "hinge_per_trench_length_n_per_m": 5278488787264.121
+            }
+          ]
+        }
+      },
+      "convergence_speed_m_per_s": 1.0636741604097762e-09,
+      "post_transfer_convergence_speed_m_per_s": 1.0636741604097762e-09,
+      "side": "A",
+      "thickness_m": 52633.499884478704,
+      "width_m": 5076771.120332205
+    },
+    {
+      "bending_rigidity_nm2": 1.6490247744349414e+30,
+      "cases": {
+        "measured_conveyor": {
+          "0.5_myr": [
+            {
+              "active_buoyant_weight_n": 9.037301554265973e+19,
+              "body_length_m": 940649.654193947,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 0.5,
+              "first_segment_length_m": 134378.63070791468,
+              "hinge_force_n": 4.850609849621687e+18,
+              "hinge_over_weight": 0.053673210089266114,
+              "hinge_per_trench_length_n_per_m": 1703716554422.4858
+            },
+            {
+              "active_buoyant_weight_n": 9.107328325091007e+19,
+              "body_length_m": 947937.7455881104,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 1.0,
+              "first_segment_length_m": 135419.55809670442,
+              "hinge_force_n": 4.878299335922827e+18,
+              "hinge_over_weight": 0.05356454891917032,
+              "hinge_per_trench_length_n_per_m": 1713442143092.2046
+            },
+            {
+              "active_buoyant_weight_n": 9.177353814983331e+19,
+              "body_length_m": 955224.4261129893,
+              "down_dip_alignment": 0.9999999999999998,
+              "elapsed_myr": 1.5,
+              "first_segment_length_m": 136460.52917640776,
+              "hinge_force_n": 4.79325339269479e+18,
+              "hinge_over_weight": 0.05222914458053393,
+              "hinge_per_trench_length_n_per_m": 1683570810237.9692
+            },
+            {
+              "active_buoyant_weight_n": 9.247378421941035e+19,
+              "body_length_m": 962508.2985235547,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 2.0,
+              "first_segment_length_m": 137501.3081663555,
+              "hinge_force_n": 4.739860104399081e+18,
+              "hinge_over_weight": 0.05125625759137236,
+              "hinge_per_trench_length_n_per_m": 1664817079885.5793
+            },
+            {
+              "active_buoyant_weight_n": 9.31740244223204e+19,
+              "body_length_m": 969788.0916012021,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 2.5,
+              "first_segment_length_m": 138541.69305852777,
+              "hinge_force_n": 4.705321913363156e+18,
+              "hinge_over_weight": 0.05050036147452237,
+              "hinge_per_trench_length_n_per_m": 1652685968612.5708
+            },
+            {
+              "active_buoyant_weight_n": 9.387426264951005e+19,
+              "body_length_m": 977062.6657186127,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 3.0,
+              "first_segment_length_m": 139581.49954989876,
+              "hinge_force_n": 4.68478430326361e+18,
+              "hinge_over_weight": 0.04990488522668637,
+              "hinge_per_trench_length_n_per_m": 1645472387764.0513
+            },
+            {
+              "active_buoyant_weight_n": 9.45745036027367e+19,
+              "body_length_m": 984331.0179471315,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 3.5,
+              "first_segment_length_m": 140620.5638155267,
+              "hinge_force_n": 4.676071487390636e+18,
+              "hinge_over_weight": 0.04944325700119588,
+              "hinge_per_trench_length_n_per_m": 1642412119241.408
+            },
+            {
+              "active_buoyant_weight_n": 9.527475259230205e+19,
+              "body_length_m": 991592.2752523926,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 4.0,
+              "first_segment_length_m": 141658.74260008478,
+              "hinge_force_n": 4.677922660889632e+18,
+              "hinge_over_weight": 0.04909928951384751,
+              "hinge_per_trench_length_n_per_m": 1643062320975.4421
+            },
+            {
+              "active_buoyant_weight_n": 9.597501539073656e+19,
+              "body_length_m": 998845.6822327904,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 4.5,
+              "first_segment_length_m": 142695.911644525,
+              "hinge_force_n": 4.689381937471277e+18,
+              "hinge_over_weight": 0.04886044475616612,
+              "hinge_per_trench_length_n_per_m": 1647087249761.5364
+            },
+            {
+              "active_buoyant_weight_n": 9.667529812817299e+19,
+              "body_length_m": 1006090.587450776,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 5.0,
+              "first_segment_length_m": 143731.96360835235,
+              "hinge_force_n": 4.709592974244237e+18,
+              "hinge_over_weight": 0.0487155774580619,
+              "hinge_per_trench_length_n_per_m": 1654186125779.12
+            },
+            {
+              "active_buoyant_weight_n": 9.737560721342849e+19,
+              "body_length_m": 1013326.4301716428,
+              "down_dip_alignment": 0.9999999999999998,
+              "elapsed_myr": 5.5,
+              "first_segment_length_m": 144766.80597103058,
+              "hinge_force_n": 4.737737050303302e+18,
+              "hinge_over_weight": 0.04865424910695652,
+              "hinge_per_trench_length_n_per_m": 1664071383463.6755
+            },
+            {
+              "active_buoyant_weight_n": 9.807594927184655e+19,
+              "body_length_m": 1020552.7282128147,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 6.0,
+              "first_segment_length_m": 145800.359083208,
+              "hinge_force_n": 4.773020484154077e+18,
+              "hinge_over_weight": 0.04866657442105645,
+              "hinge_per_trench_length_n_per_m": 1676464252033.2073
+            },
+            {
+              "active_buoyant_weight_n": 8.357951266737219e+19,
+              "body_length_m": 1027769.0671087931,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 6.5,
+              "first_segment_length_m": 146832.55441823252,
+              "hinge_force_n": 4.814677422718154e+18,
+              "hinge_over_weight": 0.057605952332834186,
+              "hinge_per_trench_length_n_per_m": 1691095735091.7163
+            },
+            {
+              "active_buoyant_weight_n": 8.41715928912217e+19,
+              "body_length_m": 1034979.2153956878,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 7.0,
+              "first_segment_length_m": 147863.34214948115,
+              "hinge_force_n": 4.82208658028804e+18,
+              "hinge_over_weight": 0.05728876470853788,
+              "hinge_per_trench_length_n_per_m": 1693698109802.831
+            },
+            {
+              "active_buoyant_weight_n": 8.476405460293853e+19,
+              "body_length_m": 1042178.8695233716,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 7.5,
+              "first_segment_length_m": 148893.22118772694,
+              "hinge_force_n": 4.635554845748126e+18,
+              "hinge_over_weight": 0.054687743141388426,
+              "hinge_per_trench_length_n_per_m": 1628181151335.1082
+            },
+            {
+              "active_buoyant_weight_n": 8.535662107561134e+19,
+              "body_length_m": 1049367.4542450677,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 8.0,
+              "first_segment_length_m": 149921.5738320933,
+              "hinge_force_n": 4.504275124680524e+18,
+              "hinge_over_weight": 0.05277007299399197,
+              "hinge_per_trench_length_n_per_m": 1582070777386.916
+            },
+            {
+              "active_buoyant_weight_n": 8.59492515351535e+19,
+              "body_length_m": 1056544.522776996,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 8.5,
+              "first_segment_length_m": 150948.32858058866,
+              "hinge_force_n": 4.3944745813039933e+18,
+              "hinge_over_weight": 0.05112871261603297,
+              "hinge_per_trench_length_n_per_m": 1543504698226.835
+            },
+            {
+              "active_buoyant_weight_n": 8.654194202954269e+19,
+              "body_length_m": 1063709.6513134353,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 9.0,
+              "first_segment_length_m": 151973.43363798258,
+              "hinge_force_n": 4.29727452366915e+18,
+              "hinge_over_weight": 0.04965539740490451,
+              "hinge_per_trench_length_n_per_m": 1509364383417.5088
+            },
+            {
+              "active_buoyant_weight_n": 8.713469631865428e+19,
+              "body_length_m": 1070862.4488229444,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 9.5,
+              "first_segment_length_m": 152996.836382621,
+              "hinge_force_n": 4.209843417277129e+18,
+              "hinge_over_weight": 0.04831420312617607,
+              "hinge_per_trench_length_n_per_m": 1478655291581.7312
+            },
+            {
+              "active_buoyant_weight_n": 8.772752031881644e+19,
+              "body_length_m": 1078002.5613931408,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 10.0,
+              "first_segment_length_m": 154018.48510950615,
+              "hinge_force_n": 4.1308691894928486e+18,
+              "hinge_over_weight": 0.047087495172331115,
+              "hinge_per_trench_length_n_per_m": 1450916573478.212
+            },
+            {
+              "active_buoyant_weight_n": 8.832042068364376e+19,
+              "body_length_m": 1085129.6712615686,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 10.5,
+              "first_segment_length_m": 155038.3309896265,
+              "hinge_force_n": 4.0594755679261343e+18,
+              "hinge_over_weight": 0.04596304610534896,
+              "hinge_per_trench_length_n_per_m": 1425840449297.0696
+            },
+            {
+              "active_buoyant_weight_n": 8.891340435019045e+19,
+              "body_length_m": 1092243.4937166437,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 11.0,
+              "first_segment_length_m": 156056.32902463188,
+              "hinge_force_n": 3.9949610324369464e+18,
+              "hinge_over_weight": 0.04493091971490111,
+              "hinge_per_trench_length_n_per_m": 1403180518789.0781
+            },
+            {
+              "active_buoyant_weight_n": 8.950647836701526e+19,
+              "body_length_m": 1099343.7733810118,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 11.5,
+              "first_segment_length_m": 157072.43828797792,
+              "hinge_force_n": 3.936732808574758e+18,
+              "hinge_over_weight": 0.04398265779637147,
+              "hinge_per_trench_length_n_per_m": 1382728577279.8333
+            },
+            {
+              "active_buoyant_weight_n": 9.009964982040093e+19,
+              "body_length_m": 1106430.280508443,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 12.0,
+              "first_segment_length_m": 158086.62177201215,
+              "hinge_force_n": 3.8842850441473987e+18,
+              "hinge_over_weight": 0.04311098935334479,
+              "hinge_per_trench_length_n_per_m": 1364306950460.2053
+            },
+            {
+              "active_buoyant_weight_n": 9.069292579971033e+19,
+              "body_length_m": 1113502.8075431145,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 12.5,
+              "first_segment_length_m": 159098.84605113606,
+              "hinge_force_n": 3.8371863048933007e+18,
+              "hinge_over_weight": 0.04230965393450298,
+              "hinge_per_trench_length_n_per_m": 1347764102396.2876
+            },
+            {
+              "active_buoyant_weight_n": 9.128631338003092e+19,
+              "body_length_m": 1120561.1660249033,
+              "down_dip_alignment": 0.9999999999999998,
+              "elapsed_myr": 13.0,
+              "first_segment_length_m": 160109.0808801054,
+              "hinge_force_n": 3.795069307247114e+18,
+              "hinge_over_weight": 0.041573256348385886,
+              "hinge_per_trench_length_n_per_m": 1332971029290.6497
+            },
+            {
+              "active_buoyant_weight_n": 9.187981961307439e+19,
+              "body_length_m": 1127605.183852372,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 13.5,
+              "first_segment_length_m": 161117.29878882653,
+              "hinge_force_n": 3.757621916029012e+18,
+              "hinge_over_weight": 0.040897140763370705,
+              "hinge_per_trench_length_n_per_m": 1319818097532.3486
+            },
+            {
+              "active_buoyant_weight_n": 9.24734515222776e+19,
+              "body_length_m": 1134634.7028846324,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 14.0,
+              "first_segment_length_m": 162123.47470233936,
+              "hinge_force_n": 3.724579452949229e+18,
+              "hinge_over_weight": 0.04027728382185397,
+              "hinge_per_trench_length_n_per_m": 1308212342154.5356
+            },
+            {
+              "active_buoyant_weight_n": 7.614508582995129e+19,
+              "body_length_m": 1141649.5768515815,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 14.5,
+              "first_segment_length_m": 163127.5855973782,
+              "hinge_force_n": 3.6957183538348867e+18,
+              "hinge_over_weight": 0.04853521817662978,
+              "hinge_per_trench_length_n_per_m": 1298075239014.037
+            },
+            {
+              "active_buoyant_weight_n": 7.662998210643491e+19,
+              "body_length_m": 1148666.5266613974,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 15.0,
+              "first_segment_length_m": 164129.59421866902,
+              "hinge_force_n": 3.634128280368227e+18,
+              "hinge_over_weight": 0.04742436550905909,
+              "hinge_per_trench_length_n_per_m": 1276442489523.4902
+            },
+            {
+              "active_buoyant_weight_n": 7.711543409689498e+19,
+              "body_length_m": 1155678.5318351826,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 15.5,
+              "first_segment_length_m": 165131.80373011585,
+              "hinge_force_n": 3.425523983856011e+18,
+              "hinge_over_weight": 0.044420731387595704,
+              "hinge_per_trench_length_n_per_m": 1203172817397.7805
+            },
+            {
+              "active_buoyant_weight_n": 7.76012161923192e+19,
+              "body_length_m": 1162684.5446867037,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 16.0,
+              "first_segment_length_m": 166133.24090206524,
+              "hinge_force_n": 3.254190108513239e+18,
+              "hinge_over_weight": 0.041934782316405655,
+              "hinge_per_trench_length_n_per_m": 1142993918495.4897
+            },
+            {
+              "active_buoyant_weight_n": 7.808722819989553e+19,
+              "body_length_m": 1169683.8785523362,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 16.5,
+              "first_segment_length_m": 167133.7878797223,
+              "hinge_force_n": 3.104099592292998e+18,
+              "hinge_over_weight": 0.03975169389220491,
+              "hinge_per_trench_length_n_per_m": 1090276486033.6345
+            },
+            {
+              "active_buoyant_weight_n": 7.8573425273525e+19,
+              "body_length_m": 1176676.0257680842,
+              "down_dip_alignment": 0.9999999999999998,
+              "elapsed_myr": 17.0,
+              "first_segment_length_m": 168133.3737385814,
+              "hinge_force_n": 2.970762610008361e+18,
+              "hinge_over_weight": 0.03780874512809801,
+              "hinge_per_trench_length_n_per_m": 1043443524596.2616
+            },
+            {
+              "active_buoyant_weight_n": 7.905978445223302e+19,
+              "body_length_m": 1183660.5956663725,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 17.5,
+              "first_segment_length_m": 169131.942256826,
+              "hinge_force_n": 2.851912540533129e+18,
+              "hinge_over_weight": 0.03607286005511716,
+              "hinge_per_trench_length_n_per_m": 1001698911622.4915
+            },
+            {
+              "active_buoyant_weight_n": 7.9546293566615e+19,
+              "body_length_m": 1190637.2761681825,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 18.0,
+              "first_segment_length_m": 170129.44588789015,
+              "hinge_force_n": 2.745639968595445e+18,
+              "hinge_over_weight": 0.034516252681165406,
+              "hinge_per_trench_length_n_per_m": 964371988677.8625
+            },
+            {
+              "active_buoyant_weight_n": 8.003294628837253e+19,
+              "body_length_m": 1197605.8105129173,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 18.5,
+              "first_segment_length_m": 171125.84334961028,
+              "hinge_force_n": 2.650169693937062e+18,
+              "hinge_over_weight": 0.033113484094263415,
+              "hinge_per_trench_length_n_per_m": 930839238686.965
+            },
+            {
+              "active_buoyant_weight_n": 8.051973962330507e+19,
+              "body_length_m": 1204565.9824012157,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 19.0,
+              "first_segment_length_m": 172121.09846260835,
+              "hinge_force_n": 2.563896353472858e+18,
+              "hinge_over_weight": 0.03184183611953437,
+              "hinge_per_trench_length_n_per_m": 900536797775.199
+            },
+            {
+              "active_buoyant_weight_n": 8.100667255778489e+19,
+              "body_length_m": 1211517.6058319863,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 19.5,
+              "first_segment_length_m": 173115.1793680822,
+              "hinge_force_n": 2.4854163705866015e+18,
+              "hinge_over_weight": 0.030681625255174715,
+              "hinge_per_trench_length_n_per_m": 872971677062.6896
+            },
+            {
+              "active_buoyant_weight_n": 8.14937452964732e+19,
+              "body_length_m": 1218460.5177763912,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 20.0,
+              "first_segment_length_m": 174108.0578590508,
+              "hinge_force_n": 2.413530258598423e+18,
+              "hinge_over_weight": 0.02961614108933184,
+              "hinge_per_trench_length_n_per_m": 847722571728.6705
+            }
+          ],
+          "1_myr": [
+            {
+              "active_buoyant_weight_n": 9.107327888974877e+19,
+              "body_length_m": 947938.2745836385,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 1.0,
+              "first_segment_length_m": 135419.56043736436,
+              "hinge_force_n": 4.850609849621687e+18,
+              "hinge_over_weight": 0.053260516243120275,
+              "hinge_per_trench_length_n_per_m": 1703716554422.4858
+            },
+            {
+              "active_buoyant_weight_n": 9.247376714869716e+19,
+              "body_length_m": 962508.9720873567,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 2.0,
+              "first_segment_length_m": 137501.13715045073,
+              "hinge_force_n": 4.946554553759908e+18,
+              "hinge_over_weight": 0.05349143553118025,
+              "hinge_per_trench_length_n_per_m": 1737415941884.498
+            },
+            {
+              "active_buoyant_weight_n": 9.387418711614492e+19,
+              "body_length_m": 977063.472249095,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 3.0,
+              "first_segment_length_m": 139581.97002079315,
+              "hinge_force_n": 4.837531734260956e+18,
+              "hinge_over_weight": 0.051532075886588154,
+              "hinge_per_trench_length_n_per_m": 1699123028591.4065
+            },
+            {
+              "active_buoyant_weight_n": 9.527458225100556e+19,
+              "body_length_m": 991593.9668981403,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 4.0,
+              "first_segment_length_m": 141660.5377539912,
+              "hinge_force_n": 4.792435021955147e+18,
+              "hinge_over_weight": 0.050301296617908456,
+              "hinge_per_trench_length_n_per_m": 1683283367664.765
+            },
+            {
+              "active_buoyant_weight_n": 9.66749997945974e+19,
+              "body_length_m": 1006094.5202719232,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 5.0,
+              "first_segment_length_m": 143735.7146894531,
+              "hinge_force_n": 4.79018167996898e+18,
+              "hinge_over_weight": 0.04954933219701621,
+              "hinge_per_trench_length_n_per_m": 1682491909237.1392
+            },
+            {
+              "active_buoyant_weight_n": 9.807549137867643e+19,
+              "body_length_m": 1020560.675691428,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 6.0,
+              "first_segment_length_m": 145806.65524539756,
+              "hinge_force_n": 4.821371770107898e+18,
+              "hinge_over_weight": 0.04915980233524642,
+              "hinge_per_trench_length_n_per_m": 1693447041591.8364
+            },
+            {
+              "active_buoyant_weight_n": 8.417106742149528e+19,
+              "body_length_m": 1034989.1009814811,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 7.0,
+              "first_segment_length_m": 147872.7274395029,
+              "hinge_force_n": 4.879102184447894e+18,
+              "hinge_over_weight": 0.05796650005654897,
+              "hinge_per_trench_length_n_per_m": 1713724133680.0388
+            },
+            {
+              "active_buoyant_weight_n": 8.535479204434767e+19,
+              "body_length_m": 1049384.5883499288,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 8.0,
+              "first_segment_length_m": 149933.39087682843,
+              "hinge_force_n": 4.867042301915326e+18,
+              "hinge_over_weight": 0.05702131286766611,
+              "hinge_per_trench_length_n_per_m": 1709488249502.1497
+            },
+            {
+              "active_buoyant_weight_n": 8.653948193421533e+19,
+              "body_length_m": 1063735.9548891135,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 9.0,
+              "first_segment_length_m": 151989.22726901536,
+              "hinge_force_n": 4.571608717768366e+18,
+              "hinge_over_weight": 0.052826855622310785,
+              "hinge_per_trench_length_n_per_m": 1605720866915.6484
+            },
+            {
+              "active_buoyant_weight_n": 8.77244630962687e+19,
+              "body_length_m": 1078040.5131289787,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 10.0,
+              "first_segment_length_m": 154038.73395539474,
+              "hinge_force_n": 4.3620528699318815e+18,
+              "hinge_over_weight": 0.04972447497507019,
+              "hinge_per_trench_length_n_per_m": 1532116974188.0354
+            },
+            {
+              "active_buoyant_weight_n": 8.890971569015626e+19,
+              "body_length_m": 1092295.7920967694,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 11.0,
+              "first_segment_length_m": 156081.59132576335,
+              "hinge_force_n": 4.191514846531051e+18,
+              "hinge_over_weight": 0.047143496230920005,
+              "hinge_per_trench_length_n_per_m": 1472217608410.525
+            },
+            {
+              "active_buoyant_weight_n": 9.009528309027558e+19,
+              "body_length_m": 1106499.6705219704,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 12.0,
+              "first_segment_length_m": 158117.4706513806,
+              "hinge_force_n": 4.0494466688640543e+18,
+              "hinge_over_weight": 0.044946267218079594,
+              "hinge_per_trench_length_n_per_m": 1422317922875.772
+            },
+            {
+              "active_buoyant_weight_n": 9.12812183051087e+19,
+              "body_length_m": 1120650.355919637,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 13.0,
+              "first_segment_length_m": 160146.07139217152,
+              "hinge_force_n": 3.930878197741922e+18,
+              "hinge_over_weight": 0.043063384458815045,
+              "hinge_per_trench_length_n_per_m": 1380672217831.2617
+            },
+            {
+              "active_buoyant_weight_n": 9.246757597799472e+19,
+              "body_length_m": 1134746.321164317,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 14.0,
+              "first_segment_length_m": 162167.13247371677,
+              "hinge_force_n": 3.832385334273468e+18,
+              "hinge_over_weight": 0.04144572077011614,
+              "hinge_per_trench_length_n_per_m": 1346077821005.7231
+            },
+            {
+              "active_buoyant_weight_n": 7.66245933732171e+19,
+              "body_length_m": 1148786.2421872972,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 15.0,
+              "first_segment_length_m": 164180.42925950684,
+              "hinge_force_n": 3.751414751999806e+18,
+              "hinge_over_weight": 0.048958364238589916,
+              "hinge_per_trench_length_n_per_m": 1317637908145.7712
+            },
+            {
+              "active_buoyant_weight_n": 7.759325451347614e+19,
+              "body_length_m": 1162820.4781004363,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 16.0,
+              "first_segment_length_m": 166185.46537792022,
+              "hinge_force_n": 3.5816661409013376e+18,
+              "hinge_over_weight": 0.04615950398470895,
+              "hinge_per_trench_length_n_per_m": 1258015813649.5005
+            },
+            {
+              "active_buoyant_weight_n": 7.856384562373424e+19,
+              "body_length_m": 1176827.9813252732,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 17.0,
+              "first_segment_length_m": 168189.3263646737,
+              "hinge_force_n": 3.228722801958559e+18,
+              "hinge_over_weight": 0.04109680192364664,
+              "hinge_per_trench_length_n_per_m": 1134048842903.1611
+            },
+            {
+              "active_buoyant_weight_n": 7.95354752184791e+19,
+              "body_length_m": 1190805.5505013096,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 18.0,
+              "first_segment_length_m": 170189.30775445062,
+              "hinge_force_n": 2.954977117037086e+18,
+              "hinge_over_weight": 0.03715294475729156,
+              "hinge_per_trench_length_n_per_m": 1037899065955.2562
+            },
+            {
+              "active_buoyant_weight_n": 8.05078219168997e+19,
+              "body_length_m": 1204751.0748458237,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 19.0,
+              "first_segment_length_m": 172185.08753766934,
+              "hinge_force_n": 2.732117749957116e+18,
+              "hinge_over_weight": 0.03393605347784979,
+              "hinge_per_trench_length_n_per_m": 959622477078.112
+            },
+            {
+              "active_buoyant_weight_n": 8.148077942667908e+19,
+              "body_length_m": 1218663.0261440473,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 20.0,
+              "first_segment_length_m": 174176.41013854012,
+              "hinge_force_n": 2.547182651059622e+18,
+              "hinge_over_weight": 0.03126114734029659,
+              "hinge_per_trench_length_n_per_m": 894666317078.9742
+            }
+          ],
+          "2_myr": [
+            {
+              "active_buoyant_weight_n": 9.247376078493454e+19,
+              "body_length_m": 962509.4536241412,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 2.0,
+              "first_segment_length_m": 137500.37658140657,
+              "hinge_force_n": 4.850609849621687e+18,
+              "hinge_over_weight": 0.05245390485310434,
+              "hinge_per_trench_length_n_per_m": 1703716554422.4858
+            },
+            {
+              "active_buoyant_weight_n": 9.52743944221936e+19,
+              "body_length_m": 991596.8500823694,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 4.0,
+              "first_segment_length_m": 141661.46674003443,
+              "hinge_force_n": 5.097490119781448e+18,
+              "hinge_over_weight": 0.05350325395082246,
+              "hinge_per_trench_length_n_per_m": 1790430187609.1013
+            },
+            {
+              "active_buoyant_weight_n": 8.29850179700116e+19,
+              "body_length_m": 1020575.9774196936,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 6.0,
+              "first_segment_length_m": 145814.4179022607,
+              "hinge_force_n": 4.987909793009327e+18,
+              "hinge_over_weight": 0.06010614825451763,
+              "hinge_per_trench_length_n_per_m": 1751941456800.284
+            },
+            {
+              "active_buoyant_weight_n": 8.5351488775743e+19,
+              "body_length_m": 1049417.9337890302,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 8.0,
+              "first_segment_length_m": 149951.60502831358,
+              "hinge_force_n": 4.999686082236559e+18,
+              "hinge_over_weight": 0.058577608357517914,
+              "hinge_per_trench_length_n_per_m": 1756077732346.681
+            },
+            {
+              "active_buoyant_weight_n": 8.771923998207608e+19,
+              "body_length_m": 1078091.2258838543,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 10.0,
+              "first_segment_length_m": 154069.17923570465,
+              "hinge_force_n": 4.4739446102079575e+18,
+              "hinge_over_weight": 0.05100300243278591,
+              "hinge_per_trench_length_n_per_m": 1571417560324.9229
+            },
+            {
+              "active_buoyant_weight_n": 9.008777395028489e+19,
+              "body_length_m": 1106578.5226545238,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 12.0,
+              "first_segment_length_m": 158163.04288794074,
+              "hinge_force_n": 4.11924927925364e+18,
+              "hinge_over_weight": 0.04572484254663519,
+              "hinge_per_trench_length_n_per_m": 1446835224112.0105
+            },
+            {
+              "active_buoyant_weight_n": 9.245747868329764e+19,
+              "body_length_m": 1134866.1453054338,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 14.0,
+              "first_segment_length_m": 162230.76804373148,
+              "hinge_force_n": 3.857373308434802e+18,
+              "hinge_over_weight": 0.041720511562377625,
+              "hinge_per_trench_length_n_per_m": 1354854537039.3713
+            },
+            {
+              "active_buoyant_weight_n": 7.758299139864794e+19,
+              "body_length_m": 1162943.1804725255,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 16.0,
+              "first_segment_length_m": 166270.34826918624,
+              "hinge_force_n": 3.664883918624592e+18,
+              "hinge_over_weight": 0.04723823936864158,
+              "hinge_per_trench_length_n_per_m": 1287245026042.3333
+            },
+            {
+              "active_buoyant_weight_n": 7.951746338940933e+19,
+              "body_length_m": 1190952.3130796626,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 18.0,
+              "first_segment_length_m": 170278.36447721435,
+              "hinge_force_n": 3.356188802123248e+18,
+              "hinge_over_weight": 0.04220693994836671,
+              "hinge_per_trench_length_n_per_m": 1178819694680.3943
+            },
+            {
+              "active_buoyant_weight_n": 8.145804102900112e+19,
+              "body_length_m": 1218834.4853632408,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 20.0,
+              "first_segment_length_m": 174276.12764288118,
+              "hinge_force_n": 2.7963712262311726e+18,
+              "hinge_over_weight": 0.034328977113942546,
+              "hinge_per_trench_length_n_per_m": 982190713774.3372
+            }
+          ]
+        },
+        "no_conveyor": {
+          "0.5_myr": [
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621723,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 0.5,
+              "first_segment_length_m": 133337.66583784856,
+              "hinge_force_n": 4.7925463961824944e+19,
+              "hinge_over_weight": 0.5344483342244929,
+              "hinge_per_trench_length_n_per_m": 16833224864809.037
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621723,
+              "down_dip_alignment": 0.9999999999999997,
+              "elapsed_myr": 1.0,
+              "first_segment_length_m": 133337.6658378485,
+              "hinge_force_n": 4.584062896509993e+19,
+              "hinge_over_weight": 0.5111989695022201,
+              "hinge_per_trench_length_n_per_m": 16100952427470.713
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621725,
+              "down_dip_alignment": 0.9999999999999998,
+              "elapsed_myr": 1.5,
+              "first_segment_length_m": 133337.6658378484,
+              "hinge_force_n": 4.408838562358239e+19,
+              "hinge_over_weight": 0.49165855282986476,
+              "hinge_per_trench_length_n_per_m": 15485498684359.867
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621726,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 2.0,
+              "first_segment_length_m": 133337.66583784856,
+              "hinge_force_n": 4.24939626020237e+19,
+              "hinge_over_weight": 0.4738780942285668,
+              "hinge_per_trench_length_n_per_m": 14925477371412.232
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621722,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 2.5,
+              "first_segment_length_m": 133337.6658378484,
+              "hinge_force_n": 4.09894287639787e+19,
+              "hinge_over_weight": 0.4571000489671159,
+              "hinge_per_trench_length_n_per_m": 14397028519405.309
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621723,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 3.0,
+              "first_segment_length_m": 133337.66583784806,
+              "hinge_force_n": 3.954626884574057e+19,
+              "hinge_over_weight": 0.441006424606248,
+              "hinge_per_trench_length_n_per_m": 13890136495596.578
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621723,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 3.5,
+              "first_segment_length_m": 133337.6658378479,
+              "hinge_force_n": 3.815216947297779e+19,
+              "hinge_over_weight": 0.4254599066192762,
+              "hinge_per_trench_length_n_per_m": 13400476379957.467
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621722,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 4.0,
+              "first_segment_length_m": 133337.6658378479,
+              "hinge_force_n": 3.6801726107391455e+19,
+              "hinge_over_weight": 0.41040022544901067,
+              "hinge_per_trench_length_n_per_m": 12926149895435.342
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621722,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 4.5,
+              "first_segment_length_m": 133337.66583784833,
+              "hinge_force_n": 3.549251922013038e+19,
+              "hinge_over_weight": 0.39580039933967426,
+              "hinge_per_trench_length_n_per_m": 12466307212527.215
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621723,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 5.0,
+              "first_segment_length_m": 133337.66583784865,
+              "hinge_force_n": 3.422342115218525e+19,
+              "hinge_over_weight": 0.381647853024816,
+              "hinge_per_trench_length_n_per_m": 12020552254990.824
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621724,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 5.5,
+              "first_segment_length_m": 133337.6658378489,
+              "hinge_force_n": 3.2993848756960784e+19,
+              "hinge_over_weight": 0.36793608345364226,
+              "hinge_per_trench_length_n_per_m": 11588680199816.521
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621723,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 6.0,
+              "first_segment_length_m": 133337.66583784897,
+              "hinge_force_n": 3.180342257047949e+19,
+              "hinge_over_weight": 0.35466085897404354,
+              "hinge_per_trench_length_n_per_m": 11170557764988.168
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621728,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 6.5,
+              "first_segment_length_m": 133337.66583784876,
+              "hinge_force_n": 3.0651805377912435e+19,
+              "hinge_over_weight": 0.3418184190819225,
+              "hinge_per_trench_length_n_per_m": 10766066507979.102
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621731,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 7.0,
+              "first_segment_length_m": 133337.66583784836,
+              "hinge_force_n": 2.953862370623827e+19,
+              "hinge_over_weight": 0.32940459893425755,
+              "hinge_per_trench_length_n_per_m": 10375075251022.229
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621729,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 7.5,
+              "first_segment_length_m": 133337.6658378482,
+              "hinge_force_n": 2.846343025657802e+19,
+              "hinge_over_weight": 0.3174144104073873,
+              "hinge_per_trench_length_n_per_m": 9997426885933.525
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.948262173,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 8.0,
+              "first_segment_length_m": 133337.66583784865,
+              "hinge_force_n": 2.7425688110659973e+19,
+              "hinge_over_weight": 0.3058418659729248,
+              "hinge_per_trench_length_n_per_m": 9632932826828.693
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621731,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 8.5,
+              "first_segment_length_m": 133337.66583784856,
+              "hinge_force_n": 2.642476729542634e+19,
+              "hinge_over_weight": 0.2946799403874293,
+              "hinge_per_trench_length_n_per_m": 9281371803483.848
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621728,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 9.0,
+              "first_segment_length_m": 133337.66583784856,
+              "hinge_force_n": 2.5459948634315555e+19,
+              "hinge_over_weight": 0.28392061364058546,
+              "hinge_per_trench_length_n_per_m": 8942491214050.668
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621734,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 9.5,
+              "first_segment_length_m": 133337.66583784897,
+              "hinge_force_n": 2.4530431890712805e+19,
+              "hinge_over_weight": 0.2735549617681701,
+              "hinge_per_trench_length_n_per_m": 8616009985342.406
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621736,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 10.0,
+              "first_segment_length_m": 133337.66583784908,
+              "hinge_force_n": 2.3635346302016246e+19,
+              "hinge_over_weight": 0.2635732743243453,
+              "hinge_per_trench_length_n_per_m": 8301622272794.001
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621733,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 10.5,
+              "first_segment_length_m": 133337.6658378492,
+              "hinge_force_n": 2.2773762241897746e+19,
+              "hinge_over_weight": 0.25396518443518956,
+              "hinge_per_trench_length_n_per_m": 7999001556686.539
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621729,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 11.0,
+              "first_segment_length_m": 133337.6658378495,
+              "hinge_force_n": 2.1944703158170755e+19,
+              "hinge_over_weight": 0.2447198019257053,
+              "hinge_per_trench_length_n_per_m": 7707804835175.289
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.948262173,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 11.5,
+              "first_segment_length_m": 133337.66583784972,
+              "hinge_force_n": 2.1147157214157513e+19,
+              "hinge_over_weight": 0.2358258431403526,
+              "hinge_per_trench_length_n_per_m": 7427676713175.568
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621729,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 12.0,
+              "first_segment_length_m": 133337.66583785007,
+              "hinge_force_n": 2.0380088260634292e+19,
+              "hinge_over_weight": 0.2272717532984188,
+              "hinge_per_trench_length_n_per_m": 7158253256122.4375
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.948262173,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 12.5,
+              "first_segment_length_m": 133337.6658378501,
+              "hinge_force_n": 1.964244590924926e+19,
+              "hinge_over_weight": 0.2190458188293192,
+              "hinge_per_trench_length_n_per_m": 6899165528133.797
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.948262173,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 13.0,
+              "first_segment_length_m": 133337.66583785033,
+              "hinge_force_n": 1.8933174582219055e+19,
+              "hinge_over_weight": 0.2111362682917086,
+              "hinge_per_trench_length_n_per_m": 6650042770604.078
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621733,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 13.5,
+              "first_segment_length_m": 133337.66583785054,
+              "hinge_force_n": 1.8251221487600654e+19,
+              "hinge_over_weight": 0.24053698554693445,
+              "hinge_per_trench_length_n_per_m": 6410515203419.587
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621732,
+              "down_dip_alignment": 0.9999999999999998,
+              "elapsed_myr": 14.0,
+              "first_segment_length_m": 133337.665837851,
+              "hinge_force_n": 1.759554352183723e+19,
+              "hinge_over_weight": 0.23189565699358655,
+              "hinge_per_trench_length_n_per_m": 6180216449392.126
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621738,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 14.5,
+              "first_segment_length_m": 133337.66583785112,
+              "hinge_force_n": 1.6934334897453672e+19,
+              "hinge_over_weight": 0.2231814386364806,
+              "hinge_per_trench_length_n_per_m": 5947975120113.283
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621741,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 15.0,
+              "first_segment_length_m": 133337.66583785095,
+              "hinge_force_n": 1.6273664787020913e+19,
+              "hinge_over_weight": 0.21447431747681361,
+              "hinge_per_trench_length_n_per_m": 5715922937181.231
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621741,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 15.5,
+              "first_segment_length_m": 133337.66583785074,
+              "hinge_force_n": 1.5634267047901745e+19,
+              "hinge_over_weight": 0.2060475497211466,
+              "hinge_per_trench_length_n_per_m": 5491342410861.928
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621744,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 16.0,
+              "first_segment_length_m": 133337.66583785112,
+              "hinge_force_n": 1.5027739741079435e+19,
+              "hinge_over_weight": 0.19805398884446482,
+              "hinge_per_trench_length_n_per_m": 5278307216241.39
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621746,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 16.5,
+              "first_segment_length_m": 133337.66583785135,
+              "hinge_force_n": 1.4456786953171538e+19,
+              "hinge_over_weight": 0.19052927261731883,
+              "hinge_per_trench_length_n_per_m": 5077767130209.069
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621746,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 17.0,
+              "first_segment_length_m": 133337.665837851,
+              "hinge_force_n": 1.391970546388233e+19,
+              "hinge_over_weight": 0.18345095391331043,
+              "hinge_per_trench_length_n_per_m": 4889123917758.727
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621741,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 17.5,
+              "first_segment_length_m": 133337.6658378506,
+              "hinge_force_n": 1.3413366056515525e+19,
+              "hinge_over_weight": 0.17677779207620403,
+              "hinge_per_trench_length_n_per_m": 4711278480333.044
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.948262174,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 18.0,
+              "first_segment_length_m": 133337.6658378505,
+              "hinge_force_n": 1.2934561738474658e+19,
+              "hinge_over_weight": 0.17046752142354393,
+              "hinge_per_trench_length_n_per_m": 4543104401554.307
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621738,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 18.5,
+              "first_segment_length_m": 133337.6658378507,
+              "hinge_force_n": 1.2480466844614488e+19,
+              "hinge_over_weight": 0.16448290187380116,
+              "hinge_per_trench_length_n_per_m": 4383609201582.9814
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621741,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 19.0,
+              "first_segment_length_m": 133337.665837851,
+              "hinge_force_n": 1.204871760845655e+19,
+              "hinge_over_weight": 0.15879278081268886,
+              "hinge_per_trench_length_n_per_m": 4231962636757.96
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621741,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 19.5,
+              "first_segment_length_m": 133337.6658378507,
+              "hinge_force_n": 1.1637361437739674e+19,
+              "hinge_over_weight": 0.15337142458414332,
+              "hinge_per_trench_length_n_per_m": 4087478883262.7485
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621744,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 20.0,
+              "first_segment_length_m": 133337.66583785103,
+              "hinge_force_n": 1.1244776140947364e+19,
+              "hinge_over_weight": 0.14819745395841702,
+              "hinge_per_trench_length_n_per_m": 3949588166444.9263
+            }
+          ],
+          "1_myr": [
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621725,
+              "down_dip_alignment": 0.9999999999999998,
+              "elapsed_myr": 1.0,
+              "first_segment_length_m": 133337.66583784836,
+              "hinge_force_n": 4.7925463961824944e+19,
+              "hinge_over_weight": 0.5344483342244929,
+              "hinge_per_trench_length_n_per_m": 16833224864809.037
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621725,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 2.0,
+              "first_segment_length_m": 133337.66583784838,
+              "hinge_force_n": 4.417636155104832e+19,
+              "hinge_over_weight": 0.49263963019457163,
+              "hinge_per_trench_length_n_per_m": 15516399137841.209
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621726,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 3.0,
+              "first_segment_length_m": 133337.6658378483,
+              "hinge_force_n": 4.105647049447943e+19,
+              "hinge_over_weight": 0.45784767534832704,
+              "hinge_per_trench_length_n_per_m": 14420576095819.877
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621728,
+              "down_dip_alignment": 0.9999999999999998,
+              "elapsed_myr": 4.0,
+              "first_segment_length_m": 133337.66583784873,
+              "hinge_force_n": 3.821428979846456e+19,
+              "hinge_over_weight": 0.4261526511799618,
+              "hinge_per_trench_length_n_per_m": 13422295373894.113
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621728,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 5.0,
+              "first_segment_length_m": 133337.6658378491,
+              "hinge_force_n": 3.5558088768271348e+19,
+              "hinge_over_weight": 0.39653160844821217,
+              "hinge_per_trench_length_n_per_m": 12489337703145.312
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621729,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 6.0,
+              "first_segment_length_m": 133337.66583784952,
+              "hinge_force_n": 3.3063653150969254e+19,
+              "hinge_over_weight": 0.36871451811061484,
+              "hinge_per_trench_length_n_per_m": 11613198127526.773
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621729,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 7.0,
+              "first_segment_length_m": 133337.66583784987,
+              "hinge_force_n": 3.0723962986084872e+19,
+              "hinge_over_weight": 0.34262309597602836,
+              "hinge_per_trench_length_n_per_m": 10791410972980.857
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621726,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 8.0,
+              "first_segment_length_m": 133337.6658378499,
+              "hinge_force_n": 2.853530883393121e+19,
+              "hinge_over_weight": 0.3182159756455129,
+              "hinge_per_trench_length_n_per_m": 10022673344820.447
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621728,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 9.0,
+              "first_segment_length_m": 133337.66583785022,
+              "hinge_force_n": 2.649357028774378e+19,
+              "hinge_over_weight": 0.2954472077562545,
+              "hinge_per_trench_length_n_per_m": 9305538001269.094
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621726,
+              "down_dip_alignment": 0.9999999999999998,
+              "elapsed_myr": 10.0,
+              "first_segment_length_m": 133337.66583785007,
+              "hinge_force_n": 2.459341789082969e+19,
+              "hinge_over_weight": 0.27425736003537826,
+              "hinge_per_trench_length_n_per_m": 8638133036757.14
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621723,
+              "down_dip_alignment": 0.9999999999999998,
+              "elapsed_myr": 11.0,
+              "first_segment_length_m": 133337.66583785045,
+              "hinge_force_n": 2.2828375718427894e+19,
+              "hinge_over_weight": 0.25457421519138623,
+              "hinge_per_trench_length_n_per_m": 8018183863024.006
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621725,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 12.0,
+              "first_segment_length_m": 133337.66583785068,
+              "hinge_force_n": 2.1191124004138246e+19,
+              "hinge_over_weight": 0.23631614570028436,
+              "hinge_per_trench_length_n_per_m": 7443119502898.356
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621726,
+              "down_dip_alignment": 0.9999999999999996,
+              "elapsed_myr": 13.0,
+              "first_segment_length_m": 133337.66583785112,
+              "hinge_force_n": 1.9673838029580853e+19,
+              "hinge_over_weight": 0.2592859714616359,
+              "hinge_per_trench_length_n_per_m": 6910191621088.176
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621725,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 14.0,
+              "first_segment_length_m": 133337.6658378507,
+              "hinge_force_n": 1.8268491775122053e+19,
+              "hinge_over_weight": 0.24076459458136254,
+              "hinge_per_trench_length_n_per_m": 6416581177732.516
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621728,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 15.0,
+              "first_segment_length_m": 133337.66583785103,
+              "hinge_force_n": 1.6891423543224678e+19,
+              "hinge_over_weight": 0.22261590017106933,
+              "hinge_per_trench_length_n_per_m": 5932903039109.216
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621726,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 16.0,
+              "first_segment_length_m": 133337.6658378515,
+              "hinge_force_n": 1.5609978967408525e+19,
+              "hinge_over_weight": 0.2057274516022054,
+              "hinge_per_trench_length_n_per_m": 5482811523799.413
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621722,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 17.0,
+              "first_segment_length_m": 133337.66583785124,
+              "hinge_force_n": 1.4453622707855434e+19,
+              "hinge_over_weight": 0.19048757031096178,
+              "hinge_per_trench_length_n_per_m": 5076655728283.449
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.948262172,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 18.0,
+              "first_segment_length_m": 133337.6658378514,
+              "hinge_force_n": 1.3413825212065296e+19,
+              "hinge_over_weight": 0.17678384339128528,
+              "hinge_per_trench_length_n_per_m": 4711439753025.644
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621717,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 19.0,
+              "first_segment_length_m": 133337.6658378511,
+              "hinge_force_n": 1.2473807724918862e+19,
+              "hinge_over_weight": 0.16439513982570644,
+              "hinge_per_trench_length_n_per_m": 4381270268373.5405
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621718,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 20.0,
+              "first_segment_length_m": 133337.6658378507,
+              "hinge_force_n": 1.1618686404947397e+19,
+              "hinge_over_weight": 0.15312530209333383,
+              "hinge_per_trench_length_n_per_m": 4080919509594.4937
+            }
+          ],
+          "2_myr": [
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621718,
+              "down_dip_alignment": 0.9999999999999998,
+              "elapsed_myr": 2.0,
+              "first_segment_length_m": 133337.6658378484,
+              "hinge_force_n": 4.7925463961824944e+19,
+              "hinge_over_weight": 0.5344483342244929,
+              "hinge_per_trench_length_n_per_m": 16833224864809.037
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621717,
+              "down_dip_alignment": 1.0000000000000002,
+              "elapsed_myr": 4.0,
+              "first_segment_length_m": 133337.66583784818,
+              "hinge_force_n": 4.119352210411752e+19,
+              "hinge_over_weight": 0.45937602788618054,
+              "hinge_per_trench_length_n_per_m": 14468713774047.877
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621715,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 6.0,
+              "first_segment_length_m": 133337.66583784815,
+              "hinge_force_n": 3.5681512170827567e+19,
+              "hinge_over_weight": 0.3979079838955742,
+              "hinge_per_trench_length_n_per_m": 12532688642647.193
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621714,
+              "down_dip_alignment": 0.9999999999999999,
+              "elapsed_myr": 8.0,
+              "first_segment_length_m": 133337.66583784815,
+              "hinge_force_n": 3.084817380856545e+19,
+              "hinge_over_weight": 0.3440082524602781,
+              "hinge_per_trench_length_n_per_m": 10835038483965.914
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.948262171,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 10.0,
+              "first_segment_length_m": 133337.6658378479,
+              "hinge_force_n": 2.660580329586714e+19,
+              "hinge_over_weight": 0.29669879176354363,
+              "hinge_per_trench_length_n_per_m": 9344958453505.076
+            },
+            {
+              "active_buoyant_weight_n": 8.967277263828845e+19,
+              "body_length_m": 933361.9482621709,
+              "down_dip_alignment": 0.9999999999999998,
+              "elapsed_myr": 12.0,
+              "first_segment_length_m": 133337.6658378482,
+              "hinge_force_n": 2.291200165156253e+19,
+              "hinge_over_weight": 0.2555067829114896,
+              "hinge_per_trench_length_n_per_m": 8047556434943.312
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621711,
+              "down_dip_alignment": 0.9999999999999998,
+              "elapsed_myr": 14.0,
+              "first_segment_length_m": 133337.66583784838,
+              "hinge_force_n": 1.9715770897140994e+19,
+              "hinge_over_weight": 0.2598386142294149,
+              "hinge_per_trench_length_n_per_m": 6924920020784.595
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621709,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 16.0,
+              "first_segment_length_m": 133337.6658378485,
+              "hinge_force_n": 1.6959057835557204e+19,
+              "hinge_over_weight": 0.22350726784245056,
+              "hinge_per_trench_length_n_per_m": 5956658745518.496
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.948262171,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 18.0,
+              "first_segment_length_m": 133337.66583784873,
+              "hinge_force_n": 1.4487038037898076e+19,
+              "hinge_over_weight": 0.19092795852086727,
+              "hinge_per_trench_length_n_per_m": 5088392448557.825
+            },
+            {
+              "active_buoyant_weight_n": 7.587698601153131e+19,
+              "body_length_m": 933361.9482621707,
+              "down_dip_alignment": 1.0,
+              "elapsed_myr": 20.0,
+              "first_segment_length_m": 133337.6658378484,
+              "hinge_force_n": 1.2424297515519314e+19,
+              "hinge_over_weight": 0.16374263355203839,
+              "hinge_per_trench_length_n_per_m": 4363880421327.089
+            }
+          ]
+        }
+      },
+      "convergence_speed_m_per_s": 4.61931365273511e-10,
+      "post_transfer_convergence_speed_m_per_s": 4.61931365273511e-10,
+      "side": "B",
+      "thickness_m": 46305.9851840879,
+      "width_m": 2847075.6106880195
+    }
+  ],
+  "plate_id": 14,
+  "schema_version": 1,
+  "scope": "Body-only hinge audit; no shell, damage or rift outcome.",
+  "seed": 447276134
+}

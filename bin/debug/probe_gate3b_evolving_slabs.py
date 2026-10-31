@@ -25,10 +25,9 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from app import geometry, lithosphere, mantle, persistence, torque
+from app import elevation_lines, geometry, lithosphere, mantle, persistence, torque
 from app import slab_body as slab_model
 import probe_gate3b_crack_coupled as damage_model
-import probe_gate3b_component_shell as shell_audit
 import probe_gate3b_midplate_current as current_audit
 import probe_gate3b_slab_pull as slab_screen
 import probe_gate3b_m1_saved_plates as saved_screen
@@ -88,7 +87,7 @@ def _load_target(save_path: Path):
         np.linalg.norm(mantle.flow_at(points, native_centers), axis=1), 95.0
     )))
     source_geometry = current_audit._source_geometry(
-        plate, shell_audit.line_spacing_rad(float(world.node_density))
+        plate, elevation_lines.line_spacing_rad(float(world.node_density))
     )
     source_centers, source_scale = current_audit._scaled_source_centers(
         source_geometry["source_centers_unit_strength"], points, native_p95
@@ -125,14 +124,14 @@ def _midline_force(plate, source_centers):
     return coefficient * np.asarray(nodes.area_m2)[:, None] * velocity
 
 
-def _create_bodies(plate, initial):
+def _create_bodies(plate, initial, *, column_thickness=False):
     points = np.asarray(plate.surface_nodes().world_xyz, dtype=float)
     areas = np.asarray(plate.node_areas_m2(), dtype=float)
     hc = np.asarray(plate.collect("crustal_thickness_m"), dtype=float)
     hm = np.asarray(plate.collect("mantle_lithosphere_thickness_m"), dtype=float)
     crust_density = lithosphere.node_crust_density(plate.collect("crust_type_code"), plate.crust_type)
     source_mass_density = hc * crust_density + hm * AMBIENT_MANTLE_DENSITY_KG_M3
-    spacing_m = shell_audit.line_spacing_rad(float(initial["world"].node_density)) * lithosphere.PLANET_RADIUS_M
+    spacing_m = elevation_lines.line_spacing_rad(float(initial["world"].node_density)) * lithosphere.PLANET_RADIUS_M
     bodies = []
     source_records = []
     keys_seen: set[int] = set()
@@ -172,7 +171,12 @@ def _create_bodies(plate, initial):
             source_continental_material_m3=source_continental_volume,
             source_craton_crust_m3=source_craton_volume,
         )
+        # The registered rule spreads only the front's columns along the whole ribbon. The
+        # column-thickness scenario keeps a slab as thick as its source and books the
+        # missing length as antecedent material rather than as surface rock (#699).
         thickness = source_volume / (width * prototype.metrics()["length_m"])
+        if column_thickness:
+            thickness = source_volume / source_area
         body = slab_model.create_slab_body(
             body_id=side_index,
             plate_id=plate.plate_id,
@@ -194,7 +198,10 @@ def _create_bodies(plate, initial):
             source_continental_material_m3=source_continental_volume,
             source_craton_crust_m3=source_craton_volume,
         )
-        body.station_volume_m3[:] *= source_volume / body.consumed_volume_m3
+        if column_thickness:
+            body.antecedent_volume_m3 = body.consumed_volume_m3 - source_volume
+        else:
+            body.station_volume_m3[:] *= source_volume / body.consumed_volume_m3
         body.bending_rigidity_nm2 = BENDING_MODULUS_PA * body.width_m * body.thickness_m**3 / 12.0
         source_keys = set(map(int, body.source_cell_keys))
         if keys_seen.intersection(source_keys):

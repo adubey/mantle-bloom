@@ -21,7 +21,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 from scipy.sparse.csgraph import connected_components
 
-from app import cratons, geometry, lithosphere, torque, world as world_mod
+from app import elevation_lines, cratons, geometry, lithosphere, torque, world as world_mod
 import probe_gate3b_component_shell as shell_audit
 import probe_gate3b_midplate_current as current_audit
 import replay_gate2_capacity as capacity_audit
@@ -63,7 +63,7 @@ def _principal_axis(plate):
 
 
 def _field_and_inputs(world, plate):
-    spacing = shell_audit.line_spacing_rad(world.node_density)
+    spacing = elevation_lines.line_spacing_rad(world.node_density)
     reach = torque.boundary_force_reach_rad(spacing)
     cache = getattr(world, "boundary_search_cache", None)
     neighbors = plate.get_neighbours(world.plates)

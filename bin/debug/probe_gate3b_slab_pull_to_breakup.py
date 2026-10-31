@@ -24,7 +24,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 from scipy.sparse.csgraph import connected_components
 
-from app import cratons, geometry, lithosphere, mantle, orogeny, torque, world as world_mod
+from app import elevation_lines, cratons, geometry, lithosphere, mantle, orogeny, torque, world as world_mod
 from app.sparse_quad_patch import parent_cell_keys
 import probe_gate3b_component_shell as shell_audit
 import probe_gate3b_midplate_current as current_audit
@@ -136,7 +136,7 @@ def _weighted_stats(values, weights):
 
 def _slice_snapshot(world, plate, target_indices, target_bins, source_centers, native_centers):
     field, inputs, subducting, midline_force, native_basal = _force_components(world, plate, source_centers)
-    spacing = shell_audit.line_spacing_rad(world.node_density)
+    spacing = elevation_lines.line_spacing_rad(world.node_density)
     front_length = torque.boundary_node_length_m(inputs, spacing)
     hc = plate.collect("crustal_thickness_m")[target_indices]
     hm = plate.collect("mantle_lithosphere_thickness_m")[target_indices]
@@ -294,7 +294,7 @@ def run(out_path: Path):
     native_p95_cm_yr = float(mantle.rad_per_yr_to_cm_per_yr(
         np.percentile(np.linalg.norm(native_flow, axis=1), 95.0)
     ))
-    source_geometry = current_audit._source_geometry(target_plate, shell_audit.line_spacing_rad(DENSITY))
+    source_geometry = current_audit._source_geometry(target_plate, elevation_lines.line_spacing_rad(DENSITY))
     source_centers, source_scale = current_audit._scaled_source_centers(
         source_geometry["source_centers_unit_strength"], candidate["points"], native_p95_cm_yr
     )

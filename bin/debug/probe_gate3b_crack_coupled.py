@@ -247,7 +247,7 @@ def _source_and_target(world):
      subducting, midline_force) = shared.add_native_midline_source(
         world, plate, candidate["points"], current_audit._source_geometry,
         current_audit._scaled_source_centers, slab_screen._field_and_inputs,
-        shell_audit.line_spacing_rad(DENSITY),
+        elevation_lines.line_spacing_rad(DENSITY),
     )
     # Keep the complete production force field (including the bilateral slab terms) and
     # scale only the new midline-current traction in the later sweep arms.
@@ -396,7 +396,7 @@ def run(out_path: Path):
         } for start, slab_factor, midline_factor in LOAD_RAMP],
         "slab_sink_length_km": float(torque.SUBDUCTION_LSINK_M / 1000.0),
         "active_slab_front_length_km": float(torque.boundary_node_length_m(
-            inputs, shell_audit.line_spacing_rad(DENSITY)
+            inputs, elevation_lines.line_spacing_rad(DENSITY)
         )[subducting].sum() / 1000.0),
         "shell_mesh_by_load_case": {
             factor: {key: shell[key] for key in (

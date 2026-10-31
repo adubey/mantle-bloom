@@ -405,7 +405,7 @@ def run(out_path: Path) -> dict:
     component_area, plate, component_indices = shell_audit._largest_continental_component(reference)
     _INITIAL_PLATE_ID = plate.plate_id
     initial_component_keys = plate.surface_nodes().node_ids[component_indices, 0].view(np.int64)
-    _CURRENT_GEOMETRY = _source_geometry(plate, shell_audit.line_spacing_rad(DENSITY))
+    _CURRENT_GEOMETRY = _source_geometry(plate, elevation_lines.line_spacing_rad(DENSITY))
     geometry_json = {key: value for key, value in _CURRENT_GEOMETRY.items() if key != "source_centers_unit_strength"}
     arms = []
     if out_path.exists():
