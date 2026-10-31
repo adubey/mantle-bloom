@@ -973,3 +973,85 @@ passing the registered `.mbworld` via `--save`, plus `--out` and `--image` paths
 is [`evolving-slabs-seed447276134-14.json`](evolving-slabs-seed447276134-14.json). The preregistration
 and numerical settings are in [issue comments 6540115898](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6540115898)
 and [6540154180](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6540154180).
+
+### Corrected hinge and controlled rerun (2026-10-31)
+
+This supersedes the table in the evolving slab-ribbon section above. The audit, frozen cases and
+cutoffs are in [issue comment 6550049780](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6550049780),
+and the rerun correction in [6550205892](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6550205892).
+
+**Result: a slab force event exists at the gross-pull bound, but no history made a viable rift.**
+All 28 histories passed every validity check over 20 Myr at both timesteps. No history produced a
+split. The event screen passed only for p10 capacity with both flanks at zero axial drag, an upper
+bound rather than an estimate of transmitted load.
+
+**Why the rerun needed new mechanics.** A body-only audit of `4f21d997` found the hinge load was
+3e-7 of active weight with no convergence, and with convergence was set by first-segment stretch
+rather than buoyancy. The registered volume rule also gave ribbons only 3.5 and 3.1 km thick. The
+hinge is now axial tension on an inextensible ribbon, `T = max(0, Δρ g A D_active − f (μ/δ) W L_active v)`,
+projected into the plate tangent plane, with elastic root shear reported but not applied.
+[`hinge-audit-seed447276134-14.json`](hinge-audit-seed447276134-14.json) and
+[`hinge-audit-column-thickness-seed447276134-14.json`](hinge-audit-column-thickness-seed447276134-14.json)
+record the corrected body-only response.
+
+| Case (2 Myr; column mass unless noted) | Axial drag `f` | Final T, flank A / B (TN/m) | Event window, p10 / median / p90 (Myr) | Peak footprint, p10 | Failed area, p10 / median / p90 | New pieces, p10 | Second piece, p10 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Registered mass, both flanks | 1 | 0 / 0 | 0 / 0 / 0 | 0.0% | 0 / 0 / 0 | 0 | — |
+| A: no slab force | — | not applied | 0 / 0 / 0 | 0.0% | 0 / 0 / 0 | 0 | — |
+| C: both flanks | 1 | 0 / 5.3 | 0 / 0 / 0 | 0.0% | 0.0% (1 cell) / 0 / 0 | 0 | — |
+| C: both flanks | 0.5 | 4.3 / 15.1 | 2 / 0 / 0 | 25.2% | 11.9% / 2.6% / 0.0% | 10 | 0.27% |
+| C: both flanks | 0 | 27.3 / 24.0 | **14** / 2 / 0 | 61.8% | 50.5% / 12.9% / 2.6% | 296 | 1.04% |
+| B: flank A only | 0 | 27.3 / not applied | 6 / 0 / 0 | 41.6% | 22.0% / 8.5% / 0.0% | 93 | 0.39% |
+| N: both flanks, current off | 0 | 27.3 / 24.0 | 14 / 2 / 0 | 61.4% | 50.0% / 13.3% / 2.6% | 291 | 1.04% |
+| D: both flanks, detached at 10 Myr | 0 | 0 / 0 | 10 / 2 / 0 | 61.8% | 47.9% / 12.4% / 2.4% | 0, links healed | — |
+
+T is per metre of trench. Capacity anchors are 2.2 / 4.1 / 7.1 TN/m oceanic and 6.2 / 13.8 /
+28.6 TN/m continental (p10 / median / p90). Largest residuals: shell 2.1e-4, path length 3e-15.
+
+- **Slab versus current.** Removing the midline current changed failed area by at most 8% wherever
+  at least 1% of the plate failed, usually under 3%, and current alone failed nothing. On this plate
+  the load is the slab's.
+- **Detachment.** Failed area stopped growing within one output of detachment at 10 Myr at both
+  timesteps, so the response follows the slab load.
+- **Timestep.** All 39 matched 1 vs 2 Myr comparisons met the frozen tolerances for event, split,
+  first failure and failed area. The p10 event window was 13 Myr at 1 Myr steps.
+- **The result depends on axial drag.** At `f = 1`, drag exceeds weight on flank A at the measured
+  3.4 cm/yr, so it transmits nothing. The stronger baseline flank, A, therefore has the weaker hinge
+  at `f` of 1 and 0.5. The fixed 20 km shear zone was not chosen for a sinking slab, and this screen
+  does not calibrate it.
+- **Registered mass cannot load the plate.** Its response equals the no-slab control. Thin
+  ribbons had zero hinge tension at `f = 1`. Their gross pull, about 1.8 TN/m before projection, is
+  below every capacity anchor. (The preregistration's 7e11 N/m figure was wrong; this is the corrected value.)
+
+**Three model limits this exposed:**
+
+1. **Damage fragments rather than localizes.** The strongest case failed half the plate and left
+   296 new pieces, with a second piece of 1.04% against the 10% daughter requirement. This repeats
+   the earlier crack-coupled result, now with an evolving slab and a valid hinge. Damage does not
+   weaken the shell, so a crack cannot concentrate load, and every over-capacity cell fails
+   independently. This is the main blocker.
+2. **Failed links heal.** The link rule rechecks current stress, so D reports 0 failed links once
+   load drops, even with 47.9% of the area failed. A crack needs to persist.
+3. **The load decays through hinge steepening.** Tension is constant at `f = 0`, but in-plane force
+   falls from 97 to 28 EN on flank A as dip goes from 53° to 79°. That ends the event: footprint
+   falls below 25% between 14 and 16 Myr. With a pinned hinge there is no rollback, so this
+   duration is partly a model artefact.
+
+The affine update kept 60–79% of the nonrigid displacement variance, so it stays too coarse to test
+a bounded footprint, and the geometry feedback stays small at maximum per-step strain 2.7e-3.
+
+**Next step.** Do not launch histories or tune the drag factor yet. A viable rift first needs a
+crack that persists and feeds back: failed links that stay failed, a softened shell around failed
+cells, and growth by the Gate 3a tip rule from a seed rather than simultaneous failure of every
+over-capacity cell. The strongest case here is a suitable frozen test load for that.
+
+Plate 14 has no cratons, the plate does not advect into the trench, and convergence speed is
+measured rather than a response to the slab. The first 8 Myr of invalid output were seen before the
+rerun, which changed only length preservation. Column-mass ribbons book 93% of their initial volume
+as antecedent material with no surface source in the save (2.3e17 and 1.1e17 m³).
+
+Reproduce with [`probe_gate3b_corrected_slabs.py`](../../bin/debug/probe_gate3b_corrected_slabs.py) on
+the registered save at the commit recorded in the issue. Output:
+[`corrected-slabs-seed447276134-14.json`](corrected-slabs-seed447276134-14.json), SHA-256
+`f6e2ea2db7b9cfaeb721a6fd06304e05c9b8e7cdde89d560049ee54bd530071a`. The stopped first attempt is kept as
+[`corrected-slabs-seed447276134-14-invalid-path-length.json`](corrected-slabs-seed447276134-14-invalid-path-length.json).
