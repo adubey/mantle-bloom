@@ -2,7 +2,7 @@
 
 - **Status:** Accepted (2026-10-23)
 - **Date:** 2026-10-23
-- **Related:** #544 (tracking); #368 (evidence), #353 and #359 (ice-sheet model, decision B), #355 (water units), #503 and #504 (lake freezing at `WATER_TO_ICE`), #297 (balanced lakes), RFC [0014](0014-lake-water-volume-and-freezing.md) (lake water volume and seasonal lake ice; its D2(b) and D2(c) are prerequisites here), RFC [0012](0012-physics-first-simulation.md) (physics-first simulation); superseded on acceptance: #197, #203, #358 item 4, #313 Stage E (see "Open issues this RFC supersedes"); design principles 3, 5, 6 and 8
+- **Related:** #544 (tracking); #368 (evidence), #353 and #359 (ice-sheet model, decision B), #355 (water units), #503 and #504 (lake freezing at `WATER_TO_ICE`), #297 (balanced lakes), RFC [0014](abandoned/0014-lake-water-volume-and-freezing.md) (lake water volume and seasonal lake ice; its D2(b) and D2(c) are prerequisites here), RFC [0012](0012-physics-first-simulation.md) (physics-first simulation); superseded on acceptance: #197, #203, #358 item 4, #313 Stage E (see "Open issues this RFC supersedes"); design principles 3, 5, 6 and 8
 
 ## Problem
 
@@ -1068,7 +1068,7 @@ withdrawal can be handled part by part.
 - `backend/app/main.py`: the inspector shows surface and bed elevation, sea-ice state, and
   `T_si` as the surface temperature on perennial sea ice.
 - `frontend/src/legendData.ts`: legend text for ice, lake ice and sea ice.
-- `rfc/0014-lake-water-volume-and-freezing.md`: a note on D2(b)'s snow bullet and the
+- `rfc/abandoned/0014-lake-water-volume-and-freezing.md`: a note on D2(b)'s snow bullet and the
   `IceLedger` fields, pointing here.
 - **Tests:**
   - `test_ice_sheet.py`: physical rates and every row of D1's units table, including

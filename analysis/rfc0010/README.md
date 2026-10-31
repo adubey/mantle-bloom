@@ -1,6 +1,6 @@
 # RFC 0010 probe: can a bent split cut avoid cratons?
 
-[RFC 0003](../../rfc/0003-rifting-around-cratons.md) tried to steer a plate split's cut off
+[RFC 0003](../../rfc/abandoned/0003-rifting-around-cratons.md) tried to steer a plate split's cut off
 cratons by tilting its great circle (PR #418). It rarely could: 12% of craton-crossing cuts
 had an admissible craton-free alternative. A great circle moves as a whole, so this probe
 asks whether a cut free to bend, a minimum cut through a strength graph

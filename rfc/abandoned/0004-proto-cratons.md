@@ -1,12 +1,12 @@
 # RFC 0004 (withdrawn): Proto-cratons: restarting craton formation
 
-- **Status:** Withdrawn (2026-10-15); superseded by [RFC 0009](0009-craton-mosaic.md) (PR #421)
+- **Status:** Withdrawn (2026-10-15); superseded by [RFC 0009](../0009-craton-mosaic.md) (PR #421)
 - **Date:** 2026-10-13; baseline audit 2026-10-14 (#403); gate revision 2026-10-14 (#409);
   withdrawn 2026-10-15
 - **Related:** #274 (craton formation), #314 (interior shortening), #403 (baseline audit),
   [#409](https://github.com/adubey/mantle-bloom/issues/409) (formation and ratchet diagnosis); RFCs
-  [0001](0001-merge-cap-craton-loss.md), [0003](0003-rifting-around-cratons.md),
-  [0006](0006-intra-oceanic-arcs.md)
+  [0001](../0001-merge-cap-craton-loss.md), [0003](0003-rifting-around-cratons.md),
+  [0006](../0006-intra-oceanic-arcs.md)
 
 ## Outcome
 
@@ -21,7 +21,7 @@ distance from the plate edge.
     lost by 500 Myr was destroyed or thinned, not converted;
   - this RFC's evaluation gate had one usable window on `2562f63`.
 
-  RFC 0003's follow-up probe ([analysis/rfc0010](../analysis/rfc0010/README.md), PR #421)
+  RFC 0003's follow-up probe ([analysis/rfc0010](../../analysis/rfc0010/README.md), PR #421)
   showed the same rule makes each continent's interior one craton. Splits then can't avoid
   cratons, and sutures and rift scars heal into craton after 200 quiet Myr.
 - **What landed and stays.** No model change. #409's diagnostics stay:
@@ -71,8 +71,8 @@ is a one-way drain.
 
 **Current-baseline audit (#403; diagnosed in #409).** Fresh replays at
 `2562f63`, default density and controls, 5 Myr steps to 1 Gyr, are recorded in
-[analysis/issue403](../analysis/issue403/README.md) and
-[tuning.json](../analysis/issue403/tuning.json), including the full commit and controls.
+[analysis/issue403](../../analysis/issue403/README.md) and
+[tuning.json](../../analysis/issue403/tuning.json), including the full commit and controls.
 Formation still shuts off on every tuning seed: each has no positive `formed_m3` increment
 between 500 Myr and 1 Gyr. Last-positive times below come from the 5 Myr stats samples.
 
@@ -97,7 +97,7 @@ excludes cells thinned below 28 km. With cratonic area restricted to the genuine
 share is 93.6% (#409). It is not evidence for super-unity craton production.
 
 **Formation and denominator diagnosis (#409).** The same runs, decomposed in
-[analysis/issue409](../analysis/issue409/README.md) with `bin/debug/rfc0004_gates.py`, give
+[analysis/issue409](../../analysis/issue409/README.md) with `bin/debug/rfc0004_gates.py`, give
 three results. That analysis adds replays at `2562f63` that match #403's trajectories and
 record the cratonic area inside the genuine set.
 

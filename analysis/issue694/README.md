@@ -1,7 +1,7 @@
 # Body-level lake sublimation: causal probe
 
 Probe for [#694](https://github.com/adubey/mantle-bloom/issues/694), under
-[RFC 0014](../../rfc/0014-lake-water-volume-and-freezing.md). It tests whether charging lake
+[RFC 0014](../../rfc/abandoned/0014-lake-water-volume-and-freezing.md). It tests whether charging lake
 sublimation inside the lake solve, per body, changes the G8 events and the step-length dependence
 of the current scheme. D2(c) charges sublimation to the ice reservoir, so a design change would
 need an RFC revision. This report authorizes no implementation.
