@@ -451,8 +451,9 @@ plates.py          PlateSurface / Plate (ABC) -- node iteration and bulk field a
 sparse_quad_patch.py
                    PlateWithSparseQuadPatch, the cell-backed PlateSurface implementation
                    and the only one. Its row/column intervals are derived topology caches used
-                   by cell-native algorithms; they do not expose row ends through the shared
-                   surface API.
+                   by cell-native algorithms; it also owns the RFC 0010 finite-strain geometry
+                   primitive, which updates mapped cell areas and preserves extensive column
+                   volumes. The regular step does not invoke this primitive yet.
 layout_lattice.py  the whole-sphere cell lattice a cratons-first world is laid out on
 continent_layout.py
                    cratons-first layout for random worlds, behind a flag (RFC 0009): cratonic
@@ -477,6 +478,10 @@ torque.py            slab-pull/ridge-push load assembly, coupled quasi-static so
 thin_shell.py        offline thin-shell membrane equilibrium diagnostic that transfers
                      `torque.PerNodeForceField` loads to incremental extensional resultants
                      and compares them with integrated normal-fault capacity for rift analysis
+slab_body.py         standalone reduced-order 3-D slab-ribbon geometry, buoyant attachment
+                     force, implicit bending/viscous-drag advance, and a controlled shell-to-
+                     geometry coupling for RFC 0010 Gate 3b; World stepping does not create
+                     or advance these bodies yet
 quad_tectonics.py  the tectonic engine, `deform()`: boundary retreat and advance on the cell
                    graph, rift opening, interior subduction, gap filling
 mantle.py           cubed-sphere convection-cell flow field, per-plate Euler-pole

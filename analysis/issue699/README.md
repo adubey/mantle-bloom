@@ -919,3 +919,49 @@ and its `--case`, `--out`, and `--image` arguments. The result JSON files are
 [`m1-saved-373936961-0.json`](m1-saved-373936961-0.json),
 [`m1-saved-295569319-11.json`](m1-saved-295569319-11.json), and
 [`m1-saved-373936961-40.json`](m1-saved-373936961-40.json).
+
+### Evolving slab-ribbon mini-simulation (preregistered 2026-10-30)
+
+This experiment implements the preregistered M1 sequence on seed 447276134, plate 14: transfer
+material from its two measured active subduction fronts into 3D slab ribbons, advance the ribbons
+and their loads, solve the shell response under native-strength midline mantle flow, and feed the
+resulting strain to the existing local cracking/link diagnostic. It runs 20 Myr in 2 Myr steps at
+p10, median, and p90 rock-damage capacities, with three arms: no slab pull, the stronger flank
+only, and both flanks. A viable rift requires two connected daughters each at least 10% of initial
+plate area. This remains a mini-simulation rather than production-world stepping.
+
+| Capacity | Load arm | Failed cells / links | Components at 20 Myr | Two largest area fractions | Maximum slab length / depth (km) | Max shell strain | Max equilibrium residual |
+|---|---|---:|---:|---:|---:|---:|---:|
+| p10 | No slab pull | 0 / 0 | 2 | 99.9580% / 0.0420% | 1,599 / 1,176 | 1.20e-4 | 6.37e-5 |
+| p10 | Stronger flank only | 13 / 8 | 2 | 99.9583% / 0.0417% | 1,600 / 1,177 | 9.76e-4 | 5.59e-5 |
+| p10 | Both flanks | 1 / 0 | 2 | 99.9589% / 0.0411% | 1,607 / 1,182 | 5.30e-3 | 3.32e-4 |
+| Median | No slab pull | 0 / 0 | 2 | 99.9580% / 0.0420% | 1,599 / 1,176 | 1.20e-4 | 6.37e-5 |
+| Median | Stronger flank only | 0 / 0 | 2 | 99.9583% / 0.0417% | 1,600 / 1,177 | 9.76e-4 | 5.59e-5 |
+| Median | Both flanks | 0 / 0 | 2 | 99.9589% / 0.0411% | 1,607 / 1,182 | 5.30e-3 | 3.32e-4 |
+| p90 | No slab pull | 0 / 0 | 2 | 99.9580% / 0.0420% | 1,599 / 1,176 | 1.20e-4 | 6.37e-5 |
+| p90 | Stronger flank only | 0 / 0 | 2 | 99.9583% / 0.0417% | 1,600 / 1,177 | 9.76e-4 | 5.59e-5 |
+| p90 | Both flanks | 0 / 0 | 2 | 99.9589% / 0.0411% | 1,607 / 1,182 | 5.30e-3 | 3.32e-4 |
+
+No arm produced a viable split. The component count of two is inherited from a one-cell isolated
+component already present before damage; the secondary fragment is only 0.041–0.042% of plate
+area. Only the p10 one-flank arm accumulated a small crack/link cluster. The both-flank p10 run
+reached the largest shell strain but did not accumulate a connected crack path. The registered
+plate itself has zero craton cells (the saved world has cratons on other plates), so its map cannot
+show craton context. The active fronts initially contained 75 and 41 nodes, 933 km ribbon length,
+and 5.33e19 and 2.64e19 kg of transferred lithosphere. At 20 Myr, maximum slab depth was
+1,176–1,182 km; the model's down-dip advection carried part of each ribbon below the 660 km
+bookkeeping horizon into the deep reservoir while conserving total slab volume.
+
+All nine runs completed with material-volume relative residual 1.61e-16; maximum shell force,
+torque, equilibrium, and elastic-work residuals were 2.23e-14, 5.68e-14, 3.32e-4, and 3.49e-9.
+Maximum slab bending-work residual was 3.56e-13. These checks validate numerical accounting for
+this probe, not geological realism or Gate 3b closure. The body geometry and loads remain simplified
+and require calibration against the model's intended rift behavior.
+
+![Preregistered evolving slab-ribbon experiment, 20 Myr](evolving-slabs-seed447276134-14.png)
+
+Reproduce with [`probe_gate3b_evolving_slabs.py`](../../bin/debug/probe_gate3b_evolving_slabs.py),
+passing the registered `.mbworld` via `--save`, plus `--out` and `--image` paths. The compact result
+is [`evolving-slabs-seed447276134-14.json`](evolving-slabs-seed447276134-14.json). The preregistration
+and numerical settings are in [issue comments 6540115898](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6540115898)
+and [6540154180](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6540154180).

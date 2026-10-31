@@ -105,6 +105,31 @@ during the batch. `Plate.deform` then reconciles each rotated footprint against 
 minus every other live plate's territory. Deformation runs once per plate in a freshly
 randomized order every turn, as described below.
 
+Sparse quad patches also store a cumulative material-coordinate deformation gradient.
+`PlateWithSparseQuadPatch.apply_surface_strain()` accepts a symmetric logarithmic strain in
+the patch's local tangent plane, maps cell centers and boundary vertices onto the sphere,
+and recalculates each mapped cell's spherical area. The method rescales extensive
+thickness-equivalent fields by old-area/new-area to preserve each cell's represented volume,
+then updates elevation from the changed crust and mantle-lithosphere thickness. Cell keys
+and adjacency stay attached to their material columns. This is a homogeneous affine geometry
+primitive for RFC 0010 Gate 3b; the regular world step does not call it yet, and it does not
+model localized faulting, slab bending, or a time-dependent shell law.
+
+`slab_body.SlabBody` is a separate Gate 3b reduced-order ribbon: a 3-D centerline with
+material volume, density anomaly, temperature, width and thickness, attached at a trench.
+`advance_slab_body()` advances its bending under buoyancy and viscous mantle drag and reports
+the work balance; `attachment_force_local_n()` returns the equal-and-opposite hinge forces.
+`apply_slab_load_to_plate_geometry()` spreads attached hinge loads over the plate, solves the
+membrane response with the caller's effective viscosity and extensional capacity, and applies
+the fitted homogeneous strain to the sparse-quad geometry. It reports the local shell failure
+field and force/torque transfer residuals so a controlled case can audit its assumptions.
+The factory requires the caller to transfer the represented source-column volume and retain
+its source cell keys. This body is not yet created from `quad_tectonics` subduction, saved on
+`World`, or included in the regular motion/deformation step. Its current tests validate the
+reduced-order mechanics and a controlled two-sided load-to-geometry response; they do not
+establish a slab-driven rift. These routines therefore remain experimental model components,
+not a regular-step Gate 3b model.
+
 The G2 contact pilot's blocked-edge classification comes from the preceding frozen
 `collision_polarity_frame`, remapped by stable cell key. A newly created cell has no inherited
 blocked-edge classification until a later frame. Its candidate force capacity is 5×10¹² N/m

@@ -13,6 +13,7 @@ mesh and source/work accounting on that component. It does not score capacity or
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import time
 from pathlib import Path
@@ -170,6 +171,20 @@ def _plate_shell(plate, component_indices, force_points, source_force, cap, *, i
         thin_shell.lsmr = original_lsmr
     equilibrium = shell.equilibrium_residual_n / max(float(np.linalg.norm(shell.equilibrated_force_n)), 1.0)
 
+    local_shell_points = geometry.to_local(plate.frame, rep_points[used])
+    local_shell_displacement = geometry.to_local(plate.frame, shell.displacement_m)
+    strain_increment = thin_shell.fit_homogeneous_strain_tensor(local_shell_points, local_shell_displacement)
+    geometry_response = copy.deepcopy(plate)
+    old_points = plate.surface_nodes().local_xyz
+    old_areas = plate.node_areas_m2()
+    old_hc = plate.collect("crustal_thickness_m")
+    old_hm = plate.collect("mantle_lithosphere_thickness_m")
+    old_continental = plate.collect("continental_material_m")
+    geometry_response.apply_surface_strain(strain_increment)
+    new_points = geometry_response.surface_nodes().local_xyz
+    new_areas = geometry_response.node_areas_m2()
+    angular_change = np.arccos(np.clip(np.einsum("ij,ij->i", old_points, new_points), -1.0, 1.0))
+
     # Independently integrate element strain energy from the solved displacement field.
     first, second = thin_shell._tangent_basis(rep_points[used])
     displacement_dofs = np.column_stack((np.sum(shell.displacement_m * first, axis=1),
@@ -225,6 +240,27 @@ def _plate_shell(plate, component_indices, force_points, source_force, cap, *, i
         "incremental_external_work_j": external_work,
         "stored_elastic_energy_j": float(elastic_energy),
         "shell_energy_residual_fraction": float(energy_residual),
+        "affine_geometry_response": {
+            "method": "fit homogeneous strain to static thin-shell displacement, then apply once to a copied sparse-quad plate",
+            "strain_increment": strain_increment.tolist(),
+            "max_surface_shift_km": float(np.max(angular_change, initial=0.0) * lithosphere.PLANET_RADIUS_M / 1000.0),
+            "rms_surface_shift_km": float(np.sqrt(np.mean(angular_change**2)) * lithosphere.PLANET_RADIUS_M / 1000.0),
+            "area_ratio": float(new_areas.sum() / old_areas.sum()),
+            "crust_volume_residual_fraction": float(
+                abs(np.dot(geometry_response.collect("crustal_thickness_m"), new_areas) - np.dot(old_hc, old_areas))
+                / max(abs(np.dot(old_hc, old_areas)), 1.0)
+            ),
+            "mantle_lithosphere_volume_residual_fraction": float(
+                abs(np.dot(geometry_response.collect("mantle_lithosphere_thickness_m"), new_areas) - np.dot(old_hm, old_areas))
+                / max(abs(np.dot(old_hm, old_areas)), 1.0)
+            ),
+            "continental_material_volume_residual_fraction": float(
+                abs(np.dot(geometry_response.collect("continental_material_m"), new_areas) - np.dot(old_continental, old_areas))
+                / max(abs(np.dot(old_continental, old_areas)), 1.0)
+            ),
+            "time_integrated": False,
+            "slab_body_included": False,
+        },
         "accounting_checks": checks,
         "accounting_pass": bool(all(checks.values())),
         "continental_component_demand_quantiles_n_per_m": np.quantile(finite, [0.5, 0.9, 0.95, 0.99]).tolist(),

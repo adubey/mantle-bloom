@@ -18,6 +18,19 @@ def _octahedral_shell():
     return points, force
 
 
+def test_fit_homogeneous_strain_removes_translation_and_rigid_rotation():
+    points = np.random.default_rng(19).normal(size=(80, 3))
+    points /= np.linalg.norm(points, axis=1, keepdims=True)
+    expected = np.array([[0.0, 0.0, 0.0], [0.0, 0.025, -0.006], [0.0, -0.006, -0.012]])
+    rotation = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, -0.03], [0.0, 0.03, 0.0]])
+    position_m = points * 6.371e6
+    displacement = position_m @ (expected + rotation).T + np.array([120.0, -90.0, 45.0])
+
+    actual = thin_shell.fit_homogeneous_strain_tensor(points, displacement)
+
+    np.testing.assert_allclose(actual, expected, atol=1e-12)
+
+
 def _shallow_cap_uniaxial_case(grid_size, membrane_resultant_n_per_m):
     from app.thin_shell import _spherical_surface_triangles
 

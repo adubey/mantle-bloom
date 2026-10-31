@@ -36,6 +36,7 @@ class ThinShellResult:
     solver_stop_code: int
     equilibrium_residual_n: float
 
+
     @property
     def max_incremental_extensional_resultant_n_per_m(self) -> np.ndarray:
         """Largest positive principal stress increment, measured from zero load."""
@@ -50,6 +51,39 @@ class ThinShellResult:
     def extensional_failure_ratio(self) -> np.ndarray:
         """Incremental extensional resultant divided by additional column strength."""
         return self.failure_ratio
+
+
+def fit_homogeneous_strain_tensor(
+    points_xyz: np.ndarray,
+    displacement_m: np.ndarray,
+    *,
+    radius_m: float = lithosphere.PLANET_RADIUS_M,
+) -> np.ndarray:
+    """Fit a plate-wide symmetric strain increment from tangent shell displacements.
+
+    Coordinates and displacements must share the same local 3-D frame. Translation is
+    removed by centering the coordinates; rigid rotation is removed by taking the symmetric
+    part of the least-squares displacement gradient. The result is projected into the local
+    tangent plane at +x to match `PlateWithSparseQuadPatch.apply_surface_strain`.
+
+    This retains only the homogeneous part of a shell solve. It suits a controlled broad-
+    extension coupling screen, not local crack strain (#699).
+    """
+    points = geometry.normalize(np.asarray(points_xyz, dtype=float)) * float(radius_m)
+    displacement = np.asarray(displacement_m, dtype=float)
+    if points.ndim != 2 or points.shape[1] != 3 or displacement.shape != points.shape:
+        raise ValueError("points_xyz and displacement_m must have matching shape (N, 3)")
+    if len(points) < 4 or not np.all(np.isfinite(points)) or not np.all(np.isfinite(displacement)):
+        raise ValueError("strain fitting requires at least four finite point/displacement pairs")
+    centered = points - points.mean(axis=0)
+    design = np.column_stack((centered, np.ones(len(centered))))
+    coefficients, _residuals, rank, _singular_values = np.linalg.lstsq(design, displacement, rcond=None)
+    if rank < 4:
+        raise ValueError("strain fitting requires points spanning a three-dimensional patch")
+    gradient = coefficients[:3, :].T
+    strain = 0.5 * (gradient + gradient.T)
+    tangent_projection = np.diag([0.0, 1.0, 1.0])
+    return tangent_projection @ strain @ tangent_projection
 
 
 def _tangent_basis(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
