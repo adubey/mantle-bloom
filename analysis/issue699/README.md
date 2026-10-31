@@ -922,6 +922,14 @@ and its `--case`, `--out`, and `--image` arguments. The result JSON files are
 
 ### Evolving slab-ribbon mini-simulation (preregistered 2026-10-30)
 
+**Review status (2026-10-31):** The numerical results below are the original run and were
+produced before the review fixes to hinge-force calculation, convergence-work accounting,
+inventory sampling and shell-load footprint. They are retained as the historical result, but
+must not be treated as measurements from the corrected implementation. The corrected mechanics
+have unit-test coverage; this 20 Myr experiment has not yet been rerun with them. Its existing
+20 Myr/2 Myr schedule also lacks the review-requested halved-timestep and current-off controls,
+so it remains a mechanics screen rather than a discriminating history experiment.
+
 This experiment implements the preregistered M1 sequence on seed 447276134, plate 14: transfer
 material from its two measured active subduction fronts into 3D slab ribbons, advance the ribbons
 and their loads, solve the shell response under native-strength midline mantle flow, and feed the

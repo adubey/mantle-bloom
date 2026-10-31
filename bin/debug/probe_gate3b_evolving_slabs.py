@@ -131,7 +131,6 @@ def _create_bodies(plate, initial):
     hc = np.asarray(plate.collect("crustal_thickness_m"), dtype=float)
     hm = np.asarray(plate.collect("mantle_lithosphere_thickness_m"), dtype=float)
     crust_density = lithosphere.node_crust_density(plate.collect("crust_type_code"), plate.crust_type)
-    source_thickness = hc + hm
     source_mass_density = hc * crust_density + hm * AMBIENT_MANTLE_DENSITY_KG_M3
     spacing_m = shell_audit.line_spacing_rad(float(initial["world"].node_density)) * lithosphere.PLANET_RADIUS_M
     bodies = []
@@ -145,7 +144,11 @@ def _create_bodies(plate, initial):
         anchor_index = int(indices[np.argmax(np.linalg.norm(initial["force_field"].slab_pull_n[indices], axis=1))])
         trench = geometry.normalize(points[anchor_index])
         source_area = float(areas[indices].sum())
-        source_volume = float(np.dot(areas[indices], source_thickness[indices]))
+        source_crust_volume = float(np.dot(areas[indices], hc[indices]))
+        source_hm_volume = float(np.dot(areas[indices], hm[indices]))
+        source_volume = source_crust_volume + source_hm_volume
+        source_continental_volume = float(np.dot(areas[indices], plate.collect("continental_material_m")[indices]))
+        source_craton_volume = float(np.dot(areas[indices], plate.collect("craton_crust_m")[indices]))
         source_mass = float(np.dot(areas[indices], source_mass_density[indices]))
         width = source_area / spacing_m
         prototype = slab_model.create_slab_body(
@@ -164,6 +167,10 @@ def _create_bodies(plate, initial):
             surface_temperature_k=SURFACE_TEMP_K,
             geothermal_gradient_k_per_m=GEOTHERMAL_GRADIENT_K_PER_M,
             bending_modulus_pa=BENDING_MODULUS_PA,
+            source_crust_volume_m3=source_crust_volume,
+            source_mantle_lithosphere_volume_m3=source_hm_volume,
+            source_continental_material_m3=source_continental_volume,
+            source_craton_crust_m3=source_craton_volume,
         )
         thickness = source_volume / (width * prototype.metrics()["length_m"])
         body = slab_model.create_slab_body(
@@ -182,6 +189,10 @@ def _create_bodies(plate, initial):
             surface_temperature_k=SURFACE_TEMP_K,
             geothermal_gradient_k_per_m=GEOTHERMAL_GRADIENT_K_PER_M,
             bending_modulus_pa=BENDING_MODULUS_PA,
+            source_crust_volume_m3=source_crust_volume,
+            source_mantle_lithosphere_volume_m3=source_hm_volume,
+            source_continental_material_m3=source_continental_volume,
+            source_craton_crust_m3=source_craton_volume,
         )
         body.station_volume_m3[:] *= source_volume / body.consumed_volume_m3
         body.bending_rigidity_nm2 = BENDING_MODULUS_PA * body.width_m * body.thickness_m**3 / 12.0
@@ -203,9 +214,13 @@ def _create_bodies(plate, initial):
             "trench_world_xyz": trench.tolist(),
             "down_dip_world_xyz": down_dip.tolist(),
             "baseline_slab_force_n": initial["side_forces"][side_index].tolist(),
-            "body_scenario_initial_force_n": (geometry.to_world(plate.frame, slab_model.attachment_force_local_n(body)[0])).tolist(),
+            "body_scenario_initial_force_before_first_advance_n": [0.0, 0.0, 0.0],
             "slice_volume_km3": (body.station_volume_m3 / 1e9).tolist(),
-            "slice_mass_kg": (np.full(STATION_COUNT, source_mass / STATION_COUNT)).tolist(),
+            "slice_mass_kg": (body.station_volume_m3 * source_mass / max(source_volume, 1.0)).tolist(),
+            "source_crust_volume_m3": source_crust_volume,
+            "source_mantle_lithosphere_volume_m3": source_hm_volume,
+            "source_continental_material_m3": source_continental_volume,
+            "source_craton_crust_m3": source_craton_volume,
             "body_geometry": body.metrics(),
         })
     # Transfer the source columns out of the plate's extensive lithosphere and tracer fields.
@@ -255,10 +270,27 @@ def _surface_inventory(plate):
     areas = plate.node_areas_m2()
     hc = plate.collect("crustal_thickness_m")
     hm = plate.collect("mantle_lithosphere_thickness_m")
+    continental = plate.collect("continental_material_m")
+    craton = plate.collect("craton_crust_m")
     return {
         "crust_volume_m3": float(np.dot(areas, hc)),
         "mantle_lithosphere_volume_m3": float(np.dot(areas, hm)),
+        "continental_material_m3": float(np.dot(areas, continental)),
+        "craton_crust_m3": float(np.dot(areas, craton)),
     }
+
+
+def _combined_inventory(plate, bodies):
+    inventory = _surface_inventory(plate)
+    inventory["crust_volume_m3"] += sum(body.source_crust_volume_m3 for body in bodies)
+    inventory["mantle_lithosphere_volume_m3"] += sum(
+        body.source_mantle_lithosphere_volume_m3 for body in bodies
+    )
+    inventory["continental_material_m3"] += sum(
+        body.source_continental_material_m3 for body in bodies
+    )
+    inventory["craton_crust_m3"] += sum(body.source_craton_crust_m3 for body in bodies)
+    return inventory
 
 
 def _run_arm(initial, body_templates, source_records, arm_name, enabled, capacity_name, capacity_n_per_m, template):
@@ -291,6 +323,7 @@ def _run_arm(initial, body_templates, source_records, arm_name, enabled, capacit
         source_force_n = current_force.sum(axis=0)
         for side in side_rows:
             source_force_n += np.asarray(side["force_n"], dtype=float)
+        surface_inventory_before = _surface_inventory(plate)
         strain_response = slab_model.apply_slab_load_to_plate_geometry(
             plate,
             [body for body, active in zip(bodies, enabled) if active],
@@ -298,6 +331,10 @@ def _run_arm(initial, body_templates, source_records, arm_name, enabled, capacit
             effective_extensional_viscosity_pa_s=EXTENSIONAL_VISCOSITY_PA_S,
             load_spread_degrees=LOAD_SPREAD_DEG,
             extensional_capacity_resultant_n_per_m=capacity,
+            # Transferred trench columns remain a mechanical shell support in this
+            # reduced-order cutout; this reference thickness is not counted as surface
+            # material and is reported separately from the material ledger.
+            shell_support_thickness_m=initial_thickness,
             additional_force_local_n=geometry.to_local(plate.frame, current_force),
         )
         demand = np.asarray(strain_response["max_tensile_resultant_n_per_m"], dtype=float)
@@ -316,11 +353,10 @@ def _run_arm(initial, body_templates, source_records, arm_name, enabled, capacit
         order = np.argsort(component_area)[::-1]
         area_fraction = component_area[order] / max(float(areas.sum()), 1.0)
         viable = bool(components == 2 and len(area_fraction) == 2 and np.all(area_fraction >= 0.10))
-        volume_before = _surface_inventory(plate)
-        volume_after = _surface_inventory(plate)
+        surface_inventory_after = _surface_inventory(plate)
         surface_residual = max(
-            abs(volume_after[key] - value) / max(abs(value), 1.0)
-            for key, value in volume_before.items()
+            abs(surface_inventory_after[key] - value) / max(abs(value), 1.0)
+            for key, value in surface_inventory_before.items()
         )
         force_scale = max(float(strain_response["source_force_norm_sum_n"]), 1.0)
         torque_scale = max(float(strain_response["source_torque_norm_sum_nm"]), 1.0)
@@ -331,10 +367,11 @@ def _run_arm(initial, body_templates, source_records, arm_name, enabled, capacit
             / max(float(np.linalg.norm(strain_response["applied_resultant_force_n"])), 1.0)
         )
         work_resid = float(strain_response["work_residual_fraction"])
+        combined_inventory = _combined_inventory(plate, bodies)
+        initial_inventory = template._gate3b_initial_inventory
         material_residual = max(
-            abs(sum(body.consumed_volume_m3 for body in bodies) - sum(float(r["source_volume_m3"]) for r in source_records))
-            / max(sum(float(r["source_volume_m3"]) for r in source_records), 1.0),
-            surface_residual,
+            abs(combined_inventory[key] - value) / max(abs(value), 1.0)
+            for key, value in initial_inventory.items()
         )
         body_work_residual = max(float(row["work_residual_fraction"]) for row in bend_rows)
         valid = bool(
@@ -359,20 +396,23 @@ def _run_arm(initial, body_templates, source_records, arm_name, enabled, capacit
             "body_motion": bend_rows,
             "bodies": centerline,
             "shell": {
-                "plate_area_coverage": 1.0,
+                "shell_area_coverage_fraction": float(strain_response["shell_area_coverage_fraction"]),
                 "force_residual_fraction": force_resid,
                 "torque_residual_fraction": torque_resid,
                 "equilibrium_residual_fraction": equilibrium_resid,
                 "work_residual_fraction": work_resid,
                 "body_relaxation_work_residual_fraction": body_work_residual,
                 "surface_volume_residual_fraction": surface_residual,
+                "surface_inventory_before_geometry_update": surface_inventory_before,
+                "surface_inventory_after_geometry_update": surface_inventory_after,
                 "max_log_strain": strain_response["max_log_strain"],
                 "strain_increment": np.asarray(strain_response["strain_increment"]).tolist(),
                 "load_work_j": float(strain_response["load_work_j"]),
                 "stored_elastic_energy_j": float(strain_response["stored_elastic_energy_j"]),
             },
             "material_accounting": {
-                "source_volume_m3": sum(float(r["source_volume_m3"]) for r in source_records),
+                "initial_inventory": initial_inventory,
+                "combined_surface_and_slab_inventory": combined_inventory,
                 "slab_volume_m3": sum(body.consumed_volume_m3 for body in bodies),
                 "deep_reservoir_volume_m3": sum(body.metrics()["deep_reservoir_volume_m3"] for body in bodies),
                 "relative_residual": material_residual,
@@ -491,6 +531,7 @@ def run(save_path: Path, out_path: Path, image_path: Path):
     original_thickness = base_plate.collect("crustal_thickness_m") + base_plate.collect("mantle_lithosphere_thickness_m")
     original_craton = base_plate.collect("craton_crust_m") > 0.0
     original_continental = base_plate.collect("continental_material_m") > 0.0
+    original_inventory = _surface_inventory(base_plate)
     base_plate._gate3b_initial_thickness = np.asarray(original_thickness, dtype=float).copy()
     base_plate._gate3b_initial_craton = np.asarray(original_craton, dtype=bool).copy()
     bodies, source_records = _create_bodies(base_plate, initial)
@@ -498,6 +539,7 @@ def run(save_path: Path, out_path: Path, image_path: Path):
     # Retain material-frame damage support and the original craton mask on all clones.
     template._gate3b_initial_thickness = np.asarray(original_thickness, dtype=float).copy()
     template._gate3b_initial_craton = np.asarray(original_craton, dtype=bool).copy()
+    template._gate3b_initial_inventory = original_inventory
     capacity_fields, capacity_reference = damage_model._capacity_fields(original_continental)
     results = []
     for capacity_name in ("p10", "median", "p90"):
@@ -525,6 +567,7 @@ def run(save_path: Path, out_path: Path, image_path: Path):
             for record in source_records
         ],
         "initial_surface_inventory_after_transfer": _surface_inventory(base_plate),
+        "initial_surface_and_slab_inventory_before_transfer": original_inventory,
         "capacity_references_n_per_m": capacity_reference,
         "parameters": {
             "step_myr": 2.0, "steps": STEPS, "body_dip_degrees": DIP_DEG,

@@ -28,22 +28,34 @@ def _ribbon() -> slab_body.SlabBody:
 
 def test_ribbon_has_measured_3d_geometry_and_volume_scaled_attachment_force():
     body = _ribbon()
+    initial_metrics = body.metrics()
+    assert initial_metrics["dip_degrees"] == pytest.approx(45.0, abs=0.5)
+    assert body.consumed_volume_m3 == pytest.approx(
+        body.width_m * body.thickness_m * initial_metrics["length_m"]
+    )
+
+    slab_body.advance_slab_body(
+        body,
+        2_000_000.0,
+        mantle_viscosity_pa_s=1e21,
+        shear_zone_thickness_m=20_000.0,
+    )
 
     metrics = body.metrics()
     force_on_plate, reaction_on_slab = slab_body.attachment_force_local_n(body)
 
     assert metrics["station_count"] == 8
     assert metrics["length_m"] > metrics["max_depth_m"]
-    assert metrics["max_depth_m"] == pytest.approx(660_000.0)
-    assert metrics["dip_degrees"] == pytest.approx(45.0, abs=0.5)
+    assert metrics["force_active_depth_m"] == pytest.approx(660_000.0)
+    assert metrics["max_depth_m"] > metrics["force_active_depth_m"]
+    assert np.isfinite(metrics["dip_degrees"])
     assert metrics["width_m"] == 200_000.0
     assert metrics["thickness_m"] == 100_000.0
-    assert body.consumed_volume_m3 == pytest.approx(body.width_m * body.thickness_m * metrics["length_m"])
     np.testing.assert_allclose(force_on_plate + reaction_on_slab, np.zeros(3), atol=0.0)
-    assert force_on_plate[1] > 0.0
-    assert np.linalg.norm(force_on_plate) == pytest.approx(
-        np.dot(body.station_volume_m3, body.density_anomaly_kg_m3) * slab_body.GRAVITY_M_S2
-    )
+    assert np.linalg.norm(force_on_plate) > 0.0
+    assert np.dot(force_on_plate, body.trench_local_xyz) == pytest.approx(0.0, abs=1e-3)
+    buoyant_weight = np.dot(body.station_volume_m3, body.density_anomaly_kg_m3) * slab_body.GRAVITY_M_S2
+    assert np.linalg.norm(force_on_plate) != pytest.approx(buoyant_weight)
 
 
 def test_implicit_bending_and_drag_advance_is_finite_and_accounts_material():
@@ -56,6 +68,7 @@ def test_implicit_bending_and_drag_advance_is_finite_and_accounts_material():
         2_000_000.0,
         mantle_viscosity_pa_s=1e21,
         shear_zone_thickness_m=20_000.0,
+        convergence_speed_m_per_s=0.02 / slab_body.SECONDS_PER_YEAR,
     )
 
     assert not np.allclose(body.centerline_local_xyz_m, path_before)
@@ -63,6 +76,10 @@ def test_implicit_bending_and_drag_advance_is_finite_and_accounts_material():
     assert body.consumed_volume_m3 == pytest.approx(volume_before)
     assert 0.0 <= body.deep_reservoir_volume_m3 <= volume_before
     assert budget["work_residual_fraction"] < 0.05
+    assert budget["work_balance_excludes_kinematic_advection"] is False
+    assert budget["convergence_driver_work_j"] != 0.0
+    assert budget["beam_force_residual_n"] < 1e-8 * max(budget["convergence_driver_force_resultant_n"], 1.0)
+    assert np.linalg.norm(slab_body.attachment_force_local_n(body)[0]) > 0.0
     assert budget["max_station_displacement_m"] > 0.0
     assert body.metrics()["max_depth_m"] < PLANET_RADIUS_M
 
@@ -116,6 +133,13 @@ def test_attached_ribbons_drive_shell_strain_and_endogenous_patch_geometry():
         geothermal_gradient_k_per_m=3e-4,
         bending_modulus_pa=70e9,
     )
+    for ribbon in (body, opposite_body):
+        slab_body.advance_slab_body(
+            ribbon,
+            2_000_000.0,
+            mantle_viscosity_pa_s=1e21,
+            shear_zone_thickness_m=20_000.0,
+        )
     before_geometry = plate.geometry_revision
 
     response = slab_body.apply_slab_load_to_plate_geometry(
@@ -131,7 +155,17 @@ def test_attached_ribbons_drive_shell_strain_and_endogenous_patch_geometry():
     second_force = slab_body.attachment_force_local_n(opposite_body)[0]
     assert first_force[1] * second_force[1] < 0.0
     assert np.linalg.norm(response["force_transfer_error_n"]) < 1e-12 * np.linalg.norm(first_force)
+    assert np.linalg.norm(response["torque_transfer_error_nm"]) < 1e-3 * max(
+        np.linalg.norm(response["source_torque_nm"]), 1.0
+    )
     assert np.linalg.norm(response["strain_increment"]) > 0.0
+    assert response["shell_minimum_thickness_m"] == pytest.approx(92_000.0)
+    nodes = plate.surface_nodes().local_xyz
+    footprint = np.zeros(len(nodes), dtype=bool)
+    for ribbon in (body, opposite_body):
+        distance = np.arccos(np.clip(nodes @ ribbon.trench_local_xyz, -1.0, 1.0))
+        footprint |= distance <= 3.0 * np.radians(15.0)
+    assert np.all(np.linalg.norm(response["applied_force_n"][~footprint], axis=1) == 0.0)
     assert response["equilibrium_residual_n"] < 1e-2 * np.linalg.norm(response["applied_force_n"])
     assert plate.geometry_revision > before_geometry
     assert np.all(np.isfinite(response["failure_ratio"]))

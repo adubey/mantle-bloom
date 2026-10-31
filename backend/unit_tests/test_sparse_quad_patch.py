@@ -111,6 +111,21 @@ def test_finite_strain_moves_plate_geometry_and_conserves_extensive_volume():
     np.testing.assert_allclose(np.dot(plate.collect("continental_material_m"), after_areas), before_tracer, rtol=1e-12)
 
 
+def test_finite_strain_rejects_collapsing_or_ill_conditioned_geometry_without_mutation():
+    plate = _plate(_all_keys()[:24])
+    before_points = plate.surface_nodes().local_xyz.copy()
+    before_gradient = plate.deformation_gradient.copy()
+
+    with pytest.raises(ValueError, match="finite geometry bound"):
+        plate.apply_surface_strain(np.diag([0.0, 6.0, -6.0]))
+
+    np.testing.assert_array_equal(plate.surface_nodes().local_xyz, before_points)
+    np.testing.assert_array_equal(plate.deformation_gradient, before_gradient)
+    with pytest.raises(ValueError, match="ill-conditioned|collapses"):
+        for _ in range(20):
+            plate.apply_surface_strain(np.diag([0.0, 0.5, -0.5]))
+
+
 def test_pre_strain_quad_state_loads_with_identity_geometry():
     plate = _plate(_all_keys()[:12])
     state = plate.__getstate__()

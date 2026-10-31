@@ -117,18 +117,26 @@ model localized faulting, slab bending, or a time-dependent shell law.
 
 `slab_body.SlabBody` is a separate Gate 3b reduced-order ribbon: a 3-D centerline with
 material volume, density anomaly, temperature, width and thickness, attached at a trench.
-`advance_slab_body()` advances its bending under buoyancy and viscous mantle drag and reports
-the work balance; `attachment_force_local_n()` returns the equal-and-opposite hinge forces.
-`apply_slab_load_to_plate_geometry()` spreads attached hinge loads over the plate, solves the
-membrane response with the caller's effective viscosity and extensional capacity, and applies
-the fitted homogeneous strain to the sparse-quad geometry. It reports the local shell failure
-field and force/torque transfer residuals so a controlled case can audit its assumptions.
-The factory requires the caller to transfer the represented source-column volume and retain
-its source cell keys. This body is not yet created from `quad_tectonics` subduction, saved on
-`World`, or included in the regular motion/deformation step. Its current tests validate the
-reduced-order mechanics and a controlled two-sided load-to-geometry response; they do not
-establish a slab-driven rift. These routines therefore remain experimental model components,
-not a regular-step Gate 3b model.
+`advance_slab_body()` solves an overdamped beam step with buoyancy, bending, mantle drag, and
+a measured convergence-speed conveyor drive in one force and work balance. The saved hinge
+load is the constrained-node residual projected into the plate tangent plane; it is not
+identified with total buoyant weight. `max_depth_m` is a force-active depth cutoff, not a
+geometric cap: geometry and material can continue below it and remain counted in the deep
+reservoir.
+
+`apply_slab_load_to_plate_geometry()` spreads attached hinge loads, solves a membrane response,
+and applies a fitted homogeneous strain to sparse-quad geometry. The diagnostic can supply a
+separate positive shell-support thickness for columns already transferred into the slab body;
+that mechanical support is not part of the surface material inventory. Surface and slab
+provenance volumes are audited separately. The fitted strain still removes the local shell
+displacement field before updating geometry, so this screen cannot establish deformation
+localized to the applied load footprint. It also does not solve a fully coupled slab/plate
+hinge equilibrium with station-level material, temperature or rigidity evolution.
+
+This body is not yet created from `quad_tectonics` subduction, saved on `World`, or included in
+the regular motion/deformation step. Its tests verify the reduced-order equations, accounting
+and transfer identities; they do not establish a slab-driven rift. These routines remain
+experimental model components, not a regular-step Gate 3b model.
 
 The G2 contact pilot's blocked-edge classification comes from the preceding frozen
 `collision_polarity_frame`, remapped by stable cell key. A newly created cell has no inherited

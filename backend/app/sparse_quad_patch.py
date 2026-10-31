@@ -466,6 +466,8 @@ class PlateWithSparseQuadPatch(Plate):
             raise ValueError("strain_increment must lie in the local tangent plane")
 
         eigenvalues, eigenvectors = np.linalg.eigh(increment[1:, 1:])
+        if np.max(np.abs(eigenvalues), initial=0.0) > 5.0:
+            raise ValueError("strain increment exceeds the finite geometry bound")
         step = np.eye(3)
         step[1:, 1:] = (eigenvectors * np.exp(eigenvalues)) @ eigenvectors.T
         if not np.all(np.isfinite(step)):
@@ -477,7 +479,11 @@ class PlateWithSparseQuadPatch(Plate):
         old_hm = self.collect("mantle_lithosphere_thickness_m")
         density = lithosphere.node_crust_density(self.collect("crust_type_code"), self.crust_type)
         old_isostasy = lithosphere.isostatic_elevation(old_hc, old_hm, density)
-        self._deformation_gradient = self.deformation_gradient @ step
+        previous_gradient = self.deformation_gradient.copy()
+        candidate_gradient = previous_gradient @ step
+        if not np.all(np.isfinite(candidate_gradient)) or np.linalg.cond(candidate_gradient) > 1e8:
+            raise ValueError("cumulative deformation gradient is ill-conditioned")
+        self._deformation_gradient = candidate_gradient
         self._local_cache = None
         self._latlon_cache = None
         self._area_cache = None
@@ -485,6 +491,19 @@ class PlateWithSparseQuadPatch(Plate):
         self._geometry_revision += 1
         self._invalidate_bounding_polygon()
         new_areas = self.node_areas_m2()
+        if (
+            not np.all(np.isfinite(new_areas))
+            or np.any(new_areas <= 0.0)
+            or np.any(new_areas < old_areas * 1e-8)
+        ):
+            self._deformation_gradient = previous_gradient
+            self._local_cache = None
+            self._latlon_cache = None
+            self._area_cache = None
+            self._local_loops_cache = None
+            self._geometry_revision -= 1
+            self._invalidate_bounding_polygon()
+            raise ValueError("strain increment collapses one or more mapped surface cells")
         area_ratio = np.divide(old_areas, new_areas, out=np.ones_like(old_areas), where=new_areas > 0.0)
         for name, values in self._fields.items():
             if SURFACE_FIELDS[name].remap_class == RemapClass.EXTENSIVE:
