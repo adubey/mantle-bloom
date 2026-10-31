@@ -1,9 +1,9 @@
 ---
 name: explore-problem
-description: Explore a Mantle Bloom problem interactively to find scientific hypotheses. Use before an RFC or small issue, or after an RFC or issue fails a gate or appears infeasible. When the work should split off and may revise an existing RFC, use edit-rfc.
+description: Explore a Mantle-Bloom problem interactively to find scientific hypotheses. Use before an RFC or small issue, or after an RFC or issue fails a gate or appears infeasible. When the work should split off and may revise an existing RFC, use edit-rfc.
 ---
 
-# Explore a Mantle Bloom problem
+# Explore a Mantle-Bloom problem
 
 Use this before authoring an RFC or implementation issue when the problem, cause, scope,
 or best next step is still uncertain. Also use it when an RFC or issue was abandoned

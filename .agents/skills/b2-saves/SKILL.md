@@ -1,6 +1,6 @@
 ---
 name: b2-saves
-description: Store, find and move Mantle Bloom save files (.bloom, .mbworld) across machines with a private Backblaze B2 bucket. Use when asked to upload, back up, sync, list, fetch or free up saves, when a save named by an issue or replay isn't on this machine, or to set up B2 on a new machine.
+description: Store, find and move Mantle-Bloom save files (.bloom, .mbworld) across machines with a private Backblaze B2 bucket. Use when asked to upload, back up, sync, list, fetch or free up saves, when a save named by an issue or replay isn't on this machine, or to set up B2 on a new machine.
 ---
 
 # B2 saves

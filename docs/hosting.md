@@ -1,6 +1,6 @@
 # Hosting: current setup and next decisions
 
-This page records Mantle Bloom's current hosted shape and the boundary of that design. The
+This page records Mantle-Bloom's current hosted shape and the boundary of that design. The
 full launch goals and open product decisions are in [launch readiness](../planning/launch-readiness.md).
 Local development and localhost sign-in are covered by [local hosting](local-hosting.md).
 

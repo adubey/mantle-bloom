@@ -3,7 +3,7 @@
 [Back to the Simulation Model index](../simulation-model.md).
 
 Hydrology is the movement and storage of water on land. Rain and melting ice flow downhill,
-feed streams, collect in low areas, and eventually reach the ocean. Mantle Bloom approximates
+feed streams, collect in low areas, and eventually reach the ocean. Mantle-Bloom approximates
 this by connecting nearby terrain cells into a graph: each cell is a point in the data, and
 an edge says which other cells it can send water to. This works with the irregular cell
 layout carried by moving plates.

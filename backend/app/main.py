@@ -99,7 +99,7 @@ async def _lifespan(_app: FastAPI):
             _logger.warning("replay log: shutting down with records still unwritten")
 
 
-app = FastAPI(title="mantle-bloom", lifespan=_lifespan)
+app = FastAPI(title="Mantle-Bloom", lifespan=_lifespan)
 
 # FRONTEND_PORT lets bin/restart.sh --frontend-port point CORS at a non-default frontend
 # port; 5174 stays allowed alongside it since that's Vite dev's own fallback when its primary
@@ -409,7 +409,7 @@ def _world_changed(session: WorldSession, completed: bool = True) -> None:
     # check afterwards would always see nobody (#658).
     watched = session.feed.has_waiters()
     session.public_renders.clear()
-    session.feed.publish(session.world)
+    session.feed.publish(session.world, session.name)
     if watched:
         _prerender_viewer_image(session)
     if completed:
@@ -897,6 +897,13 @@ def patch_world(world_id: str, req: PatchWorldRequest) -> dict:
             session.is_public = req.is_public
         session.touch()
         _save_index()
+        # Only a real rename: a toggle while a regenerate queues must not publish its new
+        # name early (#711). Either way long polls wake, so a world made private stops
+        # answering them right away.
+        if req.name is not None:
+            session.feed.set_name(session.name)
+        else:
+            session.feed.wake()
         return _record_json(session)
 
 
@@ -1078,6 +1085,8 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
                     _set_world(session, world)
                 raise
             except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
+                # The rename stands, but no new world will publish it (#711).
+                session.feed.set_name(session.name)
                 yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
         finally:
             if acquired:
@@ -1131,6 +1140,8 @@ def generate_debug(world_id: str, req: GenerateDebugRequest) -> dict:
             # place must not be read mid-step.
             return _summary(session, world)
     finally:
+        # A failure's rename stands, but no new world published it (#711).
+        session.feed.set_name(session.name)
         session.end_operation()
 
 
@@ -2655,7 +2666,7 @@ def public_worlds() -> dict:
             # loop is on even when private, so /view can watch a planet that is
             # currently stepping (#597). It drops back out when the run stops.
             if summary is not None and (session.is_public or running):
-                worlds.append({"world_id": session.world_id, "name": session.name, "running": running, **summary})
+                worlds.append({"world_id": session.world_id, "name": session.feed.name(), "running": running, **summary})
     return {"worlds": worlds}
 
 
@@ -2669,7 +2680,8 @@ async def public_world(world_id: str, request: Request, after: str | None = None
     public_view.GUEST_POLL_WAIT_S for the world to change before answering. This is how every
     viewer follows steps that others (or the owner) take without computing anything itself.
     The poll also answers when a guest step publishes new progress without a new revision
-    yet, which is what drives /view's wait progress bar mid-step (#653).
+    yet, which is what drives /view's wait progress bar mid-step (#653), and on any owner
+    change to the world's record (#711), then 404s if that made the world private.
     Async, so a waiting viewer holds no worker thread."""
     session = _public_session_or_404(world_id)
     if after is not None:
@@ -2678,9 +2690,12 @@ async def public_world(world_id: str, request: Request, after: str | None = None
             after, public_view.GUEST_POLL_WAIT_S,
             changed=lambda: session.guest_step_progress() != progress_before,
         )
+        # The world may have gone private during the wait (#711).
+        session = _public_session_or_404(world_id)
     _, remaining = _guest_allowance(request, guest_demo)
     progress = session.guest_step_progress()
     return {
+        "name": session.feed.name(),
         "world": session.feed.summary(),
         "running": _session_running(session),
         "steps_remaining": remaining,
@@ -2980,7 +2995,7 @@ def _restore_checkpoint() -> None:
         if world is not None:
             with session.lock:
                 session.world = world
-                session.feed.publish(world)
+                session.feed.publish(world, session.name)
         elif had_world_file:
             # The record says a checkpoint should be here, but nothing usable came back:
             # checkpoint.py renamed the unreadable file aside with an `.invalid-` suffix
@@ -3017,7 +3032,7 @@ def _import_legacy_checkpoint(store: checkpoint.CheckpointStore) -> None:
     _registry.adopt(session)
     with session.lock:
         session.world = world
-        session.feed.publish(world)
+        session.feed.publish(world, session.name)
     session.runner.set_status(status, persist=False)
     _save_index()
     _checkpoint_world(session)

@@ -1,4 +1,4 @@
-# Mantle Bloom: agent guide
+# Mantle-Bloom: agent guide
 
 An Earth-like planet simulator. The plate tectonics, climate and biosphere simulation and the
 FastAPI routes are in `backend/app/` (Python, numpy/scipy/numba). The React + TypeScript

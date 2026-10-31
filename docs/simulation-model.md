@@ -1,6 +1,6 @@
 # Simulation Model
 
-This guide explains how Mantle Bloom builds and changes a planet. Each topic begins with
+This guide explains how Mantle-Bloom builds and changes a planet. Each topic begins with
 its main ideas in plain language, then gives the rules, units, and code locations that
 explain how the simulation works.
 
@@ -10,7 +10,7 @@ and erosion act on that terrain; map views turn the model state into pictures.
 ![A conceptual planet with callouts for moving plates, mountain building, climate, surface water, and the mantle.](img/issue-514/simulation-model-overview-annotated.svg)
 
 *Conceptual overview of the systems described in these pages. The arrows identify features
-in the illustration; it is an educational image, not a rendered Mantle Bloom world.*
+in the illustration; it is an educational image, not a rendered Mantle-Bloom world.*
 
 Use the topic pages below for the full explanation. The topic list is also a code map: it
 points to the main Python modules that implement each part. When model behavior changes,
