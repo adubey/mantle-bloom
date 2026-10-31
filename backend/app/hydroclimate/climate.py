@@ -109,6 +109,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.spatial import cKDTree
+from scipy.special import ndtr
 
 from .. import geometry, plates
 from . import biomes, hydrology
@@ -1111,8 +1112,8 @@ OROGRAPHIC_PRECIPITATION_COEFFICIENT = 1.0
 # (open-water humidity runs ~3-16 g/kg) -- smaller than MFC_NOISE_STD_G_KG since
 # this perturbs the baseline everywhere, not just a belt edge. The correlation length and
 # spectral roll-off are shared with the MFC noise (MFC_NOISE_CORRELATION_DEG /
-# MFC_NOISE_SPECTRAL_BETA): it's the same meandering-band texture at the same scale. Seeded
-# per world state, on its own RNG stream (see compute_climate). The noised field is re-clipped
+# MFC_NOISE_SPECTRAL_BETA): it's the same meandering-band texture at the same scale. Drifts
+# slowly on its own RNG stream (see _drifting_white_noise). The noised field is re-clipped
 # to [0, MAX_HUMIDITY_G_KG] so it keeps the same bounds the sweep itself guarantees.
 HUMIDITY_NOISE_STD_G_KG = 0.035 * HUMIDITY_INDEX_G_KG
 
@@ -1197,6 +1198,15 @@ MFC_SMOOTHING_REFERENCE_PASSES = 3
 MFC_NOISE_STD_G_KG = 0.05 * HUMIDITY_INDEX_G_KG
 MFC_NOISE_CORRELATION_DEG = 18.0
 MFC_NOISE_SPECTRAL_BETA = 2.6
+
+# How long the climate's noise textures take to pass from one independent keyframe to the next
+# (see _drifting_white_noise). They stand for geography, so they change as fast as it does:
+# MFC_NOISE_CORRELATION_DEG is about 2,000 km, which a plate at the median 4-5 cm/yr crosses in
+# about 40 Myr. Each texture has its own stream, keyed by a salt.
+CLIMATE_NOISE_DRIFT_PERIOD_YEARS = 40e6
+MIXING_NOISE_SALT = 523
+HUMIDITY_NOISE_SALT = 947
+MFC_NOISE_SALT = 811
 
 # Moisture recycling: lake/river evaporation and vegetation transpiration, all added as a
 # local land-surface source alongside ocean cells' own open-water humidity -- see module
@@ -1506,7 +1516,7 @@ def compute_humidity(
     is_ocean: np.ndarray, elevation_m: np.ndarray, ocean_temperature_c: np.ndarray, air_temperature_c: np.ndarray,
     wind_u: np.ndarray, wind_v: np.ndarray, elevation_factor: np.ndarray, lat_deg: np.ndarray,
     lake_depth_m: np.ndarray | None = None, channel_depth_m: np.ndarray | None = None, vegetation_source: np.ndarray | None = None,
-    rng: np.random.Generator | None = None, is_sea: np.ndarray | None = None,
+    white_noise: np.ndarray | None = None, is_sea: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Near-surface specific humidity in g/kg: open-water humidity over ocean (from local
     ocean temperature, `open_water_humidity_g_kg`), plus a local
@@ -1520,16 +1530,16 @@ def compute_humidity(
     function in isolation -- keep working unchanged.
 
     The blended field is clamped to `[MIN_BACKGROUND_HUMIDITY_G_KG, MAX_HUMIDITY_G_KG]`
-    regardless of `rng` -- the floor is the irreducible background water vapour that keeps a
+    regardless of `white_noise` -- the floor is the irreducible background water vapour that keeps a
     dry continental interior off exactly zero (see `MIN_BACKGROUND_HUMIDITY_G_KG`).
 
-    `rng`, when given, adds a fractal gaussian perturbation (`_coherent_noise`, std
+    `white_noise`, when given, adds a fractal gaussian perturbation (`_coherent_noise`, std
     `HUMIDITY_NOISE_STD_G_KG`) to the blended humidity field before that clamp. Open-water
     humidity is nearly a pure function of
     latitude, so both sweeps inherit flat parallels that read as horizontal banding on the
     humidity map (and the precipitation baseline it scales); the noise undulates and stipples
     those bands the same way it does for the moisture-flux convergence (see
-    `HUMIDITY_NOISE_STD_G_KG` and `compute_moisture_flux_convergence`). `rng=None` reproduces the
+    `HUMIDITY_NOISE_STD_G_KG` and `compute_moisture_flux_convergence`). `white_noise=None` reproduces the
     earlier deterministic field -- for callers/tests exercising the sweep in isolation.
     Returns (humidity, orographic_dump); the orographic dump, a separate rain-shadow channel,
     is not perturbed."""
@@ -1553,10 +1563,10 @@ def compute_humidity(
     humidity = w_u * humidity_zonal + w_v * humidity_meridional
     orographic = w_u * oro_zonal + w_v * oro_meridional
 
-    if rng is not None:
+    if white_noise is not None:
         height, width = is_ocean.shape
         correlation_cells = MFC_NOISE_CORRELATION_DEG * height / 180.0  # deg latitude -> rows, resolution-invariant
-        noise = _coherent_noise(rng, (height, width), HUMIDITY_NOISE_STD_G_KG, correlation_cells, MFC_NOISE_SPECTRAL_BETA)
+        noise = _coherent_noise(white_noise, HUMIDITY_NOISE_STD_G_KG, correlation_cells, MFC_NOISE_SPECTRAL_BETA)
         humidity = humidity + noise
     # Clamp to [background floor, MAX_HUMIDITY_G_KG]. The floor keeps a dry continental
     # interior (or a cell the mean-zero noise above pushed negative) from bottoming out at
@@ -1574,8 +1584,25 @@ def _mfc_smoothing_passes(width: int) -> int:
     return max(2, round(MFC_SMOOTHING_REFERENCE_PASSES * (width / _REFERENCE_WIDTH) ** 2))
 
 
+def _drifting_white_noise(seed: int, salt: int, elapsed_years: float, shape: tuple[int, int]) -> np.ndarray:
+    """A standard-normal white-noise field that drifts continuously with `elapsed_years`.
+
+    The climate's noise textures stand for geography-scale structure, not weather. Redrawing
+    them each step made a step-length-dependent forcing that fast ice followed (#575, RFC 0015
+    G0), so each is instead a pure function of `(seed, salt, elapsed_years)` that passes from
+    one independent keyframe to the next over `CLIMATE_NOISE_DRIFT_PERIOD_YEARS`. The cos/sin
+    weights keep every instant exactly standard normal: linear weights would thin the
+    variance by up to half between keyframes, and the banding statistics with it."""
+    position = elapsed_years / CLIMATE_NOISE_DRIFT_PERIOD_YEARS
+    keyframe = int(np.floor(position))
+    angle = 0.5 * np.pi * (position - keyframe)
+    current = np.random.default_rng((seed, keyframe, salt)).standard_normal(shape)
+    upcoming = np.random.default_rng((seed, keyframe + 1, salt)).standard_normal(shape)
+    return np.cos(angle) * current + np.sin(angle) * upcoming
+
+
 def _coherent_noise(
-    rng: np.random.Generator, shape: tuple[int, int], target_std: float,
+    white_noise: np.ndarray, target_std: float,
     correlation_cells: float, beta: float,
 ) -> np.ndarray:
     """A zero-mean fractal gaussian field, synthesized in the spectral domain: white gaussian
@@ -1590,14 +1617,14 @@ def _coherent_noise(
     of scales, no single bump size -- which is what makes a natural field look natural. The
     FFT is periodic on both axes, so the longitude wrap is exact (the latitude wrap across
     the poles is harmless at this amplitude where precipitation is already near zero)."""
-    height, width = shape
+    height, width = white_noise.shape
     ky = np.fft.fftfreq(height)[:, None]
     kx = np.fft.fftfreq(width)[None, :]
     k = np.hypot(ky, kx)
     k0 = 1.0 / max(correlation_cells, 2.0)
     amplitude = 1.0 / (1.0 + (k / k0) ** 2) ** (beta / 2.0)
     amplitude[0, 0] = 0.0  # drop the DC term -> exactly zero mean
-    field = np.fft.ifft2(np.fft.fft2(rng.standard_normal(shape)) * amplitude).real
+    field = np.fft.ifft2(np.fft.fft2(white_noise) * amplitude).real
     std = float(field.std())
     if std < 1e-9:
         return field
@@ -1606,7 +1633,7 @@ def _coherent_noise(
 
 def compute_moisture_flux_convergence(
     humidity: np.ndarray, wind_u: np.ndarray, wind_v: np.ndarray, lat_deg: np.ndarray,
-    rng: np.random.Generator | None = None,
+    white_noise: np.ndarray | None = None,
 ) -> np.ndarray:
     """`-div(humidity * wind)` as a g/kg-equivalent field: positive where
     the moisture-bearing wind converges (air and its moisture pile up, rise, and rain out --
@@ -1625,11 +1652,11 @@ def compute_moisture_flux_convergence(
     (`MFC_ZONAL_COHERENCE`) so the wet/dry belts read as continuous bands rather than a string
     of blobs -- while a partial local weight keeps monsoon-scale departures visible.
 
-    `rng`, when given, adds a fractal gaussian perturbation (`_coherent_noise`, std
+    `white_noise`, when given, adds a fractal gaussian perturbation (`_coherent_noise`, std
     `MFC_NOISE_STD_G_KG`, correlation length `MFC_NOISE_CORRELATION_DEG`) on top of the blended
     field. The zonal-coherence blend leaves each row nearly flat, which lands the belt edges
     on hard parallels and shows as horizontal banding in the precipitation map; the noise
-    warps and stipples those edges the way real convergence zones meander. `rng=None`
+    warps and stipples those edges the way real convergence zones meander. `white_noise=None`
     reproduces the earlier deterministic field -- for tests exercising the divergence pattern
     in isolation."""
     height, width = humidity.shape
@@ -1647,10 +1674,10 @@ def compute_moisture_flux_convergence(
     convergence_q = _smooth_field(-divergence_per_km * MFC_COLLECTION_LENGTH_KM / MFC_REFERENCE_WIND_SPEED_M_S, _mfc_smoothing_passes(width))
     zonal_mean = convergence_q.mean(axis=1, keepdims=True)
     blended = (1.0 - MFC_ZONAL_COHERENCE) * convergence_q + MFC_ZONAL_COHERENCE * zonal_mean
-    if rng is None:
+    if white_noise is None:
         return blended
     correlation_cells = MFC_NOISE_CORRELATION_DEG * height / 180.0  # deg latitude -> rows, resolution-invariant
-    noise = _coherent_noise(rng, (height, width), MFC_NOISE_STD_G_KG, correlation_cells, MFC_NOISE_SPECTRAL_BETA)
+    noise = _coherent_noise(white_noise, MFC_NOISE_STD_G_KG, correlation_cells, MFC_NOISE_SPECTRAL_BETA)
     return blended + noise
 
 
@@ -1776,11 +1803,11 @@ def compute_climate(
 
     wind_u, wind_v, elevation_factor = surface_wind(world, lat_deg, elevation_m, surface_temperature_c)
 
-    # A cached-per-world-state noise texture standing in for turbulent current mixing --
-    # deterministic in (seed, elapsed_years) so it doesn't flicker between renders of the
-    # same world state, matching every other RNG use in this codebase.
-    mix_rng = np.random.default_rng((world.seed, round(world.elapsed_years)))
-    mixing_noise = mix_rng.random((height, width))
+    # A noise texture standing in for turbulent current mixing -- deterministic in (seed,
+    # elapsed_years) so it doesn't flicker between renders of the same world state, and drifting
+    # slowly so it doesn't jump between steps either (#575). ndtr maps the standard normal back
+    # to the uniform [0, 1) texture the wake expects.
+    mixing_noise = ndtr(_drifting_white_noise(world.seed, MIXING_NOISE_SALT, world.elapsed_years, (height, width)))
 
     # Ocean currents and the current-advected surface temperature are diagnostic every call
     # (see module docstring): the shallow-water ocean CFD solver had no stable operating point
@@ -1788,7 +1815,9 @@ def compute_climate(
     # currents (Ekman + land swirl + coastal deflection + circumglobal boost + wake) and
     # advect_ocean_temperature run here instead, fed by the CFD-sourced wind.
     current_u, current_v = compute_ocean_currents(wind_u, wind_v, is_ocean, lat_deg, world_xyz, mixing_noise)
-    swell_rows, swell_cols = compute_ocean_swells(current_u, current_v, is_ocean, mix_rng)
+    # Swells are only drawn on the ocean-currents map, so they can stay redrawn each world state.
+    swell_rng = np.random.default_rng((world.seed, round(world.elapsed_years)))
+    swell_rows, swell_cols = compute_ocean_swells(current_u, current_v, is_ocean, swell_rng)
     ocean_temperature_c = advect_ocean_temperature(ocean_baseline_c, current_u, current_v, is_ocean, lat_deg)
 
     # Air temperature: read off the CFD state's own temperature_c when the CFD is the wind
@@ -1812,18 +1841,17 @@ def compute_climate(
         precipitation_mm = np.zeros((height, width))
     else:
         vegetation_source = _vegetation_transpiration_source(world, elevation_m, is_ocean)
-        # Dedicated per-(seed, elapsed_years) streams -- distinct salts, and distinct from
-        # mix_rng (whose draw count feeds the ocean-current texture) -- so the humidity and
-        # moisture-flux-convergence banding noise are each steady between renders of one world
-        # state without perturbing each other's draws. Both break the same insolation-driven
-        # zonal banding (see HUMIDITY_NOISE_STD_G_KG / the MFC_NOISE_* block).
-        humidity_rng = np.random.default_rng((world.seed, round(world.elapsed_years), 947))
-        mfc_rng = np.random.default_rng((world.seed, round(world.elapsed_years), 811))
+        # Dedicated streams with distinct salts, so the humidity and moisture-flux-convergence
+        # banding noise are each steady between renders of one world state without perturbing
+        # each other's draws. Both break the same insolation-driven zonal banding (see
+        # HUMIDITY_NOISE_STD_G_KG / the MFC_NOISE_* block).
+        humidity_noise = _drifting_white_noise(world.seed, HUMIDITY_NOISE_SALT, world.elapsed_years, (height, width))
+        mfc_noise = _drifting_white_noise(world.seed, MFC_NOISE_SALT, world.elapsed_years, (height, width))
         humidity, orographic_dump = compute_humidity(
             is_ocean, elevation_m, ocean_temperature_c, air_temperature_c, wind_u, wind_v, elevation_factor, lat_deg,
-            lake_depth_m, channel_depth_m, vegetation_source, humidity_rng, is_sea=is_sea,
+            lake_depth_m, channel_depth_m, vegetation_source, humidity_noise, is_sea=is_sea,
         )
-        moisture_flux_convergence = compute_moisture_flux_convergence(humidity, wind_u, wind_v, lat_deg, mfc_rng)
+        moisture_flux_convergence = compute_moisture_flux_convergence(humidity, wind_u, wind_v, lat_deg, mfc_noise)
         precipitation_mm = compute_precipitation(humidity, orographic_dump, moisture_flux_convergence)
 
     display_temp = np.where(is_ocean, ocean_temperature_c, air_temperature_c)
