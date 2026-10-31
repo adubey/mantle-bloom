@@ -1,13 +1,31 @@
 # RFC 0010: Rifts follow weak lithosphere
 
-- **Status:** Accepted
+- **Status:** Accepted (revised 2026-10-30 after fixed-geometry Gate 3b result)
 - **Date:** 2026-10-15
-- **Last revised:** 2026-10-30; project owner closed Gate 3a (local-scale evidence) and opened Gate 3b (#699) for plate-scale, geological-duration evaluation
+- **Last revised:** 2026-10-30; Gate 3b requires an evolving 3-D slab body coupled to deforming plate geometry before slab-pull rifting can count
 - **Related:** #699 (Gate 3b tracking), #487 (closed Gate 3a evidence), #481 (superseded tracker), #480 (min-cut diagnostic), #472 / PR #479 (RFC 0009 G3), #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
   0003 solution 1); RFCs [0003](0003-rifting-around-cratons.md) (superseded by RFC 0010),
   [0009](0009-craton-mosaic.md) (cratons-first layout; G3 initially selected the min-cut),
   [0007](0007-mantle-plumes-and-plateaus.md) (plume weakening),
   [0012](0012-physics-first-simulation.md) (force-response interfaces)
+
+## Revision note
+
+- **2026-10-30 (revision PR pending):** The prior Gate 3b source criterion looked for a broad,
+  sustained load, then coupled it to local crack rules. The corrected 1 Gyr diagnostic created broad
+  load and damage but no viable daughter plates; it explicitly held plate geometry fixed and used an
+  effective slab-sink length instead of an evolving slab body ([Gate 3b result](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6538397727)). This
+  showed that fixed-geometry load screens cannot answer whether slab pull bends a slab and stretches
+  a plate into a rift. The revision gates slab-pull attribution on a reduced-order 3-D slab body,
+  endogenous plate finite strain and geometry, and a controlled pair of outward slab pulls before
+  geological-history acceptance runs.
+
+  | Changed item | Previous criterion | Revised criterion | Reason |
+  |---|---|---|---|
+  | Gate 3b event/source | Broad sustained extension supplied by a low-cost current field, then local crack response | For slab-pull cases, require evolving attached 3-D slab bodies, measured bending, and force-transmitted finite strain in the plate | Fixed-geometry runs can ramp load and accumulate damage but cannot demonstrate that the slab body or plate geometry evolves |
+  | Controlled case | At least one broad event on a generated plate | Opposed outward slab tractions on one plate, plus no-slab and detached-slab controls, before the event/source criterion | Separates slab-causal plate extension from an imposed trench-force pattern |
+  | Plate-scale histories | Run 200 Myr histories once the load source and crack response are coupled | Run histories only after the controlled slab/plate coupling demonstrates deformation, local crack linkage, and closed force/material accounts | Avoids spending long histories on fixed geometry that cannot produce physical breakup |
+  | State and runtime | Persist damage and segment history with O(N+E) expected work | Also persist slab-body and plate-deformation state, with O(N+E+S) expected work for S bounded slab stations | The added mechanics changes geometry and has continuing state across saves and steps |
 
 ## Problem
 
@@ -362,11 +380,26 @@ should start until those gates are resolved and the revised design is accepted.
    infer local stress from applied traction, rigid rotation, flow clusters or `Plate.internal_stress`.
    See the audits in `analysis/issue487/README.md`, `analysis/issue487/gate2-load-diagnosis.md`,
    `analysis/issue487/gate2-capacity-calibration.md`, and `analysis/issue487/gate2-matched-replay.json`.
-3. **Calibrate accumulation and segment growth.** On synthetic plates and replayed candidate
-   events, measure damage/strain accumulation, nucleation, tip propagation, arrest and linkage under
-   timestep refinement. Select thresholds only after checking physical scale and sensitivity. If no
-   local load can be supported from the model's forces and material state, revise the premise rather
-   than add a free-standing damage timer.
+3. **Gate 3a — local crack mechanics; Gate 3b — plate-scale rift-potential event and source
+   (scope revised 2026-10-30; tracking issue #699).** Gate 3a's local crack, propagation, arrest
+   and linkage rules are the response mechanism for this work. Gate 3b now works backward from at
+   least one candidate event: first define and detect a broad, sustained extensional loading event
+   on a real spherical plate; characterize its footprint, direction, magnitude relative to the
+   existing local crack threshold, duration/accumulation, force and work accounts, and timestep
+   sensitivity; then find the simplest low-cost mantle-current representation that can supply the
+   measured load pattern; finally couple that source to the Gate 3a local response and check that
+   cracks grow within the loaded footprint before a viable boundary can split the plate. A
+   tens-of-millions-of-years persistence window (initially 10–30 Myr) is a hypothesis to examine,
+   not a fixed timer or accepted cutoff. A slab-pull explanation is eligible only when subducted
+   lithosphere has an evolving three-dimensional body and its force is transmitted into a plate
+   whose in-plane geometry and strain can evolve. The current boundary-derived slab-pull term and
+   fixed-geometry shell screens do not meet that condition. Freeze the operational event definition,
+   source amplitude bracket, footprint criterion and controlled cases in #699 before new probes.
+   The event label is diagnostic bookkeeping, not a new force or damage law. Existing prescribed-axis
+   routes and static coarse shell maps are exploratory screens; they neither identify a mantle/magma
+   source nor establish event persistence. If the current source representation cannot produce an
+   eligible event, revise the source hypothesis before tuning local crack thresholds or starting
+   broad geological-history acceptance runs.
 
 ### Mechanics (provisional)
 
@@ -412,12 +445,53 @@ should start until those gates are resolved and the revised design is accepted.
 - **Crust type.** Permit a propagating spreading boundary to enter oceanic lithosphere when its local
   loading and damage criteria allow it. Track continental, oceanic and mixed-crust segment length
   separately so continental breakup is not inferred from a coastline crossing.
+- **Slab body and deforming plate geometry (required before slab-pull attribution).** The current
+  model removes subducted surface cells and derives slab pull from the trench neighborhood; it has
+  no persistent body below the surface and does not accumulate in-plane deformation through the
+  plate interior. Those terms can move a rigid plate, but cannot demonstrate that a bent slab pulls
+  a plate apart into a rift. The candidate low-cost representation is a three-dimensional slab
+  ribbon attached to the subducting plate: a small set of material stations along each active trench
+  segment and down dip, carrying position, width, thickness, density/temperature anomaly and
+  attachment identity. Subducted surface-column material transfers into this body once, so the slab
+  is not counted both as live plate material and as a separate pull source. Its path and curvature
+  evolve as material enters the trench and sinks. Pull arises from
+  integrated slab buoyancy, with bending resistance and mantle drag opposing motion; slab length,
+  thickness, dip, curvature and consumed material are measured state, not an effective sink-depth
+  parameter. A sparse two-dimensional plate shell embedded in three-dimensional space must accumulate
+  in-plane displacement and strain, update cell geometry and thickness, and pass the resulting
+  extension into the Gate 3a crack/damage law. Damage can feed back on shell strength, and local
+  geometry must change before a new plate is split. Slab attachment, equal-and-opposite force,
+  moment and work accounting, slab consumption, and cell-area/material ledgers remain explicit
+  through subduction, rifting, split/merge and save/load. Where the body exits the modeled mantle,
+  transfer remaining mass and material to a named deep reservoir and account for the lost buoyancy
+  and work; never silently drop the body. Slab-to-plate attachment forces are an
+  internal action/reaction pair; slab buoyancy and mantle drag are external force/work terms and
+  must be budgeted separately. This reduced-order coupling is the target;
+  full mantle convection and a full 3-D finite-element solution are not prerequisites. Subduction
+  force balances include slab pull, interplate resistance, bending and basal traction
+  [[Li & Gurnis, 2023]](#ref-li2023), while 3-D rift models show distributed strain and fault-network
+  evolution can control localization and linkage [[Naliboff et al., 2020]](#ref-naliboff2020).
 - **Gravity and mantle coupling.** Use loads already represented in the plate torque model—slab pull,
   ridge push and basal drag—as contributors only where a defensible spatial load distribution exists.
   Include lithospheric gravitational-potential-energy gradients when column thickness/topography can
   support a dimensionally consistent force. Mantle-flow vectors may assist or resist motion through
-  traction; they are not a prescribed rift line. Do not count the same load twice between plate torque
-  and segment stress.
+  traction; they are not a prescribed rift line. When an explicit slab body drives a plate, retire or
+  subtract the existing boundary-proxy slab-pull contribution for that same slab. Do not count the
+  same load twice between rigid plate torque, slab-body force, shell equilibrium and membrane stress.
+- **Rift-potential source diagnosis (Gate 3b, revised 2026-10-30).** Work from an observed
+  candidate broad extension event back to the smallest current field that can supply its measured
+  load, then run that source forward through the existing Gate 3a local crack response. The current
+  `mantle.flow_at` field (summed `ConvectionCenter` velocities) and
+  `torque.basal_drag_force_vectors_n` (relative-flow basal drag at owned nodes) are candidate
+  starting interfaces, not evidence that magma currents or rift-driving regional traction are
+  represented. Audit their spatial scales, time behavior and force ownership first. A source model
+  may use a small number of broad current lobes or another comparably simple field, but its
+  amplitudes and event footprint must be fixed by the event/source diagnostic rather than tuned to
+  force a desired crack route. Preserve equal-and-opposite traction and global force/torque/work
+  accounts, and ensure each basal load is counted once across rigid plate motion and membrane
+  equilibrium. Test persistence over a preregistered duration bracket including 10–30 Myr as a
+  hypothesis; the event state accumulates actual load or extension and never acts as an independent
+  timer.
 
 **Units, bounds and timestep.** Stress and strength use Pa; strain is dimensionless; viscosity uses
 Pa·s; damage stays in [0, 1]; thickness stays nonnegative. Integrate `max(0, sigma_t - Y_t)` along
@@ -433,11 +507,13 @@ continue through one existing material-budget owner per step. Damage is a state 
 extra crust-volume reservoir. Check crust/mantle ledgers and spatial contiguity independently:
 conservation alone does not validate a plausible rift.
 
-**Runtime and saves.** The added work is expected to scale as O(N + E) per step for N plate nodes and
-their E local-neighbor links, plus a connectedness check when segments change. No measured runtime is
-available before a prototype; benchmark at density 4 against the existing 2% step-time budget and do
-not extrapolate from min-cut's per-attempt runtime. Old saves load with zero damage/segment state. New
-saves retain all state needed to continue the same rift history deterministically.
+**Runtime and saves.** The added work is expected to scale as O(N + E + S) per step for N plate nodes,
+their E local-neighbor links, and S slab-body stations, plus a connectedness check when segments
+change. Slab stations are bounded and owned by active trench segments; avoid all-pairs slab coupling.
+No measured runtime is available before a prototype; benchmark at density 4 against the existing 2%
+step-time budget and do not extrapolate from min-cut's per-attempt runtime. Old saves load without slab
+or deformation history, initialized compatibly. New saves retain slab geometry, plate deformation,
+damage and segment state needed to continue the same rift history deterministically.
 
 **Knobs.** No numeric starting values are approved for the new constitutive parameters; selecting them
 before validation would be false precision. The design revision must set each value, its physical
@@ -451,6 +527,10 @@ source or explicit design-choice status, and the sensitivity plan before impleme
 | Residual strength (`q_res`, [0, 1]) | Pending gate 3 | Design choice | Sweep weak-belt/craton cases; check localization and runaway |
 | Healing time (Myr) | Pending gate 3 | Calibration assumption; may be omitted | Check arrested-segment persistence and reactivation |
 | Tip propagation/link thresholds | Pending gate 3 | Design choice; use km and Myr | Tune on synthetic linkage cases, then report named-seed outcomes |
+| Slab bending resistance | Pending coupled slab coupon | Calibration assumption; bracket effective flexural strength | Compare slab curvature and transmitted pull across the bracket |
+| Slab-mantle drag | Pending coupled slab coupon | Calibration assumption; use the existing mantle drag law only where its geometry applies | Check sinking rate, force closure and plate response |
+| Slab station spacing | Pending resolution study | Numerical choice; report km | Refine stations until length, curvature and force change within preregistered tolerances |
+| Plate-shell effective modulus/yield | Pending finite-strain shell coupon | Material scenario | Compare extension, strain localization and craton diversion across material brackets |
 
 ## Detailed design (provisional touchpoints)
 
@@ -462,6 +542,15 @@ source or explicit design-choice status, and the sensitivity plan before impleme
   touchpoint, not implemented. Its spherical benchmark and free-edge single-plate baseline are
   checked by `bin/debug/validate_thin_shell_plate_meshes.py`; coupled interplate boundaries and
   nonlinear load redistribution remain outside this diagnostic.
+- `backend/app/world.py` and a proposed slab-body module: own persistent, three-dimensional slab
+  material state and advance it with subduction, sinking, bending and mantle resistance. Derive
+  trench pull from the body and its attachment; do not add that force on top of
+  `torque.slab_pull_torque` for the same consumed plate material.
+- `backend/app/thin_shell.py` is a linear displacement/stress diagnostic only. A production shell
+  response must remove rigid motion already handled by `torque.py`, integrate finite in-plane strain
+  in the co-rotating frame, and update/remap the sparse quadrilateral geometry and column thickness
+  without losing cell area or ownership. Reuse the diagnostic for benchmark comparisons, not as a
+  substitute for that evolving geometry path.
 - `backend/app/merge_split.py`: move rift-state advancement out of the all-at-once split decision;
   retain a split/topology check that runs only after local failed links form a viable connected
   boundary. Existing flow fit may remain a diagnostic or a candidate-event signal, not the rift path.
@@ -555,34 +644,57 @@ source or explicit design-choice status, and the sensitivity plan before impleme
        prescribed seed and does not advance its fixed crack; and its pressure-work comparison omits
        boundary and inelastic terms. Those limitations do not keep Gate 3a open; plate-scale
        consequences are Gate 3b.
-3. [ ] **Gate 3b — plate-scale geological breakup (tracked by #699).** On real spherical plate
-       meshes at production resolution and timestep, matched whole-planet histories spanning at
-       least 200 Myr demonstrate that rifting initiates preferentially in weak lithosphere, remains
-       suppressed or diverted by strong/cratonic regions, and forms a connected viable boundary
-       before a plate split. Report failed and successful rift systems separately, including their
-       duration, length, crust type, segment linkage/arrest, daughter-plate sizes and craton
-       intersections. No instantaneous plate-wide split may stand in for propagation. Repeat the
-       decisive comparisons at a finer surface resolution and with a halved timestep; qualitative
-       outcomes and named split/rift measures must remain within preregistered tolerances. Material
-       advection, crust/mantle ledgers and boundary work must close, and runtime must be reported
-       against the production budget. Local coupons can verify pieces of this closure but do not
-       satisfy this criterion.
-4. [ ] A plate splits only after a connected viable rift boundary forms; split frequency and mean plate
+3. [ ] **Gate 3b — rift-potential existence and source (tracked by #699):** publish the event
+       definition and source/load accounting before probing. A slab-pull case must use evolving 3-D
+       slab bodies coupled to in-plane deformation of the plate; static trench forces on a rigid plate
+       do not qualify. In a controlled opposed-trench case, make the slab traction vectors point
+       apart across the plate interior; characterize both slab bodies' length, thickness, depth, dip
+       and curvature over time; show force transfer from each slab into the
+       plate, and show the plate's finite strain and geometry evolve. No-slab and detached-slab
+       controls must remove or reduce that response. Bending resistance and mantle drag must oppose
+       motion with force, moment and work residuals reported. The hinge interaction must be equal and
+       opposite on slab and plate, while buoyancy and mantle reaction remain separately accounted.
+       Then identify at least one broad,
+       sustained extension event on a generated spherical plate and couple it to Gate 3a local crack
+       rules to produce a viable rift before splitting. Test a 10–30 Myr duration bracket as a
+       hypothesis, alongside timestep partitioning; do not turn this span into an arbitrary timer.
+       Record footprint, direction, extension/load relative to local capacity, force/torque/work
+       residuals, crack response and slab geometry/load history. Exact operational cutoffs are to be
+       preregistered in #699 before the probe; a missing event or failed accounting requires revising
+       the source/event definition before broad history runs.
+4. [ ] **Gate 3b plate-scale breakup:** on real spherical plate meshes at production resolution and
+       timestep, matched whole-planet histories spanning at least 200 Myr demonstrate that rifting
+       initiates preferentially in weak lithosphere, remains suppressed or diverted by strong/cratonic
+       regions, and forms a connected viable boundary before a plate split. Report failed and
+       successful rift systems separately, including duration, length, crust type, segment
+       linkage/arrest, daughter-plate sizes, craton intersections and slab geometry/load history.
+       No instantaneous plate-wide
+       split may stand in for propagation. Repeat decisive comparisons at finer surface resolution
+       and with a halved timestep; qualitative outcomes and named split/rift measures must remain
+       within preregistered tolerances. Material advection, crust/mantle ledgers and boundary work
+       must close, and runtime must be reported against the production budget. Local coupons can
+       verify pieces of this closure but do not satisfy this criterion.
+5. [ ] In synthetic tests, damage is timestep-partition invariant, bounded, absent under compression
+       or sub-yield loading, and advances only through adjacent cells with supported positive loading.
+6. [ ] Segments can nucleate independently, propagate, arrest and link; a transform/transfer zone
+       transfers shear without making an instantaneous plate-wide split.
+7. [ ] A plate splits only after a connected viable rift boundary forms; split frequency and mean plate
        count remain within 10% of the matched baseline unless the RFC is revised with a justified new
        target. Also report successful continental split-system counts per 200 Myr against the broad
        6–8-system Earth-history context in Assumptions and uncertainty; this is a plausibility
        diagnostic, not an additional pass threshold.
-5. [ ] On seeds 7, 11 and 2024 over 1 Gyr, the successful split line-craton rate and band-craton
+8. [ ] On seeds 7, 11 and 2024 over 1 Gyr, the successful split line-craton rate and band-craton
        exposure each fall at least 50% against a matched old-algorithm replay, with continental,
        oceanic and mixed crust reported separately. These are project acceptance targets, not claims
        that natural rifts obey a universal 50% rule.
-6. [ ] Rifting-related craton loss is at most 2% of live craton per Gyr on average across seeds 7, 11
+9. [ ] Rifting-related craton loss is at most 2% of live craton per Gyr on average across seeds 7, 11
        and 2024, and in each of the first three Gyr on seed 456862899, subject to matched replay and
        ledger checks.
-7. [ ] Crust/mantle ledgers balance; old saves load; deterministic event identities and timestep tests
+10. [ ] Crust/mantle ledgers balance; old saves load; deterministic event identities and timestep tests
        pass; runtime overhead is measured at density 4 and remains within the existing 2% step-time
-       budget or the RFC is revised with a measured trade-off.
-8. [ ] **Gate 3b conditional mantle/magma attribution at plate scale:** preserve a tectonic-only or
+       budget or the RFC is revised with a measured trade-off. Old saves initialize slab and
+       deformation history safely; new saves preserve both for deterministic continuation.
+11. [ ] **Gate 3b conditional mantle/magma attribution at plate scale:** preserve a tectonic-only or
        mantle-independent control. Where plume or magma forcing is represented, compare matched
        geological-duration whole-sphere histories with and without that forcing. Attribute changes
        separately in rift initiation, growth, linkage, and successful split-system counts, with
@@ -598,6 +710,10 @@ source or explicit design-choice status, and the sensitivity plan before impleme
   Do not calibrate friction, creep or fracture from these data. Extend the force interface and repeat
   the diagnosis, or revise/reject the physical local-mechanics premise in favor of a clearly labeled
   phenomenological rift model.
+- **Slab force does not deform the plate:** if slab buoyancy is not transmitted through an attached
+  body, bending/drag do not oppose the pull, or plate geometry and finite strain remain unchanged
+  under the resulting load, slab-pull rifting is unsupported. Revise the coupling or reject that
+  source attribution; do not use a fixed-geometry crack screen as evidence of breakup.
 - **Local deformation does not localize:** if weak inherited zones do not attract slip and fracture
   under controlled loading, or deformation spreads diffusely regardless of strength, revise the
   constitutive law; do not tune only the craton-resistance parameter.
@@ -724,6 +840,13 @@ source or explicit design-choice status, and the sensitivity plan before impleme
 - <a id="ref-forsyth1975"></a>Forsyth, D. W., & Uyeda, S. (1975). On the relative importance
   of the driving forces of plate motion. *Geophysical Journal of the Royal Astronomical Society*,
   43(1), 163–200. [doi:10.1111/j.1365-246X.1975.tb00631.x](https://doi.org/10.1111/j.1365-246X.1975.tb00631.x)
+- <a id="ref-li2023"></a>Li, Y., & Gurnis, M. (2023). A simple force balance model of subduction
+  initiation. *Geophysical Journal International*, 232(1), 128–146.
+  [doi:10.1093/gji/ggac332](https://doi.org/10.1093/gji/ggac332)
+- <a id="ref-naliboff2020"></a>Naliboff, J. B., Glerum, A., Brune, S., Péron-Pinvidic, G., & Wrona, T.
+  (2020). Development of 3-D Rift Heterogeneity Through Fault Network Evolution. *Geophysical
+  Research Letters*, 47(13), e2019GL086611.
+  [doi:10.1029/2019GL086611](https://doi.org/10.1029/2019GL086611)
 - <a id="ref-kolawole2024"></a>Kolawole, F., & Ajala, R. (2024). Propagating rifts: the roles of
   crustal damage and ascending mantle fluids. *Solid Earth*, 15, 747–762.
   [doi:10.5194/se-15-747-2024](https://doi.org/10.5194/se-15-747-2024)
