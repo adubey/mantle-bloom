@@ -2,7 +2,8 @@
 
 ## G0 preflight
 
-Status: in progress; no G0 replay or ledger result yet.
+Status: in progress; checkpoint preflight is complete, but G0 river-source selection and the
+control ledger remain open.
 
 RFC 0016 is accepted in PR #724 and tracked by #723. G0 implementation is tracked by
 [#725](https://github.com/adubey/mantle-bloom/issues/725). The G0 worktree is based on
@@ -39,14 +40,14 @@ commit is `f4438e1c85042de789bd464ce5d2f58c8c0717eb`.
    peak tracer velocity is not mean advective velocity, this is a sensitivity candidate only
    unless G0 establishes a defensible mapping for residence time. [USGS report](https://pubs.usgs.gov/publication/wri964013)
 
-The candidate comparison still needs an operational drainage-area and mean-annual-discharge
-definition for Jobson's equation in this model. Drainage area can be accumulated from node
-areas along the flow graph, but the model has no long-term mean annual discharge per reach;
-substituting the current 100 kyr interval-mean flow for `Qa` would be an additional assumption.
-Raymond's equation also needs a registered rule for a dry reach that still holds river water:
-`Q = 0` gives zero velocity and infinite residence time. No velocity range or parameterization
-is frozen, and no river inventory should be interpreted as accepted until the low-flow rule
-and paired inventory sensitivity are recorded.
+For the checkpoint sensitivity, drainage area is defined as the sum of node accounting areas
+upstream of each reach, with directed cycles collapsed before catchment accumulation. The model
+has no long-term mean annual discharge per reach, so the Jobson comparison uses the explicit
+`Qa=Q` sensitivity assumption; it does not claim that the current 100 kyr interval mean is an
+annual climatology. Raymond's equation needs a registered rule for a dry reach that still holds
+river water: `Q=0` gives zero velocity and infinite residence time. No velocity range or
+parameterization is frozen, and no river inventory should be interpreted as accepted until the
+low-flow rule and paired inventory sensitivity are recorded.
 
 ### Checkpoint and accounting readiness
 
@@ -56,37 +57,74 @@ registered source worlds, but not the exact A/B/C checkpoint files. The preregis
 the checkpoint bytes were produced at `5d666ddf8b682a72db8c2189ebbd45a8a861bb20`; later
 production comparisons loaded those exact bytes under `f4438e1c85042de789bd464ce5d2f58c8c0717eb`.
 
-I regenerated A/B from the registered seed-910 source world at both commits. At `5d666dd`, the
-checkpoint ages match, but the new file hashes are `9882568e681a0f9f207e3302453b3a92f18865d5640d7baa8d9d8eb09ab4633e`
-and `759d83107ae87d34d825b4836addc922d414089774f90739ea00e6a9c9dff5b5`, rather than the
-registered `e4b0b4f09b87584aa7f77045f0f079f2309de0132049915a9aeb5589add27340` and
-`86fb5b7d2044846ac751906ff996184c7abe5454c93b39033bd82338e8749544`. At `f4438e1`, the hashes are
-`a4f60e0d37d4afeea06713a3a78f760d6ef2fbe77f861e304660412bac199ded` and
-`44025c97e70e47d870f976721b79f3e53ad089bd2f24757e0838899f0d56daed`. The source-world SHA-256
-matches the preregistration in both runs. The v5 checkpoint is a ZIP archive whose manifest
-entry receives a current-time ZIP timestamp during serialization, so file hashes can change
-even when the serialized state is otherwise identical. The checkpoint hashes alone therefore
-do not establish a state mismatch.
+I regenerated all three checkpoints from their registered source worlds at the preregistered
+producer commit `5d666dd`, then replayed each four-step window under production commit `f4438e1`.
+The source-world SHA-256 hashes match #680. The regenerated checkpoint hashes differ from the
+registered file hashes, but all three registered target events reproduce under the pinned
+production source:
 
-The regenerated files are preserved under the private capture directory, grouped by producer
-commit. Before using them as documented replacement inputs, replay the 5d666 checkpoints for
-the registered four-step A/B targets under production commit f443 and confirm the preregistered
-event volumes/connectivity. Keep the original #680 hashes in the report and record the replacement
-hashes and the serialization reason before any G0 treatment. The C checkpoint still needs
-regeneration and the same check.
+| Window | Registered checkpoint SHA-256 | Recreated checkpoint SHA-256 | Reproduced target ΔV (km³) | Max normalized lake-ledger residual | Peak RSS (MB) |
+|---|---|---|---:|---:|---:|
+| A | `e4b0b4f09b87584aa7f77045f0f079f2309de0132049915a9aeb5589add27340` | `9882568e681a0f9f207e3302453b3a92f18865d5640d7baa8d9d8eb09ab4633e` | +495,623.986 | 5.82e-13 | 7,465 |
+| B | `86fb5b7d2044846ac751906ff996184c7abe5454c93b39033bd82338e8749544` | `759d83107ae87d34d825b4836addc922d414089774f90757e0838899f0d56daed` | +131,625.097 | 1.33e-13 | 7,725 |
+| C | `041b7430a6cf8867f2e2c76f18c3328e440add585ee4a2e4b3055e7766c2217e` | `38cc6ff2054cde2db3a65ac0a3e08a09e854175735512b9c8c40ba7a76c6190c` | −261,586.996 | 1.38e-12 | 7,196 |
+
+The v5 checkpoint is a ZIP archive whose manifest entry gets a current-time ZIP timestamp
+during serialization. The regenerated files therefore have different byte hashes even when
+the checkpoint state reproduces the registered event and ledger behavior. The original
+checkpoint files are not in the local/B2 save index; these replacement hashes and their
+event validation are recorded here before any G0 treatment. Captures and complete file hashes
+are kept in the private `~/mantle-bloom-captures/rfc0016/` directory.
 
 RFC 0015 (#544) remains open and has not landed physical precipitation, snow, and glacier
 accounting. Therefore the full rain-plus-snow G0 ledger cannot currently pass. RFC 0016 permits
 a separately labelled rain-only interim ledger; it does not satisfy the full closure criterion.
 
+### Checkpoint velocity sensitivity
+
+The read-only `bin/debug/measure_river_velocity_candidates.py` diagnostic was run on all three
+replacement checkpoints using the f443 hydrology cache. It counts land reaches outside ocean
+and visible lake storage, accumulates catchment node area on the saved flow graph (collapsing
+directed cycles), and evaluates the checkpoint's positive physical discharge. The Jobson
+sensitivity sets its missing long-term mean discharge `Qa` equal to checkpoint discharge `Q`.
+Full summaries are in `velocity-candidates-{a,b,c}.json`.
+
+| Window | Eligible / positive-Q reaches | Raymond inventory (km³) | Jobson peak-tracer sensitivity (km³) | Lake-entering inventory, Raymond / Jobson (km³) |
+|---|---:|---:|---:|---:|
+| A | 45,246 / 42,630 | 251.435 | 508.782 | 5.933 / 24.550 |
+| B | 45,454 / 42,971 | 239.335 | 435.628 | 5.556 / 6.031 |
+| C | 39,158 / 34,849 | 463.567 | 799.080 | 4.468 / 4.680 |
+
+The Jobson result changes total steady inventory by 1.7–2.0× relative to Raymond and the
+lake-entering subset by 1.05–4.14×. These are initialization sensitivities `sum(Q L/U)`, not
+checkpoint-to-checkpoint storage changes, control-ledger closure, or treatment results. The
+calculation includes all positive discharges, so both empirical relationships are extrapolated
+where model discharge lies outside their source data; several thousand eligible edges also have
+zero/nonpositive flow. The RFC still needs a preregistered finite-velocity rule for a dry reach
+with retained water.
+
+Raymond provides a mean-flow velocity hydraulic-geometry fit (`U=0.19 Q^0.29`), based on
+1,026 paired discharge/width/depth/velocity measurements; its velocity fit has `r²=0.49`.
+The source provides a combined empirical fit but does not establish a validity range for
+synthetic-world reaches. Jobson provides a second numerical estimate, but it predicts **peak
+tracer velocity**, not mean advective velocity; using it to set the linear-reservoir residence
+time is unsupported without a peak-to-mean mapping. The old Leopold–Maddock mean-velocity
+exponent (`m=0.34`) alone supplies no transferable coefficient. These calculations expose
+sensitivity but do not yet satisfy G0's requirement for two admissible, source-supported `U`
+parameterizations and a defensible low-flow rule. No river state or G0 treatment has been
+implemented; stop before the reservoir implementation gate until that choice is resolved.
+
 ### Next G0 actions
 
-1. Freeze the velocity equations, units, valid discharge ranges, and uncertainty comparison,
-   including whether Jobson's peak-tracer estimate is admissible for `U`.
-2. Implement persistent conservative reach state and per-reach transfer/closure readouts.
-3. Regenerate checkpoints from the recorded producer source, then validate their registered
-   target events under the pinned production source before using replacement hashes.
+1. Resolve a second mean-advective-velocity parameterization (or revise the RFC's two-source
+   gate), supported low-flow behavior, and the discharge domain over which each estimate is
+   used. The current Jobson peak-tracer sensitivity is not an admissible mean-velocity law.
+2. Once that gate is satisfied, implement persistent conservative reach state and per-reach
+   transfer/closure readouts.
+3. Use the validated A/B/C replacement checkpoints for the G0 control ledger, with their
+   producer/production commits and replacement hashes recorded in every run report.
 4. Report rain-only control closure while marking the full G0 ledger dependent on RFC 0015.
 
-Checkpoint reconstruction replays have run at `5d666dd` and `f4438e1`. No G0 inventory or
-ledger replay, paired treatment, or tests have run yet.
+Checkpoint reconstruction and event validation replays have run at `5d666dd` and `f4438e1`.
+Read-only velocity sensitivities have run on A/B/C. No G0 inventory or ledger replay, paired
+treatment, or tests have run.
