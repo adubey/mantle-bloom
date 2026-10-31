@@ -116,7 +116,7 @@ def test_hinge_tension_does_not_depend_on_timestep_partition():
                 convergence_speed_m_per_s=speed,
             )
         tensions.append(budget["hinge_tension_n"])
-        assert body.metrics()["length_m"] == pytest.approx(length + 600_000.0, rel=1e-3)
+        assert body.metrics()["length_m"] == pytest.approx(length + 600_000.0, rel=1e-9)
     assert tensions[0] == pytest.approx(tensions[1], rel=0.01)
 
 
@@ -137,7 +137,7 @@ def test_convergence_extends_the_tip_and_books_its_inflow():
 
     metrics = body.metrics()
     lengths = np.linalg.norm(np.diff(body.centerline_local_xyz_m, axis=0), axis=1)
-    assert metrics["length_m"] == pytest.approx(before["length_m"] + budget["advected_distance_m"], rel=2e-3)
+    assert metrics["length_m"] == pytest.approx(before["length_m"] + budget["advected_distance_m"], rel=1e-12)
     assert lengths.max() / lengths.min() == pytest.approx(1.0, abs=1e-3)
     assert body.kinematic_inflow_volume_m3 == pytest.approx(budget["advected_distance_m"] * area)
     assert body.consumed_volume_m3 == pytest.approx(volume + body.kinematic_inflow_volume_m3, rel=1e-12)

@@ -478,8 +478,8 @@ torque.py            slab-pull/ridge-push load assembly, coupled quasi-static so
 thin_shell.py        offline thin-shell membrane equilibrium diagnostic that transfers
                      `torque.PerNodeForceField` loads to incremental extensional resultants
                      and compares them with integrated normal-fault capacity for rift analysis
-slab_body.py         standalone reduced-order 3-D slab-ribbon geometry, buoyant attachment
-                     force, implicit bending/viscous-drag advance, and a controlled shell-to-
+slab_body.py         standalone reduced-order 3-D slab-ribbon geometry, axial hinge tension,
+                     implicit bending/viscous-drag advance, and a controlled shell-to-
                      geometry coupling for RFC 0010 Gate 3b; World stepping does not create
                      or advance these bodies yet
 quad_tectonics.py  the tectonic engine, `deform()`: boundary retreat and advance on the cell

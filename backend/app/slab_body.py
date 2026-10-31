@@ -426,7 +426,12 @@ def _extended_path(path: np.ndarray, extension_m: float) -> np.ndarray:
     extended = np.vstack((path, tip))
     arc = np.concatenate(([0.0], np.cumsum(np.linalg.norm(np.diff(extended, axis=0), axis=1))))
     stations = np.linspace(0.0, arc[-1], len(path))
-    return np.column_stack([np.interp(stations, arc, extended[:, axis]) for axis in range(3)])
+    sampled = np.column_stack([np.interp(stations, arc, extended[:, axis]) for axis in range(3)])
+    # Chords cut the polyline's corners, so restore the full length: a shrinking path would
+    # lose ribbon the inflow ledger still counts (#699).
+    directions = geometry.normalize(np.diff(sampled, axis=0))
+    spacing = arc[-1] / (len(path) - 1)
+    return path[0] + np.vstack((np.zeros(3), np.cumsum(directions * spacing, axis=0)))
 
 
 def advance_slab_body(

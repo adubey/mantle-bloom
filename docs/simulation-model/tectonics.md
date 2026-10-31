@@ -117,10 +117,15 @@ model localized faulting, slab bending, or a time-dependent shell law.
 
 `slab_body.SlabBody` is a separate Gate 3b reduced-order ribbon: a 3-D centerline with
 material volume, density anomaly, temperature, width and thickness, attached at a trench.
-`advance_slab_body()` solves an overdamped beam step with buoyancy, bending, mantle drag, and
-a measured convergence-speed conveyor drive in one force and work balance. The saved hinge
-load is the constrained-node residual projected into the plate tangent plane; it is not
-identified with total buoyant weight. `max_depth_m` is a force-active depth cutoff, not a
+`advance_slab_body()` treats the ribbon as inextensible down-dip. Its active weight along the
+path, less mantle drag on sliding at the measured convergence speed, is the tension it can
+transmit. A negative balance is booked as plate-driver force and never pushes the plate. The
+hinge load is that tension projected into the plate tangent plane; elastic root shear is
+reported but left to flexure, because adding it clamps the hinge and cancels the in-plane pull.
+An overdamped beam step moves the centerline under the weight normal to the path, bending and
+drag. Convergence lengthens the tip, and that inflow is booked in `kinematic_inflow_volume_m3`
+because the screen does not move the plate into the trench. A scenario can also book
+`antecedent_volume_m3` for slab length with no surface source in the save. `max_depth_m` is a force-active depth cutoff, not a
 geometric cap: geometry and material can continue below it and remain counted in the deep
 reservoir.
 

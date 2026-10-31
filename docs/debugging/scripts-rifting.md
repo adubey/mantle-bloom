@@ -117,3 +117,22 @@ Builds representative meshes from generated plates and checks clipping/coverage,
 loads on the original curved mesh and a shallow-cap mapping, localized and paired clamp sensitivity,
 and an independent spherical-shell solution. Its capacity response sweep checks a phenomenological
 rule's behavior only; the chosen values are not physical strength estimates.
+
+### `probe_gate3b_hinge_audit.py`
+
+Advances the two registered slab ribbons with no plate coupling, shell or damage, and reports
+hinge load against active weight, down-dip alignment and timestep sensitivity, with and without
+convergence. Use `--column-thickness` for the column-thickness mass scenario. It exposes no rift
+outcome, so it can run before an experiment is frozen.
+
+### `probe_gate3b_corrected_slabs.py`
+
+Runs the preregistered controlled evolving-slab screen from issue #699: flank, current-off and
+detached-slab arms across an axial-drag bracket at 2 and 1 Myr steps, with inherited components
+excluded from the split test. It replaces `probe_gate3b_evolving_slabs.py` for interpretation.
+
+```bash
+PYTHONHASHSEED=0 PYTHONPATH=backend:bin/debug backend/.venv/bin/python \
+    bin/debug/probe_gate3b_corrected_slabs.py --save <registered.mbworld> \
+    --out analysis/issue699/corrected-slabs-seed447276134-14.json
+```

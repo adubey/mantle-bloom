@@ -111,6 +111,8 @@ capacity diagnostics, plus Gate 3b's coarse shell-response probe and candidate p
 | [`sensitivity_gate2_capacity.py`](debugging/scripts-rifting.md#sensitivity_gate2_capacitypy) | one-factor capacity sensitivity on captured node loads |
 | [`validate_thin_shell_plate_meshes.py`](debugging/scripts-rifting.md#validate_thin_shell_plate_meshespy) | generated-plate mesh coverage, curved-surface and edge-condition checks |
 | [`probe_gate3b_local_load.py`](debugging/scripts-rifting.md#probe_gate3b_local_loadpy) | coarse static shell response to production per-node forces; transfer and resolution checks |
+| [`probe_gate3b_hinge_audit.py`](debugging/scripts-rifting.md#probe_gate3b_hinge_auditpy) | body-only slab hinge load against weight and timestep, with no rift outcome |
+| [`probe_gate3b_corrected_slabs.py`](debugging/scripts-rifting.md#probe_gate3b_corrected_slabspy) | controlled evolving-slab screen with flank, current-off, detachment and drag-bracket arms |
 | [`plot_gate3b_plate_paths.py`](debugging/scripts-rifting.md#plot_gate3b_plate_pathspy) | full plate, cratons, candidate paths, opening axes, gap close-ups and optional shell-response field |
 
 ### Crust and mantle budgets
