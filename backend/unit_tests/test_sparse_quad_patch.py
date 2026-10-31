@@ -81,6 +81,65 @@ def test_full_lattice_tiles_the_sphere_with_exact_areas():
     assert np.all(plate.contains_batch(_random_unit_vectors(2000)))
 
 
+def test_finite_strain_moves_plate_geometry_and_conserves_extensive_volume():
+    keys = pack_cell_keys(np.zeros(9, dtype=int), np.tile(np.arange(4, 7), 3), np.repeat(np.arange(4, 7), 3))
+    plate = _plate(
+        keys,
+        crustal_thickness_m=np.full(9, 35_000.0),
+        mantle_lithosphere_thickness_m=np.full(9, 100_000.0),
+        continental_material_m=np.full(9, 25_000.0),
+    )
+    before_points = plate.surface_nodes().local_xyz.copy()
+    before_areas = plate.node_areas_m2().copy()
+    before_volume = float(np.dot(plate.collect("crustal_thickness_m"), before_areas))
+    before_tracer = float(np.dot(plate.collect("continental_material_m"), before_areas))
+    before_edges = plate.adjacency().neighbours.copy()
+    with pytest.raises(ValueError):
+        plate.deformation_gradient[1, 1] = 2.0
+
+    increment = np.diag([0.0, 0.08, -0.02])
+    assert plate.apply_surface_strain(increment) == pytest.approx(0.08)
+
+    after_points = plate.surface_nodes().local_xyz
+    after_areas = plate.node_areas_m2()
+    assert not np.allclose(after_points, before_points)
+    assert not np.allclose(after_areas, before_areas)
+    assert np.all(after_areas > 0.0)
+    assert np.all(plate.contains_batch(after_points))
+    np.testing.assert_array_equal(plate.adjacency().neighbours, before_edges)
+    np.testing.assert_allclose(np.dot(plate.collect("crustal_thickness_m"), after_areas), before_volume, rtol=1e-12)
+    np.testing.assert_allclose(np.dot(plate.collect("continental_material_m"), after_areas), before_tracer, rtol=1e-12)
+
+
+def test_pre_strain_quad_state_loads_with_identity_geometry():
+    plate = _plate(_all_keys()[:12])
+    state = plate.__getstate__()
+    state.pop("_deformation_gradient")
+    state["_surface_format_version"] = 2
+    loaded = PlateWithSparseQuadPatch.__new__(PlateWithSparseQuadPatch)
+
+    loaded.__setstate__(state)
+
+    np.testing.assert_array_equal(loaded.deformation_gradient, np.eye(3))
+    np.testing.assert_allclose(loaded.surface_nodes().local_xyz, plate.surface_nodes().local_xyz)
+
+
+def test_finite_strain_geometry_round_trips_in_v5_world_save():
+    world = generate_world(seed=3, num_plates=4)
+    plate = world.plates[0]
+    plate.apply_surface_strain(np.diag([0.0, 0.04, -0.01]))
+    expected_gradient = plate.deformation_gradient.copy()
+    expected_points = plate.surface_nodes().local_xyz.copy()
+    expected_areas = plate.node_areas_m2().copy()
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    restored = next(item for item in loaded.plates if item.plate_id == plate.plate_id)
+
+    np.testing.assert_allclose(restored.deformation_gradient, expected_gradient)
+    np.testing.assert_allclose(restored.surface_nodes().local_xyz, expected_points)
+    np.testing.assert_allclose(restored.node_areas_m2(), expected_areas)
+
+
 def test_adjacency_is_four_connected_and_symmetric_across_cube_seams():
     plate = _plate(_all_keys())
     graph = plate.adjacency()

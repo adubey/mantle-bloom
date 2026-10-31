@@ -55,8 +55,10 @@ from .surface_fields import SURFACE_FIELDS, RemapClass, majority_history
 # - Version 2 (#358) replaced `_age_steps` with `_age_years`. A version 1 plate loads with its
 #   `_age_steps` in place; `persistence.load_world_bytes` converts it to years, since only the
 #   world knows how long its steps were.
-QUAD_SURFACE_FORMAT_VERSION = 2
-LEGACY_QUAD_SURFACE_FORMAT_VERSIONS = (1,)
+# - Version 3 (#699) adds a cumulative finite-strain geometry map; versions 1-2 default to
+#   the identity map.
+QUAD_SURFACE_FORMAT_VERSION = 3
+LEGACY_QUAD_SURFACE_FORMAT_VERSIONS = (1, 2)
 
 PLANET_RADIUS_M = PLANET_RADIUS_KM * 1000.0
 
@@ -315,6 +317,7 @@ class PlateWithSparseQuadPatch(Plate):
     # Derived state rebuilt on demand from (`_n`, `_keys`, `_frame`); never pickled.
     _TOPOLOGY_CACHES = (
         "_local_cache",
+        "_material_local_cache",
         "_latlon_cache",
         "_area_cache",
         "_adjacency_cache",
@@ -358,6 +361,8 @@ class PlateWithSparseQuadPatch(Plate):
             raise ValueError("cell keys must be unique")
         self._n = int(cells_per_edge)
         self._keys = keys
+        # Cumulative finite-strain map in the plate's co-rotating frame (#699).
+        self._deformation_gradient = np.eye(3, dtype=float)
         self._fields: dict[str, np.ndarray] = {}
         for name, values in (fields or {}).items():
             self._check_field(name, values, len(order))
@@ -429,18 +434,88 @@ class PlateWithSparseQuadPatch(Plate):
         super()._invalidate_bounding_polygon()
         self._world_points_cache = None
 
+    @property
+    def deformation_gradient(self) -> np.ndarray:
+        """Cumulative local finite-strain map used to place the plate's material cells."""
+        gradient = np.asarray(self._deformation_gradient, dtype=float).view()
+        if gradient.shape != (3, 3) or not np.all(np.isfinite(gradient)):
+            raise ValueError("plate deformation gradient must be a finite 3x3 matrix")
+        gradient.flags.writeable = False
+        return gradient
+
+    def apply_surface_strain(self, strain_increment: np.ndarray) -> float:
+        """Apply a homogeneous tangent-plane finite-strain increment to this plate.
+
+        The increment is a symmetric, dimensionless logarithmic strain in the local
+        tangent plane at the plate origin (local +x is radial; +y/+z span the tangent
+        plane). Cell identities and adjacency remain material coordinates. Geometry is
+        mapped onto the sphere, mapped spherical cell areas are recomputed, and all extensive
+        thickness-equivalent fields are rescaled to preserve their per-cell volumes.
+
+        This plate-wide affine response is a first Gate 3b geometry primitive; it does not
+        represent localized faulting or slab bending (#699).
+        """
+        increment = np.asarray(strain_increment, dtype=float)
+        if increment.shape != (3, 3) or not np.all(np.isfinite(increment)):
+            raise ValueError("strain_increment must be a finite 3x3 matrix")
+        if not np.allclose(increment, increment.T, rtol=0.0, atol=1e-12):
+            raise ValueError("strain_increment must be symmetric")
+        if not np.allclose(increment[0, :], 0.0, rtol=0.0, atol=1e-12) or not np.allclose(
+            increment[:, 0], 0.0, rtol=0.0, atol=1e-12
+        ):
+            raise ValueError("strain_increment must lie in the local tangent plane")
+
+        eigenvalues, eigenvectors = np.linalg.eigh(increment[1:, 1:])
+        step = np.eye(3)
+        step[1:, 1:] = (eigenvectors * np.exp(eigenvalues)) @ eigenvectors.T
+        if not np.all(np.isfinite(step)):
+            raise ValueError("strain_increment is too large for a finite geometry map")
+        from . import lithosphere, rheology
+
+        old_areas = self.node_areas_m2().copy()
+        old_hc = self.collect("crustal_thickness_m")
+        old_hm = self.collect("mantle_lithosphere_thickness_m")
+        density = lithosphere.node_crust_density(self.collect("crust_type_code"), self.crust_type)
+        old_isostasy = lithosphere.isostatic_elevation(old_hc, old_hm, density)
+        self._deformation_gradient = self.deformation_gradient @ step
+        self._local_cache = None
+        self._latlon_cache = None
+        self._area_cache = None
+        self._local_loops_cache = None
+        self._geometry_revision += 1
+        self._invalidate_bounding_polygon()
+        new_areas = self.node_areas_m2()
+        area_ratio = np.divide(old_areas, new_areas, out=np.ones_like(old_areas), where=new_areas > 0.0)
+        for name, values in self._fields.items():
+            if SURFACE_FIELDS[name].remap_class == RemapClass.EXTENSIVE:
+                values *= area_ratio
+        new_hc = self.collect("crustal_thickness_m")
+        new_hm = self.collect("mantle_lithosphere_thickness_m")
+        new_isostasy = lithosphere.isostatic_elevation(new_hc, new_hm, density)
+        elevation = self.collect("elevation")
+        self.set_fields_on_plate(elevation=rheology.clip_elevation_bounds(elevation + new_isostasy - old_isostasy))
+        return float(np.max(np.abs(eigenvalues), initial=0.0))
+
     def _unpacked(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         return unpack_cell_keys(self._keys)
 
     def _local_centres(self) -> np.ndarray:
         if self._local_cache is None:
+            material = self._material_local_centres()
+            mapped = material @ self.deformation_gradient.T
+            norms = np.linalg.norm(mapped, axis=1, keepdims=True)
+            self._local_cache = np.divide(mapped, norms, out=material.copy(), where=norms > 0.0)
+        return self._local_cache
+
+    def _material_local_centres(self) -> np.ndarray:
+        if self._material_local_cache is None:
             face, level, i, j = self._unpacked()
             if len(face):
                 scale = np.left_shift(1, level)
-                self._local_cache = lattice_points(face, (i + 0.5) / scale, (j + 0.5) / scale, self._n)
+                self._material_local_cache = lattice_points(face, (i + 0.5) / scale, (j + 0.5) / scale, self._n)
             else:
-                self._local_cache = np.zeros((0, 3))
-        return self._local_cache
+                self._material_local_cache = np.zeros((0, 3))
+        return self._material_local_cache
 
     def _node_latlon(self) -> tuple[np.ndarray, np.ndarray]:
         """Plate-local (phi, theta) of every node -- only for the `ElevationPoint` view,
@@ -457,12 +532,41 @@ class PlateWithSparseQuadPatch(Plate):
     def node_areas_m2(self) -> np.ndarray:
         if self._area_cache is None:
             _, level, i, j = self._unpacked()
-            areas = np.empty(len(level))
-            for lev in np.unique(level):
-                at = level == lev
-                areas[at] = cell_areas_sr(i[at], j[at], self._n * (1 << int(lev)))
+            if np.array_equal(self.deformation_gradient, np.eye(3)):
+                areas = np.empty(len(level))
+                for lev in np.unique(level):
+                    at = level == lev
+                    areas[at] = cell_areas_sr(i[at], j[at], self._n * (1 << int(lev)))
+            else:
+                areas = self._mapped_cell_areas_sr(level, i, j)
             self._area_cache = areas * PLANET_RADIUS_M**2
         return self._area_cache
+
+    def _mapped_cell_areas_sr(self, level: np.ndarray, i: np.ndarray, j: np.ndarray) -> np.ndarray:
+        """Spherical area of each cell after the cumulative finite-strain map."""
+        face = self._unpacked()[0]
+        corners_i = np.column_stack((i, i + 1, i + 1, i))
+        corners_j = np.column_stack((j, j, j + 1, j + 1))
+        points = lattice_points(
+            np.repeat(face, 4),
+            (corners_i / np.left_shift(1, level)[:, None]).reshape(-1),
+            (corners_j / np.left_shift(1, level)[:, None]).reshape(-1),
+            self._n,
+        )
+        points = geometry.normalize(points @ self.deformation_gradient.T).reshape(-1, 4, 3)
+
+        def triangle_area(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
+            numerator = np.abs(np.einsum("ij,ij->i", a, np.cross(b, c)))
+            denominator = (
+                1.0 + np.einsum("ij,ij->i", a, b)
+                + np.einsum("ij,ij->i", b, c)
+                + np.einsum("ij,ij->i", c, a)
+            )
+            return 2.0 * np.arctan2(numerator, np.maximum(denominator, 0.0))
+
+        return triangle_area(points[:, 0], points[:, 1], points[:, 2]) + triangle_area(
+            points[:, 0], points[:, 2], points[:, 3]
+        )
 
     def accounting_areas_m2(self, spacing_rad: float) -> np.ndarray:
         """Exact cell areas -- cube-sphere cells are not equal-area (issue #257)."""
@@ -516,6 +620,8 @@ class PlateWithSparseQuadPatch(Plate):
 
     def _leaf_key_at(self, points: np.ndarray) -> np.ndarray:
         """Active leaf containing each local point, or -1 outside this patch."""
+        points = geometry.normalize(np.asarray(points, dtype=float))
+        points = geometry.normalize(points @ np.linalg.inv(self.deformation_gradient).T)
         result = np.full(len(points), -1, dtype=np.int64)
         max_level = int(unpack_cell_keys(self._keys)[1].max(initial=0))
         for level in range(max_level + 1):
@@ -686,6 +792,9 @@ class PlateWithSparseQuadPatch(Plate):
                 chain.append(e)
                 e = successor(e)
             loops.append(start_xyz[chain])
+        gradient = self.deformation_gradient
+        if not np.array_equal(gradient, np.eye(3)):
+            loops = [geometry.normalize(loop @ gradient.T) for loop in loops]
         self._local_loops_cache = loops
         return loops
 
@@ -1209,6 +1318,7 @@ class PlateWithSparseQuadPatch(Plate):
             )
         state = dict(state)
         del state["_surface_format_version"]
+        state.setdefault("_deformation_gradient", np.eye(3, dtype=float))
         self.__dict__.update(state)
         self._reset_caches()
         self._validate_leaf_topology()

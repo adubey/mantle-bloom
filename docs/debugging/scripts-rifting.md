@@ -1,15 +1,55 @@
 # Rifting and thin-shell diagnostic scripts
 
 These offline diagnostics support RFC 0010's Gate 2 assessment of local loading and lithosphere
-capacity. Gate 2 is closed for the connected-source, single-plate diagnostic. Its capacity results
-are conditional scenarios; they do not select a production rupture threshold or validate coupled
-neighbor stresses. See the [RFC](../../rfc/0010-rifts-follow-weak-lithosphere.md) and
-[issue 487 findings](../../analysis/issue487/README.md).
+capacity and Gate 3b's candidate crack-path work. Gate 2 is closed for the connected-source,
+single-plate diagnostic. Its capacity results are conditional scenarios; they do not select a
+production rupture threshold or validate coupled neighbor stresses. The coarse Gate 3b shell
+response is static and provisional; it does not add a production damage law or rift validation.
+See the [RFC](../../rfc/0010-rifts-follow-weak-lithosphere.md), [issue 487 findings](../../analysis/issue487/README.md)
+and [issue 699 findings](../../analysis/issue699/README.md).
 
 Run scripts from the repository root with the worktree's `backend/.venv/bin/python`. Several tools
 replay a full world and use substantial memory, so follow the
 [`compute-budget` skill](../../.agents/skills/compute-budget/SKILL.md) before starting one. Keep full saves and captures in scratch space; the compact outputs and findings belong
 in `analysis/issue487/`. Each script's module docstring gives its complete usage and arguments.
+
+### `plot_gate3b_plate_paths.py`
+
+Regenerates the plate named by two compatible `probe_gate3b_interior_belt_paths.py` JSON files,
+then draws the full plate mesh, craton mask, both candidate crack paths, prescribed opening
+directions and local gap views. The A close-up is widened to show surrounding cratons. Opening
+arrows indicate the probe's prescribed axis and are lengthened for visibility; they are not
+measured plate motion. An optional `--shell-json` adds a coarse principal tensile-resultant map
+to the overview and close-ups by nearest-medoid mapping onto the regenerated plate cells. The
+field is a reduced linear static response to generation-time per-node forces, while routes in the
+example below use a state after one 2 Myr step. This overlay is spatial illustration, not matched-
+state coupling, strain rate, failure, damage or production rifting. It is labeled provisional when
+the saved result misses its predeclared transfer or equilibrium checks. World generation can use
+substantial memory, so render one figure at a time.
+
+```bash
+PYTHONPATH=backend backend/.venv/bin/python bin/debug/plot_gate3b_plate_paths.py \
+    --route-json analysis/issue699/interior-belt-path-seed11-density4-stepover150.json \
+    --route-json analysis/issue699/interior-belt-path-seed11-density4.json \
+    --shell-json analysis/issue699/coarse-shell-response-seed11-density4.json \
+    --out /tmp/gate3b-plate-paths.png
+```
+
+### `probe_gate3b_local_load.py`
+
+Aggregates the production per-node force field onto deterministic spherical medoids, solves the
+existing offline thin-shell membrane diagnostic at 512 and 1,024 representative-cell caps, and
+reports mesh coverage, force/torque transfer, equilibrium residuals and spatial map agreement.
+Its principal tensile resultant is a static demand ranking under an effective 70 GPa modulus;
+it is not a calibrated strength comparison or a production stress field. Full-resolution values
+are computed in memory for the resolution comparison, while the JSON stores coarse mesh points
+and values for compact plotting.
+
+```bash
+PYTHONHASHSEED=0 PYTHONPATH=backend:bin/debug backend/.venv/bin/python \
+    bin/debug/probe_gate3b_local_load.py \
+    --out analysis/issue699/coarse-shell-response-seed11-density4.json
+```
 
 ### `audit_gate2_assumption_basis.py`
 

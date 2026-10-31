@@ -1,0 +1,552 @@
+{
+  "active_slab_front_length_km": 5130.566829004329,
+  "axis_end_slab_resultant_separation_deg": 152.19444732437262,
+  "bilateral_slab_sides": [
+    {
+      "active_nodes": 75,
+      "slab_pull_resultant_magnitude_n": 4.156027986849828e+18,
+      "slab_pull_resultant_n": [
+        8.322865055236774e+17,
+        -7.23450415963678e+17,
+        4.007054690897568e+18
+      ]
+    },
+    {
+      "active_nodes": 41,
+      "slab_pull_resultant_magnitude_n": 2.486792931126559e+18,
+      "slab_pull_resultant_n": [
+        -1.5719278925977341e+18,
+        2.3381724957559373e+17,
+        -1.9127235232973883e+18
+      ]
+    }
+  ],
+  "capacity_cases": {
+    "median": {
+      "component_area_fractions_largest_first": [
+        0.9982981601993658,
+        0.0004386397960741667,
+        0.00043294283369444455,
+        0.0004196748960952203,
+        0.00041058227477184264
+      ],
+      "component_cell_counts_largest_first": [
+        2264,
+        1,
+        1,
+        1,
+        1
+      ],
+      "failed_adjacency_link_count": 185,
+      "failed_cell_area_fraction": 0.09789096108892101,
+      "failed_cell_area_km2": 986298.0081635312,
+      "failed_cell_component_count": 10,
+      "failed_cell_count": 228,
+      "largest_daughter_area_fraction": 0.9982981601993658,
+      "peak_damage_strain": 1.25,
+      "plate_components_after_failed_links": 5,
+      "second_daughter_area_fraction": 0.0004386397960741667,
+      "two_largest_area_fraction": 0.9987367999954401,
+      "two_largest_component_cells": [
+        2264,
+        1
+      ],
+      "viable_split_candidate": false
+    },
+    "p10": {
+      "component_area_fractions_largest_first": [
+        0.9300075559588556,
+        0.00783335196069288,
+        0.006089372831648542,
+        0.005141530289421979,
+        0.005122360469825967,
+        0.004730607752751094,
+        0.0046775089716705595,
+        0.0030145535215487314,
+        0.0024708604517255576,
+        0.002150620475808795,
+        0.002147657085539022,
+        0.0021184074242673397,
+        0.002058853033746254,
+        0.0016412197603157478,
+        0.001289730722304816,
+        0.0012697799149556002,
+        0.0008651888122076503,
+        0.0008575647243409785,
+        0.0004421414492328644,
+        0.0004417043841036172,
+        0.00044154721449236325,
+        0.00044116059658398714,
+        0.0004407309692044729,
+        0.00044025831636734314,
+        0.000440131283275577,
+        0.00043970941370755827,
+        0.0004392452694815251,
+        0.0004387388261172985,
+        0.0004386397960741667,
+        0.00043714931045224736,
+        0.00043549328091657685,
+        0.00043377435048983084,
+        0.00043313777768221544,
+        0.00043294283369444455,
+        0.0004213690681648351,
+        0.0004196748960952203,
+        0.00041952915214636303,
+        0.00041821538206977967,
+        0.000417006371657611,
+        0.00041661878921001234,
+        0.0004160941378274562,
+        0.0004157685279955221,
+        0.00041488330960566316,
+        0.0004139628894106753,
+        0.00041363260231129496,
+        0.00041274064311395476,
+        0.000411814057372918,
+        0.00041147894842281615,
+        0.00041085256649066304,
+        0.00041058227477184264,
+        0.0004096515265050045,
+        0.0004086863970419142,
+        0.00040841206834379246,
+        0.00040747913941964557,
+        0.0004071339463419721,
+        0.00040623384187643427,
+        0.0004049502303039056
+      ],
+      "component_cell_counts_largest_first": [
+        2103,
+        18,
+        15,
+        12,
+        12,
+        11,
+        11,
+        7,
+        6,
+        5,
+        5,
+        5,
+        5,
+        4,
+        3,
+        3,
+        2,
+        2,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "failed_adjacency_link_count": 428,
+      "failed_cell_area_fraction": 0.18849233546462146,
+      "failed_cell_area_km2": 1899149.9619047968,
+      "failed_cell_component_count": 9,
+      "failed_cell_count": 440,
+      "largest_daughter_area_fraction": 0.9300075559588556,
+      "peak_damage_strain": 1.25,
+      "plate_components_after_failed_links": 57,
+      "second_daughter_area_fraction": 0.00783335196069288,
+      "two_largest_area_fraction": 0.9378409079195485,
+      "two_largest_component_cells": [
+        2103,
+        18
+      ],
+      "viable_split_candidate": false
+    },
+    "p90": {
+      "component_area_fractions_largest_first": [
+        0.9995803251039066,
+        0.0004196748960952203
+      ],
+      "component_cell_counts_largest_first": [
+        2267,
+        1
+      ],
+      "failed_adjacency_link_count": 78,
+      "failed_cell_area_fraction": 0.04462285007635657,
+      "failed_cell_area_km2": 449596.4454666228,
+      "failed_cell_component_count": 9,
+      "failed_cell_count": 103,
+      "largest_daughter_area_fraction": 0.9995803251039066,
+      "peak_damage_strain": 1.25,
+      "plate_components_after_failed_links": 2,
+      "second_daughter_area_fraction": 0.0004196748960952203,
+      "two_largest_area_fraction": 1.0000000000000018,
+      "two_largest_component_cells": [
+        2267,
+        1
+      ],
+      "viable_split_candidate": false
+    }
+  },
+  "capacity_references_n_per_m": {
+    "median": {
+      "continental_n_per_m": 13798655968669.416,
+      "oceanic_mature_n_per_m": 4064143986727.7935
+    },
+    "p10": {
+      "continental_n_per_m": 6245610364936.221,
+      "oceanic_mature_n_per_m": 2171435449135.284
+    },
+    "p90": {
+      "continental_n_per_m": 28564478480381.63,
+      "oceanic_mature_n_per_m": 7145885185036.936
+    }
+  },
+  "case": "447276134-14",
+  "continental_area_fraction": 0.7314271995246455,
+  "craton_area_fraction": 0.0,
+  "crust_volume_1e6_km3": 311.55385590805554,
+  "damage_law": {
+    "epsilon_fail": 1.25,
+    "epsilon_onset": 0.25,
+    "residual_strength_fraction": 0.3333333333333333,
+    "viscosity_pa_s": 9e+21
+  },
+  "diagnostic_duration_myr": 20,
+  "elapsed_wall_seconds": 0.9614250830054516,
+  "force_resultants_n": {
+    "midline_current": [
+      -1.800758270352693e+17,
+      -1.920484861316017e+17,
+      -4.221571622082316e+17
+    ],
+    "native_slab_pull": [
+      -7.306878514610488e+17,
+      -5.0753120104465184e+17,
+      2.174828949065761e+18
+    ],
+    "native_total_production": [
+      3.7911058050402086e+17,
+      -4.2646069465734904e+16,
+      -3.3418575542819814e+17
+    ]
+  },
+  "load_schedule": [
+    {
+      "elapsed_myr": 0,
+      "midline_multiplier": 1.0,
+      "slab_multiplier": 1.0
+    },
+    {
+      "elapsed_myr": 10,
+      "midline_multiplier": 1.0,
+      "slab_multiplier": 2.0
+    },
+    {
+      "elapsed_myr": 20,
+      "midline_multiplier": 1.0,
+      "slab_multiplier": 4.0
+    }
+  ],
+  "mantle_lithosphere_volume_1e6_km3": 810.4345949349871,
+  "mean_active_slab_column_thickness_km": 95.9761205317422,
+  "mean_moho_temperature_c": 479.7669669996822,
+  "mean_total_thickness_km": 111.3583591111587,
+  "meets_lighter_neighbor_bilateral_precondition": true,
+  "midline_source_scale": 4.266833031649907e-09,
+  "native_mantle_flow_p95_cm_per_yr": 5.686175324917273,
+  "node_count": 2268,
+  "node_density": 4.0,
+  "plate_area_km2": 10075475.78644784,
+  "plate_id": 14,
+  "plate_mass_1e21_kg": 3.5229770538116374,
+  "save_time_myr": 116.3,
+  "seed": 447276134,
+  "shell_accounting_by_slab_multiplier": {
+    "1.0": {
+      "accounting_pass": true,
+      "demand_quantiles_n_per_m": [
+        0.0,
+        582253092388.7664,
+        3310816991726.6006
+      ],
+      "equilibrium_residual_fraction": 1.3756856362117224e-05,
+      "force_transfer_residual_fraction": 1.1658601194421332e-16,
+      "mesh_triangles": 877,
+      "production_plate_area_coverage": 0.986252452850538,
+      "shell_energy_residual_fraction": 0.0001563280064358945,
+      "shell_node_count": 500,
+      "target_representatives": 512,
+      "torque_transfer_residual_fraction": 5.961243654584315e-05
+    },
+    "2.0": {
+      "accounting_pass": true,
+      "demand_quantiles_n_per_m": [
+        0.0,
+        1378479573119.993,
+        6253066468080.256
+      ],
+      "equilibrium_residual_fraction": 1.4899951893436337e-05,
+      "force_transfer_residual_fraction": 3.601983640017186e-16,
+      "mesh_triangles": 877,
+      "production_plate_area_coverage": 0.986252452850538,
+      "shell_energy_residual_fraction": 0.0004218084983130417,
+      "shell_node_count": 500,
+      "target_representatives": 512,
+      "torque_transfer_residual_fraction": 0.00023742734875072447
+    },
+    "4.0": {
+      "accounting_pass": true,
+      "demand_quantiles_n_per_m": [
+        0.0,
+        3070251054360.142,
+        13378803351112.969
+      ],
+      "equilibrium_residual_fraction": 1.774794827730104e-05,
+      "force_transfer_residual_fraction": 2.6906084871988915e-16,
+      "mesh_triangles": 877,
+      "production_plate_area_coverage": 0.986252452850538,
+      "shell_energy_residual_fraction": 0.0004677499464738473,
+      "shell_node_count": 500,
+      "target_representatives": 512,
+      "torque_transfer_residual_fraction": 0.00041507481771781065
+    }
+  },
+  "slab_sink_length_km": 250.0,
+  "split_rule": {
+    "minimum_daughter_area_fraction": 0.1,
+    "minimum_retained_two_daughter_area_fraction": 0.8,
+    "required_components": 2
+  },
+  "status": "frozen-geometry M1 diagnostic; not full tectonic-world evolution",
+  "step_myr": 2.0,
+  "ten_equal_axis_slices": [
+    {
+      "active_slab_front_length_km": 575.8928571428572,
+      "crust_volume_1e6_km3": 4.449677310197574,
+      "mantle_lithosphere_volume_1e6_km3": 13.719130509686767,
+      "mass_1e21_kg": 0.05799926505458569,
+      "mean_active_slab_column_thickness_km": 45.43179153924383,
+      "mean_moho_temperature_c": 356.55520866755995,
+      "mean_total_thickness_km": 46.03914673985658,
+      "midline_basal_drag_resultant_1e18_n": [
+        -0.000351461121275993,
+        0.0008337572068565949,
+        -0.0016670770257475574
+      ],
+      "slab_pull_resultant_1e18_n": [
+        0.26308821344563194,
+        -0.25706888180810317,
+        1.4623575766171275
+      ],
+      "slice": 0
+    },
+    {
+      "active_slab_front_length_km": 406.25,
+      "crust_volume_1e6_km3": 8.411580695017722,
+      "mantle_lithosphere_volume_1e6_km3": 21.453600812189038,
+      "mass_1e21_kg": 0.095079942779132,
+      "mean_active_slab_column_thickness_km": 51.23781220757036,
+      "mean_moho_temperature_c": 400.29161407981667,
+      "mean_total_thickness_km": 54.74926610310771,
+      "midline_basal_drag_resultant_1e18_n": [
+        -0.013102751962844848,
+        0.0132713822769051,
+        -0.051577472516776635
+      ],
+      "slab_pull_resultant_1e18_n": [
+        0.2845257336893542,
+        0.20566039267806707,
+        1.4307190251622446
+      ],
+      "slice": 1
+    },
+    {
+      "active_slab_front_length_km": 825.892857142857,
+      "crust_volume_1e6_km3": 28.073720262789287,
+      "mantle_lithosphere_volume_1e6_km3": 74.29716989735434,
+      "mass_1e21_kg": 0.3223501345274029,
+      "mean_active_slab_column_thickness_km": 82.80236411446712,
+      "mean_moho_temperature_c": 478.5012814966435,
+      "mean_total_thickness_km": 107.02958383575427,
+      "midline_basal_drag_resultant_1e18_n": [
+        -0.020593990131921123,
+        -0.051289716712324074,
+        -0.03540197346412605
+      ],
+      "slab_pull_resultant_1e18_n": [
+        0.2846725583886912,
+        -0.6720419268336418,
+        1.1139780891181945
+      ],
+      "slice": 2
+    },
+    {
+      "active_slab_front_length_km": 607.8125,
+      "crust_volume_1e6_km3": 48.89175704466468,
+      "mantle_lithosphere_volume_1e6_km3": 136.03273349307742,
+      "mass_1e21_kg": 0.5809482321728118,
+      "mean_active_slab_column_thickness_km": 63.12922199148865,
+      "mean_moho_temperature_c": 487.69150174668863,
+      "mean_total_thickness_km": 131.2487371862957,
+      "midline_basal_drag_resultant_1e18_n": [
+        -0.026381394174307404,
+        -0.024150939950188056,
+        -0.05584155097699636
+      ],
+      "slab_pull_resultant_1e18_n": [
+        0.002187089262749889,
+        -0.009623471126373616,
+        0.04419252054363828
+      ],
+      "slice": 3
+    },
+    {
+      "active_slab_front_length_km": 418.1547619047619,
+      "crust_volume_1e6_km3": 62.06564684879262,
+      "mantle_lithosphere_volume_1e6_km3": 163.95192413502386,
+      "mass_1e21_kg": 0.7086185961373187,
+      "mean_active_slab_column_thickness_km": 76.06582119543953,
+      "mean_moho_temperature_c": 511.4060132100116,
+      "mean_total_thickness_km": 141.27764282634433,
+      "midline_basal_drag_resultant_1e18_n": [
+        -0.023967461204635863,
+        -0.026730222437535773,
+        -0.0662861342161453
+      ],
+      "slab_pull_resultant_1e18_n": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "slice": 4
+    },
+    {
+      "active_slab_front_length_km": 758.184523809524,
+      "crust_volume_1e6_km3": 65.643490693443,
+      "mantle_lithosphere_volume_1e6_km3": 165.63244040886633,
+      "mass_1e21_kg": 0.7238614421739659,
+      "mean_active_slab_column_thickness_km": 116.89018897342103,
+      "mean_moho_temperature_c": 530.4102653107057,
+      "mean_total_thickness_km": 133.38233580043794,
+      "midline_basal_drag_resultant_1e18_n": [
+        -0.015420836452778352,
+        -0.018938811662019692,
+        -0.04193135676690856
+      ],
+      "slab_pull_resultant_1e18_n": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "slice": 5
+    },
+    {
+      "active_slab_front_length_km": 140.9090909090909,
+      "crust_volume_1e6_km3": 50.05961845419317,
+      "mantle_lithosphere_volume_1e6_km3": 121.05459256585789,
+      "mass_1e21_kg": 0.5350300787273962,
+      "mean_active_slab_column_thickness_km": 249.59513533936786,
+      "mean_moho_temperature_c": 539.077227009618,
+      "mean_total_thickness_km": 129.70285803759103,
+      "midline_basal_drag_resultant_1e18_n": [
+        -0.019471514552641473,
+        -0.013346611200144801,
+        -0.0035465466545750233
+      ],
+      "slab_pull_resultant_1e18_n": [
+        0.006766446350257964,
+        -0.008274563530194142,
+        0.03630526092194361
+      ],
+      "slice": 6
+    },
+    {
+      "active_slab_front_length_km": 433.0357142857143,
+      "crust_volume_1e6_km3": 31.16030690410895,
+      "mantle_lithosphere_volume_1e6_km3": 75.1137617272066,
+      "mass_1e21_kg": 0.33331075059360726,
+      "mean_active_slab_column_thickness_km": 248.35439741897542,
+      "mean_moho_temperature_c": 494.22210979475864,
+      "mean_total_thickness_km": 104.45253819528311,
+      "midline_basal_drag_resultant_1e18_n": [
+        -0.021707740769746537,
+        -0.01987756358626129,
+        -0.023055713157126897
+      ],
+      "slab_pull_resultant_1e18_n": [
+        -0.1311297237100322,
+        0.11430931069062979,
+        -0.08637814652527324
+      ],
+      "slice": 7
+    },
+    {
+      "active_slab_front_length_km": 442.55952380952385,
+      "crust_volume_1e6_km3": 9.61408118885572,
+      "mantle_lithosphere_volume_1e6_km3": 28.592856642731736,
+      "mass_1e21_kg": 0.12161001012616027,
+      "mean_active_slab_column_thickness_km": 71.89512492956062,
+      "mean_moho_temperature_c": 346.23844916364743,
+      "mean_total_thickness_km": 50.69540211099942,
+      "midline_basal_drag_resultant_1e18_n": [
+        -0.04728178653451011,
+        -0.024607368070899853,
+        -0.109442530506334
+      ],
+      "slab_pull_resultant_1e18_n": [
+        -0.08503458236616317,
+        -0.3649567251777127,
+        -0.6270734649740559
+      ],
+      "slice": 8
+    },
+    {
+      "active_slab_front_length_km": 521.8749999999999,
+      "crust_volume_1e6_km3": 3.183976505992818,
+      "mantle_lithosphere_volume_1e6_km3": 10.586384742993168,
+      "mass_1e21_kg": 0.04416860151925663,
+      "mean_active_slab_column_thickness_km": 43.00911293105738,
+      "mean_moho_temperature_c": 338.85809935401045,
+      "mean_total_thickness_km": 39.822362571882316,
+      "midline_basal_drag_resultant_1e18_n": [
+        0.008203109869392749,
+        -0.027212391995989196,
+        -0.0334068069234956
+      ],
+      "slab_pull_resultant_1e18_n": [
+        -1.3557635865215392,
+        0.4844646640626767,
+        -1.1992719117980597
+      ],
+      "slice": 9
+    }
+  ],
+  "weaker_to_stronger_axis_end_slab_resultant_ratio": 0.5983580810800772
+}

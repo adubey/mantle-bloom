@@ -1,0 +1,428 @@
+{
+  "all_source_mesh_accounting_pass": false,
+  "basal_drag_energy_pass": true,
+  "basal_drag_work_account": {
+    "energy_residual_fraction": 0.0,
+    "mantle_reaction_work_rate_w": -79924018186.0304,
+    "plate_work_rate_w": 9049344809.195671,
+    "reaction_force_n": [
+      1.9345440281735774e+19,
+      2.0181932530171298e+19,
+      1.1734410075614056e+19
+    ],
+    "reaction_torque_nm": [
+      4.936848018089473e+25,
+      -1.2843330820183617e+26,
+      1.2958874556479727e+26
+    ],
+    "viscous_dissipation_rate_w": 70874673376.83472
+  },
+  "cases": {
+    "basal_drag_only": [
+      {
+        "accounting_checks": {
+          "area_coverage_pass": true,
+          "equilibrium_pass": false,
+          "force_transfer_pass": true,
+          "shell_energy_pass": false,
+          "torque_transfer_pass": true
+        },
+        "accounting_pass": false,
+        "component_area_coverage": 0.9909124666384687,
+        "discarded_triangles": 3,
+        "equilibrium_residual_fraction": 0.08777092112992599,
+        "extensional_demand_quantiles_n_per_m": [
+          224232349448.7968,
+          1128958676591.379,
+          1568800201204.8801,
+          4546840634210.197
+        ],
+        "force_transfer_residual_fraction": 0.0050954481519242525,
+        "incremental_external_work_j": 5.2685996444916126e+22,
+        "mesh_triangles": 893,
+        "rejected_triangles": 116,
+        "representative_count": 512,
+        "shell_energy_residual_fraction": 0.2750704357617341,
+        "shell_node_count": 505,
+        "solver_stop_code": 1,
+        "source_force_n": [
+          -1.9345440281735774e+19,
+          -2.0181932530171298e+19,
+          -1.1734410075614056e+19
+        ],
+        "source_torque_nm": [
+          -4.936848018089473e+25,
+          1.2843330820183617e+26,
+          -1.2958874556479727e+26
+        ],
+        "stored_elastic_energy_j": 3.819363644427187e+22,
+        "target_representatives": 512,
+        "torque_transfer_residual_fraction": 0.004387345932402043,
+        "transferred_force_n": [
+          -1.907861030048264e+19,
+          -2.0153229665142014e+19,
+          -1.171998171115839e+19
+        ],
+        "transferred_torque_nm": [
+          -4.944010650298192e+25,
+          1.275032794942154e+26,
+          -1.2844704275300648e+26
+        ],
+        "triangle_candidates": 1012,
+        "triangle_component_sizes_before_filter": [
+          893,
+          1,
+          2
+        ]
+      },
+      {
+        "accounting_checks": {
+          "area_coverage_pass": true,
+          "equilibrium_pass": false,
+          "force_transfer_pass": true,
+          "shell_energy_pass": false,
+          "torque_transfer_pass": true
+        },
+        "accounting_pass": false,
+        "component_area_coverage": 0.991550816553428,
+        "discarded_triangles": 7,
+        "equilibrium_residual_fraction": 0.24296256247795373,
+        "extensional_demand_quantiles_n_per_m": [
+          102034971422.55847,
+          713076008519.7659,
+          826195271156.6898,
+          1075414276483.3258
+        ],
+        "force_transfer_residual_fraction": 0.006341771486927852,
+        "incremental_external_work_j": 1.8055368666879915e+22,
+        "mesh_triangles": 1840,
+        "rejected_triangles": 188,
+        "representative_count": 1024,
+        "shell_energy_residual_fraction": 0.05382609379235614,
+        "shell_node_count": 1009,
+        "solver_stop_code": 2,
+        "source_force_n": [
+          -1.9345440281735774e+19,
+          -2.0181932530171298e+19,
+          -1.1734410075614056e+19
+        ],
+        "source_torque_nm": [
+          -4.936848018089473e+25,
+          1.2843330820183617e+26,
+          -1.2958874556479727e+26
+        ],
+        "stored_elastic_energy_j": 1.7083518699560868e+22,
+        "target_representatives": 1024,
+        "torque_transfer_residual_fraction": 0.00672836243119372,
+        "transferred_force_n": [
+          -1.9081504531576844e+19,
+          -2.0289014158070804e+19,
+          -1.1559032142831972e+19
+        ],
+        "transferred_torque_nm": [
+          -4.92256531248685e+25,
+          1.2674020019873955e+26,
+          -1.2809711646922476e+26
+        ],
+        "triangle_candidates": 2035,
+        "triangle_component_sizes_before_filter": [
+          3,
+          1840,
+          2,
+          2
+        ]
+      }
+    ],
+    "full_production_force": [
+      {
+        "accounting_checks": {
+          "area_coverage_pass": true,
+          "equilibrium_pass": false,
+          "force_transfer_pass": false,
+          "shell_energy_pass": false,
+          "torque_transfer_pass": false
+        },
+        "accounting_pass": false,
+        "component_area_coverage": 0.9909124666384687,
+        "discarded_triangles": 3,
+        "equilibrium_residual_fraction": 0.08405052209701037,
+        "extensional_demand_quantiles_n_per_m": [
+          222501432908.96387,
+          1859174416088.6348,
+          2911949153660.885,
+          6431408232966.615
+        ],
+        "force_transfer_residual_fraction": 0.03614094516932511,
+        "incremental_external_work_j": 1.1588093442769728e+23,
+        "mesh_triangles": 893,
+        "rejected_triangles": 116,
+        "representative_count": 512,
+        "shell_energy_residual_fraction": 0.23209699192773942,
+        "shell_node_count": 505,
+        "solver_stop_code": 1,
+        "source_force_n": [
+          -1.5332758165481605e+19,
+          -2.382649725569477e+19,
+          -1.8017500806619673e+19
+        ],
+        "source_torque_nm": [
+          -4.711847211372311e+25,
+          8.109937788422377e+25,
+          -8.076332150956885e+25
+        ],
+        "stored_elastic_energy_j": 8.898531812525312e+22,
+        "target_representatives": 512,
+        "torque_transfer_residual_fraction": 0.03248094429663048,
+        "transferred_force_n": [
+          -1.593430739165894e+19,
+          -2.2123913561981706e+19,
+          -1.6467634679919708e+19
+        ],
+        "transferred_torque_nm": [
+          -4.614648118545413e+25,
+          8.966226597913507e+25,
+          -9.13171961990118e+25
+        ],
+        "triangle_candidates": 1012,
+        "triangle_component_sizes_before_filter": [
+          893,
+          1,
+          2
+        ]
+      },
+      {
+        "accounting_checks": {
+          "area_coverage_pass": true,
+          "equilibrium_pass": false,
+          "force_transfer_pass": false,
+          "shell_energy_pass": false,
+          "torque_transfer_pass": false
+        },
+        "accounting_pass": false,
+        "component_area_coverage": 0.991550816553428,
+        "discarded_triangles": 7,
+        "equilibrium_residual_fraction": 0.23825025171979308,
+        "extensional_demand_quantiles_n_per_m": [
+          27846878225.15747,
+          726596206364.7874,
+          904646042284.947,
+          1798558328154.3254
+        ],
+        "force_transfer_residual_fraction": 0.04069761110184306,
+        "incremental_external_work_j": 2.5581327414381748e+22,
+        "mesh_triangles": 1840,
+        "rejected_triangles": 188,
+        "representative_count": 1024,
+        "shell_energy_residual_fraction": 0.08117827667848548,
+        "shell_node_count": 1009,
+        "solver_stop_code": 2,
+        "source_force_n": [
+          -1.5332758165481605e+19,
+          -2.382649725569477e+19,
+          -1.8017500806619673e+19
+        ],
+        "source_torque_nm": [
+          -4.711847211372311e+25,
+          8.109937788422377e+25,
+          -8.076332150956885e+25
+        ],
+        "stored_elastic_energy_j": 2.350467933973414e+22,
+        "target_representatives": 1024,
+        "torque_transfer_residual_fraction": 0.047184351734767024,
+        "transferred_force_n": [
+          -1.6560763312842758e+19,
+          -2.2581471085215027e+19,
+          -1.598708504488302e+19
+        ],
+        "transferred_torque_nm": [
+          -4.9333029505822e+25,
+          9.453228602469827e+25,
+          -9.513097099521923e+25
+        ],
+        "triangle_candidates": 2035,
+        "triangle_component_sizes_before_filter": [
+          3,
+          1840,
+          2,
+          2
+        ]
+      }
+    ],
+    "production_without_basal_drag": [
+      {
+        "accounting_checks": {
+          "area_coverage_pass": true,
+          "equilibrium_pass": false,
+          "force_transfer_pass": false,
+          "shell_energy_pass": false,
+          "torque_transfer_pass": false
+        },
+        "accounting_pass": false,
+        "component_area_coverage": 0.9909124666384687,
+        "discarded_triangles": 3,
+        "equilibrium_residual_fraction": 0.040708942121747915,
+        "extensional_demand_quantiles_n_per_m": [
+          226210038549.91934,
+          809115308601.8037,
+          1284120052076.33,
+          2307450720670.279
+        ],
+        "force_transfer_residual_fraction": 0.1618208790279099,
+        "incremental_external_work_j": 3.4534210289823165e+22,
+        "mesh_triangles": 893,
+        "rejected_triangles": 116,
+        "representative_count": 512,
+        "shell_energy_residual_fraction": 0.06999130750756388,
+        "shell_node_count": 505,
+        "solver_stop_code": 1,
+        "source_force_n": [
+          4.0126821162540913e+18,
+          -3.6445647255234007e+18,
+          -6.283090731005582e+18
+        ],
+        "source_torque_nm": [
+          2.2500080671715294e+24,
+          -4.7333930317612586e+25,
+          4.882542405522834e+25
+        ],
+        "stored_elastic_energy_j": 3.2117115757897275e+22,
+        "target_representatives": 512,
+        "torque_transfer_residual_fraction": 0.15771135714691206,
+        "transferred_force_n": [
+          3.144302908823695e+18,
+          -1.9706838968396933e+18,
+          -4.747652968761322e+18
+        ],
+        "transferred_torque_nm": [
+          3.293625317527749e+24,
+          -3.784101351508018e+25,
+          3.7129846553994746e+25
+        ],
+        "triangle_candidates": 1012,
+        "triangle_component_sizes_before_filter": [
+          893,
+          1,
+          2
+        ]
+      },
+      {
+        "accounting_checks": {
+          "area_coverage_pass": true,
+          "equilibrium_pass": false,
+          "force_transfer_pass": false,
+          "shell_energy_pass": true,
+          "torque_transfer_pass": false
+        },
+        "accounting_pass": false,
+        "component_area_coverage": 0.991550816553428,
+        "discarded_triangles": 7,
+        "equilibrium_residual_fraction": 0.09434351555066814,
+        "extensional_demand_quantiles_n_per_m": [
+          90637366813.943,
+          325046859642.60486,
+          465284543728.73663,
+          1682254054567.7515
+        ],
+        "force_transfer_residual_fraction": 0.1821814787861554,
+        "incremental_external_work_j": 7.2581463266603e+21,
+        "mesh_triangles": 1840,
+        "rejected_triangles": 188,
+        "representative_count": 1024,
+        "shell_energy_residual_fraction": 0.00316084720070551,
+        "shell_node_count": 1009,
+        "solver_stop_code": 2,
+        "source_force_n": [
+          4.0126821162540913e+18,
+          -3.6445647255234007e+18,
+          -6.283090731005582e+18
+        ],
+        "source_torque_nm": [
+          2.2500080671715294e+24,
+          -4.7333930317612586e+25,
+          4.882542405522834e+25
+        ],
+        "stored_elastic_energy_j": 7.281160963910964e+21,
+        "target_representatives": 1024,
+        "torque_transfer_residual_fraction": 0.2302312014641571,
+        "transferred_force_n": [
+          2.520741218734094e+18,
+          -2.2924569271442452e+18,
+          -4.428052902051058e+18
+        ],
+        "transferred_torque_nm": [
+          -1.0737638095349964e+23,
+          -3.2207914174041344e+25,
+          3.2966145474005536e+25
+        ],
+        "triangle_candidates": 2035,
+        "triangle_component_sizes_before_filter": [
+          3,
+          1840,
+          2,
+          2
+        ]
+      }
+    ]
+  },
+  "component_area_fraction_of_parent": 0.8885101374296737,
+  "elapsed_years": 2000000.0,
+  "frozen_cutoffs": {
+    "basal_drag_energy_residual_max": 0.05,
+    "component_area_coverage_min": 0.95,
+    "force_transfer_residual_max": 0.01,
+    "shell_energy_residual_max": 0.05,
+    "shell_equilibrium_residual_max": 0.01,
+    "torque_transfer_residual_max": 0.01
+  },
+  "history_eligible": false,
+  "interpretation": "Initial-state component accounting only; no Gate 2 capacity score, rift-potential score, or persistence history.",
+  "node_density": 4.0,
+  "parent_plate_source_resultants": {
+    "basal_drag_only": {
+      "force_n": [
+        -2.0986007516512715e+19,
+        -2.0247934354761834e+19,
+        -1.2322502444660363e+19
+      ],
+      "torque_nm": [
+        -5.503928116523934e+25,
+        1.4181291237702592e+26,
+        -1.2895215202998365e+26
+      ]
+    },
+    "full_production_force": {
+      "force_n": [
+        -1.7401270126110745e+19,
+        -2.327830511889552e+19,
+        -1.8261098428342321e+19
+      ],
+      "torque_nm": [
+        -5.321291474561262e+25,
+        9.715975247044225e+25,
+        -8.507476527773427e+25
+      ]
+    },
+    "production_without_basal_drag": {
+      "force_n": [
+        3.5847373904018775e+18,
+        -3.030370764133472e+18,
+        -5.938595983681932e+18
+      ],
+      "torque_nm": [
+        1.8263664196267495e+24,
+        -4.465315990658389e+25,
+        4.387738675224922e+25
+      ]
+    }
+  },
+  "plate_id": 1,
+  "production_plate_area_km2": 131079398.45057362,
+  "production_plate_nodes": 33856,
+  "schema_version": 1,
+  "seed": 11,
+  "selected_component_area_km2": 116465374.33151813,
+  "selected_component_nodes": 30156,
+  "selection_rule": "Largest edge-connected continental component by represented area after the frozen 2 Myr startup step, before force inspection.",
+  "title": "RFC 0010 Gate 3b component-bound shell and accounting preflight",
+  "wall_time_seconds": 13.423723875006544
+}
