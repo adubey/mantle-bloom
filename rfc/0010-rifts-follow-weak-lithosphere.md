@@ -11,7 +11,7 @@
 
 ## Revision note
 
-- **2026-10-30 (revision PR pending):** The prior Gate 3b source criterion looked for a broad,
+- **2026-10-30 ([PR #717](https://github.com/adubey/mantle-bloom/pull/717)):** The prior Gate 3b source criterion looked for a broad,
   sustained load, then coupled it to local crack rules. The corrected 1 Gyr diagnostic created broad
   load and damage but no viable daughter plates; it explicitly held plate geometry fixed and used an
   effective slab-sink length instead of an evolving slab body ([Gate 3b result](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6538397727)). This
