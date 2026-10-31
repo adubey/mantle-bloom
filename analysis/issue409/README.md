@@ -155,7 +155,7 @@ this baseline:
    share. The share's numerator must be restricted to the genuine set.
 5. The pre-#358 save's 500 Myr shutoff stays historical evidence only.
 
-The revised gate is written into [RFC 0004](../../rfc/0004-proto-cratons.md).
+The revised gate is written into [RFC 0004](../../rfc/abandoned/0004-proto-cratons.md).
 
 ## Limitations
 

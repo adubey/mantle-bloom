@@ -6,14 +6,16 @@ against the literature, works out the design to the level of units, knobs and so
 and ends with criteria that say when the change is done. Once accepted, an RFC is
 implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), each citing it.
 
+Withdrawn RFCs are archived in [abandoned/](abandoned/).
+
 ## Index
 
 | RFC | Title | Status |
 |---|---|---|
 | [0001](0001-merge-cap-craton-loss.md) | Plate merges must not destroy cratons | Accepted |
 | [0002](0002-craton-trench-attrition.md) | Cratons resist sinking: margin-dependent attrition and collision sinks | Draft |
-| [0003](0003-rifting-around-cratons.md) | Rifts go around cratons | Withdrawn (superseded by 0009, 0010) |
-| [0004](0004-proto-cratons.md) | Proto-cratons: restarting craton formation | Withdrawn (superseded by 0009) |
+| [0003](abandoned/0003-rifting-around-cratons.md) | Rifts go around cratons | Withdrawn (superseded by 0009, 0010) |
+| [0004](abandoned/0004-proto-cratons.md) | Proto-cratons: restarting craton formation | Withdrawn (superseded by 0009) |
 | [0005](0005-continental-recycling-balance.md) | Balance continental recycling at trenches | Draft |
 | [0006](0006-intra-oceanic-arcs.md) | Intra-oceanic arcs: new continent from the ocean | Draft |
 | [0007](0007-mantle-plumes-and-plateaus.md) | Mantle plumes: oceanic plateaus, flood basalts and hotspot tracks | Accepted |
@@ -22,7 +24,7 @@ implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), eac
 | [0010](0010-rifts-follow-weak-lithosphere.md) | Rifts follow weak lithosphere | Accepted |
 | [0011](https://github.com/adubey/mantle-bloom/blob/claude/rfc-0011-contact-strength/rfc/0011-contact-strength.md) | Collisions are held by lithospheric strength | Draft |
 | [0012](0012-physics-first-simulation.md) | Physics-first simulation | Implemented |
-| [0014](0014-lake-water-volume-and-freezing.md) | Lakes conserve their water: in-step fill-spill-merge, seasonal freezing and water-surface temperature | Accepted (revised 2026-10-30 after G9; revised 2026-10-29 after G7) |
+| [0014](abandoned/0014-lake-water-volume-and-freezing.md) | Lakes conserve their water: in-step fill-spill-merge, seasonal freezing and water-surface temperature (abandoned) | Withdrawn (owner decision; original G7 criterion unmet, G8 incomplete) |
 | [0015](0015-frozen-water-in-physical-units.md) | Frozen water in physical units: glacier mass balance, ice flow and meltwater, freezing lakes and rivers, ocean ice and polar snow | Accepted |
 | [0016](0016-effective-land-water-store.md) | Effective land-water storage and upstream groundwater feedback | Draft |
 

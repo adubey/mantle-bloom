@@ -25,7 +25,7 @@ job generates a default quad world and steps it to `--years`, with a checkpoint 
 craton extent and ledger, and tectonic activity: plate count, merges, splits, rift events and
 mean rotation rate. The `off` variant disables craton seeding and formation, so every craton
 resistance is inert. It also reports rifting by path per Gyr and the share of split and
-failed-rift cuts that pass through craton ([RFC 0003](../../rfc/0003-rifting-around-cratons.md)).
+failed-rift cuts that pass through craton ([RFC 0003](../../rfc/abandoned/0003-rifting-around-cratons.md)).
 `--set CRATON_NAME=VALUE` overrides a `cratons` constant. `--save-dir` writes each job's final
 world as `seed<S>-<variant>-<Myr>myr.mbworld` for `ledger_history.py`.
 
@@ -88,7 +88,7 @@ $BASE/backend/.venv/bin/python bin/debug/craton_genuine_area.py --model-root $BA
 
 ### `rfc0004_gates.py`
 
-Computes [RFC 0004](../../rfc/0004-proto-cratons.md)'s formation and craton-share gates from
+Computes [RFC 0004](../../rfc/abandoned/0004-proto-cratons.md)'s formation and craton-share gates from
 checked-in JSON (#409): `analysis/issue403/tuning.json`, `long.json` and
 `analysis/issue409/craton_genuine_area.jsonl`. It needs no save or replay. Per run it reports
 formation timing (the pulse at `CRATON_FORMATION_MYR` and formation after it), inventories
@@ -175,7 +175,7 @@ backend/.venv/bin/python bin/debug/measure_merge_placement.py /tmp/rfc0001/seed7
 ### `attribute_rift_boundary_loss.py`
 
 Attributes divergent and stretch craton loss to the split cut that made the boundary
-([RFC 0003](../../rfc/0003-rifting-around-cratons.md) phase 1b, #388). It replays a seed from
+([RFC 0003](../../rfc/abandoned/0003-rifting-around-cratons.md) phase 1b, #388). It replays a seed from
 year 0 with probe-only surface fields. At each split, the daughters' nodes within the cut's
 band are marked "through" if the band held craton, otherwise "clear". Later divergent
 (`lithosphere_plate.deform_columns`) and stretch (`quad_tectonics._open_rift`) craton loss is

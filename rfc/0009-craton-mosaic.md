@@ -4,7 +4,7 @@
 - **Date:** 2026-10-15 (revised 2026-10-17)
 - **Related:** #427 (tracking), #426 (gate G1), #274 (cratons), #389 (RFC 0003 tracking),
   #409 (formation and ratchet diagnosis), #411; PRs #418 (RFC 0003 solution 1) and #430
-  (G1); RFCs [0003](0003-rifting-around-cratons.md) and [0004](0004-proto-cratons.md)
+  (G1); RFCs [0003](abandoned/0003-rifting-around-cratons.md) and [0004](abandoned/0004-proto-cratons.md)
   (both superseded by this RFC and [0010](0010-rifts-follow-weak-lithosphere.md)),
   [0007](0007-mantle-plumes-and-plateaus.md), [0008](0008-craton-collision-jamming.md)
 
