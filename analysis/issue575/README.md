@@ -38,3 +38,29 @@ ice area should fall, since the redraw no longer moves it.
 **Not measured:** a texture that holds for tens of Myr leaves its pattern on long-term
 precipitation, where the redraw averaged out. These replays are too short to show any
 landscape effect of that.
+
+## Preregistration: is the land gap, or the step gap, one draw?
+
+Written after the first runs, which missed two thresholds above: land humidity (+6.07% and
++2.81%) and land precipitation (+5.25% on seed 997271774); and arm (m3)'s step gap (12.2%
+against 10%). The thresholds stay as written.
+
+**Hypotheses.** The noise has the same distribution at every instant on both arms, so it can't
+shift a mean directly. A shift is either one draw's overlap with this land, or persistence
+acting through stored state (vegetation, lakes, rivers).
+
+**Runs,** seed 997271774 at 87.4 Myr, one at a time:
+
+| Run | Tree | Draws (`--noise-salt-offset`) |
+|---|---|---|
+| Climate, as above, recording moisture sources | `origin/main`, the branch | `origin/main` once; branch 0, 1, 2, 3 |
+| Arm (m3), 0.25 and 1 Myr steps | G0 prototype with this PR's `climate.py` | 1, 2 |
+
+**Decision rules:**
+
+1. Land humidity and precipitation: if the four draws' mean gap to `origin/main` is within 2%,
+   or the gaps change sign, the shift belongs to the draw and the "unchanged on average" check
+   holds. If all four gaps exceed 2% with the same sign, the bias is real.
+2. If the bias is real, the moisture sources show whether vegetation or water carries it.
+3. Arm (m3): the change passes G0 only if the step gap is below 10% on all three draws. If it
+   fails on some draws, the gap depends on the draw, and that goes to the owner with the numbers.
