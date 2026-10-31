@@ -1,6 +1,6 @@
 # Issue #378: craton rifting by path (RFC 0003 phase 1)
 
-The gate in [RFC 0003](../../rfc/0003-rifting-around-cratons.md): before steering split cuts
+The gate in [RFC 0003](../../rfc/abandoned/0003-rifting-around-cratons.md): before steering split cuts
 or giving failed rifts craton resistance, find out which rifting path destroys cratons.
 
 ## Method

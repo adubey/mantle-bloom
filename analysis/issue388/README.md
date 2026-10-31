@@ -1,6 +1,6 @@
 # Issue #388: craton boundary loss by the cut that made it (RFC 0003 phase 1b)
 
-The second gate in [RFC 0003](../../rfc/0003-rifting-around-cratons.md). Phase 1 (#378)
+The second gate in [RFC 0003](../../rfc/abandoned/0003-rifting-around-cratons.md). Phase 1 (#378)
 found that divergent thinning and stretch donation take most of craton rifting, but only a
 minority of cuts cross craton. This phase asks how much of that boundary loss happens on
 boundaries a craton-crossing cut created, since only that share (plus failed rifts) is what

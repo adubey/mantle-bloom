@@ -1,12 +1,12 @@
 # RFC 0003 (withdrawn): Rifts go around cratons
 
-- **Status:** Withdrawn (2026-10-15); superseded by [RFC 0009](0009-craton-mosaic.md) and
-  [RFC 0010](0010-rifts-follow-weak-lithosphere.md) (PR #421)
+- **Status:** Withdrawn (2026-10-15); superseded by [RFC 0009](../0009-craton-mosaic.md) and
+  [RFC 0010](../0010-rifts-follow-weak-lithosphere.md) (PR #421)
 - **Date:** 2026-10-13; baseline audit 2026-10-14 (#403); withdrawn 2026-10-15
 - **Related:** #389 (tracking), #274 (craton rift and stretch resistance), #340,
   #378 (phase 1 gate), #385 (failed-rift resistance), #388 (phase 1b, PR #392),
   #403 (baseline audit); RFCs
-  [0002](0002-craton-trench-attrition.md), [0004](0004-proto-cratons.md)
+  [0002](../0002-craton-trench-attrition.md), [0004](0004-proto-cratons.md)
 
 ## Outcome
 
@@ -24,7 +24,7 @@ cause lies in how the model defines cratons, not in the shape of the cut.
     ±2-point scatter between variants. PR #418's model change was not merged.
 - **Why it failed.** A minimum cut through a strength graph, free to bend around
   cratons, does no better: 10% of craton-crossing cuts at a 1,000 km corridor, at most 12%
-  at any corridor ([analysis/rfc0010](../analysis/rfc0010/README.md), PR #421).
+  at any corridor ([analysis/rfc0010](../../analysis/rfc0010/README.md), PR #421).
   Seeding and formation by distance from the plate edge make each continent's interior one
   craton, so no route through a continent avoids it. This RFC read the falsification as
   "the flow puts regime boundaries through cratons", but that isn't established: RFC
@@ -129,7 +129,7 @@ shouldn't get it.
    boundary through a craton would still exist, only slower.
 4. **Plume-style weakening.** Make craton rifting depend on a weakening state (heat or
    metasomatism), after [[Foley, 2008]](#ref-foley2008). The model has no plumes yet;
-   [RFC 0007](0007-mantle-plumes-and-plateaus.md) adds them, with a `plume_heat_myr`
+   [RFC 0007](../0007-mantle-plumes-and-plateaus.md) adds them, with a `plume_heat_myr`
    field that cancels craton rift resistance and makes heated cells weak in this RFC's
    cut score.
 
@@ -219,7 +219,7 @@ or #385 trajectories are not its control:
 `bin/debug/attribute_rift_boundary_loss.py` probe ran seeds 7, 11 and 2024 to 1 Gyr on
 baseline `8878cd2`, default density and controls, with 5 Myr steps, one run at a time.
 That baseline includes #358 and #385. The numbers are in
-[analysis/issue388](../analysis/issue388/README.md).
+[analysis/issue388](../../analysis/issue388/README.md).
 This supersedes the pre-#358 phase 1b result (F = 17% on the three-seed mean).
 
 | Seed | Rifted, % of start craton per Gyr | Divergent / stretch / failed share | Splits through craton | Boundary loss marked through | F | F, twice-wide band |
@@ -253,7 +253,7 @@ the current branch.
 
 **Fresh baseline audit (#403).** `bin/debug/rebaseline_rfcs.py` ran the same tuning seeds
 at `2562f63`, with default density and controls, 5 Myr steps to 1 Gyr and 100 Myr
-checkpoints. [tuning.json](../analysis/issue403/tuning.json) records the full commit and
+checkpoints. [tuning.json](../../analysis/issue403/tuning.json) records the full commit and
 controls. Rifting totals, path shares and cut counts reproduce phase 1b's `8878cd2`
 baseline. The attribution probe was not rerun; this audit leaves its selected 1+3 branch
 unchanged. #388 / PR #392 and tracking issue #389 already carry that decision, so #403
