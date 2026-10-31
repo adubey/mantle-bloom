@@ -2496,6 +2496,18 @@ def raw_list_worlds():
     return _raw_client().get("/worlds").json()["worlds"]
 
 
+def test_delete_while_running_is_refused(client, monkeypatch):
+    raw = _raw_client()
+    world_id = raw.post("/worlds", json={"name": "Running"}).json()["world_id"]
+    with monkeypatch.context() as patch:
+        patch.setattr(main, "_session_running", lambda session: True)
+        resp = raw.delete(f"/worlds/{world_id}")
+    assert resp.status_code == 409
+    assert "stop it first" in resp.json()["detail"]
+    assert world_id in {w["world_id"] for w in raw_list_worlds()}
+    assert raw.delete(f"/worlds/{world_id}").status_code == 200
+
+
 def test_delete_while_busy_is_refused(client):
     raw = _raw_client()
     world_id = raw.post("/worlds", json={"name": "Busy"}).json()["world_id"]
