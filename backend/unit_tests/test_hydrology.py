@@ -1565,6 +1565,7 @@ def test_river_water_never_rests_on_lake_or_ocean_nodes():
     # The lake node's water carries on downstream; only the reaches below it hold any now.
     assert route.storage_m3[:5].sum() == 0.0
     assert route.ledger.ocean_export_m3 + route.ledger.final_storage_m3 == pytest.approx(8e10, rel=1e-12)
+    assert route.outflow_m3[11] == pytest.approx(2e10, rel=1e-12)
     assert route.ledger.residual_m3 == pytest.approx(0.0, abs=1e-3)
 
 
@@ -1602,6 +1603,11 @@ def test_river_initial_state_is_q_tau_and_not_an_interval_input():
     assert route.ledger.initial_storage_m3 == pytest.approx((q * tau)[stores].sum(), rel=1e-12)
     assert route.ledger.input_m3 == 0.0
     assert route.ledger.residual_m3 == pytest.approx(0.0, abs=1e-3)
+    # The per-reach readout starts from that state, so each reach's identity holds on step one.
+    assert np.allclose(
+        route.storage_m3 - route.initial_storage_m3, route.inflow_m3 - route.outflow_m3,
+        atol=1e-2, rtol=1e-12,
+    )
 
 
 def _river_world():

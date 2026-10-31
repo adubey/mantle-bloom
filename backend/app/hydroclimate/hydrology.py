@@ -477,6 +477,7 @@ class RiverWaterLedger:
 class RiverRoutingResult:
     """Reservoir update and routed interval volumes aligned to HydrologyFields nodes."""
 
+    initial_storage_m3: np.ndarray
     storage_m3: np.ndarray
     outflow_m3: np.ndarray
     routed_m3: np.ndarray
@@ -1407,6 +1408,7 @@ def route_river_reservoirs(
         initial_q = np.maximum(initial_discharge_m3_s, 0.0)
         initial_tau_s = river_residence_time_s(_flow_edge_length_m(points, target), initial_q)
         storage_0 = np.where(stores, initial_q * initial_tau_s, 0.0)
+    initial_storage = storage_0.copy()
     initial_total = float(storage_0.sum())
     # Land that drowned this step hands its river water straight to the ocean.
     drowned_m3 = np.where(is_ocean, storage_0, 0.0)
@@ -1426,6 +1428,7 @@ def route_river_reservoirs(
     )
     settled_prior += drowned_m3
     ocean_export += drowned_m3
+    outflow += drowned_m3
 
     final_total = float(storage_1.sum())
     evaporation_total = float(evaporation.sum())
@@ -1448,7 +1451,7 @@ def route_river_reservoirs(
         max_reach_residual_m3=float(np.abs(reach_residual).max()) if n else 0.0,
     )
     return RiverRoutingResult(
-        storage_1, outflow, routed, settled_runoff, settled_melt, settled_prior, ocean_export,
+        initial_storage, storage_1, outflow, routed, settled_runoff, settled_melt, settled_prior, ocean_export,
         evaporation, inflow, reach_residual, ledger,
     )
 
@@ -2198,7 +2201,7 @@ def compute_hydrology(
         river_water_routed_m3=river_route.routed_m3 + overflow_route.routed_m3,
         river_water_evaporation_m3=river_route.evaporation_m3 + overflow_route.evaporation_m3,
         river_water_residual_m3=river_route.reach_residual_m3 + overflow_route.reach_residual_m3,
-        river_water_initial_m3=prior_river_storage_m3,
+        river_water_initial_m3=river_route.initial_storage_m3,
     )
     # Ocean targets hold land-to-ocean flux in `settled_m3`, since ocean nodes are sinks rather
     # than members of the river routing graph. Expose mouth discharge there for shelf geology;
