@@ -627,4 +627,4 @@ why.
 
 Lake ice (`lake_ice_m`, water equivalent) is a persistent extensive surface field. `hydroclimate/hydrology.py` owns its phase transfers and combined lake liquid-plus-ice budget; `hydroclimate/erosion.py` commits the returned state alongside `lake_depth`; `hydroclimate/eustasy.py` includes the reservoir in trapped surface-water volume.
 
-River water (`river_water_m`, water equivalent) is a persistent extensive surface field. `hydroclimate/hydrology.py` advances it with per-reach linear reservoirs and reports river inventory closure; `hydroclimate/erosion.py` commits the returned state with the other surface fields; `hydroclimate/eustasy.py` includes it in trapped surface-water volume.
+River water (`river_water_m`, water equivalent) is a persistent extensive surface field. `hydroclimate/hydrology.py` advances it with per-reach linear reservoirs, one pass for runoff before the lake solve and one for exported overflow after it, and reports river and rain-only land closure; `hydroclimate/erosion.py` commits the returned state with the other surface fields; `hydroclimate/eustasy.py` includes it in trapped surface-water volume.

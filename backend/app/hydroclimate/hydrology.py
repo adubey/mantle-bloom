@@ -295,6 +295,12 @@ RIVER_SPEED_DISCHARGE_EXPONENT = 0.2
 BREACH_DEPRESSIONS_ENABLED = True
 
 
+_RIVER_REACH_READOUTS = (
+    "river_water_inflow_m3", "river_water_outflow_m3", "river_water_routed_m3",
+    "river_water_evaporation_m3", "river_water_residual_m3", "river_water_initial_m3",
+)
+
+
 @dataclass
 class HydrologyFields:
     """Everything derived from one whole-world flow-routing pass, all shape (N,) aligned
@@ -414,6 +420,8 @@ class HydrologyFields:
     lake_external_wet_precip_m3_per_yr: np.ndarray = field(default_factory=lambda: np.zeros(0))
     lake_external_dry_runoff_m3_per_yr: np.ndarray = field(default_factory=lambda: np.zeros(0))
     lake_external_meltwater_m3_per_yr: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    # Water released from last step's river inventory, whichever source first supplied it (#725).
+    lake_external_river_storage_m3_per_yr: np.ndarray = field(default_factory=lambda: np.zeros(0))
     lake_water_ledger: "lakes.LakeStepLedger | None" = None
     # Water-equivalent cap state, appended to preserve prior positional constructor fields.
     lake_ice_m: np.ndarray = field(default_factory=lambda: np.zeros(0))
@@ -421,16 +429,18 @@ class HydrologyFields:
     lake_solve_trace: "lakes.LakeSolveTrace | None" = None
     lake_ice_trace: dict[str, np.ndarray] | None = None
     lake_trace_node_ids: np.ndarray | None = None
-    # Persistent river water-equivalent depth and conservative per-step reach readouts
-    # (RFC 0016). Defaults preserve compatibility with saved HydrologyFields caches.
+    # Persistent river water-equivalent depth and its step budgets (RFC 0016 G0, #725).
     river_water_m: np.ndarray = field(default_factory=lambda: np.zeros(0))
     river_water_ledger: "RiverWaterLedger | None" = None
-    # Transient per-reach G0 diagnostics in interval m³, aligned with surface nodes.
-    river_water_inflow_m3: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    river_water_outflow_m3: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    river_water_routed_m3: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    river_water_evaporation_m3: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    river_water_residual_m3: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    land_water_ledger: "LandWaterLedger | None" = None
+    # This step's per-reach volumes in m^3, not saved. `river_water_inflow_m3` is the routed
+    # inflow plus local sources; outflow is before transit loss, routed after it.
+    river_water_inflow_m3: np.ndarray | None = None
+    river_water_outflow_m3: np.ndarray | None = None
+    river_water_routed_m3: np.ndarray | None = None
+    river_water_evaporation_m3: np.ndarray | None = None
+    river_water_residual_m3: np.ndarray | None = None
+    river_water_initial_m3: np.ndarray | None = None
 
     def __getstate__(self) -> dict:
         # The spill-path drawing cache (`_spill_path_cache`) is rebuilt on first use, so a save
@@ -440,21 +450,25 @@ class HydrologyFields:
         state.pop("lake_solve_trace", None)
         state.pop("lake_ice_trace", None)
         state.pop("lake_trace_node_ids", None)
+        for key in _RIVER_REACH_READOUTS:
+            state.pop(key, None)
         return state
 
 
 @dataclass
 class RiverWaterLedger:
-    """Per-step whole-network river inventory budget, all volumes in m^3."""
+    """Per-step whole-network river inventory budget, all volumes in m^3. Evaporation is the
+    in-transit loss the routing has always charged; it now comes out of the reach outflow.
+    `land_settlement_m3` reached a land sink or lake sink. Reach transfers are internal."""
 
     input_m3: float
+    lake_overflow_m3: float
     initial_storage_m3: float
     final_storage_m3: float
     gross_outflow_m3: float
     evaporation_m3: float
-    lake_transfer_m3: float
+    land_settlement_m3: float
     ocean_export_m3: float
-    sink_settlement_m3: float
     residual_m3: float
     max_reach_residual_m3: float
 
@@ -466,8 +480,7 @@ class RiverRoutingResult:
     storage_m3: np.ndarray
     outflow_m3: np.ndarray
     routed_m3: np.ndarray
-    settled_m3: np.ndarray
-    settled_dry_runoff_m3: np.ndarray
+    settled_runoff_m3: np.ndarray
     settled_meltwater_m3: np.ndarray
     settled_prior_storage_m3: np.ndarray
     ocean_export_m3: np.ndarray
@@ -476,7 +489,33 @@ class RiverRoutingResult:
     reach_residual_m3: np.ndarray
     ledger: RiverWaterLedger
 
+    @property
+    def settled_m3(self) -> np.ndarray:
+        return self.settled_runoff_m3 + self.settled_meltwater_m3 + self.settled_prior_storage_m3
 
+
+@dataclass
+class LandWaterLedger:
+    """RFC 0016 G0 rain-only land budget for one step, in m^3 (#725). This is an interim
+    boundary: snow accumulation and ice storage are outside it, and `meltwater_m3` still enters
+    in the scaled glacier units RFC 0015 replaces, so its closure is not the full G0 gate.
+    `residual_m3` is what the river, lake and sink interfaces failed to hand on."""
+
+    rain_m3: float
+    meltwater_m3: float
+    dry_et_m3: float
+    river_evaporation_m3: float
+    lake_evaporation_m3: float
+    lake_sublimation_m3: float
+    ocean_export_m3: float
+    river_storage_change_m3: float
+    lake_liquid_change_m3: float
+    lake_ice_change_m3: float
+    residual_m3: float
+
+
+# Residence-time ceiling for a reach with almost no flow: an engineering regularization so
+# stored water drains from a dry reach, not a measured hydraulic value (RFC 0016 G0, #725).
 RIVER_MAX_RESIDENCE_SECONDS = 365.25 * 24.0 * 60.0 * 60.0
 
 
@@ -1054,6 +1093,13 @@ def _compute_flow_direction(
     return flow_target, should_spill
 
 
+def _flow_edge_length_m(points: np.ndarray, flow_target: np.ndarray) -> np.ndarray:
+    """Geodesic length of each node's flow edge, floored at 1 m (1 m for a node with no target)."""
+    safe_target = np.where(flow_target >= 0, flow_target, 0)
+    run_m = geometry.angular_distance(points, points[safe_target]) * PLANET_RADIUS_KM * 1000.0
+    return np.where(flow_target >= 0, np.maximum(run_m, 1.0), 1.0)
+
+
 def _slope_to_flow_target(points: np.ndarray, elevation: np.ndarray, flow_target: np.ndarray) -> np.ndarray:
     """Dimensionless rise/run from each node to its own flow_target (0 for a node with no
     target) -- the slope a river's mouth speed uses (see group_rivers), distinct from
@@ -1063,9 +1109,7 @@ def _slope_to_flow_target(points: np.ndarray, elevation: np.ndarray, flow_target
     has_target = flow_target >= 0
     safe_target = np.where(has_target, flow_target, 0)
     drop = np.where(has_target, elevation - elevation[safe_target], 0.0)
-    run_m = geometry.angular_distance(points, points[safe_target]) * PLANET_RADIUS_KM * 1000.0
-    run_m = np.maximum(run_m, 1.0)
-    return np.where(has_target, np.clip(drop, 0.0, None) / run_m, 0.0)
+    return np.where(has_target, np.clip(drop, 0.0, None) / _flow_edge_length_m(points, flow_target), 0.0)
 
 
 def compute_river_speed(slope: np.ndarray, discharge_m3_s: np.ndarray | float) -> np.ndarray:
@@ -1242,199 +1286,184 @@ def _route_external_water_sources(
     }
 
 
-def river_residence_time_s(
-    length_m: np.ndarray,
-    discharge_m3_s: np.ndarray,
-    max_residence_seconds: float | None = None,
-) -> np.ndarray:
-    """Raymond et al. (2012) mean-velocity estimate with RFC 0016's finite low-flow cap (#725).
-
-    The one-year maximum is an owner-approved engineering estimate for dry reaches that still
-    contain water, not a measured hydraulic constant. It also bounds extrapolation toward
-    vanishing discharge.
-    """
+def river_residence_time_s(length_m: np.ndarray, discharge_m3_s: np.ndarray) -> np.ndarray:
+    """Reach travel time `L/U` from Raymond et al.'s (2012) mean velocity `U = 0.19 Q^0.29`,
+    bounded by RIVER_MAX_RESIDENCE_SECONDS for vanishing discharge (RFC 0016 G0, #725)."""
     length = np.maximum(np.asarray(length_m, dtype=float), 1.0)
-    discharge = np.clip(np.asarray(discharge_m3_s, dtype=float), 0.0, None)
-    velocity = 0.19 * np.power(discharge, 0.29)
-    residence = np.divide(
-        length,
-        velocity,
-        out=np.full(np.broadcast_shapes(length.shape, velocity.shape), RIVER_MAX_RESIDENCE_SECONDS),
-        where=velocity > 0.0,
+    velocity = 0.19 * np.power(np.clip(np.asarray(discharge_m3_s, dtype=float), 0.0, None), 0.29)
+    residence = np.full(np.broadcast_shapes(length.shape, velocity.shape), RIVER_MAX_RESIDENCE_SECONDS)
+    np.divide(length, velocity, out=residence, where=velocity > 0.0)
+    return np.clip(residence, 1.0, RIVER_MAX_RESIDENCE_SECONDS)
+
+
+@njit(cache=True)
+def _sweep_river_reaches(
+    order, target, is_ocean, stores, tau_s, dt_s, storage_0, runoff, melt, prior, runoff_loss, melt_loss,
+):
+    """The reservoir form of `route_downstream`: each node in `order` applies the exact
+    constant-inflow update, then loses and passes on its outflow as that sweep would. A node
+    that doesn't store water passes on all it receives (`storage_0` included). Mutates the
+    source arrays, which accumulate inflow as the sweep moves down."""
+    n = len(target)
+    storage_1 = np.zeros(n)
+    gross_out = np.zeros(n)
+    routed = np.zeros(n)
+    settled_runoff = np.zeros(n)
+    settled_melt = np.zeros(n)
+    settled_prior = np.zeros(n)
+    ocean_export = np.zeros(n)
+    evaporation = np.zeros(n)
+    inflow = np.zeros(n)
+    residual = np.zeros(n)
+    for i in order:
+        total_in = runoff[i] + melt[i] + prior[i]
+        inflow[i] = total_in
+        pass_fraction = 1.0
+        released = storage_0[i]
+        if stores[i] and dt_s > 0.0:
+            ratio = dt_s / tau_s[i]
+            drained = -np.expm1(-ratio)
+            released = storage_0[i] * drained
+            held = total_in * drained / ratio
+            storage_1[i] = storage_0[i] - released + held
+            pass_fraction = 1.0 - drained / ratio
+        elif stores[i]:
+            released = 0.0
+            pass_fraction = 0.0
+            storage_1[i] = storage_0[i]
+        out_runoff = runoff[i] * pass_fraction
+        out_melt = melt[i] * pass_fraction
+        out_prior = prior[i] * pass_fraction + released
+        gross_out[i] = out_runoff + out_melt + out_prior
+        residual[i] = storage_0[i] + total_in - storage_1[i] - gross_out[i]
+        # Water released from storage is mostly channel runoff, so it takes the runoff loss.
+        kept_runoff = out_runoff * (1.0 - runoff_loss[i])
+        kept_melt = out_melt * (1.0 - melt_loss[i])
+        kept_prior = out_prior * (1.0 - runoff_loss[i])
+        routed[i] = kept_runoff + kept_melt + kept_prior
+        evaporation[i] = gross_out[i] - routed[i]
+        downstream = target[i]
+        if downstream < 0:
+            settled_runoff[i] += kept_runoff
+            settled_melt[i] += kept_melt
+            settled_prior[i] += kept_prior
+        elif is_ocean[downstream]:
+            settled_runoff[downstream] += kept_runoff
+            settled_melt[downstream] += kept_melt
+            settled_prior[downstream] += kept_prior
+            ocean_export[downstream] += routed[i]
+        else:
+            runoff[downstream] += kept_runoff
+            melt[downstream] += kept_melt
+            prior[downstream] += kept_prior
+    return (
+        storage_1, gross_out, routed, settled_runoff, settled_melt, settled_prior, ocean_export,
+        evaporation, inflow, residual,
     )
-    cap = RIVER_MAX_RESIDENCE_SECONDS if max_residence_seconds is None else max_residence_seconds
-    return np.clip(residence, 1.0, max(float(cap), 1.0))
 
 
 def route_river_reservoirs(
     points: np.ndarray,
     elevation: np.ndarray,
     is_ocean: np.ndarray,
-    neighbor_idx: np.ndarray,
     flow_target: np.ndarray,
-    lake_depth: np.ndarray,
-    local_dry_runoff_m3_per_yr: np.ndarray,
-    local_meltwater_m3_per_yr: np.ndarray,
+    stores_water: np.ndarray,
+    runoff_m3_per_yr: np.ndarray,
+    meltwater_m3_per_yr: np.ndarray,
     prior_storage_m3: np.ndarray,
-    baseline_discharge_m3_s: np.ndarray,
+    discharge_m3_s: np.ndarray,
     years: float,
-    transit_loss: np.ndarray,
+    runoff_loss: np.ndarray,
+    meltwater_loss: np.ndarray,
     *,
-    initialize_from_discharge: bool = False,
-    max_residence_seconds: float | None = None,
-    lake_sink_mask: np.ndarray | None = None,
+    initial_discharge_m3_s: np.ndarray | None = None,
 ) -> RiverRoutingResult:
-    """Integrate RFC 0016's conservative linear reservoir on each routed reach (#725).
+    """Integrate RFC 0016's conservative linear reservoir over each routed reach (#725).
 
-    Current local runoff and melt are interval volumes. Inflow accumulated from upstream reach
-    outflows is treated as constant over this interval at each reach. Lake nodes and basin leaf
-    sinks are terminals; incoming flow enters lake supply without a second river reservoir. A
-    land sink with retained river water uses a nearest-neighbor edge length and drains within
-    the same finite residence-time cap.
+    `V1 = V0 e^(-dt/tau) + I tau (1 - e^(-dt/tau))`, and the outflow `V0 + I dt - V1` goes to the
+    reach's own target. A steady reach therefore delivers exactly what `route_downstream` does.
+    `discharge_m3_s` sets each reach's travel time, so the update stays linear in its inflow.
+    Only `stores_water` reaches hold water: lake-covered nodes, sinks and flow cycles pass it on
+    unchanged, so lake and river reservoirs stay disjoint and destinations match the control.
+    Water left on a node that stopped being a reach moves on, into a lake or the ocean.
+    `initial_discharge_m3_s` starts storage at `Q tau(Q)`, booked as initial state, not as input.
     """
     n = len(flow_target)
-    dt_s = max(float(years), 0.0) * SECONDS_PER_YEAR
-    residence_cap = (
-        RIVER_MAX_RESIDENCE_SECONDS if max_residence_seconds is None else max_residence_seconds
-    )
+    interval_years = max(float(years), 0.0)
     target = np.asarray(flow_target, dtype=np.int64).copy()
     is_ocean = np.asarray(is_ocean, dtype=bool)
-    is_lake = np.asarray(lake_depth, dtype=float) > LAKE_MIN_VISIBLE_DEPTH_M
-    if lake_sink_mask is not None:
-        is_lake |= np.asarray(lake_sink_mask, dtype=bool)
-    target[is_lake | is_ocean] = -1
-    points = np.asarray(points)
-    safe_target = np.where(target >= 0, target, 0)
-    edge_length_m = geometry.angular_distance(points, points[safe_target]) * PLANET_RADIUS_KM * 1000.0
-    fallback_idx = np.asarray(neighbor_idx)[:, 0]
-    fallback_length_m = geometry.angular_distance(points, points[fallback_idx]) * PLANET_RADIUS_KM * 1000.0
-    edge_length_m = np.where(target >= 0, edge_length_m, fallback_length_m)
-    edge_length_m = np.maximum(edge_length_m, 1.0)
-
-    old = np.maximum(np.asarray(prior_storage_m3, dtype=float), 0.0).copy()
-    initial_total = float(np.sum(old))
-    baseline_q = np.maximum(np.asarray(baseline_discharge_m3_s, dtype=float), 0.0)
-    if initialize_from_discharge:
-        old[:] = baseline_q * river_residence_time_s(
-            edge_length_m, baseline_q, residence_cap
-        )
-        old[is_ocean | is_lake] = 0.0
-        initial_total = float(np.sum(old))
-
-    interval_years = max(float(years), 0.0)
-    dry_input = np.maximum(np.asarray(local_dry_runoff_m3_per_yr, dtype=float), 0.0) * interval_years
-    melt_input = np.maximum(np.asarray(local_meltwater_m3_per_yr, dtype=float), 0.0) * interval_years
-    input_dry = dry_input.copy()
-    input_melt = melt_input.copy()
-    input_prior = np.zeros(n)
-    storage = np.zeros(n)
-    outflow = np.zeros(n)
-    routed_outflow = np.zeros(n)
-    settled = np.zeros(n)
-    settled_dry = np.zeros(n)
-    settled_melt = np.zeros(n)
-    settled_prior = np.zeros(n)
-    ocean_export = np.zeros(n)
-    evaporation = np.zeros(n)
-    inflow = np.zeros(n)
-    reach_residual = np.zeros(n)
-    active = (~is_ocean) & (~is_lake) & ((target >= 0) | (old > 0.0))
-    # Existing reach water can become lake or ocean water after a drainage change.
-    # Transfer that inventory to the new terminal instead of silently dropping it.
-    input_prior[is_lake] += old[is_lake]
-    ocean_export[is_ocean] += old[is_ocean]
-    settled[is_ocean] += old[is_ocean]
-    old[is_lake | is_ocean] = 0.0
     order, stuck = _routing_order(elevation, is_ocean, target)
-    stuck_set = set(stuck)
-    all_nodes = order + stuck
-    loss = np.clip(np.asarray(transit_loss, dtype=float), 0.0, 1.0)
-    dt_safe = max(dt_s, 1e-30)
+    target[stuck] = -1
+    sweep_order = np.asarray(order + stuck, dtype=np.int64)
+    stores = np.asarray(stores_water, dtype=bool) & (target >= 0) & ~is_ocean
+    tau_s = river_residence_time_s(_flow_edge_length_m(points, target), discharge_m3_s)
 
-    for node in all_nodes:
-        if is_ocean[node]:
-            continue
-        if is_lake[node]:
-            settled[node] += input_dry[node] + input_melt[node] + input_prior[node]
-            settled_dry[node] += input_dry[node]
-            settled_melt[node] += input_melt[node]
-            settled_prior[node] += input_prior[node]
-            continue
-        if not active[node]:
-            # An ordinary dry sink without channel state delivers its local source directly to
-            # the basin resolver. It has no routed reach to store water in.
-            settled[node] += input_dry[node] + input_melt[node] + input_prior[node]
-            settled_dry[node] += input_dry[node]
-            settled_melt[node] += input_melt[node]
-            settled_prior[node] += input_prior[node]
-            continue
+    storage_0 = np.maximum(np.asarray(prior_storage_m3, dtype=float), 0.0).copy()
+    if initial_discharge_m3_s is not None:
+        initial_q = np.maximum(initial_discharge_m3_s, 0.0)
+        initial_tau_s = river_residence_time_s(_flow_edge_length_m(points, target), initial_q)
+        storage_0 = np.where(stores, initial_q * initial_tau_s, 0.0)
+    initial_total = float(storage_0.sum())
+    # Land that drowned this step hands its river water straight to the ocean.
+    drowned_m3 = np.where(is_ocean, storage_0, 0.0)
+    storage_0[is_ocean] = 0.0
 
-        source_dry = input_dry[node]
-        source_melt = input_melt[node]
-        source_total = source_dry + source_melt + input_prior[node]
-        total_inflow = source_total
-        inflow[node] = total_inflow
-        q = total_inflow / dt_safe
-        tau = float(river_residence_time_s(edge_length_m[node], q, residence_cap))
-        decay = float(np.exp(-dt_s / tau)) if dt_s > 0.0 else 1.0
-        stored_from_input = q * tau * (1.0 - decay)
-        storage[node] = max(0.0, old[node] * decay + stored_from_input)
-        gross = max(0.0, old[node] + total_inflow - storage[node])
-        old_release = max(0.0, old[node] * (1.0 - decay))
-        input_release = max(0.0, gross - old_release)
-        if source_total > 0.0:
-            dry_out = input_release * source_dry / source_total
-            melt_out = input_release * source_melt / source_total
-            prior_out = old_release + input_release * input_prior[node] / source_total
-        else:
-            dry_out = melt_out = 0.0
-            prior_out = old_release
-        reach_residual[node] = old[node] + total_inflow - storage[node] - gross
-        outflow[node] = gross
-        evaporation[node] = gross * loss[node]
-        routed_dry = dry_out * (1.0 - loss[node])
-        routed_melt = melt_out * (1.0 - loss[node])
-        routed_prior = prior_out * (1.0 - loss[node])
-        routed_outflow[node] = routed_dry + routed_melt + routed_prior
-        downstream = int(target[node])
-        if downstream < 0 or node in stuck_set:
-            settled[node] += routed_dry + routed_melt + routed_prior
-            settled_dry[node] += routed_dry
-            settled_melt[node] += routed_melt
-            settled_prior[node] += routed_prior
-        elif is_ocean[downstream]:
-            ocean_export[downstream] += routed_dry + routed_melt + routed_prior
-            settled[downstream] += routed_dry + routed_melt + routed_prior
-        else:
-            input_dry[downstream] += routed_dry
-            input_melt[downstream] += routed_melt
-            input_prior[downstream] += routed_prior
+    runoff = np.where(is_ocean, 0.0, np.maximum(runoff_m3_per_yr, 0.0)) * interval_years
+    melt = np.where(is_ocean, 0.0, np.maximum(meltwater_m3_per_yr, 0.0)) * interval_years
+    input_total = float(runoff.sum() + melt.sum())
+    (
+        storage_1, outflow, routed, settled_runoff, settled_melt, settled_prior, ocean_export,
+        evaporation, inflow, reach_residual,
+    ) = _sweep_river_reaches(
+        sweep_order, target, is_ocean, stores, tau_s, interval_years * SECONDS_PER_YEAR, storage_0,
+        runoff, melt, np.zeros(n),
+        np.clip(np.asarray(runoff_loss, dtype=float), 0.0, 1.0),
+        np.clip(np.asarray(meltwater_loss, dtype=float), 0.0, 1.0),
+    )
+    settled_prior += drowned_m3
+    ocean_export += drowned_m3
 
-    # Any source on an ocean node is outside the land reservoir. Any node omitted from the
-    # routing order is a cycle member and was handled as a terminal above.
-    land = ~is_ocean
-    source_total = float(np.sum(dry_input[land] + melt_input[land]))
-    final_total = float(np.sum(storage[land]))
-    evaporation_total = float(np.sum(evaporation))
-    ocean_total = float(np.sum(ocean_export))
-    lake_transfer_total = float(np.sum(settled[is_lake]))
-    sink_total = float(np.sum(settled[land & ~is_lake]))
-    residual = source_total + initial_total - final_total - evaporation_total - ocean_total - lake_transfer_total - sink_total
+    final_total = float(storage_1.sum())
+    evaporation_total = float(evaporation.sum())
+    ocean_total = float(ocean_export.sum())
+    settled = settled_runoff + settled_melt + settled_prior
+    land_settlement = float(settled[~is_ocean].sum())
     ledger = RiverWaterLedger(
-        input_m3=source_total,
+        input_m3=input_total,
+        lake_overflow_m3=0.0,
         initial_storage_m3=initial_total,
         final_storage_m3=final_total,
-        gross_outflow_m3=float(np.sum(outflow)),
+        gross_outflow_m3=float(outflow.sum()),
         evaporation_m3=evaporation_total,
-        lake_transfer_m3=lake_transfer_total,
+        land_settlement_m3=land_settlement,
         ocean_export_m3=ocean_total,
-        sink_settlement_m3=sink_total,
-        residual_m3=float(residual),
-        max_reach_residual_m3=float(np.max(np.abs(reach_residual))) if n else 0.0,
+        residual_m3=(
+            input_total + initial_total - final_total - evaporation_total - ocean_total
+            - land_settlement
+        ),
+        max_reach_residual_m3=float(np.abs(reach_residual).max()) if n else 0.0,
     )
     return RiverRoutingResult(
-        storage, outflow, routed_outflow, settled, settled_dry, settled_melt, settled_prior,
-        ocean_export, evaporation, inflow, reach_residual, ledger,
+        storage_1, outflow, routed, settled_runoff, settled_melt, settled_prior, ocean_export,
+        evaporation, inflow, reach_residual, ledger,
+    )
+
+
+def _merge_river_passes(runoff: RiverRoutingResult, overflow: RiverRoutingResult) -> RiverWaterLedger:
+    """One network budget for the runoff pass and the exported-overflow pass that follows it.
+    The overflow pass's input is water the lake ledger already debited as it left."""
+    first, second = runoff.ledger, overflow.ledger
+    return RiverWaterLedger(
+        input_m3=first.input_m3,
+        lake_overflow_m3=second.input_m3,
+        initial_storage_m3=first.initial_storage_m3 + second.initial_storage_m3,
+        final_storage_m3=first.final_storage_m3 + second.final_storage_m3,
+        gross_outflow_m3=first.gross_outflow_m3 + second.gross_outflow_m3,
+        evaporation_m3=first.evaporation_m3 + second.evaporation_m3,
+        land_settlement_m3=first.land_settlement_m3 + second.land_settlement_m3,
+        ocean_export_m3=first.ocean_export_m3 + second.ocean_export_m3,
+        residual_m3=first.residual_m3 + second.residual_m3,
+        max_reach_residual_m3=max(first.max_reach_residual_m3, second.max_reach_residual_m3),
     )
 
 
@@ -1781,11 +1810,6 @@ def compute_hydrology(
             silt_depth=prev_silt_depth, silt_deposited=np.zeros(n), ice_flow_target=empty_i,
             channel_width=prev_channel_width,
             river_water_m=prev_river_water_m,
-            river_water_inflow_m3=empty_f.copy(),
-            river_water_outflow_m3=empty_f.copy(),
-            river_water_routed_m3=empty_f.copy(),
-            river_water_evaporation_m3=empty_f.copy(),
-            river_water_residual_m3=empty_f.copy(),
         )
 
     neighbor_idx = _build_neighbor_graph(points, world=world)
@@ -1855,7 +1879,7 @@ def compute_hydrology(
         breaching.open_water_evaporation_mm(open_season_temperature_c) / 1000.0 * ice_free_fraction
     )
     evaporation_mm = breaching.open_water_evaporation_mm(temperature_at_nodes)
-    wet_precip_m3, dry_runoff_m3, _ = _partition_precipitation_sources(
+    wet_precip_m3, dry_runoff_m3, dry_et_m3 = _partition_precipitation_sources(
         liquid_precip, evaporation_mm, areas, wet_fraction
     )
     breach = None
@@ -1970,34 +1994,36 @@ def compute_hydrology(
     leaf_sinks = leaf_sinks[(leaf_sinks >= 0) & (leaf_sinks < n)]
     source_targets[leaf_sinks] = -1
     route_sources(source_targets)
-    baseline_dry_through, _ = routed_sources["dry_runoff"]
-    baseline_melt_through, _ = routed_sources["meltwater"]
-    _, wet_settled = routed_sources["wet_precip"]
-    prior_river_storage_m3 = prev_river_water_m * areas
-    lake_sink_mask = np.zeros(n, dtype=bool)
-    lake_sink_mask[leaf_sinks] = True
-    river_route = route_river_reservoirs(
-        points,
-        elevation,
-        is_ocean,
-        neighbor_idx,
-        source_targets,
-        prev_lake_depth,
-        dry_runoff_m3,
-        meltwater_source_m3,
-        prior_river_storage_m3,
-        (baseline_dry_through + baseline_melt_through) / SECONDS_PER_YEAR,
-        years,
-        transit_loss,
-        initialize_from_discharge=not np.any(prior_river_storage_m3 > 0.0),
-        lake_sink_mask=lake_sink_mask,
+    wet_through, wet_settled = routed_sources["wet_precip"]
+    # The steady through-flow above sets each reach's travel time; the delivered water then
+    # comes from the river reservoirs, so a change in `river_water_m` is booked (RFC 0016, #725).
+    runoff_q_m3_s = (
+        routed_sources["dry_runoff"][0] + routed_sources["meltwater"][0]
+    ) / SECONDS_PER_YEAR
+    # A zero-length call (the terrain bootstrap) has no interval to integrate: it reports the
+    # steady rates through a nominal year and leaves river state alone.
+    has_interval = years > 0.0
+    interval_years = years if has_interval else 1.0
+    river_reach = (
+        ~is_ocean & (prev_lake_depth <= LAKE_MIN_VISIBLE_DEPTH_M) & (source_targets >= 0)
+        & (areas > 0.0) & has_interval
     )
-    river_water_m = np.divide(river_route.storage_m3, areas, out=np.zeros(n), where=areas > 0.0)
-    river_settled = river_route.settled_m3 / max(years, 1e-30)
-    dry_settled = river_route.settled_dry_runoff_m3 / max(years, 1e-30)
-    melt_settled = river_route.settled_meltwater_m3 / max(years, 1e-30)
-    river_storage_settled = river_route.settled_prior_storage_m3 / max(years, 1e-30)
-    external_supply = wet_settled + river_settled
+    prior_river_storage_m3 = prev_river_water_m * areas * has_interval
+    # A save with no river state starts from its own saved routed flow (RFC 0016). That flow
+    # already includes exported overflow, so only this first pass initializes.
+    initial_q_m3_s = None
+    if has_interval and not np.any(prior_river_storage_m3 > 0.0):
+        saved_q = getattr(world.hydrology_cache, "discharge_m3_s", None)
+        initial_q_m3_s = saved_q if saved_q is not None and len(saved_q) == n else runoff_q_m3_s
+    river_route = route_river_reservoirs(
+        points, elevation, is_ocean, source_targets, river_reach, dry_runoff_m3, meltwater_source_m3,
+        prior_river_storage_m3, runoff_q_m3_s, interval_years, dry_transit_loss, transit_loss,
+        initial_discharge_m3_s=initial_q_m3_s,
+    )
+    dry_settled = river_route.settled_runoff_m3 / interval_years
+    melt_settled = river_route.settled_meltwater_m3 / interval_years
+    river_storage_settled = river_route.settled_prior_storage_m3 / interval_years
+    external_supply = wet_settled + dry_settled + melt_settled + river_storage_settled
 
     lake_climate = lakes.LakeClimate(
         inflow_m3_per_yr=external_supply,
@@ -2059,9 +2085,18 @@ def compute_hydrology(
     # Only volume that actually escaped a lake enters downstream discharge. Internal
     # hierarchy transfers were already credited to their receiving basin by the solver.
     overflow_source = lake_result.overflow_m3 / max(years, 1e-30)
-    overflow_through, overflow_settled = route_downstream(
+    steady_overflow_through, _ = route_downstream(
         elevation, is_ocean, flow_target, overflow_source, loss_fraction=transit_loss
     )
+    # Exported overflow is river water too, so an outlet river holds its share of `V = Q tau`.
+    # It is a separate reservoir pass because lake supply had to be settled before the lake
+    # solve produced it; the reservoir law is linear in inflow, so the two passes add.
+    overflow_q_m3_s = steady_overflow_through / SECONDS_PER_YEAR
+    overflow_route = route_river_reservoirs(
+        points, elevation, is_ocean, flow_target, river_reach, np.zeros(n), overflow_source,
+        np.zeros(n), runoff_q_m3_s + overflow_q_m3_s, interval_years, transit_loss, transit_loss,
+    )
+    overflow_settled = overflow_route.settled_m3 / interval_years
     overflow_settled[is_ocean] += overflow_source[is_ocean]
     # Keep the solver's residual: it closes the lake-system balance before exported overflow
     # incurs downstream transit loss. `overflow_to_ocean_m3` below reports the routed amount
@@ -2097,11 +2132,40 @@ def compute_hydrology(
         - phase_ledger.sublimation_m3 - phase_ledger.ice_storage_change_m3
     )
     lake_water_ledger = replace(phase_ledger, residual_m3=liquid_residual_m3 + ice_residual_m3)
-    through_m3 = (
-        river_route.outflow_m3 * (1.0 - np.clip(transit_loss, 0.0, 1.0))
-        / max(years, 1e-30) + overflow_through
+    through_m3 = (river_route.routed_m3 + overflow_route.routed_m3) / interval_years + wet_through
+    settled_m3 = river_route.settled_m3 / interval_years + wet_settled + overflow_settled
+    river_water_m = (
+        np.divide(river_route.storage_m3 + overflow_route.storage_m3, areas, out=np.zeros(n), where=areas > 0.0)
+        if has_interval else prev_river_water_m
     )
-    settled_m3 = river_route.settled_m3 / max(years, 1e-30) + overflow_settled
+    river_ledger = _merge_river_passes(river_route, overflow_route)
+    land = ~is_ocean
+    rain_m3 = float((wet_precip_m3 + dry_runoff_m3 + dry_et_m3)[land].sum()) * interval_years
+    meltwater_m3 = float(meltwater_source_m3[land].sum()) * interval_years
+    dry_et_total_m3 = float(dry_et_m3[land].sum()) * interval_years
+    ocean_export_m3 = (
+        river_route.ledger.ocean_export_m3 + phase_ledger.overflow_to_ocean_m3
+        + float(wet_settled[is_ocean].sum()) * interval_years
+    )
+    river_storage_change_m3 = river_ledger.final_storage_m3 - river_ledger.initial_storage_m3
+    land_water_ledger = None if not has_interval else LandWaterLedger(
+        rain_m3=rain_m3,
+        meltwater_m3=meltwater_m3,
+        dry_et_m3=dry_et_total_m3,
+        river_evaporation_m3=river_ledger.evaporation_m3,
+        lake_evaporation_m3=phase_ledger.evaporation_m3,
+        lake_sublimation_m3=phase_ledger.sublimation_m3,
+        ocean_export_m3=ocean_export_m3,
+        river_storage_change_m3=river_storage_change_m3,
+        lake_liquid_change_m3=phase_ledger.storage_change_m3,
+        lake_ice_change_m3=phase_ledger.ice_storage_change_m3,
+        residual_m3=(
+            rain_m3 + meltwater_m3 - dry_et_total_m3 - river_ledger.evaporation_m3
+            - phase_ledger.evaporation_m3 - phase_ledger.sublimation_m3 - ocean_export_m3
+            - river_storage_change_m3 - phase_ledger.storage_change_m3
+            - phase_ledger.ice_storage_change_m3
+        ),
+    )
     through_m3[leaf_sinks] = 0.0
 
     # is_river isn't known yet -- it needs this step's *final* lake_depth (below) to exclude
@@ -2121,12 +2185,14 @@ def compute_hydrology(
         ice=ice,
         should_spill=should_spill,
         river_water_m=river_water_m,
-        river_water_ledger=river_route.ledger,
-        river_water_inflow_m3=river_route.inflow_m3,
-        river_water_outflow_m3=river_route.outflow_m3,
-        river_water_routed_m3=river_route.routed_m3,
-        river_water_evaporation_m3=river_route.evaporation_m3,
-        river_water_residual_m3=river_route.reach_residual_m3,
+        river_water_ledger=river_ledger,
+        land_water_ledger=land_water_ledger,
+        river_water_inflow_m3=river_route.inflow_m3 + overflow_route.inflow_m3,
+        river_water_outflow_m3=river_route.outflow_m3 + overflow_route.outflow_m3,
+        river_water_routed_m3=river_route.routed_m3 + overflow_route.routed_m3,
+        river_water_evaporation_m3=river_route.evaporation_m3 + overflow_route.evaporation_m3,
+        river_water_residual_m3=river_route.reach_residual_m3 + overflow_route.reach_residual_m3,
+        river_water_initial_m3=prior_river_storage_m3,
     )
     # Ocean targets hold land-to-ocean flux in `settled_m3`, since ocean nodes are sinks rather
     # than members of the river routing graph. Expose mouth discharge there for shelf geology;
@@ -2138,6 +2204,7 @@ def compute_hydrology(
     fields.lake_external_wet_precip_m3_per_yr = wet_settled
     fields.lake_external_dry_runoff_m3_per_yr = dry_settled
     fields.lake_external_meltwater_m3_per_yr = melt_settled
+    fields.lake_external_river_storage_m3_per_yr = river_storage_settled
     fields.lake_water_ledger = lake_water_ledger
     fields.lake_depth = lake_result.lake_depth
     fields.lake_ice_m = lake_ice_m

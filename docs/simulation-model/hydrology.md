@@ -89,12 +89,19 @@ Three kinds of water/forcing move along `flow_target`:
   Raymond et al. (2012). Residence time is bounded to 1 second–1 year; the one-year maximum is
   an engineering cap for dry reaches, not a measured value. For interval-mean inflow `I`, the
   reservoir applies the exact constant-inflow update `V₁ = V₀ exp(−Δt/τ) + Iτ(1−exp(−Δt/τ))`,
-  then routes `V₀ + IΔt − V₁` onward. A zero-state old save is initialized from the current
-  routed discharge times `τ`; a reach with no routed discharge starts empty. `river_water_ledger`
-  exposes whole-network closure and the maximum per-reach update residual. Water released from
-  prior river storage and delivered to a lake is recorded as its own lake-ledger source term.
-  RFC 0016 G0 still requires a rain-only checkpoint closure report; full snow and glacier closure
-  depends on RFC 0015's physical water accounting.
+  then routes `V₀ + IΔt − V₁` onward, so a steady reach delivers what `route_downstream` does.
+  Each source keeps its own transit loss; water released from storage takes the runoff loss.
+  Only dry routed reaches store water. Lake-covered nodes, sinks and flow-cycle nodes pass it
+  on at once, so destinations match the plain routing and a volume never sits in two
+  reservoirs. Exported lake overflow runs a second reservoir pass after the lake solve, so an
+  outlet river holds its overflow's share, with its travel time set by the summed discharge.
+  A save with no river state starts from its saved routed discharge times `τ`; that is initial
+  state, not interval input. The terrain bootstrap has no interval, so it leaves the state alone.
+  `river_water_ledger` exposes network closure and the maximum per-reach update residual, and
+  water released from prior storage into a lake is its own lake-ledger source. `land_water_ledger`
+  closes rain, melt, dry ET, evaporation, ocean export and river plus lake storage for one
+  step. It is RFC 0016 G0's rain-only interim budget: frozen precipitation and ice storage are
+  outside it and melt is still in scaled glacier units, so full closure depends on RFC 0015.
 - **Glacier meltwater** is the ice ledger's per-step volume (`IceLedger.meltwater_m3`: surface
   and basal melt, overflow, ice shed at the depth guard, and snow melting on bare ground)
   divided by the step length (`hydrology.meltwater_m3_per_yr`). Melted ice is booked as

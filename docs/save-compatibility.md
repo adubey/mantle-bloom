@@ -62,6 +62,13 @@ assumes 10 kyr per step (`legacy_conversion.FALLBACK_YEARS_PER_STEP`, the UI's s
 step). Either way an age is capped at `elapsed_years`. A negative or fractional step count
 is a `CorruptSaveError`.
 
+**River water.** RFC 0016 (#725) added the persistent surface field `river_water_m`. A save
+from before it loads with the field's zero default, and the next step with an interval sets each
+routed reach to its saved `discharge_m3_s` times its residence time (`hydrology.compute_hydrology`),
+as initial state rather than interval input, so sea level moves by that small inventory on the
+first step. A hydrology cache saves `river_water_m` and its ledgers but never its per-reach
+readouts (`river_water_inflow_m3` and the like), which only the current step's diagnostics use.
+
 **Cached humidity without units.** Before #522 the pickled `World.climate_cache` held
 `humidity`, a unitless index. `persistence._migrate_climate_humidity_units` renames it to
 `humidity_g_kg` and multiplies it by `climate.HUMIDITY_INDEX_G_KG` (12.3), the factor the
