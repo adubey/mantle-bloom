@@ -1,9 +1,9 @@
 ---
 name: create-issue
-description: Create a new Mantle Bloom GitHub issue. Use for requests to create an issue, an RFC sub-issue, a standalone task, or an exploration tracker.
+description: Create a new Mantle-Bloom GitHub issue. Use for requests to create an issue, an RFC sub-issue, a standalone task, or an exploration tracker.
 ---
 
-# Create a Mantle Bloom issue
+# Create a Mantle-Bloom issue
 
 Use this when asked to create an issue or when an investigation identifies issue-sized
 follow-up work, including an exploration tracking issue. This skill creates and links the

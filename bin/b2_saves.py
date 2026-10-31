@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep Mantle Bloom saves in a private Backblaze B2 bucket across machines (#708).
+"""Keep Mantle-Bloom saves in a private Backblaze B2 bucket across machines (#708).
 
 Recent saves live in the local saves directory and in the bucket. Older local copies are
 purged once the bucket is confirmed to hold them; bucket copies stay until deleted by hand.

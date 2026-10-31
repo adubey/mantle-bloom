@@ -1,6 +1,6 @@
 # Launch readiness
 
-This page is the cross-cutting view of work that may be needed before Mantle Bloom's next
+This page is the cross-cutting view of work that may be needed before Mantle-Bloom's next
 public launch. It connects model quality, product capabilities and operating requirements
 that do not fit into one GitHub Project. The project tracker and linked issues remain the
 source of truth for implementation status; update this page when scope or dependencies change.

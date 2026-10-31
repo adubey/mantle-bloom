@@ -1,9 +1,9 @@
 ---
 name: project-management
-description: Update or inspect issue open/closed state and RFC or issue statuses in Mantle Bloom GitHub Projects project 2. Workflow skills link here for project-status how-tos instead of duplicating board procedures.
+description: Update or inspect issue open/closed state and RFC or issue statuses in Mantle-Bloom GitHub Projects project 2. Workflow skills link here for project-status how-tos instead of duplicating board procedures.
 ---
 
-# Manage the Mantle Bloom project board
+# Manage the Mantle-Bloom project board
 
 The board is the user's GitHub Projects project 2. This skill is the canonical guide for
 issue open/closed state and the board's existing single-select status field for issues and

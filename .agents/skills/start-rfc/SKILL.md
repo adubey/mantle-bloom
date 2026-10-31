@@ -1,6 +1,6 @@
 ---
 name: start-rfc
-description: "Start or advance a Mantle Bloom RFC workstream: set up its worktree, confirm owner acceptance, run diagnosis gates, plan implementation issues, and coordinate implementation PRs. Use rfc-authoring to choose the RFC number and write its scientific content."
+description: "Start or advance a Mantle-Bloom RFC workstream: set up its worktree, confirm owner acceptance, run diagnosis gates, plan implementation issues, and coordinate implementation PRs. Use rfc-authoring to choose the RFC number and write its scientific content."
 ---
 
 # Start or advance an RFC workstream

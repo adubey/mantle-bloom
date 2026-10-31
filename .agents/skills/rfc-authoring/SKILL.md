@@ -1,6 +1,6 @@
 ---
 name: rfc-authoring
-description: Write or revise the scientific content of a Mantle Bloom RFC. Use when asked to author a proposal, turn investigation findings into an RFC, or address technical review comments; this skill also chooses the NNNN for a new RFC. To split off a revision into a new session, use edit-rfc.
+description: Write or revise the scientific content of a Mantle-Bloom RFC. Use when asked to author a proposal, turn investigation findings into an RFC, or address technical review comments; this skill also chooses the NNNN for a new RFC. To split off a revision into a new session, use edit-rfc.
 ---
 
 # Write an RFC

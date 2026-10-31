@@ -1,9 +1,9 @@
 ---
 name: documentation
-description: Write or revise Mantle Bloom project documentation in docs/ or rfc/. Use for documentation edits; RFC proposals and reviews should also follow their specialized skills.
+description: Write or revise Mantle-Bloom project documentation in docs/ or rfc/. Use for documentation edits; RFC proposals and reviews should also follow their specialized skills.
 ---
 
-# Mantle Bloom documentation
+# Mantle-Bloom documentation
 
 Write for two readers: people learning or checking the system, and agents that need to find
 an authoritative description while changing code. Documentation should describe current

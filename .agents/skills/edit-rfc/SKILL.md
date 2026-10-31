@@ -1,6 +1,6 @@
 ---
 name: edit-rfc
-description: "Split work into a new session when evidence challenges an existing Mantle Bloom RFC: write a durable brief, explore and revise, and return the outcome to affected issues and waiting sessions. Not for a revision already agreed within the current session (use rfc-authoring), exploration with no RFC at stake (use explore-problem), or plain resumption (use continue-rfc)."
+description: "Split work into a new session when evidence challenges an existing Mantle-Bloom RFC: write a durable brief, explore and revise, and return the outcome to affected issues and waiting sessions. Not for a revision already agreed within the current session (use rfc-authoring), exploration with no RFC at stake (use explore-problem), or plain resumption (use continue-rfc)."
 ---
 
 # Edit an RFC from new evidence

@@ -1,6 +1,6 @@
 ---
 name: start-issue
-description: Set up an isolated branch, worktree, venv and ports for a Mantle Bloom issue. Check its RFC context and tracking sub-issue.
+description: Set up an isolated branch, worktree, venv and ports for a Mantle-Bloom issue. Check its RFC context and tracking sub-issue.
 ---
 
 # Start work on an issue

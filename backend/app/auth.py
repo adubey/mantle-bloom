@@ -313,7 +313,7 @@ def _login_failure(code: str) -> RedirectResponse:
 _LOGIN_PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in - Mantle Bloom</title>
+<title>Sign in - Mantle-Bloom</title>
 <style>
 body {{ margin: 0; min-height: 100vh; display: grid; place-items: center; background: #0f1117;
   color: #e6e8ef; font-family: system-ui, sans-serif; }}
@@ -326,7 +326,7 @@ a.button {{ display: inline-block; margin: 16px 0; padding: 10px 18px; border-ra
 a {{ color: #9db8ff; }}
 </style></head>
 <body><main>
-<h1>Mantle Bloom</h1>
+<h1>Mantle-Bloom</h1>
 <p>Sign in to run the full simulator.</p>
 {error}{action}{help}
 <p><a href="/view">Back to the viewer</a></p>

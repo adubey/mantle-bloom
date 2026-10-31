@@ -106,6 +106,7 @@ class WorldFeed:
         self._epoch = secrets.token_hex(4)
         self._count = 0
         self._summary: dict | None = None
+        self._name: str | None = None
         self._waiters: list[tuple[asyncio.AbstractEventLoop, asyncio.Future]] = []
 
     def revision(self) -> str:
@@ -120,10 +121,26 @@ class WorldFeed:
         with self._mutex:
             return self._summary
 
-    def publish(self, world) -> None:
-        """Record a change to `world` (None: there's no world) and wake every waiting viewer."""
+    def name(self) -> str | None:
+        """The name viewers see. Published here rather than read off the session so it moves
+        with the summary: a regenerate renames the session before its new world exists, and
+        the new name must not appear beside the old world's age (#711)."""
+        with self._mutex:
+            return self._name
+
+    def set_name(self, name: str) -> None:
+        """Rename the world for viewers, waking them: a rename has no new revision (#711)."""
+        with self._mutex:
+            self._name = name
+        self.wake()
+
+    def publish(self, world, name: str | None = None) -> None:
+        """Record a change to `world` (None: there's no world), and to its `name` if given,
+        and wake every waiting viewer."""
         with self._mutex:
             self._count += 1
+            if name is not None:
+                self._name = name
             revision = self._revision()
             self._summary = None if world is None else {
                 "revision": revision, "seed": world.seed, "elapsed_years": float(world.elapsed_years)
