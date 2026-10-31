@@ -44,10 +44,8 @@ For the checkpoint sensitivity, drainage area is defined as the sum of node acco
 upstream of each reach, with directed cycles collapsed before catchment accumulation. The model
 has no long-term mean annual discharge per reach, so the Jobson comparison uses the explicit
 `Qa=Q` sensitivity assumption; it does not claim that the current 100 kyr interval mean is an
-annual climatology. Raymond's equation needs a registered rule for a dry reach that still holds
-river water: `Q=0` gives zero velocity and infinite residence time. No velocity range or
-parameterization is frozen, and no river inventory should be interpreted as accepted until the
-low-flow rule and paired inventory sensitivity are recorded.
+annual climatology. Raymond's equation needs a rule for a dry reach that still holds river
+water: `Q=0` gives zero velocity and infinite residence time.
 
 ### Checkpoint and accounting readiness
 
@@ -109,22 +107,26 @@ The source provides a combined empirical fit but does not establish a validity r
 synthetic-world reaches. Jobson provides a second numerical estimate, but it predicts **peak
 tracer velocity**, not mean advective velocity; using it to set the linear-reservoir residence
 time is unsupported without a peak-to-mean mapping. The old Leopold–Maddock mean-velocity
-exponent (`m=0.34`) alone supplies no transferable coefficient. These calculations expose
-sensitivity but do not yet satisfy G0's requirement for two admissible, source-supported `U`
-parameterizations and a defensible low-flow rule. No river state or G0 treatment has been
-implemented; stop before the reservoir implementation gate until that choice is resolved.
+exponent (`m=0.34`) alone supplies no transferable coefficient. Following the owner's direction
+that G0 may use estimates, use Raymond as the provisional central estimate and Jobson as a faster
+travel-time sensitivity, keeping Jobson's peak-tracer interpretation explicit. Cap residence
+time at one year so dry reaches with stored water drain over a finite interval; initialize a
+zero-flow reach at zero volume and retain that cap if it later dries. Treat the one-year cap as
+an engineering regularization, not a literature result, and include 0.1- and 10-year caps in the
+sensitivity report. This is sufficient to proceed with the conservative reach-state
+implementation; the comparison remains an uncertainty bound rather than a calibrated river
+model.
 
 ### Next G0 actions
 
-1. Resolve a second mean-advective-velocity parameterization (or revise the RFC's two-source
-   gate), supported low-flow behavior, and the discharge domain over which each estimate is
-   used. The current Jobson peak-tracer sensitivity is not an admissible mean-velocity law.
-2. Once that gate is satisfied, implement persistent conservative reach state and per-reach
-   transfer/closure readouts.
+1. Implement persistent conservative reach state and per-reach transfer/closure readouts using
+   the provisional Raymond estimate, Jobson fast sensitivity and stated residence-time caps.
+2. Quantify 0.1-, 1- and 10-year cap sensitivity on A/B/C before interpreting inventory or
+   lake-feeder effects.
 3. Use the validated A/B/C replacement checkpoints for the G0 control ledger, with their
    producer/production commits and replacement hashes recorded in every run report.
 4. Report rain-only control closure while marking the full G0 ledger dependent on RFC 0015.
 
 Checkpoint reconstruction and event validation replays have run at `5d666dd` and `f4438e1`.
-Read-only velocity sensitivities have run on A/B/C. No G0 inventory or ledger replay, paired
-treatment, or tests have run.
+Read-only velocity sensitivities have run on A/B/C. The provisional residence-time estimate is
+now recorded; no G0 inventory or ledger replay, paired treatment, or tests have run.
