@@ -3,7 +3,7 @@
 - **Status:** Accepted (revised 2026-10-31 to detected rifts on owner direction; revised 2026-10-30 after fixed-geometry Gate 3b result)
 - **Date:** 2026-10-15
 - **Last revised:** 2026-10-31; production rifts are detected from four tectonic settings and routed around cratons, replacing the Gate 3b requirement that rifting emerge from force and damage mechanics
-- **Related:** #730 (detected-rift revision), #699 (Gate 3b tracking), #487 (closed Gate 3a evidence), #481 (superseded tracker), #480 (min-cut diagnostic), #472 / PR #479 (RFC 0009 G3), #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
+- **Related:** #737 (Gates D1–D3), #730 (detected-rift revision), #699 (Gate 3b tracking), #487 (closed Gate 3a evidence), #481 (superseded tracker), #480 (min-cut diagnostic), #472 / PR #479 (RFC 0009 G3), #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
   0003 solution 1); RFCs [0003](abandoned/0003-rifting-around-cratons.md) (superseded by RFC 0010),
   [0009](0009-craton-mosaic.md) (cratons-first layout; G3 initially selected the min-cut),
   [0007](0007-mantle-plumes-and-plateaus.md) (plume weakening),
@@ -375,9 +375,10 @@ needs a per-front upper and lower plate. The existing `collision_polarity` consu
 records which plate lost cells at a front, and may decide this without a seafloor age field;
 Gate D1 checks that on ocean-ocean fronts.
 
-**Double counting.** `plumes._credit_head_stress` adds stress to a continental head's host, which
-relaxes the passive gate. With active rifting in place that head would trigger two settings, so the
-credit is removed.
+**Plumes and passive rifting.** `plumes._credit_head_stress` adds stress to a continental head's
+host, which relaxes the passive gate. That stays, as RFC 0007 intended: a head can help a plate
+break under passive conditions as well as start an active rift. Because a plate runs at most one
+rift, one head can't start two. Gate D1 reports how many passive events follow a head.
 
 **Detector cost.** Detectors run every step, so they reuse the boundary inputs and classification
 the step already computes. Their cost is measured against item 10's 2% budget at Gate D3.
@@ -894,7 +895,7 @@ source or explicit design-choice status, and the sensitivity plan before impleme
 - `backend/app/mantle.py`: a shared helper so every `flow_at` caller gets the same plume centers.
 - `backend/app/torque.py`: basal drag sees the plume push through that helper.
 - `backend/app/stats.py`: rift counts by setting and outcome.
-- `backend/app/plumes.py`: the temporary upwelling center, and removal of `_credit_head_stress`.
+- `backend/app/plumes.py`: the temporary upwelling center.
 - Follow-up: keel erosion under `plume_heat_myr` with an `hm_ledger` sink, and deeper craton keels
   at seeding in `cratons.py` and `continent_layout.py`.
 - `backend/app/surface_fields.py`: a field for reached cells and oceanic tear dates.
