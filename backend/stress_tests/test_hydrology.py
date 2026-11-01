@@ -174,3 +174,24 @@ def test_silt_depth_persists_across_boundary_and_erosion_steps():
 
     assert silt_total_1 > 0.0
     assert silt_total_2 > 0.0
+
+
+def test_mature_world_water_ledger_never_strands_exported_overflow():
+    # A long routing history exercises cycle settlement after many lake and terrain remaps.
+    world = generate_world(seed=731, num_plates=10, continental_fraction=0.5)
+    for step_idx in range(48):
+        step_world(world, years=4_000_000)
+        hydro = world.hydrology_cache
+        assert hydro is not None
+        ledger = hydro.land_water_ledger
+        assert ledger is not None
+        input_m3 = max(ledger.rain_m3 + ledger.meltwater_m3, 1.0)
+        assert ledger.stranded_overflow_m3 <= 1e-4 * input_m3, f"step {step_idx + 1}: {ledger}"
+        assert abs(ledger.residual_m3) <= 1e-3 * input_m3, (
+            f"step={step_idx + 1}, residual_m3={ledger.residual_m3:.6g}, input_m3={input_m3:.6g}, "
+            f"lake_residual_m3={hydro.lake_water_ledger.residual_m3:.6g}, "
+            f"river_residual_m3={hydro.river_water_ledger.residual_m3:.6g}, "
+            f"runoff_land_settlement_m3={hydro.river_water_ledger.land_settlement_m3:.6g}, "
+            f"land_sink_settlement_m3={ledger.land_sink_settlement_m3:.6g}, "
+            f"stranded_overflow_m3={ledger.stranded_overflow_m3:.6g}"
+        )

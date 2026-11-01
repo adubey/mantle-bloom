@@ -1349,11 +1349,52 @@ def test_route_downstream_conserves_across_uphill_edges_and_cycles():
     flow_target = np.array([1, 2, 3, 4, -1, 6, 5])
     source = np.array([1.0, 2.0, 3.0, 4.0, 0.0, 5.0, 6.0])
     retain = np.array([0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0])
-    flux, deposited = hydrology.route_downstream(elevation, is_ocean, flow_target, source, retain_fraction=retain)
+    routed = hydrology.route_downstream(elevation, is_ocean, flow_target, source, retain_fraction=retain)
+    flux, deposited = routed
     assert np.isclose(deposited.sum(), source.sum())
     assert np.isclose(flux[2], 6.0)  # nodes 0 and 1 both reached the spill node
     assert np.isclose(deposited[3], 5.0) and np.isclose(deposited[4], 5.0)
     assert np.isclose(deposited[5] + deposited[6], 11.0)  # a cycle keeps its own load
+    assert routed.cycle_settlement[5:].sum() == pytest.approx(11.0)
+    assert routed.sink_settlement.sum() == 0.0
+    assert routed.residual == pytest.approx(0.0)
+    assert (
+        routed.retained.sum() + routed.sink_settlement.sum() + routed.ocean_export.sum()
+        + routed.cycle_settlement.sum() + routed.evaporated.sum()
+    ) == pytest.approx(source.sum())
+
+
+def test_route_downstream_names_overflow_stopping_at_a_spilling_leaf_sink():
+    # A leaf sink's spill edge can send exported lake water through an uphill cycle. The route
+    # result names the exact per-node remainder so the caller can transfer it through the lake
+    # hierarchy instead of silently treating it as an ordinary terminal deposit (#731).
+    elevation = np.array([10.0, 20.0, 0.0])
+    is_ocean = np.array([False, False, True])
+    target = np.array([1, 0, -1])  # node 1 is the spilling leaf sink; 1 -> 0 is its spill edge
+    overflow = np.array([0.0, 7.0, 0.0])
+
+    routed = hydrology.route_downstream(elevation, is_ocean, target, overflow)
+
+    assert routed.cycle_settlement[[0, 1]].sum() == pytest.approx(7.0)
+    assert routed.sink_settlement.sum() == 0.0
+    assert routed.ocean_export.sum() == 0.0
+    assert routed.residual == pytest.approx(0.0)
+
+
+def test_route_downstream_names_water_reaching_a_spilling_leaf_outlet():
+    # When the spill edge has an ocean receiver, the same exported volume is credited to that
+    # reservoir and not left on the leaf sink (#731).
+    elevation = np.array([20.0, 10.0, 0.0])
+    is_ocean = np.array([False, False, True])
+    target = np.array([1, 2, -1])
+    overflow = np.array([0.0, 5.0, 0.0])
+
+    routed = hydrology.route_downstream(elevation, is_ocean, target, overflow)
+
+    assert routed.ocean_export[2] == pytest.approx(5.0)
+    assert routed.cycle_settlement.sum() == 0.0
+    assert routed.sink_settlement.sum() == 0.0
+    assert routed.residual == pytest.approx(0.0)
 
 
 def test_route_downstream_conserves_on_an_all_downhill_graph():
@@ -1580,7 +1621,63 @@ def test_river_water_on_a_sink_or_flow_cycle_settles_there_without_being_lost():
     )
     assert route.storage_m3[[3, 4, 9]].sum() == 0.0
     assert route.settled_m3[[3, 4, 9]].min() > 0.0
+    assert route.cycle_settlement_m3[[3, 4]].sum() == pytest.approx(route.settled_m3[[3, 4]].sum())
+    assert route.cycle_settlement_m3[9] == 0.0
     assert route.ledger.residual_m3 == pytest.approx(0.0, abs=1e-2)
+    assert (
+        route.storage_m3.sum() + route.ledger.evaporation_m3 + route.ledger.ocean_export_m3
+        + route.ledger.land_settlement_m3
+    ) == pytest.approx(route.ledger.input_m3 + route.ledger.initial_storage_m3, abs=1e-2)
+
+
+def test_exported_river_overflow_cycle_and_sink_settlement_transfer_to_ocean():
+    points, elevation, is_ocean, target, stores = _river_network()
+    target = target.copy()
+    target[3], target[4] = 4, 3
+    target[9] = -1
+    route = hydrology.route_river_reservoirs(
+        points, elevation, is_ocean, target, stores, np.full(12, 1e9), np.zeros(12),
+        np.full(12, 1e10), np.full(12, 50.0), 1.0, np.zeros(12), np.zeros(12),
+    )
+    ocean_settlement_before = route.settled_m3[is_ocean].copy()
+    ocean_export_before = route.ocean_export_m3.copy()
+    stranded_m3, stranded_node = hydrology._deliver_unowned_river_overflow_to_ocean(route, is_ocean)
+
+    assert stranded_m3 == 0.0 and stranded_node == -1
+    assert route.ledger.unlocated_ocean_export_m3 > 0.0
+    assert np.array_equal(route.settled_m3[is_ocean], ocean_settlement_before)
+    assert np.array_equal(route.ocean_export_m3, ocean_export_before)
+    assert route.ledger.ocean_export_m3 == pytest.approx(
+        route.ocean_export_m3.sum() + route.ledger.unlocated_ocean_export_m3
+    )
+    assert route.ledger.land_settlement_m3 == 0.0
+    assert route.ledger.ocean_export_m3 > 0.0
+    assert route.cycle_settlement_m3.sum() == 0.0
+    assert route.settled_m3[~is_ocean].sum() == 0.0
+    assert route.ledger.residual_m3 == pytest.approx(0.0, abs=1e-2)
+
+
+def test_exported_river_settlement_without_ocean_is_reported_at_largest_node():
+    points, elevation, is_ocean, target, stores = _river_network()
+    is_ocean = np.zeros_like(is_ocean)
+    target = target.copy()
+    target[3], target[4] = 4, 3
+    route = hydrology.route_river_reservoirs(
+        points, elevation, is_ocean, target, stores, np.full(12, 1e9), np.zeros(12),
+        np.full(12, 1e10), np.full(12, 50.0), 1.0, np.zeros(12), np.zeros(12),
+    )
+
+    stranded_m3, stranded_node = hydrology._deliver_unowned_river_overflow_to_ocean(route, is_ocean)
+
+    assert stranded_m3 == pytest.approx(route.ledger.land_settlement_m3)
+    assert stranded_node in np.flatnonzero(route.settled_m3 > 0.0)
+
+
+def test_stranded_overflow_warning_names_volume_and_node(caplog):
+    hydrology._warn_if_stranded_overflow(12.5, 7)
+
+    assert "12.5 m^3" in caplog.text
+    assert "total; largest settlement at node 7" in caplog.text
 
 
 def test_dry_reach_drains_its_stored_water_at_the_residence_cap():
@@ -1688,3 +1785,42 @@ def test_river_water_adds_to_trapped_surface_water():
     plate.set_fields_on_plate(river_water_m=np.full(40, 0.01))
     areas = collect_all_accounting_areas_m2(world.plates, line_spacing_rad(world.node_density))
     assert eustasy.trapped_water_volume_m3(world) - before == pytest.approx(0.01 * areas.sum(), rel=1e-12)
+
+
+def test_routing_stuck_nodes_are_cycle_members_not_separate_terminal_sinks():
+    target = np.array([1, 0, 0, -1, 3])
+    ocean = np.zeros(5, dtype=bool)
+    elevation = np.arange(5, dtype=float)
+    _, stuck = hydrology._routing_order(elevation, ocean, target)
+    cycle_members = np.concatenate(hydrology.flow_cycles(target))
+    assert sorted(stuck) == sorted(cycle_members) == [0, 1]
+    result = hydrology.route_downstream(elevation, ocean, target, np.ones(5))
+    assert result.cycle_settlement.sum() == pytest.approx(3.0)
+    assert result.sink_settlement[3] == pytest.approx(2.0)
+
+
+def test_missing_owned_lake_supply_stays_in_land_residual(monkeypatch):
+    from dataclasses import replace
+
+    original_solve = lakes.solve_lakes_prognostic
+
+    def drop_supply(forest, elevation, previous, years, climate, hypsometry, **kwargs):
+        # Simulate a solver regression: owned supply never enters a lake reservoir.
+        climate = replace(climate, inflow_m3_per_yr=np.zeros_like(elevation),
+                          external_supply_m3_per_yr=np.zeros_like(elevation))
+        return original_solve(forest, elevation, previous, years, climate, hypsometry, **kwargs)
+
+    elevation = np.concatenate([np.linspace(900., 100., 15), np.linspace(100., 900., 15),
+                                np.linspace(900., -300., 10)])
+    world = World(seed=0, plates=[_flow_line_plate(0, np.arange(40), elevation)])
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
+    rain = np.full(40, 900.)
+    temperature = np.full(40, 12.)
+    control = hydrology.compute_hydrology(world, rain, temperature, years=100_000)
+    monkeypatch.setattr(lakes, "solve_lakes_prognostic", drop_supply)
+    broken = hydrology.compute_hydrology(world, rain, temperature, years=100_000)
+    assert control.lake_water_ledger.external_supply_m3 > 0
+    assert broken.land_water_ledger.land_sink_settlement_m3 == control.land_water_ledger.land_sink_settlement_m3
+    assert broken.land_water_ledger.residual_m3 == pytest.approx(
+        control.land_water_ledger.residual_m3 + control.lake_water_ledger.external_supply_m3, rel=1e-8
+    )
