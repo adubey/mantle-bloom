@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from app import geometry
 from app.elevation_lines import line_spacing_rad
-from app.hydroclimate import breaching, erosion, hydrology, lakes
+from app.hydroclimate import breaching, erosion, eustasy, hydrology, lakes
 from app.plates import collect_all_accounting_areas_m2
 from app.world import World, generate_world, step_world
 
@@ -734,9 +734,12 @@ def test_discharge_carries_the_ice_ledgers_meltwater_exactly_once_at_any_step_le
         assert fields.lake_external_meltwater_m3_per_yr.sum() > 0.0
         assert np.all(fields.discharge_m3_s >= 0.0)
         assert fields.lake_water_ledger.residual_m3 == pytest.approx(0.0, abs=1.0e5)
-        assert fields.lake_external_meltwater_m3_per_yr.sum() == pytest.approx(
-            ledger.meltwater_m3 / years, rel=1e-9
-        )
+        # A reach starts at `Q tau`, so what the river held back of this melt is matched by
+        # what its inventory released (#725).
+        assert (
+            fields.lake_external_meltwater_m3_per_yr.sum()
+            + fields.lake_external_river_storage_m3_per_yr.sum()
+        ) == pytest.approx(ledger.meltwater_m3 / years, rel=1e-9)
         assert fields.lake_external_wet_precip_m3_per_yr.sum() == 0.0
         assert fields.lake_external_dry_runoff_m3_per_yr.sum() == 0.0
 
@@ -755,7 +758,8 @@ def test_discharge_from_fixed_rainfall_does_not_depend_on_step_length():
     short, long = run(100_000), run(1_000_000)
     land = ~short.is_ocean
     assert np.max(short.discharge_m3_s[land]) > 0.0
-    assert long.discharge_m3_s == pytest.approx(short.discharge_m3_s, rel=1e-12)
+    # Rivers hold days of a 100 kyr interval, so only their tiny transient differs (#725).
+    assert long.discharge_m3_s == pytest.approx(short.discharge_m3_s, rel=1e-7)
     assert np.max(long.flow_accum[land]) < np.max(short.flow_accum[land])
 
 
@@ -981,9 +985,10 @@ def test_compute_hydrology_delivers_every_drop_of_liquid_water_past_cold_nodes(c
     source_m3 = liquid_m3 + fields.ice.ledger.meltwater_m3 / years  # Budyko runoff is all of it with no evaporation
     ocean_m3 = float(fields.discharge_m3_s[fields.is_ocean].sum()) * hydrology.SECONDS_PER_YEAR
     ledger = fields.lake_water_ledger
+    river = fields.river_water_ledger
     stored_or_lost_m3_per_year = (
         ledger.storage_change_m3 + ledger.ice_storage_change_m3 + ledger.evaporation_m3
-        + ledger.sublimation_m3
+        + ledger.sublimation_m3 + river.final_storage_m3 - river.initial_storage_m3
     ) / years
     assert ocean_m3 == pytest.approx(source_m3 - stored_or_lost_m3_per_year, rel=1e-9)
     assert abs(ledger.residual_m3) <= 1e-9 * ledger.external_supply_m3
@@ -1459,3 +1464,227 @@ def test_a_lake_under_ice_on_warm_ground_stays_water():
     ledger = fields.ice.ledger
     assert ledger.frozen_lake_m3 == 0.0
     assert ledger.closing_m3 <= ledger.opening_m3 + ledger.accumulation_m3  # the lake didn't become ice
+
+
+def _river_network():
+    """Twelve nodes in a line on the unit sphere's equator, draining east to an ocean at node
+    11, with a lake-covered reach at node 5 and a tributary (6) joining node 7."""
+    theta = np.arange(12) * 0.002
+    points = np.column_stack([np.cos(theta), np.sin(theta), np.zeros(12)])
+    elevation = 2000.0 - 150.0 * np.arange(12.0)
+    is_ocean = np.zeros(12, dtype=bool)
+    is_ocean[11] = True
+    target = np.array([1, 2, 3, 4, 5, 7, 7, 8, 9, 10, 11, -1], dtype=np.int64)
+    stores = ~is_ocean & (target >= 0)
+    stores[5] = False
+    return points, elevation, is_ocean, target, stores
+
+
+def _route_rivers(runoff, melt, prior, years=100_000.0, loss=0.0, melt_loss=None, **kw):
+    points, elevation, is_ocean, target, stores = _river_network()
+    q = np.full(12, 50.0)
+    runoff_loss = np.full(12, loss)
+    meltwater_loss = runoff_loss if melt_loss is None else np.full(12, melt_loss)
+    return hydrology.route_river_reservoirs(
+        points, elevation, is_ocean, target, stores, runoff, melt, prior, q, years,
+        runoff_loss, meltwater_loss, **kw,
+    )
+
+
+def test_steady_river_reservoirs_deliver_what_route_downstream_does():
+    # The reservoir only delays water: in steady state each source reaches the same place, with
+    # the same source-specific transit loss, as the control's sweep (RFC 0016 G0, #725). A long
+    # interval makes the stored volume a negligible share of what passes.
+    points, elevation, is_ocean, target, _ = _river_network()
+    runoff = np.array([9.0, 1, 0, 4, 0, 2, 7, 0, 3, 0, 1, 5]) * 1e9
+    melt = np.array([0.0, 2, 0, 0, 1, 0, 0, 3, 0, 0, 0, 0]) * 1e8
+    runoff_loss = np.linspace(0.0, 0.02, 12)
+    melt_loss = np.linspace(0.03, 0.0, 12)
+    through_runoff, deposited_runoff = hydrology.route_downstream(
+        elevation, is_ocean, target, runoff, loss_fraction=runoff_loss
+    )
+    through_melt, deposited_melt = hydrology.route_downstream(
+        elevation, is_ocean, target, melt, loss_fraction=melt_loss
+    )
+    route = _route_rivers(runoff, melt, np.zeros(12), years=1e7)
+    route = hydrology.route_river_reservoirs(
+        points, elevation, is_ocean, target, np.where(is_ocean, False, target >= 0), runoff, melt,
+        route.storage_m3, np.full(12, 50.0), 1e7, runoff_loss, melt_loss,
+    )
+    assert route.routed_m3[:11] / 1e7 == pytest.approx((through_runoff + through_melt)[:11], rel=1e-6)
+    assert route.settled_runoff_m3[11] / 1e7 == pytest.approx(deposited_runoff[11], rel=1e-6)
+    assert route.settled_meltwater_m3[11] / 1e7 == pytest.approx(deposited_melt[11], rel=1e-6)
+
+
+def test_river_reach_update_is_exact_and_each_reach_closes():
+    runoff = np.full(12, 3e8)
+    prior = np.linspace(1e12, 2e12, 12)
+    prior[[5, 11]] = 0.0
+    route = _route_rivers(runoff, np.zeros(12), prior, years=2e-5, loss=0.01)
+    _, _, _, target, stores = _river_network()
+    points = _river_network()[0]
+    tau = hydrology.river_residence_time_s(hydrology._flow_edge_length_m(points, target), np.full(12, 50.0))
+    dt = 2e-5 * hydrology.SECONDS_PER_YEAR
+    decay = np.exp(-dt / tau)
+    inflow_rate = route.inflow_m3 / dt
+    expected = prior * decay + inflow_rate * tau * (1.0 - decay)
+    assert route.storage_m3[stores] == pytest.approx(expected[stores], rel=1e-12)
+    # V1 - V0 = I dt - O at every reach, and the transit loss is charged after the outflow.
+    assert np.allclose(route.storage_m3 - prior, route.inflow_m3 - route.outflow_m3, atol=1e-2, rtol=1e-12)
+    assert route.evaporation_m3 == pytest.approx(route.outflow_m3 * 0.01, rel=1e-12)
+    ledger = route.ledger
+    assert abs(ledger.residual_m3) <= 1e-10 * (ledger.initial_storage_m3 + ledger.input_m3)
+
+
+def test_river_reservoir_is_independent_of_step_partition_for_steady_inflow():
+    runoff = np.zeros(12)
+    runoff[0] = 4e9
+    prior = np.zeros(12)
+    prior[3] = 7e11
+    whole = _route_rivers(runoff, np.zeros(12), prior, years=4e-5)
+    half = _route_rivers(runoff, np.zeros(12), prior, years=2e-5)
+    second = _route_rivers(runoff, np.zeros(12), half.storage_m3, years=2e-5)
+    # Upstream delay within an interval is first order in dt/tau, so compare a reach whose
+    # own inflow is the steady source: the head of the river.
+    assert second.storage_m3[0] == pytest.approx(whole.storage_m3[0], rel=1e-12)
+    # Every drop is accounted for either way.
+    assert whole.ledger.final_storage_m3 + whole.ledger.ocean_export_m3 == pytest.approx(
+        second.ledger.final_storage_m3 + half.ledger.ocean_export_m3 + second.ledger.ocean_export_m3, rel=1e-12
+    )
+
+
+def test_river_water_never_rests_on_lake_or_ocean_nodes():
+    # Inventory stranded by a rising lake or sea moves into that reservoir as an interval
+    # transfer; a volume has one owner (RFC 0016 G0, #725).
+    prior = np.zeros(12)
+    prior[5] = 6e10
+    prior[11] = 2e10
+    route = _route_rivers(np.zeros(12), np.zeros(12), prior, years=1e5)
+    assert route.storage_m3[5] == 0.0
+    assert route.storage_m3[11] == 0.0
+    # The lake node's water carries on downstream; only the reaches below it hold any now.
+    assert route.storage_m3[:5].sum() == 0.0
+    assert route.ledger.ocean_export_m3 + route.ledger.final_storage_m3 == pytest.approx(8e10, rel=1e-12)
+    assert route.outflow_m3[11] == pytest.approx(2e10, rel=1e-12)
+    assert route.ledger.residual_m3 == pytest.approx(0.0, abs=1e-3)
+
+
+def test_river_water_on_a_sink_or_flow_cycle_settles_there_without_being_lost():
+    points, elevation, is_ocean, target, stores = _river_network()
+    target = target.copy()
+    target[3], target[4] = 4, 3  # a two-node cycle
+    target[9] = -1  # a land sink
+    route = hydrology.route_river_reservoirs(
+        points, elevation, is_ocean, target, stores, np.full(12, 1e9), np.zeros(12),
+        np.full(12, 1e10), np.full(12, 50.0), 1.0, np.zeros(12), np.zeros(12),
+    )
+    assert route.storage_m3[[3, 4, 9]].sum() == 0.0
+    assert route.settled_m3[[3, 4, 9]].min() > 0.0
+    assert route.ledger.residual_m3 == pytest.approx(0.0, abs=1e-2)
+
+
+def test_dry_reach_drains_its_stored_water_at_the_residence_cap():
+    assert hydrology.river_residence_time_s(np.array([20_000.0]), np.array([0.0]))[0] == hydrology.RIVER_MAX_RESIDENCE_SECONDS
+    points, elevation, is_ocean, target, stores = _river_network()
+    prior = np.zeros(12)
+    prior[2] = 1e9
+    route = hydrology.route_river_reservoirs(
+        points, elevation, is_ocean, target, stores, np.zeros(12), np.zeros(12), prior,
+        np.zeros(12), 1.0, np.zeros(12), np.zeros(12),
+    )
+    assert route.storage_m3[2] == pytest.approx(1e9 * np.exp(-1.0), rel=1e-3)
+
+
+def test_river_initial_state_is_q_tau_and_not_an_interval_input():
+    points, _, _, target, stores = _river_network()
+    q = np.full(12, 50.0)
+    tau = hydrology.river_residence_time_s(hydrology._flow_edge_length_m(points, target), q)
+    route = _route_rivers(np.zeros(12), np.zeros(12), np.zeros(12), initial_discharge_m3_s=q)
+    assert route.ledger.initial_storage_m3 == pytest.approx((q * tau)[stores].sum(), rel=1e-12)
+    assert route.ledger.input_m3 == 0.0
+    assert route.ledger.residual_m3 == pytest.approx(0.0, abs=1e-3)
+    # The per-reach readout starts from that state, so each reach's identity holds on step one.
+    assert np.allclose(
+        route.storage_m3 - route.initial_storage_m3, route.inflow_m3 - route.outflow_m3,
+        atol=1e-2, rtol=1e-12,
+    )
+
+
+def _river_world():
+    theta = np.arange(40) * 0.01
+    elevation = np.concatenate([np.linspace(1500.0, 100.0, 30), np.full(10, -500.0)])
+    plate = _flow_line_plate(1, theta, elevation)
+    return World(plates=[plate], seed=0, sea_level_m=0.0)
+
+
+def test_hydrology_persists_river_water_and_closes_the_rain_only_land_ledger():
+    world = _river_world()
+    fields = hydrology.compute_hydrology(world, np.full(40, 800.0), np.full(40, 15.0), years=100_000)
+    assert fields.river_water_m.sum() > 0.0
+    world.plates[0].set_fields_on_plate(river_water_m=fields.river_water_m)
+    again = hydrology.compute_hydrology(world, np.full(40, 800.0), np.full(40, 15.0), years=100_000)
+    ledger = again.land_water_ledger
+    assert ledger.rain_m3 > 0.0
+    assert abs(ledger.residual_m3) <= 1e-9 * ledger.rain_m3
+    # Steady forcing leaves the inventory where it was.
+    assert again.river_water_m.sum() == pytest.approx(fields.river_water_m.sum(), rel=1e-7)
+    assert abs(again.river_water_ledger.residual_m3) <= 1e-9 * ledger.rain_m3
+    assert again.river_water_ledger.max_reach_residual_m3 <= 1e-6 * again.river_water_m.max() * 1e12
+
+
+def test_save_without_river_state_starts_from_its_saved_routed_flow():
+    # RFC 0016: a checkpoint's initial inventory is its saved `Q tau`, with no reach eligible
+    # unless it stores water, and it is recorded as initial state rather than input.
+    world = _river_world()
+    fields = hydrology.compute_hydrology(world, np.full(40, 800.0), np.full(40, 15.0), years=100_000)
+    no_cache = fields.river_water_ledger.initial_storage_m3
+    fields.discharge_m3_s = fields.discharge_m3_s * 8.0
+    world.hydrology_cache = fields
+    resumed = hydrology.compute_hydrology(world, np.full(40, 800.0), np.full(40, 15.0), years=100_000)
+    assert resumed.river_water_ledger.initial_storage_m3 > 3.0 * no_cache
+    assert resumed.river_water_ledger.input_m3 == pytest.approx(fields.river_water_ledger.input_m3)
+    assert abs(resumed.land_water_ledger.residual_m3) <= 1e-9 * resumed.land_water_ledger.rain_m3
+
+
+def test_lake_outlet_river_holds_exported_overflow_as_inventory():
+    # Reach `Q` below a lake is mostly overflow. Its water is river inventory too, and the
+    # overflow pass books it, with the lake ledger's export as its input (#725).
+    theta = 0.002 * np.arange(12)
+    elevation = np.array([900.0, 800, 500, 450, 500, 400, 300, 200, 100, -100, -200, -300])
+    depth = np.zeros(12)
+    depth[3] = 60.0
+    world = World(seed=0, plates=[_flow_line_plate_with_lake(0, theta, elevation, depth)])
+    fields = hydrology.compute_hydrology(world, np.full(12, 900.0), np.full(12, 12.0), years=100_000)
+    ledger = fields.river_water_ledger
+    assert ledger.lake_overflow_m3 > 0.0
+    assert ledger.lake_overflow_m3 == pytest.approx(fields.lake_water_ledger.overflow_out_m3, rel=1e-9)
+    assert abs(fields.land_water_ledger.residual_m3) <= 1e-9 * fields.land_water_ledger.rain_m3
+    assert fields.land_water_ledger.stranded_overflow_m3 == 0.0
+    assert fields.river_water_m[5:9].min() > 0.0
+
+
+def test_zero_length_hydrology_reports_steady_discharge_and_leaves_river_state():
+    world = _river_world()
+    stepped = hydrology.compute_hydrology(world, np.full(40, 800.0), np.full(40, 15.0), years=100_000)
+    bootstrap = hydrology.compute_hydrology(world, np.full(40, 800.0), np.full(40, 15.0), years=0.0)
+    assert np.all(bootstrap.river_water_m == 0.0)
+    assert bootstrap.land_water_ledger is None
+    assert bootstrap.discharge_m3_s == pytest.approx(stepped.discharge_m3_s, rel=1e-6)
+
+
+def test_saved_hydrology_cache_drops_per_reach_readouts_but_keeps_river_state():
+    world = _river_world()
+    fields = hydrology.compute_hydrology(world, np.full(40, 800.0), np.full(40, 15.0), years=100_000)
+    assert fields.river_water_outflow_m3 is not None
+    state = fields.__getstate__()
+    assert "river_water_outflow_m3" not in state
+    assert "river_water_m" in state
+
+
+def test_river_water_adds_to_trapped_surface_water():
+    world = _river_world()
+    before = eustasy.trapped_water_volume_m3(world)
+    plate = world.plates[0]
+    plate.set_fields_on_plate(river_water_m=np.full(40, 0.01))
+    areas = collect_all_accounting_areas_m2(world.plates, line_spacing_rad(world.node_density))
+    assert eustasy.trapped_water_volume_m3(world) - before == pytest.approx(0.01 * areas.sum(), rel=1e-12)

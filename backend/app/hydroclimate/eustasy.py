@@ -284,17 +284,17 @@ def water_volume_for_sea_level(world: "World", sea_level_m: float) -> float:
 def trapped_water_volume_m3(world: "World") -> float:
     """Surface water currently locked up on land rather than sitting in the ocean, in m^3 like
     `total_water_volume_m3` -- so it can be subtracted straight from the conserved total
-    budget. Two contributions, both read off the
+    budget. Contributions are read off the
     persisted per-node fields hydrology.py maintains: every node's `glacier_depth` (ice caps,
     valley glaciers, mountain-top ice, and any ice-age sea-ice cap -- converted from a column
     of ice to its liquid-water equivalent, `_ICE_WATER_EQUIVALENT`), and the `lake_depth` of
     every node holding a real visible lake (`_LAKE_MIN_TRAPPED_DEPTH_M`). Both are water that
-    fell as precipitation and would otherwise have run back to the sea; debiting them is what
-    makes sea level fall as an ice age's ice sheets grow (glacio-eustasy). 0.0 for a world
-    with neither."""
+    fell as precipitation and would otherwise have run back to the sea; persistent river water
+    (`river_water_m`, RFC 0016 / #725) is also temporarily stored on land. Debiting these
+    inventories is what makes sea level fall as they grow. 0.0 for a world with none."""
     from ..plates import (
         collect_all_accounting_areas_m2, collect_all_glacier_depth, collect_all_lake_depth,
-        collect_all_lake_ice,
+        collect_all_lake_ice, collect_all_river_water,
     )
 
     if not world.plates:
@@ -302,11 +302,13 @@ def trapped_water_volume_m3(world: "World") -> float:
     glacier_depth = collect_all_glacier_depth(world.plates)
     lake_depth = collect_all_lake_depth(world.plates)
     lake_ice_m = collect_all_lake_ice(world.plates)
+    river_water_m = collect_all_river_water(world.plates)
     areas_m2 = collect_all_accounting_areas_m2(world.plates, line_spacing_rad(world.node_density))
     glacier_ice = _ICE_WATER_EQUIVALENT * float(np.dot(areas_m2, np.clip(glacier_depth, 0.0, None)))
     lake_liquid = float(np.dot(areas_m2, np.where(lake_depth >= _LAKE_MIN_TRAPPED_DEPTH_M, lake_depth, 0.0)))
     lake_ice = float(np.dot(areas_m2, np.clip(lake_ice_m, 0.0, None)))
-    return glacier_ice + lake_liquid + lake_ice
+    river_water = float(np.dot(areas_m2, np.clip(river_water_m, 0.0, None)))
+    return glacier_ice + lake_liquid + lake_ice + river_water
 
 
 def solve_sea_level(elevations: np.ndarray, areas_m2: np.ndarray, water_volume_m3: float) -> float:

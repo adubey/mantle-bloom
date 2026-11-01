@@ -2661,6 +2661,9 @@ def apply_erosion(
     lake_ice_m = getattr(hydro, "lake_ice_m", np.zeros(0))
     if np.asarray(lake_ice_m).shape != np.asarray(hydro.lake_depth).shape:
         lake_ice_m = np.zeros_like(hydro.lake_depth)
+    river_water_m = getattr(hydro, "river_water_m", np.zeros(0))
+    if np.asarray(river_water_m).shape != np.asarray(hydro.lake_depth).shape:
+        river_water_m = np.zeros_like(hydro.lake_depth)
 
     offset = 0
     for plate in plates_in_order:
@@ -2674,6 +2677,7 @@ def apply_erosion(
             breach_notch_depth_m=new_breach_notch_depth[offset : offset + n],
             lake_depth=hydro.lake_depth[offset : offset + n],
             lake_ice_m=lake_ice_m[offset : offset + n],
+            river_water_m=river_water_m[offset : offset + n],
             glacier_depth=hydro.glacier_depth[offset : offset + n],
             silt_depth=new_silt_depth[offset : offset + n],
             elev_change_reason=new_elev_change_reason[offset : offset + n],
