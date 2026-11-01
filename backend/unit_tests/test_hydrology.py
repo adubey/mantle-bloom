@@ -1671,7 +1671,10 @@ def test_glacier_account_chains_steps_and_closes_the_full_precipitation_ledger()
         land, glacier = fields.land_water_ledger, fields.glacier_water_ledger
         external = land.rain_m3 + glacier.external_input_m3 + land.meltwater_m3
         assert abs(glacier.residual_m3) <= 1e-12 * max(glacier.closing_m3, external)
-        assert abs(hydrology.full_land_water_residual_m3(land, glacier)) <= 1e-9 * external
+        frozen = glacier.frozen
+        assert glacier.external_input_m3 == pytest.approx(frozen.retained_m3 + frozen.bare_melted_m3, rel=1e-12)
+        # The frozen terms cancel by construction: this ledger names them, it doesn't test them.
+        assert hydrology.full_land_water_residual_m3(land, glacier) == pytest.approx(land.residual_m3, abs=1e-9 * external)
         land_mask = ~fields.is_ocean
         precipitation_m3 = float(np.dot(np.full(12, 0.8), areas * land_mask)) * 100_000
         assert land.rain_m3 + glacier.frozen.land_m3 == pytest.approx(precipitation_m3)
@@ -1700,6 +1703,19 @@ def test_bare_ground_snow_melts_within_the_step_and_never_enters_the_account():
     assert glacier.frozen.bare_melted_m3 == pytest.approx(glacier.frozen.land_m3)
     assert glacier.closing_m3 == 0.0
     assert world.glacier_water_account_m3 == 0.0
+
+
+def test_each_world_step_commits_the_glacier_account_for_the_next():
+    world = generate_world(seed=42, num_plates=2, node_density=0.25, climate_density=0.25, fluid_density=0.25)
+    assert world.glacier_water_account_m3 is None
+    step_world(world, 100_000)
+    first = world.hydrology_cache.glacier_water_ledger
+    assert first.initialized_from_ice
+    assert world.glacier_water_account_m3 == first.closing_m3
+    assert type(world.glacier_water_account_m3) is float
+    step_world(world, 100_000)
+    assert not world.hydrology_cache.glacier_water_ledger.initialized_from_ice
+    assert world.hydrology_cache.glacier_water_ledger.opening_m3 == first.closing_m3
 
 
 def test_ice_free_world_has_an_empty_glacier_account():

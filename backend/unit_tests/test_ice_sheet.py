@@ -446,3 +446,42 @@ def test_frozen_precipitation_follows_the_ice_or_melts_on_bare_ground():
     assert frozen.retained_m3 > 0.0
     assert frozen.bare_melted_m3 > 0.0
     assert frozen.land_m3 + frozen.ocean_retained_m3 == pytest.approx(frozen.retained_m3 + frozen.bare_melted_m3)
+
+
+def _assert_retained_snow_is_the_scaled_accumulation(ice):
+    # Everywhere frozen, the physical water the ice keeps and its scaled accumulation are the same
+    # snow, at `WATER_TO_ICE`.
+    assert ice.ledger.accumulation_m3 > 0.0
+    assert ice.frozen_precipitation.retained_m3 * hydrology.WATER_TO_ICE == pytest.approx(ice.ledger.accumulation_m3)
+
+
+def test_plastic_body_keeps_snow_on_the_bare_ground_that_feeds_it():
+    points, r, elevation, area = _continent()
+    n = len(points)
+    # Bare margin cells are cold enough to feed the body without being covered by it.
+    climate = _cold(n, 500.0)
+    _, _, ice = _step(points, area, elevation, np.zeros(n), climate, 100_000.0)
+    assert ice.bodies and np.any((ice.covered < 1.0) & (elevation > 0.0))
+    _assert_retained_snow_is_the_scaled_accumulation(ice)
+
+
+def test_uniform_body_keeps_its_snow_and_the_ocean_around_it_keeps_nothing():
+    # An island too small for a plastic profile, in water too deep for ice to ground.
+    points, r, elevation, area = _continent(land_radius_km=70.0, half_km=600.0, ocean_floor=-6000.0)
+    n = len(points)
+    assert 0 < np.count_nonzero(elevation > 0.0) < ice_sheet.ICE_BODY_MIN_NODES
+    _, _, ice = _step(points, area, elevation, np.zeros(n), _cold(n, 500.0), 100_000.0)
+    _assert_retained_snow_is_the_scaled_accumulation(ice)
+    assert ice.frozen_precipitation.ocean_retained_m3 == 0.0
+
+
+def test_sea_ice_cap_keeps_its_snow_as_ocean_input_to_the_account():
+    points, r, elevation, area = _continent(land_radius_km=300.0, half_km=600.0)
+    n = len(points)
+    ocean = elevation < 0.0
+    _, _, ice = _step(points, area, elevation, np.zeros(n), _cold(n, 100.0), 100_000.0, allow_ocean_ice=ocean)
+    frozen = ice.frozen_precipitation
+    _assert_retained_snow_is_the_scaled_accumulation(ice)
+    expected = float(np.dot(np.full(n, 0.1), area * ocean)) * 100_000.0
+    assert frozen.ocean_retained_m3 == pytest.approx(expected)
+    assert frozen.land_m3 + frozen.ocean_retained_m3 == pytest.approx(frozen.retained_m3 + frozen.bare_melted_m3)

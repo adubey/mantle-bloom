@@ -115,8 +115,10 @@ Three kinds of water/forcing move along `flow_target`:
   account only follows the ice history. It is bookkeeping: nothing reads it, its release is not
   routed, and it stays out of `eustasy.trapped_water_volume_m3`, so glacier flow, melt, erosion,
   lakes and sea level are unaffected. `full_land_water_residual_m3` adds it to the rain-only
-  budget, with the scaled meltwater kept as a separate input. Closing this ledger is
-  bookkeeping closure, not evidence of where glacier water physically goes.
+  budget, with the scaled meltwater kept as a separate input. Its frozen terms cancel by
+  construction, so closing it is bookkeeping, not evidence of where glacier water physically
+  goes. The account has no term for ice changed outside the solver, such as tectonic remapping,
+  so it can drift from model ice, and a balance left when model ice reaches zero can't release.
 - **Glacier meltwater** is the ice ledger's per-step volume (`IceLedger.meltwater_m3`: surface
   and basal melt, overflow, ice shed at the depth guard, and snow melting on bare ground)
   divided by the step length (`hydrology.meltwater_m3_per_yr`). Melted ice is booked as

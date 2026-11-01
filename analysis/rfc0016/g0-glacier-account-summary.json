@@ -15,7 +15,10 @@
    "max_outward_share_of_input": 7.4189708778485866,
    "max_full_residual_branch": 3.388207042491076e-08,
    "max_stranded_overflow_branch": 0.0609637352586131,
-   "max_full_residual_with_734": 7.612818335084626e-14
+   "max_full_residual_with_734": 7.612818335084626e-14,
+   "calving_share_of_release": 0.8426694009612504,
+   "largest_ratio_any_step": 52.31263230401625,
+   "max_account_to_ice_drift": 0.0002932523477323645
   },
   "B": {
    "steps": 4,
@@ -28,7 +31,10 @@
    "max_outward_share_of_input": 2.2990764077160573,
    "max_full_residual_branch": 3.249697335233985e-05,
    "max_stranded_overflow_branch": 0.052508489433364065,
-   "max_full_residual_with_734": 5.192112371887486e-14
+   "max_full_residual_with_734": 5.192112371887486e-14,
+   "calving_share_of_release": 0.6370337466784531,
+   "largest_ratio_any_step": 17.342116767639396,
+   "max_account_to_ice_drift": 0.000592451728971044
   },
   "C": {
    "steps": 4,
@@ -41,7 +47,10 @@
    "max_outward_share_of_input": 3.082213276710261,
    "max_full_residual_branch": 1.230239656527628e-10,
    "max_stranded_overflow_branch": 0.0034180862688753515,
-   "max_full_residual_with_734": 8.095170084555466e-14
+   "max_full_residual_with_734": 8.095170084555466e-14,
+   "calving_share_of_release": 0.7065090315598731,
+   "largest_ratio_any_step": 24.78052754269959,
+   "max_account_to_ice_drift": 8.027681049593838e-05
   },
   "ice_age_374464662": {
    "steps": 80,
@@ -53,7 +62,10 @@
    "max_identity_residual_m3": 13888.0,
    "max_outward_share_of_input": 0.09348341181788318,
    "max_full_residual_branch": 0.0003822401874948015,
-   "max_stranded_overflow_branch": 0.13146955167784707
+   "max_stranded_overflow_branch": 0.13146955167784707,
+   "calving_share_of_release": 0.0048720160233116745,
+   "largest_ratio_any_step": 0.38774203737304047,
+   "max_account_to_ice_drift": 0.005250356195580563
   }
  }
 }

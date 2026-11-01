@@ -532,7 +532,11 @@ class LandWaterLedger:
 def full_land_water_residual_m3(land: LandWaterLedger, glacier: "GlacierWaterLedger") -> float:
     """RFC 0016 G0's diagnostic precipitation ledger: the rain-only budget plus frozen input,
     less the interim account's growth and the release it books outward (#732). The scaled
-    `land.meltwater_m3` stays a separate input, and nothing subtracts it from frozen water."""
+    `land.meltwater_m3` stays a separate input, and nothing subtracts it from frozen water.
+
+    The frozen terms cancel by construction, so this equals `land.residual_m3` to floating
+    point: it can't show the account is right, only name every term. The account's own checks
+    are its partition, `GlacierWaterLedger.residual_m3` and the size of its release."""
     return land.residual_m3 + glacier.external_input_m3 - (glacier.closing_m3 - glacier.opening_m3) - glacier.outward_m3
 
 
