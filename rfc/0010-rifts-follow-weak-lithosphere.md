@@ -300,6 +300,18 @@ so they take the existing resisted thinning, which lowers `craton_crust_m` and s
 The weakening accumulates: a plate stressed repeatedly in one place gets easier to break there, and
 repeated thinning can bring a craton's edge below the block.
 
+**Oceanic tears.** `mark_belt` is continental only, and `clear_oceanic_belts` deliberately keeps it
+so, because craton formation relies on that. So the surface field holding reached cells also records
+when a tear formed, and later routes treat a tear like a belt.
+
+| Where | What happens |
+|---|---|
+| Near a subduction front or volcano | Stays weak until consumed. If arc growth turns the rock continental, it becomes a true belt |
+| Elsewhere in ocean | Heals after `RIFT_TEAR_HEAL_MYR` |
+
+Near subduction, the rock will either disappear or become continental, so its mark needs no timer.
+Elsewhere, a tear is a lubricated fault that eventually seals.
+
 **Repeat limit.** Without one, a setting with no route would fire again after the 2 Myr cooldown,
 and each firing would thin the same rock by another 10%, a direct threat to the craton-loss target.
 So a plate and setting can't start a new event near an old site for `RIFT_RETRY_MYR`. This is a
@@ -402,6 +414,7 @@ cells in a step, and a step longer than a rift's life still delivers the same ce
 
 | Knob (new) | Start | Source | Tuning |
 |---|---|---|---|
+| `RIFT_TEAR_HEAL_MYR` | 50 | Design choice | Fixed until oceanic reactivation is reported |
 | `RIFT_RETRY_MYR` | 50 | Design choice | Craton loss and reactivation, sensitivity 20–100 |
 | `PLUME_PUSH_RATE` | 5 cm/yr | Design choice, below the native flow's 7.8 cm/yr p95 on one world | Daughter divergence after active rifts, sensitivity 2–10 |
 | `RIFT_ONSET_MYR` | 2 | Design choice; matches `SPLIT_MIN_AGE_YEARS` | Plate count, sensitivity 1–5 |
@@ -461,7 +474,8 @@ the acceptance criteria.
   - Zero blocked cells entered, and detached craton per rift under D2's limit.
   - Reported, not pass or fail: a fresh current-main comparison, rifts by setting and outcome, and
     continental split systems per 200 Myr against the 6–8 context.
-  - Compare repeat rifts on marked rock with first rifts, to show weakening accumulates.
+  - Compare repeat rifts on marked rock with first rifts, to show weakening accumulates, with
+    oceanic tears reported separately.
   - Report how long daughters keep diverging after breakup, by setting.
 
 **Outcomes by setting.** A **breakup** adds a plate, and needs each daughter at
@@ -479,6 +493,9 @@ rock.
    this ships. Until then, cratons break only at edges and where weak.
 2. **Boundary jump.** It needs moving cells between plates; the existing partition and merge code
    should support it, but this has not been traced.
+3. **Oceanic microplates.** A tear beside a subduction front can make a small microplate that is
+   later subducted. The 5% daughter minimum blocks these today. They would need their own smaller
+   size rule, allowed only beside a subduction front, once the 40-plate ceiling has been measured.
 
 **Slab prototype.** The evolving-slab code in PRs #726 and #727 is not used here and stays out of
 production, kept as evidence on `claude/issue-699-evidence-corrected-slabs`. A later revision may
@@ -839,7 +856,7 @@ source or explicit design-choice status, and the sensitivity plan before impleme
 - `backend/app/plumes.py`: the temporary upwelling center, and removal of `_credit_head_stress`.
 - Follow-up: keel erosion under `plume_heat_myr` with an `hm_ledger` sink, and deeper craton keels
   at seeding in `cratons.py` and `continent_layout.py`.
-- `backend/app/surface_fields.py`: a reached-cells field for active rifts.
+- `backend/app/surface_fields.py`: a field for reached cells and oceanic tear dates.
 - `backend/app/world.py`: `active_rifts` (new), with the step order that runs it.
 - `backend/app/cratons.py`: `record_rift_cut` takes a route as well as a great circle.
 - `bin/debug/probe_rift_settings.py`: the census and route probe, extended for Gates D1 and D2.
@@ -884,28 +901,38 @@ source or explicit design-choice status, and the sensitivity plan before impleme
 
 ## Assumptions and uncertainty
 
-- **The strength model is an explicit physical hypothesis, not a resolved lithosphere.** A first
-  candidate combines frictional normal-fault failure with temperature- and strain-rate-dependent
-  creep, then integrates differential strength with depth. It omits fluid state, vertical
-  composition, inherited faults, anisotropy, grain-size evolution and 3-D load transfer. Existing
-  Moho temperature and boundary Mohr-Coulomb proxies do not fill those gaps. Weak/wet and strong/dry
-  brackets may show sensitivity but cannot identify the real material state.
-- **Local loading is the key unresolved interface.** Node-wise force inputs are currently reduced
-  into a whole-plate torque; neither that torque nor dimensionless `Plate.internal_stress`
-  uniquely specifies intraplate stress. The replacement must derive a supported local load or stop
-  and revise; it must not disguise the min-cut flow partition as mechanics.
-- **Damage proxies brittle/ductile weakening.** A single strain/damage scalar omits temperature,
-  fluids, grain-scale rheology and depth-dependent faulting. It is an efficient model proxy, not a
-  resolved fault-zone simulation.
-- **Segment linkage is not always a discrete transform.** Rift transfer may be distributed or
-  extension-dominated; the model must not force a strike-slip “scissor” at every offset.
-- **Craton avoidance is probabilistic geology, not an absolute rule.** Strong cratons should resist
-  extension, while sufficiently large loads or inherited weaknesses may still rupture them. The
-  acceptance target measures a comparative model behavior, not a universal geological law.
-- **Continental and oceanic rifting differ.** A boundary may propagate from continental extension
-  into oceanic crust, but the two modes need not share identical thresholds.
-- **The 1 Gyr replays are stress tests, not calibration intervals.** Tune constitutive assumptions on
-  shorter controlled cases, then use long runs to check side effects and budgets.
+The earlier assumptions about the strength model, local loading, damage and segment linkage applied
+to the force-and-damage design and are retired with it.
+
+- **This is a phenomenological rift model.** Detection and routing compute no stress, so results
+  show plausible behavior, not mechanical cause.
+- **Each detector is a proxy.** Passive uses mantle-flow misfit in place of far-field tension.
+  Rollback uses upper-plate motion, which does not explain every subduction zone
+  [[Heuret & Lallemand, 2005]](#ref-heuret2005). Active assumes a head can rift continent in any
+  setting. In transtension's obliquity window only the 20° bound has a source
+  [[Brune et al., 2018]](#ref-brune2018).
+- **Routes have foresight.** Dijkstra sees the whole plate, while real rifts grow locally and can't
+  know where they will end. This trades realism for believable shapes at low cost. Re-planning from
+  the tips softens it slightly.
+- **One rift, two arms.** There are no independent segments, triple junctions or competing rifts on
+  a plate. Plume rifts often branch in three, so Afar-style junctions will not appear.
+- **One growth rate.** Every setting grows at the same speed, chosen to fit the 10–30 Myr bracket,
+  not measured.
+- **Cratons usually hold, but not always.** Edges, weak cratons and eroded keels can give way, which
+  is a tendency written as hard cell rules. Until the keel follow-up ships, craton strength comes
+  from crust alone and cratons break only at edges and where weak.
+- **Continental and oceanic rock keep different records.** Detectors differ by setting, and routes
+  share one set of rules. Continental weakening is a permanent belt. Oceanic weakening is a tear
+  that persists near subduction or volcanoes and heals elsewhere.
+- **A tear stands for processes the model lacks.** A tear in an oceanic plate lets water into
+  peridotite, forming serpentinite that lubricates the fault, among other responses. The model
+  tracks neither, so the weak mark and its healing time are the whole representation.
+- **Weakening is permanent on continents.** Belts never heal, so over many Gyr marked rock could
+  spread until route preferences lose meaning. Long runs should check this.
+- **The census is thin evidence.** It is five snapshots and has never run in a history, so every
+  number in this design could shift.
+- **The 1 Gyr replays are stress tests, not calibration intervals.** Tune on shorter controlled
+  cases, then use long runs to check side effects and budgets.
 
 ## Acceptance criteria
 
