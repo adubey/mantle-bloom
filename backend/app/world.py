@@ -348,6 +348,10 @@ class World:
     # keeps answering for a coastline tectonics has long since moved on from -- see GitHub
     # issue #121): compare against World.steps_taken at read time.
     hydrology_cache_step: int | None = None
+    # RFC 0016 G0's interim whole-world glacier water, physical m^3 (#732). Bookkeeping only:
+    # nothing reads it but its own ledger, and it stays out of eustasy. `None` until the first
+    # hydrology interval, which opens it from the model ice, so old saves need no backfill.
+    glacier_water_account_m3: float | None = None
     # Last step's erosion breakdown (see erosion.ErosionResult), retained here purely so the
     # Geomorph Rate debug view (render_image._render_geomorph_view) can colour every node by
     # its net elevation change this step -- geology.py still receives its own copy as a direct

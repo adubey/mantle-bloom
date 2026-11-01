@@ -116,7 +116,7 @@ from ..plates import (
 
 if TYPE_CHECKING:
     from ..world import World
-    from .ice_sheet import IceStep
+    from .ice_sheet import GlacierWaterLedger, IceStep
 
 _logger = logging.getLogger(__name__)
 
@@ -433,6 +433,7 @@ class HydrologyFields:
     river_water_m: np.ndarray = field(default_factory=lambda: np.zeros(0))
     river_water_ledger: "RiverWaterLedger | None" = None
     land_water_ledger: "LandWaterLedger | None" = None
+    glacier_water_ledger: "GlacierWaterLedger | None" = None
     # This step's per-reach volumes in m^3, not saved. `river_water_inflow_m3` is the routed
     # inflow plus local sources; outflow is before transit loss, routed after it.
     river_water_inflow_m3: np.ndarray | None = None
@@ -459,7 +460,8 @@ class HydrologyFields:
 class RiverWaterLedger:
     """Per-step whole-network river inventory budget, all volumes in m^3. Evaporation is the
     in-transit loss the routing has always charged; it now comes out of the reach outflow.
-    `land_settlement_m3` reached a land sink or lake sink. Reach transfers are internal."""
+    `land_settlement_m3` reached a land sink or lake sink. Reach transfers are internal.
+    `unlocated_ocean_export_m3` is the subset of ocean export without a resolved river mouth."""
 
     input_m3: float
     lake_overflow_m3: float
@@ -471,6 +473,7 @@ class RiverWaterLedger:
     ocean_export_m3: float
     residual_m3: float
     max_reach_residual_m3: float
+    unlocated_ocean_export_m3: float = 0.0
 
 
 @dataclass
@@ -484,6 +487,7 @@ class RiverRoutingResult:
     settled_runoff_m3: np.ndarray
     settled_meltwater_m3: np.ndarray
     settled_prior_storage_m3: np.ndarray
+    cycle_settlement_m3: np.ndarray
     ocean_export_m3: np.ndarray
     evaporation_m3: np.ndarray
     inflow_m3: np.ndarray
@@ -499,11 +503,13 @@ class RiverRoutingResult:
 class LandWaterLedger:
     """RFC 0016 G0 rain-only land budget for one step, in m^3 (#725). This is an interim
     boundary: snow accumulation and ice storage are outside it, and `meltwater_m3` still enters
-    in the scaled glacier units RFC 0015 replaces, so its closure is not the full G0 gate.
-    `stranded_overflow_m3` is exported lake overflow that ended on land instead of the ocean,
-    mostly on a flow cycle through a spill edge. The lake ledger has debited it and nothing
-    credits it: a control defect, named here rather than closed (#725). `residual_m3` is what
-    is left after it."""
+    in the scaled glacier units RFC 0015 replaces, so its closure is not the full G0 gate (see
+    `full_land_water_residual_m3`).
+    `stranded_overflow_m3` is lake overflow that could not be delivered to the ocean, for
+    example because a world has no ocean node. With a receiving ocean, terminal sink and cycle
+    settlements from exported overflow are transferred there (#731). `residual_m3` is what
+    remains after these named destinations. `land_sink_settlement_m3` separately records routed
+    external supply that reaches a land sink with no active lake body."""
 
     rain_m3: float
     meltwater_m3: float
@@ -516,6 +522,7 @@ class LandWaterLedger:
     lake_liquid_change_m3: float
     lake_ice_change_m3: float
     stranded_overflow_m3: float
+    land_sink_settlement_m3: float
 
     @property
     def residual_m3(self) -> float:
@@ -523,8 +530,28 @@ class LandWaterLedger:
             self.rain_m3 + self.meltwater_m3 - self.dry_et_m3 - self.river_evaporation_m3
             - self.lake_evaporation_m3 - self.lake_sublimation_m3 - self.ocean_export_m3
             - self.river_storage_change_m3 - self.lake_liquid_change_m3 - self.lake_ice_change_m3
-            - self.stranded_overflow_m3
+            - self.stranded_overflow_m3 - self.land_sink_settlement_m3
         )
+
+
+def full_land_water_residual_m3(land: LandWaterLedger, glacier: "GlacierWaterLedger") -> float:
+    """RFC 0016 G0's diagnostic precipitation ledger: the rain-only budget plus frozen input,
+    less the interim account's growth and the release it books outward (#732). The scaled
+    `land.meltwater_m3` stays a separate input, and nothing subtracts it from frozen water.
+
+    The frozen terms cancel by construction, so this equals `land.residual_m3` to floating
+    point: it can't show the account is right, only name every term. The account's own checks
+    are its partition, `GlacierWaterLedger.residual_m3` and the size of its release."""
+    return land.residual_m3 + glacier.external_input_m3 - (glacier.closing_m3 - glacier.opening_m3) - glacier.outward_m3
+
+
+def partition_precipitation_m3(
+    precipitation_mm: np.ndarray, is_frozen: np.ndarray, area_m2: np.ndarray, years: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """(liquid, frozen) physical volume per node over `years`, RFC 0016 G0's partition of the
+    diagnostic precipitation on the existing mask, before any scaled glacier conversion (#732)."""
+    volume_m3 = np.clip(precipitation_mm, 0.0, None) / 1000.0 * area_m2 * years
+    return np.where(is_frozen, 0.0, volume_m3), np.where(is_frozen, volume_m3, 0.0)
 
 
 # Residence-time ceiling for a reach with almost no flow: an engineering regularization so
@@ -1033,8 +1060,9 @@ def _partition_precipitation_sources(
 # (GLACIER_ACCUMULATION_RATE turns mm/yr over Myr into metres): 1/50,000 of real. Rivers settling
 # at frozen nodes (#355) and freezing lakes (#503) used to convert at this rate, deleting nearly
 # all of their water. RFC 0014 D2(b) (#539) removed both: liquid water now pools as lakes at any
-# temperature. Nothing in the model reads this any more; `bin/debug/measure_ice_sheet.py` still
-# scales it, and RFC 0015 D5 removes it with that script's use.
+# temperature. No water converts at this rate any more: only RFC 0016's interim glacier-water
+# account reads it, for its opening balance (#732), and `bin/debug/measure_ice_sheet.py` still
+# scales it. RFC 0015 D5 removes it with both.
 WATER_TO_ICE = GLACIER_ACCUMULATION_RATE / 1000.0
 
 
@@ -1133,7 +1161,7 @@ def compute_river_speed(slope: np.ndarray, discharge_m3_s: np.ndarray | float) -
 
 def _routing_order(elevation: np.ndarray, is_ocean: np.ndarray, flow_target: np.ndarray) -> tuple[list[int], list[int]]:
     """Land nodes in an order where every node comes before its own flow_target, plus any
-    nodes that can't be ordered at all (on, or downstream of, a flow cycle).
+    nodes on a flow cycle. Each node has one outgoing edge, so a cycle cannot drain to a sink.
 
     Elevation-descending is such an order whenever every land->land edge runs strictly
     downhill, which is the common case. But spill routing (a filled lake's outlet) and ice
@@ -1202,6 +1230,59 @@ def flow_cycles(flow_target: np.ndarray) -> list[np.ndarray]:
     return cycles
 
 
+@dataclass(frozen=True)
+class DownstreamRoutingResult:
+    """Named outcomes from one downstream routing pass.
+
+    Iteration preserves the historical two- or three-array unpacking interface, while the
+    named destination arrays make cycle settlement visible to callers that audit a budget.
+    `deposited` remains the compatibility sum of retained material and terminal settlements.
+    """
+
+    through_flux: np.ndarray
+    deposited: np.ndarray
+    retained: np.ndarray
+    sink_settlement: np.ndarray
+    ocean_export: np.ndarray
+    cycle_settlement: np.ndarray
+    evaporated: np.ndarray
+    erosion_only_flux: np.ndarray | None = None
+    residual: float = 0.0
+
+    def __iter__(self):
+        yield self.through_flux
+        yield self.deposited
+        if self.erosion_only_flux is not None:
+            yield self.erosion_only_flux
+
+    def __len__(self) -> int:
+        return 3 if self.erosion_only_flux is not None else 2
+
+    def __getitem__(self, index: int) -> np.ndarray:
+        return tuple(iter(self))[index]
+
+
+def _apply_downstream_node_losses(
+    node: int,
+    through_flux: list[float],
+    erosion_only_flux: list[float] | None,
+    loss: list[float],
+    retain: list[float],
+    deposited: list[float],
+    retained: list[float],
+    evaporated: list[float],
+) -> None:
+    evaporated_here = through_flux[node] * loss[node]
+    through_flux[node] -= evaporated_here
+    evaporated[node] += evaporated_here
+    if erosion_only_flux is not None:
+        erosion_only_flux[node] -= erosion_only_flux[node] * loss[node]
+    retained_here = through_flux[node] * retain[node]
+    through_flux[node] -= retained_here
+    deposited[node] += retained_here
+    retained[node] += retained_here
+
+
 def route_downstream(
     elevation: np.ndarray,
     is_ocean: np.ndarray,
@@ -1210,7 +1291,7 @@ def route_downstream(
     retain_fraction: np.ndarray | None = None,
     loss_fraction: np.ndarray | None = None,
     erosion_only_source_amount: np.ndarray | None = None,
-) -> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> DownstreamRoutingResult:
     """Single forward sweep over land nodes in elevation-descending order, accumulating
     `source_amount` downstream along `flow_target` edges. Correct in one pass because every
     node's target is visited *later* in this same order -- see `_routing_order` for the
@@ -1220,11 +1301,12 @@ def route_downstream(
     -- it isn't added to `deposited` at all, since it left as atmospheric moisture, not as
     material staying in the channel. Applied first, at every node's own turn, before
     retention -- so, like flow_accum itself, the lost fraction compounds along a long flow
-    path rather than being taken once at the very end. Returns (through_flux, deposited): each
-    node's own accumulated flux passing through it (net of any loss), and how much settled
-    there (from `retain_fraction` and/or reaching a sink/ocean). When
+    path rather than being taken once at the very end. The result's `through_flux` and
+    `deposited` arrays preserve the old return values. It also names retained volume, dead-end
+    settlement, ocean export, cycle settlement, evaporation and the residual; callers auditing
+    a budget must inspect these destinations instead of inferring them from `deposited`. When
     `erosion_only_source_amount` is supplied, it is propagated beside the primary source with
-    the same losses but without retention/deposition, and returned as a third through-flux array."""
+    the same losses but without retention/deposition, and remains the third item when unpacked."""
     n = len(elevation)
     through_flux = np.where(~is_ocean, source_amount, 0.0).astype(np.float64).tolist()
     erosion_only_flux = (
@@ -1233,6 +1315,11 @@ def route_downstream(
         else None
     )
     deposited = [0.0] * n
+    retained = [0.0] * n
+    sink_settlement = [0.0] * n
+    ocean_export = [0.0] * n
+    cycle_settlement = [0.0] * n
+    evaporated = [0.0] * n
     retain = (retain_fraction if retain_fraction is not None else np.zeros(n)).tolist()
     loss = (loss_fraction if loss_fraction is not None else np.zeros(n)).tolist()
     is_ocean_list = is_ocean.tolist()
@@ -1240,39 +1327,85 @@ def route_downstream(
 
     order, stuck = _routing_order(elevation, is_ocean, flow_target)
     for i in order:
-        evaporated_here = through_flux[i] * loss[i]
-        through_flux[i] -= evaporated_here
-        if erosion_only_flux is not None:
-            erosion_only_flux[i] -= erosion_only_flux[i] * loss[i]
-
-        retained_here = through_flux[i] * retain[i]
-        through_flux[i] -= retained_here
-        deposited[i] += retained_here
+        _apply_downstream_node_losses(
+            i, through_flux, erosion_only_flux, loss, retain, deposited, retained, evaporated
+        )
 
         target = flow_target_list[i]
         if target < 0:
             deposited[i] += through_flux[i]
+            sink_settlement[i] += through_flux[i]
             continue
         if is_ocean_list[target]:
             deposited[target] += through_flux[i]
+            ocean_export[target] += through_flux[i]
         else:
             through_flux[target] += through_flux[i]
             if erosion_only_flux is not None:
                 erosion_only_flux[target] += erosion_only_flux[i]
-    # A node on a flow cycle has no valid place in the sweep: it still loses/retains its own
-    # share like any other node, then keeps the remainder, like a sink, rather than losing it.
-    # Same loss -> retain -> dead-end sequence the sweep applies to a sink (target < 0).
+    # A node on a flow cycle has no valid place in the sweep. Apply its losses and retention,
+    # then name the remainder as cycle settlement instead of making it indistinguishable from
+    # ordinary sink settlement (#731).
     for i in stuck:
-        through_flux[i] -= through_flux[i] * loss[i]
-        if erosion_only_flux is not None:
-            erosion_only_flux[i] -= erosion_only_flux[i] * loss[i]
-        retained_here = through_flux[i] * retain[i]
-        through_flux[i] -= retained_here
-        deposited[i] += retained_here + through_flux[i]
+        _apply_downstream_node_losses(
+            i, through_flux, erosion_only_flux, loss, retain, deposited, retained, evaporated
+        )
+        deposited[i] += through_flux[i]
+        cycle_settlement[i] += through_flux[i]
 
+    source_total = float(np.where(~is_ocean, source_amount, 0.0).sum())
+    residual = source_total - (
+        sum(retained) + sum(sink_settlement) + sum(ocean_export) + sum(cycle_settlement) + sum(evaporated)
+    )
     if erosion_only_flux is not None:
-        return np.array(through_flux), np.array(deposited), np.array(erosion_only_flux)
-    return np.array(through_flux), np.array(deposited)
+        erosion_only_result = np.array(erosion_only_flux)
+    else:
+        erosion_only_result = None
+    return DownstreamRoutingResult(
+        np.array(through_flux), np.array(deposited), np.array(retained), np.array(sink_settlement),
+        np.array(ocean_export), np.array(cycle_settlement), np.array(evaporated), erosion_only_result,
+        residual,
+    )
+
+
+def _deliver_unowned_river_overflow_to_ocean(route: RiverRoutingResult, is_ocean: np.ndarray):
+    """Give exported lake water that stops on land a named ocean destination (#731).
+
+    Lake-to-lake transfers are resolved in `lakes.solve_lakes_prognostic`. Any remainder
+    settled by the river pass at a land sink or cycle has no lake body to receive it, so credit
+    it to the ocean. Return any remainder and its node for the no-ocean warning.
+    """
+    land_settlement = route.settled_m3.copy()
+    land_settlement[is_ocean] = 0.0
+    nodes = np.flatnonzero(land_settlement > 0.0)
+    if not len(nodes):
+        return 0.0, -1
+    ocean_nodes = np.flatnonzero(is_ocean)
+    total = float(land_settlement.sum())
+    if not len(ocean_nodes):
+        return total, int(nodes[np.argmax(land_settlement[nodes])])
+
+    # Global ocean credit has no resolved river mouth (#731). Keep it out of spatial
+    # settlement arrays so geology and saved-discharge initialization see only real outlets.
+    for settled_source in (
+        route.settled_runoff_m3, route.settled_meltwater_m3, route.settled_prior_storage_m3,
+    ):
+        settled_source[~is_ocean] = 0.0
+    route.ledger.unlocated_ocean_export_m3 += total
+    route.cycle_settlement_m3[~is_ocean] = 0.0
+    route.routed_m3[nodes] = 0.0
+    route.ledger.land_settlement_m3 = 0.0
+    route.ledger.ocean_export_m3 += total
+    route.ledger.residual_m3 = (
+        route.ledger.input_m3 + route.ledger.initial_storage_m3 - route.ledger.final_storage_m3
+        - route.ledger.evaporation_m3 - route.ledger.ocean_export_m3
+    )
+    return 0.0, -1
+
+
+def _warn_if_stranded_overflow(volume_m3: float, node_idx: int) -> None:
+    if volume_m3 > 0.0:
+        _logger.warning("Lake overflow stranded on land: %.6g m^3 total; largest settlement at node %d", volume_m3, node_idx)
 
 
 def _route_external_water_sources(
@@ -1442,6 +1575,8 @@ def route_river_reservoirs(
     evaporation_total = float(evaporation.sum())
     ocean_total = float(ocean_export.sum())
     settled = settled_runoff + settled_melt + settled_prior
+    cycle_settlement = np.zeros(n)
+    cycle_settlement[stuck] = settled[stuck]
     land_settlement = float(settled[~is_ocean].sum())
     ledger = RiverWaterLedger(
         input_m3=input_total,
@@ -1459,8 +1594,8 @@ def route_river_reservoirs(
         max_reach_residual_m3=float(np.abs(reach_residual).max()) if n else 0.0,
     )
     return RiverRoutingResult(
-        initial_storage, storage_1, outflow, routed, settled_runoff, settled_melt, settled_prior, ocean_export,
-        evaporation, inflow, reach_residual, ledger,
+        initial_storage, storage_1, outflow, routed, settled_runoff, settled_melt, settled_prior,
+        cycle_settlement, ocean_export, evaporation, inflow, reach_residual, ledger,
     )
 
 
@@ -1479,6 +1614,7 @@ def _merge_river_passes(runoff: RiverRoutingResult, overflow: RiverRoutingResult
         ocean_export_m3=first.ocean_export_m3 + second.ocean_export_m3,
         residual_m3=first.residual_m3 + second.residual_m3,
         max_reach_residual_m3=max(first.max_reach_residual_m3, second.max_reach_residual_m3),
+        unlocated_ocean_export_m3=first.unlocated_ocean_export_m3 + second.unlocated_ocean_export_m3,
     )
 
 
@@ -2039,6 +2175,11 @@ def compute_hydrology(
     melt_settled = river_route.settled_meltwater_m3 / interval_years
     river_storage_settled = river_route.settled_prior_storage_m3 / interval_years
     external_supply = wet_settled + dry_settled + melt_settled + river_storage_settled
+    # Identify terminal land sinks independently of the solver's consumption ledger (#731).
+    # Missing supply at an owned cell must remain visible as a residual.
+    lake_owned = np.zeros(n, dtype=bool)
+    for body in lakes.governing_bodies(forest, elevation, prev_lake_depth, hypsometry):
+        lake_owned[body.members] = True
 
     lake_climate = lakes.LakeClimate(
         inflow_m3_per_yr=external_supply,
@@ -2111,6 +2252,8 @@ def compute_hydrology(
         points, elevation, is_ocean, flow_target, river_reach, np.zeros(n), overflow_source,
         np.zeros(n), runoff_q_m3_s + overflow_q_m3_s, interval_years, transit_loss, transit_loss,
     )
+    stranded_m3, stranded_node = _deliver_unowned_river_overflow_to_ocean(overflow_route, is_ocean)
+    _warn_if_stranded_overflow(stranded_m3, stranded_node)
     overflow_settled = overflow_route.settled_m3 / interval_years
     overflow_settled[is_ocean] += overflow_source[is_ocean]
     # Keep the solver's residual: it closes the lake-system balance before exported overflow
@@ -2121,7 +2264,9 @@ def compute_hydrology(
     phase_ledger = lakes.LakeStepLedger(
         external_supply_m3=ledger.external_supply_m3,
         evaporation_m3=ledger.evaporation_m3,
-        overflow_to_ocean_m3=float(overflow_settled[is_ocean].sum() * years),
+        overflow_to_ocean_m3=(
+            float(overflow_settled[is_ocean].sum() * years) + overflow_route.ledger.unlocated_ocean_export_m3
+        ),
         overflow_out_m3=ledger.overflow_out_m3,
         storage_change_m3=liquid_storage_change_m3,
         internal_transfer_m3=ledger.internal_transfer_m3,
@@ -2174,6 +2319,10 @@ def compute_hydrology(
         lake_liquid_change_m3=phase_ledger.storage_change_m3,
         lake_ice_change_m3=phase_ledger.ice_storage_change_m3,
         stranded_overflow_m3=overflow_route.ledger.land_settlement_m3,
+        land_sink_settlement_m3=float(external_supply[land & ~lake_owned].sum()) * interval_years,
+    )
+    glacier_water_ledger = None if not has_interval else ice_sheet.update_glacier_water_account(
+        world.glacier_water_account_m3, ice.ledger, ice.frozen_precipitation
     )
     through_m3[leaf_sinks] = 0.0
 
@@ -2196,6 +2345,7 @@ def compute_hydrology(
         river_water_m=river_water_m,
         river_water_ledger=river_ledger,
         land_water_ledger=land_water_ledger,
+        glacier_water_ledger=glacier_water_ledger,
         river_water_inflow_m3=river_route.inflow_m3 + overflow_route.inflow_m3,
         river_water_outflow_m3=river_route.outflow_m3 + overflow_route.outflow_m3,
         river_water_routed_m3=river_route.routed_m3 + overflow_route.routed_m3,

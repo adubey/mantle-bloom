@@ -504,21 +504,36 @@ def test_capped_pair_internal_transfer_is_bounded_by_surplus_at_any_leaf_count(p
 
 
 @pytest.mark.parametrize("substeps", [1, 4])
-def test_capped_pair_exports_its_surplus_once_at_the_full_siblings_sink(substeps):
-    # #696 stops the repeat, not the destination: the volume and the node match the pre-fix
-    # solve, whose last pass left the surplus deferred on the leaf holding the deep outlet edge.
+def test_capped_pair_delivers_its_surplus_once_to_the_parent_outlet_owner(substeps):
+    # A capped sibling pair cannot accept more water below its saddle. The common parent's
+    # ocean outlet owns the held volume, so it leaves at that outlet rather than the leaf sink.
     supply = 1.0e15
     forest, elevation, previous, climate, hyps = _capped_pair_fixture(2, supply)
+    forest = forest[:1]  # The parent's outlet node is ocean, so it has no lake-body owner.
+    forest[0].outlet_target_idx = 4
+    is_ocean = np.zeros(len(elevation), dtype=bool)
+    is_ocean[4] = True
 
     result = lakes.solve_lakes_prognostic(
-        forest, elevation, previous, 1.0, climate, hyps, substeps=substeps,
+        forest, elevation, previous, 1.0, climate, hyps, substeps=substeps, is_ocean=is_ocean,
     )
 
     assert result.ledger.overflow_out_m3 == pytest.approx(supply)
-    assert result.overflow_m3[0] == pytest.approx(supply)
+    assert result.overflow_m3[4] == pytest.approx(supply)
     assert np.count_nonzero(result.overflow_m3) == 1
+    assert result.ledger.overflow_to_ocean_m3 == pytest.approx(supply)
     assert result.should_spill[0] and result.should_spill[2]
     assert result.lake_depth[2] == pytest.approx(previous[2])
+
+
+def test_capped_pair_without_parent_outlet_names_its_fallback_leaf_sink():
+    supply = 1.0e15
+    forest, elevation, previous, climate, hyps = _capped_pair_fixture(2, supply)
+
+    result = lakes.solve_lakes_prognostic(forest, elevation, previous, 1.0, climate, hyps)
+
+    assert result.overflow_m3[2] == pytest.approx(supply)
+    assert result.ledger.overflow_out_m3 == pytest.approx(supply)
 
 
 def test_capped_pair_surplus_returns_to_the_flush_when_the_capped_body_splits():
@@ -583,14 +598,15 @@ def test_capped_pair_trace_closes_each_basins_budget():
     )
 
     transfers = result.trace.transfers
-    received = {0: supply, 1: 0.0}
-    sent = {0: 0.0, 1: 0.0}
+    received = {lake.lake_id: 0.0 for lake in lakes.iter_all_lakes(forest)}
+    received[0] = supply
+    sent = dict.fromkeys(received, 0.0)
     for transfer in transfers:
         sent[transfer.source_lake_id] += transfer.volume_m3
         if transfer.receiver_lake_id is not None:
             received[transfer.receiver_lake_id] += transfer.volume_m3
-    assert sent[0] == pytest.approx(received[0])
-    assert sent[1] == pytest.approx(received[1])
+    for lake_id in received:
+        assert sent[lake_id] == pytest.approx(received[lake_id])
 
 def _silt_m3(result, hyps):
     return float(np.dot(result.silt_deposited, hyps.area_m2))
@@ -1400,3 +1416,121 @@ def test_a_pit_breached_to_its_floor_drains_its_low_ground_but_equal_siblings_st
     neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
     forest = lakes.build_lake_hierarchy(elevation, is_ocean, neighbor_idx)
     assert not any(lake.drains_at_floor for lake in lakes.iter_all_lakes(forest))
+
+
+def test_final_deferred_owner_transfer_cannot_be_exported_past_its_receiver():
+    forest, elevation, previous, _, _ = _capped_pair_fixture(2, 0.0)
+    leaves = [lake for lake in lakes.iter_all_lakes(forest) if not lake.children]
+    ownership = np.full(len(elevation), -1, dtype=np.int64)
+    for leaf_id, leaf in enumerate(leaves):
+        ownership[leaf.members] = leaf_id
+    accounting = lakes._new_prognostic_accounting(len(leaves), len(elevation), True)
+    accounting.deferred[1] = 123.0
+    with pytest.raises(RuntimeError, match="unconsumed owner transfers"):
+        lakes._export_final_surplus(accounting, leaves, ownership, {}, None, previous.copy())
+    assert accounting.overflow_out_total == 0.0
+    assert accounting.deferred == {1: 123.0}
+
+
+def test_final_parent_outlet_transfer_is_consumed_by_receiving_lake():
+    supply = 1.0e15
+    forest, elevation, previous, climate, hyps = _capped_pair_fixture(2, supply)
+    forest[0].outlet_target_idx = 4
+    result = lakes.solve_lakes_prognostic(
+        forest, elevation, previous, 1.0, climate, hyps, diagnostic_trace=True,
+    )
+    assert result.lake_depth[4] > 0.0
+    assert result.lake_depth[4] * hyps.area_m2[4] == pytest.approx(supply)
+    assert result.ledger.overflow_out_m3 == 0.0
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0)
+    assert any(t.internal and t.receiver_lake_id == 4 for t in result.trace.transfers)
+
+
+def test_two_capped_pairs_deliver_final_surplus_to_a_third_owner():
+    import copy
+
+    supply = 1.0e15
+    forest, elevation, previous, climate, hyps = _capped_pair_fixture(4, supply)
+    first = forest[0]
+    second = copy.deepcopy(first)
+    for lake in lakes.iter_all_lakes([second]):
+        lake.lake_id += 3
+        lake.members += 3
+        lake.sink_node_idx = lake.sink_node_idx + 3 if lake.sink_node_idx >= 0 else -1
+        lake.outlet_node_idx = lake.outlet_node_idx + 3 if lake.outlet_node_idx >= 0 else -1
+        lake.outlet_target_idx = lake.outlet_target_idx + 3 if lake.outlet_target_idx >= 0 else -1
+    elevation[3:6] = elevation[:3]
+    previous[3:6] = previous[:3]
+    first.outlet_target_idx = 3
+    second.outlet_target_idx = 6
+    receiver = forest[-1]
+    result = lakes.solve_lakes_prognostic(
+        [first, second, receiver], elevation, previous, 1.0, climate,
+        lakes.CellHypsometry.whole_cells(elevation),
+    )
+    assert result.lake_depth[6] * hyps.area_m2[6] == pytest.approx(supply)
+    assert result.ledger.overflow_out_m3 == 0.0
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0)
+
+
+def test_simultaneous_cycle_surpluses_share_the_same_parent_owner_handoff():
+    forest, elevation, previous, _, _ = _capped_pair_fixture(2, 0.0)
+    parent = forest[0]
+    parent.outlet_target_idx = 4
+    left, right = parent.children
+    leaves = [lake for lake in lakes.iter_all_lakes(forest) if not lake.children]
+    ownership = np.full(len(elevation), -1, dtype=np.int64)
+    for leaf_id, leaf in enumerate(leaves):
+        ownership[leaf.members] = leaf_id
+    accounting = lakes._new_prognostic_accounting(len(leaves), len(elevation), True)
+    accounting.cycle_surplus[int(ownership[0])] = lakes._CycleSurplus(100., left, right)
+    accounting.cycle_surplus[int(ownership[2])] = lakes._CycleSurplus(200., right, left)
+    lakes._reroute_final_surplus(
+        accounting, leaves, ownership, {id(left): parent, id(right): parent}, None,
+        previous.copy(), set(),
+    )
+    assert accounting.deferred == {int(ownership[4]): 300.}
+    assert not accounting.cycle_surplus
+    assert accounting.overflow_out_total == 0.0
+
+
+@pytest.mark.parametrize(
+    'handoff, full', [('none', True), ('queued', True), ('other_source', True),
+                      ('complete', False), ('complete', True)],
+)
+def test_final_cycle_export_requires_this_sources_completed_handoff_to_a_full_owner(handoff, full):
+    forest, elevation, previous, _, _ = _capped_pair_fixture(2, 0.0)
+    parent = forest[0]
+    parent.outlet_target_idx = 4
+    left, right = parent.children
+    leaves = [lake for lake in lakes.iter_all_lakes(forest) if not lake.children]
+    ownership = np.full(len(elevation), -1, dtype=np.int64)
+    for leaf_id, leaf in enumerate(leaves):
+        ownership[leaf.members] = leaf_id
+    owner_leaf = int(ownership[4])
+    owner = leaves[owner_leaf]
+    accounting = lakes._new_prognostic_accounting(len(leaves), len(elevation), True)
+    accounting.cycle_surplus[int(ownership[2])] = lakes._CycleSurplus(123., left, right)
+    if handoff == 'queued':
+        accounting.pending_owner_handoffs[owner_leaf] = {id(parent)}
+    elif handoff in ('complete', 'other_source'):
+        source_id = id(parent) if handoff == 'complete' else id(left)
+        accounting.completed_owner_handoffs.add((source_id, owner_leaf))
+    if full:
+        accounting.final_spilling_ids.add(id(owner))
+    else:
+        accounting.final_spilling_ids.add(id(parent))  # A historical body cannot authorize this owner.
+    parents = {id(left): parent, id(right): parent}
+    if handoff == 'complete' and full:
+        lakes._export_final_surplus(
+            accounting, leaves, ownership, parents, None, previous.copy(),
+            current_owners={owner_leaf: owner},
+        )
+        assert accounting.overflow_out_total == 123.
+    else:
+        with pytest.raises(RuntimeError, match='unconsumed cycle owner'):
+            lakes._export_final_surplus(
+                accounting, leaves, ownership, parents, None, previous.copy(),
+                current_owners={owner_leaf: owner},
+            )
+        assert accounting.overflow_out_total == 0.0

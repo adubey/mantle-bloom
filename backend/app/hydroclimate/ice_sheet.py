@@ -439,6 +439,86 @@ class IceLedger:
         )
 
 
+@dataclass
+class FrozenPrecipitation:
+    """Where one step's diagnostic frozen precipitation went, in physical m^3 of water (RFC 0016
+    G0, #732). `land_m3` falls on land nodes. `retained_m3` entered the ice, on land or on the
+    ocean; `ocean_retained_m3` is the ocean part, an input the land boundary would otherwise
+    miss. `bare_melted_m3` fell on bare land and melted within the step."""
+
+    land_m3: float
+    ocean_retained_m3: float
+    retained_m3: float
+    bare_melted_m3: float
+
+
+@dataclass
+class GlacierWaterLedger:
+    """RFC 0016 G0's interim glacier-water account for one step, in physical m^3 of water
+    (#732). It is bookkeeping beside the ice: nothing in the model reads it, and its release is
+    booked here but never routed, so closing it says nothing about where that water physically
+    goes. Scaled ice volumes only ever set the release fraction; they are never subtracted from
+    physical precipitation. RFC 0015's physical accounts replace it."""
+
+    opening_m3: float
+    frozen: FrozenPrecipitation
+    melt_release_m3: float
+    calving_release_m3: float
+    overflow_release_m3: float
+    guard_release_m3: float
+    closing_m3: float
+    # The opening came from the model ice this step, so it is initial state, not a prior closing.
+    initialized_from_ice: bool
+
+    @property
+    def release_m3(self) -> float:
+        return self.melt_release_m3 + self.calving_release_m3 + self.overflow_release_m3 + self.guard_release_m3
+
+    @property
+    def external_input_m3(self) -> float:
+        """Frozen precipitation entering the land boundary."""
+        return self.frozen.land_m3 + self.frozen.ocean_retained_m3
+
+    @property
+    def outward_m3(self) -> float:
+        """Water this account books as leaving: glacier release plus bare-ground snowmelt."""
+        return self.release_m3 + self.frozen.bare_melted_m3
+
+    @property
+    def residual_m3(self) -> float:
+        return self.closing_m3 - self.opening_m3 - self.frozen.retained_m3 + self.release_m3
+
+
+def update_glacier_water_account(
+    prior_balance_m3: float | None, ledger: IceLedger, frozen: FrozenPrecipitation
+) -> GlacierWaterLedger:
+    """One step of the account. Physical snowfall is far larger than scaled melt, so the two
+    can't be subtracted: the account releases the fraction of opening model ice lost this step
+    and so follows the ice history (RFC 0016). A save without a balance opens from its model ice
+    at `WATER_TO_ICE`, a stated diagnostic conversion. With no opening ice there is nothing to
+    take a fraction of, so nothing is released."""
+    initialized = prior_balance_m3 is None
+    opening = ledger.opening_m3 / hydrology.WATER_TO_ICE if initialized else prior_balance_m3
+    melt = ledger.surface_melt_m3 + ledger.basal_melt_m3
+    lost = melt + ledger.calved_m3 + ledger.overflow_m3 + ledger.capped_m3
+    fraction = min(lost / ledger.opening_m3, 1.0) if ledger.opening_m3 > 0.0 else 0.0
+    balance = opening + frozen.retained_m3
+    per_ice_m3 = fraction * balance / lost if lost > 0.0 else 0.0
+    released = {
+        "melt_release_m3": per_ice_m3 * melt,
+        "calving_release_m3": per_ice_m3 * ledger.calved_m3,
+        "overflow_release_m3": per_ice_m3 * ledger.overflow_m3,
+        "guard_release_m3": per_ice_m3 * ledger.capped_m3,
+    }
+    return GlacierWaterLedger(
+        opening_m3=float(opening),
+        frozen=frozen,
+        closing_m3=float(max(balance - sum(released.values()), 0.0)),
+        initialized_from_ice=initialized,
+        **{key: float(value) for key, value in released.items()},
+    )
+
+
 def warn_if_capped(ledger: IceLedger) -> None:
     """Log a warning when any ice reached GLACIER_MAX_DEPTH_M in the solve (see `IceLedger`)."""
     if ledger.capped_nodes == 0 and ledger.capped_m3 <= 0.0:
@@ -468,6 +548,7 @@ class IceStep:
     calved_m3: np.ndarray
     ledger: IceLedger
     bodies: list[BodyBalance] = field(default_factory=list)
+    frozen_precipitation: FrozenPrecipitation | None = None
 
 
 @dataclass
@@ -810,6 +891,7 @@ def step_ice(
         # little summer melt would otherwise stack the floating cap past it.
         over = np.clip(depth - hydrology.GLACIER_MAX_DEPTH_M, 0.0, None)
         out.depth[cap] = depth - over
+        out.retained_snow[cap] = 1.0
         out.melt_m3[cap] += (lost + over) * area[cap]
         ledger.accumulation_m3 += float(np.dot(gained, area[cap]))
         ledger.surface_melt_m3 += float(np.dot(lost, area[cap]))
@@ -902,6 +984,7 @@ def step_ice(
         points, neighbor_idx, area, out.surface, out.depth, opening_depth, thickness, out.covered, climate, is_warm, years,
     )
     melt_m = out.melt_m3 / np.where(area > 0.0, area, 1.0)
+    frozen_precipitation = _frozen_precipitation(climate, area, years, out.retained_snow, is_ocean)
     return out.depth, melt_m, IceStep(
         thickness=thickness,
         covered=out.covered,
@@ -911,6 +994,21 @@ def step_ice(
         calved_m3=out.calved,
         ledger=ledger,
         bodies=bodies,
+        frozen_precipitation=frozen_precipitation,
+    )
+
+
+def _frozen_precipitation(climate: SurfaceClimate, area, years: float, retained_snow, is_ocean) -> FrozenPrecipitation:
+    """Split the step's physical frozen precipitation by the share of each cell's snow the ice
+    kept (see `_Output.retained_snow`), so it follows the same fate as the scaled accumulation.
+    Scalars, not per-node arrays: the account is whole-world and adds nothing else to a save."""
+    _, frozen_m3 = hydrology.partition_precipitation_m3(climate.precipitation_mm, climate.is_frozen, area, years)
+    retained_m3 = frozen_m3 * retained_snow
+    return FrozenPrecipitation(
+        land_m3=float(frozen_m3[~is_ocean].sum()),
+        ocean_retained_m3=float(retained_m3[is_ocean].sum()),
+        retained_m3=float(retained_m3.sum()),
+        bare_melted_m3=float((frozen_m3 - retained_m3)[~is_ocean].sum()),
     )
 
 
@@ -924,6 +1022,9 @@ class _Output:
         self.thickness = np.zeros(n)
         self.covered = np.zeros(n)
         self.surface = np.full(n, np.nan)
+        # Share of each cell's snowfall that joined the ice, not melted on bare ground or fallen
+        # in open ocean.
+        self.retained_snow = np.zeros(n)
 
 
 def _uniform_body(out: _Output, nodes, opening, area, bed, climate, is_ocean, dt_myr) -> BodyBalance:
@@ -931,6 +1032,7 @@ def _uniform_body(out: _Output, nodes, opening, area, bed, climate, is_ocean, dt
     out.thickness[nodes] = h
     out.covered[nodes] = 1.0 if h > 0.0 else 0.0
     out.depth[nodes] = h
+    out.retained_snow[nodes] = 1.0
     out.surface[nodes] = bed[nodes] + h if h > 0.0 else np.nan
     out.melt_m3[nodes] += (sm + bm) * area[nodes] / area[nodes].sum()
     body = BodyBalance(nodes, opening, acc, sm, bm, 0.0, 0.0, 0.0, saturated=excess > 0.0, domain_nodes=nodes)
@@ -958,6 +1060,7 @@ def _plastic_body(out: _Output, dom: _Domain, body_nodes, opening, area, dt_myr,
     # Snow on bare ground that can't feed the body melts where it fell.
     bare_snow = (1.0 - cov) * dom.area * np.where(feeds, 0.0, acc0) * dt_myr
     out.melt_m3[nodes] += bare_snow
+    out.retained_snow[nodes] = np.where(feeds, 1.0, cov)
     ledger.snow_melted_m3 += float(bare_snow.sum())
     body = BodyBalance(body_nodes, opening, acc, sm, bm, 0.0, 0.0, 0.0, margin_m=shape.d, saturated=saturated, domain_nodes=nodes)
     frontier = shape.active & (cov < 1.0)

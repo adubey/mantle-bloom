@@ -62,6 +62,14 @@ assumes 10 kyr per step (`legacy_conversion.FALLBACK_YEARS_PER_STEP`, the UI's s
 step). Either way an age is capped at `elapsed_years`. A negative or fractional step count
 is a `CorruptSaveError`.
 
+**Glacier water.** RFC 0016 (#732) added the whole-world scalar
+`World.glacier_water_account_m3`, physical m³. It defaults to `None`, so an old save loads
+without a backfill and its first hydrology interval opens the balance from existing model ice
+divided by `hydrology.WATER_TO_ICE`, marking the step `initialized_from_ice` so replays record it
+as initial state. New saves round-trip it. It stays outside `eustasy.trapped_water_volume_m3`.
+RFC 0015's physical accounts replace it: migrate or discard this scalar then, without counting
+the same precipitation or ice inventory twice.
+
 **River water.** RFC 0016 (#725) added the persistent surface field `river_water_m`. A save
 from before it loads with the field's zero default, and the next step with an interval sets each
 routed reach to its saved `discharge_m3_s` times its residence time (`hydrology.compute_hydrology`),

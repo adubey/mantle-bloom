@@ -503,3 +503,13 @@ def test_save_kind_sniffs_v5_and_pickle():
     assert persistence.save_kind(b"not a save at all") == "pickle"
     with pytest.raises(persistence.CorruptSaveError):
         persistence.load_world_bytes(b"not a save at all")
+
+
+def test_save_without_glacier_water_account_loads_unopened_and_new_saves_round_trip():
+    # RFC 0016 / #732: an old save simply lacks the scalar, and the first interval opens it.
+    world = generate_world(seed=42, num_plates=4, node_density=0.5, climate_density=0.5, fluid_density=0.5)
+    world.__dict__.pop("glacier_water_account_m3", None)
+    old = persistence.load_world_bytes(pickle.dumps(world))
+    assert old.glacier_water_account_m3 is None
+    world.glacier_water_account_m3 = 1.5e20
+    assert persistence.load_world_bytes(persistence.save_world_bytes(world)).glacier_water_account_m3 == 1.5e20
