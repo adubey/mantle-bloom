@@ -2664,6 +2664,8 @@ def apply_erosion(
     river_water_m = getattr(hydro, "river_water_m", np.zeros(0))
     if np.asarray(river_water_m).shape != np.asarray(hydro.lake_depth).shape:
         river_water_m = np.zeros_like(hydro.lake_depth)
+    if hydro.glacier_water_ledger is not None:
+        world.glacier_water_account_m3 = hydro.glacier_water_ledger.closing_m3
 
     offset = 0
     for plate in plates_in_order:

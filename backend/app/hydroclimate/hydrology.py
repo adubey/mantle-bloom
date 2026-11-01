@@ -116,7 +116,7 @@ from ..plates import (
 
 if TYPE_CHECKING:
     from ..world import World
-    from .ice_sheet import IceStep
+    from .ice_sheet import GlacierWaterLedger, IceStep
 
 _logger = logging.getLogger(__name__)
 
@@ -433,6 +433,7 @@ class HydrologyFields:
     river_water_m: np.ndarray = field(default_factory=lambda: np.zeros(0))
     river_water_ledger: "RiverWaterLedger | None" = None
     land_water_ledger: "LandWaterLedger | None" = None
+    glacier_water_ledger: "GlacierWaterLedger | None" = None
     # This step's per-reach volumes in m^3, not saved. `river_water_inflow_m3` is the routed
     # inflow plus local sources; outflow is before transit loss, routed after it.
     river_water_inflow_m3: np.ndarray | None = None
@@ -499,7 +500,8 @@ class RiverRoutingResult:
 class LandWaterLedger:
     """RFC 0016 G0 rain-only land budget for one step, in m^3 (#725). This is an interim
     boundary: snow accumulation and ice storage are outside it, and `meltwater_m3` still enters
-    in the scaled glacier units RFC 0015 replaces, so its closure is not the full G0 gate.
+    in the scaled glacier units RFC 0015 replaces, so its closure is not the full G0 gate (see
+    `full_land_water_residual_m3`).
     `stranded_overflow_m3` is exported lake overflow that ended on land instead of the ocean,
     mostly on a flow cycle through a spill edge. The lake ledger has debited it and nothing
     credits it: a control defect, named here rather than closed (#725). `residual_m3` is what
@@ -525,6 +527,22 @@ class LandWaterLedger:
             - self.river_storage_change_m3 - self.lake_liquid_change_m3 - self.lake_ice_change_m3
             - self.stranded_overflow_m3
         )
+
+
+def full_land_water_residual_m3(land: LandWaterLedger, glacier: "GlacierWaterLedger") -> float:
+    """RFC 0016 G0's diagnostic precipitation ledger: the rain-only budget plus frozen input,
+    less the interim account's growth and the release it books outward (#732). The scaled
+    `land.meltwater_m3` stays a separate input, and nothing subtracts it from frozen water."""
+    return land.residual_m3 + glacier.external_input_m3 - (glacier.closing_m3 - glacier.opening_m3) - glacier.outward_m3
+
+
+def partition_precipitation_m3(
+    precipitation_mm: np.ndarray, is_frozen: np.ndarray, area_m2: np.ndarray, years: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """(liquid, frozen) physical volume per node over `years`, RFC 0016 G0's partition of the
+    diagnostic precipitation on the existing mask, before any scaled glacier conversion (#732)."""
+    volume_m3 = precipitation_mm / 1000.0 * area_m2 * years
+    return np.where(is_frozen, 0.0, volume_m3), np.where(is_frozen, volume_m3, 0.0)
 
 
 # Residence-time ceiling for a reach with almost no flow: an engineering regularization so
@@ -2175,6 +2193,9 @@ def compute_hydrology(
         lake_ice_change_m3=phase_ledger.ice_storage_change_m3,
         stranded_overflow_m3=overflow_route.ledger.land_settlement_m3,
     )
+    glacier_water_ledger = None if not has_interval else ice_sheet.update_glacier_water_account(
+        world.glacier_water_account_m3, ice.ledger, ice.frozen_precipitation
+    )
     through_m3[leaf_sinks] = 0.0
 
     # is_river isn't known yet -- it needs this step's *final* lake_depth (below) to exclude
@@ -2196,6 +2217,7 @@ def compute_hydrology(
         river_water_m=river_water_m,
         river_water_ledger=river_ledger,
         land_water_ledger=land_water_ledger,
+        glacier_water_ledger=glacier_water_ledger,
         river_water_inflow_m3=river_route.inflow_m3 + overflow_route.inflow_m3,
         river_water_outflow_m3=river_route.outflow_m3 + overflow_route.outflow_m3,
         river_water_routed_m3=river_route.routed_m3 + overflow_route.routed_m3,

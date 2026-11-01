@@ -224,3 +224,30 @@ frozen-water account for the full ledger, subject to an RFC 0016 revision.
 | Full rain-plus-snow ledger ≤0.1% | **Blocked** on RFC 0015 |
 
 G1 stays closed under RFC 0016's stop rule until both open rows pass.
+
+## Interim glacier account (#732)
+
+Preregistered before any replay. The account is ledger-only, so the expected change to the control
+is none.
+
+**Windows.** The G0 checkpoints above, four 100 kyr steps with the ice-age cycle off and the central
+river arm (Raymond, one-year cap). Ice-age save: seed 374464662 at 132.6 Myr, SHA-256
+`0f8c50c9788684c0ce28050e42a9eb1289f5092ba7fbe3a834c1809ce6a4279c`, the #548 ice-age diagnosis save,
+keeping its 8 Myr cycle, for 8 Myr in 100 kyr steps, so one full cycle.
+
+**Arms.** `origin/main` and this branch, run one after the other. A third arm with #734's routing
+fix applied measures closure, since that is the condition the ledger criterion names.
+
+| Check | Metric | Threshold |
+|---|---|---|
+| Control unchanged | per-step lake volume, target ΔV, glacier volume and sea level, branch vs `origin/main` | identical to replay tolerance; expected exactly equal |
+| Account identity | `|ΔG − (P_frozen,retained − R_glacier)|` | floating point |
+| Partition | land rain + land frozen vs diagnostic precipitation | floating point |
+| Budget stability | largest step-to-step `|ΔG|` vs that step's retained input, A, B, C and the ice-age save | reported; the issue asks that swings not exceed inputs |
+| Full ledger | residual of `P_diag + M_scaled`, with #734 applied | ≤0.1% of external input, or name the remaining term as a failure |
+
+Expected sizes: model ice divided by `WATER_TO_ICE` makes the opening balance 50,000 times the
+model ice volume, so it may well exceed the ocean. Steady ice releases about what the ice retains;
+any model-ice swing moves the balance by the same fraction, so large release terms and a failed
+stability comparison are possible findings, to be reported rather than tuned (RFC 0016
+falsification criteria).

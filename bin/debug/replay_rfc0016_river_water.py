@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""RFC 0016 G0: replay a checkpoint and record the river inventory and rain-only land ledger.
+"""RFC 0016 G0: replay a checkpoint and record the river inventory and land-water ledgers.
 
 Steps the saved world on the selected backend and records, per step, the river and lake
-sub-ledgers, the rain-only land ledger, the registered target lake's supply by source, and how
-far river inventory moved between hydrology steps. This does not claim the full G0 gate: RFC 0015
-snow and glacier accounts are outside the rain-only boundary.
+sub-ledgers, the rain-only land ledger, the interim glacier-water account and the full
+precipitation ledger it closes (#732, when the backend has it), the registered target lake's supply
+by source, the control quantities the account must not move (glacier volume, sea level), and how
+far river inventory moved between hydrology steps. The full ledger counts glacier release and
+bare-ground snowmelt as named ledger-only outward terms, so it is bookkeeping closure, not a
+physical glacier-routing claim: that remains RFC 0015's.
+
+The #680 windows run with the ice-age cycle off. `--keep-ice-age` keeps the save's own cycle, for
+the account-stability check on an ice-age save.
 
 `--velocity` and `--residence-cap-years` select a labelled sensitivity arm. `--velocity jobson`
 swaps Raymond's mean velocity for Jobson's (1996) peak tracer velocity, with mean annual discharge
@@ -37,6 +43,7 @@ def add_arguments(ap) -> None:
     ap.add_argument("--velocity", choices=("raymond", "jobson"), default="raymond")
     ap.add_argument("--residence-cap-years", type=float, default=1.0)
     ap.add_argument("--reach-dir", type=Path, help="write per-reach arrays for each step here")
+    ap.add_argument("--keep-ice-age", action="store_true", help="keep the save's ice-age cycle")
 
 
 def jobson_residence_time_s(length_m, discharge_m3_s, drainage_m2, slope, cap_s):
@@ -92,11 +99,37 @@ def target_lake(hydro, areas, anchor_points, visible_depth, lake_components) -> 
     }
 
 
+def glacier_step(hydro, land, hydrology) -> dict:
+    """The interim account's step record and the full precipitation ledger, empty on a backend
+    without the account (a before/after baseline)."""
+    glacier = getattr(hydro, "glacier_water_ledger", None)
+    if glacier is None:
+        return {}
+    external = land.rain_m3 + glacier.external_input_m3 + land.meltwater_m3
+    residual = hydrology.full_land_water_residual_m3(land, glacier)
+    return {
+        "glacier_water": {
+            **asdict(glacier),
+            "release_m3": glacier.release_m3,
+            "residual_m3": glacier.residual_m3,
+            "balance_change_m3": glacier.closing_m3 - glacier.opening_m3,
+        },
+        "full_ledger": {
+            "p_diag_m3": land.rain_m3 + glacier.external_input_m3,
+            "m_scaled_m3": land.meltwater_m3,
+            "residual_m3": residual,
+            "normalized_residual": abs(residual) / external,
+            "normalized_outward": glacier.outward_m3 / external,
+        },
+    }
+
+
 def main() -> None:
     args = parse_replay_args(__doc__, add_arguments)
     world, result = load_replay(args, issue=725)
     # The registered #680 windows replay with the ice-age cycle off (measure_lake_step_budget.py).
-    world.ice_age_period_years = 0.0
+    if not args.keep_ice_age:
+        world.ice_age_period_years = 0.0
     from app import plates as plates_mod  # noqa: E402
     from app.elevation_lines import line_spacing_rad  # noqa: E402
     from app.hydroclimate import hydrology  # noqa: E402
@@ -151,6 +184,9 @@ def main() -> None:
             "river_storage_after_step_km3": float(np.dot(hydro.river_water_m, areas)) / 1e9,
             "reaches_holding_water": int(np.count_nonzero(hydro.river_water_m > 0.0)),
             "lake_volume_km3": float(np.dot(hydro.lake_depth, areas)) / 1e9,
+            "glacier_volume_km3": float(np.dot(hydro.glacier_depth, areas)) / 1e9,
+            "sea_level_m": world.sea_level_m,
+            **glacier_step(hydro, land, hydrology),
             "target": target_lake(
                 hydro, areas, anchors, hydrology.LAKE_MIN_VISIBLE_DEPTH_M, hydrology.lake_components
             ),

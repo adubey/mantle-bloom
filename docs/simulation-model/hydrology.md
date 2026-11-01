@@ -103,6 +103,20 @@ Three kinds of water/forcing move along `flow_target`:
   step, and names exported overflow that stranded on land, mostly on a flow cycle through a spill
   edge, as a known control defect. It is RFC 0016 G0's rain-only interim budget: frozen precipitation and ice storage are
   outside it and melt is still in scaled glacier units, so full closure depends on RFC 0015.
+- **Interim glacier water** (`World.glacier_water_account_m3`, `glacier_water_ledger`) closes
+  RFC 0016 G0's full precipitation ledger until RFC 0015's physical accounts replace it (#732).
+  `partition_precipitation_m3` splits diagnostic precipitation into liquid and frozen m³ on the
+  existing `is_frozen` mask, before any scaled conversion. Frozen water the ice keeps enters one
+  whole-world balance; snow melting on bare ground within the step is booked directly as
+  outward. A save without a balance opens from model ice divided by `WATER_TO_ICE`, recorded as
+  initial state. Each step releases the fraction of opening model ice lost to melt, calving,
+  overflow and the depth guard, capped at 1, and books it by destination. With no opening ice
+  it releases nothing. Physical and scaled volumes are never subtracted from each other, so the
+  account only follows the ice history. It is bookkeeping: nothing reads it, its release is not
+  routed, and it stays out of `eustasy.trapped_water_volume_m3`, so glacier flow, melt, erosion,
+  lakes and sea level are unaffected. `full_land_water_residual_m3` adds it to the rain-only
+  budget, with the scaled meltwater kept as a separate input. Closing this ledger is
+  bookkeeping closure, not evidence of where glacier water physically goes.
 - **Glacier meltwater** is the ice ledger's per-step volume (`IceLedger.meltwater_m3`: surface
   and basal melt, overflow, ice shed at the depth guard, and snow melting on bare ground)
   divided by the step length (`hydrology.meltwater_m3_per_yr`). Melted ice is booked as
