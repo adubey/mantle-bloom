@@ -523,6 +523,7 @@ worldsketch.py       parses a drawn/loaded coastline image (Generate World's "Hu
                      simulation-model/foundations.md#worldsketch. Consumed by lithosphere_plate.py's
                      generate_plates (its `sketch` param), not part of the per-step pipeline
 world.py             World/Plate orchestration: generate_world, step_world
+initial_rock_ages.py Seeded starting rock ages, stamped by crust type during generation
 hydroclimate/        climate, hydrology, and surface-process package: atmospheric and
                      diagnostic climate, flow routing/lakes, erosion, geology, eustasy,
                      bathymetry, surface cover, volcanism, and their shared numerics

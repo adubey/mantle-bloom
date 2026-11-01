@@ -983,9 +983,9 @@ def test_node_at_returns_the_owning_node_phi_theta_and_creation_year(client):
     node = body["node"]
     assert node["plate_id"] == target["plate_id"]
     assert math.isfinite(node["phi"]) and math.isfinite(node["theta"])
-    # A freshly generated world's nodes all predate creation-time tracking (see
-    # the node_created_years field's own -1.0 sentinel).
-    assert node["node_created_years"] == -1.0
+    # New worlds have actual genesis rock ages before t=0; -1.0 stays reserved for old saves.
+    assert node["node_created_years"] < 0.0
+    assert node["node_created_years"] != -1.0
 
     # Round-trips through the owning plate's own frame back to (approximately) the query point.
     world_xyz = np.array([

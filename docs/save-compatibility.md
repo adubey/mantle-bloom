@@ -115,6 +115,10 @@ doesn't move. Attributes an older build set on `World` that this build no longer
 `volcanic_field_plate_ids` are dropped on load, so a loaded world and its next save carry no
 line state.
 
+The per-plate `initial_rock_ages` record added in #744 backfills to an empty mapping on older
+saves. Existing `node_created_years` values, including the `-1.0` pre-tracking sentinel, are
+left unchanged; only newly generated worlds receive negative starting ages.
+
 **Fields from a newer build.** A save from a newer build has a newer envelope version and is
 refused. Conversion separately refuses line state it doesn't recognise (§3) instead of
 dropping it.

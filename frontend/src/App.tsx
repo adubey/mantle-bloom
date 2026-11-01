@@ -2302,9 +2302,11 @@ export default function App() {
                       <span>{Math.round(nodeProbe.result.node.elevation_m).toLocaleString()} m</span>
                       <span style={{ opacity: 0.55 }}>Created</span>
                       <span>
-                        {nodeProbe.result.node.node_created_years < 0
+                        {nodeProbe.result.node.node_created_years === -1
                           ? "predates tracking"
-                          : `${(nodeProbe.result.node.node_created_years / 1e6).toFixed(1)} My`}
+                          : nodeProbe.result.node.node_created_years < 0
+                            ? `${(-nodeProbe.result.node.node_created_years / 1e6).toFixed(1)} My before start`
+                            : `${(nodeProbe.result.node.node_created_years / 1e6).toFixed(1)} My`}
                       </span>
                     </div>
                   )}

@@ -52,6 +52,7 @@ def test_round_trip_keeps_authoritative_state(stepped_world, stepped_bytes):
     assert loaded.stats_history == stepped_world.stats_history
     assert loaded.events == stepped_world.events
     assert loaded.collision_progress == stepped_world.collision_progress
+    assert loaded.initial_rock_ages == stepped_world.initial_rock_ages
 
 
 def test_save_keeps_step_read_caches_and_drops_erosion_and_scratch(stepped_world, stepped_bytes):
@@ -353,6 +354,12 @@ def test_v5_load_backfills_a_field_added_after_the_save(stepped_bytes):
     data = _remanifested(stepped_bytes, lambda m: m["world"].pop("faults"))
 
     assert persistence.load_world_bytes(data).faults == []
+
+
+def test_v5_load_backfills_initial_rock_age_records_for_an_older_save(stepped_bytes):
+    data = _remanifested(stepped_bytes, lambda m: m["world"].pop("initial_rock_ages"))
+
+    assert persistence.load_world_bytes(data).initial_rock_ages == {}
 
 
 def test_compact_profile_drops_step_caches_and_rebuilds_climate_on_load(stepped_world):
