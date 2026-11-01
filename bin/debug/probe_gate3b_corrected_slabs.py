@@ -33,7 +33,6 @@ import probe_gate3b_m1_saved_plates as saved_screen
 DURATION_MYR = 20
 DETACH_MYR = 10.0
 EVENT_AREA_FRACTION = 0.25
-EVENT_DURATION_MYR = 10.0
 DAUGHTER_AREA_FRACTION = 0.10
 CAPACITY_CASES = ("p10", "median", "p90")
 SHELL_CUTOFF = 1e-3
