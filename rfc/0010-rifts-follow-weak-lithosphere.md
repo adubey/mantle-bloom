@@ -487,7 +487,8 @@ with one neighbor and the strip must run along it for at least `RIFT_MIN_FRONT_K
 separates a strip from a corner cut, and has not yet been measured. Anything else stays as weakened
 rock.
 
-**Required follow-ups,** after the core lifecycle:
+**Follow-ups,** after the core lifecycle. The first two are required before this RFC counts as
+Implemented:
 
 1. **Deeper keels and keel erosion,** as described above. The craton-breach path does not exist until
    this ships. Until then, cratons break only at edges and where weak.
@@ -985,20 +986,38 @@ to the force-and-damage design and are retired with it.
        prescribed seed and does not advance its fixed crack; and its pressure-work comparison omits
        boundary and inelastic terms. Those limitations do not keep Gate 3a open; plate-scale
        consequences are Gate 3b.
-**Revised 2026-10-31.** Items 3, 4, 5, 6, 7, 8 and 11 below are replaced as listed in the revision note:
+**Revised 2026-10-31.** Items 3, 4, 5, 6, 7, 8, 9, 10 and 11 below are replaced or reworded as
+listed here and in the revision note:
 
-- [ ] **Gate D1, D2 and D3** as defined in the Design section.
-- [ ] **Item 4 as revised:** matched histories of at least 200 Myr, repeated with a halved timestep
-      and at finer resolution, report detected, failed and completed rifts by setting, with
-      duration, length, crust type and daughter sizes. No instantaneous plate-wide split.
-- [ ] **Item 5 as revised:** rift onset, progress and lapse are timestep-partition invariant in
-      synthetic tests.
-- [ ] **Item 11 as revised:** rift counts by setting with plumes on and off.
-- [ ] Every detected site leaves weakened rock, including sites with no route, and repeat events
-      on marked rock are easier than the first.
-- [ ] Items 7 and 8 are replaced by Gate D3: more than 10 and fewer than 40 plates, and detached
-      craton per rift. Their matched old-algorithm comparison no longer applies.
-- [ ] Items 9 and 10 stand unchanged.
+- [ ] **Gates D1, D2 and D3** as defined in the Design section.
+- [ ] **Item 4 as revised:** histories of at least 200 Myr on the D3 seeds, repeated with a halved
+      timestep and at finer resolution, report detected, failed and completed rifts by setting,
+      with duration, length, crust type and daughter sizes. No instantaneous plate-wide split.
+      Stability means the plate-band result agrees, and rift counts by setting and detached craton
+      stay within 20%.
+- [ ] **Item 5 as revised:** rift onset, progress, lapse, retry timing, tear healing and re-planning
+      from the tips are timestep-partition invariant in synthetic tests.
+- [ ] **Item 7 as revised:** more than 10 and fewer than 40 plates at every output on every D3 seed.
+- [ ] **Item 8 as revised:** zero blocked cells entered, and detached craton per rift under D2's
+      limit.
+- [ ] **Item 9 as revised:** rifting-related craton loss is at most 2% of live craton per Gyr on
+      average across seeds 7, 11 and 2024, and in each of the first three Gyr on seed 456862899,
+      subject to ledger checks.
+- [ ] **Item 10 as revised:** crust and mantle ledgers balance; old saves load with no rifts
+      running; new saves preserve running rifts, reached cells and tears for deterministic
+      continuation; runtime overhead at density 4 stays within 2% of a fresh current-main run. The
+      same seed gives the same rifts under any step partition.
+- [ ] **Item 11 as revised:** rift counts by setting with plumes on and off, and rifts still occur
+      with plumes off.
+- [ ] **Weakening:** a continental site with no route leaves a belt and an oceanic one a tear, in
+      unit tests. At D3, the share of new route length on marked rock exceeds the share of the
+      plate that is marked. Time from first event to breakup on marked plates is reported.
+- [ ] **Deeper keels and erosion shipped:** a synthetic test shows heat alone stays blocked and an
+      eroded keel opens, and D3's craton-loss check is rerun with them.
+- [ ] **Boundary jumps shipped:** a test shows a jump leaves plate count unchanged.
+
+Oceanic microplates are not required for this RFC and stay a separate future issue. Item 6 is
+retired.
 
 The superseded text follows for the record.
 
@@ -1074,7 +1093,7 @@ The superseded text follows for the record.
 - **Rifts never complete:** if settings rarely last as long as a route takes to grow, breakups stop
   and plate count falls toward the floor. Revise propagation or the detectors.
 - **Open edges cost too much craton:** edge and weak-craton routes detached a median 8% of the craton
-  they divided, and more than 25% on 4 of 100 routes. If item 8 or 9 fails and route loss is the
+  they divided, and more than 25% on 4 of 100 routes. If item 9 or the detached-craton limit fails and route loss is the
   cause, narrow the edge or raise the block. Attribute by path first, since post-split divergent
   thinning is also a known source.
 - **Cratons never break, or break too often:** if no craton is ever breached, or breaches are common
