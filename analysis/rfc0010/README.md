@@ -139,8 +139,13 @@ detaching most run through interiors below half strength. Routes crossed 421 cra
 route cells. This is the owner's "a weak craton is easier to break", but it is a real risk to the
 craton-loss target, and these numbers were not tuned.
 
-Of the 33 transtension failures, 30 found no arm and 3 made a daughter below 5%. 19 of the 117
-sites began on a blocked cell, including 10 of the failures. The probe's `meets_min_nodes` field
+None of the 33 transtension failures was a true barrier: in all 33, open rock reaches the plate
+boundary on both sides of the site, though that alone does not prove a larger route exists. In 30, a
+route did separate the plate but its smaller daughter stayed under 5%, mostly 1–4%, because the
+router takes the cheapest nearby boundary from a site only 300 km inboard. In 3, no separating route
+was found at any reach. The probe's `status` records only the last reach tried, so `no_first_arm` in
+the JSON does not mean no arm exists. 19 of the 117 sites began on a blocked cell, including 10 of
+the failures. The probe's `meets_min_nodes` field
 fails on most rows, including near-even splits, because `SPLIT_MIN_NODES` scales with density and
 not plate size.
 
