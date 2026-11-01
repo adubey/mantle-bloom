@@ -415,3 +415,42 @@ that basin's water. C fails either way.
 **G0 conclusion.** River law, reach closure, initial state and liquid ledger pass on this source.
 The windows don't: only A is usable, so G1 needs two replacements, chosen and hashed before any
 treatment under PR #743. Rerun G0 on them.
+
+## Window rescan
+
+Preregistered before any scan run. PR #743 allows replacing a window whose event is lost or which
+fails the frozen-precipitation screen. This scan selects windows on current source and measures
+whether #736 changed how often flicker occurs.
+
+**Arms.** Current source `0bda513d`, and `9d6fb5e2`, the last `main` commit before #736, which has
+#734. Both replay in series with `bin/debug/measure_lake_step_budget.py`, 100 kyr steps, ice-age
+cycle off, for 5 Myr.
+
+**Worlds.** #680's two event worlds, by SHA-256: seed 910211954 at 220.2 Myr (`bd487409…`) and seed
+317739385 at 200.8 Myr (`6c806f91…`). Neither is an RFC 0016 held-out save.
+
+**Detector.** #680's unchanged #588 rule: a matched component over 10,000 km², whose successive
+volume changes reverse sign, both above 50% of the prior volume. Results from the first 0.4 Myr
+after load are excluded in both arms, because the current arm's noise changes at load.
+
+**Flicker comparison, descriptive only.** Reversal counts and comparable-body counts per world and
+arm, with the qualifying step ages. Two worlds and one noise history can't separate a real change
+from chance, so any difference is reported as an indication, not a result.
+
+**Window selection, current arm only, in order.**
+
+1. Candidates are qualifying reversals. A window is four steps from a checkpoint two steps before
+   the reversal, as #680 used. Windows don't overlap.
+2. Rank by largest absolute `ΔV`, then take the matched component as the target, with its anchor at
+   the wet node nearest its centroid.
+3. Save the checkpoint from the source world, and require that a reload reproduces the event.
+4. Pass RFC 0016's frozen-precipitation screen: at most 10% across the window.
+5. Require nonzero routed supply to the target in the window. G1 tests an upstream store, and window
+   C shows a lake with none can't respond through that path. This rule is new, is a selection rule
+   rather than a gate, and is disclosed for the owner's review.
+6. Take the three highest-ranked windows that pass, with at least one from each world if both
+   supply a passing candidate. A registered window keeps no priority: it qualifies only by this rule.
+
+If fewer than three pass, report that and stop; don't relax a threshold. Rerun G0's 12 arms on the
+selected windows and record them with hashes before any treatment.
+
