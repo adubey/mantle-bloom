@@ -100,5 +100,27 @@ A climate result leads to one more run, holding the noise from 97.15 Myr, becaus
 nodes also changes through the surface. Where the ice went, by body and region, comes from the
 same captures.
 
+### Part B amendment, after the first factorial
+
+Written after the first factorial run and before any run below. It is post hoc: the design
+changed because of a result.
+
+Rule 4 fired on the drop step: ±0.1% opening ice gave 13.14 and 9.70 M km³, a gap larger than the
+drop (13.03 to 10.53). One march can't be attributed, so the question becomes a distribution. The
+capture also showed the moving ice on equatorial plateaus near 5 km, with nodes going between 0
+and about 2 km in a step.
+
+| Run | What | Reads |
+|---|---|---|
+| E1 | 96.4, 97.4 and 99.15: 12 uniform opening-ice scalings (±0.01–0.5%), this step's climate; on 97.4 also last step's climate | Does the drop step differ from ordinary steps, and do last step's inputs change the odds? |
+| E2 | 97.4 with the noise held from 97.15 Myr, same 12 scalings | Is the noise's own change needed? |
+| E3 | Scale the 97.4 opening by 1.001 and continue to 101.15 Myr | Does an avoided drop stay avoided, or does the low state arrive anyway? |
+| E4 | Repeat the factorial on 97.4 and 100.4 | The node captures a filename bug lost; volumes must match the first run |
+
+**Reading:** the drop counts as forced if at least 10 of 12 members drop (closing below 11.5 M km³)
+under this step's inputs and at most 2 do at control steps. It counts as a sensitive switch if the
+fraction lies between. E1 under last step's climate, and E2, are read as a change in that fraction;
+with 12 members, a gap under 5 members isn't called a difference.
+
 **Not tested:** other draws' drops. If time allows, the same factorial runs on the largest step of
 draw 2. Any change to the drift period, the noise or the march is proposed separately.
