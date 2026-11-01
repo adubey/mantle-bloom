@@ -105,3 +105,48 @@ Queued handoffs, a different source, a body with room, and stale historical body
 authorize export. Both seed-3 failures pass with this distinction. These intermediate replay
 outputs and the failing suite log remain in private captures. Repeat the preregistered final
 stress, A/B/C and affected-unit validation on the committed corrected source.
+
+
+## Final review-fix results
+
+All final treatment runs use `739e86a0`, the unchanged checkpoint hashes and protocol above,
+and the original `cd93d339` control. Per-step data are in
+[`review-validation.json`](review-validation.json). All treatment steps satisfy both thresholds,
+and the lake-volume trajectories match the intermediate `2b93f8cc` runs exactly. The final
+completed-handoff guard therefore adds protection without changing these windows' trajectories.
+
+| Window | Max stranded overflow | Max land residual | Target event ΔV (km³) | Event ΔV change vs control (km³) | End global lake-volume change vs control (km³) | Final cycles / spill-edge cycles | Median step (s) | Peak RSS (GB) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| A | 0% | 1.03e-11% | +495,623.987 | -0.000 | -9,439.757 | 63/63 | 8.99* | 5.02 |
+| B | 0% | 2.12e-12% | +131,624.907 | -0.190 | +79,863.757 | 49/49 | 9.06* | 5.01 |
+| C | 0% | 1.09e-11% | -261,586.996 | +0.000 | +624.470 | 14/14 | 12.57* | 5.88 |
+
+A started alone, but unit workers were present when it finished, so its timing may also be
+contended. B and C used their measured memory peaks for resource checks and overlapped that
+unrelated unit-test run after an idle-machine wait. All starred timings are indicative and
+must not be used for a speed comparison. This is a timing-only protocol deviation; checkpoint
+bytes, model parameters, forcing, step count, step length and thresholds were unchanged.
+
+| Window | Total ocean export (km³) | Unlocated global ocean credit (km³) | Gross internal transfers (km³) |
+|---|---:|---:|---:|
+| A | 9.57989e+09 | 9.63276e+08 | 1.09875e+11 |
+| B | 1.00321e+10 | 4.75306e+07 | 1.31215e+11 |
+| C | 1.35302e+10 | 3.60175e+07 | 3.30736e+10 |
+
+Global ocean credit has no fabricated geographic river mouth. Ordinary ocean outlets retain
+their per-source settlement arrays. External land sinks are identified from active-body
+membership before the solve; a regression dropping owned supply leaves it visible in the
+residual. The per-basin trace test includes every parent ID without skipping transfers, and
+the no-ocean warning distinguishes total volume from the largest-settlement node.
+
+The proposed sink downstream of a closed cycle cannot exist in this one-outgoing-edge graph.
+The inaccurate routing-order docstring was corrected, and a mixed cycle/upstream/sink test
+verifies the settlement labels. Source-specific completed-handoff tests reject queued transfers,
+unrelated sources, owners with room, and historical spilling-body flags. Successive capped pairs
+and simultaneous surpluses reach a receiving lake with space. A remaining untried owner still
+raises explicitly instead of being bypassed.
+
+Final validation: 1,886 affected unit tests passed; the mature-world stress test passed all
+48 × 4 Myr steps; Ruff and the dead/duplicate-code gate passed. The follow-up review agent
+reported no further findings. B's event remains present with a 0.190 km³ movement from the
+control; retain it in the RFC 0016 G1 decision record. No checkpoints or event definitions changed.
