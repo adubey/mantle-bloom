@@ -162,6 +162,11 @@ def main() -> None:
             hydro.plates_in_order, line_spacing_rad(world.node_density)
         )
         river, land, lake = hydro.river_water_ledger, hydro.land_water_ledger, hydro.lake_water_ledger
+        cycles = hydrology.flow_cycles(hydro.flow_target)
+        spill_edge_cycles = sum(
+            np.any(hydro.flow_target[cycle] == hydro.spill_target[cycle])
+            for cycle in cycles
+        )
         step = len(result["steps"]) + 1
         drift = None if previous_final_m3[0] is None else river.initial_storage_m3 - previous_final_m3[0]
         previous_final_m3[0] = river.final_storage_m3
@@ -178,8 +183,14 @@ def main() -> None:
             },
             "normalized_land_residual": abs(land.residual_m3) / external,
             "normalized_stranded_overflow": land.stranded_overflow_m3 / external,
+            "normalized_land_sink_settlement": getattr(land, "land_sink_settlement_m3", 0.0) / external,
             "normalized_lake_residual": abs(lake.residual_m3) / max(lake.external_supply_m3, 1.0),
             "normalized_river_residual": abs(river.residual_m3) / max(river.input_m3, 1.0),
+            "ocean_export_km3": land.ocean_export_m3 / 1e9,
+            "internal_transfer_km3": lake.internal_transfer_m3 / 1e9,
+            "flow_cycles": len(cycles),
+            "spill_edge_cycles": int(spill_edge_cycles),
+            "river_routing_passes": 2,
             "inter_step_river_drift_m3": drift,
             "river_storage_after_step_km3": float(np.dot(hydro.river_water_m, areas)) / 1e9,
             "reaches_holding_water": int(np.count_nonzero(hydro.river_water_m > 0.0)),

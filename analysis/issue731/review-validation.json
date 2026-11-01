@@ -1,0 +1,206 @@
+{
+  "source_commit": "739e86a0bcb1706708b5427f1fc2d93f2456d63d",
+  "control_commit": "cd93d339bea3b59009ace1b74cb5b2fadcfb72d0",
+  "steps": 4,
+  "step_years": 100000,
+  "affected_tests_passed": 1886,
+  "mature_world_steps": 48,
+  "mature_world_step_years": 4000000,
+  "windows": {
+    "A": {
+      "checkpoint_sha256": "9882568e681a0f9f207e3302453b3a92f18865d5640d7baa8d9d8eb09ab4633e",
+      "max_stranded_overflow_pct_input": 0.0,
+      "max_land_residual_pct_input": 1.0272776579719324e-11,
+      "max_land_sink_settlement_pct_input": 4.6752683172391836e-06,
+      "target_event_delta_km3": 495623.98653871636,
+      "end_target_volume_km3": 930748.1226739626,
+      "end_global_lake_volume_km3": 3683675.5868387013,
+      "ocean_export_total_km3": 9579885443.751734,
+      "unlocated_ocean_export_total_km3": 963275630.520936,
+      "internal_transfer_total_km3": 109874954203.64668,
+      "end_flow_cycles": 63,
+      "end_spill_edge_cycles": 63,
+      "median_step_s": 8.993687937499999,
+      "peak_rss_gb": 5.020844032,
+      "memory_budget_gb": 7,
+      "timing_contended": true,
+      "competing_workload": "unit tests observed at end; overlap possible",
+      "lake_volume_trajectory_matches_2b93f8cc": true,
+      "steps": [
+        {
+          "elapsed_myr": 221.7,
+          "stranded_overflow_m3": 0.0,
+          "land_residual_m3": 645008.5814781189,
+          "unlocated_ocean_export_m3": 2.6285226413574138e+17,
+          "land_sink_settlement_m3": 28512592855.52216,
+          "lake_volume_km3": 1835739.8317048645,
+          "target_volume_km3": null,
+          "runtime_s": 8.884160416000668
+        },
+        {
+          "elapsed_myr": 221.8,
+          "stranded_overflow_m3": 0.0,
+          "land_residual_m3": 275438.3246459961,
+          "unlocated_ocean_export_m3": 2.7670373125473133e+17,
+          "land_sink_settlement_m3": 61970041736.88003,
+          "lake_volume_km3": 2540968.295646028,
+          "target_volume_km3": 879182.5115387164,
+          "runtime_s": 8.816699167000479
+        },
+        {
+          "elapsed_myr": 221.9,
+          "stranded_overflow_m3": 0.0,
+          "land_residual_m3": 288536.7326660156,
+          "unlocated_ocean_export_m3": 3.068992776570935e+17,
+          "land_sink_settlement_m3": 203825633232.8438,
+          "lake_volume_km3": 2143945.479669956,
+          "target_volume_km3": null,
+          "runtime_s": 9.10321545899933
+        },
+        {
+          "elapsed_myr": 222.0,
+          "stranded_overflow_m3": 0.0,
+          "land_residual_m3": 354824.03967285156,
+          "unlocated_ocean_export_m3": 1.1682035747336982e+17,
+          "land_sink_settlement_m3": 298072960211.3271,
+          "lake_volume_km3": 3683675.5868387013,
+          "target_volume_km3": 930748.1226739626,
+          "runtime_s": 32.81126104099894
+        }
+      ],
+      "event_delta_change_vs_control_km3": -6.199115887284279e-06,
+      "end_target_change_vs_control_km3": 113.45249477389734,
+      "end_global_lake_change_vs_control_km3": -9439.757447440643
+    },
+    "B": {
+      "checkpoint_sha256": "759d83107ae87d34d825b4836addc922d414089774f90739ea00e6a9c9dff5b5",
+      "max_stranded_overflow_pct_input": 0.0,
+      "max_land_residual_pct_input": 2.121908269358276e-12,
+      "max_land_sink_settlement_pct_input": 0.004349729057656433,
+      "target_event_delta_km3": 131624.90704953577,
+      "end_target_volume_km3": 251450.60675059023,
+      "end_global_lake_volume_km3": 2231797.408383062,
+      "ocean_export_total_km3": 10032095172.029049,
+      "unlocated_ocean_export_total_km3": 47530563.07438799,
+      "internal_transfer_total_km3": 131214634559.74472,
+      "end_flow_cycles": 49,
+      "end_spill_edge_cycles": 49,
+      "median_step_s": 9.057026854001379,
+      "peak_rss_gb": 5.010833408000001,
+      "memory_budget_gb": 5.5,
+      "timing_contended": true,
+      "competing_workload": "unrelated unit tests",
+      "lake_volume_trajectory_matches_2b93f8cc": true,
+      "steps": [
+        {
+          "elapsed_myr": 222.2,
+          "stranded_overflow_m3": 0.0,
+          "land_residual_m3": 73904.56985855103,
+          "unlocated_ocean_export_m3": 4.32865186635121e+16,
+          "land_sink_settlement_m3": 14930950042.314816,
+          "lake_volume_km3": 2755767.2193709877,
+          "target_volume_km3": 115360.95859979872,
+          "runtime_s": 9.016410166001151
+        },
+        {
+          "elapsed_myr": 222.3,
+          "stranded_overflow_m3": 0.0,
+          "land_residual_m3": 140400.53125,
+          "unlocated_ocean_export_m3": 360439965168168.8,
+          "land_sink_settlement_m3": 233037628366323.28,
+          "lake_volume_km3": 2320913.827656126,
+          "target_volume_km3": 246985.8656493345,
+          "runtime_s": 8.911219624998921
+        },
+        {
+          "elapsed_myr": 222.4,
+          "stranded_overflow_m3": 0.0,
+          "land_residual_m3": 62308.52682495117,
+          "unlocated_ocean_export_m3": 2672929687963002.0,
+          "land_sink_settlement_m3": 11217712680.691742,
+          "lake_volume_km3": 2587138.7158133886,
+          "target_volume_km3": 251729.13615789587,
+          "runtime_s": 29.094969208999828
+        },
+        {
+          "elapsed_myr": 222.5,
+          "stranded_overflow_m3": 0.0,
+          "land_residual_m3": 57714.875,
+          "unlocated_ocean_export_m3": 1210674757744723.8,
+          "land_sink_settlement_m3": 294151774813765.3,
+          "lake_volume_km3": 2231797.408383062,
+          "target_volume_km3": 251450.60675059023,
+          "runtime_s": 9.097643542001606
+        }
+      ],
+      "event_delta_change_vs_control_km3": -0.19009984942385927,
+      "end_target_change_vs_control_km3": 19.629876359016635,
+      "end_global_lake_change_vs_control_km3": 79863.75729062734
+    },
+    "C": {
+      "checkpoint_sha256": "38cc6ff2054cde2db3a65ac0a3e08a09e854175735512b9c8c40ba7a76c6190c",
+      "max_stranded_overflow_pct_input": 0.0,
+      "max_land_residual_pct_input": 1.0912466510634676e-11,
+      "max_land_sink_settlement_pct_input": 1.769184108511885e-08,
+      "target_event_delta_km3": -261586.99600954747,
+      "end_target_volume_km3": 2949.8403328812033,
+      "end_global_lake_volume_km3": 440686.09037534095,
+      "ocean_export_total_km3": 13530179084.149363,
+      "unlocated_ocean_export_total_km3": 36017478.35767873,
+      "internal_transfer_total_km3": 33073551059.22244,
+      "end_flow_cycles": 14,
+      "end_spill_edge_cycles": 14,
+      "median_step_s": 12.572077020500728,
+      "peak_rss_gb": 5.876465664,
+      "memory_budget_gb": 6.6,
+      "timing_contended": true,
+      "competing_workload": "unrelated unit tests",
+      "lake_volume_trajectory_matches_2b93f8cc": true,
+      "steps": [
+        {
+          "elapsed_myr": 201.1,
+          "stranded_overflow_m3": 0.0,
+          "land_residual_m3": 861094.787902832,
+          "unlocated_ocean_export_m3": 8232163461360433.0,
+          "land_sink_settlement_m3": 0.0,
+          "lake_volume_km3": 482386.78532670613,
+          "target_volume_km3": 264786.69718632585,
+          "runtime_s": 12.428742541000247
+        },
+        {
+          "elapsed_myr": 201.2,
+          "stranded_overflow_m3": 0.0,
+          "land_residual_m3": 2411.2239668369293,
+          "unlocated_ocean_export_m3": 241137826813.52594,
+          "land_sink_settlement_m3": 1410748112.8026445,
+          "lake_volume_km3": 155385.2881348003,
+          "target_volume_km3": 3199.7011767783865,
+          "runtime_s": 54.635698833997594
+        },
+        {
+          "elapsed_myr": 201.3,
+          "stranded_overflow_m3": 0.0,
+          "land_residual_m3": 112387.03466796875,
+          "unlocated_ocean_export_m3": 1103898858194771.5,
+          "land_sink_settlement_m3": 0.0,
+          "lake_volume_km3": 504126.63805702963,
+          "target_volume_km3": 372572.25235343137,
+          "runtime_s": 12.71541150000121
+        },
+        {
+          "elapsed_myr": 201.4,
+          "stranded_overflow_m3": 0.0,
+          "land_residual_m3": 26064.204240083694,
+          "unlocated_ocean_export_m3": 2.6681174900296704e+16,
+          "land_sink_settlement_m3": 1378949567.2553546,
+          "lake_volume_km3": 440686.09037534095,
+          "target_volume_km3": 2949.8403328812033,
+          "runtime_s": 12.27167775000271
+        }
+      ],
+      "event_delta_change_vs_control_km3": 0.0,
+      "end_target_change_vs_control_km3": -4.554749466478825e-09,
+      "end_global_lake_change_vs_control_km3": 624.4700249718735
+    }
+  }
+}

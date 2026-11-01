@@ -100,9 +100,14 @@ Three kinds of water/forcing move along `flow_target`:
   `river_water_ledger` exposes network closure and the maximum per-reach update residual, and
   water released from prior storage into a lake is its own lake-ledger source. `land_water_ledger`
   closes rain, melt, dry ET, evaporation, ocean export and river plus lake storage for one
-  step, and names exported overflow that stranded on land, mostly on a flow cycle through a spill
-  edge, as a known control defect. It is RFC 0016 G0's rain-only interim budget: frozen precipitation and ice storage are
-  outside it and melt is still in scaled glacier units, so full closure depends on RFC 0015.
+  step and reports any exported lake overflow that could not be delivered to the ocean. A land
+  sink or cycle settlement from exported lake overflow is transferred to the ocean when one
+  exists (#731); if the world has no ocean node, the remainder is logged with its volume and node.
+  Routed external supply that ends at a land sink with no active lake body is reported separately
+  as `land_sink_settlement_m3`, using the active lake membership map before the solve. Missing
+  supply at an owned lake cell therefore remains a residual.
+  It is RFC 0016 G0's rain-only interim budget: frozen precipitation and ice storage are outside
+  it and melt is still in scaled glacier units.
 - **Interim glacier water** (`World.glacier_water_account_m3`, `glacier_water_ledger`) closes
   RFC 0016 G0's full precipitation ledger until RFC 0015's physical accounts replace it (#732).
   `partition_precipitation_m3` splits diagnostic precipitation into liquid and frozen m³ on the
@@ -132,6 +137,20 @@ Three kinds of water/forcing move along `flow_target`:
 - **The breach surge** (`HydrologyFields.breach_surge`) is a spilling lake's erosive forcing,
   sized by node count (`LAKE_BREACH_EROSION_COEFFICIENT`). It is never part of the discharge.
   Its separately-routed accumulation (`breach_surge_accum`) contributes to river erosion only.
+
+`route_downstream` reports water's destinations by name: retention, terminal sink settlement,
+ocean export, cycle settlement, and transit evaporation. A flow-cycle remainder is still held at
+the cycle's nodes for this pass, but callers can inspect that amount instead of treating it as an
+ordinary sink. Exported lake water first follows the lake hierarchy; any terminal land volume
+without a receiving lake body is credited to the global ocean budget as
+`river_water_ledger.unlocated_ocean_export_m3`. This unresolved outlet contributes no spatial
+river-mouth discharge. Deferred internal transfers are consumed by the receiving lake in the
+normal flush; an exhausted flush raises an error instead of bypassing an untried owner.
+A returned cap cycle can export only after that source-to-owner handoff completed a normal
+body update and the current governing owner is still full.
+If a world has no ocean node, hydrology
+logs the remaining volume and node. This keeps the water budget explicit even when the flow graph
+contains a spill edge that closes a cycle.
 
 `flow_accum` and `water_deposited` come from the older routing: stacked mm/yr of liquid
 precipitation, melt and breach surge, with in-transit evaporation that scales with step
