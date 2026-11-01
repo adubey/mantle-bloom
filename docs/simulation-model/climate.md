@@ -365,7 +365,7 @@ state. Each passes from one independent keyframe to the next over
 `CLIMATE_NOISE_DRIFT_PERIOD_YEARS` (40 Myr, about the time a plate at the median speed takes to
 cross `MFC_NOISE_CORRELATION_DEG`). The cos/sin weights keep the field exactly standard normal
 at every instant, so the noise's statistics don't change between keyframes. Over a step of
-length Δt the fields keep a correlation of cos(π Δt / 2T), so a 0.25 Myr step moves them about
+length Δt within one keyframe interval, the fields keep a correlation of cos(π Δt / 2T), so a 0.25 Myr step moves them about
 1% of their spread, where a redraw would move them about 141% (#575). Swell positions are drawn
 on the ocean-currents map only, and stay redrawn each world state.
 

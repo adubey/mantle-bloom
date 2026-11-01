@@ -480,7 +480,7 @@ def test_moisture_flux_convergence_noise_breaks_zonal_banding_without_moving_row
 def test_drifting_white_noise_is_standard_normal_between_keyframes():
     # Linear weights would thin the variance to one half at mid-period, and the banding with it.
     shape = (180, 360)
-    for fraction in (0.0, 0.25, 0.5, 0.75):
+    for fraction in (0.0, 0.25, 0.5, 0.75, 2.25, 2.5):
         field = climate._drifting_white_noise(1, 947, fraction * climate.CLIMATE_NOISE_DRIFT_PERIOD_YEARS, shape)
         assert abs(field.mean()) < 0.02
         assert abs(field.std() - 1.0) < 0.02
@@ -496,9 +496,21 @@ def test_drifting_white_noise_is_continuous_across_a_keyframe():
 
 def test_drifting_white_noise_is_deterministic_and_streams_are_independent():
     shape = (45, 90)
-    field = climate._drifting_white_noise(1, 947, 12.3e6, shape)
-    np.testing.assert_array_equal(field, climate._drifting_white_noise(1, 947, 12.3e6, shape))
-    assert abs(np.corrcoef(field.ravel(), climate._drifting_white_noise(1, 811, 12.3e6, shape).ravel())[0, 1]) < 0.1
+    salts = (climate.MIXING_NOISE_SALT, climate.HUMIDITY_NOISE_SALT, climate.MFC_NOISE_SALT)
+    fields = [climate._drifting_white_noise(1, salt, 12.3e6, shape) for salt in salts]
+    np.testing.assert_array_equal(fields[0], climate._drifting_white_noise(1, salts[0], 12.3e6, shape))
+    assert abs(np.corrcoef(fields[0].ravel(), fields[1].ravel())[0, 1]) < 0.1
+    assert abs(np.corrcoef(fields[0].ravel(), fields[2].ravel())[0, 1]) < 0.1
+    assert abs(np.corrcoef(fields[1].ravel(), fields[2].ravel())[0, 1]) < 0.1
+
+
+def test_climates_of_one_world_state_agree():
+    world = _world(seed=2, num_plates=8, steps=0)
+    world.elapsed_years = 5_000_000.0
+    first = climate.compute_climate(world)
+    second = climate.compute_climate(world)
+    np.testing.assert_array_equal(first.precipitation_mm, second.precipitation_mm)
+    np.testing.assert_array_equal(first.humidity_g_kg, second.humidity_g_kg)
 
 
 def test_climates_a_step_apart_differ_much_less_than_independent_draws():
@@ -515,7 +527,8 @@ def test_climates_a_step_apart_differ_much_less_than_independent_draws():
     stepped = np.sqrt(np.mean((precipitation_at(start + 250_000.0) - opening) ** 2))
     independent = np.sqrt(np.mean((precipitation_at(start + 2.0 * climate.CLIMATE_NOISE_DRIFT_PERIOD_YEARS) - opening) ** 2))
     assert independent > 0.0
-    assert stepped < 0.1 * independent
+    # Tight enough to catch a redraw of the mixing texture alone, or a drift period of a few Myr.
+    assert stepped < 0.03 * independent
 
 
 def test_coherent_noise_is_broadband_zero_mean_and_normalized():
