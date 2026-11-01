@@ -3,6 +3,7 @@ import pytest
 from app import plates
 from app.hydroclimate import biomes, climate
 from app.world import World, generate_world, step_world
+from scipy.special import ndtr
 
 from .quad_fixtures import globe_plate
 
@@ -408,15 +409,15 @@ def test_humidity_noise_breaks_zonal_banding_without_moving_row_means():
 
     args = (is_ocean, elevation, ocean_temperature, air_temperature, wind_u, wind_v, elevation_factor, lat_deg)
     plain, _ = climate.compute_humidity(*args)
-    noised, _ = climate.compute_humidity(*args, rng=np.random.default_rng(0))
+    noised, _ = climate.compute_humidity(*args, white_noise=np.random.default_rng(0).standard_normal(is_ocean.shape))
 
     assert plain.std(axis=1).mean() < 1e-9  # essentially banded
     assert noised.std(axis=1).mean() > 100 * plain.std(axis=1).mean()  # along-row variation restored
     np.testing.assert_allclose(noised.mean(axis=1), plain.mean(axis=1), atol=2 * climate.HUMIDITY_NOISE_STD_G_KG)
     assert noised.min() >= 0.0 and noised.max() <= climate.MAX_HUMIDITY_G_KG
 
-    # Deterministic in the rng seed.
-    again, _ = climate.compute_humidity(*args, rng=np.random.default_rng(0))
+    # Deterministic in the noise field.
+    again, _ = climate.compute_humidity(*args, white_noise=np.random.default_rng(0).standard_normal(is_ocean.shape))
     np.testing.assert_array_equal(noised, again)
 
 
@@ -462,25 +463,66 @@ def test_moisture_flux_convergence_noise_breaks_zonal_banding_without_moving_row
 
     plain = climate.compute_moisture_flux_convergence(humidity, wind_u, wind_v, lat_deg)
     noised = climate.compute_moisture_flux_convergence(
-        humidity, wind_u, wind_v, lat_deg, np.random.default_rng(0)
+        humidity, wind_u, wind_v, lat_deg, np.random.default_rng(0).standard_normal(humidity.shape)
     )
 
     assert plain.std(axis=1).mean() < 1e-6  # essentially banded
     assert noised.std(axis=1).mean() > 10 * plain.std(axis=1).mean()  # along-row variation restored
     np.testing.assert_allclose(noised.mean(axis=1), plain.mean(axis=1), atol=2 * climate.MFC_NOISE_STD_G_KG)
 
-    # Deterministic in the rng seed.
+    # Deterministic in the noise field.
     again = climate.compute_moisture_flux_convergence(
-        humidity, wind_u, wind_v, lat_deg, np.random.default_rng(0)
+        humidity, wind_u, wind_v, lat_deg, np.random.default_rng(0).standard_normal(humidity.shape)
     )
     np.testing.assert_array_equal(noised, again)
+
+
+def test_drifting_white_noise_is_standard_normal_between_keyframes():
+    # Linear weights would thin the variance to one half at mid-period, and the banding with it.
+    shape = (180, 360)
+    for fraction in (0.0, 0.25, 0.5, 0.75):
+        field = climate._drifting_white_noise(1, 947, fraction * climate.CLIMATE_NOISE_DRIFT_PERIOD_YEARS, shape)
+        assert abs(field.mean()) < 0.02
+        assert abs(field.std() - 1.0) < 0.02
+
+
+def test_drifting_white_noise_is_continuous_across_a_keyframe():
+    shape = (45, 90)
+    keyframe = 3.0 * climate.CLIMATE_NOISE_DRIFT_PERIOD_YEARS
+    before = climate._drifting_white_noise(1, 947, keyframe - 1.0, shape)
+    after = climate._drifting_white_noise(1, 947, keyframe + 1.0, shape)
+    assert np.abs(after - before).max() < 1e-5
+
+
+def test_drifting_white_noise_is_deterministic_and_streams_are_independent():
+    shape = (45, 90)
+    field = climate._drifting_white_noise(1, 947, 12.3e6, shape)
+    np.testing.assert_array_equal(field, climate._drifting_white_noise(1, 947, 12.3e6, shape))
+    assert abs(np.corrcoef(field.ravel(), climate._drifting_white_noise(1, 811, 12.3e6, shape).ravel())[0, 1]) < 0.1
+
+
+def test_climates_a_step_apart_differ_much_less_than_independent_draws():
+    # #575: redrawing the noise each step made a forcing that fast ice followed. On one surface,
+    # a 0.25 Myr step should move the noise far less than two unrelated draws differ.
+    world = _world(seed=2, num_plates=8, steps=0)
+
+    def precipitation_at(years):
+        world.elapsed_years = years
+        return climate.compute_climate(world).precipitation_mm
+
+    start = 5_000_000.0
+    opening = precipitation_at(start)
+    stepped = np.sqrt(np.mean((precipitation_at(start + 250_000.0) - opening) ** 2))
+    independent = np.sqrt(np.mean((precipitation_at(start + 2.0 * climate.CLIMATE_NOISE_DRIFT_PERIOD_YEARS) - opening) ** 2))
+    assert independent > 0.0
+    assert stepped < 0.1 * independent
 
 
 def test_coherent_noise_is_broadband_zero_mean_and_normalized():
     # The fractal field should spread its energy across a range of scales rather than sitting
     # at one dominant bump size (what made a repeated box blur read as a regular texture).
     field = climate._coherent_noise(
-        np.random.default_rng(0), (180, 360), target_std=0.05,
+        np.random.default_rng(0).standard_normal((180, 360)), target_std=0.05,
         correlation_cells=18.0, beta=climate.MFC_NOISE_SPECTRAL_BETA,
     )
     assert abs(field.mean()) < 1e-9
@@ -621,7 +663,7 @@ def test_compute_climate_sources_wind_air_temp_from_cfd_everything_else_diagnost
     # Currents / ocean temp / precip come from the diagnostic formulas -- match a direct call.
     expected_currents = climate.compute_ocean_currents(
         fields.wind_u, fields.wind_v, fields.is_ocean, fields.lat_deg, fields.world_xyz,
-        np.random.default_rng((world.seed, round(world.elapsed_years))).random((height, width)),
+        ndtr(climate._drifting_white_noise(world.seed, climate.MIXING_NOISE_SALT, world.elapsed_years, (height, width))),
     )
     assert np.allclose(fields.current_u, expected_currents[0]) and np.allclose(fields.current_v, expected_currents[1])
     # A real world one step past generation gets real rain over land somewhere.

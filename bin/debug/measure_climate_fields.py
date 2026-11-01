@@ -15,7 +15,12 @@ records, area-weighted by cos(latitude):
 - Köppen group shares of land area (A tropical, B arid, C temperate, D continental, E polar);
 - land fraction and the ice cap -- land under visible glacier ice (>= GLACIER_VISIBLE_DEPTH_M),
   from the hydrology cache -- and ice volume (km^3);
+- the land moisture sources humidity draws on, as land means in g/kg: vegetation transpiration
+  and lake and river evaporation (`moisture_source_*`, #575);
 - step runtime and peak RSS.
+
+`--noise-salt-offset N` shifts the salts of the drifting noise streams, so a branch run measures
+another draw of the same textures (#575). It has no effect on a backend without those streams.
 
 `--backend` points at the backend to import, so the same script measures both trees:
 
@@ -26,6 +31,8 @@ records, area-weighted by cos(latitude):
 """
 
 from __future__ import annotations
+
+import argparse
 
 import numpy as np
 from replay_lib import load_replay, parse_replay_args, run_replay
@@ -41,12 +48,20 @@ def _weighted_mean(values: np.ndarray, weights: np.ndarray) -> float | None:
     return None if total <= 0.0 else round(float((values * weights).sum()) / total, 3)
 
 
+def _add_arguments(ap: argparse.ArgumentParser) -> None:
+    ap.add_argument("--noise-salt-offset", type=int, default=0)
+
+
 def main() -> None:
-    args = parse_replay_args(__doc__)
+    args = parse_replay_args(__doc__, _add_arguments)
     world, result = load_replay(args, issue=522)
     from app import plates as plates_mod  # noqa: E402
     from app.elevation_lines import line_spacing_rad  # noqa: E402
     from app.hydroclimate import biomes, climate, hydrology  # noqa: E402
+
+    for salt in ("MIXING_NOISE_SALT", "HUMIDITY_NOISE_SALT", "MFC_NOISE_SALT"):
+        if hasattr(climate, salt):
+            setattr(climate, salt, getattr(climate, salt) + args.noise_salt_offset)
 
     land_classes = len(biomes.KOPPEN_CODES)
     group_of_biome = np.array([code[0] for code in biomes.KOPPEN_CODES] + [""] * len(biomes.PELAGIC_NAMES))
@@ -73,6 +88,12 @@ def main() -> None:
             "precip_ocean_mm": _weighted_mean(precip[ocean], weight[ocean]),
             "land_precip_share_pct": round(100.0 * land_precip / max(float((precip * weight).sum()), 1e-9), 2),
         }
+        _, _, lake_depth_m, channel_depth_m, is_sea = climate._sample_elevation_and_crust(world, fields.world_xyz)
+        no_vegetation = np.zeros_like(lake_depth_m)
+        vegetation = climate._vegetation_transpiration_source(world, fields.elevation_m, ocean)
+        water = climate._land_moisture_source(fields.air_temperature_c, lake_depth_m, channel_depth_m, no_vegetation, is_sea=is_sea)
+        out["moisture_source_vegetation_g_kg"] = _weighted_mean(vegetation[land], weight[land])
+        out["moisture_source_water_g_kg"] = _weighted_mean(water[land], weight[land])
         if humidity_index is not None:
             out["humidity_index_ocean"] = _weighted_mean(humidity_index[ocean], weight[ocean])
         abs_lat = np.abs(np.repeat(fields.lat_deg[:, None], len(fields.lon_deg), axis=1))

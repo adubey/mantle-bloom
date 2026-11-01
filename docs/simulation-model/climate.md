@@ -172,9 +172,9 @@ first and closing the loop only for the final consumer-facing fields:
    the two agree. **Circumglobal boost**: a speedup on any row with zero land cells anywhere
    along it (a complete ocean ring) -- the stand-in for the Antarctic Circumpolar Current.
    **Wake**: the same backward-walk-and-damp structure as wind's, obstacle test is
-   land-instead-of-elevation, plus a per-world-state noise texture (deterministic in `(seed,
-   elapsed_years)`, so repeated renders of the same world state don't flicker) standing in
-   for turbulent mixing.
+   land-instead-of-elevation, plus a slowly drifting noise texture (deterministic in `(seed,
+   elapsed_years)`, so repeated renders of the same world state don't flicker; see
+   [Noise drift](#noise-drift)) standing in for turbulent mixing.
 6. **Ocean swells** -- convergence (negative divergence, `np.roll` centered differences) of
    the *final* current field, weighted-sampled down to `MAX_OCEAN_SWELLS` points
    (weighted-without-replacement sampling over the convergence field).
@@ -243,7 +243,7 @@ first and closing the loop only for the final consumer-facing fields:
    the humidity map and in the precipitation baseline it scales. The same fractal gaussian
    perturbation the moisture-flux convergence uses (`_coherent_noise` -- a scale-free
    `1/k**MFC_NOISE_SPECTRAL_BETA` spectral field, correlation length
-   `MFC_NOISE_CORRELATION_DEG`, seeded per world state on its own RNG stream) is added to the
+   `MFC_NOISE_CORRELATION_DEG`, drifting on its own RNG stream) is added to the
    blended humidity field at std `HUMIDITY_NOISE_STD_G_KG` (smaller than `MFC_NOISE_STD_G_KG` -- it
    perturbs the baseline everywhere, not just a belt edge), re-clipped to
    `[MIN_BACKGROUND_HUMIDITY_G_KG, MAX_HUMIDITY_G_KG]`. The orographic dump, a separate
@@ -278,7 +278,7 @@ first and closing the loop only for the final consumer-facing fields:
     gaussian perturbation (`_coherent_noise` -- white noise shaped by a
     `1/k**MFC_NOISE_SPECTRAL_BETA` power spectrum in the spectral domain, so it's isotropic
     and scale-free rather than one dominant bump size, std `MFC_NOISE_STD_G_KG`, correlation
-    length `MFC_NOISE_CORRELATION_DEG`, seeded per world state) added after the blend warps
+    length `MFC_NOISE_CORRELATION_DEG`, drifting on its own RNG stream) added after the blend warps
     and stipples those edges the way real convergence zones meander, without moving the
     wind-derived per-row means.
     Feeds erosion and hydrology (see [Erosion](surface-processes.md#erosion-erosionpy) and [Hydrology](hydrology.md#hydrology-rivers-and-lakes-hydrologypy)), and
@@ -355,6 +355,19 @@ information on its own, unlike elevation's own hypsometric coloring. `biome` is 
 not a heatmap -- see [Biomes](#biomes-biomespy) below -- and (like wind/oceanCurrents) skips the
 separate coastline stroke, since its own flat Ocean color already reads as a land/ocean
 boundary on its own.
+
+### Noise drift
+
+The climate's three noise textures (current mixing, humidity, moisture-flux convergence) stand
+for geography-scale structure, not weather. `_drifting_white_noise` makes each a pure function
+of `(seed, salt, elapsed_years)`, so renders of one world state agree and saves carry no noise
+state. Each passes from one independent keyframe to the next over
+`CLIMATE_NOISE_DRIFT_PERIOD_YEARS` (40 Myr, about the time a plate at the median speed takes to
+cross `MFC_NOISE_CORRELATION_DEG`). The cos/sin weights keep the field exactly standard normal
+at every instant, so the noise's statistics don't change between keyframes. Over a step of
+length Δt the fields keep a correlation of cos(π Δt / 2T), so a 0.25 Myr step moves them about
+1% of their spread, where a redraw would move them about 141% (#575). Swell positions are drawn
+on the ocean-currents map only, and stay redrawn each world state.
 
 ### Biomes (`biomes.py`)
 
