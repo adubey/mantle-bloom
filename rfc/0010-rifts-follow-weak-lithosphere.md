@@ -382,6 +382,9 @@ split on saved plates, because it scales with density rather than with plate siz
   minimum outcome; zero route cells are blocked; and detached craton area is reported. At least two
   thirds of sites must separate, or site selection is the first thing to change. The exploration
   rate was 75%.
+  Routes must also read as rifts. The census shows at least one hook, where an arm doubles back
+  along the plate margin and carves off a thin strip, which the separation test accepts. Add a
+  route-shape check, reported as tortuosity and hook counts, and fix hooks before Gate D3.
 - **Gate D3, history:** with the lifecycle in the world step, run the held-out acceptance criteria.
 
 **Slab prototype.** The evolving-slab code in PRs #726 and #727 is not used here and stays out of

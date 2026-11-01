@@ -146,8 +146,12 @@ not plate size.
 
 ![A routed rift on seed 373936961](rift-route-around-craton.png)
 
-*One transtension route on seed 373936961 at 244 Myr. Gold cells are craton; the red route divides
-the plate into blue and green daughters.*
+*Transtension route on plate 20, seed 373936961 at 244 Myr, tortuosity 1.79. Gold cells are craton;
+the red route divides the plate into blue and green daughters. The route follows the craton's edge
+as designed, but at right the arms hook back along the plate margin and carve off a thin strip.
+That is a route-quality defect the separation test does not catch, and tortuosity alone may not
+either. The image was chosen by the probe as this world's largest great-circle craton overlap, so
+it is not a typical route.*
 
 **Why two settings found nothing.** All 16 local saves have zero plumes, so active rifting was not
 tested. Rollback is a real gap: every oceanic node counts as down-going, so an ocean-ocean front has
