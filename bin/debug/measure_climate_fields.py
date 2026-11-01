@@ -11,7 +11,8 @@ records, area-weighted by cos(latitude):
   directly; the raw index is kept as `humidity_index` too;
 - mean precipitation over land and ocean (mm/yr) and land's share of all precipitation (%);
 - the same temperature, humidity and precipitation in 15-degree latitude bands, both
-  hemispheres folded together (`bands`);
+  hemispheres folded together (`bands`), with each band's land area share and the area-weighted
+  p10, p50 and p90 of humidity and precipitation over its land and ocean (#741);
 - Köppen group shares of land area (A tropical, B arid, C temperate, D continental, E polar);
 - land fraction and the ice cap -- land under visible glacier ice (>= GLACIER_VISIBLE_DEPTH_M),
   from the hydrology cache -- and ice volume (km^3);
@@ -22,6 +23,12 @@ records, area-weighted by cos(latitude):
 `--noise-salt-offset N` shifts the salts of the drifting noise streams, so a branch run measures
 another draw of the same textures (#575). It has no effect on a backend without those streams.
 It applies after the save loads, so the climate cached at load keeps the unshifted draw.
+
+`--noise-redraw` restores the per-step redraw #575 replaced, keyed on `(seed, round(elapsed_years),
+salt)`, so a backend with drifting noise can measure more draws of the baseline (#741): the literal
+pre-#575 tree has only the one draw. Each texture matches the old draw's distribution. Humidity
+and moisture flux also match its values at offset 0; the mixing texture doesn't, since it used to
+share a generator with the swells.
 
 `--backend` points at the backend to import, so the same script measures both trees:
 
@@ -42,6 +49,7 @@ from replay_lib import load_replay, parse_replay_args, run_replay
 # because an `origin/main` backend from before #522 doesn't define it.
 LEGACY_HUMIDITY_INDEX_G_KG = 12.3
 BAND_EDGES_DEG = np.arange(0.0, 90.1, 15.0)
+BAND_QUANTILES = (0.1, 0.5, 0.9)
 
 
 def _weighted_mean(values: np.ndarray, weights: np.ndarray) -> float | None:
@@ -49,8 +57,18 @@ def _weighted_mean(values: np.ndarray, weights: np.ndarray) -> float | None:
     return None if total <= 0.0 else round(float((values * weights).sum()) / total, 3)
 
 
+def _weighted_quantiles(values: np.ndarray, weights: np.ndarray) -> list[float] | None:
+    """The area-weighted p10, p50 and p90 of `values`, or None for an empty selection."""
+    if values.size == 0:
+        return None
+    order = np.argsort(values)
+    cumulative = np.cumsum(weights[order])
+    return [round(float(q), 3) for q in np.interp(np.array(BAND_QUANTILES) * cumulative[-1], cumulative, values[order])]
+
+
 def _add_arguments(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--noise-salt-offset", type=int, default=0)
+    ap.add_argument("--noise-redraw", action="store_true", help="redraw the noise each step, as before #575")
 
 
 def main() -> None:
@@ -64,6 +82,11 @@ def main() -> None:
         if hasattr(climate, salt):
             setattr(climate, salt, getattr(climate, salt) + args.noise_salt_offset)
     result["noise_salt_offset"] = args.noise_salt_offset
+
+    if args.noise_redraw:
+        climate._drifting_white_noise = lambda seed, salt, elapsed_years, shape: np.random.default_rng(
+            (seed, round(elapsed_years), salt)
+        ).standard_normal(shape)
 
     land_classes = len(biomes.KOPPEN_CODES)
     group_of_biome = np.array([code[0] for code in biomes.KOPPEN_CODES] + [""] * len(biomes.PELAGIC_NAMES))
@@ -107,9 +130,15 @@ def main() -> None:
                 "band": f"{int(lo)}-{int(hi)}",
                 "air_temp_land_c": _weighted_mean(fields.air_temperature_c[bl], weight[bl]),
                 "sst_c": _weighted_mean(fields.ocean_temperature_c[bo], weight[bo]),
+                "land_area_share_pct": round(100.0 * float(weight[bl].sum()) / max(float(weight[land].sum()), 1e-9), 2),
+                "humidity_land_g_kg": _weighted_mean(humidity[bl], weight[bl]),
                 "humidity_ocean_g_kg": _weighted_mean(humidity[bo], weight[bo]),
                 "precip_land_mm": _weighted_mean(precip[bl], weight[bl]),
                 "precip_ocean_mm": _weighted_mean(precip[bo], weight[bo]),
+                "humidity_land_quantiles": _weighted_quantiles(humidity[bl], weight[bl]),
+                "humidity_ocean_quantiles": _weighted_quantiles(humidity[bo], weight[bo]),
+                "precip_land_quantiles": _weighted_quantiles(precip[bl], weight[bl]),
+                "precip_ocean_quantiles": _weighted_quantiles(precip[bo], weight[bo]),
             })
         out["bands"] = bands
         land_biomes = fields.biome_ids[land]
