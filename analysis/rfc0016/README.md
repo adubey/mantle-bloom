@@ -3,9 +3,9 @@
 ## G0 preflight
 
 Status: **in progress; do not start G1.** The owner has bounded G0 and G1 to liquid land water until
-RFC 0015 completes. Closure on that boundary holds with #734, but the river arms predate #734 and
-must rerun on G1's pinned source, and the frozen-precipitation screen hasn't run. Results and the
-earlier interim-account findings are below.
+RFC 0015 completes. On current source that ledger closes, but only window A survives: #736 removed
+window B's event and window C fails the frozen-precipitation screen. G0 needs two replacement
+windows, then a rerun. See [Liquid G0 rerun](#liquid-g0-rerun).
 
 RFC 0016 is accepted in PR #724 and tracked by #723. G0 implementation is tracked by
 [#725](https://github.com/adubey/mantle-bloom/issues/725). The G0 branch is based on
@@ -365,3 +365,53 @@ assumes seawater over any bed below sea level. Whole columns go at once, so melt
 the test would explain the pulses, but that isn't shown, and each basin's disconnection from
 the ocean is inferred from its land classification. C's calving is on ocean nodes, so #552 doesn't
 explain it. Fixing #552 would reduce calving, not the scale mismatch.
+
+## Liquid G0 rerun
+
+Source `50f153ef`, which is simulation-identical to `origin/main` `bf58116f`, and has #734 and #736.
+Same 12 arms, commands and replacement checkpoints as [G0 control replay](#g0-control-replay), with
+the 10% frozen limit registered in PR #743 before this ran. Whole-run values are in
+[`g0-liquid-summary.json`](g0-liquid-summary.json). Replay JSON and per-reach arrays are under
+`g0-50f153ef/` in the private captures; their `SHA256SUMS` has SHA-256
+`e775bcc1bfae904d6561b0828da22d15d21b4151083094ac304bfcf3b70cd438`.
+
+**The river and liquid gates hold.**
+
+| Window | Inventory, central (km³) | Jobson (km³) | Largest reach error (m³) | Liquid residual, worst step | Stranded overflow |
+|---|---:|---:|---:|---:|---:|
+| A | 229.5→251.0 | 460.6→543.7 | 44 | 2.0e-13 | 0 |
+| B | 239.6→260.2 | 454.9→562.4 | 62 | 2.9e-14 | 0 |
+| C | 438.4→467.9 | 719.8→770.5 | 44 | 2.1e-13 | 0 |
+
+The 0.1- and 10-year caps match the central inventory to the reported precision. Jobson raises it
+1.6–2.2×. Neither moves the target lake's supply noticeably: river storage releases about 2e4 m³/yr at
+most, against 3.5e12 m³/yr of rain on B's lake.
+
+**The windows don't hold.** Target-component volumes, km³. Replays before #736 are the #732 runs with
+#734 applied. #736 is the only simulation change between them and this run.
+
+| Window | Checkpoint | Before #736, steps 1–4 | This run, steps 1–4 | Event |
+|---|---:|---|---|---|
+| A | dry | dry, 879,183, dry, 930,760 | dry, 863,389, 783,206, 856,022 | Fills as before, but no longer dries at step 3 |
+| B | 259,257 | 115,361, 246,986, 251,732, 251,451 | 252,737, 257,863, 254,322, 254,560 | **Gone**: no drop and refill |
+| C | 137 | 264,787, 3,200, 372,572, 2,950 | 264,787, 3,201, 372,780, 2,966 | Intact |
+
+Whole-world lake volume still swings widely, for example 1.28 to 3.44 million km³ in B's last two
+steps, so flicker continues. It just isn't these events.
+
+**Frozen-precipitation screen,** limit 10%, summed over steps with a wet anchor:
+
+| Window | Frozen share of catchment precipitation | Worst step | Result |
+|---|---:|---:|---|
+| A | 1.0% | 1.0% | Pass |
+| B | 1.6% | 1.7% | Pass, but its event is gone |
+| C | 18.1% | 22.0% | **Fail** |
+
+C's measure is a lower bound on its uncertainty. No routed supply lands on C's target nodes in any
+step, so its 370,000 km³ swings arrive some other way, probably from a neighbouring basin across a
+shared spill. That isn't traced, and the catchment follows `flow_target` only, so it may miss
+that basin's water. C fails either way.
+
+**G0 conclusion.** River law, reach closure, initial state and liquid ledger pass on this source.
+The windows don't: only A is usable, so G1 needs two replacements, chosen and hashed before any
+treatment under PR #743. Rerun G0 on them.
