@@ -31,6 +31,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
+from scipy.sparse import csr_matrix
 from scipy.spatial import cKDTree
 
 from replay_lib import load_replay, parse_replay_args, run_replay
@@ -74,7 +75,25 @@ def use_jobson_velocity(world, hydrology, plates_mod, line_spacing_rad) -> None:
     hydrology.route_river_reservoirs = route
 
 
-def target_lake(hydro, areas, anchor_points, visible_depth, lake_components) -> dict:
+def upstream_catchment(flow_target, is_ocean, members) -> np.ndarray:
+    """Land nodes whose flow path reaches `members`, the members included. Walks the reversed
+    graph, so a flow cycle can't trap the search."""
+    sources = np.flatnonzero(flow_target >= 0)
+    graph = csr_matrix(
+        (np.ones(len(sources), dtype=bool), (flow_target[sources], sources)),
+        shape=(len(flow_target), len(flow_target)),
+    )
+    reached = np.zeros(len(flow_target), dtype=bool)
+    reached[members] = True
+    frontier = np.asarray(members, dtype=np.int64)
+    while len(frontier):
+        upstream = np.unique(graph[frontier].indices)
+        frontier = upstream[~reached[upstream]]
+        reached[frontier] = True
+    return reached & ~is_ocean
+
+
+def target_lake(hydro, areas, anchor_points, visible_depth, lake_components, precipitation) -> dict:
     """The wet component under the registered anchor, with this step's supply by source. The
     anchor is a location, not a lake identity, so a dry anchor reports no component."""
     _, nearest = cKDTree(hydro.points).query(anchor_points, k=1)
@@ -85,6 +104,10 @@ def target_lake(hydro, areas, anchor_points, visible_depth, lake_components) -> 
     members = next(
         np.asarray(nodes) for nodes in lake_components(wet, hydro.neighbor_idx) if anchor in set(nodes.tolist())
     )
+    # RFC 0016's frozen-precipitation screen: how much of this lake's upstream precipitation
+    # is outside the liquid boundary (#725).
+    catchment = upstream_catchment(np.asarray(hydro.flow_target), np.asarray(hydro.is_ocean), members)
+    liquid_m3, frozen_m3 = precipitation["liquid_m3"], precipitation["frozen_m3"]
     sources = {
         "wet_precip": hydro.lake_external_wet_precip_m3_per_yr,
         "dry_runoff": hydro.lake_external_dry_runoff_m3_per_yr,
@@ -95,6 +118,12 @@ def target_lake(hydro, areas, anchor_points, visible_depth, lake_components) -> 
         "anchor_wet": True,
         "volume_km3": float(np.dot(hydro.lake_depth[members], areas[members])) / 1e9,
         "area_km2": float(areas[members].sum()) / 1e6,
+        "catchment": {
+            "nodes": int(catchment.sum()),
+            "area_km2": float(areas[catchment].sum()) / 1e6,
+            "rain_m3": float(liquid_m3[catchment].sum()),
+            "frozen_m3": float(frozen_m3[catchment].sum()),
+        },
         "supply_m3_per_yr": {name: float(rate[members].sum()) for name, rate in sources.items()},
     }
 
@@ -142,6 +171,15 @@ def main() -> None:
     if args.reach_dir is not None:
         args.reach_dir.mkdir(parents=True, exist_ok=True)
     previous_final_m3 = [None]
+    precipitation = {}
+    original_partition = hydrology.partition_precipitation_m3
+
+    def partition(precipitation_mm, is_frozen, area_m2, years):
+        liquid_m3, frozen_m3 = original_partition(precipitation_mm, is_frozen, area_m2, years)
+        precipitation.update(liquid_m3=liquid_m3, frozen_m3=frozen_m3)
+        return liquid_m3, frozen_m3
+
+    hydrology.partition_precipitation_m3 = partition
 
     def snapshot() -> dict:
         return {"elapsed_myr": world.elapsed_years / 1e6}
@@ -199,7 +237,8 @@ def main() -> None:
             "sea_level_m": world.sea_level_m,
             **glacier_step(hydro, land, hydrology),
             "target": target_lake(
-                hydro, areas, anchors, hydrology.LAKE_MIN_VISIBLE_DEPTH_M, hydrology.lake_components
+                hydro, areas, anchors, hydrology.LAKE_MIN_VISIBLE_DEPTH_M, hydrology.lake_components,
+                precipitation,
             ),
         })
         if args.reach_dir is not None:
