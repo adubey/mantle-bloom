@@ -113,7 +113,9 @@ Three kinds of water/forcing move along `flow_target`:
   `partition_precipitation_m3` splits diagnostic precipitation into liquid and frozen m³ on the
   existing `is_frozen` mask, before any scaled conversion. Frozen water the ice keeps enters one
   whole-world balance; snow melting on bare ground within the step is booked directly as
-  outward. A save without a balance opens from model ice divided by `WATER_TO_ICE`, recorded as
+  outward. The split is by node: all snow on a sea-ice cap or uniform body counts as kept even
+  if part of it melts that step, and that melt then counts as ice loss, so the per-step split is
+  approximate where the balance isn't. A save without a balance opens from model ice divided by `WATER_TO_ICE`, recorded as
   initial state. Each step releases the fraction of opening model ice lost to melt, calving,
   overflow and the depth guard, capped at 1, and books it by destination. With no opening ice
   it releases nothing. Physical and scaled volumes are never subtracted from each other, so the

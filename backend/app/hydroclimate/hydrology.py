@@ -550,7 +550,7 @@ def partition_precipitation_m3(
 ) -> tuple[np.ndarray, np.ndarray]:
     """(liquid, frozen) physical volume per node over `years`, RFC 0016 G0's partition of the
     diagnostic precipitation on the existing mask, before any scaled glacier conversion (#732)."""
-    volume_m3 = precipitation_mm / 1000.0 * area_m2 * years
+    volume_m3 = np.clip(precipitation_mm, 0.0, None) / 1000.0 * area_m2 * years
     return np.where(is_frozen, 0.0, volume_m3), np.where(is_frozen, volume_m3, 0.0)
 
 
@@ -1060,8 +1060,9 @@ def _partition_precipitation_sources(
 # (GLACIER_ACCUMULATION_RATE turns mm/yr over Myr into metres): 1/50,000 of real. Rivers settling
 # at frozen nodes (#355) and freezing lakes (#503) used to convert at this rate, deleting nearly
 # all of their water. RFC 0014 D2(b) (#539) removed both: liquid water now pools as lakes at any
-# temperature. Nothing in the model reads this any more; `bin/debug/measure_ice_sheet.py` still
-# scales it, and RFC 0015 D5 removes it with that script's use.
+# temperature. No water converts at this rate any more: only RFC 0016's interim glacier-water
+# account reads it, for its opening balance (#732), and `bin/debug/measure_ice_sheet.py` still
+# scales it. RFC 0015 D5 removes it with both.
 WATER_TO_ICE = GLACIER_ACCUMULATION_RATE / 1000.0
 
 

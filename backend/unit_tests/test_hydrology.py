@@ -1738,6 +1738,11 @@ def test_precipitation_partition_sums_to_diagnostic_precipitation_per_node():
     np.testing.assert_allclose(liquid + frozen, precipitation / 1000.0 * area * 1000.0, rtol=1e-15)
 
 
+def test_precipitation_partition_clips_negative_precipitation_like_the_liquid_sources():
+    liquid, frozen = hydrology.partition_precipitation_m3(np.array([-5.0, -5.0]), np.array([True, False]), np.ones(2), 1.0)
+    assert np.all(frozen == 0.0) and np.all(liquid == 0.0)
+
+
 def _glacier_ledger_run(precipitation, temperature, amplitude, steps=3, glacier_depth=None):
     theta = 0.002 * np.arange(12)
     elevation = 500.0 - 60.0 * np.arange(12)

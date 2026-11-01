@@ -6,8 +6,8 @@ Status: **blocked; do not start G1.** The persistent river inventory and all rea
 close, and the control reproduces every registered event, but the rain-only land budget closes
 only by naming 3.2–5.8% of A and B's input as stranded lake overflow, a defect in the control
 (see [G0 control replay](#g0-control-replay)). The interim glacier account closes the full ledger
-only by construction, and its balance is too large for its release to mean much, which needs an
-owner decision (see [Interim glacier account](#interim-glacier-account-732)).
+only by construction, and its balance is too large for its release to support G0's interpretation,
+so G0 stays blocked until RFC 0015 (see [Interim glacier account](#interim-glacier-account-732)).
 
 RFC 0016 is accepted in PR #724 and tracked by #723. G0 implementation is tracked by
 [#725](https://github.com/adubey/mantle-bloom/issues/725). The G0 branch is based on
@@ -326,12 +326,10 @@ Steady ice would balance, as designed. These windows aren't steady: they lose 1.
 in 400 kyr while retained snow adds 0.1–0.5%.
 
 **What this means for G0.** The bookkeeping criterion holds by construction, and the release term
-is larger than `P_diag` in 7 of the 12 mature-window steps. RFC 0016's falsification criteria
-say to stop G0 if that release is too large to support the stated interpretation. That judgement
-is the owner's, so this report doesn't call G0 passed. Starting the balance at zero and booking
-only interval flows, the issue's other option for its fourth question, would bound each step's
-change by that step's input, but it needs an RFC revision, and it wouldn't explain the calving
-pulses themselves.
+is larger than `P_diag` in 7 of the 12 mature-window steps. The owner's decision is recorded in
+[PR #739](https://github.com/adubey/mantle-bloom/pull/739): the account lands as inert bookkeeping
+because its identity and control checks pass, the oversized release is a failed G0 interpretation,
+and G0 stays blocked, with G1 unavailable, until RFC 0015 resolves the physical glacier-water path.
 
 **A side observation on #734.** Against this branch, its whole-world lake volume differs by up to
 84,288 km³ in A and 238,357 km³ in B over the four steps, and glacier volume by up to 77,338 km³ in
