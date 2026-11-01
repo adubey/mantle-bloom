@@ -409,8 +409,8 @@ Each `Plate` (`backend/app/plates.py`) is:
   central data structure; see
   [simulation-model/foundations.md#plate-local-frames](simulation-model/foundations.md#plate-local-frames). Every
   per-node field in `surface_fields.SURFACE_FIELDS` -- `elevation`, crustal and
-  mantle-lithosphere thickness, `channel_depth`/`channel_width`/`lake_depth`/`silt_depth`/
-  `glacier_depth` (persistent, land-only -- see simulation-model/hydrology.md#hydrology and
+  mantle-lithosphere thickness, `channel_depth`/`channel_width`/`lake_depth`/`river_water_m`/
+  `silt_depth`/`glacier_depth` (persistent, land-only -- see simulation-model/hydrology.md#hydrology and
   simulation-model/hydrology.md#glaciation), `is_volcano`/`volcano_active_years_remaining`
   (persistent -- see simulation-model/tectonics.md#volcanism) and the provenance fields -- is one
   parallel array over the plate's cells, so it rotates with the plate for free, no advection
@@ -626,3 +626,5 @@ See [simulation-model.md](simulation-model.md) for what each of these actually c
 why.
 
 Lake ice (`lake_ice_m`, water equivalent) is a persistent extensive surface field. `hydroclimate/hydrology.py` owns its phase transfers and combined lake liquid-plus-ice budget; `hydroclimate/erosion.py` commits the returned state alongside `lake_depth`; `hydroclimate/eustasy.py` includes the reservoir in trapped surface-water volume.
+
+River water (`river_water_m`, water equivalent) is a persistent extensive surface field. `hydroclimate/hydrology.py` advances it with per-reach linear reservoirs, one pass for runoff before the lake solve and one for exported overflow after it, and reports river and rain-only land closure; `hydroclimate/erosion.py` commits the returned state with the other surface fields; `hydroclimate/eustasy.py` includes it in trapped surface-water volume.

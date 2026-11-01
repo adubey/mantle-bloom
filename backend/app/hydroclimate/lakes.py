@@ -226,6 +226,8 @@ class LakeClimate:
     dry_runoff_m3_per_yr: np.ndarray | None = None
     meltwater_m3_per_yr: np.ndarray | None = None
     sublimation_m_per_yr: np.ndarray | None = None
+    # Water released from the prior reach inventory (#725), distinct from new runoff/melt.
+    river_storage_m3_per_yr: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
@@ -246,6 +248,7 @@ class LakeStepLedger:
     ice_storage_change_m3: float = 0.0
     freezing_m3: float = 0.0
     melting_m3: float = 0.0
+    river_storage_m3: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -423,6 +426,7 @@ class _PrognosticAccounting:
     wet_precip_total: float
     dry_runoff_total: float
     meltwater_total: float
+    river_storage_total: float
     external_supply_at_leaf: np.ndarray
     final_spilling_ids: set[int]
     overflow_by_outlet: np.ndarray
@@ -453,7 +457,7 @@ class _PrognosticAccounting:
 
 def _new_prognostic_accounting(leaf_count: int, node_count: int, diagnostic_trace: bool):
     return _PrognosticAccounting(
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, np.zeros(leaf_count), set(),
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, np.zeros(leaf_count), set(),
         np.zeros(node_count), {},
         trace_external_by_node=np.zeros(node_count) if diagnostic_trace else None,
         trace_wet_precip_by_node=np.zeros(node_count) if diagnostic_trace else None,
@@ -827,6 +831,7 @@ def _advance_prognostic_body(
     accounting.wet_precip_total += _source_volume(climate.wet_precip_m3_per_yr, members, dt_step)
     accounting.dry_runoff_total += _source_volume(climate.dry_runoff_m3_per_yr, members, dt_step)
     accounting.meltwater_total += _source_volume(climate.meltwater_m3_per_yr, members, dt_step)
+    accounting.river_storage_total += _source_volume(climate.river_storage_m3_per_yr, members, dt_step)
     body_leafs = body_leaf_ids[id(body)]
     if body_leafs and external_rate > 0.0 and dt_step > 0.0:
         total_rate = float(rates[members].sum())
@@ -1220,6 +1225,7 @@ def solve_lakes_prognostic(
         wet_precip_m3=accounting.wet_precip_total,
         dry_runoff_m3=accounting.dry_runoff_total,
         meltwater_m3=accounting.meltwater_total,
+        river_storage_m3=accounting.river_storage_total,
     )
     _warn_if_depth_caps_bound(accounting)
     trace = _build_solve_trace(accounting, diagnostic_trace)
