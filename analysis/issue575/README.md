@@ -113,9 +113,9 @@ rebase check and the ice-area result, and misread the step gap. The numbers in i
 | Item | Status |
 |---|---|
 | Same-state renders agree | Met, and tested through `compute_climate` |
-| Banding statistics unchanged | **Not shown.** No shift detected in land means, but a band moves; see below |
+| Banding statistics unchanged | **Not shown.** No shift detected in land means, but a band moves; see below. Moved to #741 |
 | Step-apart unit test | Met |
-| Precipitation and land-ice area, no regression | **Not cleared.** Ice area is lower; owner's decision |
+| Precipitation and land-ice area, no regression | Met by the owner's decision (2026-11-01); see below |
 | Arm (m3) on seed 997271774 passes G0 | Met at the 20% limit, to 14 Myr on draw 1; G0 isn't met on every save |
 
 ### Land climate: no shift detected, which isn't the same as none
@@ -148,7 +148,7 @@ Land precipitation by latitude, same runs:
 The 15–30° band gains on all four draws by more than 2%, which is rule 1's "real bias" condition,
 though the rule was written for global land means. It's a dry band, and its base is one run.
 
-### Land under visible ice: lower on every draw, not cleared
+### Land under visible ice: lower on every draw, not a regression (owner)
 
 Seed 997271774 ends at 5.18%, 5.28%, 5.19% and 5.34%, against 5.60% for `origin/main`.
 
@@ -162,7 +162,7 @@ Seed 997271774 ends at 5.18%, 5.28%, 5.19% and 5.34%, against 5.60% for `origin/
 - The preregistered prediction that ice-area spread falls holds on seed 997271774 (0.56 to 0.25–0.36
   points) and reverses on seed 649658380 (0.15 to 0.27 points).
 
-Whether this is a regression is the owner's call. The cause isn't known.
+**Decision (owner, 2026-11-01):** this isn't a regression. The cause isn't known.
 
 ### Arm (m3): passes both saves at 20%
 
