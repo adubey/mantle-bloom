@@ -200,13 +200,16 @@ all of the 3.33e17 m³ residual is overflow settling on land, against 5.88e17 m�
 runoff pass loses none of its supply. 2.60e17 m³ of it lands on one dry basin node at −4,721 m,
 on the cycle `8606→8605→8604→8648→8690→8650→8606`, which closes through leaf sink 8690's own spill
 edge. `route_downstream` keeps a cycle's remainder like a sink, and nothing reads it. This
-predates G0: `f4438e1` routes the same water and drops it the same way, unseen, because its lake
-ledger closes before this routing and its old report of ocean overflow is a separate number.
+predates G0: `f4438e1` routes the same water and drops it the same way, because its lake ledger
+closes before this routing. [#696's report](../issue696/README.md#where-exported-water-goes)
+measured the same leak as 22.5% of external supply, and this ledger measures it against total
+input.
 
-This is design principle 4's failure: a volume leaves one reservoir and reaches none. Rerouting
-it would send supply to lakes that don't receive it today and would change the registered events,
-so it is not a G0 control change. It should be decided as its own control fix, and A/B/C
-reproduced again afterwards.
+This is design principle 6's failure: a volume leaves one reservoir and reaches none. Rerouting
+it sends supply to lakes that don't receive it today and may move the registered events, so it is
+not a G0 control change. [#731](https://github.com/adubey/mantle-bloom/issues/731) owns the fix and
+its guards, and [#732](https://github.com/adubey/mantle-bloom/issues/732) proposes an interim
+frozen-water account for the full ledger, subject to an RFC 0016 revision.
 
 ### G0 status
 
