@@ -25,7 +25,7 @@ Withdrawn RFCs are archived in [abandoned/](abandoned/).
 | [0011](https://github.com/adubey/mantle-bloom/blob/claude/rfc-0011-contact-strength/rfc/0011-contact-strength.md) | Collisions are held by lithospheric strength | Draft |
 | [0012](0012-physics-first-simulation.md) | Physics-first simulation | Implemented |
 | [0014](abandoned/0014-lake-water-volume-and-freezing.md) | Lakes conserve their water: in-step fill-spill-merge, seasonal freezing and water-surface temperature (abandoned) | Withdrawn (owner decision; original G7 criterion unmet, G8 incomplete) |
-| [0015](0015-frozen-water-in-physical-units.md) | Frozen water in physical units: glacier mass balance, ice flow and meltwater, freezing lakes and rivers, ocean ice and polar snow | Accepted |
+| [0015](0015-frozen-water-in-physical-units.md) | Frozen water in physical units: glacier mass balance, ice flow and meltwater, freezing lakes and rivers, ocean ice and polar snow | Accepted (revised 2026-10-31 after G0's drifting-noise runs) |
 | [0016](0016-effective-land-water-store.md) | Effective land-water storage and upstream groundwater feedback | Accepted (revised 2026-11-01 to permit the interim ledger implementation while G0 remains blocked; revised 2026-10-31 after G0 full-precipitation ledger blocked) |
 
 RFCs 0001–0007 come from one investigation: a 19.2 Gyr run (seed 456862899) that lost

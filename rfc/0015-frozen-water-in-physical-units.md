@@ -1,8 +1,17 @@
 # RFC 0015: Frozen water in physical units: glacier mass balance, ice flow and meltwater, freezing lakes and rivers, ocean ice and polar snow
 
-- **Status:** Accepted (2026-10-23)
+- **Status:** Accepted (revised 2026-10-31 after G0's drifting-noise runs)
 - **Date:** 2026-10-23
 - **Related:** #544 (tracking); #368 (evidence), #353 and #359 (ice-sheet model, decision B), #355 (water units), #503 and #504 (lake freezing at `WATER_TO_ICE`), #297 (balanced lakes), RFC [0014](abandoned/0014-lake-water-volume-and-freezing.md) (lake water volume and seasonal lake ice; its D2(b) and D2(c) are prerequisites here), RFC [0012](0012-physics-first-simulation.md) (physics-first simulation); superseded on acceptance: #197, #203, #358 item 4, #313 Stage E (see "Open issues this RFC supersedes"); design principles 3, 5, 6 and 8
+
+## Revision note
+
+- **2026-10-31 — proposed by [PR #735](https://github.com/adubey/mantle-bloom/pull/735) after G0's drifting-noise runs on #575.** The owner raised G0's step-gap limit.
+  - **Old criterion:** on G0's pass rule (saves with and without ice ages) and its falsification criterion, a step gap, |V(0.25 Myr steps) − V(1 Myr steps)| / V at the run's end, below 10%.
+  - **New criterion:** the same step gap below 20%. The swing limit stays at 25%. "Step robustness" in the acceptance criteria stays at 10%.
+  - **Reason:** with drifting climate noise, arm (m3) on seed 997271774 has step gaps of 12.2%, 17.0% and 10.6% over three noise draws, against 3.2% with the per-step redraw, while its swing passes on every draw. On seed 649658380 the gaps are 5.1%, 3.8% and 4.5%, against 0.3%. Why the gap grows isn't established.
+  - **Judgement:** 20% is the owner's decision, set after seeing these results, not derived from them.
+  - **Impact:** arm (m3) with drifting noise passes both saves without ice ages. The last (m3) run on the ice-age save failed the forcing conditions and it hasn't been rerun, so G0's every-save rule still isn't met. Impact table: [PR #735](https://github.com/adubey/mantle-bloom/pull/735).
 
 ## Problem
 
@@ -487,8 +496,9 @@ within today's `ICE_ROOT_TOLERANCE_M`.) `H/|b|` is reported alongside.
 - During a body's substeps, the other bodies stay at their endpoints, and sea level and
   deflection are updated each substep if G0 kept their coupling.
 
-**Timestep robustness:** rates are annual, and the endpoint doesn't depend on Δt for fast
-bodies. Substepped bodies integrate along their path.
+**Timestep robustness:** rates are annual, and the endpoint shouldn't depend on Δt for fast
+bodies. G0's drifting-noise runs show step gaps of up to 17% on the fast-ice save, unexplained so
+far. Substepped bodies integrate along their path.
 
 ### D3. Glacial erosion
 
@@ -792,15 +802,15 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
   **Metrics,** after the first 2 Myr: the *swing*, the largest step-to-step change in global
   ice volume, |ΔV| / V; and the *step gap*, |V(0.25 Myr steps) − V(1 Myr steps)| / V at the
   run's end. On saves without ice ages, an arm *passes* when its swing is below 25% and its
-  step gap below 10%. On the ice-age save, whose swing is forced, an arm passes when its step
-  gap is below 10% and its ice volume follows the forcing:
+  step gap below 20%. On the ice-age save, whose swing is forced, an arm passes when its step
+  gap is below 20% and its ice volume follows the forcing:
   - the second cycle's range of V exceeds the first's by less than 25% (no growing
     oscillation), measured on the 0.25 Myr run;
   - V's lag behind the intensity curve, at its maximum, is at most one step of the longest
     arm (1 Myr).
 
   An arm passes the gate only if it passes on every diagnosis save. The forcing-following
-  condition is diagnosis-only; acceptance carries the step gap and the period rule.
+  condition is diagnosis-only; acceptance carries its own step limit (10%, on volume and area) and the period rule.
 
   **Outcome:**
   - An input fix is adopted if its own arm passes where (a) fails, **or** if a combined arm
@@ -840,6 +850,18 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
   - **The ice-age save runs away under the march at both step sizes** (gap 9.2%) to
     600–800 M km³, with sea level near −2,800 m, about 15× the LGM excess. That is for G4 and
     the ice-age forcing.
+  - **Step-gap limit raised from 10% to 20% (owner, 2026-10-31, #575).** With the climate's
+    noise drifting instead of redrawn each step, arm (m3), the march of alternative D, on seed 997271774 has swings of at
+    most 19.2% and step gaps of 12.2%, 17.0% and 10.6% over three noise draws (limit 25% and
+    20%; the 10% limit fails on all three). On seed 649658380, over the same three draws, it
+    has swings of at most 6.0% and step gaps of 5.1%, 3.8% and 4.5%. The ice-age save
+    (seed 374464662) hasn't been rerun with drifting noise. The last (m3) run on it failed the
+    forcing conditions (cycle growth 3.07 against 1.25), and that problem is for G4 and the
+    ice-age forcing, so the gate isn't passed on every diagnosis save. The raised limit applies
+    to G0's pass rule and its falsification criterion only. "Step robustness" stays at 10%, and
+    (m3) exceeds 10% on every draw of seed 997271774, so an arm can pass G0 and fail acceptance;
+    a held-out failure of that kind goes to the owner, not to a rerun. Runs and their report are
+    on [PR #736](https://github.com/adubey/mantle-bloom/pull/736).
   - The diagnosed sliding speeds aren't physical: the fastest thin margin nodes slide ~7 km/yr.
   - D2's revision (a march, possibly with shallow-ice flow) and the climate's per-step noise
     go to the owner and `rfc-authoring`.
@@ -1186,7 +1208,7 @@ The thresholds below were confirmed by the project owner on 2026-10-23.
 
 - **G0's combined arms still swing:** with every input fix applied and either fixed root rule
   ((g), (i1) and (i2)), physical rates still give step-to-step swings above 25% or a 0.25 vs
-  1 Myr gap above 10%. The instability isn't from lagged inputs or root choice. *Revise:*
+  1 Myr gap above 20%. The instability isn't from lagged inputs or root choice. *Revise:*
   substep every body (alternative D per body), or find the solver's own fault, before D2.
 - **G1 fails broadly:** more than 20% of ice volume has τ > 0.1 Δt. The endpoint premise is
   wrong for this model's ice. *Revise:* make substepping the default and the endpoint an
