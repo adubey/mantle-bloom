@@ -65,6 +65,29 @@ acting through stored state (vegetation, lakes, rivers).
 3. Arm (m3): the change passes G0 only if the step gap is below 10% on all three draws. If it
    fails on some draws, the gap depends on the draw, and that goes to the owner with the numbers.
 
+## Preregistration: does the result hold on the merge base, and does draw 1 recover?
+
+Written after review of the results below, before these runs. The review found that no reported
+climate run used this PR's base, which adds persistent river water, and that draw 1 on seed
+997271774 ends on a 19.2% drop with no recovery seen.
+
+**Runs,** seed 997271774 at 87.4 Myr, one at a time:
+
+| Run | Tree | Horizon |
+|---|---|---|
+| Climate A/B | `origin/main` at the PR's base, then the branch | 10 Myr at 0.25 Myr steps |
+| Arm (m3), draw 1 | G0 prototype with this PR's `climate.py` | 14 Myr at 0.25 and 1 Myr steps |
+
+**Decision rules:**
+
+1. Base: the land humidity and precipitation gaps stay within 1 point of offset 0's +6.07% and
+   +5.25%, and end-of-run ice area keeps its sign against `origin/main`. Otherwise the earlier
+   climate tables don't carry over to this base, and the draws are rerun.
+2. Draw 1: the first 10 Myr repeat the earlier run exactly, or the comparison is void. If every
+   step to 14 Myr stays under the 25% swing limit and the end gap under 20%, it passes at that
+   horizon. If either limit is broken, arm (m3) fails on this draw and that goes to the owner.
+3. Arm (m3) stays on the G0 prototype's older base, so this measures noise, not river water.
+
 ## Results
 
 Baseline `d106194`. Branch `0377e4e` for the first runs, then the same change rebased onto
