@@ -10,8 +10,9 @@ With ice ages on, it also reports, on the 0.25 Myr run:
 - the second forcing cycle's range of V over the first's (pass < 1.25);
 - V's lag behind the intensity curve at its maximum, per cycle (pass <= 1 Myr).
 
-Without ice ages an arm passes at swing < 25% (both runs) and step gap < 10%; with ice ages,
-at step gap < 10% and the two forcing conditions.
+Without ice ages an arm passes at swing < 25% (both runs) and step gap < 20%; with ice ages,
+at step gap < 20% and the two forcing conditions. Scores recorded before 2026-10-31 used 10%;
+no verdict in `analysis/issue554/g0-scores.json` changes at 20%.
 
     python bin/debug/score_g0.py --fine <g0-a-0.25.json> --coarse <g0-a-1.json> [--out score.json]
 """
@@ -23,7 +24,7 @@ import json
 from pathlib import Path
 
 SWING_LIMIT = 0.25
-GAP_LIMIT = 0.10
+GAP_LIMIT = 0.20
 CYCLE_GROWTH_LIMIT = 1.25
 LAG_LIMIT_MYR = 1.0
 

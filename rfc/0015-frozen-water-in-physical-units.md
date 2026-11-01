@@ -10,7 +10,8 @@
   - **Old criterion:** on G0's pass rule (saves with and without ice ages) and its falsification criterion, a step gap, |V(0.25 Myr steps) − V(1 Myr steps)| / V at the run's end, below 10%.
   - **New criterion:** the same step gap below 20%. The swing limit stays at 25%. "Step robustness" in the acceptance criteria stays at 10%.
   - **Reason:** with drifting climate noise, arm (m3) on seed 997271774 has step gaps of 12.2%, 17.0% and 10.6% over three noise draws, against 3.2% with the per-step redraw, while its swing passes on every draw. On seed 649658380 the gaps are 5.1%, 3.8% and 4.5%, against 0.3%. Why the gap grows isn't established.
-  - **Impact:** arm (m3) with drifting noise passes both saves without ice ages. The ice-age save wasn't rerun, so G0's every-save rule still isn't met; see the G0 gate result.
+  - **Judgement:** 20% is the owner's decision, set after seeing these results, not derived from them.
+  - **Impact:** arm (m3) with drifting noise passes both saves without ice ages. The last (m3) run on the ice-age save failed the forcing conditions and it hasn't been rerun, so G0's every-save rule still isn't met. Impact table: [PR #735](https://github.com/adubey/mantle-bloom/pull/735).
 
 ## Problem
 
@@ -495,8 +496,9 @@ within today's `ICE_ROOT_TOLERANCE_M`.) `H/|b|` is reported alongside.
 - During a body's substeps, the other bodies stay at their endpoints, and sea level and
   deflection are updated each substep if G0 kept their coupling.
 
-**Timestep robustness:** rates are annual, and the endpoint doesn't depend on Δt for fast
-bodies. Substepped bodies integrate along their path.
+**Timestep robustness:** rates are annual, and the endpoint shouldn't depend on Δt for fast
+bodies. G0's drifting-noise runs show step gaps of up to 17% on the fast-ice save, unexplained so
+far. Substepped bodies integrate along their path.
 
 ### D3. Glacial erosion
 
@@ -808,7 +810,7 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
     arm (1 Myr).
 
   An arm passes the gate only if it passes on every diagnosis save. The forcing-following
-  condition is diagnosis-only; acceptance carries the step gap and the period rule.
+  condition is diagnosis-only; acceptance carries its own step limit (10%, on volume and area) and the period rule.
 
   **Outcome:**
   - An input fix is adopted if its own arm passes where (a) fails, **or** if a combined arm
@@ -849,14 +851,17 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
     600–800 M km³, with sea level near −2,800 m, about 15× the LGM excess. That is for G4 and
     the ice-age forcing.
   - **Step-gap limit raised from 10% to 20% (owner, 2026-10-31, #575).** With the climate's
-    noise drifting instead of redrawn each step, arm (m3) on seed 997271774 has swings of at
+    noise drifting instead of redrawn each step, arm (m3), the march of alternative D, on seed 997271774 has swings of at
     most 19.2% and step gaps of 12.2%, 17.0% and 10.6% over three noise draws (limit 25% and
     20%; the 10% limit fails on all three). On seed 649658380, over the same three draws, it
     has swings of at most 6.0% and step gaps of 5.1%, 3.8% and 4.5%. The ice-age save
-    (seed 374464662) hasn't been rerun with drifting noise, and its runaway stays with G4, so
-    the gate isn't passed on every diagnosis save. The raised limit
-    applies to G0's pass rule and its falsification criterion only, not to "Step robustness".
-    Runs and their report are on [#575](https://github.com/adubey/mantle-bloom/issues/575).
+    (seed 374464662) hasn't been rerun with drifting noise. The last (m3) run on it failed the
+    forcing conditions (cycle growth 3.07 against 1.25), and that problem is for G4 and the
+    ice-age forcing, so the gate isn't passed on every diagnosis save. The raised limit applies
+    to G0's pass rule and its falsification criterion only. "Step robustness" stays at 10%, and
+    (m3) exceeds 10% on every draw of seed 997271774, so an arm can pass G0 and fail acceptance;
+    a held-out failure of that kind goes to the owner, not to a rerun. Runs and their report are
+    on [PR #736](https://github.com/adubey/mantle-bloom/pull/736).
   - The diagnosed sliding speeds aren't physical: the fastest thin margin nodes slide ~7 km/yr.
   - D2's revision (a march, possibly with shallow-ice flow) and the climate's per-step noise
     go to the owner and `rfc-authoring`.
