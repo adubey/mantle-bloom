@@ -2,12 +2,10 @@
 
 ## G0 preflight
 
-Status: **blocked; do not start G1.** The persistent river inventory and all reach transfers
-close, and the control reproduces every registered event, but the rain-only land budget closes
-only by naming 3.2–5.8% of A and B's input as stranded lake overflow, a control defect that #731
-has since fixed (see [G0 control replay](#g0-control-replay)). The interim glacier account closes the full ledger
-only by construction, and its balance is too large for its release to support G0's interpretation,
-so G0 stays blocked until RFC 0015 (see [Interim glacier account](#interim-glacier-account-732)).
+Status: **in progress; do not start G1.** The owner has bounded G0 and G1 to liquid land water until
+RFC 0015 completes. Closure on that boundary holds with #734, but the river arms predate #734 and
+must rerun on G1's pinned source, and the frozen-precipitation screen hasn't run. Results and the
+earlier interim-account findings are below.
 
 RFC 0016 is accepted in PR #724 and tracked by #723. G0 implementation is tracked by
 [#725](https://github.com/adubey/mantle-bloom/issues/725). The G0 branch is based on
@@ -334,3 +332,36 @@ and G0 stays blocked, with G1 unavailable, until RFC 0015 resolves the physical 
 **A side observation on #734.** Against this branch, its whole-world lake volume differs by up to
 84,288 km³ in A and 238,357 km³ in B over the four steps, and glacier volume by up to 77,338 km³ in
 B. The target events hold, as #734 reports. G0's rerun on the merged control should record this.
+
+## Why the account releases so much
+
+Asked why release can reach 7.4× input in a balanced ledger. `bin/debug/measure_glacier_release.py`
+replays A, B and C on `bf58116f` with the raw `IceLedger`. That commit includes #736's climate noise, so
+per-step calving differs from the table above; C's 2.98e19 pulse no longer appears.
+
+**The ledger is correct.** Window A's first step: opening 3.793e21, plus 1.2e18 retained, minus
+6.48e19 released, closes at 3.730e21 m³. Release came from opening stock, not that step's snow.
+
+**The stock is on the wrong scale.** Accumulation is scaled to 1/50,000 of real, but stock isn't: sea
+level counts A's 7.6e16 m³ of model ice at face value. So the conversion that fits flows gives
+about 2,900 oceans of stock, and leaving stock alone makes physical snowfall dwarf any release. No
+single conversion fits both. This is what RFC 0015 replaces.
+
+**Model ice is really out of balance.** The account's release fraction copies this ratio.
+
+| Window | Loss / accumulation, by step | Melt only / accumulation |
+|---|---:|---:|
+| A | 54.8, 9.2, 25.1, 10.8 | 3.4–4.5 |
+| B | 20.1, 5.2, 7.4, 11.5 | 3.0–3.8 |
+| C | 2.9, 2.5, 2.1, 3.7 | 2.1–3.0 |
+
+The cause of the melt imbalance is unknown. The ice-age cycle isn't it: these saves already have the
+cycle off, and a rerun that keeps the save's setting is identical.
+
+**Calving pulses in A and B look like #552.** Stray ice at step start is the largest branch in most
+A and B steps, and in those steps most of the ungrounded ice sits on land nodes (78% in A's first
+step): columns about 4 km thick, on beds near −4,500 m, with sea level near −740 m. `is_grounded`
+assumes seawater over any bed below sea level. Whole columns go at once, so melt tipping one past
+the test would explain the pulses, but that isn't shown, and each basin's disconnection from
+the ocean is inferred from its land classification. C's calving is on ocean nodes, so #552 doesn't
+explain it. Fixing #552 would reduce calving, not the scale mismatch.
