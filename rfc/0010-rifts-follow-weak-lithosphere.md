@@ -18,8 +18,13 @@
   where they occur, start the rifting process there, and route it around cratons.
 
   The evidence agrees with that change. In the [corrected controlled rerun](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6550450178),
-  all 28 slab histories passed accounting but none split: the outcome rested on an uncalibrated
-  axial drag, and the strongest case failed 50.5% of the plate into 296 pieces. This is the
+  all 28 slab histories passed accounting and none split within 20 Myr: the outcome rested on an
+  uncalibrated axial drag, and the strongest case failed 50.5% of the plate into 296 pieces. The
+  owner kept this work running in parallel. A [100 Myr continuation](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6554714055)
+  with persistent failed links produced a second connected piece of 17.9% at 80 Myr, in the
+  zero-drag upper-bound case on a plate with no cratons, with 413 other new pieces, so it does not
+  pass the two-daughter rule. It is a candidate graph separation, not a demonstrated moving
+  plate. The revision stands because detected rifts do not depend on resolving that mechanism. This is the
   outcome the falsification criteria below anticipated under "no defensible local loading field":
   revise in favor of a clearly labeled phenomenological rift model. The owner then set three
   decisions: a detected setting at minimum weakens the plate and leaves weakened rock; a plume
@@ -250,8 +255,11 @@ craton [[Koptev et al., 2015]](#ref-koptev2015).
 
 **Alternatives.**
 
-1. **Keep the mechanics route (rejected).** It remains unresolved after the Gate 3b work, and every
-   candidate depended on loads and damage the model cannot constrain.
+1. **Rely on the mechanics route (not selected for production).** It continues in parallel as
+   offline evidence on #699, and its best case now shows a candidate separation. But that case needs
+   the zero-drag upper bound and 80 Myr, leaves hundreds of fragments, and has not met a craton.
+   Every candidate still depends on loads and damage the model cannot constrain, and its shell
+   solves are not a per-step production cost.
 2. **Min-cut near the flow line (already rejected, #480).** Its failure came from the anchor: a
    1,000 km corridor around the flow's great circle, plus that cut's pole and residual gates. Only
    30 of 78 admitted routes were line-clear.
@@ -441,7 +449,7 @@ cells in a step, and a step longer than a rift's life still delivers the same ce
 | `RIFT_RETRY_MYR` | 50 | Design choice | Craton loss and reactivation, sensitivity 20–100 |
 | `PLUME_PUSH_RATE` | 5 cm/yr | Design choice, below the native flow's 7.8 cm/yr p95 on one world | Daughter divergence after active rifts, sensitivity 2–10 |
 | `RIFT_ONSET_MYR` | 2 | Design choice; matches `SPLIT_MIN_AGE_YEARS` | Plate count, sensitivity 1–5 |
-| `RIFT_PROPAGATION_KM_PER_MYR` | 100 | Design choice: a 3,000 km route in 15 Myr each arm, inside the 10–30 Myr bracket | Rift duration, sensitivity 50–200 |
+| `RIFT_PROPAGATION_KM_PER_MYR` | 100 | Design choice: a 3,000 km route in 15 Myr each arm, inside the 10–30 Myr bracket | Rift duration, sensitivity 25–200 |
 | `RIFT_LAPSE_MYR` | 5 | Design choice | Failed share of rifts |
 | `RIFT_MIN_RATE` | 1 cm/yr | Matches `TRANSFORM_RATE_THRESHOLD` | Fixed |
 | `RIFT_MIN_FRONT_KM` | 300 | Design choice | Census, sensitivity 200–500 |
@@ -527,7 +535,9 @@ Implemented:
 
 **Slab prototype.** The evolving-slab code in PRs #726 and #727 is not used here and stays out of
 production, kept as evidence on `claude/issue-699-evidence-corrected-slabs`. A later revision may
-draw on it, for example to scale the passive signal by slab pull.
+draw on it, for example to scale the passive signal by slab pull. The parallel force-and-damage
+work on #699 stays offline evidence. If it validates a mechanism, that would be a new revision of
+this design, not a blocker for it.
 
 **The earlier design below** stays as the record of what was tried. It does not constrain
 implementation.
@@ -951,7 +961,12 @@ to the force-and-damage design and are retired with it.
 - **One rift, two arms.** There are no independent segments, triple junctions or competing rifts on
   a plate. Plume rifts often branch in three, so Afar-style junctions will not appear.
 - **One growth rate.** Every setting grows at the same speed, chosen to fit the 10–30 Myr bracket,
-  not measured.
+  not measured. The parallel slab run took 80 Myr to separate under a prescribed load, which is not
+  calibration but is a reason not to assume rifts are quick, so the sensitivity range is wide.
+- **Fragments are not plates.** A disconnected patch of damage may be weak rock or a microplate, and
+  only a breakup makes a plate. In the parallel run, the large piece appeared as links broke between
+  already-damaged cells, with no new cell failing, which supports weakening that persists and
+  accumulates. It does not show earthquakes matter: the piece appeared with triggering off.
 - **Cratons usually hold, but not always.** Edges, weak cratons and eroded keels can give way, which
   is a tendency written as hard cell rules. Until the keel follow-up ships, craton strength comes
   from crust alone and cratons break only at edges and where weak.
