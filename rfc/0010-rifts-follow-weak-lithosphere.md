@@ -266,20 +266,31 @@ has plumes. See [the analysis](../analysis/rfc0010/README.md#rift-settings-and-r
 **Lifecycle.** A rift is a persistent event on `World`, in five stages.
 
 1. **Detect.** Each step, each plate's detectors report candidate sites: a setting, an extension
-   direction and a site cell. A site must persist for `RIFT_ONSET_MYR` on a time-based clock, so
-   its start does not depend on step length.
-2. **Route.** At onset, grow two arms from the site. The route is stored as cell keys, so it
-   moves with the plate. There is no random success draw: conditions met means a rift starts, and
-   the minimum outcome below always applies.
+   direction and a site cell. The onset clock runs per plate and setting for `RIFT_ONSET_MYR`, so
+   its start does not depend on step length. A site alone can't be tracked: passive sites move
+   between steps because the flow clustering is recomputed. Passive also needs a persistence test
+   of its own, because `maybe_split_plate` relaxes its gates to zero on very large plates, which
+   would keep them permanently detected.
+2. **Route.** At onset, plan two arms from the site. There is no random success draw: conditions
+   met means a rift starts, and the minimum outcome below always applies. Only reached cells are
+   stored, in a surface field the mesh remaps, because cell keys change when the adaptive mesh
+   refines or coarsens and boundaries move while a rift grows. The remaining route is re-planned
+   from the tips when plate topology changes.
 3. **Propagate.** Arms advance from the site at `RIFT_PROPAGATION_KM_PER_MYR`, as a continuous
-   length converted to reached cells. Reached cells take the existing resisted thinning, belt
-   marking and rift volcanism at a rate in physical units.
+   length converted to reached cells. A reached cell takes the existing one-time
+   `FAILED_RIFT_THINNING_FRACTION` thinning once per event, tapered across `FAILED_RIFT_BAND_MULT`
+   spacings of the route, with the existing craton resistance, belt marking and tracer handling.
 4. **Break up.** When both arms reach the plate boundary with the driver still present, the plate
-   splits along the route using the existing `_plates_from_node_masks`. Each daughter's pole is
-   fitted from the mantle flow, as production does now.
+   splits along the route using the existing `_plates_from_node_masks`. Daughter size is judged by
+   `RIFT_MIN_DAUGHTER_SHARE`, replacing `SPLIT_MIN_NODES` for rifts, which refused even a 49/51
+   split in the census. Each daughter's pole is fitted from the mantle flow, as production does now,
+   and the world then runs its normal force model. Daughters are not given a prescribed motion.
 5. **Fail.** If the driver lapses for `RIFT_LAPSE_MYR` before breakup, the rift stops, and what
    thinned stays as an aulacogen. This replaces `RIFT_SUCCESS_PROBABILITY`: the outcome follows
-   from whether the setting lasts, not from a coin.
+   from whether the setting lasts, not from a coin. A rift also ends as failed if its parent plate
+   merges or splits another way mid-rift. Its weakened rock stays either way.
+
+The lifecycle replaces the `maybe_split_plate` call in the step, in the same place.
 
 **The minimum outcome.** A detected setting does not always make a rift, but it always leaves
 weakened rock. Every site thins and marks at least the cells within `RIFT_MIN_WEAK_KM` of it, even
@@ -288,6 +299,30 @@ with no route, along with every cell an arm reached. Non-craton cells become bel
 so they take the existing resisted thinning, which lowers `craton_crust_m` and so their strength.
 The weakening accumulates: a plate stressed repeatedly in one place gets easier to break there, and
 repeated thinning can bring a craton's edge below the block.
+
+**Repeat limit.** Without one, a setting with no route would fire again after the 2 Myr cooldown,
+and each firing would thin the same rock by another 10%, a direct threat to the craton-loss target.
+So a plate and setting can't start a new event near an old site for `RIFT_RETRY_MYR`. This is a
+tunable value, set against the craton-loss budget and how readily old rifts reactivate.
+
+**What separates daughters.** A rift does not set plate motion. Each setting opens through what
+already drives it:
+
+| Setting | What opens the rift |
+|---|---|
+| Active | The plume head pushes plates apart, below |
+| Passive | The mantle-flow regimes that triggered it |
+| Transtension | The neighbor's relative motion |
+| Rollback | The upper plate's motion away from the trench |
+
+A plume pushes through existing physics. While a head is active, it acts as a temporary upwelling
+`mantle.ConvectionCenter`, whose positive strength already means "pushes away", at the plume's
+position with strength `PLUME_PUSH_RATE` and a falloff from `PLUME_HEAD_RADIUS_KM`. Because
+`mantle.flow_at` sums centers, the push reaches plates through existing basal drag and torque, and
+feeds the same flow fit that gives daughters their poles. The center is derived from
+`World.mantle_plumes` when needed and is not stored in `mantle_centers`, so it needs no new save
+state and ends with the plume. Non-plume rifts that fail to open stay unforced: D3 reports how long
+daughters diverge, and a closed rift is a finding.
 
 **Detectors.** Rates are in cm/yr and thresholds are design choices.
 
@@ -301,7 +336,15 @@ repeated thinning can bring a craton's edge below the block.
 **Making rollback possible.** Every oceanic node is down-going today, so an ocean-ocean front has
 no upper plate: only 134–184 of 1,922–9,445 ocean-facing convergent nodes qualify. The detector
 needs a per-front upper and lower plate. The existing `collision_polarity` consumption evidence
-records which plate lost cells at a front, and can decide this without a seafloor age field.
+records which plate lost cells at a front, and may decide this without a seafloor age field;
+Gate D1 checks that on ocean-ocean fronts.
+
+**Double counting.** `plumes._credit_head_stress` adds stress to a continental head's host, which
+relaxes the passive gate. With active rifting in place that head would trigger two settings, so the
+credit is removed.
+
+**Detector cost.** Detectors run every step, so they reuse the boundary inputs and classification
+the step already computes. Their cost is measured against item 10's 2% budget at Gate D3.
 
 **Fronts.** Transtension and rollback must merge a plate's boundary fragments into fronts, with
 at most one active rift per plate and the existing per-plate cooldown retained. Gate D1 measures
@@ -330,16 +373,21 @@ O((N + E) log N) per onset, not per step; the five-world census took 6.7 s inclu
   enters a blocked cell.
 
 **Keels and plumes.** Plume heat alone must not open a craton: `cratons.heated_strength` would drop
-a full-strength craton to 0.25, opening every heated one. The block therefore tests the keel, which
-the model holds as `Hm`, about 100 km at the median under full-strength cratons against 40 km
-elsewhere. **Nothing thins it under a plume today**, so this adds one process: while
-`plume_heat_myr > 0`, a craton cell loses `Hm` at `PLUME_KEEL_EROSION_M_PER_MYR`. Over the 20 Myr
-heat of one head that removes 40 km, just reaching the breach at the head's center from a median
-keel, so a single head rarely opens a craton but repeated heads can. Keels thin only where a plume
-heats them, in line with cratons surviving through their keels until heating or metasomatism
-disturbs them [[Foley, 2008]](#ref-foley2008) [[Lenardic et al., 2003]](#ref-lenardic2003). The
-rate is a design choice, not a measurement. The removed `Hm` goes to the existing mantle-lithosphere
-accounting, and the new process needs its own named sink.
+a full-strength craton to 0.25, opening every heated one. The block therefore tests the keel, held
+as `Hm`. Cratons are understood to survive through deep keels until heating or metasomatism disturbs
+them [[Foley, 2008]](#ref-foley2008) [[Lenardic et al., 2003]](#ref-lenardic2003), but the model
+does not represent that yet. Ordinary continent starts at 100 km (`REFERENCE_HM_CONTINENTAL_M`),
+and full-strength cratons measured a median of 100 km on one saved world, with only a minority near
+240 km. Craton strength comes from crust alone, and nothing thins `Hm` under a plume. So this is a
+required follow-up with two parts:
+
+1. **Deeper keels:** cratons carry a keel deeper than ordinary continent.
+2. **Keel erosion:** while `plume_heat_myr > 0`, a craton cell loses `Hm` at
+   `PLUME_KEEL_EROSION_M_PER_MYR`, booked through `hm_ledger` under a new named sink.
+
+`RIFT_KEEL_BREACH_M` and the erosion rate must be set together with the new keel depth, so that one
+head rarely opens a craton and repeated heads can. Their values below are placeholders until then,
+and neither is a measurement.
 
 **Boundary appearance.** A route on cells has stair-steps. The split can follow them first, and
 smoothing is a later visual step that does not change which cells a daughter owns.
@@ -353,6 +401,8 @@ cells in a step, and a step longer than a rift's life still delivers the same ce
 
 | Knob (new) | Start | Source | Tuning |
 |---|---|---|---|
+| `RIFT_RETRY_MYR` | 50 | Design choice | Craton loss and reactivation, sensitivity 20–100 |
+| `PLUME_PUSH_RATE` | 5 cm/yr | Design choice, below the native flow's 7.8 cm/yr p95 on one world | Daughter divergence after active rifts, sensitivity 2–10 |
 | `RIFT_ONSET_MYR` | 2 | Design choice; matches `SPLIT_MIN_AGE_YEARS` | Plate count, sensitivity 1–5 |
 | `RIFT_PROPAGATION_KM_PER_MYR` | 100 | Design choice: a 3,000 km route in 15 Myr each arm, inside the 10–30 Myr bracket | Rift duration, sensitivity 50–200 |
 | `RIFT_LAPSE_MYR` | 5 | Design choice | Failed share of rifts |
@@ -366,14 +416,13 @@ cells in a step, and a step longer than a rift's life still delivers the same ce
 | `RIFT_CRATON_EDGE_KM` | 200 | Design choice | Detached craton area, sensitivity 100–400 |
 | `RIFT_CRATON_BLOCK_STRENGTH` | 0.5 | Design choice | Detached craton area, sensitivity 0.25–0.75 |
 | `RIFT_CRATON_COST` | 4 | Design choice | Craton band exposure, sensitivity 2–8 |
-| `RIFT_KEEL_BREACH_M` | 60 km | Design choice; between the noncraton and craton medians measured above | Breached-craton rate, sensitivity 40–80 km |
-| `PLUME_KEEL_EROSION_M_PER_MYR` | 2,000 | Design choice | Breached-craton rate, sensitivity 1,000–4,000 |
+| `RIFT_KEEL_BREACH_M` | 60 km | Placeholder, reset with the deeper-keel follow-up | Breached-craton rate, sensitivity 40–80 km |
+| `PLUME_KEEL_EROSION_M_PER_MYR` | 2,000 | Placeholder, reset with the deeper-keel follow-up | Breached-craton rate, sensitivity 1,000–4,000 |
 | `RIFT_MIN_WEAK_KM` | 150 | Design choice; about the failed-rift band half-width | Fixed |
 | `RIFT_MIN_DAUGHTER_SHARE` | 5% | Design choice; owner preferred it to 2%, which reads as trimming a plate rather than rifting one | Fixed |
 
 Tune on saved worlds and fresh tuning seeds, and keep seeds 7, 11, 2024 and 456862899 held out for
-the acceptance criteria. `SPLIT_MIN_NODES` also needs review: it refused daughters of a 49/51
-split on saved plates, because it scales with density rather than with plate size.
+the acceptance criteria.
 
 **Gates, in order.**
 
@@ -412,6 +461,7 @@ split on saved plates, because it scales with density rather than with plate siz
   - Reported, not pass or fail: a fresh current-main comparison, rifts by setting and outcome, and
     continental split systems per 200 Myr against the 6–8 context.
   - Compare repeat rifts on marked rock with first rifts, to show weakening accumulates.
+  - Report how long daughters keep diverging after breakup, by setting.
 
 **Outcomes by setting.** A **breakup** adds a plate, and needs each daughter at
 `RIFT_MIN_DAUGHTER_SHARE` of the parent. Active, passive and rollback use breakup only; small
@@ -424,8 +474,8 @@ rock.
 
 **Required follow-ups,** after the core lifecycle:
 
-1. **Keel erosion.** Nothing thins a keel today, so the craton-breach path does not exist until this
-   ships. Until then, cratons break only at edges and where weak.
+1. **Deeper keels and keel erosion,** as described above. The craton-breach path does not exist until
+   this ships. Until then, cratons break only at edges and where weak.
 2. **Boundary jump.** It needs moving cells between plates; the existing partition and merge code
    should support it, but this has not been traced.
 
@@ -785,7 +835,10 @@ source or explicit design-choice status, and the sensitivity plan before impleme
   `RIFT_SUCCESS_PROBABILITY` retires. `_plates_from_node_masks` in `sparse_quad_patch.py` backs a new
   mask-based split, and `apply_failed_rift` generalizes from a great-circle band to reached cells.
 - `backend/app/collision_polarity.py`: per-front upper and lower plate for rollback.
-- `backend/app/plumes.py`: keel erosion under `plume_heat_myr`, with its own sink.
+- `backend/app/plumes.py`: the temporary upwelling center, and removal of `_credit_head_stress`.
+- Follow-up: keel erosion under `plume_heat_myr` with an `hm_ledger` sink, and deeper craton keels
+  at seeding in `cratons.py` and `continent_layout.py`.
+- `backend/app/surface_fields.py`: a reached-cells field for active rifts.
 - `backend/app/world.py`: `active_rifts` (new), with the step order that runs it.
 - `backend/app/cratons.py`: `record_rift_cut` takes a route as well as a great circle.
 - `bin/debug/probe_rift_settings.py`: the census and route probe, extended for Gates D1 and D2.
