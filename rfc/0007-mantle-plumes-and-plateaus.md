@@ -461,7 +461,7 @@ the #582 comparator found head-following incidence (0.19) below matched plume-of
 incidence (0.52), and the #584 stress sweep was flat across 0-3.0. A head's stress bump
 relaxes two split gates but does not set the split rate, so no head-conditional target
 constrains stress tuning. Conditioning a future target on already-rift-prone flow states
-is left to RFC 0010's local-damage machinery.
+is left to RFC 0010's detected rifts and their craton rules.
 
 **RFC 0010 target class and current evidence.** RFC 0010's first Earth-facing comparison is the
 plume-associated continental-rift subset. It does not claim that every Earth rift is plume-driven;
