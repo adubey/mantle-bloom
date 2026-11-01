@@ -315,7 +315,8 @@ already drives it:
 | Transtension | The neighbor's relative motion |
 | Rollback | The upper plate's motion away from the trench |
 
-A plume pushes through existing physics. While a head is active, it acts as a temporary upwelling
+A plume pushes through existing physics. For `PLUME_HEAT_MYR` after a head arrives, not just its
+3 Myr head stage, since a rift takes about 15 Myr to grow, it acts as a temporary upwelling
 `mantle.ConvectionCenter`, whose positive strength already means "pushes away", at the plume's
 position with strength `PLUME_PUSH_RATE` and a falloff from `PLUME_HEAD_RADIUS_KM`. Because
 `mantle.flow_at` sums centers, the push reaches plates through existing basal drag and torque, and
