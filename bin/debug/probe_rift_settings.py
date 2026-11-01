@@ -41,6 +41,9 @@ ALIGN_PENALTY = 2.0
 CRATON_EDGE_KM = 200.0
 CRATON_BLOCK_STRENGTH = 0.5
 CRATON_COST = 4.0
+# New divergent boundaries thin and stretch what they touch, so routes prefer to stand off a craton.
+CRATON_MARGIN_KM = 150.0
+CRATON_MARGIN_COST = 1.5
 KEEL_BREACH_M = 60_000.0
 INBOARD_KM = 300.0
 MIN_DAUGHTER_SHARE = 0.05
@@ -267,19 +270,35 @@ def craton_barrier(plate, cratons_mask, spacing):
     return interior & strong & ~breached, interior
 
 
-def route_resistance(plate, belts, forbidden):
+def craton_margin(plate, cratons_mask, spacing):
+    """Non-craton cells within CRATON_MARGIN_KM of a craton."""
+    adjacency = plate.adjacency()
+    rows = np.repeat(np.arange(plate.node_count()), np.diff(adjacency.offsets))
+    near = cratons_mask.copy()
+    for _ in range(max(1, round(CRATON_MARGIN_KM * 1e3 / (spacing * lithosphere.PLANET_RADIUS_M)))):
+        grown = near.copy()
+        grown[adjacency.neighbours[near[rows]]] = True
+        near = grown
+    return near & ~cratons_mask
+
+
+def route_resistance(plate, belts, forbidden, margin):
     resistance = np.ones(plate.node_count())
     resistance[belts] = BELT_RESISTANCE
     resistance[plate.collect("plume_heat_myr") > 0.0] = PLUME_RESISTANCE
+    resistance[margin] *= CRATON_MARGIN_COST
     craton_strength = cratons.strength(plate.collect("craton_crust_m"))
-    return np.where(craton_strength > 0.0, 1.0 + CRATON_COST * craton_strength, resistance)
+    # A weak craton must not undercut its own margin, or routes step into it to avoid the margin.
+    return np.where(craton_strength > 0.0,
+                    np.maximum(1.0 + CRATON_COST * craton_strength, CRATON_MARGIN_COST), resistance)
 
 
 def score_site(world, plate, state, site, cratons_mask, belts):
     points, areas = state["points"], plate.node_areas_m2()
     spacing = state["spacing"]
     forbidden, interior = craton_barrier(plate, cratons_mask, spacing)
-    resistance = route_resistance(plate, belts, forbidden)
+    margin = craton_margin(plate, cratons_mask, spacing)
+    resistance = route_resistance(plate, belts, forbidden, margin)
     extension = geometry.normalize(np.asarray(site["extension"], dtype=float))
     seed = site["seed"]
     band = np.sin(merge_split.FAILED_RIFT_BAND_MULT * spacing)
@@ -327,7 +346,7 @@ def score_site(world, plate, state, site, cratons_mask, belts):
                meets_min_nodes=bool(min(mask.sum(), (~mask).sum()) >= min_nodes),
                route_craton_cells=int(cratons_mask[route].sum()), cratons_divided=cut,
                craton_detached_km2=float(sum(detached) / 1e6), craton_largest_detached_share=float(share),
-               route_blocked_cells=int(forbidden[route].sum()), route_cells=len(route),
+               route_blocked_cells=int(forbidden[route].sum()), route_margin_cells=int(margin[route].sum()), route_cells=len(route),
                route_interior_cells=int(interior[route].sum()),
                craton_area_km2=craton_area / 1e6, belt_share=float(belts[route].mean()))
     return row, {"route": route, "mask": mask, "line_band": line_band, "cratons": cratons_mask}
@@ -394,7 +413,8 @@ def main():
                         "belt_resistance": BELT_RESISTANCE, "plume_resistance": PLUME_RESISTANCE,
                         "align_penalty": ALIGN_PENALTY, "craton_edge_km": CRATON_EDGE_KM,
                         "craton_block_strength": CRATON_BLOCK_STRENGTH, "craton_cost": CRATON_COST,
-                        "keel_breach_m": KEEL_BREACH_M},
+                        "keel_breach_m": KEEL_BREACH_M, "craton_margin_km": CRATON_MARGIN_KM,
+                        "craton_margin_cost": CRATON_MARGIN_COST},
               "worlds": [survey(path, args.image_dir) for path in args.saves]}
     report["runtime_seconds"] = time.perf_counter() - started
     args.out.parent.mkdir(parents=True, exist_ok=True)

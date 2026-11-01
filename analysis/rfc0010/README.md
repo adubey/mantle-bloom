@@ -113,7 +113,7 @@ weaker seams, which is RFC 0009's proposal.
 Exploration for the detected-rift revision, not gate evidence. `bin/debug/probe_rift_settings.py`
 looks for the four rift settings on saved worlds, then routes a rift from each site. Intact craton
 interiors are blocked; edges within 200 km, cratons below half strength and heated interiors with an
-eroded keel are open at a cost. The great circle through the same site and direction is the
+eroded keel are open at a cost, and rock within 150 km of a craton costs 1.5 times as much. The great circle through the same site and direction is the
 baseline. Thresholds are design choices, and no replay was run: each row is one snapshot, so these
 are not rates. No save has plumes, so the keel rule itself was not exercised.
 
@@ -126,32 +126,37 @@ Saves, from the private B2 bucket and not available for download: seeds 31773938
 | Active | 0 (no plumes in any save) | — | — | — | — | — | — | — |
 | Passive | 16 | 16 | 0 | 4 | 2 | 7 | 1.21 | 44% |
 | Rollback | 0 | — | — | — | — | — | — | — |
-| Transtension | 117 | 84 | 0 | 27 | 17 | 50 | 1.34 | 11.7% |
+| Transtension | 117 | 80 | 0 | 24 | 15 | 46 | 1.34 | 12.0% |
 
 "Line touches craton" counts the separating routes whose same-site great circle has craton in its
-band. An earlier run with every craton cell plus a 1-cell buffer forbidden gave 16 passive and 64
-transtension routes, with no craton touched or divided. Opening edges and weak cratons added 20
-transtension routes at the cost below.
+band.
 
-**Craton cost.** 19 of the 100 routes leave craton on both sides. The median route detaches 8% of the
-craton it divides, 8 detach more than 10%, and 4 more than 25%, with a maximum of 35%. The routes
-detaching most run through interiors below half strength. Routes crossed 421 craton cells of 5,013
-route cells. This is the owner's "a weak craton is easier to break", but it is a real risk to the
-craton-loss target, and these numbers were not tuned.
+| Rule | Passive / transtension routes | Route cells inside craton | Beside craton | Routes dividing a craton | Largest craton share detached |
+|---|---:|---:|---:|---:|---:|
+| All craton plus a 1-cell buffer forbidden | 16 / 64 | 0 | not measured | 0 | 0 |
+| Edges and weak cratons open | 16 / 84 | 421 | 690 | 19 | 35% |
+| Margin cost added (current) | 16 / 80 | 421 | 185 | 17 | 25% |
 
-None of the 33 transtension failures was a true barrier: in all 33, open rock reaches the plate
-boundary on both sides of the site, though that alone does not prove a larger route exists. In 30, a
-route did separate the plate but its smaller daughter stayed under 5%, mostly 1–4%, because the
-router takes the cheapest nearby boundary from a site only 300 km inboard. In 3, no separating route
-was found at any reach. The probe's `status` records only the last reach tried, so `no_first_arm` in
-the JSON does not mean no arm exists. 19 of the 117 sites began on a blocked cell, including 10 of
-the failures. The probe's `meets_min_nodes` field
-fails on most rows, including near-even splits, because `SPLIT_MIN_NODES` scales with density and
-not plate size.
+A first margin trial, with weak cratons cheaper than the margin, raised route cells inside craton to
+531 because routes stepped into them to avoid the margin. Weak cratons now cost at least the margin.
+
+**Craton cost.** 17 of the 96 routes leave craton on both sides. The median detaches 9% of the craton
+it divides, 8 detach more than 10%, and 2 more than 25%. These numbers were not tuned. Rifting craton
+loss is mostly post-split divergent thinning and stretch donation, which this census cannot measure.
+
+None of the 37 transtension failures was a true barrier: in all 37, open rock reaches the plate
+boundary on both sides of the site, though that alone does not prove a larger route exists. In 34, a
+route did separate the plate but its smaller daughter stayed under 5%, typically about 1.5%, because
+the router takes the cheapest nearby boundary from a site only 300 km inboard. In 3, no separating
+route was found at any reach. The probe's `status` records only the last reach tried, so
+`no_first_arm` in the JSON does not mean no arm exists. 19 of the 117 sites began on a blocked cell,
+including 11 of the failures. The probe's `meets_min_nodes` field fails on most rows, including
+near-even splits, because `SPLIT_MIN_NODES` scales with density and not plate size.
 
 ![A routed rift on seed 373936961](rift-route-around-craton.png)
 
-*Transtension route on plate 20, seed 373936961 at 244 Myr, tortuosity 1.79. Gold cells are craton;
+*Transtension route on plate 20, seed 373936961 at 244 Myr, tortuosity 1.79, drawn before the margin
+cost was added. Gold cells are craton;
 the red route divides the plate into blue and green daughters. The route follows the craton's edge
 as designed, but at right the arms hook back along the plate margin and carve off a thin strip.
 That is a route-quality defect the separation test does not catch, and tortuosity alone may not
