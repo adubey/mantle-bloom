@@ -1729,6 +1729,116 @@ def test_hydrology_persists_river_water_and_closes_the_rain_only_land_ledger():
     assert again.river_water_ledger.max_reach_residual_m3 <= 1e-6 * again.river_water_m.max() * 1e12
 
 
+def test_precipitation_partition_sums_to_diagnostic_precipitation_per_node():
+    precipitation = np.array([0.0, 300.0, 700.0, 1200.0])
+    is_frozen = np.array([True, True, False, False])
+    area = np.array([1e9, 2e9, 3e9, 4e9])
+    liquid, frozen = hydrology.partition_precipitation_m3(precipitation, is_frozen, area, 1000.0)
+    assert np.array_equal(frozen > 0.0, np.array([False, True, False, False]))
+    np.testing.assert_allclose(liquid + frozen, precipitation / 1000.0 * area * 1000.0, rtol=1e-15)
+
+
+def test_precipitation_partition_clips_negative_precipitation_like_the_liquid_sources():
+    liquid, frozen = hydrology.partition_precipitation_m3(np.array([-5.0, -5.0]), np.array([True, False]), np.ones(2), 1.0)
+    assert np.all(frozen == 0.0) and np.all(liquid == 0.0)
+
+
+def _glacier_ledger_run(precipitation, temperature, amplitude, steps=3, glacier_depth=None):
+    theta = 0.002 * np.arange(12)
+    elevation = 500.0 - 60.0 * np.arange(12)
+    plate = _flow_line_plate(0, theta, elevation)
+    if glacier_depth is not None:
+        plate.set_fields_on_plate(glacier_depth=glacier_depth)
+    world = World(seed=0, plates=[plate])
+    runs = []
+    for _ in range(steps):
+        fields = hydrology.compute_hydrology(
+            world, precipitation, temperature, years=100_000, seasonal_amplitude_at_nodes=amplitude
+        )
+        plate.set_fields_on_plate(glacier_depth=fields.glacier_depth, river_water_m=fields.river_water_m)
+        world.glacier_water_account_m3 = fields.glacier_water_ledger.closing_m3
+        runs.append(fields)
+    return world, runs
+
+
+def test_glacier_account_chains_steps_and_closes_the_full_precipitation_ledger():
+    temperature = np.where(np.arange(12) < 4, -20.0, -3.0)
+    amplitude = np.where(np.arange(12) < 4, 0.0, 10.0)
+    world, runs = _glacier_ledger_run(np.full(12, 800.0), temperature, amplitude)
+    assert runs[0].glacier_water_ledger.initialized_from_ice
+    assert not runs[1].glacier_water_ledger.initialized_from_ice
+    assert runs[1].glacier_water_ledger.opening_m3 == runs[0].glacier_water_ledger.closing_m3
+    areas = _node_areas(world)
+    for fields in runs:
+        land, glacier = fields.land_water_ledger, fields.glacier_water_ledger
+        external = land.rain_m3 + glacier.external_input_m3 + land.meltwater_m3
+        assert abs(glacier.residual_m3) <= 1e-12 * max(glacier.closing_m3, external)
+        frozen = glacier.frozen
+        assert glacier.external_input_m3 == pytest.approx(frozen.retained_m3 + frozen.bare_melted_m3, rel=1e-12)
+        # The frozen terms cancel by construction: this ledger names them, it doesn't test them.
+        assert hydrology.full_land_water_residual_m3(land, glacier) == pytest.approx(land.residual_m3, abs=1e-9 * external)
+        land_mask = ~fields.is_ocean
+        precipitation_m3 = float(np.dot(np.full(12, 0.8), areas * land_mask)) * 100_000
+        assert land.rain_m3 + glacier.frozen.land_m3 == pytest.approx(precipitation_m3)
+
+
+def test_melting_ice_releases_its_account_outward_and_leaves_control_ice_to_the_solve():
+    temperature = np.full(12, 8.0)
+    amplitude = np.full(12, 15.0)
+    _, runs = _glacier_ledger_run(np.full(12, 800.0), temperature, amplitude, steps=1, glacier_depth=np.full(12, 40.0))
+    glacier, land = runs[0].glacier_water_ledger, runs[0].land_water_ledger
+    ice = runs[0].ice.ledger
+    assert glacier.melt_release_m3 > 0.0
+    assert glacier.closing_m3 < glacier.opening_m3
+    loss = (ice.surface_melt_m3 + ice.basal_melt_m3 + ice.overflow_m3 + ice.capped_m3 + ice.calved_m3) / ice.opening_m3
+    assert glacier.release_m3 == pytest.approx(min(loss, 1.0) * (glacier.opening_m3 + glacier.frozen.retained_m3))
+    assert abs(hydrology.full_land_water_residual_m3(land, glacier)) <= 1e-9 * (
+        land.rain_m3 + land.meltwater_m3 + glacier.external_input_m3 + glacier.outward_m3
+    )
+
+
+def test_bare_ground_snow_melts_within_the_step_and_never_enters_the_account():
+    # Frozen mask, summers warm enough to clear it: the snow passes straight through.
+    world, runs = _glacier_ledger_run(np.full(12, 800.0), np.full(12, -1.0), np.full(12, 15.0), steps=1)
+    glacier = runs[0].glacier_water_ledger
+    assert glacier.frozen.land_m3 > 0.0
+    assert glacier.frozen.bare_melted_m3 == pytest.approx(glacier.frozen.land_m3)
+    assert glacier.closing_m3 == 0.0
+    assert world.glacier_water_account_m3 == 0.0
+
+
+def test_each_world_step_commits_the_glacier_account_for_the_next():
+    world = generate_world(seed=42, num_plates=2, node_density=0.25, climate_density=0.25, fluid_density=0.25)
+    assert world.glacier_water_account_m3 is None
+    step_world(world, 100_000)
+    first = world.hydrology_cache.glacier_water_ledger
+    assert first.initialized_from_ice
+    assert world.glacier_water_account_m3 == first.closing_m3
+    assert type(world.glacier_water_account_m3) is float
+    step_world(world, 100_000)
+    assert not world.hydrology_cache.glacier_water_ledger.initialized_from_ice
+    assert world.hydrology_cache.glacier_water_ledger.opening_m3 == first.closing_m3
+
+
+def test_ice_free_world_has_an_empty_glacier_account():
+    _, runs = _glacier_ledger_run(np.full(12, 800.0), np.full(12, 15.0), np.zeros(12), steps=2)
+    glacier = runs[-1].glacier_water_ledger
+    assert glacier.opening_m3 == glacier.closing_m3 == glacier.outward_m3 == glacier.external_input_m3 == 0.0
+
+
+def test_zero_length_hydrology_leaves_the_glacier_account_unopened():
+    world = _river_world()
+    assert hydrology.compute_hydrology(world, np.full(40, 800.0), np.full(40, 15.0), years=0.0).glacier_water_ledger is None
+    assert world.glacier_water_account_m3 is None
+
+
+def test_glacier_account_stays_out_of_trapped_water():
+    world = _river_world()
+    before = eustasy.trapped_water_volume_m3(world)
+    world.glacier_water_account_m3 = 1.0e20
+    assert eustasy.trapped_water_volume_m3(world) == before
+
+
 def test_save_without_river_state_starts_from_its_saved_routed_flow():
     # RFC 0016: a checkpoint's initial inventory is its saved `Q tau`, with no reach eligible
     # unless it stores water, and it is recorded as initial state rather than input.

@@ -4,8 +4,10 @@
 
 Status: **blocked; do not start G1.** The persistent river inventory and all reach transfers
 close, and the control reproduces every registered event, but the rain-only land budget closes
-only by naming 3.2–5.8% of A and B's input as stranded lake overflow, a defect in the control
-(see [G0 control replay](#g0-control-replay)). Full rain-plus-snow closure also still needs RFC 0015.
+only by naming 3.2–5.8% of A and B's input as stranded lake overflow, a control defect that #731
+has since fixed (see [G0 control replay](#g0-control-replay)). The interim glacier account closes the full ledger
+only by construction, and its balance is too large for its release to support G0's interpretation,
+so G0 stays blocked until RFC 0015 (see [Interim glacier account](#interim-glacier-account-732)).
 
 RFC 0016 is accepted in PR #724 and tracked by #723. G0 implementation is tracked by
 [#725](https://github.com/adubey/mantle-bloom/issues/725). The G0 branch is based on
@@ -221,6 +223,114 @@ frozen-water account for the full ledger, subject to an RFC 0016 revision.
 | Checkpoints | Replacement hashes, event validated; the registered files are lost |
 | Control windows, per-reach records, target supply | Met |
 | Rain-only ledger | **Not met**: closes only with stranded overflow named (A 5.77%, B 3.16%, C 0.11%) |
-| Full rain-plus-snow ledger ≤0.1% | **Blocked** on RFC 0015 |
+| Full precipitation ledger ≤0.1% | Superseded by the [interim glacier account](#interim-glacier-account-732): holds by construction once #734 closes the rain-only ledger; stability **not met** |
 
 G1 stays closed under RFC 0016's stop rule until both open rows pass.
+
+## Interim glacier account (#732)
+
+Preregistered before any replay. The account is ledger-only, so the expected change to the control
+is none.
+
+**Windows.** The G0 checkpoints above, four 100 kyr steps with the ice-age cycle off and the central
+river arm (Raymond, one-year cap). Ice-age save: seed 374464662 at 132.6 Myr, SHA-256
+`0f8c50c9788684c0ce28050e42a9eb1289f5092ba7fbe3a834c1809ce6a4279c`, the #548 ice-age diagnosis save,
+keeping its 8 Myr cycle, for 8 Myr in 100 kyr steps, so one full cycle.
+
+**Arms.** `origin/main` and this branch, run one after the other. A third arm with #734's routing
+fix applied measures closure, since that is the condition the ledger criterion names.
+
+| Check | Metric | Threshold |
+|---|---|---|
+| Control unchanged | per-step lake volume, target ΔV, glacier volume and sea level, branch vs `origin/main` | identical to replay tolerance; expected exactly equal |
+| Account identity | `|ΔG − (P_frozen,retained − R_glacier)|` | floating point |
+| Partition | land rain + land frozen vs diagnostic precipitation | floating point |
+| Budget stability | largest step-to-step `|ΔG|` vs that step's retained input, A, B, C and the ice-age save | reported; the issue asks that swings not exceed inputs |
+| Full ledger | residual of `P_diag + M_scaled`, with #734 applied | ≤0.1% of external input, or name the remaining term as a failure |
+
+Expected sizes: model ice divided by `WATER_TO_ICE` makes the opening balance 50,000 times the
+model ice volume, so it may well exceed the ocean. Steady ice releases about what the ice retains;
+any model-ice swing moves the balance by the same fraction, so large release terms and a failed
+stability comparison are possible findings, to be reported rather than tuned (RFC 0016
+falsification criteria).
+
+### Results
+
+Source: `origin/main` `cd93d339` against this branch `d0b83742`, before #734 landed. Rerun on
+`origin/main` `7d810123`, which has #734, against this branch's merge of it, `4fe51401`. Whole-run values are in
+[`g0-glacier-account-summary.json`](g0-glacier-account-summary.json). Replay JSON is outside the
+repository, under `issue732/` in the private captures.
+
+**The control is unchanged.** On A, B and C, every step's lake volume, target-lake record, glacier
+volume, sea level and river inventory are exactly equal between `origin/main` and the branch, a
+difference of 0.0, both before and after #734 landed. The account has no path into the model.
+
+**The identity and the ledger close.** The account's largest step error is about 5e5 m³ against a
+1e21 m³ balance, which is floating point. Land rain plus land frozen precipitation matches
+diagnostic precipitation in unit tests.
+
+| Window | Full residual, before #734 | Full residual, with #734 | Stranded overflow, before → with #734 |
+|---|---:|---:|---:|
+| A | 3.4e-8 | 7.6e-14 | 6.10% → 0 |
+| B | 3.3e-5 | 5.1e-14 | 5.25% → 0 |
+| C | 1.2e-10 | 8.1e-14 | 0.34% → 0 |
+
+**This table is not evidence for the account.** Closure is true by construction: frozen input
+always equals retained plus bare-ground melt, and the account's change plus release cancels
+retained, so `full_land_water_residual_m3` reduces to the rain-only `land.residual_m3`. The replays
+agree: the two residuals differ by at most 4.6e5 m³, which is floating point. These columns are the
+rain-only ledger on a larger denominator, so the improvement with #734 is #734's result. The
+earlier residual is under 0.1% only because stranded overflow is a named term, which is not an
+allowed sink. The criterion is formally met, but what tests the account is the partition, the
+identity, the control comparison and the sizes below. `P_diag` here is land precipitation plus snow
+kept by ice on ocean nodes, which is 2–7% of land frozen precipitation.
+
+**Budget stability fails on the mature windows.** The issue asks that the balance not swing more
+than its inputs.
+
+| Save | Opening balance (m³) | Largest step change (m³) | Retained input that step (m³) | Change / input | Largest outward / external input |
+|---|---:|---:|---:|---:|---:|
+| A | 3.79e21 | 6.36e19 | 1.22e18 | **52** | **7.4** |
+| B | 3.68e21 | 1.76e19 | 1.01e18 | **17** | **2.3** |
+| C | 1.02e21 | 3.16e19 | 1.27e18 | **25** | **3.1** |
+| Ice age, 8 Myr | 9.28e19 | 1.42e17 | 4.07e17 | 0.35 | 0.09 |
+
+The ice-age row's ratio is at its largest change; its largest ratio on any step is 0.39, still
+under 1.
+
+Two things combine. The opening conversion is the scale: dividing model ice by `WATER_TO_ICE` makes
+A's balance about 2,900 times the volume of Earth's ocean (about 1.3e18 m³), and release is a
+fraction of that balance, so a 1.7% model-ice loss in A's first step books 6.5e19 m³, seven times
+everything that fell in the step. Calving is what moves the fraction.
+
+| Save | Calving share of release, whole run |
+|---|---:|
+| A | 84% (93% in the first step) |
+| B | 64% |
+| C | 71% |
+| Ice age | 0.5% |
+
+So the mature windows' swings follow sudden model-ice calving, not the melt history. The ice-age
+save holds 11–41 times less model ice and barely calves, which is why it stays stable through a full
+cycle. Its ledger was not rerun with #734, and it strands up to 13% without it.
+
+**The account has no term for ice changed outside the solver.** `glacier_depth` is remapped by
+tectonics, and `step_ice`'s opening volume need not equal the last closing volume, so the account
+and model ice can drift apart, which its identity check can't see. The ratio of account to model
+ice moved at most 0.06% on A, B and C, but 0.5% over the ice-age cycle, which is comparable to
+one step's mean release of about 0.33%. The RFC's whole-world scalar accepts this, and it would
+matter over longer runs. If model ice ever reaches zero with a positive balance, that balance
+can't be released.
+
+Steady ice would balance, as designed. These windows aren't steady: they lose 1.0–4.0% of the account
+in 400 kyr while retained snow adds 0.1–0.5%.
+
+**What this means for G0.** The bookkeeping criterion holds by construction, and the release term
+is larger than `P_diag` in 8 of the 12 mature-window steps with #734. The owner's decision is recorded in
+[PR #739](https://github.com/adubey/mantle-bloom/pull/739): the account lands as inert bookkeeping
+because its identity and control checks pass, the oversized release is a failed G0 interpretation,
+and G0 stays blocked, with G1 unavailable, until RFC 0015 resolves the physical glacier-water path.
+
+**A side observation on #734.** Against this branch, its whole-world lake volume differs by up to
+84,288 km³ in A and 238,357 km³ in B over the four steps, and glacier volume by up to 77,338 km³ in
+B. The target events hold, as #734 reports. G0's rerun on the merged control should record this.

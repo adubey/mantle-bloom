@@ -362,3 +362,126 @@ def test_sea_ice_cap_is_held_to_the_depth_guard_booked_and_logged(caplog):
         _, _, ice = _step(points, area, elevation, np.where(cap, 100.0, 0.0), _cold(n, 1000.0), 1e6, allow_ocean_ice=cap)
     assert ice.ledger.capped_m3 == 0.0 and ice.ledger.capped_nodes == 0
     assert caplog.text == ""
+
+
+def _ice_ledger(opening=0.0, surface=0.0, basal=0.0, calved=0.0, overflow=0.0, capped=0.0):
+    return ice_sheet.IceLedger(
+        opening_m3=opening, surface_melt_m3=surface, basal_melt_m3=basal, calved_m3=calved,
+        overflow_m3=overflow, capped_m3=capped,
+    )
+
+
+def _retained_only(volume):
+    return ice_sheet.FrozenPrecipitation(volume, 0.0, volume, 0.0)
+
+
+def test_glacier_water_account_accumulates_without_any_ice_loss():
+    step = ice_sheet.update_glacier_water_account(100.0, _ice_ledger(opening=5.0), _retained_only(40.0))
+    assert step.closing_m3 == 140.0
+    assert step.release_m3 == 0.0
+    assert not step.initialized_from_ice
+
+
+def test_glacier_water_account_releases_the_fraction_of_opening_ice_lost_by_destination():
+    # A quarter of the opening ice goes, so a quarter of the balance does, split by what took it.
+    ledger = _ice_ledger(opening=8.0, surface=0.5, basal=0.5, calved=0.5, overflow=0.25, capped=0.25)
+    step = ice_sheet.update_glacier_water_account(100.0, ledger, _retained_only(20.0))
+    assert step.release_m3 == pytest.approx(30.0)
+    assert step.melt_release_m3 == pytest.approx(15.0)
+    assert step.calving_release_m3 == pytest.approx(7.5)
+    assert step.overflow_release_m3 == pytest.approx(3.75)
+    assert step.guard_release_m3 == pytest.approx(3.75)
+    assert step.closing_m3 == pytest.approx(90.0)
+    assert abs(step.residual_m3) <= 1e-12 * step.opening_m3
+
+
+def test_glacier_water_account_calving_alone_leaves_no_meltwater():
+    step = ice_sheet.update_glacier_water_account(100.0, _ice_ledger(opening=4.0, calved=1.0), _retained_only(0.0))
+    assert step.calving_release_m3 == pytest.approx(25.0)
+    assert step.melt_release_m3 == 0.0
+
+
+def test_glacier_water_account_caps_release_when_losses_exceed_the_opening_ice():
+    step = ice_sheet.update_glacier_water_account(100.0, _ice_ledger(opening=1.0, surface=3.0), _retained_only(20.0))
+    assert step.release_m3 == pytest.approx(120.0)
+    assert step.closing_m3 == pytest.approx(0.0, abs=1e-9)
+
+
+def test_glacier_water_account_releases_nothing_without_opening_ice():
+    # New ice that melts in its first step has no opening fraction to follow (RFC 0016).
+    step = ice_sheet.update_glacier_water_account(0.0, _ice_ledger(surface=2.0), _retained_only(20.0))
+    assert step.release_m3 == 0.0
+    assert step.closing_m3 == 20.0
+
+
+def test_glacier_water_account_opens_a_save_from_its_model_ice():
+    step = ice_sheet.update_glacier_water_account(None, _ice_ledger(opening=2.0), _retained_only(0.0))
+    assert step.initialized_from_ice
+    assert step.opening_m3 == pytest.approx(2.0 / hydrology.WATER_TO_ICE)
+
+
+def test_steady_ice_returns_retained_snow_at_the_opening_conversion():
+    # Model loss balancing model accumulation holds the account level: the scaled and physical
+    # budgets differ by exactly the conversion the opening balance uses.
+    water = 3.0e6
+    ice = water * hydrology.WATER_TO_ICE
+    balance = 1.0e9
+    ledger = _ice_ledger(opening=balance * hydrology.WATER_TO_ICE, surface=ice)
+    step = ice_sheet.update_glacier_water_account(balance, ledger, _retained_only(water))
+    assert step.closing_m3 == pytest.approx(balance, rel=1e-3)
+
+
+def test_frozen_precipitation_follows_the_ice_or_melts_on_bare_ground():
+    points, r, elevation, area = _continent()
+    n = len(points)
+    cold = r < 500_000.0
+    climate = ice_sheet.SurfaceClimate(
+        np.full(n, 500.0), np.where(cold, -30.0, -2.0), np.where(cold, 0.0, 15.0), np.ones(n, dtype=bool),
+    )
+    years = 100_000.0
+    *_, ice = _step(points, area, elevation, np.zeros(n), climate, years)
+    frozen = ice.frozen_precipitation
+    land = elevation > 0.0
+    assert frozen.land_m3 == pytest.approx(float(np.dot(np.full(n, 0.5), area * land)) * years)
+    assert frozen.retained_m3 > 0.0
+    assert frozen.bare_melted_m3 > 0.0
+    assert frozen.land_m3 + frozen.ocean_retained_m3 == pytest.approx(frozen.retained_m3 + frozen.bare_melted_m3)
+
+
+def _assert_retained_snow_is_the_scaled_accumulation(ice):
+    # Everywhere frozen, the physical water the ice keeps and its scaled accumulation are the same
+    # snow, at `WATER_TO_ICE`.
+    assert ice.ledger.accumulation_m3 > 0.0
+    assert ice.frozen_precipitation.retained_m3 * hydrology.WATER_TO_ICE == pytest.approx(ice.ledger.accumulation_m3)
+
+
+def test_plastic_body_keeps_snow_on_the_bare_ground_that_feeds_it():
+    points, r, elevation, area = _continent()
+    n = len(points)
+    # Bare margin cells are cold enough to feed the body without being covered by it.
+    climate = _cold(n, 500.0)
+    _, _, ice = _step(points, area, elevation, np.zeros(n), climate, 100_000.0)
+    assert ice.bodies and np.any((ice.covered < 1.0) & (elevation > 0.0))
+    _assert_retained_snow_is_the_scaled_accumulation(ice)
+
+
+def test_uniform_body_keeps_its_snow_and_the_ocean_around_it_keeps_nothing():
+    # An island too small for a plastic profile, in water too deep for ice to ground.
+    points, r, elevation, area = _continent(land_radius_km=70.0, half_km=600.0, ocean_floor=-6000.0)
+    n = len(points)
+    assert 0 < np.count_nonzero(elevation > 0.0) < ice_sheet.ICE_BODY_MIN_NODES
+    _, _, ice = _step(points, area, elevation, np.zeros(n), _cold(n, 500.0), 100_000.0)
+    _assert_retained_snow_is_the_scaled_accumulation(ice)
+    assert ice.frozen_precipitation.ocean_retained_m3 == 0.0
+
+
+def test_sea_ice_cap_keeps_its_snow_as_ocean_input_to_the_account():
+    points, r, elevation, area = _continent(land_radius_km=300.0, half_km=600.0)
+    n = len(points)
+    ocean = elevation < 0.0
+    _, _, ice = _step(points, area, elevation, np.zeros(n), _cold(n, 100.0), 100_000.0, allow_ocean_ice=ocean)
+    frozen = ice.frozen_precipitation
+    _assert_retained_snow_is_the_scaled_accumulation(ice)
+    expected = float(np.dot(np.full(n, 0.1), area * ocean)) * 100_000.0
+    assert frozen.ocean_retained_m3 == pytest.approx(expected)
+    assert frozen.land_m3 + frozen.ocean_retained_m3 == pytest.approx(frozen.retained_m3 + frozen.bare_melted_m3)
