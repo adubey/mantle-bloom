@@ -84,9 +84,9 @@ settlement.
 ## Review-fix validation preregistration
 
 The review fixes keep global ocean credit separate from spatial river-mouth discharge and
-identify terminal land-sink inputs from the initial active-body membership map. They also give
-deferred transfers one additional normal flush pass and fail explicitly if an owner transfer
-remains, instead of exporting through its parent. Repeat the treatment on the same A/B/C
+identify terminal land-sink inputs from the initial active-body membership map. They route distinct capped-pair handoffs through their owners, escalating returning surplus
+to an untried ancestor. Deferred transfers use normal flush passes; an unresolved owner transfer
+fails explicitly instead of exporting through its parent. Repeat the treatment on the same A/B/C
 checkpoint hashes, forcing, horizon and thresholds above; the unchanged control remains
 `cd93d339`. Expected direction: zero stranded overflow, unchanged global ocean credit, and no
 spatial mouth at an arbitrary ocean node. Lost input at an owned lake must remain in the land

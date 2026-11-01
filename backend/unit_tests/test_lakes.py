@@ -1444,3 +1444,51 @@ def test_final_parent_outlet_transfer_is_consumed_by_receiving_lake():
     assert result.ledger.overflow_out_m3 == 0.0
     assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0)
     assert any(t.internal and t.receiver_lake_id == 4 for t in result.trace.transfers)
+
+
+def test_two_capped_pairs_deliver_final_surplus_to_a_third_owner():
+    import copy
+
+    supply = 1.0e15
+    forest, elevation, previous, climate, hyps = _capped_pair_fixture(4, supply)
+    first = forest[0]
+    second = copy.deepcopy(first)
+    for lake in lakes.iter_all_lakes([second]):
+        lake.lake_id += 3
+        lake.members += 3
+        lake.sink_node_idx = lake.sink_node_idx + 3 if lake.sink_node_idx >= 0 else -1
+        lake.outlet_node_idx = lake.outlet_node_idx + 3 if lake.outlet_node_idx >= 0 else -1
+        lake.outlet_target_idx = lake.outlet_target_idx + 3 if lake.outlet_target_idx >= 0 else -1
+    elevation[3:6] = elevation[:3]
+    previous[3:6] = previous[:3]
+    first.outlet_target_idx = 3
+    second.outlet_target_idx = 6
+    receiver = forest[-1]
+    result = lakes.solve_lakes_prognostic(
+        [first, second, receiver], elevation, previous, 1.0, climate,
+        lakes.CellHypsometry.whole_cells(elevation),
+    )
+    assert result.lake_depth[6] * hyps.area_m2[6] == pytest.approx(supply)
+    assert result.ledger.overflow_out_m3 == 0.0
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0)
+
+
+def test_simultaneous_cycle_surpluses_share_the_same_parent_owner_handoff():
+    forest, elevation, previous, _, _ = _capped_pair_fixture(2, 0.0)
+    parent = forest[0]
+    parent.outlet_target_idx = 4
+    left, right = parent.children
+    leaves = [lake for lake in lakes.iter_all_lakes(forest) if not lake.children]
+    ownership = np.full(len(elevation), -1, dtype=np.int64)
+    for leaf_id, leaf in enumerate(leaves):
+        ownership[leaf.members] = leaf_id
+    accounting = lakes._new_prognostic_accounting(len(leaves), len(elevation), True)
+    accounting.cycle_surplus[int(ownership[0])] = lakes._CycleSurplus(100., left, right)
+    accounting.cycle_surplus[int(ownership[2])] = lakes._CycleSurplus(200., right, left)
+    lakes._reroute_final_surplus(
+        accounting, leaves, ownership, {id(left): parent, id(right): parent}, None,
+        previous.copy(), set(),
+    )
+    assert accounting.deferred == {int(ownership[4]): 300.}
+    assert not accounting.cycle_surplus
+    assert accounting.overflow_out_total == 0.0

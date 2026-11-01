@@ -1017,15 +1017,26 @@ def _deliver_surplus_to_owner(
     _export_at_node(accounting, trace_source or source, sink, volume, is_ocean, depth)
 
 
-def _reroute_final_surplus(accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth):
+def _reroute_final_surplus(accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth, routed_sources):
     """Send held surplus to the lake body owning its parent outlet before it reaches rivers.
 
     A capped sibling cycle has no room in either child, but its common parent still has an
     outlet owner. Deferring the volume to that owner's leaf lets the ordinary hierarchy solve
     advance it there. Only a root outlet with no lake owner is exported to the river/ocean path.
     """
-    for leaf_id, held in accounting.cycle_surplus.items():
+    held_surplus = list(accounting.cycle_surplus.items())
+    previously_routed = set(routed_sources)
+    accounting.cycle_surplus.clear()
+    for leaf_id, held in held_surplus:
         source = _lowest_common_ancestor(held.sender, held.receiver, parent_by_id)
+        # A returning capped cycle has already tried this owner's outlet. Escalate to
+        # its next ancestor instead of repeating the same transfer (#731).
+        while id(source) in previously_routed and id(source) in parent_by_id:
+            source = parent_by_id[id(source)]
+        if id(source) in previously_routed:
+            accounting.cycle_surplus[leaf_id] = held
+            continue
+        routed_sources.add(id(source))
         source_leaf_ids = sorted({
             int(leaf_of_node[sink])
             for sink in leaf_sinks(held.sender)
@@ -1035,7 +1046,6 @@ def _reroute_final_surplus(accounting, leaves, leaf_of_node, parent_by_id, is_oc
             accounting, source, source_leaf_ids, held.volume, leaves, leaf_of_node, parent_by_id, is_ocean, depth,
             trace_source=leaves[source_leaf_ids[0]],
         )
-    accounting.cycle_surplus.clear()
 
 
 def _export_final_surplus(accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth):
@@ -1051,6 +1061,8 @@ def _export_final_surplus(accounting, leaves, leaf_of_node, parent_by_id, is_oce
     for leaf_id, held in accounting.cycle_surplus.items():
         source = _lowest_common_ancestor(held.sender, held.receiver, parent_by_id)
         target = _parent_outlet_target(source, parent_by_id)
+        if 0 <= target < len(leaf_of_node) and leaf_of_node[target] >= 0 and target not in source.members:
+            raise RuntimeError(f"Lake flush left an unconsumed cycle owner at node {target}")
         if not 0 <= target < len(leaf_of_node):
             target = int(leaves[leaf_id].sink_node_idx)
         source_leaf_ids = sorted({
@@ -1121,8 +1133,8 @@ def solve_lakes_prognostic(
     events: list[LakeEvent] = []
     seen_events: set[tuple[int, str]] = set()
 
-    rerouted_final_surplus = False
-    for substep in range(steps + max(1, len(leaves)) + 2):
+    routed_surplus_sources: set[int] = set()
+    for substep in range(steps + 2 * max(1, len(leaves)) + 2):
         dt_step = dt if substep < steps else 0.0
         accounting.final_slice = substep + 1 >= steps
         if dt_step > 0.0:
@@ -1155,15 +1167,11 @@ def solve_lakes_prognostic(
         next_bodies = _active_bodies(forest, elevation, depth, hypsometry)
         _record_body_transitions(body_by_id.values(), next_bodies, events, seen_events)
         _release_broken_cycles(accounting, next_bodies)
-        if (
-            substep + 1 >= steps and not accounting.deferred and accounting.cycle_surplus
-            and not rerouted_final_surplus
-        ):
-            _reroute_final_surplus(accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth)
-            rerouted_final_surplus = True
-        if substep + 1 >= steps and not accounting.deferred and (
-            not accounting.cycle_surplus or rerouted_final_surplus
-        ):
+        if substep + 1 >= steps and not accounting.deferred and accounting.cycle_surplus:
+            _reroute_final_surplus(
+                accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth, routed_surplus_sources
+            )
+        if substep + 1 >= steps and not accounting.deferred:
             break
 
     _export_final_surplus(accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth)
