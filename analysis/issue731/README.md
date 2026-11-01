@@ -32,53 +32,50 @@ than a small effect near replay noise.
 
 ## Replay results
 
-The baseline is PR #729 at `b003a3f` before this issue's routing changes. The treatment is that
-PR snapshot plus the bounded #731 code. The exact temporary source snapshots and per-step data
-are identified in [`replay-comparison.json`](replay-comparison.json); full outputs stay in the
-private capture directory. All six runs were sequential and compute-budget reported no competing
-heavy run. The first baseline A attempt completed one step but could not write its output in the
-restricted file context; it was discarded and rerun successfully in the authorized capture
-context.
+The final A/B/C comparison uses the four preregistered 100 kyr steps and checkpoint hashes
+above. The control backend is detached `origin/main` at `cd93d339` (after PR #729); the treatment
+uses the issue branch model code committed in `bbe59e16`. All six arms ran sequentially after a
+compute-budget check, with no competing heavy run. Per-step measures and backend provenance are
+in [`replay-comparison.json`](replay-comparison.json); full outputs remain in the private capture
+folder.
 
-| Window | Max stranded overflow, control → treatment | Max land residual, treatment | Target event ΔV, control → treatment (km³) | End target volume change (km³) | Final flow cycles / spill-edge cycles, control → treatment | Median step time, control → treatment (s) | Peak RSS, treatment (GB) |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| A | 6.096% → 0% | 0.00000468% | +495,623.987 → +495,623.987 | +112.244 | 63/63 → 63/63 | 7.96 → 7.97 | 5.45 |
-| B | 5.251% → 0% | 0.004348% | +131,625.097 → +131,624.955 | −26,620.195 | 47/47 → 51/51 | 7.66 → 7.83 | 5.70 |
-| C | 0.342% → 0% | 0.000000018% | −261,586.996 → −261,586.996 | −0.069 | 14/14 → 14/14 | 10.13 → 10.26 | 6.90 |
+An initial refresh accidentally resolved the replay runner's default backend to the task checkout
+for both arms. Those control attempts were discarded. The controls were rerun from the detached
+`origin/main` worktree; their output records confirm `cd93d339`. Treatment output records were from
+the issue branch source tree, which matches the committed model code in `bbe59e16`.
+The corrected command, with local paths replaced, was:
 
-Every treatment step meets the 0.01% stranded-overflow threshold and the 0.1% land-ledger
-residual threshold. The registered event changes are negligible: A and C match to the reported
-precision, and B differs by 0.142 km³ from the recreated control event. The events do not need
-re-baselining. End-state lake volumes still move: global lake volume changes by −4,512 km³ in A,
-+52,477 km³ in B and +18,863 km³ in C. The endpoint target volume also shifts in B, so retain the
-comparison in the RFC record even though its registered event ΔV is preserved.
+```bash
+PYTHONPATH=backend backend/.venv/bin/python bin/debug/replay_rfc0016_river_water.py \
+  <checkpoint.mbworld> --backend <arm-worktree>/backend \
+  --anchors analysis/rfc0016/target-anchor-window-<a|b|c>.json \
+  --myr 0.4 --step-years 100000 --checkpoint-myr 0.1 --out <scratch-output>
+```
 
-Directed cycles remain in every window. At each final step, every counted cycle includes at
-least one edge matching `spill_target`; all A and C cycles and all but four B treatment cycles
-meet that check. This remains a legitimate graph state. Exported lake water in those cycles is
-credited to the ocean when it has no receiving lake body; `route_downstream` reports cycle
-settlement separately. Each step uses two river reservoir sweeps: runoff, then exported lake
-overflow. Aggregate internal transfers change by +1.8% in A, +3.6% in B and −0.02% in C. Ocean
-export rises as expected when overflow that formerly settled on land reaches the ocean.
+| Window | Max stranded overflow, control → treatment | Max land residual, control → treatment | Target event ΔV, control → treatment (km³) | End target volume change (km³) | End global lake volume change (km³) | Final flow cycles / spill-edge cycles, control → treatment | Median step time, control → treatment (s) | Peak RSS, control → treatment (GB) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| A | 6.096% → 0% | 0.00000468% → 0.0000000000103% | +495,623.987 → +495,623.987 | +124.815 | −4,198.023 | 63/63 → 63/63 | 7.95 → 8.09 | 5.37 → 5.32 |
+| B | 5.251% → 0% | 0.004373% → 0.00000000000510% | +131,625.097 → +131,624.955 | +20.384 | +79,994.726 | 47/47 → 49/49 | 7.70 → 7.93 | 6.16 → 5.15 |
+| C | 0.342% → 0% | 0.0000000177% → 0.0000000000109% | −261,586.996 → −261,586.996 | ≈0 | +0.013 | 14/14 → 14/14 | 10.11 → 10.66 | 6.85 → 6.51 |
 
-The first treatment experiment extended the zero-duration flush to twice the leaf count and
-repeated the final owner handoff. It reduced stranded overflow but increased gross internal
-transfers by roughly an order of magnitude and made A/B about three times slower. Those runs
-were superseded. The bounded implementation allows one final owner handoff plus one follow-through;
-it preserves zero stranded overflow while bringing transfer totals and runtime close to control.
-Both experiment sets remain in private captures and their checksums.
+Every treatment step is below both thresholds: stranded overflow is zero, and the remaining land
+residual is well below 0.1% of input. Routed external supply that ends at a land sink without an
+active lake body is reported as `land_sink_settlement_m3`. It is a named terminal sink, not lake
+storage or ocean export. This category explains the largest prior stress-run residual (0.1327% at
+step 36); after naming that destination, the 48-step, 192 Myr mature-world stress test passes both
+the residual and stranded-overflow limits. In the A/B/C runs, maximum treatment land-sink
+settlement is 0.00000468% of input in A, 0.004348% in B and 0.0000000177% in C.
 
-The stress test ran a generated world for 192 Myr. A first 24-step run used 8 Myr per step and
-found one 0.103% land residual, just above the 0.1% tolerance; stranded overflow remained zero.
-The retained 48-step run used 4 Myr per step over the same horizon and passed both limits. This
-also exercises remapping and repeated routing on a mature world; a 4 Myr stress timestep is still
-coarser than the 100 kyr replay timestep.
+The registered events remain present. A and C match the current `origin/main` control to the
+reported precision. B moves by 0.142 km³ (about 0.00011% of its event ΔV), while its event remains
+intact; retain this small change in the RFC 0016 G1 decision record. End target volumes move by +124.815
+km³ in A and +20.384 km³ in B. Global lake volume changes by −4,198 km³ in A, +79,995 km³ in B
+and +0.013 km³ in C. Ocean export rises by 17.7%, 9.2% and 0.27%, respectively; aggregate
+internal transfers rise by 1.8%, 3.6% and 0.055%. Each step uses two river reservoir sweeps: the
+runoff pass and exported-overflow pass. Step times are indicative and were measured sequentially;
+there was no competing replay workload.
 
-## Remaining acceptance work
-
-PR #729 merged as `cd93d339` while this issue was being worked. The A/B/C replays used temporary
-integration snapshots of that PR plus #731; the final issue branch must now merge refreshed
-`origin/main`, wire the river-router cycle-settlement field and direct ledger invariant test into
-the merged API, and add the mature-world stress test. Re-run the required pre-push checks and
-update code provenance against that merged branch before opening the PR. The temporary replay
-integration is evidence for the behavior, not final branch CI.
+Directed flow cycles remain in all windows. Every counted final cycle includes an edge matching
+`spill_target`, and the cycle's exported overflow is credited to the ocean when no receiving lake
+body owns it. These cycles remain a legitimate graph state because their water has a named
+settlement.
