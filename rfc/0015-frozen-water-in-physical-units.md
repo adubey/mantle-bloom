@@ -860,8 +860,10 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
     ice-age forcing, so the gate isn't passed on every diagnosis save. The raised limit applies
     to G0's pass rule and its falsification criterion only. "Step robustness" stays at 10%, and
     (m3) exceeds 10% on every draw of seed 997271774, so an arm can pass G0 and fail acceptance;
-    a held-out failure of that kind goes to the owner, not to a rerun. Runs and their report are
-    on [PR #736](https://github.com/adubey/mantle-bloom/pull/736).
+    a held-out failure of that kind goes to the owner, not to a rerun. Draw 1 on seed 997271774
+    ends on a 19.2% drop at 10 Myr; extended to 14 Myr, the ice stays lower, the swing stays
+    19.2% and the step gap is 13.4%. The drops under smooth noise are unexplained. See
+    [`analysis/issue575/`](../analysis/issue575/README.md).
   - The diagnosed sliding speeds aren't physical: the fastest thin margin nodes slide ~7 km/yr.
   - D2's revision (a march, possibly with shallow-ice flow) and the climate's per-step noise
     go to the owner and `rfc-authoring`.
