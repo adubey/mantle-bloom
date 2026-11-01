@@ -1,15 +1,53 @@
 # RFC 0010: Rifts follow weak lithosphere
 
-- **Status:** Accepted (revised 2026-10-30 after fixed-geometry Gate 3b result)
+- **Status:** Accepted (revised 2026-10-31 to detected rifts on owner direction; revised 2026-10-30 after fixed-geometry Gate 3b result)
 - **Date:** 2026-10-15
-- **Last revised:** 2026-10-30; Gate 3b requires an evolving 3-D slab body coupled to deforming plate geometry before slab-pull rifting can count
-- **Related:** #699 (Gate 3b tracking), #487 (closed Gate 3a evidence), #481 (superseded tracker), #480 (min-cut diagnostic), #472 / PR #479 (RFC 0009 G3), #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
+- **Last revised:** 2026-10-31; production rifts are detected from four tectonic settings and routed around cratons, replacing the Gate 3b requirement that rifting emerge from force and damage mechanics
+- **Related:** #730 (detected-rift revision), #699 (Gate 3b tracking), #487 (closed Gate 3a evidence), #481 (superseded tracker), #480 (min-cut diagnostic), #472 / PR #479 (RFC 0009 G3), #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
   0003 solution 1); RFCs [0003](abandoned/0003-rifting-around-cratons.md) (superseded by RFC 0010),
   [0009](0009-craton-mosaic.md) (cratons-first layout; G3 initially selected the min-cut),
   [0007](0007-mantle-plumes-and-plateaus.md) (plume weakening),
   [0012](0012-physics-first-simulation.md) (force-response interfaces)
 
 ## Revision note
+
+- **2026-10-31 ([PR #728](https://github.com/adubey/mantle-bloom/pull/728), tracker #730):** The earlier version required local damage under a
+  defensible load field to produce a rift, and for slab pull an evolving 3-D slab coupled to plate
+  deformation. The owner redirected the goal: Mantle-Bloom is a simulation with physics backing,
+  not a physics model. Rifts exist and avoid cratons, so the model should detect the settings
+  where they occur, start the rifting process there, and route it around cratons.
+
+  The evidence agrees with that change. In the [corrected controlled rerun](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6550450178),
+  all 28 slab histories passed accounting and none split within 20 Myr: the outcome rested on an
+  uncalibrated axial drag, and the strongest case failed 50.5% of the plate into 296 pieces. The
+  owner kept this work running in parallel. A [100 Myr continuation](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6554714055)
+  with persistent failed links produced a second connected piece of 17.9% at 80 Myr, in the
+  zero-drag upper-bound case on a plate with no cratons, with 413 other new pieces, so it does not
+  pass the two-daughter rule. It is a candidate graph separation, not a demonstrated moving
+  plate. The revision stands because detected rifts do not depend on resolving that mechanism. This is the
+  outcome the falsification criteria below anticipated under "no defensible local loading field":
+  revise in favor of a clearly labeled phenomenological rift model. The owner then set three
+  decisions: a detected setting at minimum weakens the plate and leaves weakened rock; a plume
+  usually cannot break a craton, though edges and weak cratons break more easily and an eroded keel
+  can give way; and the slab prototype stays as evidence that may be drawn on later. The [route and setting
+  census](../analysis/rfc0010/README.md#rift-settings-and-routes-2026-10-31) shows a craton-free
+  route works where min-cut did not.
+
+  | Changed item | Previous criterion | New criterion | Reason |
+  |---|---|---|---|
+  | Acceptance 3 (Gate 3b source) | Evolving slabs and shell loads produce a broad sustained event coupled to local cracks | Gates D1 and D2: all four settings are detectable, and every site at least weakens the plate | Load mechanics did not produce a rift, and the outcome depended on an uncalibrated parameter |
+  | Acceptance 4 (breakup) | 200 Myr histories with propagation from local damage | Same histories, with propagation along a detected, routed rift; no instantaneous plate-wide split | The owner's goal keeps staged growth but not emergent mechanics |
+  | Acceptance 5 (damage) | Timestep-invariant damage on supported local loading | Timestep-invariant rift progress and detection | No damage field remains |
+  | Acceptance 6 (segments) | Independent segments nucleate and link | One rift grows two arms from a site; multiple segments are out of scope | Simplest model that meets the goal |
+  | Acceptance 11 (attribution) | Attribute plume effects in rift initiation, growth and linkage with force budgets closed | Report rift counts by setting, with plumes on and off; force budgets dropped | The rift no longer depends on a force budget |
+  | Acceptance 7 | Split frequency and plate count within 10% of matched baseline | More than 10 and fewer than 40 plates at every output | A new system decides where rifts occur, so a match to the old rate is not a target |
+  | Acceptance 8 | Line and band craton rates fall at least 50% against matched replay | Zero blocked cells entered, and detached craton per rift under a limit from D1 | Worlds diverge after the first rift, and the old measure counts allowed edges as crossings |
+  | Acceptance 9 | At most 2%/Gyr, subject to matched replay | Same target, subject to ledger checks, reported by path | An absolute target needs no matched replay |
+  | Acceptance 10 | Includes old saves initializing slab and deformation history | Old saves load with no rifts running; new saves preserve running rifts, reached cells and tears; runtime against a fresh current-main run | The slab prototype is not in this design |
+  | New | None | Weakening is measurable; deeper keels with erosion and boundary jumps must ship before this RFC is Implemented | Owner decisions |
+  | Gates 1, 2 and 3a | Closed | Closed; retained as reference evidence | Their strength ordering still informs route resistance |
+
+  The full impact table is on [PR #728](https://github.com/adubey/mantle-bloom/pull/728).
 
 - **2026-10-30 ([PR #717](https://github.com/adubey/mantle-bloom/pull/717)):** The prior Gate 3b source criterion looked for a broad,
   sustained load, then coupled it to local crack rules. The corrected 1 Gyr diagnostic created broad
@@ -28,6 +66,13 @@
   | State and runtime | Persist damage and segment history with O(N+E) expected work | Also persist slab-body and plate-deformation state, with O(N+E+S) expected work for S bounded slab stations | The added mechanics changes geometry and has continuing state across saves and steps |
 
 ## Problem
+
+**Current statement (2026-10-31).** Rifts have one trigger, mantle-flow disagreement, and one
+outcome rule, a coin flip. Plumes, slab rollback and transtension cannot start a rift, and a rift
+that succeeds runs on a great circle regardless of what lies under it. A rift's cut also matters
+less than what follows it: most rifting craton loss comes from stretch donation and divergent
+thinning along the new boundaries, not from the cut. The text below is the background that led
+here. Its statements about local damage and loading describe the design this revision replaced.
 
 A splitting plate breaks along a line the mantle flow alone decides, so continents break
 wherever the flow puts that line, through cratons and strong lithosphere as readily as
@@ -191,7 +236,312 @@ craton-loss gate, and take plume weakening through RFC 0007. The connected-bound
 diagnosis gates are proposed here; constitutive values remain unsettled, so no implementation issue
 should start until those gates are resolved and the revised design is accepted.
 
+## Recommendation (revised 2026-10-31): detected, routed rifts
+
+This section and the next supersede the recommendation above and the provisional mechanics for
+production. Earlier text stays as the record of why.
+
+**What happens in nature.** The active/passive split separates rifts that follow mantle upwelling
+and doming from rifts driven by far-field plate motion [[Şengör & Burke, 1978]](#ref-sengor1978),
+though these are end members and a richer classification ties rifts to the plate structures that
+start them [[Merle, 2011]](#ref-merle2011). Back-arc extension is linked globally to upper-plate
+motion relative to the slab [[Heuret & Lallemand, 2005]](#ref-heuret2005), although upper-plate
+motion alone does not explain every subduction zone, so the detector below is a proxy. Most rift
+segments are oblique, with more than about 70% exceeding 20°
+[[Brune et al., 2018]](#ref-brune2018), and oblique extension can ease break-up
+[[Brune et al., 2012]](#ref-brune2012). Conjugate margins mostly opened along former sutures
+[[Buiter & Torsvik, 2014]](#ref-buiter2014), and the East African Rift branches around the Tanzania
+craton [[Koptev et al., 2015]](#ref-koptev2015).
+
+**Alternatives.**
+
+1. **Rely on the mechanics route (not selected for production).** It continues in parallel as
+   offline evidence on #699, and its best case now shows a candidate separation. But that case needs
+   the zero-drag upper bound and 80 Myr, leaves hundreds of fragments, and has not met a craton.
+   Every candidate still depends on loads and damage the model cannot constrain, and its shell
+   solves are not a per-step production cost.
+2. **Min-cut near the flow line (already rejected, #480).** Its failure came from the anchor: a
+   1,000 km corridor around the flow's great circle, plus that cut's pole and residual gates. Only
+   30 of 78 admitted routes were line-clear.
+3. **Detect the setting, then route from it (recommended).** Each setting supplies a site and an
+   extension direction, which removes the great circle. Intact craton interiors block the route,
+   while edges and weak cratons are costly but open. The rift itself is phenomenological, and is
+   labeled so under [design principles](../docs/design-principles.md) 1 and 8. Principle 7 stays
+   central: craton loss from routes is explicit and booked, and it remains the main risk.
+
+**Exploration result.** On five saved worlds of 86–244 Myr (no matched replay, not yet gate
+evidence), 16 of 16 passive sites and 80 of 117 transtension sites gave a two-daughter route, and no
+route entered a blocked cell. Of those 96 routes, 28 touch craton, and 17 leave some craton on both
+sides: the median detaches 9% of that craton, and 2 routes detach more than 25%, with a maximum of
+25.4%. Rollback found no sites, and active could not be tested because none of the 16 local saves
+has plumes. See [the analysis](../analysis/rfc0010/README.md#rift-settings-and-routes-2026-10-31).
+
+This is not a like-for-like win over the earlier min-cut probe, which found a craton-free admissible
+cut for about 10% of cuts. That probe required pole-separation and fit gates, and this census only
+requires that the plate separates with daughters of at least 5%, so part of the better result comes
+from an easier test. The earlier probe also warned that wide corridors succeed by slicing coastal
+slivers, which is the hook defect Gate D2 now checks.
+
 ## Design
+
+### Detected rifts (2026-10-31)
+
+**Lifecycle.** A rift is a persistent event on `World`, in five stages.
+
+1. **Detect.** Each step, each plate's detectors report candidate sites: a setting, an extension
+   direction and a site cell. The onset clock runs per plate and setting for `RIFT_ONSET_MYR`, so
+   its start does not depend on step length. A site alone can't be tracked: passive sites move
+   between steps because the flow clustering is recomputed. Passive also needs a persistence test
+   of its own, because `maybe_split_plate` relaxes its gates to zero on very large plates, which
+   would keep them permanently detected.
+2. **Route.** At onset, plan two arms from the site. There is no random success draw: conditions
+   met means a rift starts, and the minimum outcome below always applies. Only reached cells are
+   stored, in a surface field the mesh remaps, because cell keys change when the adaptive mesh
+   refines or coarsens and boundaries move while a rift grows. The remaining route is re-planned
+   from the tips when plate topology changes.
+3. **Propagate.** Arms advance from the site at `RIFT_PROPAGATION_KM_PER_MYR`, as a continuous
+   length converted to reached cells. A reached cell takes the existing one-time
+   `FAILED_RIFT_THINNING_FRACTION` thinning once per event, tapered across `FAILED_RIFT_BAND_MULT`
+   spacings of the route, with the existing craton resistance, belt marking and tracer handling.
+4. **Break up.** When both arms reach the plate boundary with the driver still present, the plate
+   splits along the route using the existing `_plates_from_node_masks`. Daughter size is judged by
+   `RIFT_MIN_DAUGHTER_SHARE`, replacing `SPLIT_MIN_NODES` for rifts, which refused even a 49/51
+   split in the census. Each daughter's pole is fitted from the mantle flow, as production does now,
+   and the world then runs its normal force model. Daughters are not given a prescribed motion.
+5. **Fail.** If the driver lapses for `RIFT_LAPSE_MYR` before breakup, the rift stops, and what
+   thinned stays as an aulacogen. This replaces `RIFT_SUCCESS_PROBABILITY`: the outcome follows
+   from whether the setting lasts, not from a coin. A rift also ends as failed if its parent plate
+   merges or splits another way mid-rift. Its weakened rock stays either way.
+
+The lifecycle replaces the `maybe_split_plate` call in the step, in the same place.
+
+**The minimum outcome.** A detected setting does not always make a rift, but it always leaves
+weakened rock. Every site thins and marks at least the cells within `RIFT_MIN_WEAK_KM` of it, even
+with no route, along with every cell an arm reached. Non-craton cells become belts through
+`cratons.mark_belt`, which never heal and which later routes prefer. Craton cells can't be belts,
+so they take the existing resisted thinning, which lowers `craton_crust_m` and so their strength.
+The weakening accumulates: a plate stressed repeatedly in one place gets easier to break there, and
+repeated thinning can bring a craton's edge below the block.
+
+**Oceanic tears.** `mark_belt` is continental only, and `clear_oceanic_belts` deliberately keeps it
+so, because craton formation relies on that. So the surface field holding reached cells also records
+when a tear formed, and later routes treat a tear like a belt.
+
+| Where | What happens |
+|---|---|
+| Near a subduction front or volcano | Stays weak until consumed. If arc growth turns the rock continental, it becomes a true belt |
+| Elsewhere in ocean | Heals after `RIFT_TEAR_HEAL_MYR` |
+
+Near subduction, the rock will either disappear or become continental, so its mark needs no timer.
+Elsewhere, a tear is a lubricated fault that eventually seals.
+
+**Repeat limit.** Without one, a setting with no route would fire again after the 2 Myr cooldown,
+and each firing would thin the same rock by another 10%, a direct threat to the craton-loss target.
+So a plate and setting can't start a new event near an old site for `RIFT_RETRY_MYR`. This is a
+tunable value, set against the craton-loss budget and how readily old rifts reactivate.
+
+**What separates daughters.** A rift does not set plate motion. Each setting opens through what
+already drives it:
+
+| Setting | What opens the rift |
+|---|---|
+| Active | The plume head pushes plates apart, below |
+| Passive | The mantle-flow regimes that triggered it |
+| Transtension | The neighbor's relative motion |
+| Rollback | The upper plate's motion away from the trench |
+
+A plume pushes through existing physics. For `PLUME_HEAT_MYR` after a head arrives, not just its
+3 Myr head stage, since a rift takes about 15 Myr to grow, it acts as a temporary upwelling
+`mantle.ConvectionCenter`, whose positive strength already means "pushes away", at the plume's
+position with strength `PLUME_PUSH_RATE` and a falloff from `PLUME_HEAD_RADIUS_KM`. Because
+`mantle.flow_at` sums centers, the push reaches plates through existing basal drag and torque, and
+feeds the same flow fit that gives daughters their poles. The center is derived from
+`World.mantle_plumes` when needed and is not stored in `mantle_centers`, so it needs no new save
+state and ends with the plume. Non-plume rifts that fail to open stay unforced: D3 reports how long
+daughters diverge, and a closed rift is a finding.
+
+**Detectors.** Rates are in cm/yr and thresholds are design choices.
+
+| Setting | Signal | Site and direction | State today |
+|---|---|---|---|
+| Active | Continental cells with `plume_heat_myr > 0`, area at least `RIFT_HEAD_AREA_KM2` | Heated area's center; along the plate's long axis, since a head has no preferred direction | Signal exists; no save tests it (Gate D1) |
+| Passive | The production flow-fit and pole gates from `maybe_split_plate` | Point on the flow's great circle nearest the plate center; the circle's normal | Works; fired at 16 sites |
+| Rollback | Upper plate moves away from a convergent oceanic front faster than `RIFT_MIN_RATE`, over at least `RIFT_MIN_FRONT_KM` | `RIFT_BACK_ARC_KM` behind the front; trench normal | **Needs new work:** see below |
+| Transtension | Opening, continental boundary with obliquity 20–70° over at least `RIFT_MIN_FRONT_KM` | `RIFT_INBOARD_KM` behind the front; relative velocity | Works, but over-counts: 70 sites on one world |
+
+**Making rollback possible.** Every oceanic node is down-going today, so an ocean-ocean front has
+no upper plate: only 134–184 of 1,922–9,445 ocean-facing convergent nodes qualify. The detector
+needs a per-front upper and lower plate. The existing `collision_polarity` consumption evidence
+records which plate lost cells at a front, and may decide this without a seafloor age field;
+Gate D1 checks that on ocean-ocean fronts.
+
+**Double counting.** `plumes._credit_head_stress` adds stress to a continental head's host, which
+relaxes the passive gate. With active rifting in place that head would trigger two settings, so the
+credit is removed.
+
+**Detector cost.** Detectors run every step, so they reuse the boundary inputs and classification
+the step already computes. Their cost is measured against item 10's 2% budget at Gate D3.
+
+**Fronts.** Transtension and rollback must merge a plate's boundary fragments into fronts, with
+at most one active rift per plate and the existing per-plate cooldown retained. Gate D1 measures
+whether that keeps the plate-count target in reach.
+
+**Route.** Dijkstra on `plate.adjacency()`, the exact production cell graph, run twice from the
+site: one arm each side of the rift's strike, the second excluding the first arm's cells. It costs
+O((N + E) log N) per onset, not per step; the five-world census took 6.7 s including loading.
+
+- **Edge cost:** `length × mean resistance × (1 + RIFT_ALIGN_PENALTY × opening)`, where `opening`
+  is the edge's alignment with the extension direction, so a route prefers to run across the
+  extension.
+- **Cell resistance:** craton strength is the existing `cratons.strength`, linear in cratonic crust.
+
+  | Cell | Route |
+  |---|---|
+  | Ordinary rock | Open: 1.0, or 0.6 on a belt or plume-heated cell |
+  | Non-craton rock within `RIFT_CRATON_MARGIN_KM` of a craton | Open: the above × `RIFT_CRATON_MARGIN_COST` |
+  | Craton within `RIFT_CRATON_EDGE_KM` of its edge, or strength below `RIFT_CRATON_BLOCK_STRENGTH` | Open: `1 + RIFT_CRATON_COST × strength`, at least the margin cost |
+  | Intact craton interior | Blocked, **even when plume-heated** |
+  | Plume-heated interior with `Hm` below `RIFT_KEEL_BREACH_M` | Open: `1 + RIFT_CRATON_COST × strength` |
+
+  The margin cost is there because a new divergent boundary thins and stretches what it touches,
+  so a route hugging a craton can avoid crossing it and still erode it. Routes stand off when there
+  is room and can still reach an edge. In the census it cut route cells beside cratons from 690 to
+  185 and left route cells inside cratons unchanged at 421, for 4 fewer routes. A weak craton must
+  cost at least the margin, or routes step into it to avoid the margin; that happened in the first
+  trial.
+
+- **Targets:** boundary cells at least a reach from the site. Reach widens through a fixed list
+  until each daughter holds at least `RIFT_MIN_DAUGHTER_SHARE` of the plate.
+- **Sites near cratons:** a site on blocked cells moves to the nearest open cell. Where no route
+  exists, the arms grow as far as they can, and the rift ends in the minimum outcome. It never
+  enters a blocked cell.
+
+**Keels and plumes.** Plume heat alone must not open a craton: `cratons.heated_strength` would drop
+a full-strength craton to 0.25, opening every heated one. The block therefore tests the keel, held
+as `Hm`. Cratons are understood to survive through deep keels until heating or metasomatism disturbs
+them [[Foley, 2008]](#ref-foley2008) [[Lenardic et al., 2003]](#ref-lenardic2003), but the model
+does not represent that yet. Ordinary continent starts at 100 km (`REFERENCE_HM_CONTINENTAL_M`),
+and full-strength cratons measured a median of 100 km on one saved world, with only a minority near
+240 km. Craton strength comes from crust alone, and nothing thins `Hm` under a plume. So this is a
+required follow-up with two parts:
+
+1. **Deeper keels:** cratons carry a keel deeper than ordinary continent.
+2. **Keel erosion:** while `plume_heat_myr > 0`, a craton cell loses `Hm` at
+   `PLUME_KEEL_EROSION_M_PER_MYR`, booked through `hm_ledger` under a new named sink.
+
+`RIFT_KEEL_BREACH_M` and the erosion rate must be set together with the new keel depth, so that one
+head rarely opens a craton and repeated heads can. Their values below are placeholders until then,
+and neither is a measurement.
+
+**Boundary appearance.** A route on cells has stair-steps. The split can follow them first, and
+smoothing is a later visual step that does not change which cells a daughter owns.
+
+**Conservation and saves.** Daughters come from the partition `split` already uses, so every field
+and ledger stays with its cell. Thinning uses the existing column, craton, cover and continental
+ledger calls. `World.active_rifts` (new) defaults to empty, so old saves load with no rifts running.
+
+**Timestep.** Onset, propagation and lapse integrate continuous time. Propagation may cross several
+cells in a step, and a step longer than a rift's life still delivers the same cells.
+
+| Knob (new) | Start | Source | Tuning |
+|---|---|---|---|
+| `RIFT_TEAR_HEAL_MYR` | 50 | Design choice | Fixed until oceanic reactivation is reported |
+| `RIFT_RETRY_MYR` | 50 | Design choice | Craton loss and reactivation, sensitivity 20–100 |
+| `PLUME_PUSH_RATE` | 5 cm/yr | Design choice, below the native flow's 7.8 cm/yr p95 on one world | Daughter divergence after active rifts, sensitivity 2–10 |
+| `RIFT_ONSET_MYR` | 2 | Design choice; matches `SPLIT_MIN_AGE_YEARS` | Plate count, sensitivity 1–5 |
+| `RIFT_PROPAGATION_KM_PER_MYR` | 100 | Design choice: a 3,000 km route in 15 Myr each arm, inside the 10–30 Myr bracket | Rift duration, sensitivity 25–200 |
+| `RIFT_LAPSE_MYR` | 5 | Design choice | Failed share of rifts |
+| `RIFT_MIN_RATE` | 1 cm/yr | Matches `TRANSFORM_RATE_THRESHOLD` | Fixed |
+| `RIFT_MIN_FRONT_KM` | 300 | Design choice | Census, sensitivity 200–500 |
+| `RIFT_BACK_ARC_KM`, `RIFT_INBOARD_KM` | 300 | Design choice; order of arc-to-back-arc distance, unverified | Sensitivity 200–500 |
+| `RIFT_HEAD_AREA_KM2` | 1e5 | `PLATEAU_AREA_MIN_KM2` | Fixed |
+| Obliquity window | 20–70° | Lower bound from [[Brune et al., 2018]](#ref-brune2018); upper is a design choice | Fixed |
+| Belt and plume resistance | 0.6 | Gate 3a scenario rank; uncalibrated | Belt share of routes |
+| `RIFT_ALIGN_PENALTY` | 2 | Design choice | Tortuosity, sensitivity 0–4 |
+| `RIFT_CRATON_EDGE_KM` | 200 | Design choice | Detached craton area, sensitivity 100–400 |
+| `RIFT_CRATON_BLOCK_STRENGTH` | 0.5 | Design choice | Detached craton area, sensitivity 0.25–0.75 |
+| `RIFT_CRATON_MARGIN_KM` | 150 | Design choice | Craton loss by path, sensitivity 100–300 |
+| `RIFT_CRATON_MARGIN_COST` | 1.5 | Design choice; 1 turns it off | Craton loss by path, sensitivity 1–3 |
+| `RIFT_CRATON_COST` | 4 | Design choice | Craton band exposure, sensitivity 2–8 |
+| `RIFT_KEEL_BREACH_M` | 60 km | Placeholder, reset with the deeper-keel follow-up | Breached-craton rate, sensitivity 40–80 km |
+| `PLUME_KEEL_EROSION_M_PER_MYR` | 2,000 | Placeholder, reset with the deeper-keel follow-up | Breached-craton rate, sensitivity 1,000–4,000 |
+| `RIFT_MIN_WEAK_KM` | 150 | Design choice; about the failed-rift band half-width | Fixed |
+| `RIFT_MIN_DAUGHTER_SHARE` | 5% | Design choice; owner preferred it to 2%, which reads as trimming a plate rather than rifting one | Fixed |
+
+Tune on saved worlds and fresh tuning seeds, and keep seeds 7, 11, 2024 and 456862899 held out for
+the acceptance criteria.
+
+**Gates, in order.**
+
+- **Gate D1, census.** A read-only probe, with no rift acting on the world, on three fresh tuning
+  seeds named before the run, to 200 Myr. The five exploration seeds stay out. The rollback detector
+  reads the per-front polarity read-only; if `collision_polarity` evidence cannot supply it on
+  ocean-ocean fronts, that is the one model change this gate may need.
+  - An event is a merged front that persists for `RIFT_ONSET_MYR`.
+  - All four settings should produce events on at least two of three seeds, oceanic plates
+    included, with rollback on oceanic and continental upper plates reported separately. A setting
+    that misses is a finding to diagnose, not an automatic failure, since three seeds guarantee
+    nothing.
+  - Report events per 100 Myr by setting, whether the rate is compatible with fewer than 40 plates,
+    and how long each event lasts against the time its route needs to grow.
+- **Gate D2, routes.** On the same worlds, routing from each D1 event.
+  - Sites are classified by cause. A true barrier, with no open path to the boundary on both sides
+    of the site, is allowed at any rate: the rift stops and the rock weakens.
+  - Of all other sites, at least 90% per setting must make a qualifying outcome: breakup, or a
+    boundary jump once that follow-up exists. Until then, qualifying strips are counted as misses
+    and reported separately. The exploration rate was 100% for passive and 68% for transtension,
+    where all 37 failures had open rock on both sides, so the router must choose endpoints by
+    daughter size rather than checking size afterward.
+  - The share of each route along the plate margin is measured, and a limit frozen before the gate
+    runs. The census shows at least one hook, which the separation test accepts.
+  - Detached craton per rift stays under a limit set from the 2%/Gyr budget and D1's rift rate.
+  - Zero blocked cells entered, as verification; this is true by construction.
+  - A synthetic case shows heat alone stays blocked, and heat plus an eroded keel opens.
+- **Gate D3, history.** With the lifecycle in the world step, on held-out seeds 7, 11, 2024 and
+  456862899. Old-algorithm comparison no longer applies, because a new system decides where rifts
+  occur, so worlds diverge after the first rift.
+  - More than 10 and fewer than 40 plates at every output on every seed.
+  - Item 9: rifting craton loss at most 2% of live craton per Gyr, reported by path using
+    `rifted_divergent_m3`, `rifted_stretch_m3` and `rifted_failed_m3`, since routing alone may not
+    reach it: today's rate is 8.0–9.6% per Gyr, mostly after the split.
+  - Item 10: ledgers and saves, with the runtime budget against a fresh current-main run.
+  - No instantaneous plate-wide split, and stable at a halved timestep and finer resolution.
+  - Zero blocked cells entered, and detached craton per rift under D2's limit.
+  - Reported, not pass or fail: a fresh current-main comparison, rifts by setting and outcome, and
+    continental split systems per 200 Myr against the 6–8 context.
+  - Compare repeat rifts on marked rock with first rifts, to show weakening accumulates, with
+    oceanic tears reported separately.
+  - Report how long daughters keep diverging after breakup, by setting.
+
+**Outcomes by setting.** A **breakup** adds a plate, and needs each daughter at
+`RIFT_MIN_DAUGHTER_SHARE` of the parent. Active, passive and rollback use breakup only; small
+back-arc strips stay as weakened rock. Transtension may also make a **boundary jump**, as the
+Gulf of California moved Baja onto the Pacific plate: a strip moves to the neighboring plate, and
+plate count does not change. A jump has no size minimum, but both arms must end on the boundary
+with one neighbor and the strip must run along it for at least `RIFT_MIN_FRONT_KM`. That rule
+separates a strip from a corner cut, and has not yet been measured. Anything else stays as weakened
+rock.
+
+**Follow-ups,** after the core lifecycle. The first two are required before this RFC counts as
+Implemented:
+
+1. **Deeper keels and keel erosion,** as described above. The craton-breach path does not exist until
+   this ships. Until then, cratons break only at edges and where weak.
+2. **Boundary jump.** It needs moving cells between plates; the existing partition and merge code
+   should support it, but this has not been traced.
+3. **Oceanic microplates.** A tear beside a subduction front can make a small microplate that is
+   later subducted. The 5% daughter minimum blocks these today. They would need their own smaller
+   size rule, allowed only beside a subduction front, once the 40-plate ceiling has been measured.
+
+**Slab prototype.** The evolving-slab code in PRs #726 and #727 is not used here and stays out of
+production, kept as evidence on `claude/issue-699-evidence-corrected-slabs`. A later revision may
+draw on it, for example to scale the passive signal by slab pull. The parallel force-and-damage
+work on #699 stays offline evidence. If it validates a mechanism, that would be a new revision of
+this design, not a blocker for it.
+
+**The earlier design below** stays as the record of what was tried. It does not constrain
+implementation.
+
 
 ### Diagnosis gates
 
@@ -534,6 +884,31 @@ source or explicit design-choice status, and the sensitivity plan before impleme
 
 ## Detailed design (provisional touchpoints)
 
+**Current for detected rifts (2026-10-31):**
+
+- `backend/app/rifts.py` (new): `RiftEvent`, the four detectors, routing and lifecycle.
+- `backend/app/merge_split.py`: `maybe_split_plate` hands its gates to the passive detector;
+  `RIFT_SUCCESS_PROBABILITY` retires. `_plates_from_node_masks` in `sparse_quad_patch.py` backs a new
+  mask-based split, and `apply_failed_rift` generalizes from a great-circle band to reached cells.
+- `backend/app/collision_polarity.py`: per-front upper and lower plate for rollback.
+- `backend/app/mantle.py`: a shared helper so every `flow_at` caller gets the same plume centers.
+- `backend/app/torque.py`: basal drag sees the plume push through that helper.
+- `backend/app/stats.py`: rift counts by setting and outcome.
+- `backend/app/plumes.py`: the temporary upwelling center, and removal of `_credit_head_stress`.
+- Follow-up: keel erosion under `plume_heat_myr` with an `hm_ledger` sink, and deeper craton keels
+  at seeding in `cratons.py` and `continent_layout.py`.
+- `backend/app/surface_fields.py`: a field for reached cells and oceanic tear dates.
+- `backend/app/world.py`: `active_rifts` (new), with the step order that runs it.
+- `backend/app/cratons.py`: `record_rift_cut` takes a route as well as a `cut_normal`.
+- `backend/app/hm_ledger.py`: its `failed_rift_thinning` phase, and the keel sink in the follow-up.
+- Follow-up: `backend/app/quad_merge.py` and `merge_split.merge_plates` for the boundary jump.
+- `bin/debug/probe_rift_settings.py`: the census and route probe, extended for Gates D1 and D2.
+- Tests: `backend/unit_tests/test_rifts.py` (new), and `test_persistence.py` for old saves.
+- Docs: `docs/simulation-model/tectonics.md`, `docs/architecture.md`,
+  `docs/save-compatibility.md`.
+
+**Earlier provisional touchpoints:**
+
 - `backend/app/torque.py`: `gather_per_node_force_field` exposes existing source forces in N
   before torque aggregation. `backend/app/thin_shell.py` supplies a reduced linear membrane
   equilibrium and exposes the largest positive principal stress increment for comparison with an
@@ -570,28 +945,43 @@ source or explicit design-choice status, and the sensitivity plan before impleme
 
 ## Assumptions and uncertainty
 
-- **The strength model is an explicit physical hypothesis, not a resolved lithosphere.** A first
-  candidate combines frictional normal-fault failure with temperature- and strain-rate-dependent
-  creep, then integrates differential strength with depth. It omits fluid state, vertical
-  composition, inherited faults, anisotropy, grain-size evolution and 3-D load transfer. Existing
-  Moho temperature and boundary Mohr-Coulomb proxies do not fill those gaps. Weak/wet and strong/dry
-  brackets may show sensitivity but cannot identify the real material state.
-- **Local loading is the key unresolved interface.** Node-wise force inputs are currently reduced
-  into a whole-plate torque; neither that torque nor dimensionless `Plate.internal_stress`
-  uniquely specifies intraplate stress. The replacement must derive a supported local load or stop
-  and revise; it must not disguise the min-cut flow partition as mechanics.
-- **Damage proxies brittle/ductile weakening.** A single strain/damage scalar omits temperature,
-  fluids, grain-scale rheology and depth-dependent faulting. It is an efficient model proxy, not a
-  resolved fault-zone simulation.
-- **Segment linkage is not always a discrete transform.** Rift transfer may be distributed or
-  extension-dominated; the model must not force a strike-slip “scissor” at every offset.
-- **Craton avoidance is probabilistic geology, not an absolute rule.** Strong cratons should resist
-  extension, while sufficiently large loads or inherited weaknesses may still rupture them. The
-  acceptance target measures a comparative model behavior, not a universal geological law.
-- **Continental and oceanic rifting differ.** A boundary may propagate from continental extension
-  into oceanic crust, but the two modes need not share identical thresholds.
-- **The 1 Gyr replays are stress tests, not calibration intervals.** Tune constitutive assumptions on
-  shorter controlled cases, then use long runs to check side effects and budgets.
+The earlier assumptions about the strength model, local loading, damage and segment linkage applied
+to the force-and-damage design and are retired with it.
+
+- **This is a phenomenological rift model.** Detection and routing compute no stress, so results
+  show plausible behavior, not mechanical cause.
+- **Each detector is a proxy.** Passive uses mantle-flow misfit in place of far-field tension.
+  Rollback uses upper-plate motion, which does not explain every subduction zone
+  [[Heuret & Lallemand, 2005]](#ref-heuret2005). Active assumes a head can rift continent in any
+  setting. In transtension's obliquity window only the 20° bound has a source
+  [[Brune et al., 2018]](#ref-brune2018).
+- **Routes have foresight.** Dijkstra sees the whole plate, while real rifts grow locally and can't
+  know where they will end. This trades realism for believable shapes at low cost. Re-planning from
+  the tips softens it slightly.
+- **One rift, two arms.** There are no independent segments, triple junctions or competing rifts on
+  a plate. Plume rifts often branch in three, so Afar-style junctions will not appear.
+- **One growth rate.** Every setting grows at the same speed, chosen to fit the 10–30 Myr bracket,
+  not measured. The parallel slab run took 80 Myr to separate under a prescribed load, which is not
+  calibration but is a reason not to assume rifts are quick, so the sensitivity range is wide.
+- **Fragments are not plates.** A disconnected patch of damage may be weak rock or a microplate, and
+  only a breakup makes a plate. In the parallel run, the large piece appeared as links broke between
+  already-damaged cells, with no new cell failing, which supports weakening that persists and
+  accumulates. It does not show earthquakes matter: the piece appeared with triggering off.
+- **Cratons usually hold, but not always.** Edges, weak cratons and eroded keels can give way, which
+  is a tendency written as hard cell rules. Until the keel follow-up ships, craton strength comes
+  from crust alone and cratons break only at edges and where weak.
+- **Continental and oceanic rock keep different records.** Detectors differ by setting, and routes
+  share one set of rules. Continental weakening is a permanent belt. Oceanic weakening is a tear
+  that persists near subduction or volcanoes and heals elsewhere.
+- **A tear stands for processes the model lacks.** A tear in an oceanic plate lets water into
+  peridotite, forming serpentinite that lubricates the fault, among other responses. The model
+  tracks neither, so the weak mark and its healing time are the whole representation.
+- **Weakening is permanent on continents.** Belts never heal, so over many Gyr marked rock could
+  spread until route preferences lose meaning. Long runs should check this.
+- **The census is thin evidence.** It is five snapshots and has never run in a history, so every
+  number in this design could shift.
+- **The 1 Gyr replays are stress tests, not calibration intervals.** Tune on shorter controlled
+  cases, then use long runs to check side effects and budgets.
 
 ## Acceptance criteria
 
@@ -644,6 +1034,41 @@ source or explicit design-choice status, and the sensitivity plan before impleme
        prescribed seed and does not advance its fixed crack; and its pressure-work comparison omits
        boundary and inelastic terms. Those limitations do not keep Gate 3a open; plate-scale
        consequences are Gate 3b.
+**Revised 2026-10-31.** Items 3, 4, 5, 6, 7, 8, 9, 10 and 11 below are replaced or reworded as
+listed here and in the revision note:
+
+- [ ] **Gates D1, D2 and D3** as defined in the Design section.
+- [ ] **Item 4 as revised:** histories of at least 200 Myr on the D3 seeds, repeated with a halved
+      timestep and at finer resolution, report detected, failed and completed rifts by setting,
+      with duration, length, crust type and daughter sizes. No instantaneous plate-wide split.
+      Stability means the plate-band result agrees, and rift counts by setting and detached craton
+      stay within 20%.
+- [ ] **Item 5 as revised:** rift onset, progress, lapse, retry timing, tear healing and re-planning
+      from the tips are timestep-partition invariant in synthetic tests.
+- [ ] **Item 7 as revised:** more than 10 and fewer than 40 plates at every output on every D3 seed.
+- [ ] **Item 8 as revised:** zero blocked cells entered, and detached craton per rift under D2's
+      limit.
+- [ ] **Item 9 as revised:** rifting-related craton loss is at most 2% of live craton per Gyr on
+      average across seeds 7, 11 and 2024, and in each of the first three Gyr on seed 456862899,
+      subject to ledger checks.
+- [ ] **Item 10 as revised:** crust and mantle ledgers balance; old saves load with no rifts
+      running; new saves preserve running rifts, reached cells and tears for deterministic
+      continuation; runtime overhead at density 4 stays within 2% of a fresh current-main run. The
+      same seed gives the same rifts under any step partition.
+- [ ] **Item 11 as revised:** rift counts by setting with plumes on and off, and rifts still occur
+      with plumes off.
+- [ ] **Weakening:** a continental site with no route leaves a belt and an oceanic one a tear, in
+      unit tests. At D3, the share of new route length on marked rock exceeds the share of the
+      plate that is marked. Time from first event to breakup on marked plates is reported.
+- [ ] **Deeper keels and erosion shipped:** a synthetic test shows heat alone stays blocked and an
+      eroded keel opens, and D3's craton-loss check is rerun with them.
+- [ ] **Boundary jumps shipped:** a test shows a jump leaves plate count unchanged.
+
+Oceanic microplates are not required for this RFC and stay a separate future issue. Item 6 is
+retired.
+
+The superseded text follows for the record.
+
 3. [ ] **Gate 3b — rift-potential existence and source (tracked by #699):** publish the event
        definition and source/load accounting before probing. A slab-pull case must use evolving 3-D
        slab bodies coupled to in-plane deformation of the plate; static trench forces on a rigid plate
@@ -704,6 +1129,29 @@ source or explicit design-choice status, and the sensitivity plan before impleme
        from a prescribed crack-tip test or tune forcing to match a single observed endpoint.
 
 ## Falsification criteria
+
+**For detected rifts (2026-10-31):**
+
+- **A setting cannot be detected:** if a setting never fires after Gate D1's fixes, its signal is
+  wrong or the model lacks the kinematics. Revise that detector, or take it to the owner to drop.
+- **Rifts run away:** if detection keeps plate count at 40 or more across the planned
+  sensitivity ranges, the detectors are too permissive. Revise them; do not add a random gate.
+- **No routes exist:** if fewer than 90% of non-barrier sites reach a qualifying outcome, revise
+  site selection and endpoint choice, then the craton block, with the owner.
+- **Rifts never complete:** if settings rarely last as long as a route takes to grow, breakups stop
+  and plate count falls toward the floor. Revise propagation or the detectors.
+- **Open edges cost too much craton:** edge and weak-craton routes detached a median 9% of the craton
+  they divided, and more than 25% on 2 of 96 routes. If item 9 or the detached-craton limit fails
+  and route loss is the cause, narrow the edge or raise the block.
+- **Routing does not protect cratons:** if routes avoid cratons but item 9 still fails through
+  divergent thinning or stretch donation, raise the margin cost first. If that does not hold it,
+  the loss belongs to those processes, and the fix lies there rather than in rift routing.
+- **Cratons never break, or break too often:** if no craton is ever breached, or breaches are common
+  rather than unusual, revise the keel rate. The owner's expectation is "usually, no".
+- **Weakening does not accumulate:** if later rifts do not follow earlier marked rock, the minimum
+  outcome has no effect, and belt resistance needs revising.
+
+The earlier criteria follow.
 
 - **No defensible local loading field:** the 2026-10-19 trace found current force/torque data
   insufficient to support a spatial extensional load without an added transfer/equilibrium rule.
@@ -862,6 +1310,22 @@ source or explicit design-choice status, and the sensitivity plan before impleme
 - <a id="ref-heron2016"></a>Heron, P. J., Pysklywec, R. N., & Stephenson, R. (2016).
   Lasting mantle scars lead to perennial plate tectonics. *Nature Communications*, 7,
   11834. [doi:10.1038/ncomms11834](https://doi.org/10.1038/ncomms11834)
+- <a id="ref-sengor1978"></a>Şengör, A. M. C., & Burke, K. (1978). Relative timing of rifting and
+  volcanism on Earth and its tectonic implications. *Geophysical Research Letters*, 5(6), 419–421.
+  https://doi.org/10.1029/GL005i006p00419
+- <a id="ref-merle2011"></a>Merle, O. (2011). A simple continental rift classification.
+  *Tectonophysics*, 513(1–4), 88–95. https://doi.org/10.1016/j.tecto.2011.10.004
+- <a id="ref-heuret2005"></a>Heuret, A., & Lallemand, S. (2005). Plate motions, slab dynamics and
+  back-arc deformation. *Physics of the Earth and Planetary Interiors*, 149(1–2), 31–51.
+  https://doi.org/10.1016/j.pepi.2004.08.022
+- <a id="ref-brune2018"></a>Brune, S., Williams, S. E., & Müller, R. D. (2018). Oblique rifting: the
+  rule, not the exception. *Solid Earth*, 9(5), 1187–1206. https://doi.org/10.5194/se-9-1187-2018
+- <a id="ref-brune2012"></a>Brune, S., Popov, A. A., & Sobolev, S. V. (2012). Modeling suggests that
+  oblique extension facilitates rifting and continental break-up. *Journal of Geophysical Research:
+  Solid Earth*, 117, B08402. https://doi.org/10.1029/2011JB008860
+- <a id="ref-buiter2014"></a>Buiter, S. J. H., & Torsvik, T. H. (2014). A review of Wilson Cycle plate
+  margins: A role for mantle plumes in continental break-up along sutures? *Gondwana Research*,
+  26(2), 627–653. https://doi.org/10.1016/j.gr.2014.02.007
 - <a id="ref-koptev2015"></a>Koptev, A., Calais, E., Burov, E., Leroy, S., & Gerya, T.
   (2015). Dual continental rift systems generated by plume–lithosphere interaction.
   *Nature Geoscience*, 8, 388–392. [doi:10.1038/ngeo2401](https://doi.org/10.1038/ngeo2401)

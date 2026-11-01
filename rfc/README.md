@@ -73,7 +73,8 @@ interior is one craton. RFC 0009 reverses the generation order: cratonic cores f
 continents assembled around them with lasting weak belts, then plates placed around them.
 G3 initially selected RFC 0010's min-cut with a resistance fallback, but the #480 1 Gyr
 same-state routing diagnostics showed the min-cut did not reach its per-seed 50% target.
-RFC 0010 is revised to reject a static whole-plate minimum cut and propose incremental,
+RFC 0010 was revised on 2026-10-31 to detect rift settings and route rifts around cratons,
+replacing its force-and-damage route. Earlier, it was revised to reject a static whole-plate minimum cut and propose incremental,
 damage-driven local cuts that may link into rift segments; see
 [`analysis/issue480/`](../analysis/issue480/README.md).
 

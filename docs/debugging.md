@@ -110,6 +110,7 @@ Gate 2 load, mesh and capacity diagnostics.
 | [`replay_gate2_coupled_event.py`](debugging/scripts-rifting.md#replay_gate2_coupled_eventpy) | pair-level stress sensitivity to contact loads and rigid-mode projections |
 | [`sensitivity_gate2_capacity.py`](debugging/scripts-rifting.md#sensitivity_gate2_capacitypy) | one-factor capacity sensitivity on captured node loads |
 | [`validate_thin_shell_plate_meshes.py`](debugging/scripts-rifting.md#validate_thin_shell_plate_meshespy) | generated-plate mesh coverage, curved-surface and edge-condition checks |
+| [`probe_rift_settings.py`](debugging/scripts-rifting.md#probe_rift_settingspy) | census of the four rift settings and craton-free routes on saved worlds |
 
 ### Crust and mantle budgets
 
