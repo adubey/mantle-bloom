@@ -130,7 +130,9 @@ ordinary sink. Exported lake water first follows the lake hierarchy; any termina
 without a receiving lake body is credited to the global ocean budget as
 `river_water_ledger.unlocated_ocean_export_m3`. This unresolved outlet contributes no spatial
 river-mouth discharge. Deferred internal transfers are consumed by the receiving lake in the
-normal flush; an exhausted flush raises an error instead of bypassing that owner.
+normal flush; an exhausted flush raises an error instead of bypassing an untried owner.
+A returned cap cycle can export only after that source-to-owner handoff completed a normal
+body update and the current governing owner is still full.
 If a world has no ocean node, hydrology
 logs the remaining volume and node. This keeps the water budget explicit even when the flow graph
 contains a spill edge that closes a cycle.

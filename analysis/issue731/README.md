@@ -30,7 +30,7 @@ expected treatment direction is a reduction below threshold. No replicate is pre
 these are large deterministic routing changes, and event movement is the decision signal rather
 than a small effect near replay noise.
 
-## Replay results
+## Initial implementation replay results
 
 The final A/B/C comparison uses the four preregistered 100 kyr steps and checkpoint hashes
 above. The control backend is detached `origin/main` at `cd93d339` (after PR #729); the treatment
@@ -91,3 +91,17 @@ checkpoint hashes, forcing, horizon and thresholds above; the unchanged control 
 `cd93d339`. Expected direction: zero stranded overflow, unchanged global ocean credit, and no
 spatial mouth at an arbitrary ocean node. Lost input at an owned lake must remain in the land
 residual. Record any event, lake-volume or runtime movement rather than tuning it away.
+
+
+## Intermediate review validation
+
+The A replay at `caa50c66` was superseded after follow-up review found successive capped-pair
+handoffs. The three replays at `2b93f8cc` met both conservation thresholds, but the affected
+suite found two seed-3 fault tests reaching the new cycle-owner guard (1,879 other tests passed).
+The diagnostic showed surplus returning from an owner that had already processed its transfer.
+The final fix distinguishes that closed full-owner cycle from an untried receiving lake: it
+records completed source-to-owner handoffs and checks the current governing body's cap state.
+Queued handoffs, a different source, a body with room, and stale historical body flags cannot
+authorize export. Both seed-3 failures pass with this distinction. These intermediate replay
+outputs and the failing suite log remain in private captures. Repeat the preregistered final
+stress, A/B/C and affected-unit validation on the committed corrected source.

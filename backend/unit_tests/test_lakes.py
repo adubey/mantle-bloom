@@ -1492,3 +1492,45 @@ def test_simultaneous_cycle_surpluses_share_the_same_parent_owner_handoff():
     assert accounting.deferred == {int(ownership[4]): 300.}
     assert not accounting.cycle_surplus
     assert accounting.overflow_out_total == 0.0
+
+
+@pytest.mark.parametrize(
+    'handoff, full', [('none', True), ('queued', True), ('other_source', True),
+                      ('complete', False), ('complete', True)],
+)
+def test_final_cycle_export_requires_this_sources_completed_handoff_to_a_full_owner(handoff, full):
+    forest, elevation, previous, _, _ = _capped_pair_fixture(2, 0.0)
+    parent = forest[0]
+    parent.outlet_target_idx = 4
+    left, right = parent.children
+    leaves = [lake for lake in lakes.iter_all_lakes(forest) if not lake.children]
+    ownership = np.full(len(elevation), -1, dtype=np.int64)
+    for leaf_id, leaf in enumerate(leaves):
+        ownership[leaf.members] = leaf_id
+    owner_leaf = int(ownership[4])
+    owner = leaves[owner_leaf]
+    accounting = lakes._new_prognostic_accounting(len(leaves), len(elevation), True)
+    accounting.cycle_surplus[int(ownership[2])] = lakes._CycleSurplus(123., left, right)
+    if handoff == 'queued':
+        accounting.pending_owner_handoffs[owner_leaf] = {id(parent)}
+    elif handoff in ('complete', 'other_source'):
+        source_id = id(parent) if handoff == 'complete' else id(left)
+        accounting.completed_owner_handoffs.add((source_id, owner_leaf))
+    if full:
+        accounting.final_spilling_ids.add(id(owner))
+    else:
+        accounting.final_spilling_ids.add(id(parent))  # A historical body cannot authorize this owner.
+    parents = {id(left): parent, id(right): parent}
+    if handoff == 'complete' and full:
+        lakes._export_final_surplus(
+            accounting, leaves, ownership, parents, None, previous.copy(),
+            current_owners={owner_leaf: owner},
+        )
+        assert accounting.overflow_out_total == 123.
+    else:
+        with pytest.raises(RuntimeError, match='unconsumed cycle owner'):
+            lakes._export_final_surplus(
+                accounting, leaves, ownership, parents, None, previous.copy(),
+                current_owners={owner_leaf: owner},
+            )
+        assert accounting.overflow_out_total == 0.0

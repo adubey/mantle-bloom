@@ -453,6 +453,8 @@ class _PrognosticAccounting:
     # (#696). `_release_broken_cycles` returns it if either body stops being active.
     cycle_surplus: dict[int, _CycleSurplus] = field(default_factory=dict)
     final_slice: bool = False
+    pending_owner_handoffs: dict[int, set[int]] = field(default_factory=dict)
+    completed_owner_handoffs: set[tuple[int, int]] = field(default_factory=set)
 
 
 def _new_prognostic_accounting(leaf_count: int, node_count: int, diagnostic_trace: bool):
@@ -796,6 +798,14 @@ def _integrate_body_volume(available, members, cap_level, dry_level, dt_step, ev
     return volume, min(evaporated, available), 0.0, level
 
 
+def _complete_owner_handoffs(accounting, leaf_ids, pending_volume):
+    if pending_volume <= 0.0:
+        return
+    for leaf_id in leaf_ids:
+        for source_id in accounting.pending_owner_handoffs.pop(leaf_id, ()):
+            accounting.completed_owner_handoffs.add((source_id, leaf_id))
+
+
 def _advance_prognostic_body(
     body,
     dt_step,
@@ -825,6 +835,7 @@ def _advance_prognostic_body(
     else:
         external_rate = float(rates[members].sum()) if dt_step > 0.0 else 0.0
     pending_volume = pending.pop(id(body), 0.0)
+    _complete_owner_handoffs(accounting, body_leaf_ids[id(body)], pending_volume)
     input_volume = external_rate * dt_step + pending_volume
     accounting.external_used_total += external_rate * dt_step
     _trace_node_source(accounting, rates, climate, members, dt_step)
@@ -1000,7 +1011,7 @@ def _deliver_surplus_to_owner(
             )
             _book_silt_transfer(accounting, source_leaf_ids, target_leaf, volume)
             accounting.internal_transfer_total += volume
-            return
+            return target_leaf
         if is_ocean is not None and bool(is_ocean[target]):
             _export_at_node(accounting, trace_source or source, target, volume, is_ocean, depth)
             return
@@ -1042,13 +1053,17 @@ def _reroute_final_surplus(accounting, leaves, leaf_of_node, parent_by_id, is_oc
             for sink in leaf_sinks(held.sender)
             if 0 <= sink < len(leaf_of_node) and leaf_of_node[sink] >= 0
         }) or [leaf_id]
-        _deliver_surplus_to_owner(
+        owner_leaf = _deliver_surplus_to_owner(
             accounting, source, source_leaf_ids, held.volume, leaves, leaf_of_node, parent_by_id, is_ocean, depth,
             trace_source=leaves[source_leaf_ids[0]],
         )
+        if owner_leaf is not None:
+            accounting.pending_owner_handoffs.setdefault(owner_leaf, set()).add(id(source))
 
 
-def _export_final_surplus(accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth):
+def _export_final_surplus(
+    accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth, *, current_owners=None,
+):
     """Book only surplus that could not reach a hierarchy owner within the bounded flush."""
     if accounting.deferred:
         # These volumes were already credited to receiving leaves. Re-exporting through
@@ -1062,7 +1077,13 @@ def _export_final_surplus(accounting, leaves, leaf_of_node, parent_by_id, is_oce
         source = _lowest_common_ancestor(held.sender, held.receiver, parent_by_id)
         target = _parent_outlet_target(source, parent_by_id)
         if 0 <= target < len(leaf_of_node) and leaf_of_node[target] >= 0 and target not in source.members:
-            raise RuntimeError(f"Lake flush left an unconsumed cycle owner at node {target}")
+            owner_leaf = int(leaf_of_node[target])
+            owner = None if current_owners is None else current_owners.get(owner_leaf)
+            consumed = (id(source), owner_leaf) in accounting.completed_owner_handoffs
+            # A completed handoff that returns from a still-full current owner is a
+            # closed cap cycle, not an untried receiving reservoir (#731).
+            if not (consumed and owner is not None and id(owner) in accounting.final_spilling_ids):
+                raise RuntimeError(f"Lake flush left an unconsumed cycle owner at node {target}")
         if not 0 <= target < len(leaf_of_node):
             target = int(leaves[leaf_id].sink_node_idx)
         source_leaf_ids = sorted({
@@ -1174,7 +1195,10 @@ def solve_lakes_prognostic(
         if substep + 1 >= steps and not accounting.deferred:
             break
 
-    _export_final_surplus(accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth)
+    current_owners, _ = _body_leaf_mapping(next_bodies, leaf_of_node)
+    _export_final_surplus(
+        accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth, current_owners=current_owners
+    )
 
     lake_depth = np.zeros(n)
     lake_is_sea = np.zeros(n, dtype=bool)
