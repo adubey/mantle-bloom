@@ -4,8 +4,8 @@
 
 Status: **blocked; do not start G1.** The persistent river inventory and all reach transfers
 close, and the control reproduces every registered event, but the rain-only land budget closes
-only by naming 3.2–5.8% of A and B's input as stranded lake overflow, a defect in the control
-(see [G0 control replay](#g0-control-replay)). The interim glacier account closes the full ledger
+only by naming 3.2–5.8% of A and B's input as stranded lake overflow, a control defect that #731
+has since fixed (see [G0 control replay](#g0-control-replay)). The interim glacier account closes the full ledger
 only by construction, and its balance is too large for its release to support G0's interpretation,
 so G0 stays blocked until RFC 0015 (see [Interim glacier account](#interim-glacier-account-732)).
 
@@ -256,23 +256,23 @@ falsification criteria).
 
 ### Results
 
-Source: `origin/main` `cd93d339`, this branch `d0b83742`, and for closure a local merge of this
-branch with #734's `425ac919`. Whole-run values are in
+Source: `origin/main` `cd93d339` against this branch `d0b83742`, before #734 landed. Rerun on
+`origin/main` `7d810123`, which has #734, against this branch's merge of it, `4fe51401`. Whole-run values are in
 [`g0-glacier-account-summary.json`](g0-glacier-account-summary.json). Replay JSON is outside the
 repository, under `issue732/` in the private captures.
 
 **The control is unchanged.** On A, B and C, every step's lake volume, target-lake record, glacier
 volume, sea level and river inventory are exactly equal between `origin/main` and the branch, a
-difference of 0.0. The account has no path into the model.
+difference of 0.0, both before and after #734 landed. The account has no path into the model.
 
 **The identity and the ledger close.** The account's largest step error is about 5e5 m³ against a
 1e21 m³ balance, which is floating point. Land rain plus land frozen precipitation matches
 diagnostic precipitation in unit tests.
 
-| Window | Full residual, this branch | Full residual, with #734 | Stranded overflow, branch → with #734 |
+| Window | Full residual, before #734 | Full residual, with #734 | Stranded overflow, before → with #734 |
 |---|---:|---:|---:|
 | A | 3.4e-8 | 7.6e-14 | 6.10% → 0 |
-| B | 3.3e-5 | 5.2e-14 | 5.25% → 0 |
+| B | 3.3e-5 | 5.1e-14 | 5.25% → 0 |
 | C | 1.2e-10 | 8.1e-14 | 0.34% → 0 |
 
 **This table is not evidence for the account.** Closure is true by construction: frozen input
@@ -280,7 +280,7 @@ always equals retained plus bare-ground melt, and the account's change plus rele
 retained, so `full_land_water_residual_m3` reduces to the rain-only `land.residual_m3`. The replays
 agree: the two residuals differ by at most 4.6e5 m³, which is floating point. These columns are the
 rain-only ledger on a larger denominator, so the improvement with #734 is #734's result. The
-branch's residual is under 0.1% only because stranded overflow is a named term, which is not an
+earlier residual is under 0.1% only because stranded overflow is a named term, which is not an
 allowed sink. The criterion is formally met, but what tests the account is the partition, the
 identity, the control comparison and the sizes below. `P_diag` here is land precipitation plus snow
 kept by ice on ocean nodes, which is 2–7% of land frozen precipitation.
@@ -326,7 +326,7 @@ Steady ice would balance, as designed. These windows aren't steady: they lose 1.
 in 400 kyr while retained snow adds 0.1–0.5%.
 
 **What this means for G0.** The bookkeeping criterion holds by construction, and the release term
-is larger than `P_diag` in 7 of the 12 mature-window steps. The owner's decision is recorded in
+is larger than `P_diag` in 8 of the 12 mature-window steps with #734. The owner's decision is recorded in
 [PR #739](https://github.com/adubey/mantle-bloom/pull/739): the account lands as inert bookkeeping
 because its identity and control checks pass, the oversized release is a failed G0 interpretation,
 and G0 stays blocked, with G1 unavailable, until RFC 0015 resolves the physical glacier-water path.
