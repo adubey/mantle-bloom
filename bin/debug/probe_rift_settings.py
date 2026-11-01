@@ -4,7 +4,9 @@
 Read-only exploration on saved worlds. Active rifting is plume-heated continental lithosphere,
 passive rifting is the production flow-fit gate, slab rollback is an upper plate moving away from
 its trench, and transtension is an oblique, opening continental boundary. From each site two arms
-grow to the plate boundary by Dijkstra with cratons forbidden, and the plate must truly separate.
+grow to the plate boundary by Dijkstra, and the plate must truly separate. Intact craton interiors
+are blocked; craton edges, weak cratons and plume-heated interiors with an eroded keel are open at a
+cost. No route is a valid outcome: the site still weakens.
 The great circle through the same site and axis is the baseline. Thresholds are design choices.
 
 Usage (one process per save; RAM-heavy on mature worlds):
@@ -26,7 +28,7 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components, dijkstra
 from scipy.spatial import cKDTree
 
-from app import elevation_lines, geometry, lithosphere, mantle, merge_split, persistence, torque
+from app import cratons, elevation_lines, geometry, lithosphere, mantle, merge_split, persistence, torque
 
 MIN_FRONT_KM = 300.0
 RATE_CM_YR = 1.0
@@ -36,7 +38,10 @@ HEAD_AREA_KM2 = 1e5
 BELT_RESISTANCE = 0.6
 PLUME_RESISTANCE = 0.6
 ALIGN_PENALTY = 2.0
-CRATON_BUFFER_CELLS = 1
+CRATON_EDGE_KM = 200.0
+CRATON_BLOCK_STRENGTH = 0.5
+CRATON_COST = 4.0
+KEEL_BREACH_M = 60_000.0
 INBOARD_KM = 300.0
 MIN_DAUGHTER_SHARE = 0.05
 # An arm may not end nearer the site than this, widening until the daughters are real plates.
@@ -246,19 +251,35 @@ def split_by_route(plate, points, route, areas):
     return label == 0
 
 
-def score_site(world, plate, state, site, cratons_mask, belts):
-    points, areas = state["points"], plate.node_areas_m2()
-    spacing = state["spacing"]
-    forbidden = cratons_mask.copy()
+def craton_barrier(plate, cratons_mask, spacing):
+    """Intact interiors stop a rift. Edges and weak cratons don't, and neither does a heated
+    interior whose keel has gone: plume heat alone never opens a craton."""
     adjacency = plate.adjacency()
-    for _ in range(CRATON_BUFFER_CELLS):
-        rows = np.repeat(np.arange(plate.node_count()), np.diff(adjacency.offsets))
-        grown = forbidden.copy()
-        grown[adjacency.neighbours[forbidden[rows]]] = True
-        forbidden = grown
+    rows = np.repeat(np.arange(plate.node_count()), np.diff(adjacency.offsets))
+    interior = cratons_mask.copy()
+    for _ in range(max(1, round(CRATON_EDGE_KM * 1e3 / (spacing * lithosphere.PLANET_RADIUS_M)))):
+        exposed = np.zeros(plate.node_count(), dtype=bool)
+        exposed[rows[~interior[adjacency.neighbours]]] = True
+        interior &= ~exposed
+    strong = cratons.strength(plate.collect("craton_crust_m")) >= CRATON_BLOCK_STRENGTH
+    breached = (plate.collect("plume_heat_myr") > 0.0) & (
+        plate.collect("mantle_lithosphere_thickness_m") < KEEL_BREACH_M)
+    return interior & strong & ~breached, interior
+
+
+def route_resistance(plate, belts, forbidden):
     resistance = np.ones(plate.node_count())
     resistance[belts] = BELT_RESISTANCE
     resistance[plate.collect("plume_heat_myr") > 0.0] = PLUME_RESISTANCE
+    craton_strength = cratons.strength(plate.collect("craton_crust_m"))
+    return np.where(craton_strength > 0.0, 1.0 + CRATON_COST * craton_strength, resistance)
+
+
+def score_site(world, plate, state, site, cratons_mask, belts):
+    points, areas = state["points"], plate.node_areas_m2()
+    spacing = state["spacing"]
+    forbidden, interior = craton_barrier(plate, cratons_mask, spacing)
+    resistance = route_resistance(plate, belts, forbidden)
     extension = geometry.normalize(np.asarray(site["extension"], dtype=float))
     seed = site["seed"]
     band = np.sin(merge_split.FAILED_RIFT_BAND_MULT * spacing)
@@ -270,7 +291,7 @@ def score_site(world, plate, state, site, cratons_mask, belts):
            "front_km": site["front_nodes"] * spacing * lithosphere.PLANET_RADIUS_M / 1e3,
            "line_craton_cells": int((cratons_mask & line_band).sum()),
            "line_craton_area_km2": float(areas[cratons_mask & line_band].sum() / 1e6),
-           "seed_on_craton_or_buffer": bool(forbidden[seed])}
+           "seed_blocked": bool(forbidden[seed])}
     route, mask, status = None, None, "no_first_arm"
     for reach_km in ARM_REACH_KM:
         candidate, status = route_rift(plate, points, seed, extension, forbidden, resistance,
@@ -293,14 +314,21 @@ def score_site(world, plate, state, site, cratons_mask, belts):
     ends = float(np.arccos(np.clip(points[route[0]] @ points[route[-1]], -1.0, 1.0)))
     smaller = float(min(areas[mask].sum(), areas[~mask].sum()) / areas.sum())
     craton_area = float(areas[cratons_mask].sum())
-    cut = sum(1 for piece in components(plate, cratons_mask)
-              if mask[piece].any() and (~mask[piece]).any())
+    pieces = components(plate, cratons_mask)
+    divided = [piece for piece in pieces if mask[piece].any() and (~mask[piece]).any()]
+    cut = len(divided)
+    # The craton a cut detaches: an edge sliver and a craton halved both count as divided.
+    detached = [min(areas[piece][mask[piece]].sum(), areas[piece][~mask[piece]].sum()) for piece in divided]
+    share = max((part / areas[piece].sum() for part, piece in zip(detached, divided)), default=0.0)
     min_nodes = max(1, round(merge_split.SPLIT_MIN_NODES * world.node_density))
     row.update(route_km=float(segments * lithosphere.PLANET_RADIUS_M / 1e3),
                tortuosity=float(segments / max(ends, 1e-9)), smaller_daughter_fraction=smaller,
                smaller_daughter_nodes=int(min(mask.sum(), (~mask).sum())),
                meets_min_nodes=bool(min(mask.sum(), (~mask).sum()) >= min_nodes),
                route_craton_cells=int(cratons_mask[route].sum()), cratons_divided=cut,
+               craton_detached_km2=float(sum(detached) / 1e6), craton_largest_detached_share=float(share),
+               route_blocked_cells=int(forbidden[route].sum()), route_cells=len(route),
+               route_interior_cells=int(interior[route].sum()),
                craton_area_km2=craton_area / 1e6, belt_share=float(belts[route].mean()))
     return row, {"route": route, "mask": mask, "line_band": line_band, "cratons": cratons_mask}
 
@@ -364,7 +392,9 @@ def main():
     report = {"knobs": {"min_front_km": MIN_FRONT_KM, "rate_cm_yr": RATE_CM_YR, "obliquity_deg": OBLIQUITY_DEG,
                         "back_arc_km": BACK_ARC_KM, "head_area_km2": HEAD_AREA_KM2,
                         "belt_resistance": BELT_RESISTANCE, "plume_resistance": PLUME_RESISTANCE,
-                        "align_penalty": ALIGN_PENALTY, "craton_buffer_cells": CRATON_BUFFER_CELLS},
+                        "align_penalty": ALIGN_PENALTY, "craton_edge_km": CRATON_EDGE_KM,
+                        "craton_block_strength": CRATON_BLOCK_STRENGTH, "craton_cost": CRATON_COST,
+                        "keel_breach_m": KEEL_BREACH_M},
               "worlds": [survey(path, args.image_dir) for path in args.saves]}
     report["runtime_seconds"] = time.perf_counter() - started
     args.out.parent.mkdir(parents=True, exist_ok=True)

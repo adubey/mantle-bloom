@@ -111,30 +111,43 @@ weaker seams, which is RFC 0009's proposal.
 ## Rift settings and routes (2026-10-31)
 
 Exploration for the detected-rift revision, not gate evidence. `bin/debug/probe_rift_settings.py`
-looks for the four rift settings on saved worlds, then routes a rift from each site with cratons
-forbidden. The great circle through the same site and direction is the baseline. Thresholds are
-design choices, and no replay was run: each row is one snapshot, so these are not rates.
+looks for the four rift settings on saved worlds, then routes a rift from each site. Intact craton
+interiors are blocked; edges within 200 km, cratons below half strength and heated interiors with an
+eroded keel are open at a cost. The great circle through the same site and direction is the
+baseline. Thresholds are design choices, and no replay was run: each row is one snapshot, so these
+are not rates. No save has plumes, so the keel rule itself was not exercised.
 
 Saves, from the private B2 bucket and not available for download: seeds 317739385 (86 Myr),
 447276134 (116), 308161711 (121), 628977350 (227) and 373936961 (244). Compact result:
 [`rift-settings.json`](rift-settings.json).
 
-| Setting | Sites | Separating route | Craton cells crossed by route | Line crosses craton | Median tortuosity | Median smaller daughter |
-|---|---:|---:|---:|---:|---:|---:|
-| Active | 0 (no plumes in any save) | — | — | — | — | — |
-| Passive | 16 | 16 | 0 | 7 of 16 | 1.21 | 44% |
-| Rollback | 0 | — | — | — | — | — |
-| Transtension | 117 | 64 | 0 | 29 of the 64; 75 of 117 | 1.33 | 15.6% |
+| Setting | Sites | Separating route | Blocked cells entered | Routes touching craton | Routes dividing a craton | Line touches craton | Median tortuosity | Median smaller daughter |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Active | 0 (no plumes in any save) | — | — | — | — | — | — | — |
+| Passive | 16 | 16 | 0 | 4 | 2 | 7 | 1.21 | 44% |
+| Rollback | 0 | — | — | — | — | — | — | — |
+| Transtension | 117 | 84 | 0 | 27 | 17 | 50 | 1.34 | 11.7% |
 
-No route divided a craton. Of the 53 transtension failures, 51 found no arm and 2 made a daughter
-below 5%. 42 of the 117 sites began on a craton or its buffer, including 34 of the 53 failures. Tortuosity is route length over the
-great-circle distance between its ends. The probe's `meets_min_nodes` field fails on most rows,
-including near-even splits, because `SPLIT_MIN_NODES` scales with density and not plate size.
+"Line touches craton" counts the separating routes whose same-site great circle has craton in its
+band. An earlier run with every craton cell plus a 1-cell buffer forbidden gave 16 passive and 64
+transtension routes, with no craton touched or divided. Opening edges and weak cratons added 20
+transtension routes at the cost below.
 
-![A routed rift bending around a craton on seed 317739385](rift-route-around-craton.png)
+**Craton cost.** 19 of the 100 routes leave craton on both sides. The median route detaches 8% of the
+craton it divides, 8 detach more than 10%, and 4 more than 25%, with a maximum of 35%. The routes
+detaching most run through interiors below half strength. Routes crossed 421 craton cells of 5,013
+route cells. This is the owner's "a weak craton is easier to break", but it is a real risk to the
+craton-loss target, and these numbers were not tuned.
 
-*Plate 5 of seed 317739385 at 86 Myr. Gold cells are craton; the red route divides the plate into
-blue and green daughters. Tortuosity 1.49.*
+Of the 33 transtension failures, 30 found no arm and 3 made a daughter below 5%. 19 of the 117
+sites began on a blocked cell, including 10 of the failures. The probe's `meets_min_nodes` field
+fails on most rows, including near-even splits, because `SPLIT_MIN_NODES` scales with density and
+not plate size.
+
+![A routed rift on seed 373936961](rift-route-around-craton.png)
+
+*One transtension route on seed 373936961 at 244 Myr. Gold cells are craton; the red route divides
+the plate into blue and green daughters.*
 
 **Why two settings found nothing.** All 16 local saves have zero plumes, so active rifting was not
 tested. Rollback is a real gap: every oceanic node counts as down-going, so an ocean-ocean front has

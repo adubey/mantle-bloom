@@ -15,19 +15,22 @@
   defensible load field to produce a rift, and for slab pull an evolving 3-D slab coupled to plate
   deformation. The owner redirected the goal: Mantle-Bloom is a simulation with physics backing,
   not a physics model. Rifts exist and avoid cratons, so the model should detect the settings
-  where they occur, always start one there, and route it around cratons.
+  where they occur, start the rifting process there, and route it around cratons.
 
   The evidence agrees with that change. In the [corrected controlled rerun](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6550450178),
   all 28 slab histories passed accounting but none split: the outcome rested on an uncalibrated
   axial drag, and the strongest case failed 50.5% of the plate into 296 pieces. This is the
   outcome the falsification criteria below anticipated under "no defensible local loading field":
-  revise in favor of a clearly labeled phenomenological rift model. The [route and setting
+  revise in favor of a clearly labeled phenomenological rift model. The owner then set three
+  decisions: a detected setting at minimum weakens the plate and leaves weakened rock; a plume
+  usually cannot break a craton, though edges and weak cratons break more easily and an eroded keel
+  can give way; and the slab prototype stays as evidence that may be drawn on later. The [route and setting
   census](../analysis/rfc0010/README.md#rift-settings-and-routes-2026-10-31) shows a craton-free
   route works where min-cut did not.
 
   | Changed item | Previous criterion | New criterion | Reason |
   |---|---|---|---|
-  | Acceptance 3 (Gate 3b source) | Evolving slabs and shell loads produce a broad sustained event coupled to local cracks | Gate D1: all four settings are detectable, with frequencies reported | Load mechanics did not produce a rift, and the outcome depended on an uncalibrated parameter |
+  | Acceptance 3 (Gate 3b source) | Evolving slabs and shell loads produce a broad sustained event coupled to local cracks | Gates D1 and D2: all four settings are detectable, and every site at least weakens the plate | Load mechanics did not produce a rift, and the outcome depended on an uncalibrated parameter |
   | Acceptance 4 (breakup) | 200 Myr histories with propagation from local damage | Same histories, with propagation along a detected, routed rift; no instantaneous plate-wide split | The owner's goal keeps staged growth but not emergent mechanics |
   | Acceptance 5 (damage) | Timestep-invariant damage on supported local loading | Timestep-invariant rift progress and detection | No damage field remains |
   | Acceptance 6 (segments) | Independent segments nucleate and link | One rift grows two arms from a site; multiple segments are out of scope | Simplest model that meets the goal |
@@ -242,18 +245,17 @@ craton [[Koptev et al., 2015]](#ref-koptev2015).
    1,000 km corridor around the flow's great circle, plus that cut's pole and residual gates. Only
    30 of 78 admitted routes were line-clear.
 3. **Detect the setting, then route from it (recommended).** Each setting supplies a site and an
-   extension direction, which removes the great circle. Cratons are excluded from the search
-   rather than penalized, so crossing one is impossible, not merely expensive. The rift itself is
-   phenomenological, and is labeled so under [design principles](../docs/design-principles.md)
-   1 and 8, while principle 7 is met directly.
+   extension direction, which removes the great circle. Intact craton interiors block the route,
+   while edges and weak cratons are costly but open. The rift itself is phenomenological, and is
+   labeled so under [design principles](../docs/design-principles.md) 1 and 8. Principle 7 stays
+   central: craton loss from routes is explicit and booked, and it remains the main risk.
 
 **Exploration result.** On five saved worlds of 86–244 Myr (no matched replay, not yet gate
-evidence), 16 of 16 passive sites gave a two-daughter route with zero craton cells crossed and no
-craton divided, while the great circle through the same site crossed craton on 7 of those 16. Of
-117 transtension sites, 64 separated with zero craton crossed. Most of the rest began on or beside
-a craton, which is why the design moves such sites. Rollback found no sites, and active could not
-be tested because none of the 16 local saves has plumes. See
-[the analysis](../analysis/rfc0010/README.md#rift-settings-and-routes-2026-10-31).
+evidence), 16 of 16 passive sites and 84 of 117 transtension sites gave a two-daughter route, and no
+route entered a blocked cell. Of those 100 routes, 31 touch craton, and 19 leave some craton on both
+sides: the median detaches 8% of that craton, and 4 routes detach more than 25%, all through weak
+cratons. Rollback found no sites, and active could not be tested because none of the 16 local saves
+has plumes. See [the analysis](../analysis/rfc0010/README.md#rift-settings-and-routes-2026-10-31).
 
 ## Design
 
@@ -265,7 +267,8 @@ be tested because none of the 16 local saves has plumes. See
    direction and a site cell. A site must persist for `RIFT_ONSET_MYR` on a time-based clock, so
    its start does not depend on step length.
 2. **Route.** At onset, grow two arms from the site. The route is stored as cell keys, so it
-   moves with the plate. There is no random success draw: conditions met means a rift starts.
+   moves with the plate. There is no random success draw: conditions met means a rift starts, and
+   the minimum outcome below always applies.
 3. **Propagate.** Arms advance from the site at `RIFT_PROPAGATION_KM_PER_MYR`, as a continuous
    length converted to reached cells. Reached cells take the existing resisted thinning, belt
    marking and rift volcanism at a rate in physical units.
@@ -275,6 +278,14 @@ be tested because none of the 16 local saves has plumes. See
 5. **Fail.** If the driver lapses for `RIFT_LAPSE_MYR` before breakup, the rift stops, and what
    thinned stays as an aulacogen. This replaces `RIFT_SUCCESS_PROBABILITY`: the outcome follows
    from whether the setting lasts, not from a coin.
+
+**The minimum outcome.** A detected setting does not always make a rift, but it always leaves
+weakened rock. Every site thins and marks at least the cells within `RIFT_MIN_WEAK_KM` of it, even
+with no route, along with every cell an arm reached. Non-craton cells become belts through
+`cratons.mark_belt`, which never heal and which later routes prefer. Craton cells can't be belts,
+so they take the existing resisted thinning, which lowers `craton_crust_m` and so their strength.
+The weakening accumulates: a plate stressed repeatedly in one place gets easier to break there, and
+repeated thinning can bring a craton's edge below the block.
 
 **Detectors.** Rates are in cm/yr and thresholds are design choices.
 
@@ -298,16 +309,35 @@ whether that keeps the plate-count target in reach.
 site: one arm each side of the rift's strike, the second excluding the first arm's cells. It costs
 O((N + E) log N) per onset, not per step; the five-world census took 6.7 s including loading.
 
-- **Forbidden cells:** any craton cell, plus `RIFT_CRATON_BUFFER_CELLS` around it.
 - **Edge cost:** `length × mean resistance × (1 + RIFT_ALIGN_PENALTY × opening)`, where `opening`
   is the edge's alignment with the extension direction, so a route prefers to run across the
-  extension. Resistance is 1.0, or lower on belts and plume-heated cells.
+  extension.
+- **Cell resistance:** craton strength is the existing `cratons.strength`, linear in cratonic crust.
+
+  | Cell | Route |
+  |---|---|
+  | Ordinary rock | Open: 1.0, or 0.6 on a belt or plume-heated cell |
+  | Craton within `RIFT_CRATON_EDGE_KM` of its edge, or strength below `RIFT_CRATON_BLOCK_STRENGTH` | Open: `1 + RIFT_CRATON_COST × strength` |
+  | Intact craton interior | Blocked, **even when plume-heated** |
+  | Plume-heated interior with `Hm` below `RIFT_KEEL_BREACH_M` | Open: `1 + RIFT_CRATON_COST × strength` |
+
 - **Targets:** boundary cells at least a reach from the site. Reach widens through a fixed list
   until each daughter holds at least `RIFT_MIN_DAUGHTER_SHARE` of the plate.
-- **Sites near cratons:** a site on forbidden cells moves to the nearest open cell. Where no
-  route exists, the arm grows as far as it can and the rift fails as an aulacogen against the
-  craton. It never crosses. "Always produces a rift" therefore means a rift always starts, not that
-  every rift breaks a plate.
+- **Sites near cratons:** a site on blocked cells moves to the nearest open cell. Where no route
+  exists, the arms grow as far as they can, and the rift ends in the minimum outcome. It never
+  enters a blocked cell.
+
+**Keels and plumes.** Plume heat alone must not open a craton: `cratons.heated_strength` would drop
+a full-strength craton to 0.25, opening every heated one. The block therefore tests the keel, which
+the model holds as `Hm`, about 100 km at the median under full-strength cratons against 40 km
+elsewhere. **Nothing thins it under a plume today**, so this adds one process: while
+`plume_heat_myr > 0`, a craton cell loses `Hm` at `PLUME_KEEL_EROSION_M_PER_MYR`. Over the 20 Myr
+heat of one head that removes 40 km, just reaching the breach at the head's center from a median
+keel, so a single head rarely opens a craton but repeated heads can. Keels thin only where a plume
+heats them, in line with cratons surviving through their keels until heating or metasomatism
+disturbs them [[Foley, 2008]](#ref-foley2008) [[Lenardic et al., 2003]](#ref-lenardic2003). The
+rate is a design choice, not a measurement. The removed `Hm` goes to the existing mantle-lithosphere
+accounting, and the new process needs its own named sink.
 
 **Boundary appearance.** A route on cells has stair-steps. The split can follow them first, and
 smoothing is a later visual step that does not change which cells a daughter owns.
@@ -331,7 +361,12 @@ cells in a step, and a step longer than a rift's life still delivers the same ce
 | Obliquity window | 20–70° | Lower bound from [[Brune et al., 2018]](#ref-brune2018); upper is a design choice | Fixed |
 | Belt and plume resistance | 0.6 | Gate 3a scenario rank; uncalibrated | Belt share of routes |
 | `RIFT_ALIGN_PENALTY` | 2 | Design choice | Tortuosity, sensitivity 0–4 |
-| `RIFT_CRATON_BUFFER_CELLS` | 1 | Design choice | Craton band exposure, sensitivity 0–2 |
+| `RIFT_CRATON_EDGE_KM` | 200 | Design choice | Detached craton area, sensitivity 100–400 |
+| `RIFT_CRATON_BLOCK_STRENGTH` | 0.5 | Design choice | Detached craton area, sensitivity 0.25–0.75 |
+| `RIFT_CRATON_COST` | 4 | Design choice | Craton band exposure, sensitivity 2–8 |
+| `RIFT_KEEL_BREACH_M` | 60 km | Design choice; between the noncraton and craton medians measured above | Breached-craton rate, sensitivity 40–80 km |
+| `PLUME_KEEL_EROSION_M_PER_MYR` | 2,000 | Design choice | Breached-craton rate, sensitivity 1,000–4,000 |
+| `RIFT_MIN_WEAK_KM` | 150 | Design choice; about the failed-rift band half-width | Fixed |
 | `RIFT_MIN_DAUGHTER_SHARE` | 5% | Design choice | Fixed |
 
 Tune on saved worlds and fresh tuning seeds, and keep seeds 7, 11, 2024 and 456862899 held out for
@@ -343,9 +378,15 @@ split on saved plates, because it scales with density rather than with plate siz
 - **Gate D1, census:** run fresh worlds with plumes and with the per-front polarity. All four
   settings must fire on at least two of three tuning seeds by 200 Myr, with frequencies reported.
   If a setting never fires, make it possible or tell the owner why not.
-- **Gate D2, routes:** on the same worlds, at least 95% of sites either separate or end as a named
-  arrest, with zero craton cells crossed. A failing rate means changing site selection first.
+- **Gate D2, routes:** on the same worlds, every site ends in a separating route, an arrest or the
+  minimum outcome; zero route cells are blocked; and detached craton area is reported. At least two
+  thirds of sites must separate, or site selection is the first thing to change. The exploration
+  rate was 75%.
 - **Gate D3, history:** with the lifecycle in the world step, run the held-out acceptance criteria.
+
+**Slab prototype.** The evolving-slab code in PRs #726 and #727 is not used here and stays out of
+production, kept as evidence on `claude/issue-699-evidence-corrected-slabs`. A later revision may
+draw on it, for example to scale the passive signal by slab pull.
 
 **The earlier design below** stays as the record of what was tried. It does not constrain
 implementation.
@@ -699,6 +740,7 @@ source or explicit design-choice status, and the sensitivity plan before impleme
   `RIFT_SUCCESS_PROBABILITY` retires. `_plates_from_node_masks` in `sparse_quad_patch.py` backs a new
   mask-based split, and `apply_failed_rift` generalizes from a great-circle band to reached cells.
 - `backend/app/collision_polarity.py`: per-front upper and lower plate for rollback.
+- `backend/app/plumes.py`: keel erosion under `plume_heat_myr`, with its own sink.
 - `backend/app/world.py`: `active_rifts` (new), with the step order that runs it.
 - `backend/app/cratons.py`: `record_rift_cut` takes a route as well as a great circle.
 - `bin/debug/probe_rift_settings.py`: the census and route probe, extended for Gates D1 and D2.
@@ -826,7 +868,10 @@ source or explicit design-choice status, and the sensitivity plan before impleme
 - [ ] **Item 5 as revised:** rift onset, progress and lapse are timestep-partition invariant in
       synthetic tests.
 - [ ] **Item 11 as revised:** rift counts by setting with plumes on and off.
-- [ ] Items 7, 8, 9 and 10 stand unchanged.
+- [ ] Every detected site leaves weakened rock, including sites with no route, and repeat events
+      on marked rock are easier than the first.
+- [ ] Items 7, 8, 9 and 10 stand unchanged. Note that item 8 counts a line touching craton, and
+      open edges now allow that, so it is a real test of the edge knobs.
 
 The superseded text follows for the record.
 
@@ -897,10 +942,16 @@ The superseded text follows for the record.
   wrong or the model lacks the kinematics. Revise that detector, or take it to the owner to drop.
 - **Rifts run away:** if detection keeps plate count outside the item 7 target across the planned
   sensitivity ranges, the detectors are too permissive. Revise them; do not add a random gate.
-- **No routes exist:** if cratons and plate shapes leave fewer than 95% of sites a separating route
-  or named arrest, revise site selection, then the hard craton exclusion, with the owner.
-- **Craton loss persists:** if routed rifts cross no craton but item 9 still fails, the loss comes
-  from another path, such as post-split divergent thinning. Attribute it before changing routes.
+- **No routes exist:** if fewer than two thirds of sites separate, revise site selection, then the
+  craton block, with the owner.
+- **Open edges cost too much craton:** edge and weak-craton routes detached a median 8% of the craton
+  they divided, and more than 25% on 4 of 100 routes. If item 8 or 9 fails and route loss is the
+  cause, narrow the edge or raise the block. Attribute by path first, since post-split divergent
+  thinning is also a known source.
+- **Cratons never break, or break too often:** if no craton is ever breached, or breaches are common
+  rather than unusual, revise the keel rate. The owner's expectation is "usually, no".
+- **Weakening does not accumulate:** if later rifts do not follow earlier marked rock, the minimum
+  outcome has no effect, and belt resistance needs revising.
 
 The earlier criteria follow.
 
