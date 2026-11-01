@@ -6,7 +6,7 @@
 
 ## Revision note
 
-- **2026-10-31 — proposed by PR_LINK after G0's drifting-noise runs on #575.** The owner raised G0's step-gap limit.
+- **2026-10-31 — proposed by [PR #735](https://github.com/adubey/mantle-bloom/pull/735) after G0's drifting-noise runs on #575.** The owner raised G0's step-gap limit.
   - **Old criterion:** on G0's pass rule (saves with and without ice ages) and its falsification criterion, a step gap, |V(0.25 Myr steps) − V(1 Myr steps)| / V at the run's end, below 10%.
   - **New criterion:** the same step gap below 20%. The swing limit stays at 25%. "Step robustness" in the acceptance criteria stays at 10%.
   - **Reason:** with drifting climate noise, arm (m3) on seed 997271774 has step gaps of 12.2%, 17.0% and 10.6% over three noise draws, against 3.2% with the per-step redraw, while its swing passes on every draw. On seed 649658380 the gaps are 5.1%, 3.8% and 4.5%, against 0.3%. Why the gap grows isn't established.
