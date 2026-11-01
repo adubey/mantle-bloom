@@ -1344,11 +1344,77 @@ def test_route_downstream_conserves_across_uphill_edges_and_cycles():
     flow_target = np.array([1, 2, 3, 4, -1, 6, 5])
     source = np.array([1.0, 2.0, 3.0, 4.0, 0.0, 5.0, 6.0])
     retain = np.array([0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0])
-    flux, deposited = hydrology.route_downstream(elevation, is_ocean, flow_target, source, retain_fraction=retain)
+    routed = hydrology.route_downstream(elevation, is_ocean, flow_target, source, retain_fraction=retain)
+    flux, deposited = routed
     assert np.isclose(deposited.sum(), source.sum())
     assert np.isclose(flux[2], 6.0)  # nodes 0 and 1 both reached the spill node
     assert np.isclose(deposited[3], 5.0) and np.isclose(deposited[4], 5.0)
     assert np.isclose(deposited[5] + deposited[6], 11.0)  # a cycle keeps its own load
+    assert routed.cycle_settlement[5:].sum() == pytest.approx(11.0)
+    assert routed.sink_settlement.sum() == 0.0
+    assert routed.residual == pytest.approx(0.0)
+
+
+def test_route_downstream_names_overflow_stopping_at_a_spilling_leaf_sink():
+    # A leaf sink's spill edge can send exported lake water through an uphill cycle. The route
+    # result names the exact per-node remainder so the caller can transfer it through the lake
+    # hierarchy instead of silently treating it as an ordinary terminal deposit (#731).
+    elevation = np.array([10.0, 20.0, 0.0])
+    is_ocean = np.array([False, False, True])
+    target = np.array([1, 0, -1])  # node 1 is the spilling leaf sink; 1 -> 0 is its spill edge
+    overflow = np.array([0.0, 7.0, 0.0])
+
+    routed = hydrology.route_downstream(elevation, is_ocean, target, overflow)
+
+    assert routed.cycle_settlement[[0, 1]].sum() == pytest.approx(7.0)
+    assert routed.sink_settlement.sum() == 0.0
+    assert routed.ocean_export.sum() == 0.0
+    assert routed.residual == pytest.approx(0.0)
+
+
+def test_route_downstream_names_water_reaching_a_spilling_leaf_outlet():
+    # When the spill edge has an ocean receiver, the same exported volume is credited to that
+    # reservoir and not left on the leaf sink (#731).
+    elevation = np.array([20.0, 10.0, 0.0])
+    is_ocean = np.array([False, False, True])
+    target = np.array([1, 2, -1])
+    overflow = np.array([0.0, 5.0, 0.0])
+
+    routed = hydrology.route_downstream(elevation, is_ocean, target, overflow)
+
+    assert routed.ocean_export[2] == pytest.approx(5.0)
+    assert routed.cycle_settlement.sum() == 0.0
+    assert routed.sink_settlement.sum() == 0.0
+    assert routed.residual == pytest.approx(0.0)
+
+
+def test_unowned_overflow_cycle_and_leaf_sink_settlement_reach_the_ocean():
+    elevation = np.array([20.0, 10.0, 15.0, 0.0])
+    is_ocean = np.array([False, False, False, True])
+    target = np.array([1, 0, -1, -1])
+    overflow = np.array([0.0, 7.0, 5.0, 0.0])
+    routed = hydrology.route_downstream(elevation, is_ocean, target, overflow)
+
+    through, settled, stranded_m3, stranded_node = hydrology._deliver_unowned_overflow_to_ocean(
+        routed, is_ocean
+    )
+
+    assert stranded_m3 == 0.0 and stranded_node == -1
+    assert settled[3] == pytest.approx(12.0)
+    assert settled[:3].sum() == 0.0
+    assert through[:3].sum() == 0.0
+
+
+def test_unowned_overflow_without_an_ocean_is_reported_with_its_node():
+    elevation = np.array([20.0, 10.0])
+    is_ocean = np.zeros(2, dtype=bool)
+    target = np.array([1, 0])
+    routed = hydrology.route_downstream(elevation, is_ocean, target, np.array([3.0, 0.0]))
+
+    _, _, stranded_m3, stranded_node = hydrology._deliver_unowned_overflow_to_ocean(routed, is_ocean)
+
+    assert stranded_m3 == pytest.approx(3.0)
+    assert stranded_node in (0, 1)
 
 
 def test_route_downstream_conserves_on_an_all_downhill_graph():

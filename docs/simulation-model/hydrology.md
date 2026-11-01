@@ -97,6 +97,14 @@ Three kinds of water/forcing move along `flow_target`:
   sized by node count (`LAKE_BREACH_EROSION_COEFFICIENT`). It is never part of the discharge.
   Its separately-routed accumulation (`breach_surge_accum`) contributes to river erosion only.
 
+`route_downstream` reports water's destinations by name: retention, terminal sink settlement,
+ocean export, cycle settlement, and transit evaporation. A flow-cycle remainder is still held at
+the cycle's nodes for this pass, but callers can inspect that amount instead of treating it as an
+ordinary sink. Exported lake water first follows the lake hierarchy; any terminal land volume
+without a receiving lake body is credited to the ocean. If a world has no ocean node, hydrology
+logs the remaining volume and node. This keeps the water budget explicit even when the flow graph
+contains a spill edge that closes a cycle.
+
 `flow_accum` and `water_deposited` come from the older routing: stacked mm/yr of liquid
 precipitation, melt and breach surge, with in-transit evaporation that scales with step
 length. They grow with node density as well as with rainfall. Every consumer has moved off

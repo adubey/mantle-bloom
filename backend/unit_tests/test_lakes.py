@@ -504,21 +504,36 @@ def test_capped_pair_internal_transfer_is_bounded_by_surplus_at_any_leaf_count(p
 
 
 @pytest.mark.parametrize("substeps", [1, 4])
-def test_capped_pair_exports_its_surplus_once_at_the_full_siblings_sink(substeps):
-    # #696 stops the repeat, not the destination: the volume and the node match the pre-fix
-    # solve, whose last pass left the surplus deferred on the leaf holding the deep outlet edge.
+def test_capped_pair_delivers_its_surplus_once_to_the_parent_outlet_owner(substeps):
+    # A capped sibling pair cannot accept more water below its saddle. The common parent's
+    # ocean outlet owns the held volume, so it leaves at that outlet rather than the leaf sink.
     supply = 1.0e15
     forest, elevation, previous, climate, hyps = _capped_pair_fixture(2, supply)
+    forest = forest[:1]  # The parent's outlet node is ocean, so it has no lake-body owner.
+    forest[0].outlet_target_idx = 4
+    is_ocean = np.zeros(len(elevation), dtype=bool)
+    is_ocean[4] = True
 
     result = lakes.solve_lakes_prognostic(
-        forest, elevation, previous, 1.0, climate, hyps, substeps=substeps,
+        forest, elevation, previous, 1.0, climate, hyps, substeps=substeps, is_ocean=is_ocean,
     )
 
     assert result.ledger.overflow_out_m3 == pytest.approx(supply)
-    assert result.overflow_m3[0] == pytest.approx(supply)
+    assert result.overflow_m3[4] == pytest.approx(supply)
     assert np.count_nonzero(result.overflow_m3) == 1
+    assert result.ledger.overflow_to_ocean_m3 == pytest.approx(supply)
     assert result.should_spill[0] and result.should_spill[2]
     assert result.lake_depth[2] == pytest.approx(previous[2])
+
+
+def test_capped_pair_without_parent_outlet_names_its_fallback_leaf_sink():
+    supply = 1.0e15
+    forest, elevation, previous, climate, hyps = _capped_pair_fixture(2, supply)
+
+    result = lakes.solve_lakes_prognostic(forest, elevation, previous, 1.0, climate, hyps)
+
+    assert result.overflow_m3[2] == pytest.approx(supply)
+    assert result.ledger.overflow_out_m3 == pytest.approx(supply)
 
 
 def test_capped_pair_surplus_returns_to_the_flush_when_the_capped_body_splits():
@@ -586,6 +601,9 @@ def test_capped_pair_trace_closes_each_basins_budget():
     received = {0: supply, 1: 0.0}
     sent = {0: 0.0, 1: 0.0}
     for transfer in transfers:
+        if transfer.source_lake_id == 2:
+            # The merged parent routes its final export through one of its leaf outlets.
+            continue
         sent[transfer.source_lake_id] += transfer.volume_m3
         if transfer.receiver_lake_id is not None:
             received[transfer.receiver_lake_id] += transfer.volume_m3

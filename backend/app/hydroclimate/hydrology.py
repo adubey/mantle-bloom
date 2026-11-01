@@ -1097,6 +1097,42 @@ def flow_cycles(flow_target: np.ndarray) -> list[np.ndarray]:
     return cycles
 
 
+@dataclass(frozen=True)
+class DownstreamRoutingResult:
+    """Named outcomes from one downstream routing pass.
+
+    Iteration preserves the historical two- or three-array unpacking interface, while the
+    named destination arrays make cycle settlement visible to callers that audit a budget.
+    `deposited` remains the compatibility sum of retained material and terminal settlements.
+    """
+
+    through_flux: np.ndarray
+    deposited: np.ndarray
+    retained: np.ndarray
+    sink_settlement: np.ndarray
+    ocean_export: np.ndarray
+    cycle_settlement: np.ndarray
+    evaporated: np.ndarray
+    erosion_only_flux: np.ndarray | None = None
+    residual: float = 0.0
+
+    @property
+    def cycle_settlement_total(self) -> float:
+        return float(self.cycle_settlement.sum())
+
+    def __iter__(self):
+        yield self.through_flux
+        yield self.deposited
+        if self.erosion_only_flux is not None:
+            yield self.erosion_only_flux
+
+    def __len__(self) -> int:
+        return 3 if self.erosion_only_flux is not None else 2
+
+    def __getitem__(self, index: int) -> np.ndarray:
+        return tuple(iter(self))[index]
+
+
 def route_downstream(
     elevation: np.ndarray,
     is_ocean: np.ndarray,
@@ -1105,7 +1141,7 @@ def route_downstream(
     retain_fraction: np.ndarray | None = None,
     loss_fraction: np.ndarray | None = None,
     erosion_only_source_amount: np.ndarray | None = None,
-) -> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> DownstreamRoutingResult:
     """Single forward sweep over land nodes in elevation-descending order, accumulating
     `source_amount` downstream along `flow_target` edges. Correct in one pass because every
     node's target is visited *later* in this same order -- see `_routing_order` for the
@@ -1115,11 +1151,12 @@ def route_downstream(
     -- it isn't added to `deposited` at all, since it left as atmospheric moisture, not as
     material staying in the channel. Applied first, at every node's own turn, before
     retention -- so, like flow_accum itself, the lost fraction compounds along a long flow
-    path rather than being taken once at the very end. Returns (through_flux, deposited): each
-    node's own accumulated flux passing through it (net of any loss), and how much settled
-    there (from `retain_fraction` and/or reaching a sink/ocean). When
+    path rather than being taken once at the very end. The result's `through_flux` and
+    `deposited` arrays preserve the old return values. It also names retained volume, dead-end
+    settlement, ocean export, cycle settlement, evaporation and the residual; callers auditing
+    a budget must inspect these destinations instead of inferring them from `deposited`. When
     `erosion_only_source_amount` is supplied, it is propagated beside the primary source with
-    the same losses but without retention/deposition, and returned as a third through-flux array."""
+    the same losses but without retention/deposition, and remains the third item when unpacked."""
     n = len(elevation)
     through_flux = np.where(~is_ocean, source_amount, 0.0).astype(np.float64).tolist()
     erosion_only_flux = (
@@ -1128,6 +1165,11 @@ def route_downstream(
         else None
     )
     deposited = [0.0] * n
+    retained = [0.0] * n
+    sink_settlement = [0.0] * n
+    ocean_export = [0.0] * n
+    cycle_settlement = [0.0] * n
+    evaporated = [0.0] * n
     retain = (retain_fraction if retain_fraction is not None else np.zeros(n)).tolist()
     loss = (loss_fraction if loss_fraction is not None else np.zeros(n)).tolist()
     is_ocean_list = is_ocean.tolist()
@@ -1137,37 +1179,80 @@ def route_downstream(
     for i in order:
         evaporated_here = through_flux[i] * loss[i]
         through_flux[i] -= evaporated_here
+        evaporated[i] += evaporated_here
         if erosion_only_flux is not None:
             erosion_only_flux[i] -= erosion_only_flux[i] * loss[i]
 
         retained_here = through_flux[i] * retain[i]
         through_flux[i] -= retained_here
         deposited[i] += retained_here
+        retained[i] += retained_here
 
         target = flow_target_list[i]
         if target < 0:
             deposited[i] += through_flux[i]
+            sink_settlement[i] += through_flux[i]
             continue
         if is_ocean_list[target]:
             deposited[target] += through_flux[i]
+            ocean_export[target] += through_flux[i]
         else:
             through_flux[target] += through_flux[i]
             if erosion_only_flux is not None:
                 erosion_only_flux[target] += erosion_only_flux[i]
-    # A node on a flow cycle has no valid place in the sweep: it still loses/retains its own
-    # share like any other node, then keeps the remainder, like a sink, rather than losing it.
-    # Same loss -> retain -> dead-end sequence the sweep applies to a sink (target < 0).
+    # A node on a flow cycle has no valid place in the sweep. Apply its losses and retention,
+    # then name the remainder as cycle settlement instead of making it indistinguishable from
+    # ordinary sink settlement (#731).
     for i in stuck:
-        through_flux[i] -= through_flux[i] * loss[i]
+        evaporated_here = through_flux[i] * loss[i]
+        through_flux[i] -= evaporated_here
+        evaporated[i] += evaporated_here
         if erosion_only_flux is not None:
             erosion_only_flux[i] -= erosion_only_flux[i] * loss[i]
         retained_here = through_flux[i] * retain[i]
         through_flux[i] -= retained_here
         deposited[i] += retained_here + through_flux[i]
+        retained[i] += retained_here
+        cycle_settlement[i] += through_flux[i]
 
+    source_total = float(np.where(~is_ocean, source_amount, 0.0).sum())
+    residual = source_total - (
+        sum(retained) + sum(sink_settlement) + sum(ocean_export) + sum(cycle_settlement) + sum(evaporated)
+    )
     if erosion_only_flux is not None:
-        return np.array(through_flux), np.array(deposited), np.array(erosion_only_flux)
-    return np.array(through_flux), np.array(deposited)
+        erosion_only_result = np.array(erosion_only_flux)
+    else:
+        erosion_only_result = None
+    return DownstreamRoutingResult(
+        np.array(through_flux), np.array(deposited), np.array(retained), np.array(sink_settlement),
+        np.array(ocean_export), np.array(cycle_settlement), np.array(evaporated), erosion_only_result,
+        residual,
+    )
+
+
+def _deliver_unowned_overflow_to_ocean(route: DownstreamRoutingResult, is_ocean: np.ndarray):
+    """Give exported lake water that stops on unowned land a named ocean destination.
+
+    Lake-to-lake transfers are resolved in `lakes.solve_lakes_prognostic`. Any remaining
+    overflow that reaches a land dead end or river-router cycle has no lake body to receive it;
+    transfer that terminal volume to the global ocean sink. Return any remainder and its node
+    so `compute_hydrology` can warn when the world has no ocean node.
+    """
+    through = route.through_flux.copy()
+    settled = route.deposited.copy()
+    land_settlement = route.sink_settlement + route.cycle_settlement
+    land_settlement[is_ocean] = 0.0
+    nodes = np.flatnonzero(land_settlement > 0.0)
+    if not len(nodes):
+        return through, settled, 0.0, -1
+    ocean_nodes = np.flatnonzero(is_ocean)
+    total = float(land_settlement.sum())
+    if not len(ocean_nodes):
+        return through, settled, total, int(nodes[np.argmax(land_settlement[nodes])])
+    settled[nodes] -= land_settlement[nodes]
+    through[nodes] = 0.0
+    settled[int(ocean_nodes[0])] += total
+    return through, settled, 0.0, -1
 
 
 def _route_external_water_sources(
@@ -1781,10 +1866,19 @@ def compute_hydrology(
     # Only volume that actually escaped a lake enters downstream discharge. Internal
     # hierarchy transfers were already credited to their receiving basin by the solver.
     overflow_source = lake_result.overflow_m3 / max(years, 1e-30)
-    overflow_through, overflow_settled = route_downstream(
+    overflow_route = route_downstream(
         elevation, is_ocean, flow_target, overflow_source, loss_fraction=transit_loss
     )
+    overflow_through, overflow_settled, stranded_rate, stranded_node = _deliver_unowned_overflow_to_ocean(
+        overflow_route, is_ocean
+    )
     overflow_settled[is_ocean] += overflow_source[is_ocean]
+    stranded_m3 = float(stranded_rate * years)
+    if stranded_m3 > 0.0:
+        _logger.warning(
+            "Lake overflow stranded on land: %.6g m^3 at node %d",
+            stranded_m3, stranded_node,
+        )
     # Keep the solver's residual: it closes the lake-system balance before exported overflow
     # incurs downstream transit loss. `overflow_to_ocean_m3` below reports the routed amount
     # after that loss, so it is intentionally not a term in this pre-routing residual.
