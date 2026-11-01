@@ -152,4 +152,3 @@ every subduction zone [Heuret & Lallemand, 2005](https://doi.org/10.1016/j.pepi.
 PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_rift_settings.py \
   --saves <saves> --out analysis/rfc0010/rift-settings.json --image-dir <private-dir>
 ```
-

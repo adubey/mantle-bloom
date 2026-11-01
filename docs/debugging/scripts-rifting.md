@@ -87,4 +87,3 @@ craton-free rift from each site, and compares it with the great circle through t
 PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_rift_settings.py \
     --saves <a.mbworld> <b.mbworld> --out /tmp/rift-settings.json --image-dir /tmp/rift-images
 ```
-

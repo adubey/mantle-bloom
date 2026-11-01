@@ -3,7 +3,7 @@
 - **Status:** Accepted (revised 2026-10-31 to detected rifts on owner direction; revised 2026-10-30 after fixed-geometry Gate 3b result)
 - **Date:** 2026-10-15
 - **Last revised:** 2026-10-31; production rifts are detected from four tectonic settings and routed around cratons, replacing the Gate 3b requirement that rifting emerge from force and damage mechanics
-- **Related:** #699 (Gate 3b tracking), #487 (closed Gate 3a evidence), #481 (superseded tracker), #480 (min-cut diagnostic), #472 / PR #479 (RFC 0009 G3), #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
+- **Related:** #730 (detected-rift revision), #699 (Gate 3b tracking), #487 (closed Gate 3a evidence), #481 (superseded tracker), #480 (min-cut diagnostic), #472 / PR #479 (RFC 0009 G3), #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
   0003 solution 1); RFCs [0003](abandoned/0003-rifting-around-cratons.md) (superseded by RFC 0010),
   [0009](0009-craton-mosaic.md) (cratons-first layout; G3 initially selected the min-cut),
   [0007](0007-mantle-plumes-and-plateaus.md) (plume weakening),
@@ -11,7 +11,7 @@
 
 ## Revision note
 
-- **2026-10-31 (revision PR linked from #699):** The earlier version required local damage under a
+- **2026-10-31 ([PR #728](https://github.com/adubey/mantle-bloom/pull/728), tracker #730):** The earlier version required local damage under a
   defensible load field to produce a rift, and for slab pull an evolving 3-D slab coupled to plate
   deformation. The owner redirected the goal: Mantle-Bloom is a simulation with physics backing,
   not a physics model. Rifts exist and avoid cratons, so the model should detect the settings
@@ -34,6 +34,8 @@
   | Acceptance 11 (attribution) | Attribute plume effects in rift initiation, growth and linkage with force budgets closed | Report rift counts by setting, with plumes on and off; force budgets dropped | The rift no longer depends on a force budget |
   | Acceptance 7, 8, 9, 10 | Unchanged | Unchanged | Plate count, craton and ledger targets remain the measure of success |
   | Gates 1, 2 and 3a | Closed | Closed; retained as reference evidence | Their strength ordering still informs route resistance |
+
+  The full impact table is on [PR #728](https://github.com/adubey/mantle-bloom/pull/728).
 
 - **2026-10-30 ([PR #717](https://github.com/adubey/mantle-bloom/pull/717)):** The prior Gate 3b source criterion looked for a broad,
   sustained load, then coupled it to local crack rules. The corrected 1 Gyr diagnostic created broad
