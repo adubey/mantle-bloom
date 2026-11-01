@@ -1639,9 +1639,17 @@ def test_exported_river_overflow_cycle_and_sink_settlement_transfer_to_ocean():
         points, elevation, is_ocean, target, stores, np.full(12, 1e9), np.zeros(12),
         np.full(12, 1e10), np.full(12, 50.0), 1.0, np.zeros(12), np.zeros(12),
     )
+    ocean_settlement_before = route.settled_m3[is_ocean].copy()
+    ocean_export_before = route.ocean_export_m3.copy()
     stranded_m3, stranded_node = hydrology._deliver_unowned_river_overflow_to_ocean(route, is_ocean)
 
     assert stranded_m3 == 0.0 and stranded_node == -1
+    assert route.ledger.unlocated_ocean_export_m3 > 0.0
+    assert np.array_equal(route.settled_m3[is_ocean], ocean_settlement_before)
+    assert np.array_equal(route.ocean_export_m3, ocean_export_before)
+    assert route.ledger.ocean_export_m3 == pytest.approx(
+        route.ocean_export_m3.sum() + route.ledger.unlocated_ocean_export_m3
+    )
     assert route.ledger.land_settlement_m3 == 0.0
     assert route.ledger.ocean_export_m3 > 0.0
     assert route.cycle_settlement_m3.sum() == 0.0
@@ -1669,7 +1677,7 @@ def test_stranded_overflow_warning_names_volume_and_node(caplog):
     hydrology._warn_if_stranded_overflow(12.5, 7)
 
     assert "12.5 m^3" in caplog.text
-    assert "node 7" in caplog.text
+    assert "total; largest settlement at node 7" in caplog.text
 
 
 def test_dry_reach_drains_its_stored_water_at_the_residence_cap():
@@ -1714,12 +1722,6 @@ def test_hydrology_persists_river_water_and_closes_the_rain_only_land_ledger():
     again = hydrology.compute_hydrology(world, np.full(40, 800.0), np.full(40, 15.0), years=100_000)
     ledger = again.land_water_ledger
     assert ledger.rain_m3 > 0.0
-    expected_land_sink = max(
-        float(again.lake_external_supply_m3_per_yr[~again.is_ocean].sum()) * 100_000
-        - again.lake_water_ledger.external_supply_m3,
-        0.0,
-    )
-    assert ledger.land_sink_settlement_m3 == pytest.approx(expected_land_sink)
     assert abs(ledger.residual_m3) <= 1e-9 * ledger.rain_m3
     # Steady forcing leaves the inventory where it was.
     assert again.river_water_m.sum() == pytest.approx(fields.river_water_m.sum(), rel=1e-7)
@@ -1783,3 +1785,42 @@ def test_river_water_adds_to_trapped_surface_water():
     plate.set_fields_on_plate(river_water_m=np.full(40, 0.01))
     areas = collect_all_accounting_areas_m2(world.plates, line_spacing_rad(world.node_density))
     assert eustasy.trapped_water_volume_m3(world) - before == pytest.approx(0.01 * areas.sum(), rel=1e-12)
+
+
+def test_routing_stuck_nodes_are_cycle_members_not_separate_terminal_sinks():
+    target = np.array([1, 0, 0, -1, 3])
+    ocean = np.zeros(5, dtype=bool)
+    elevation = np.arange(5, dtype=float)
+    _, stuck = hydrology._routing_order(elevation, ocean, target)
+    cycle_members = np.concatenate(hydrology.flow_cycles(target))
+    assert sorted(stuck) == sorted(cycle_members) == [0, 1]
+    result = hydrology.route_downstream(elevation, ocean, target, np.ones(5))
+    assert result.cycle_settlement.sum() == pytest.approx(3.0)
+    assert result.sink_settlement[3] == pytest.approx(2.0)
+
+
+def test_missing_owned_lake_supply_stays_in_land_residual(monkeypatch):
+    from dataclasses import replace
+
+    original_solve = lakes.solve_lakes_prognostic
+
+    def drop_supply(forest, elevation, previous, years, climate, hypsometry, **kwargs):
+        # Simulate a solver regression: owned supply never enters a lake reservoir.
+        climate = replace(climate, inflow_m3_per_yr=np.zeros_like(elevation),
+                          external_supply_m3_per_yr=np.zeros_like(elevation))
+        return original_solve(forest, elevation, previous, years, climate, hypsometry, **kwargs)
+
+    elevation = np.concatenate([np.linspace(900., 100., 15), np.linspace(100., 900., 15),
+                                np.linspace(900., -300., 10)])
+    world = World(seed=0, plates=[_flow_line_plate(0, np.arange(40), elevation)])
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
+    rain = np.full(40, 900.)
+    temperature = np.full(40, 12.)
+    control = hydrology.compute_hydrology(world, rain, temperature, years=100_000)
+    monkeypatch.setattr(lakes, "solve_lakes_prognostic", drop_supply)
+    broken = hydrology.compute_hydrology(world, rain, temperature, years=100_000)
+    assert control.lake_water_ledger.external_supply_m3 > 0
+    assert broken.land_water_ledger.land_sink_settlement_m3 == control.land_water_ledger.land_sink_settlement_m3
+    assert broken.land_water_ledger.residual_m3 == pytest.approx(
+        control.land_water_ledger.residual_m3 + control.lake_water_ledger.external_supply_m3, rel=1e-8
+    )

@@ -459,7 +459,8 @@ class HydrologyFields:
 class RiverWaterLedger:
     """Per-step whole-network river inventory budget, all volumes in m^3. Evaporation is the
     in-transit loss the routing has always charged; it now comes out of the reach outflow.
-    `land_settlement_m3` reached a land sink or lake sink. Reach transfers are internal."""
+    `land_settlement_m3` reached a land sink or lake sink. Reach transfers are internal.
+    `unlocated_ocean_export_m3` is the subset of ocean export without a resolved river mouth."""
 
     input_m3: float
     lake_overflow_m3: float
@@ -471,6 +472,7 @@ class RiverWaterLedger:
     ocean_export_m3: float
     residual_m3: float
     max_reach_residual_m3: float
+    unlocated_ocean_export_m3: float = 0.0
 
 
 @dataclass
@@ -1136,7 +1138,7 @@ def compute_river_speed(slope: np.ndarray, discharge_m3_s: np.ndarray | float) -
 
 def _routing_order(elevation: np.ndarray, is_ocean: np.ndarray, flow_target: np.ndarray) -> tuple[list[int], list[int]]:
     """Land nodes in an order where every node comes before its own flow_target, plus any
-    nodes that can't be ordered at all (on, or downstream of, a flow cycle).
+    nodes on a flow cycle. Each node has one outgoing edge, so a cycle cannot drain to a sink.
 
     Elevation-descending is such an order whenever every land->land edge runs strictly
     downhill, which is the common case. But spill routing (a filled lake's outlet) and ice
@@ -1360,16 +1362,15 @@ def _deliver_unowned_river_overflow_to_ocean(route: RiverRoutingResult, is_ocean
     if not len(ocean_nodes):
         return total, int(nodes[np.argmax(land_settlement[nodes])])
 
-    ocean_node = int(ocean_nodes[0])
+    # Global ocean credit has no resolved river mouth (#731). Keep it out of spatial
+    # settlement arrays so geology and saved-discharge initialization see only real outlets.
     for settled_source in (
         route.settled_runoff_m3, route.settled_meltwater_m3, route.settled_prior_storage_m3,
     ):
-        moved = float(settled_source[~is_ocean].sum())
-        route.settled_prior_storage_m3[ocean_node] += moved
         settled_source[~is_ocean] = 0.0
+    route.ledger.unlocated_ocean_export_m3 += total
     route.cycle_settlement_m3[~is_ocean] = 0.0
     route.routed_m3[nodes] = 0.0
-    route.ocean_export_m3[ocean_node] += total
     route.ledger.land_settlement_m3 = 0.0
     route.ledger.ocean_export_m3 += total
     route.ledger.residual_m3 = (
@@ -1381,7 +1382,7 @@ def _deliver_unowned_river_overflow_to_ocean(route: RiverRoutingResult, is_ocean
 
 def _warn_if_stranded_overflow(volume_m3: float, node_idx: int) -> None:
     if volume_m3 > 0.0:
-        _logger.warning("Lake overflow stranded on land: %.6g m^3 at node %d", volume_m3, node_idx)
+        _logger.warning("Lake overflow stranded on land: %.6g m^3 total; largest settlement at node %d", volume_m3, node_idx)
 
 
 def _route_external_water_sources(
@@ -1590,6 +1591,7 @@ def _merge_river_passes(runoff: RiverRoutingResult, overflow: RiverRoutingResult
         ocean_export_m3=first.ocean_export_m3 + second.ocean_export_m3,
         residual_m3=first.residual_m3 + second.residual_m3,
         max_reach_residual_m3=max(first.max_reach_residual_m3, second.max_reach_residual_m3),
+        unlocated_ocean_export_m3=first.unlocated_ocean_export_m3 + second.unlocated_ocean_export_m3,
     )
 
 
@@ -2150,6 +2152,11 @@ def compute_hydrology(
     melt_settled = river_route.settled_meltwater_m3 / interval_years
     river_storage_settled = river_route.settled_prior_storage_m3 / interval_years
     external_supply = wet_settled + dry_settled + melt_settled + river_storage_settled
+    # Identify terminal land sinks independently of the solver's consumption ledger (#731).
+    # Missing supply at an owned cell must remain visible as a residual.
+    lake_owned = np.zeros(n, dtype=bool)
+    for body in lakes.governing_bodies(forest, elevation, prev_lake_depth, hypsometry):
+        lake_owned[body.members] = True
 
     lake_climate = lakes.LakeClimate(
         inflow_m3_per_yr=external_supply,
@@ -2234,7 +2241,9 @@ def compute_hydrology(
     phase_ledger = lakes.LakeStepLedger(
         external_supply_m3=ledger.external_supply_m3,
         evaporation_m3=ledger.evaporation_m3,
-        overflow_to_ocean_m3=float(overflow_settled[is_ocean].sum() * years),
+        overflow_to_ocean_m3=(
+            float(overflow_settled[is_ocean].sum() * years) + overflow_route.ledger.unlocated_ocean_export_m3
+        ),
         overflow_out_m3=ledger.overflow_out_m3,
         storage_change_m3=liquid_storage_change_m3,
         internal_transfer_m3=ledger.internal_transfer_m3,
@@ -2287,9 +2296,7 @@ def compute_hydrology(
         lake_liquid_change_m3=phase_ledger.storage_change_m3,
         lake_ice_change_m3=phase_ledger.ice_storage_change_m3,
         stranded_overflow_m3=overflow_route.ledger.land_settlement_m3,
-        land_sink_settlement_m3=max(
-            float(external_supply[land].sum()) * interval_years - phase_ledger.external_supply_m3, 0.0
-        ),
+        land_sink_settlement_m3=float(external_supply[land & ~lake_owned].sum()) * interval_years,
     )
     through_m3[leaf_sinks] = 0.0
 

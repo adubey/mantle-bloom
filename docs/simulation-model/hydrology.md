@@ -104,7 +104,8 @@ Three kinds of water/forcing move along `flow_target`:
   sink or cycle settlement from exported lake overflow is transferred to the ocean when one
   exists (#731); if the world has no ocean node, the remainder is logged with its volume and node.
   Routed external supply that ends at a land sink with no active lake body is reported separately
-  as `land_sink_settlement_m3`, so it remains distinct from exported lake overflow.
+  as `land_sink_settlement_m3`, using the active lake membership map before the solve. Missing
+  supply at an owned lake cell therefore remains a residual.
   It is RFC 0016 G0's rain-only interim budget:
   frozen precipitation and ice storage are outside it and melt is still in scaled glacier units,
   so full closure depends on RFC 0015.
@@ -126,7 +127,11 @@ Three kinds of water/forcing move along `flow_target`:
 ocean export, cycle settlement, and transit evaporation. A flow-cycle remainder is still held at
 the cycle's nodes for this pass, but callers can inspect that amount instead of treating it as an
 ordinary sink. Exported lake water first follows the lake hierarchy; any terminal land volume
-without a receiving lake body is credited to the ocean. If a world has no ocean node, hydrology
+without a receiving lake body is credited to the global ocean budget as
+`river_water_ledger.unlocated_ocean_export_m3`. This unresolved outlet contributes no spatial
+river-mouth discharge. Deferred internal transfers are consumed by the receiving lake in the
+normal flush; an exhausted flush raises an error instead of bypassing that owner.
+If a world has no ocean node, hydrology
 logs the remaining volume and node. This keeps the water budget explicit even when the flow graph
 contains a spill edge that closes a cycle.
 

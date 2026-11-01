@@ -79,3 +79,15 @@ Directed flow cycles remain in all windows. Every counted final cycle includes a
 `spill_target`, and the cycle's exported overflow is credited to the ocean when no receiving lake
 body owns it. These cycles remain a legitimate graph state because their water has a named
 settlement.
+
+
+## Review-fix validation preregistration
+
+The review fixes keep global ocean credit separate from spatial river-mouth discharge and
+identify terminal land-sink inputs from the initial active-body membership map. They also give
+deferred transfers one additional normal flush pass and fail explicitly if an owner transfer
+remains, instead of exporting through its parent. Repeat the treatment on the same A/B/C
+checkpoint hashes, forcing, horizon and thresholds above; the unchanged control remains
+`cd93d339`. Expected direction: zero stranded overflow, unchanged global ocean credit, and no
+spatial mouth at an arbitrary ocean node. Lost input at an owned lake must remain in the land
+residual. Record any event, lake-volume or runtime movement rather than tuning it away.

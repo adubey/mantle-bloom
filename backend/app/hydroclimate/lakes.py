@@ -1040,14 +1040,13 @@ def _reroute_final_surplus(accounting, leaves, leaf_of_node, parent_by_id, is_oc
 
 def _export_final_surplus(accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth):
     """Book only surplus that could not reach a hierarchy owner within the bounded flush."""
-    pending = list(accounting.deferred.items())
-    accounting.deferred.clear()
-    for leaf_id, volume in pending:
-        source = parent_by_id.get(id(leaves[leaf_id]), leaves[leaf_id])
-        target = _parent_outlet_target(source, parent_by_id)
-        if not 0 <= target < len(leaf_of_node):
-            target = int(leaves[leaf_id].sink_node_idx)
-        _export_at_node(accounting, leaves[leaf_id], target, volume, is_ocean, depth)
+    if accounting.deferred:
+        # These volumes were already credited to receiving leaves. Re-exporting through
+        # their parents would bypass those owners (#731); expose an exhausted flush instead.
+        raise RuntimeError(
+            "Lake flush left unconsumed owner transfers: "
+            f"{sum(accounting.deferred.values()):.6g} m^3 at leaves {sorted(accounting.deferred)}"
+        )
 
     for leaf_id, held in accounting.cycle_surplus.items():
         source = _lowest_common_ancestor(held.sender, held.receiver, parent_by_id)
@@ -1123,7 +1122,7 @@ def solve_lakes_prognostic(
     seen_events: set[tuple[int, str]] = set()
 
     rerouted_final_surplus = False
-    for substep in range(steps + max(1, len(leaves)) + 1):
+    for substep in range(steps + max(1, len(leaves)) + 2):
         dt_step = dt if substep < steps else 0.0
         accounting.final_slice = substep + 1 >= steps
         if dt_step > 0.0:

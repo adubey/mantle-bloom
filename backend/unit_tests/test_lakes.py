@@ -598,17 +598,15 @@ def test_capped_pair_trace_closes_each_basins_budget():
     )
 
     transfers = result.trace.transfers
-    received = {0: supply, 1: 0.0}
-    sent = {0: 0.0, 1: 0.0}
+    received = {lake.lake_id: 0.0 for lake in lakes.iter_all_lakes(forest)}
+    received[0] = supply
+    sent = dict.fromkeys(received, 0.0)
     for transfer in transfers:
-        if transfer.source_lake_id == 2:
-            # The merged parent routes its final export through one of its leaf outlets.
-            continue
         sent[transfer.source_lake_id] += transfer.volume_m3
         if transfer.receiver_lake_id is not None:
             received[transfer.receiver_lake_id] += transfer.volume_m3
-    assert sent[0] == pytest.approx(received[0])
-    assert sent[1] == pytest.approx(received[1])
+    for lake_id in received:
+        assert sent[lake_id] == pytest.approx(received[lake_id])
 
 def _silt_m3(result, hyps):
     return float(np.dot(result.silt_deposited, hyps.area_m2))
@@ -1418,3 +1416,31 @@ def test_a_pit_breached_to_its_floor_drains_its_low_ground_but_equal_siblings_st
     neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
     forest = lakes.build_lake_hierarchy(elevation, is_ocean, neighbor_idx)
     assert not any(lake.drains_at_floor for lake in lakes.iter_all_lakes(forest))
+
+
+def test_final_deferred_owner_transfer_cannot_be_exported_past_its_receiver():
+    forest, elevation, previous, _, _ = _capped_pair_fixture(2, 0.0)
+    leaves = [lake for lake in lakes.iter_all_lakes(forest) if not lake.children]
+    ownership = np.full(len(elevation), -1, dtype=np.int64)
+    for leaf_id, leaf in enumerate(leaves):
+        ownership[leaf.members] = leaf_id
+    accounting = lakes._new_prognostic_accounting(len(leaves), len(elevation), True)
+    accounting.deferred[1] = 123.0
+    with pytest.raises(RuntimeError, match="unconsumed owner transfers"):
+        lakes._export_final_surplus(accounting, leaves, ownership, {}, None, previous.copy())
+    assert accounting.overflow_out_total == 0.0
+    assert accounting.deferred == {1: 123.0}
+
+
+def test_final_parent_outlet_transfer_is_consumed_by_receiving_lake():
+    supply = 1.0e15
+    forest, elevation, previous, climate, hyps = _capped_pair_fixture(2, supply)
+    forest[0].outlet_target_idx = 4
+    result = lakes.solve_lakes_prognostic(
+        forest, elevation, previous, 1.0, climate, hyps, diagnostic_trace=True,
+    )
+    assert result.lake_depth[4] > 0.0
+    assert result.lake_depth[4] * hyps.area_m2[4] == pytest.approx(supply)
+    assert result.ledger.overflow_out_m3 == 0.0
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0)
+    assert any(t.internal and t.receiver_lake_id == 4 for t in result.trace.transfers)
