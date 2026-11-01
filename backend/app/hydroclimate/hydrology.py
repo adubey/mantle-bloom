@@ -1224,10 +1224,6 @@ class DownstreamRoutingResult:
     erosion_only_flux: np.ndarray | None = None
     residual: float = 0.0
 
-    @property
-    def cycle_settlement_total(self) -> float:
-        return float(self.cycle_settlement.sum())
-
     def __iter__(self):
         yield self.through_flux
         yield self.deposited
@@ -1239,6 +1235,27 @@ class DownstreamRoutingResult:
 
     def __getitem__(self, index: int) -> np.ndarray:
         return tuple(iter(self))[index]
+
+
+def _apply_downstream_node_losses(
+    node: int,
+    through_flux: list[float],
+    erosion_only_flux: list[float] | None,
+    loss: list[float],
+    retain: list[float],
+    deposited: list[float],
+    retained: list[float],
+    evaporated: list[float],
+) -> None:
+    evaporated_here = through_flux[node] * loss[node]
+    through_flux[node] -= evaporated_here
+    evaporated[node] += evaporated_here
+    if erosion_only_flux is not None:
+        erosion_only_flux[node] -= erosion_only_flux[node] * loss[node]
+    retained_here = through_flux[node] * retain[node]
+    through_flux[node] -= retained_here
+    deposited[node] += retained_here
+    retained[node] += retained_here
 
 
 def route_downstream(
@@ -1285,16 +1302,9 @@ def route_downstream(
 
     order, stuck = _routing_order(elevation, is_ocean, flow_target)
     for i in order:
-        evaporated_here = through_flux[i] * loss[i]
-        through_flux[i] -= evaporated_here
-        evaporated[i] += evaporated_here
-        if erosion_only_flux is not None:
-            erosion_only_flux[i] -= erosion_only_flux[i] * loss[i]
-
-        retained_here = through_flux[i] * retain[i]
-        through_flux[i] -= retained_here
-        deposited[i] += retained_here
-        retained[i] += retained_here
+        _apply_downstream_node_losses(
+            i, through_flux, erosion_only_flux, loss, retain, deposited, retained, evaporated
+        )
 
         target = flow_target_list[i]
         if target < 0:
@@ -1312,15 +1322,10 @@ def route_downstream(
     # then name the remainder as cycle settlement instead of making it indistinguishable from
     # ordinary sink settlement (#731).
     for i in stuck:
-        evaporated_here = through_flux[i] * loss[i]
-        through_flux[i] -= evaporated_here
-        evaporated[i] += evaporated_here
-        if erosion_only_flux is not None:
-            erosion_only_flux[i] -= erosion_only_flux[i] * loss[i]
-        retained_here = through_flux[i] * retain[i]
-        through_flux[i] -= retained_here
-        deposited[i] += retained_here + through_flux[i]
-        retained[i] += retained_here
+        _apply_downstream_node_losses(
+            i, through_flux, erosion_only_flux, loss, retain, deposited, retained, evaporated
+        )
+        deposited[i] += through_flux[i]
         cycle_settlement[i] += through_flux[i]
 
     source_total = float(np.where(~is_ocean, source_amount, 0.0).sum())
