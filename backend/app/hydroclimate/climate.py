@@ -1204,8 +1204,8 @@ MFC_SMOOTHING_REFERENCE_PASSES = 3
 # largest wavelength (in degrees of latitude) still at full amplitude -- longer than that is
 # damped so the noise stays a perturbation on the belts rather than a rival climatology of
 # its own; it's coarser than the ITCZ so the noise bends a band rather than just speckling
-# it. Seeded per world state (seed, elapsed_years) like every other RNG use here, so it
-# doesn't flicker between renders of the same world.
+# it. A pure function of (seed, salt, elapsed_years) (see _drifting_white_noise), so it doesn't
+# flicker between renders of the same world.
 MFC_NOISE_STD_G_KG = 0.05 * HUMIDITY_INDEX_G_KG
 MFC_NOISE_CORRELATION_DEG = 18.0
 MFC_NOISE_SPECTRAL_BETA = 2.6
@@ -1817,7 +1817,7 @@ def compute_climate(
     # A noise texture standing in for turbulent current mixing -- deterministic in (seed,
     # elapsed_years) so it doesn't flicker between renders of the same world state, and drifting
     # slowly so it doesn't jump between steps either (#575). ndtr maps the standard normal back
-    # to the uniform [0, 1) texture the wake expects.
+    # to the uniform [0, 1] texture the wake expects.
     mixing_noise = ndtr(_drifting_white_noise(world.seed, MIXING_NOISE_SALT, world.elapsed_years, (height, width)))
 
     # Ocean currents and the current-advected surface temperature are diagnostic every call

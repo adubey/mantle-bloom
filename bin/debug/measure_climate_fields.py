@@ -21,6 +21,7 @@ records, area-weighted by cos(latitude):
 
 `--noise-salt-offset N` shifts the salts of the drifting noise streams, so a branch run measures
 another draw of the same textures (#575). It has no effect on a backend without those streams.
+It applies after the save loads, so the climate cached at load keeps the unshifted draw.
 
 `--backend` points at the backend to import, so the same script measures both trees:
 
@@ -62,6 +63,7 @@ def main() -> None:
     for salt in ("MIXING_NOISE_SALT", "HUMIDITY_NOISE_SALT", "MFC_NOISE_SALT"):
         if hasattr(climate, salt):
             setattr(climate, salt, getattr(climate, salt) + args.noise_salt_offset)
+    result["noise_salt_offset"] = args.noise_salt_offset
 
     land_classes = len(biomes.KOPPEN_CODES)
     group_of_biome = np.array([code[0] for code in biomes.KOPPEN_CODES] + [""] * len(biomes.PELAGIC_NAMES))
