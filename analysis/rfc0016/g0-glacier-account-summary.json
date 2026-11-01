@@ -1,0 +1,59 @@
+{
+ "glacier_water_units": "m3",
+ "main_commit": "cd93d339",
+ "branch_commit": "d0b83742",
+ "with_734_commit_note": "local merge of this branch and 425ac919",
+ "windows": {
+  "A": {
+   "steps": 4,
+   "opening_m3": 3.793197616741979e+21,
+   "closing_m3": 3.6909223580438406e+21,
+   "largest_abs_change_m3": 6.360961089836574e+19,
+   "retained_input_that_step_m3": 1.2159512549224594e+18,
+   "largest_change_over_input": 52.31263230401625,
+   "max_identity_residual_m3": 208896.0,
+   "max_outward_share_of_input": 7.4189708778485866,
+   "max_full_residual_branch": 3.388207042491076e-08,
+   "max_stranded_overflow_branch": 0.0609637352586131,
+   "max_full_residual_with_734": 7.612818335084626e-14
+  },
+  "B": {
+   "steps": 4,
+   "opening_m3": 3.6750803104232893e+21,
+   "closing_m3": 3.6386267508812735e+21,
+   "largest_abs_change_m3": 1.760011529012065e+19,
+   "retained_input_that_step_m3": 1.014876991427176e+18,
+   "largest_change_over_input": 17.342116767639396,
+   "max_identity_residual_m3": 464896.0,
+   "max_outward_share_of_input": 2.2990764077160573,
+   "max_full_residual_branch": 3.249697335233985e-05,
+   "max_stranded_overflow_branch": 0.052508489433364065,
+   "max_full_residual_with_734": 5.192112371887486e-14
+  },
+  "C": {
+   "steps": 4,
+   "opening_m3": 1.0208663841734444e+21,
+   "closing_m3": 9.796345072996775e+20,
+   "largest_abs_change_m3": 3.155778614900097e+19,
+   "retained_input_that_step_m3": 1.2734912965280264e+18,
+   "largest_change_over_input": 24.78052754269959,
+   "max_identity_residual_m3": 90112.0,
+   "max_outward_share_of_input": 3.082213276710261,
+   "max_full_residual_branch": 1.230239656527628e-10,
+   "max_stranded_overflow_branch": 0.0034180862688753515,
+   "max_full_residual_with_734": 8.095170084555466e-14
+  },
+  "ice_age_374464662": {
+   "steps": 80,
+   "opening_m3": 9.278348189046678e+19,
+   "closing_m3": 9.40831035227159e+19,
+   "largest_abs_change_m3": 1.4165804712217805e+17,
+   "retained_input_that_step_m3": 4.072352384108488e+17,
+   "largest_change_over_input": 0.3478531172178745,
+   "max_identity_residual_m3": 13888.0,
+   "max_outward_share_of_input": 0.09348341181788318,
+   "max_full_residual_branch": 0.0003822401874948015,
+   "max_stranded_overflow_branch": 0.13146955167784707
+  }
+ }
+}
