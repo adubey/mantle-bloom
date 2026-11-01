@@ -3,7 +3,7 @@
 - **Status:** Accepted (revised 2026-10-31 to detected rifts on owner direction; revised 2026-10-30 after fixed-geometry Gate 3b result)
 - **Date:** 2026-10-15
 - **Last revised:** 2026-10-31; production rifts are detected from four tectonic settings and routed around cratons, replacing the Gate 3b requirement that rifting emerge from force and damage mechanics
-- **Related:** #730 (detected-rift revision), #699 (Gate 3b tracking), #487 (closed Gate 3a evidence), #481 (superseded tracker), #480 (min-cut diagnostic), #472 / PR #479 (RFC 0009 G3), #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
+- **Related:** #737 (Gates D1–D3), #730 (detected-rift revision), #699 (Gate 3b tracking), #487 (closed Gate 3a evidence), #481 (superseded tracker), #480 (min-cut diagnostic), #472 / PR #479 (RFC 0009 G3), #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
   0003 solution 1); RFCs [0003](abandoned/0003-rifting-around-cratons.md) (superseded by RFC 0010),
   [0009](0009-craton-mosaic.md) (cratons-first layout; G3 initially selected the min-cut),
   [0007](0007-mantle-plumes-and-plateaus.md) (plume weakening),
