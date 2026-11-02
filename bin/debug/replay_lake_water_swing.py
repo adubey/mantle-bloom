@@ -12,6 +12,9 @@ records per step:
   sea-tier depth guard (`lakes.SEA_MAX_DEPTH_M`) holds the level;
 - normalized lake and land residuals, and step runtime.
 
+With `--audit-losses`, transient solve traces compare each wet final body's booked losses
+against evaporation and sublimation evaluated at its final level over the full step (#768).
+
 The summary gives the lag-1 autocorrelation of the step change in whole-world lake volume (about
 -1 is period-2 alternation), the mean absolute step change from step 3, and the largest target
 ratio between consecutive steps, all computed as #754 did. Nothing here changes the model, so a run
@@ -40,6 +43,54 @@ LARGEST_LAKES = 5
 
 def add_arguments(ap) -> None:
     ap.add_argument("--anchors", type=Path, help="JSON file containing anchor_points")
+    ap.add_argument("--audit-losses", action="store_true", help="Audit wet final bodies against full-step loss rates (#768)")
+
+
+def audit_lake_losses(captured, anchor_nodes):
+    """Compare booked losses with independent final-level demands, excluding dry bodies.
+
+    A dry body may consume its entire supply while ending with zero wet area, so the
+    final-area equation is not an equality there. The audit is for the default single slice.
+    """
+    from app.hydroclimate import lakes
+
+    forest, elevation, years, climate, hyps, solved = captured
+    records = []
+    for body in lakes.governing_bodies(
+        forest, elevation, solved.lake_depth, hyps,
+    ):
+        members = body.members
+        wet_members = members[solved.lake_depth[members] > 0.0]
+        if not len(wet_members):
+            continue
+        level = float(hyps.level_from_depth(solved.lake_depth[wet_members], wet_members).max())
+        wet = hyps.wet_fraction(level, members)
+        expected_evap = float(np.dot(
+            hyps.area_m2[members] * wet,
+            climate.evaporation_m_per_yr[members] * (1.0 + lakes.SHALLOW_EVAPORATION_BOOST * (1.0 - wet)),
+        )) * years
+        expected_sub = (
+            float(np.dot(hyps.area_m2[members] * wet, climate.sublimation_m_per_yr[members])) * years
+            if climate.sublimation_m_per_yr is not None else 0.0
+        )
+        booked_evap = float(solved.trace.evaporation_m3[members].sum())
+        booked_sub = float(solved.trace.liquid_sublimation_m3[members].sum())
+        scale = max(expected_evap + expected_sub, 1.0)
+        records.append({
+            "lake_id": body.lake_id, "nodes": len(members), "level_m": level,
+            "storage_km3": float(np.dot(solved.lake_depth[members], hyps.area_m2[members])) / M3_PER_KM3,
+            "anchor_indices": [i for i, node in enumerate(anchor_nodes) if node in members],
+            "expected_evaporation_km3": expected_evap / M3_PER_KM3,
+            "expected_sublimation_km3": expected_sub / M3_PER_KM3,
+            "booked_evaporation_km3": booked_evap / M3_PER_KM3,
+            "booked_sublimation_km3": booked_sub / M3_PER_KM3,
+            "normalized_loss_error": (abs(booked_evap - expected_evap) + abs(booked_sub - expected_sub)) / scale,
+        })
+    return {
+        "worst_normalized_loss_error": max((r["normalized_loss_error"] for r in records), default=0.0),
+        "largest_bodies": sorted(records, key=lambda r: -r["storage_km3"])[:LARGEST_LAKES],
+        "anchor_bodies": [r for r in records if r["anchor_indices"]],
+    }
 
 
 def lake_record(members, hydro, areas, sea_guard_m) -> dict:
@@ -98,6 +149,18 @@ def main() -> None:
         if args.anchors is not None else np.zeros((0, 3))
     )
     result.update(steps=[], anchors=anchors.tolist())
+    captured = None
+    if args.audit_losses:
+        original_solve = lakes.solve_lakes_prognostic
+
+        def capture_solve(forest, elevation, previous, years, climate, hypsometry, **kwargs):
+            nonlocal captured
+            kwargs["diagnostic_trace"] = True
+            solved = original_solve(forest, elevation, previous, years, climate, hypsometry, **kwargs)
+            captured = forest, elevation, years, climate, hypsometry, solved
+            return solved
+
+        lakes.solve_lakes_prognostic = capture_solve
 
     def snapshot() -> dict:
         return {"elapsed_myr": world.elapsed_years / 1e6, "sea_level_m": world.sea_level_m}
@@ -152,6 +215,9 @@ def main() -> None:
             "normalized_lake_residual": abs(lake.residual_m3) / max(lake.external_supply_m3, 1.0),
             "normalized_land_residual": abs(land.residual_m3) / (land.rain_m3 + land.meltwater_m3),
         })
+        if captured is not None:
+            anchor_nodes = [int(np.argmin(np.linalg.norm(hydro.points - anchor, axis=1))) for anchor in anchors]
+            result["steps"][-1]["loss_audit"] = audit_lake_losses(captured, anchor_nodes)
 
     def close_window(_steps: int) -> dict:
         result["summary"] = summarize(result["steps"])

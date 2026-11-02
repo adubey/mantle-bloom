@@ -292,6 +292,70 @@ def test_prognostic_lake_solver_merges_siblings_during_the_step():
     assert np.all(result.lake_depth >= 0.0)
 
 
+@pytest.mark.parametrize("evaporation,sublimation", [(1.0, 0.0), (0.0, 1.0), (0.4, 0.6)])
+@pytest.mark.parametrize("reverse_order", [False, True])
+def test_merging_lake_charges_full_slice_losses_on_newly_flooded_area(
+    evaporation, sublimation, reverse_order,
+):
+    # #768: the dry first sibling only receives water after its timed pass. The merged
+    # lake floods the 4 m shelf, which neither child could wet below their 1 m saddle.
+    elevation = np.array([0.0, 4.0, 0.0])
+    left = lakes.Lake(
+        lake_id=int(reverse_order), members=np.array([0, 1]), floor_elevation=0.0, min_depth=0.0,
+        max_depth=1.0, sink_node_idx=0, outlet_node_idx=0, outlet_target_idx=2,
+    )
+    right = lakes.Lake(
+        lake_id=int(not reverse_order), members=np.array([2]), floor_elevation=0.0, min_depth=0.0,
+        max_depth=1.0, sink_node_idx=2, outlet_node_idx=2, outlet_target_idx=0,
+    )
+    parent = lakes.Lake(
+        lake_id=2, members=np.arange(3), floor_elevation=0.0, min_depth=1.0,
+        max_depth=100.0, children=[left, right],
+    )
+    hyps = lakes.CellHypsometry(elevation, np.ones(3), np.zeros(3), 1.0)
+    supply = np.array([0.0, 0.0, 30.0])
+    climate = lakes.LakeClimate(
+        supply, np.full(3, evaporation), external_supply_m3_per_yr=supply,
+        sublimation_m_per_yr=np.full(3, sublimation),
+    )
+
+    result = lakes.solve_lakes_prognostic([parent], elevation, np.zeros(3), 1.0, climate, hyps)
+
+    # All three 1 m² cells are fully wet: V(h) = 3h - 4, loss = 3 m³, supply = 30 m³.
+    expected_level = 31.0 / 3.0
+    assert result.lake_depth == pytest.approx(expected_level - elevation, abs=1e-8)
+    assert result.ledger.evaporation_m3 == pytest.approx(3.0 * evaporation, abs=1e-8)
+    assert result.ledger.sublimation_m3 == pytest.approx(3.0 * sublimation, abs=1e-8)
+    assert result.ledger.external_supply_m3 == pytest.approx(30.0)
+    assert result.ledger.overflow_out_m3 == 0.0
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1e-8)
+
+
+def test_late_transfer_replaces_an_unchanged_receivers_losses(monkeypatch):
+    # Force the receiver to run before its upstream donor, so it receives the overflow
+    # during a flush without a merger. Its initial 2 m³ must not pay evaporation twice.
+    elevation = np.array([0.0, 5.0])
+    receiver = lakes.Lake(
+        lake_id=0, members=np.array([0]), floor_elevation=0.0, min_depth=0.0,
+        max_depth=100.0, sink_node_idx=0,
+    )
+    donor = lakes.Lake(
+        lake_id=1, members=np.array([1]), floor_elevation=5.0, min_depth=5.0,
+        max_depth=6.0, sink_node_idx=1, outlet_node_idx=1, outlet_target_idx=0,
+    )
+    monkeypatch.setattr(lakes, "_ordered_spill_bodies", lambda bodies, *_: sorted(bodies, key=lambda b: b.lake_id))
+    supply = np.array([0.0, 30.0])
+    climate = lakes.LakeClimate(supply, np.ones(2), external_supply_m3_per_yr=supply)
+    hyps = lakes.CellHypsometry(elevation, np.ones(2), np.zeros(2), 1.0)
+    result = lakes.solve_lakes_prognostic(
+        [receiver, donor], elevation, np.array([2.0, 0.0]), 1.0, climate, hyps,
+    )
+
+    assert result.lake_depth == pytest.approx([29.0, 1.0])
+    assert result.ledger.evaporation_m3 == pytest.approx(2.0)
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1e-8)
+
+
 def test_prognostic_lake_solver_splits_below_saddle_without_resetting_water():
     forest = lakes.build_lake_hierarchy(_MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS)
     hyps = lakes.CellHypsometry.whole_cells(_MERGE_ELEVATION)
