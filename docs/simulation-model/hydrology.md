@@ -252,8 +252,9 @@ discharge, channel-width growth, deposition, geology or lake silt.
   supply is routed, so persisted spill state cannot route this step's full inflow past its lake.
   The solve starts from persisted liquid depth plus lake ice, limits evaporation and sublimation
   to the water available, promotes sibling basins when current-step water reaches their saddle,
-  and routes only surplus above a rim or depth cap to the hierarchy's receiver. A parent supersedes its children as one body, so
-  silt is deposited once from its step-integrated supply over its final wet area. Only overflow
+  and routes only surplus above a rim or depth cap to the hierarchy's receiver. A parent
+  supersedes its children as one body, so silt is deposited once from its step-integrated supply
+  over its final wet area. Only overflow
   leaving the lake system enters downstream discharge; transfers between sibling basins stay
   internal. `should_spill`, `spill_target`, final water levels and `Lake.is_spilling` all come
   from this solve. The per-step ledger residual is external supply minus evaporation,
