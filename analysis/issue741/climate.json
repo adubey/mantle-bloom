@@ -1,0 +1,4920 @@
+{
+ "saves": {
+  "s649": {
+   "runs": [
+    "D0",
+    "D1",
+    "D2",
+    "D3",
+    "R0",
+    "R1",
+    "R2"
+   ],
+   "band_land_share_pct": {
+    "0-15": 30.5,
+    "15-30": 26.5,
+    "30-45": 19.8,
+    "45-60": 13.1,
+    "60-75": 6.2,
+    "75-90": 4.0
+   },
+   "windows": {
+    "precip_land_mm": {
+     "0-16": {
+      "drift": {
+       "D0": 1.08,
+       "D1": 0.81,
+       "D2": -1.88,
+       "D3": -2.77
+      },
+      "redraw": {
+       "R0": -0.61,
+       "R1": -0.31,
+       "R2": 0.92
+      }
+     },
+     "16-32": {
+      "drift": {
+       "D0": 0.45,
+       "D1": 3.94,
+       "D2": -1.5,
+       "D3": -0.29
+      },
+      "redraw": {
+       "R0": 1.12,
+       "R1": -0.81,
+       "R2": -0.31
+      }
+     },
+     "32-48": {
+      "drift": {
+       "D0": -1.76,
+       "D1": 2.57,
+       "D2": -3.05,
+       "D3": 4.85
+      },
+      "redraw": {
+       "R0": -2.55,
+       "R1": -2.69,
+       "R2": 5.24
+      }
+     }
+    },
+    "humidity_land_g_kg": {
+     "0-16": {
+      "drift": {
+       "D0": 2.76,
+       "D1": -0.1,
+       "D2": -0.19,
+       "D3": -2.19
+      },
+      "redraw": {
+       "R0": -0.84,
+       "R1": -0.45,
+       "R2": 1.29
+      }
+     },
+     "16-32": {
+      "drift": {
+       "D0": 2.16,
+       "D1": 2.45,
+       "D2": -1.29,
+       "D3": 0.1
+      },
+      "redraw": {
+       "R0": 0.83,
+       "R1": -0.41,
+       "R2": -0.41
+      }
+     },
+     "32-48": {
+      "drift": {
+       "D0": -0.67,
+       "D1": 3.64,
+       "D2": -2.77,
+       "D3": 8.93
+      },
+      "redraw": {
+       "R0": -2.38,
+       "R1": -2.13,
+       "R2": 4.51
+      }
+     }
+    },
+    "band 15-30 precip_land_mm": {
+     "0-16": {
+      "drift": {
+       "D0": 3.99,
+       "D1": -2.71,
+       "D2": -14.41,
+       "D3": -2.64
+      },
+      "redraw": {
+       "R0": 0.85,
+       "R1": -1.0,
+       "R2": 0.14
+      }
+     },
+     "16-32": {
+      "drift": {
+       "D0": 6.12,
+       "D1": 2.19,
+       "D2": -24.16,
+       "D3": -5.82
+      },
+      "redraw": {
+       "R0": 4.58,
+       "R1": -1.28,
+       "R2": -3.31
+      }
+     },
+     "32-48": {
+      "drift": {
+       "D0": 5.67,
+       "D1": 10.88,
+       "D2": -13.45,
+       "D3": 1.89
+      },
+      "redraw": {
+       "R0": 3.43,
+       "R1": 3.58,
+       "R2": -7.02
+      }
+     }
+    }
+   }
+  },
+  "s997": {
+   "runs": [
+    "D0",
+    "D1",
+    "D2",
+    "D3",
+    "D4",
+    "D5",
+    "D6",
+    "D7",
+    "R0",
+    "R1",
+    "R2",
+    "R3"
+   ],
+   "band_land_share_pct": {
+    "0-15": 30.1,
+    "15-30": 24.1,
+    "30-45": 18.5,
+    "45-60": 15.5,
+    "60-75": 8.7,
+    "75-90": 3.0
+   },
+   "windows": {
+    "precip_land_mm": {
+     "0-16": {
+      "drift": {
+       "D0": 4.56,
+       "D1": -2.95,
+       "D2": -0.01,
+       "D3": -0.75,
+       "D4": 3.75,
+       "D5": 0.66,
+       "D6": 3.72,
+       "D7": 4.02
+      },
+      "redraw": {
+       "R0": -0.13,
+       "R1": -0.01,
+       "R2": 0.26,
+       "R3": -0.12
+      }
+     },
+     "16-32": {
+      "drift": {
+       "D0": 4.32,
+       "D1": -1.4,
+       "D2": -1.3,
+       "D3": 0.44,
+       "D4": 4.18,
+       "D5": 2.49,
+       "D6": 1.95,
+       "D7": 3.16
+      },
+      "redraw": {
+       "R0": 0.58,
+       "R1": -1.08,
+       "R2": -0.31,
+       "R3": 0.8
+      }
+     },
+     "32-48": {
+      "drift": {
+       "D0": 1.71,
+       "D1": -1.56,
+       "D2": -2.31,
+       "D3": -1.38,
+       "D4": -0.78,
+       "D5": 1.59,
+       "D6": 2.09,
+       "D7": 0.34
+      },
+      "redraw": {
+       "R0": 1.49,
+       "R1": -0.42,
+       "R2": -0.82,
+       "R3": -0.25
+      }
+     }
+    },
+    "humidity_land_g_kg": {
+     "0-16": {
+      "drift": {
+       "D0": 5.51,
+       "D1": -5.11,
+       "D2": 0.31,
+       "D3": -1.68,
+       "D4": 3.49,
+       "D5": -0.47,
+       "D6": 2.96,
+       "D7": 4.8
+      },
+      "redraw": {
+       "R0": 0.22,
+       "R1": 0.47,
+       "R2": 0.52,
+       "R3": -1.21
+      }
+     },
+     "16-32": {
+      "drift": {
+       "D0": 4.42,
+       "D1": -3.47,
+       "D2": -1.81,
+       "D3": -0.28,
+       "D4": 4.36,
+       "D5": 0.94,
+       "D6": 0.31,
+       "D7": 3.79
+      },
+      "redraw": {
+       "R0": 1.1,
+       "R1": -1.17,
+       "R2": -1.21,
+       "R3": 1.28
+      }
+     },
+     "32-48": {
+      "drift": {
+       "D0": 1.99,
+       "D1": -3.93,
+       "D2": -3.7,
+       "D3": -3.65,
+       "D4": -2.01,
+       "D5": -1.07,
+       "D6": 1.48,
+       "D7": -0.81
+      },
+      "redraw": {
+       "R0": 1.6,
+       "R1": -0.79,
+       "R2": -0.91,
+       "R3": 0.1
+      }
+     }
+    },
+    "band 15-30 precip_land_mm": {
+     "0-16": {
+      "drift": {
+       "D0": 5.19,
+       "D1": 1.88,
+       "D2": 0.27,
+       "D3": 1.56,
+       "D4": 9.58,
+       "D5": 12.04,
+       "D6": 2.12,
+       "D7": 2.31
+      },
+      "redraw": {
+       "R0": -3.37,
+       "R1": 1.8,
+       "R2": 3.1,
+       "R3": -1.53
+      }
+     },
+     "16-32": {
+      "drift": {
+       "D0": 1.6,
+       "D1": 5.28,
+       "D2": -3.42,
+       "D3": -4.89,
+       "D4": 4.52,
+       "D5": 13.95,
+       "D6": 2.03,
+       "D7": 11.35
+      },
+      "redraw": {
+       "R0": 0.73,
+       "R1": -1.62,
+       "R2": 0.6,
+       "R3": 0.3
+      }
+     },
+     "32-48": {
+      "drift": {
+       "D0": 2.73,
+       "D1": 5.98,
+       "D2": -2.31,
+       "D3": -4.54,
+       "D4": -6.68,
+       "D5": 12.84,
+       "D6": 2.99,
+       "D7": 10.18
+      },
+      "redraw": {
+       "R0": 0.25,
+       "R1": 1.78,
+       "R2": -1.03,
+       "R3": -1.0
+      }
+     }
+    }
+   }
+  }
+ },
+ "metrics": {
+  "precip_land_mm": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.2,
+    "low_pct": -3.38,
+    "high_pct": 3.78,
+    "half_width_pct": 3.58,
+    "df": 4.7,
+    "drift_draws_pct": [
+     -0.07,
+     2.43,
+     -2.14,
+     0.58
+    ],
+    "redraw_draws_pct": [
+     -0.68,
+     -1.26,
+     1.95
+    ]
+   },
+   "s997": {
+    "gap_pct": 1.09,
+    "low_pct": -0.66,
+    "high_pct": 2.84,
+    "half_width_pct": 1.75,
+    "df": 8.6,
+    "drift_draws_pct": [
+     3.5,
+     -1.97,
+     -1.22,
+     -0.58,
+     2.34,
+     1.58,
+     2.58,
+     2.48
+    ],
+    "redraw_draws_pct": [
+     0.66,
+     -0.5,
+     -0.3,
+     0.14
+    ]
+   }
+  },
+  "precip_ocean_mm": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": -0.09,
+    "low_pct": -0.92,
+    "high_pct": 0.74,
+    "half_width_pct": 0.83,
+    "df": 3.3,
+    "drift_draws_pct": [
+     -0.17,
+     -0.02,
+     0.57,
+     -0.74
+    ],
+    "redraw_draws_pct": [
+     -0.07,
+     0.12,
+     -0.05
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.29,
+    "low_pct": -0.94,
+    "high_pct": 0.36,
+    "half_width_pct": 0.65,
+    "df": 7.7,
+    "drift_draws_pct": [
+     -1.47,
+     0.35,
+     -0.32,
+     -1.23,
+     0.77,
+     -0.54,
+     0.24,
+     -0.12
+    ],
+    "redraw_draws_pct": [
+     -0.04,
+     0.07,
+     0.12,
+     -0.16
+    ]
+   }
+  },
+  "humidity_land_g_kg": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 1.04,
+    "low_pct": -2.13,
+    "high_pct": 4.22,
+    "half_width_pct": 3.17,
+    "df": 4.6,
+    "drift_draws_pct": [
+     1.45,
+     1.95,
+     -1.38,
+     2.16
+    ],
+    "redraw_draws_pct": [
+     -0.78,
+     -0.98,
+     1.76
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.24,
+    "low_pct": -2.09,
+    "high_pct": 2.57,
+    "half_width_pct": 2.33,
+    "df": 8.6,
+    "drift_draws_pct": [
+     3.95,
+     -4.18,
+     -1.76,
+     -1.9,
+     1.88,
+     -0.22,
+     1.59,
+     2.54
+    ],
+    "redraw_draws_pct": [
+     0.98,
+     -0.5,
+     -0.53,
+     0.05
+    ]
+   }
+  },
+  "humidity_ocean_g_kg": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.01,
+    "low_pct": -0.19,
+    "high_pct": 0.21,
+    "half_width_pct": 0.2,
+    "df": 3.6,
+    "drift_draws_pct": [
+     0.14,
+     0.07,
+     0.01,
+     -0.17
+    ],
+    "redraw_draws_pct": [
+     0.03,
+     0.01,
+     -0.04
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.01,
+    "low_pct": -0.08,
+    "high_pct": 0.1,
+    "half_width_pct": 0.09,
+    "df": 7.4,
+    "drift_draws_pct": [
+     -0.2,
+     0.11,
+     0.01,
+     -0.05,
+     0.15,
+     0.07,
+     -0.04,
+     0.01
+    ],
+    "redraw_draws_pct": [
+     -0.0,
+     0.01,
+     0.01,
+     -0.02
+    ]
+   }
+  },
+  "ice_cap_pct_of_land": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -1.46,
+    "low_pct": -4.93,
+    "high_pct": 2.02,
+    "half_width_pct": 3.47,
+    "df": 4.8,
+    "drift_draws_pct": [
+     -1.69,
+     1.77,
+     -3.17,
+     -2.73
+    ],
+    "redraw_draws_pct": [
+     0.18,
+     1.15,
+     -1.34
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.96,
+    "low_pct": -0.74,
+    "high_pct": 2.67,
+    "half_width_pct": 1.7,
+    "df": 9.9,
+    "drift_draws_pct": [
+     0.15,
+     -1.59,
+     0.14,
+     0.85,
+     -0.57,
+     3.87,
+     1.56,
+     3.3
+    ],
+    "redraw_draws_pct": [
+     0.06,
+     -0.57,
+     1.06,
+     -0.55
+    ]
+   }
+  },
+  "ice_volume_km3": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -0.7,
+    "low_pct": -1.46,
+    "high_pct": 0.05,
+    "half_width_pct": 0.76,
+    "df": 5.0,
+    "drift_draws_pct": [
+     -0.73,
+     -0.29,
+     -0.44,
+     -1.35
+    ],
+    "redraw_draws_pct": [
+     0.36,
+     -0.19,
+     -0.17
+    ]
+   },
+   "s997": {
+    "gap_pct": 3.44,
+    "low_pct": 2.47,
+    "high_pct": 4.4,
+    "half_width_pct": 0.97,
+    "df": 5.6,
+    "drift_draws_pct": [
+     3.45,
+     4.04,
+     3.18,
+     2.64,
+     3.98,
+     2.71,
+     4.17,
+     3.35
+    ],
+    "redraw_draws_pct": [
+     0.6,
+     0.52,
+     -0.66,
+     -0.46
+    ]
+   }
+  },
+  "moisture_source_vegetation_g_kg": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 1.92,
+    "low_pct": -2.38,
+    "high_pct": 6.22,
+    "half_width_pct": 4.3,
+    "df": 4.0,
+    "drift_draws_pct": [
+     1.17,
+     3.76,
+     -0.35,
+     3.11
+    ],
+    "redraw_draws_pct": [
+     -0.79,
+     -1.65,
+     2.44
+    ]
+   },
+   "s997": {
+    "gap_pct": 1.37,
+    "low_pct": -0.58,
+    "high_pct": 3.32,
+    "half_width_pct": 1.95,
+    "df": 8.7,
+    "drift_draws_pct": [
+     3.67,
+     -1.94,
+     -0.86,
+     -0.52,
+     2.97,
+     1.65,
+     1.7,
+     4.3
+    ],
+    "redraw_draws_pct": [
+     0.72,
+     -0.73,
+     -0.15,
+     0.15
+    ]
+   }
+  },
+  "moisture_source_water_g_kg": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.51,
+    "low_pct": -8.43,
+    "high_pct": 9.45,
+    "half_width_pct": 8.94,
+    "df": 2.4,
+    "drift_draws_pct": [
+     -0.38,
+     2.3,
+     -0.68,
+     0.8
+    ],
+    "redraw_draws_pct": [
+     -4.2,
+     3.68,
+     0.53
+    ]
+   },
+   "s997": {
+    "gap_pct": -10.17,
+    "low_pct": -26.47,
+    "high_pct": 6.14,
+    "half_width_pct": 16.3,
+    "df": 5.8,
+    "drift_draws_pct": [
+     -16.05,
+     -8.41,
+     -7.9,
+     -8.17,
+     -19.71,
+     -26.79,
+     3.18,
+     2.52
+    ],
+    "redraw_draws_pct": [
+     16.05,
+     -3.76,
+     -8.82,
+     -3.47
+    ]
+   }
+  },
+  "band 0-15 precip_land_mm": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 2.44,
+    "low_pct": -4.11,
+    "high_pct": 8.98,
+    "half_width_pct": 6.55,
+    "df": 3.5,
+    "drift_draws_pct": [
+     -1.97,
+     7.8,
+     0.17,
+     3.74
+    ],
+    "redraw_draws_pct": [
+     -0.45,
+     -0.84,
+     1.3
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.42,
+    "low_pct": -1.39,
+    "high_pct": 2.23,
+    "half_width_pct": 1.81,
+    "df": 9.7,
+    "drift_draws_pct": [
+     0.6,
+     -0.4,
+     -1.0,
+     -2.82,
+     0.01,
+     4.01,
+     1.48,
+     1.47
+    ],
+    "redraw_draws_pct": [
+     1.05,
+     -0.77,
+     -0.1,
+     -0.18
+    ]
+   }
+  },
+  "band 0-15 precip_ocean_mm": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -0.04,
+    "low_pct": -3.35,
+    "high_pct": 3.28,
+    "half_width_pct": 3.31,
+    "df": 3.1,
+    "drift_draws_pct": [
+     -0.75,
+     0.93,
+     2.27,
+     -2.6
+    ],
+    "redraw_draws_pct": [
+     -0.02,
+     0.28,
+     -0.26
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.18,
+    "low_pct": -1.16,
+    "high_pct": 0.81,
+    "half_width_pct": 0.99,
+    "df": 7.8,
+    "drift_draws_pct": [
+     -2.51,
+     0.93,
+     -0.57,
+     -0.28,
+     0.93,
+     0.38,
+     0.63,
+     -0.93
+    ],
+    "redraw_draws_pct": [
+     -0.1,
+     0.27,
+     0.05,
+     -0.22
+    ]
+   }
+  },
+  "band 0-15 humidity_land_g_kg": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 3.36,
+    "low_pct": -2.21,
+    "high_pct": 8.92,
+    "half_width_pct": 5.57,
+    "df": 3.1,
+    "drift_draws_pct": [
+     -0.34,
+     6.54,
+     1.01,
+     6.22
+    ],
+    "redraw_draws_pct": [
+     -0.49,
+     0.2,
+     0.29
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.39,
+    "low_pct": -2.76,
+    "high_pct": 1.98,
+    "half_width_pct": 2.37,
+    "df": 10.0,
+    "drift_draws_pct": [
+     0.06,
+     -2.97,
+     -1.08,
+     -4.11,
+     -1.26,
+     3.38,
+     0.24,
+     2.6
+    ],
+    "redraw_draws_pct": [
+     1.69,
+     -0.72,
+     -0.5,
+     -0.46
+    ]
+   }
+  },
+  "band 0-15 humidity_ocean_g_kg": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": -0.05,
+    "low_pct": -0.4,
+    "high_pct": 0.31,
+    "half_width_pct": 0.35,
+    "df": 3.1,
+    "drift_draws_pct": [
+     -0.14,
+     0.24,
+     0.0,
+     -0.29
+    ],
+    "redraw_draws_pct": [
+     0.02,
+     0.01,
+     -0.03
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.12,
+    "low_pct": -0.31,
+    "high_pct": 0.07,
+    "half_width_pct": 0.19,
+    "df": 7.2,
+    "drift_draws_pct": [
+     -0.27,
+     -0.09,
+     -0.55,
+     0.01,
+     -0.15,
+     0.19,
+     0.08,
+     -0.16
+    ],
+    "redraw_draws_pct": [
+     0.0,
+     0.03,
+     -0.01,
+     -0.02
+    ]
+   }
+  },
+  "band 0-15 precip_land p10": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 1.26,
+    "low_pct": -6.58,
+    "high_pct": 9.1,
+    "half_width_pct": 7.84,
+    "df": 3.1,
+    "drift_draws_pct": [
+     -1.23,
+     8.72,
+     -1.23,
+     -1.23
+    ],
+    "redraw_draws_pct": [
+     0.61,
+     -0.4,
+     -0.21
+    ]
+   },
+   "s997": {
+    "gap_pct": 1.4,
+    "low_pct": -5.27,
+    "high_pct": 8.07,
+    "half_width_pct": 6.67,
+    "df": 8.6,
+    "drift_draws_pct": [
+     7.89,
+     -5.09,
+     -4.48,
+     -5.09,
+     9.26,
+     14.28,
+     -2.7,
+     -2.89
+    ],
+    "redraw_draws_pct": [
+     0.15,
+     -2.07,
+     -0.75,
+     2.68
+    ]
+   }
+  },
+  "band 0-15 precip_land p50": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 4.11,
+    "low_pct": -21.81,
+    "high_pct": 30.03,
+    "half_width_pct": 25.92,
+    "df": 3.1,
+    "drift_draws_pct": [
+     -2.48,
+     28.25,
+     -8.54,
+     -0.79
+    ],
+    "redraw_draws_pct": [
+     0.34,
+     -1.9,
+     1.56
+    ]
+   },
+   "s997": {
+    "gap_pct": 1.79,
+    "low_pct": -5.0,
+    "high_pct": 8.57,
+    "half_width_pct": 6.79,
+    "df": 10.0,
+    "drift_draws_pct": [
+     1.43,
+     -5.28,
+     -1.53,
+     -8.18,
+     1.07,
+     9.3,
+     13.92,
+     3.56
+    ],
+    "redraw_draws_pct": [
+     4.74,
+     -2.37,
+     -0.29,
+     -2.07
+    ]
+   }
+  },
+  "band 0-15 precip_land p90": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 1.29,
+    "low_pct": -3.14,
+    "high_pct": 5.72,
+    "half_width_pct": 4.43,
+    "df": 4.8,
+    "drift_draws_pct": [
+     -1.91,
+     4.09,
+     -0.29,
+     3.27
+    ],
+    "redraw_draws_pct": [
+     -0.85,
+     -0.99,
+     1.85
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.45,
+    "low_pct": -1.17,
+    "high_pct": 2.08,
+    "half_width_pct": 1.62,
+    "df": 8.3,
+    "drift_draws_pct": [
+     2.12,
+     2.01,
+     -1.24,
+     -2.41,
+     -0.19,
+     3.33,
+     0.31,
+     -0.32
+    ],
+    "redraw_draws_pct": [
+     0.47,
+     -0.56,
+     0.05,
+     0.04
+    ]
+   }
+  },
+  "band 0-15 precip_ocean p10": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -0.99,
+    "low_pct": -13.59,
+    "high_pct": 11.61,
+    "half_width_pct": 12.6,
+    "df": 3.1,
+    "drift_draws_pct": [
+     -4.91,
+     3.96,
+     7.21,
+     -10.22
+    ],
+    "redraw_draws_pct": [
+     -0.53,
+     1.12,
+     -0.58
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.1,
+    "low_pct": -2.49,
+    "high_pct": 2.68,
+    "half_width_pct": 2.59,
+    "df": 8.5,
+    "drift_draws_pct": [
+     -4.35,
+     3.46,
+     -1.96,
+     -2.08,
+     3.19,
+     0.53,
+     3.52,
+     -1.53
+    ],
+    "redraw_draws_pct": [
+     -0.4,
+     0.62,
+     0.63,
+     -0.84
+    ]
+   }
+  },
+  "band 0-15 precip_ocean p50": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.22,
+    "low_pct": -2.74,
+    "high_pct": 3.19,
+    "half_width_pct": 2.96,
+    "df": 3.0,
+    "drift_draws_pct": [
+     -0.44,
+     0.88,
+     2.42,
+     -1.96
+    ],
+    "redraw_draws_pct": [
+     -0.01,
+     0.12,
+     -0.11
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.38,
+    "low_pct": -1.53,
+    "high_pct": 0.76,
+    "half_width_pct": 1.15,
+    "df": 7.7,
+    "drift_draws_pct": [
+     -3.39,
+     0.57,
+     -0.31,
+     -0.05,
+     1.16,
+     0.06,
+     -0.17,
+     -0.93
+    ],
+    "redraw_draws_pct": [
+     0.05,
+     0.28,
+     -0.16,
+     -0.17
+    ]
+   }
+  },
+  "band 0-15 precip_ocean p90": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.08,
+    "low_pct": -0.31,
+    "high_pct": 0.47,
+    "half_width_pct": 0.39,
+    "df": 3.3,
+    "drift_draws_pct": [
+     0.1,
+     0.39,
+     0.06,
+     -0.22
+    ],
+    "redraw_draws_pct": [
+     0.02,
+     0.03,
+     -0.06
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.04,
+    "low_pct": -0.18,
+    "high_pct": 0.1,
+    "half_width_pct": 0.14,
+    "df": 8.9,
+    "drift_draws_pct": [
+     -0.03,
+     -0.08,
+     -0.29,
+     -0.04,
+     -0.23,
+     0.14,
+     0.15,
+     0.06
+    ],
+    "redraw_draws_pct": [
+     0.02,
+     0.01,
+     0.03,
+     -0.07
+    ]
+   }
+  },
+  "band 0-15 humidity_land p10": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.0,
+    "low_pct": 0.0,
+    "high_pct": 0.0,
+    "half_width_pct": 0.0,
+    "df": 1.0,
+    "drift_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "redraw_draws_pct": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.0,
+    "low_pct": 0.0,
+    "high_pct": 0.0,
+    "half_width_pct": 0.0,
+    "df": 1.0,
+    "drift_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "redraw_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  "band 0-15 humidity_land p50": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 10.23,
+    "low_pct": -13.26,
+    "high_pct": 33.72,
+    "half_width_pct": 23.49,
+    "df": 3.0,
+    "drift_draws_pct": [
+     -0.3,
+     29.55,
+     -2.45,
+     14.12
+    ],
+    "redraw_draws_pct": [
+     -0.81,
+     -0.5,
+     1.31
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.01,
+    "low_pct": -8.33,
+    "high_pct": 8.31,
+    "half_width_pct": 8.32,
+    "df": 9.0,
+    "drift_draws_pct": [
+     -3.06,
+     -10.1,
+     1.68,
+     -9.82,
+     3.17,
+     17.58,
+     7.87,
+     -7.42
+    ],
+    "redraw_draws_pct": [
+     3.99,
+     -0.77,
+     -0.56,
+     -2.65
+    ]
+   }
+  },
+  "band 0-15 humidity_land p90": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 4.71,
+    "low_pct": 0.44,
+    "high_pct": 8.97,
+    "half_width_pct": 4.26,
+    "df": 3.7,
+    "drift_draws_pct": [
+     0.78,
+     5.38,
+     5.22,
+     7.44
+    ],
+    "redraw_draws_pct": [
+     -0.86,
+     0.89,
+     -0.03
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.16,
+    "low_pct": -0.34,
+    "high_pct": 0.67,
+    "half_width_pct": 0.5,
+    "df": 9.9,
+    "drift_draws_pct": [
+     0.64,
+     0.41,
+     -0.39,
+     0.42,
+     0.91,
+     -0.08,
+     -0.04,
+     -0.6
+    ],
+    "redraw_draws_pct": [
+     0.38,
+     -0.2,
+     -0.05,
+     -0.13
+    ]
+   }
+  },
+  "band 0-15 humidity_ocean p10": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": -0.04,
+    "low_pct": -0.64,
+    "high_pct": 0.56,
+    "half_width_pct": 0.6,
+    "df": 3.0,
+    "drift_draws_pct": [
+     -0.34,
+     0.45,
+     0.07,
+     -0.34
+    ],
+    "redraw_draws_pct": [
+     0.02,
+     -0.01,
+     -0.01
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.3,
+    "low_pct": -0.56,
+    "high_pct": -0.03,
+    "half_width_pct": 0.27,
+    "df": 7.3,
+    "drift_draws_pct": [
+     -0.66,
+     -0.28,
+     -0.77,
+     0.22,
+     -0.41,
+     -0.12,
+     -0.1,
+     -0.25
+    ],
+    "redraw_draws_pct": [
+     0.02,
+     0.02,
+     -0.05,
+     0.01
+    ]
+   }
+  },
+  "band 0-15 humidity_ocean p50": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": -0.12,
+    "low_pct": -0.4,
+    "high_pct": 0.17,
+    "half_width_pct": 0.29,
+    "df": 3.2,
+    "drift_draws_pct": [
+     -0.14,
+     0.05,
+     -0.02,
+     -0.36
+    ],
+    "redraw_draws_pct": [
+     0.03,
+     0.0,
+     -0.03
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.04,
+    "low_pct": -0.21,
+    "high_pct": 0.13,
+    "half_width_pct": 0.17,
+    "df": 7.4,
+    "drift_draws_pct": [
+     -0.21,
+     -0.04,
+     -0.31,
+     -0.07,
+     0.04,
+     0.33,
+     0.11,
+     -0.18
+    ],
+    "redraw_draws_pct": [
+     -0.02,
+     0.04,
+     -0.01,
+     -0.01
+    ]
+   }
+  },
+  "band 0-15 humidity_ocean p90": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.06,
+    "low_pct": -0.46,
+    "high_pct": 0.57,
+    "half_width_pct": 0.51,
+    "df": 3.1,
+    "drift_draws_pct": [
+     0.04,
+     0.5,
+     -0.04,
+     -0.28
+    ],
+    "redraw_draws_pct": [
+     0.02,
+     0.02,
+     -0.04
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.07,
+    "low_pct": -0.33,
+    "high_pct": 0.19,
+    "half_width_pct": 0.26,
+    "df": 8.1,
+    "drift_draws_pct": [
+     -0.05,
+     -0.04,
+     -0.7,
+     -0.03,
+     -0.25,
+     0.26,
+     0.25,
+     0.01
+    ],
+    "redraw_draws_pct": [
+     0.03,
+     0.02,
+     0.04,
+     -0.09
+    ]
+   }
+  },
+  "band 15-30 precip_land_mm": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -2.97,
+    "low_pct": -18.49,
+    "high_pct": 12.56,
+    "half_width_pct": 15.53,
+    "df": 3.7,
+    "drift_draws_pct": [
+     5.2,
+     2.87,
+     -17.5,
+     -2.44
+    ],
+    "redraw_draws_pct": [
+     2.88,
+     0.21,
+     -3.09
+    ]
+   },
+   "s997": {
+    "gap_pct": 3.56,
+    "low_pct": -0.74,
+    "high_pct": 7.87,
+    "half_width_pct": 4.31,
+    "df": 7.7,
+    "drift_draws_pct": [
+     3.13,
+     4.47,
+     -1.88,
+     -2.76,
+     2.06,
+     12.95,
+     2.41,
+     8.11
+    ],
+    "redraw_draws_pct": [
+     -0.72,
+     0.67,
+     0.79,
+     -0.74
+    ]
+   }
+  },
+  "band 15-30 precip_ocean_mm": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -1.23,
+    "low_pct": -2.49,
+    "high_pct": 0.04,
+    "half_width_pct": 1.27,
+    "df": 3.4,
+    "drift_draws_pct": [
+     -1.37,
+     -1.89,
+     -0.04,
+     -1.61
+    ],
+    "redraw_draws_pct": [
+     -0.19,
+     0.03,
+     0.16
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.68,
+    "low_pct": -3.08,
+    "high_pct": 1.72,
+    "half_width_pct": 2.4,
+    "df": 7.3,
+    "drift_draws_pct": [
+     -0.81,
+     1.72,
+     -1.49,
+     -6.41,
+     2.32,
+     -1.89,
+     2.05,
+     -0.94
+    ],
+    "redraw_draws_pct": [
+     -0.16,
+     -0.2,
+     0.4,
+     -0.04
+    ]
+   }
+  },
+  "band 15-30 humidity_land_g_kg": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.62,
+    "low_pct": -10.42,
+    "high_pct": 11.66,
+    "half_width_pct": 11.04,
+    "df": 3.8,
+    "drift_draws_pct": [
+     6.67,
+     5.39,
+     -9.32,
+     -0.26
+    ],
+    "redraw_draws_pct": [
+     1.57,
+     1.13,
+     -2.7
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.78,
+    "low_pct": -0.91,
+    "high_pct": 2.48,
+    "half_width_pct": 1.7,
+    "df": 8.8,
+    "drift_draws_pct": [
+     3.68,
+     0.91,
+     0.11,
+     -3.03,
+     -0.06,
+     2.18,
+     0.66,
+     1.82
+    ],
+    "redraw_draws_pct": [
+     0.76,
+     -0.43,
+     0.02,
+     -0.35
+    ]
+   }
+  },
+  "band 15-30 humidity_ocean_g_kg": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.18,
+    "low_pct": -0.27,
+    "high_pct": 0.62,
+    "half_width_pct": 0.45,
+    "df": 3.2,
+    "drift_draws_pct": [
+     0.08,
+     0.59,
+     0.09,
+     -0.06
+    ],
+    "redraw_draws_pct": [
+     0.04,
+     -0.04,
+     0.01
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.02,
+    "low_pct": -0.08,
+    "high_pct": 0.12,
+    "half_width_pct": 0.1,
+    "df": 8.8,
+    "drift_draws_pct": [
+     -0.0,
+     0.01,
+     0.12,
+     -0.06,
+     0.12,
+     -0.15,
+     -0.06,
+     0.21
+    ],
+    "redraw_draws_pct": [
+     -0.05,
+     0.02,
+     0.02,
+     0.0
+    ]
+   }
+  },
+  "band 15-30 precip_land p10": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.0,
+    "low_pct": 0.0,
+    "high_pct": 0.0,
+    "half_width_pct": 0.0,
+    "df": 1.0,
+    "drift_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "redraw_draws_pct": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.0,
+    "low_pct": 0.0,
+    "high_pct": 0.0,
+    "half_width_pct": 0.0,
+    "df": 1.0,
+    "drift_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "redraw_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  "band 15-30 precip_land p50": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -12.75,
+    "low_pct": -28.07,
+    "high_pct": 2.57,
+    "half_width_pct": 15.32,
+    "df": 3.5,
+    "drift_draws_pct": [
+     -3.75,
+     -9.41,
+     -27.05,
+     -10.8
+    ],
+    "redraw_draws_pct": [
+     2.8,
+     -2.26,
+     -0.54
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.17,
+    "low_pct": -0.27,
+    "high_pct": 0.61,
+    "half_width_pct": 0.44,
+    "df": 7.1,
+    "drift_draws_pct": [
+     1.48,
+     -0.02,
+     -0.02,
+     -0.02,
+     -0.02,
+     -0.02,
+     -0.02,
+     -0.02
+    ],
+    "redraw_draws_pct": [
+     -0.02,
+     0.05,
+     -0.02,
+     -0.02
+    ]
+   }
+  },
+  "band 15-30 precip_land p90": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -2.37,
+    "low_pct": -20.71,
+    "high_pct": 15.96,
+    "half_width_pct": 18.33,
+    "df": 3.8,
+    "drift_draws_pct": [
+     4.07,
+     5.66,
+     -20.27,
+     1.07
+    ],
+    "redraw_draws_pct": [
+     3.47,
+     0.64,
+     -4.11
+    ]
+   },
+   "s997": {
+    "gap_pct": 2.3,
+    "low_pct": -4.81,
+    "high_pct": 9.42,
+    "half_width_pct": 7.12,
+    "df": 7.5,
+    "drift_draws_pct": [
+     5.73,
+     8.87,
+     -10.48,
+     -10.04,
+     -0.56,
+     11.02,
+     5.34,
+     8.55
+    ],
+    "redraw_draws_pct": [
+     1.23,
+     0.66,
+     -0.63,
+     -1.26
+    ]
+   }
+  },
+  "band 15-30 precip_ocean p10": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.27,
+    "low_pct": -0.51,
+    "high_pct": 1.06,
+    "half_width_pct": 0.79,
+    "df": 3.3,
+    "drift_draws_pct": [
+     0.99,
+     0.27,
+     -0.13,
+     -0.03
+    ],
+    "redraw_draws_pct": [
+     0.09,
+     -0.1,
+     0.01
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.01,
+    "low_pct": -0.2,
+    "high_pct": 0.21,
+    "half_width_pct": 0.2,
+    "df": 7.8,
+    "drift_draws_pct": [
+     0.16,
+     0.02,
+     0.11,
+     -0.26,
+     0.22,
+     -0.38,
+     -0.12,
+     0.3
+    ],
+    "redraw_draws_pct": [
+     0.02,
+     0.04,
+     -0.06,
+     0.0
+    ]
+   }
+  },
+  "band 15-30 precip_ocean p50": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -2.23,
+    "low_pct": -6.1,
+    "high_pct": 1.64,
+    "half_width_pct": 3.87,
+    "df": 4.4,
+    "drift_draws_pct": [
+     -1.88,
+     -5.89,
+     -0.06,
+     -1.11
+    ],
+    "redraw_draws_pct": [
+     -0.55,
+     -0.82,
+     1.37
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.32,
+    "low_pct": -5.01,
+    "high_pct": 4.36,
+    "half_width_pct": 4.69,
+    "df": 7.6,
+    "drift_draws_pct": [
+     -5.21,
+     8.27,
+     -6.2,
+     -3.99,
+     4.16,
+     -1.77,
+     5.86,
+     -3.72
+    ],
+    "redraw_draws_pct": [
+     0.42,
+     -1.04,
+     0.84,
+     -0.22
+    ]
+   }
+  },
+  "band 15-30 precip_ocean p90": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -1.28,
+    "low_pct": -3.02,
+    "high_pct": 0.45,
+    "half_width_pct": 1.73,
+    "df": 3.8,
+    "drift_draws_pct": [
+     -1.59,
+     -0.53,
+     -0.26,
+     -2.77
+    ],
+    "redraw_draws_pct": [
+     -0.24,
+     0.43,
+     -0.19
+    ]
+   },
+   "s997": {
+    "gap_pct": -1.17,
+    "low_pct": -4.57,
+    "high_pct": 2.23,
+    "half_width_pct": 3.4,
+    "df": 7.3,
+    "drift_draws_pct": [
+     0.48,
+     0.33,
+     -0.73,
+     -10.72,
+     2.27,
+     -1.93,
+     1.25,
+     -0.31
+    ],
+    "redraw_draws_pct": [
+     -0.44,
+     0.31,
+     0.47,
+     -0.33
+    ]
+   }
+  },
+  "band 15-30 humidity_land p10": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.0,
+    "low_pct": 0.0,
+    "high_pct": 0.0,
+    "half_width_pct": 0.0,
+    "df": 1.0,
+    "drift_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "redraw_draws_pct": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.0,
+    "low_pct": 0.0,
+    "high_pct": 0.0,
+    "half_width_pct": 0.0,
+    "df": 1.0,
+    "drift_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "redraw_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  "band 15-30 humidity_land p50": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -4.79,
+    "low_pct": -25.39,
+    "high_pct": 15.8,
+    "half_width_pct": 20.6,
+    "df": 3.6,
+    "drift_draws_pct": [
+     -4.69,
+     11.55,
+     -21.49,
+     -4.53
+    ],
+    "redraw_draws_pct": [
+     2.09,
+     2.16,
+     -4.25
+    ]
+   },
+   "s997": {
+    "gap_pct": -4.58,
+    "low_pct": -22.55,
+    "high_pct": 13.39,
+    "half_width_pct": 17.97,
+    "df": 8.0,
+    "drift_draws_pct": [
+     45.84,
+     -11.96,
+     2.4,
+     -13.35,
+     -15.15,
+     -12.72,
+     -16.57,
+     -15.12
+    ],
+    "redraw_draws_pct": [
+     -4.75,
+     -2.32,
+     4.21,
+     2.86
+    ]
+   }
+  },
+  "band 15-30 humidity_land p90": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.77,
+    "low_pct": -10.72,
+    "high_pct": 12.27,
+    "half_width_pct": 11.49,
+    "df": 3.4,
+    "drift_draws_pct": [
+     9.23,
+     2.7,
+     -8.79,
+     -0.06
+    ],
+    "redraw_draws_pct": [
+     1.28,
+     0.69,
+     -1.98
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.63,
+    "low_pct": -3.78,
+    "high_pct": 5.04,
+    "half_width_pct": 4.41,
+    "df": 8.5,
+    "drift_draws_pct": [
+     2.37,
+     5.51,
+     -8.03,
+     -6.2,
+     0.04,
+     1.82,
+     5.65,
+     3.9
+    ],
+    "redraw_draws_pct": [
+     1.83,
+     -0.12,
+     -0.81,
+     -0.9
+    ]
+   }
+  },
+  "band 15-30 humidity_ocean p10": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.27,
+    "low_pct": -0.54,
+    "high_pct": 1.09,
+    "half_width_pct": 0.81,
+    "df": 3.2,
+    "drift_draws_pct": [
+     0.97,
+     0.33,
+     -0.23,
+     0.02
+    ],
+    "redraw_draws_pct": [
+     0.08,
+     -0.09,
+     0.01
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.03,
+    "low_pct": -0.24,
+    "high_pct": 0.18,
+    "half_width_pct": 0.21,
+    "df": 7.8,
+    "drift_draws_pct": [
+     0.04,
+     -0.22,
+     0.2,
+     -0.22,
+     0.2,
+     -0.27,
+     -0.27,
+     0.32
+    ],
+    "redraw_draws_pct": [
+     0.02,
+     0.04,
+     -0.06,
+     -0.01
+    ]
+   }
+  },
+  "band 15-30 humidity_ocean p50": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.3,
+    "low_pct": -0.15,
+    "high_pct": 0.76,
+    "half_width_pct": 0.45,
+    "df": 3.0,
+    "drift_draws_pct": [
+     0.22,
+     0.7,
+     0.25,
+     0.03
+    ],
+    "redraw_draws_pct": [
+     0.02,
+     -0.02,
+     0.0
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.09,
+    "low_pct": -0.04,
+    "high_pct": 0.22,
+    "half_width_pct": 0.13,
+    "df": 9.8,
+    "drift_draws_pct": [
+     -0.01,
+     0.13,
+     0.1,
+     0.12,
+     0.23,
+     -0.21,
+     0.19,
+     0.2
+    ],
+    "redraw_draws_pct": [
+     -0.08,
+     0.04,
+     0.04,
+     0.01
+    ]
+   }
+  },
+  "band 15-30 humidity_ocean p90": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": -0.03,
+    "low_pct": -1.13,
+    "high_pct": 1.07,
+    "half_width_pct": 1.1,
+    "df": 3.0,
+    "drift_draws_pct": [
+     -0.82,
+     0.81,
+     0.17,
+     -0.28
+    ],
+    "redraw_draws_pct": [
+     -0.0,
+     -0.0,
+     0.01
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.0,
+    "low_pct": -0.16,
+    "high_pct": 0.16,
+    "half_width_pct": 0.16,
+    "df": 8.8,
+    "drift_draws_pct": [
+     -0.14,
+     0.07,
+     0.11,
+     -0.05,
+     -0.08,
+     0.14,
+     -0.31,
+     0.28
+    ],
+    "redraw_draws_pct": [
+     -0.07,
+     0.01,
+     0.06,
+     0.0
+    ]
+   }
+  },
+  "band 30-45 precip_land_mm": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -3.03,
+    "low_pct": -15.81,
+    "high_pct": 9.75,
+    "half_width_pct": 12.78,
+    "df": 4.2,
+    "drift_draws_pct": [
+     -2.41,
+     -9.88,
+     -4.14,
+     4.33
+    ],
+    "redraw_draws_pct": [
+     -4.48,
+     -2.8,
+     7.28
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.72,
+    "low_pct": -6.33,
+    "high_pct": 7.76,
+    "half_width_pct": 7.05,
+    "df": 7.8,
+    "drift_draws_pct": [
+     11.57,
+     -4.26,
+     -6.91,
+     8.74,
+     -0.23,
+     -12.21,
+     0.82,
+     8.22
+    ],
+    "redraw_draws_pct": [
+     1.71,
+     -0.71,
+     -1.51,
+     0.51
+    ]
+   }
+  },
+  "band 30-45 precip_ocean_mm": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -0.23,
+    "low_pct": -2.08,
+    "high_pct": 1.61,
+    "half_width_pct": 1.84,
+    "df": 3.5,
+    "drift_draws_pct": [
+     0.21,
+     -1.07,
+     -1.34,
+     1.26
+    ],
+    "redraw_draws_pct": [
+     -0.21,
+     -0.13,
+     0.34
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.41,
+    "low_pct": -1.24,
+    "high_pct": 0.42,
+    "half_width_pct": 0.83,
+    "df": 8.5,
+    "drift_draws_pct": [
+     -0.94,
+     -1.69,
+     0.11,
+     -0.73,
+     -0.21,
+     -1.23,
+     -0.02,
+     1.45
+    ],
+    "redraw_draws_pct": [
+     0.3,
+     0.05,
+     -0.06,
+     -0.28
+    ]
+   }
+  },
+  "band 30-45 humidity_land_g_kg": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -1.49,
+    "low_pct": -17.38,
+    "high_pct": 14.41,
+    "half_width_pct": 15.89,
+    "df": 3.7,
+    "drift_draws_pct": [
+     -0.47,
+     -9.9,
+     -0.72,
+     5.14
+    ],
+    "redraw_draws_pct": [
+     -4.97,
+     -4.23,
+     9.2
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.23,
+    "low_pct": -6.82,
+    "high_pct": 6.36,
+    "half_width_pct": 6.59,
+    "df": 7.9,
+    "drift_draws_pct": [
+     9.77,
+     -4.92,
+     -7.62,
+     4.74,
+     -1.65,
+     -11.89,
+     0.65,
+     9.08
+    ],
+    "redraw_draws_pct": [
+     1.85,
+     -0.44,
+     -1.51,
+     0.09
+    ]
+   }
+  },
+  "band 30-45 humidity_ocean_g_kg": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": -0.22,
+    "low_pct": -0.93,
+    "high_pct": 0.49,
+    "half_width_pct": 0.71,
+    "df": 3.0,
+    "drift_draws_pct": [
+     0.4,
+     -0.46,
+     -0.2,
+     -0.62
+    ],
+    "redraw_draws_pct": [
+     -0.02,
+     -0.02,
+     0.04
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.04,
+    "low_pct": -0.15,
+    "high_pct": 0.23,
+    "half_width_pct": 0.19,
+    "df": 7.4,
+    "drift_draws_pct": [
+     -0.04,
+     0.31,
+     0.33,
+     -0.26,
+     0.24,
+     -0.03,
+     -0.21,
+     -0.0
+    ],
+    "redraw_draws_pct": [
+     0.03,
+     0.0,
+     0.0,
+     -0.04
+    ]
+   }
+  },
+  "band 30-45 precip_land p10": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.0,
+    "low_pct": 0.0,
+    "high_pct": 0.0,
+    "half_width_pct": 0.0,
+    "df": 1.0,
+    "drift_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "redraw_draws_pct": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.0,
+    "low_pct": 0.0,
+    "high_pct": 0.0,
+    "half_width_pct": 0.0,
+    "df": 1.0,
+    "drift_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "redraw_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  "band 30-45 precip_land p50": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 3.99,
+    "low_pct": -29.19,
+    "high_pct": 37.18,
+    "half_width_pct": 33.18,
+    "df": 5.0,
+    "drift_draws_pct": [
+     -12.0,
+     -10.89,
+     6.79,
+     32.07
+    ],
+    "redraw_draws_pct": [
+     -12.83,
+     -1.08,
+     13.91
+    ]
+   },
+   "s997": {
+    "gap_pct": -2.81,
+    "low_pct": -15.55,
+    "high_pct": 9.92,
+    "half_width_pct": 12.74,
+    "df": 9.4,
+    "drift_draws_pct": [
+     15.75,
+     -12.29,
+     -8.69,
+     11.02,
+     13.17,
+     -24.3,
+     -11.94,
+     -5.23
+    ],
+    "redraw_draws_pct": [
+     -0.55,
+     0.81,
+     -6.06,
+     5.8
+    ]
+   }
+  },
+  "band 30-45 precip_land p90": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -4.27,
+    "low_pct": -16.24,
+    "high_pct": 7.7,
+    "half_width_pct": 11.97,
+    "df": 4.9,
+    "drift_draws_pct": [
+     2.74,
+     -11.15,
+     -8.93,
+     0.27
+    ],
+    "redraw_draws_pct": [
+     -2.34,
+     -3.89,
+     6.23
+    ]
+   },
+   "s997": {
+    "gap_pct": 3.35,
+    "low_pct": -5.49,
+    "high_pct": 12.19,
+    "half_width_pct": 8.84,
+    "df": 7.7,
+    "drift_draws_pct": [
+     18.96,
+     0.2,
+     -8.54,
+     11.53,
+     -2.85,
+     -10.03,
+     4.63,
+     12.88
+    ],
+    "redraw_draws_pct": [
+     2.48,
+     -0.73,
+     -0.72,
+     -1.03
+    ]
+   }
+  },
+  "band 30-45 precip_ocean p10": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": -0.02,
+    "low_pct": -0.97,
+    "high_pct": 0.93,
+    "half_width_pct": 0.95,
+    "df": 3.2,
+    "drift_draws_pct": [
+     0.88,
+     -0.21,
+     -0.3,
+     -0.46
+    ],
+    "redraw_draws_pct": [
+     0.11,
+     -0.08,
+     -0.03
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.01,
+    "low_pct": -0.16,
+    "high_pct": 0.14,
+    "half_width_pct": 0.15,
+    "df": 9.3,
+    "drift_draws_pct": [
+     0.02,
+     0.31,
+     -0.02,
+     -0.06,
+     -0.01,
+     -0.16,
+     -0.26,
+     0.13
+    ],
+    "redraw_draws_pct": [
+     0.06,
+     0.03,
+     -0.03,
+     -0.06
+    ]
+   }
+  },
+  "band 30-45 precip_ocean p50": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -0.66,
+    "low_pct": -4.58,
+    "high_pct": 3.25,
+    "half_width_pct": 3.92,
+    "df": 3.3,
+    "drift_draws_pct": [
+     0.8,
+     -2.12,
+     -3.38,
+     2.06
+    ],
+    "redraw_draws_pct": [
+     -0.33,
+     -0.19,
+     0.52
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.36,
+    "low_pct": -1.35,
+    "high_pct": 0.64,
+    "half_width_pct": 1.0,
+    "df": 9.5,
+    "drift_draws_pct": [
+     -1.06,
+     -2.27,
+     0.76,
+     -0.71,
+     -0.39,
+     -0.3,
+     -0.36,
+     1.47
+    ],
+    "redraw_draws_pct": [
+     0.46,
+     0.18,
+     -0.22,
+     -0.42
+    ]
+   }
+  },
+  "band 30-45 precip_ocean p90": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": -0.17,
+    "low_pct": -1.8,
+    "high_pct": 1.47,
+    "half_width_pct": 1.64,
+    "df": 3.6,
+    "drift_draws_pct": [
+     -1.08,
+     -1.0,
+     0.29,
+     1.14
+    ],
+    "redraw_draws_pct": [
+     -0.22,
+     -0.12,
+     0.34
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.57,
+    "low_pct": -1.91,
+    "high_pct": 0.77,
+    "half_width_pct": 1.34,
+    "df": 7.3,
+    "drift_draws_pct": [
+     -1.39,
+     -2.17,
+     0.97,
+     -1.68,
+     -0.37,
+     -2.44,
+     0.64,
+     1.88
+    ],
+    "redraw_draws_pct": [
+     0.24,
+     -0.16,
+     0.04,
+     -0.12
+    ]
+   }
+  },
+  "band 30-45 humidity_land p10": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.0,
+    "low_pct": 0.0,
+    "high_pct": 0.0,
+    "half_width_pct": 0.0,
+    "df": 1.0,
+    "drift_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "redraw_draws_pct": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.0,
+    "low_pct": 0.0,
+    "high_pct": 0.0,
+    "half_width_pct": 0.0,
+    "df": 1.0,
+    "drift_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "redraw_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  "band 30-45 humidity_land p50": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -2.24,
+    "low_pct": -28.96,
+    "high_pct": 24.47,
+    "half_width_pct": 26.72,
+    "df": 4.7,
+    "drift_draws_pct": [
+     -13.47,
+     -14.43,
+     5.53,
+     13.4
+    ],
+    "redraw_draws_pct": [
+     -10.89,
+     -3.28,
+     14.17
+    ]
+   },
+   "s997": {
+    "gap_pct": -9.95,
+    "low_pct": -21.74,
+    "high_pct": 1.84,
+    "half_width_pct": 11.79,
+    "df": 8.0,
+    "drift_draws_pct": [
+     7.48,
+     -18.8,
+     -23.99,
+     -1.91,
+     11.01,
+     -13.48,
+     -14.3,
+     -25.61
+    ],
+    "redraw_draws_pct": [
+     1.76,
+     1.3,
+     -4.07,
+     1.01
+    ]
+   }
+  },
+  "band 30-45 humidity_land p90": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -2.24,
+    "low_pct": -20.08,
+    "high_pct": 15.59,
+    "half_width_pct": 17.84,
+    "df": 3.1,
+    "drift_draws_pct": [
+     2.79,
+     -9.75,
+     -2.18,
+     0.17
+    ],
+    "redraw_draws_pct": [
+     -4.45,
+     -5.65,
+     10.1
+    ]
+   },
+   "s997": {
+    "gap_pct": 1.37,
+    "low_pct": -6.25,
+    "high_pct": 8.98,
+    "half_width_pct": 7.61,
+    "df": 7.2,
+    "drift_draws_pct": [
+     13.82,
+     0.77,
+     -7.02,
+     7.18,
+     -4.43,
+     -12.43,
+     1.99,
+     11.05
+    ],
+    "redraw_draws_pct": [
+     1.18,
+     -0.28,
+     -0.85,
+     -0.04
+    ]
+   }
+  },
+  "band 30-45 humidity_ocean p10": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": -0.4,
+    "low_pct": -1.26,
+    "high_pct": 0.47,
+    "half_width_pct": 0.87,
+    "df": 3.0,
+    "drift_draws_pct": [
+     0.41,
+     -0.78,
+     -0.53,
+     -0.68
+    ],
+    "redraw_draws_pct": [
+     -0.02,
+     0.05,
+     -0.03
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.29,
+    "low_pct": -0.06,
+    "high_pct": 0.64,
+    "half_width_pct": 0.35,
+    "df": 7.1,
+    "drift_draws_pct": [
+     0.09,
+     0.59,
+     0.34,
+     -0.25,
+     1.07,
+     0.38,
+     -0.11,
+     0.22
+    ],
+    "redraw_draws_pct": [
+     -0.04,
+     0.02,
+     0.02,
+     -0.0
+    ]
+   }
+  },
+  "band 30-45 humidity_ocean p50": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": -0.37,
+    "low_pct": -0.87,
+    "high_pct": 0.13,
+    "half_width_pct": 0.5,
+    "df": 3.3,
+    "drift_draws_pct": [
+     0.03,
+     -0.6,
+     -0.24,
+     -0.65
+    ],
+    "redraw_draws_pct": [
+     -0.05,
+     -0.03,
+     0.07
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.0,
+    "low_pct": -0.2,
+    "high_pct": 0.2,
+    "half_width_pct": 0.2,
+    "df": 7.0,
+    "drift_draws_pct": [
+     0.04,
+     -0.01,
+     0.27,
+     -0.04,
+     0.2,
+     0.16,
+     -0.49,
+     -0.14
+    ],
+    "redraw_draws_pct": [
+     0.0,
+     0.01,
+     -0.01,
+     0.0
+    ]
+   }
+  },
+  "band 30-45 humidity_ocean p90": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.17,
+    "low_pct": -0.71,
+    "high_pct": 1.05,
+    "half_width_pct": 0.88,
+    "df": 3.1,
+    "drift_draws_pct": [
+     0.9,
+     0.05,
+     0.18,
+     -0.45
+    ],
+    "redraw_draws_pct": [
+     0.02,
+     -0.07,
+     0.05
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.02,
+    "low_pct": -0.38,
+    "high_pct": 0.33,
+    "half_width_pct": 0.35,
+    "df": 7.8,
+    "drift_draws_pct": [
+     -0.08,
+     0.63,
+     0.39,
+     -0.42,
+     -0.33,
+     -0.6,
+     0.06,
+     0.16
+    ],
+    "redraw_draws_pct": [
+     0.09,
+     0.03,
+     -0.04,
+     -0.07
+    ]
+   }
+  },
+  "band 45-60 precip_land_mm": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -0.71,
+    "low_pct": -6.43,
+    "high_pct": 5.01,
+    "half_width_pct": 5.72,
+    "df": 4.9,
+    "drift_draws_pct": [
+     3.11,
+     -0.37,
+     0.11,
+     -5.68
+    ],
+    "redraw_draws_pct": [
+     -0.47,
+     -1.87,
+     2.34
+    ]
+   },
+   "s997": {
+    "gap_pct": 1.9,
+    "low_pct": -1.87,
+    "high_pct": 5.68,
+    "half_width_pct": 3.78,
+    "df": 7.4,
+    "drift_draws_pct": [
+     5.8,
+     -6.86,
+     0.31,
+     1.22,
+     8.44,
+     0.54,
+     2.5,
+     3.27
+    ],
+    "redraw_draws_pct": [
+     0.24,
+     -0.39,
+     -0.53,
+     0.68
+    ]
+   }
+  },
+  "band 45-60 precip_ocean_mm": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.38,
+    "low_pct": -1.56,
+    "high_pct": 2.32,
+    "half_width_pct": 1.94,
+    "df": 3.5,
+    "drift_draws_pct": [
+     1.2,
+     -0.03,
+     -1.23,
+     1.56
+    ],
+    "redraw_draws_pct": [
+     -0.19,
+     -0.18,
+     0.37
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.19,
+    "low_pct": -0.94,
+    "high_pct": 0.56,
+    "half_width_pct": 0.75,
+    "df": 8.5,
+    "drift_draws_pct": [
+     -0.7,
+     0.51,
+     0.49,
+     -1.2,
+     0.96,
+     -1.3,
+     -0.69,
+     0.43
+    ],
+    "redraw_draws_pct": [
+     -0.08,
+     -0.09,
+     0.32,
+     -0.15
+    ]
+   }
+  },
+  "band 45-60 humidity_land_g_kg": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -0.2,
+    "low_pct": -6.22,
+    "high_pct": 5.82,
+    "half_width_pct": 6.02,
+    "df": 5.0,
+    "drift_draws_pct": [
+     2.84,
+     1.41,
+     0.56,
+     -5.6
+    ],
+    "redraw_draws_pct": [
+     -0.21,
+     -2.34,
+     2.55
+    ]
+   },
+   "s997": {
+    "gap_pct": 1.34,
+    "low_pct": -3.34,
+    "high_pct": 6.02,
+    "half_width_pct": 4.68,
+    "df": 7.3,
+    "drift_draws_pct": [
+     6.68,
+     -8.93,
+     0.17,
+     -0.8,
+     9.94,
+     -0.15,
+     1.03,
+     2.78
+    ],
+    "redraw_draws_pct": [
+     0.05,
+     -0.43,
+     -0.42,
+     0.8
+    ]
+   }
+  },
+  "band 45-60 humidity_ocean_g_kg": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": -0.2,
+    "low_pct": -1.06,
+    "high_pct": 0.65,
+    "half_width_pct": 0.86,
+    "df": 3.0,
+    "drift_draws_pct": [
+     0.27,
+     -0.9,
+     -0.36,
+     0.18
+    ],
+    "redraw_draws_pct": [
+     -0.02,
+     0.02,
+     0.0
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.21,
+    "low_pct": -0.35,
+    "high_pct": 0.77,
+    "half_width_pct": 0.56,
+    "df": 7.3,
+    "drift_draws_pct": [
+     -0.92,
+     0.56,
+     0.56,
+     -0.08,
+     1.24,
+     0.58,
+     -0.31,
+     0.05
+    ],
+    "redraw_draws_pct": [
+     0.06,
+     -0.04,
+     0.06,
+     -0.08
+    ]
+   }
+  },
+  "band 45-60 precip_land p10": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 1.18,
+    "low_pct": -28.64,
+    "high_pct": 31.0,
+    "half_width_pct": 29.82,
+    "df": 4.0,
+    "drift_draws_pct": [
+     8.65,
+     6.82,
+     16.96,
+     -27.69
+    ],
+    "redraw_draws_pct": [
+     -6.68,
+     -1.38,
+     8.05
+    ]
+   },
+   "s997": {
+    "gap_pct": 6.57,
+    "low_pct": -10.71,
+    "high_pct": 23.85,
+    "half_width_pct": 17.28,
+    "df": 7.4,
+    "drift_draws_pct": [
+     20.44,
+     -16.13,
+     -24.31,
+     -1.32,
+     40.24,
+     16.66,
+     7.44,
+     9.55
+    ],
+    "redraw_draws_pct": [
+     2.01,
+     -1.08,
+     -3.09,
+     2.16
+    ]
+   }
+  },
+  "band 45-60 precip_land p50": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -2.91,
+    "low_pct": -11.95,
+    "high_pct": 6.14,
+    "half_width_pct": 9.04,
+    "df": 4.6,
+    "drift_draws_pct": [
+     5.94,
+     -5.1,
+     -6.14,
+     -6.33
+    ],
+    "redraw_draws_pct": [
+     -0.39,
+     -2.73,
+     3.12
+    ]
+   },
+   "s997": {
+    "gap_pct": 3.23,
+    "low_pct": -3.34,
+    "high_pct": 9.81,
+    "half_width_pct": 6.57,
+    "df": 7.2,
+    "drift_draws_pct": [
+     6.11,
+     -12.46,
+     -0.57,
+     5.32,
+     13.97,
+     -0.34,
+     5.65,
+     8.19
+    ],
+    "redraw_draws_pct": [
+     0.47,
+     -0.29,
+     -0.69,
+     0.51
+    ]
+   }
+  },
+  "band 45-60 precip_land p90": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -0.24,
+    "low_pct": -3.58,
+    "high_pct": 3.09,
+    "half_width_pct": 3.34,
+    "df": 5.0,
+    "drift_draws_pct": [
+     1.42,
+     0.86,
+     -0.12,
+     -3.13
+    ],
+    "redraw_draws_pct": [
+     -0.11,
+     -1.35,
+     1.46
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.83,
+    "low_pct": -1.05,
+    "high_pct": 2.71,
+    "half_width_pct": 1.88,
+    "df": 7.9,
+    "drift_draws_pct": [
+     3.03,
+     -2.45,
+     1.0,
+     -0.01,
+     3.54,
+     -0.05,
+     3.05,
+     -1.48
+    ],
+    "redraw_draws_pct": [
+     -0.0,
+     -0.32,
+     -0.26,
+     0.59
+    ]
+   }
+  },
+  "band 45-60 precip_ocean p10": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.86,
+    "low_pct": -2.98,
+    "high_pct": 4.69,
+    "half_width_pct": 3.84,
+    "df": 3.5,
+    "drift_draws_pct": [
+     1.88,
+     0.94,
+     -2.63,
+     3.22
+    ],
+    "redraw_draws_pct": [
+     -0.44,
+     -0.29,
+     0.73
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.01,
+    "low_pct": -1.51,
+    "high_pct": 1.48,
+    "half_width_pct": 1.49,
+    "df": 7.5,
+    "drift_draws_pct": [
+     -0.7,
+     2.93,
+     1.68,
+     -2.07,
+     1.26,
+     -1.85,
+     -0.6,
+     -0.76
+    ],
+    "redraw_draws_pct": [
+     0.09,
+     -0.03,
+     0.25,
+     -0.31
+    ]
+   }
+  },
+  "band 45-60 precip_ocean p50": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.56,
+    "low_pct": -1.68,
+    "high_pct": 2.8,
+    "half_width_pct": 2.24,
+    "df": 3.5,
+    "drift_draws_pct": [
+     1.68,
+     -0.47,
+     -0.92,
+     1.94
+    ],
+    "redraw_draws_pct": [
+     -0.27,
+     -0.15,
+     0.41
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.31,
+    "low_pct": -1.34,
+    "high_pct": 0.72,
+    "half_width_pct": 1.03,
+    "df": 9.1,
+    "drift_draws_pct": [
+     -1.2,
+     0.32,
+     0.51,
+     -1.58,
+     1.53,
+     -1.64,
+     -0.96,
+     0.58
+    ],
+    "redraw_draws_pct": [
+     -0.14,
+     -0.25,
+     0.53,
+     -0.14
+    ]
+   }
+  },
+  "band 45-60 precip_ocean p90": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": -0.08,
+    "low_pct": -0.42,
+    "high_pct": 0.26,
+    "half_width_pct": 0.34,
+    "df": 4.2,
+    "drift_draws_pct": [
+     -0.14,
+     -0.08,
+     -0.31,
+     0.23
+    ],
+    "redraw_draws_pct": [
+     0.04,
+     -0.11,
+     0.07
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.08,
+    "low_pct": -0.18,
+    "high_pct": 0.34,
+    "half_width_pct": 0.26,
+    "df": 7.6,
+    "drift_draws_pct": [
+     -0.18,
+     -0.43,
+     0.51,
+     0.36,
+     0.03,
+     0.29,
+     -0.1,
+     0.17
+    ],
+    "redraw_draws_pct": [
+     0.02,
+     0.05,
+     -0.03,
+     -0.04
+    ]
+   }
+  },
+  "band 45-60 humidity_land p10": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -2.46,
+    "low_pct": -50.0,
+    "high_pct": 45.08,
+    "half_width_pct": 47.54,
+    "df": 3.2,
+    "drift_draws_pct": [
+     -1.33,
+     12.65,
+     24.31,
+     -45.46
+    ],
+    "redraw_draws_pct": [
+     -3.38,
+     -2.72,
+     6.1
+    ]
+   },
+   "s997": {
+    "gap_pct": 11.82,
+    "low_pct": -2.82,
+    "high_pct": 26.46,
+    "half_width_pct": 14.64,
+    "df": 7.5,
+    "drift_draws_pct": [
+     18.47,
+     -6.16,
+     -6.16,
+     8.81,
+     37.06,
+     33.0,
+     -6.16,
+     15.72
+    ],
+    "redraw_draws_pct": [
+     0.8,
+     -2.18,
+     -1.77,
+     3.15
+    ]
+   }
+  },
+  "band 45-60 humidity_land p50": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -1.64,
+    "low_pct": -10.17,
+    "high_pct": 6.9,
+    "half_width_pct": 8.53,
+    "df": 5.0,
+    "drift_draws_pct": [
+     5.39,
+     -0.93,
+     -5.75,
+     -5.28
+    ],
+    "redraw_draws_pct": [
+     -0.76,
+     -3.17,
+     3.93
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.35,
+    "low_pct": -12.8,
+    "high_pct": 12.1,
+    "half_width_pct": 12.45,
+    "df": 7.3,
+    "drift_draws_pct": [
+     9.93,
+     -24.82,
+     -5.84,
+     -5.69,
+     24.23,
+     -9.97,
+     0.57,
+     8.82
+    ],
+    "redraw_draws_pct": [
+     1.04,
+     -1.96,
+     -0.66,
+     1.58
+    ]
+   }
+  },
+  "band 45-60 humidity_land p90": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.63,
+    "low_pct": -2.43,
+    "high_pct": 3.68,
+    "half_width_pct": 3.06,
+    "df": 4.9,
+    "drift_draws_pct": [
+     0.33,
+     2.01,
+     1.88,
+     -1.7
+    ],
+    "redraw_draws_pct": [
+     -0.29,
+     -1.23,
+     1.52
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.47,
+    "low_pct": -1.01,
+    "high_pct": 1.96,
+    "half_width_pct": 1.48,
+    "df": 7.6,
+    "drift_draws_pct": [
+     2.87,
+     -3.02,
+     1.38,
+     -0.19,
+     0.88,
+     1.57,
+     0.83,
+     -0.55
+    ],
+    "redraw_draws_pct": [
+     -0.29,
+     -0.01,
+     -0.03,
+     0.33
+    ]
+   }
+  },
+  "band 45-60 humidity_ocean p10": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": -0.32,
+    "low_pct": -1.43,
+    "high_pct": 0.78,
+    "half_width_pct": 1.1,
+    "df": 3.5,
+    "drift_draws_pct": [
+     -0.86,
+     -0.94,
+     -0.09,
+     0.59
+    ],
+    "redraw_draws_pct": [
+     0.16,
+     -0.2,
+     0.04
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.08,
+    "low_pct": -0.65,
+    "high_pct": 0.81,
+    "half_width_pct": 0.73,
+    "df": 7.1,
+    "drift_draws_pct": [
+     -1.35,
+     -0.48,
+     1.0,
+     0.95,
+     0.84,
+     0.42,
+     -0.71,
+     -0.05
+    ],
+    "redraw_draws_pct": [
+     0.07,
+     0.01,
+     -0.06,
+     -0.02
+    ]
+   }
+  },
+  "band 45-60 humidity_ocean p50": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": -0.27,
+    "low_pct": -1.28,
+    "high_pct": 0.73,
+    "half_width_pct": 1.0,
+    "df": 3.3,
+    "drift_draws_pct": [
+     0.37,
+     -1.17,
+     -0.17,
+     -0.12
+    ],
+    "redraw_draws_pct": [
+     -0.1,
+     0.13,
+     -0.03
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.16,
+    "low_pct": -0.55,
+    "high_pct": 0.86,
+    "half_width_pct": 0.71,
+    "df": 7.3,
+    "drift_draws_pct": [
+     -1.33,
+     0.93,
+     0.74,
+     -0.47,
+     0.94,
+     0.89,
+     -0.27,
+     -0.19
+    ],
+    "redraw_draws_pct": [
+     0.1,
+     0.01,
+     0.02,
+     -0.12
+    ]
+   }
+  },
+  "band 45-60 humidity_ocean p90": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.03,
+    "low_pct": -1.38,
+    "high_pct": 1.44,
+    "half_width_pct": 1.41,
+    "df": 3.1,
+    "drift_draws_pct": [
+     1.14,
+     -0.7,
+     -0.69,
+     0.38
+    ],
+    "redraw_draws_pct": [
+     -0.09,
+     0.11,
+     -0.02
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.3,
+    "low_pct": -0.2,
+    "high_pct": 0.79,
+    "half_width_pct": 0.5,
+    "df": 8.2,
+    "drift_draws_pct": [
+     -0.16,
+     0.84,
+     -0.09,
+     -0.17,
+     1.47,
+     0.34,
+     -0.05,
+     0.2
+    ],
+    "redraw_draws_pct": [
+     -0.0,
+     -0.12,
+     0.18,
+     -0.05
+    ]
+   }
+  },
+  "band 60-75 precip_land_mm": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.24,
+    "low_pct": -3.41,
+    "high_pct": 3.9,
+    "half_width_pct": 3.66,
+    "df": 4.1,
+    "drift_draws_pct": [
+     -1.03,
+     -2.43,
+     1.5,
+     2.93
+    ],
+    "redraw_draws_pct": [
+     0.07,
+     0.93,
+     -1.0
+    ]
+   },
+   "s997": {
+    "gap_pct": 1.84,
+    "low_pct": -2.45,
+    "high_pct": 6.13,
+    "half_width_pct": 4.29,
+    "df": 7.1,
+    "drift_draws_pct": [
+     4.13,
+     6.42,
+     0.4,
+     -0.5,
+     -3.69,
+     -0.72,
+     11.44,
+     -2.76
+    ],
+    "redraw_draws_pct": [
+     -0.45,
+     0.04,
+     0.08,
+     0.32
+    ]
+   }
+  },
+  "band 60-75 precip_ocean_mm": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.34,
+    "low_pct": -0.93,
+    "high_pct": 1.61,
+    "half_width_pct": 1.27,
+    "df": 3.2,
+    "drift_draws_pct": [
+     -0.6,
+     1.17,
+     0.85,
+     -0.04
+    ],
+    "redraw_draws_pct": [
+     -0.03,
+     0.12,
+     -0.09
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.3,
+    "low_pct": -1.47,
+    "high_pct": 0.87,
+    "half_width_pct": 1.17,
+    "df": 7.4,
+    "drift_draws_pct": [
+     -0.78,
+     -1.09,
+     -0.57,
+     2.09,
+     -1.09,
+     1.13,
+     -2.33,
+     0.23
+    ],
+    "redraw_draws_pct": [
+     -0.22,
+     0.13,
+     -0.03,
+     0.12
+    ]
+   }
+  },
+  "band 60-75 humidity_land_g_kg": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.31,
+    "low_pct": -7.98,
+    "high_pct": 8.59,
+    "half_width_pct": 8.28,
+    "df": 3.3,
+    "drift_draws_pct": [
+     -1.85,
+     -4.16,
+     -0.82,
+     8.06
+    ],
+    "redraw_draws_pct": [
+     0.2,
+     0.98,
+     -1.18
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.21,
+    "low_pct": -6.72,
+    "high_pct": 7.14,
+    "half_width_pct": 6.93,
+    "df": 7.1,
+    "drift_draws_pct": [
+     6.25,
+     6.81,
+     -4.65,
+     -2.36,
+     -6.34,
+     -4.4,
+     15.19,
+     -8.82
+    ],
+    "redraw_draws_pct": [
+     -0.66,
+     0.45,
+     -0.26,
+     0.47
+    ]
+   }
+  },
+  "band 60-75 humidity_ocean_g_kg": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.1,
+    "low_pct": -0.37,
+    "high_pct": 0.58,
+    "half_width_pct": 0.48,
+    "df": 4.6,
+    "drift_draws_pct": [
+     -0.22,
+     -0.11,
+     0.38,
+     0.36
+    ],
+    "redraw_draws_pct": [
+     0.16,
+     -0.01,
+     -0.15
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.03,
+    "low_pct": -0.29,
+    "high_pct": 0.23,
+    "half_width_pct": 0.26,
+    "df": 7.3,
+    "drift_draws_pct": [
+     -0.24,
+     -0.05,
+     0.22,
+     0.5,
+     -0.43,
+     -0.07,
+     0.14,
+     -0.3
+    ],
+    "redraw_draws_pct": [
+     0.01,
+     0.03,
+     -0.04,
+     -0.0
+    ]
+   }
+  },
+  "band 60-75 precip_land p10": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.0,
+    "low_pct": 0.0,
+    "high_pct": 0.0,
+    "half_width_pct": 0.0,
+    "df": 1.0,
+    "drift_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "redraw_draws_pct": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "s997": {
+    "gap_pct": 1.25,
+    "low_pct": -1.7,
+    "high_pct": 4.2,
+    "half_width_pct": 2.95,
+    "df": 7.0,
+    "drift_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     9.98,
+     0.0
+    ],
+    "redraw_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  "band 60-75 precip_land p50": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 1.1,
+    "low_pct": -51.28,
+    "high_pct": 53.48,
+    "half_width_pct": 52.38,
+    "df": 3.6,
+    "drift_draws_pct": [
+     7.54,
+     -38.84,
+     -7.91,
+     43.63
+    ],
+    "redraw_draws_pct": [
+     0.71,
+     8.86,
+     -9.57
+    ]
+   },
+   "s997": {
+    "gap_pct": 18.02,
+    "low_pct": -6.97,
+    "high_pct": 43.01,
+    "half_width_pct": 24.99,
+    "df": 7.4,
+    "drift_draws_pct": [
+     48.05,
+     20.89,
+     18.15,
+     -2.93,
+     -7.65,
+     4.91,
+     74.26,
+     -11.55
+    ],
+    "redraw_draws_pct": [
+     -3.61,
+     -1.55,
+     4.25,
+     0.91
+    ]
+   }
+  },
+  "band 60-75 precip_land p90": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.56,
+    "low_pct": -0.06,
+    "high_pct": 1.17,
+    "half_width_pct": 0.61,
+    "df": 4.6,
+    "drift_draws_pct": [
+     0.8,
+     0.25,
+     0.99,
+     0.18
+    ],
+    "redraw_draws_pct": [
+     -0.16,
+     0.23,
+     -0.07
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.0,
+    "low_pct": -3.25,
+    "high_pct": 3.25,
+    "half_width_pct": 3.25,
+    "df": 7.1,
+    "drift_draws_pct": [
+     1.42,
+     3.84,
+     -1.79,
+     -1.42,
+     -1.96,
+     0.0,
+     6.27,
+     -6.36
+    ],
+    "redraw_draws_pct": [
+     -0.21,
+     -0.05,
+     -0.09,
+     0.35
+    ]
+   }
+  },
+  "band 60-75 precip_ocean p10": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 1.7,
+    "low_pct": -2.74,
+    "high_pct": 6.14,
+    "half_width_pct": 4.44,
+    "df": 3.9,
+    "drift_draws_pct": [
+     1.33,
+     4.74,
+     2.92,
+     -2.18
+    ],
+    "redraw_draws_pct": [
+     0.35,
+     0.81,
+     -1.16
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.04,
+    "low_pct": -4.74,
+    "high_pct": 4.82,
+    "half_width_pct": 4.78,
+    "df": 7.6,
+    "drift_draws_pct": [
+     1.73,
+     -4.62,
+     0.44,
+     2.13,
+     -7.05,
+     11.47,
+     -3.93,
+     0.18
+    ],
+    "redraw_draws_pct": [
+     -1.05,
+     -0.4,
+     0.61,
+     0.84
+    ]
+   }
+  },
+  "band 60-75 precip_ocean p50": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.73,
+    "low_pct": -2.67,
+    "high_pct": 4.13,
+    "half_width_pct": 3.4,
+    "df": 3.1,
+    "drift_draws_pct": [
+     -0.79,
+     2.72,
+     2.45,
+     -1.47
+    ],
+    "redraw_draws_pct": [
+     -0.16,
+     0.31,
+     -0.16
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.87,
+    "low_pct": -2.95,
+    "high_pct": 1.21,
+    "half_width_pct": 2.08,
+    "df": 7.7,
+    "drift_draws_pct": [
+     -0.23,
+     -2.45,
+     -3.8,
+     3.68,
+     -1.31,
+     0.37,
+     -3.57,
+     0.34
+    ],
+    "redraw_draws_pct": [
+     -0.52,
+     0.47,
+     0.06,
+     -0.01
+    ]
+   }
+  },
+  "band 60-75 precip_ocean p90": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": -0.08,
+    "low_pct": -0.72,
+    "high_pct": 0.57,
+    "half_width_pct": 0.65,
+    "df": 3.1,
+    "drift_draws_pct": [
+     -0.62,
+     -0.09,
+     0.03,
+     0.38
+    ],
+    "redraw_draws_pct": [
+     0.05,
+     -0.05,
+     0.0
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.15,
+    "low_pct": -0.58,
+    "high_pct": 0.28,
+    "half_width_pct": 0.43,
+    "df": 7.7,
+    "drift_draws_pct": [
+     -0.85,
+     -0.64,
+     0.1,
+     0.83,
+     -0.29,
+     -0.11,
+     -0.28,
+     0.05
+    ],
+    "redraw_draws_pct": [
+     -0.06,
+     -0.04,
+     -0.02,
+     0.12
+    ]
+   }
+  },
+  "band 60-75 humidity_land p10": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 5.01,
+    "low_pct": -13.69,
+    "high_pct": 23.71,
+    "half_width_pct": 18.7,
+    "df": 3.0,
+    "drift_draws_pct": [
+     -0.88,
+     -0.88,
+     -0.88,
+     22.68
+    ],
+    "redraw_draws_pct": [
+     -0.73,
+     0.28,
+     0.45
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.01,
+    "low_pct": -0.05,
+    "high_pct": 0.03,
+    "half_width_pct": 0.04,
+    "df": 3.0,
+    "drift_draws_pct": [
+     -0.01,
+     -0.01,
+     -0.01,
+     -0.01,
+     -0.01,
+     -0.01,
+     -0.01,
+     -0.01
+    ],
+    "redraw_draws_pct": [
+     0.04,
+     -0.01,
+     -0.01,
+     -0.01
+    ]
+   }
+  },
+  "band 60-75 humidity_land p50": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 4.02,
+    "low_pct": -51.89,
+    "high_pct": 59.92,
+    "half_width_pct": 55.9,
+    "df": 3.3,
+    "drift_draws_pct": [
+     13.26,
+     -29.74,
+     -18.02,
+     50.56
+    ],
+    "redraw_draws_pct": [
+     0.34,
+     6.32,
+     -6.67
+    ]
+   },
+   "s997": {
+    "gap_pct": 6.41,
+    "low_pct": -16.28,
+    "high_pct": 29.11,
+    "half_width_pct": 22.7,
+    "df": 7.1,
+    "drift_draws_pct": [
+     34.36,
+     12.33,
+     -10.95,
+     3.1,
+     -18.51,
+     -9.89,
+     57.47,
+     -16.62
+    ],
+    "redraw_draws_pct": [
+     -1.92,
+     0.16,
+     1.63,
+     0.14
+    ]
+   }
+  },
+  "band 60-75 humidity_land p90": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.13,
+    "low_pct": -1.55,
+    "high_pct": 1.82,
+    "half_width_pct": 1.68,
+    "df": 3.2,
+    "drift_draws_pct": [
+     -1.09,
+     -0.32,
+     0.52,
+     1.41
+    ],
+    "redraw_draws_pct": [
+     -0.19,
+     0.06,
+     0.14
+    ]
+   },
+   "s997": {
+    "gap_pct": -1.38,
+    "low_pct": -6.77,
+    "high_pct": 4.02,
+    "half_width_pct": 5.4,
+    "df": 7.8,
+    "drift_draws_pct": [
+     2.21,
+     6.34,
+     -3.94,
+     -2.88,
+     -4.38,
+     -4.54,
+     7.73,
+     -11.55
+    ],
+    "redraw_draws_pct": [
+     -0.19,
+     0.65,
+     -1.49,
+     1.04
+    ]
+   }
+  },
+  "band 60-75 humidity_ocean p10": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.71,
+    "low_pct": 0.19,
+    "high_pct": 1.23,
+    "half_width_pct": 0.52,
+    "df": 4.9,
+    "drift_draws_pct": [
+     0.27,
+     0.8,
+     0.72,
+     1.06
+    ],
+    "redraw_draws_pct": [
+     0.09,
+     0.15,
+     -0.23
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.16,
+    "low_pct": -1.22,
+    "high_pct": 0.9,
+    "half_width_pct": 1.06,
+    "df": 7.1,
+    "drift_draws_pct": [
+     0.25,
+     0.01,
+     -1.24,
+     -2.37,
+     -1.01,
+     0.89,
+     1.13,
+     1.04
+    ],
+    "redraw_draws_pct": [
+     0.04,
+     -0.04,
+     0.06,
+     -0.06
+    ]
+   }
+  },
+  "band 60-75 humidity_ocean p50": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.01,
+    "low_pct": -0.45,
+    "high_pct": 0.48,
+    "half_width_pct": 0.47,
+    "df": 4.5,
+    "drift_draws_pct": [
+     0.29,
+     -0.42,
+     0.03,
+     0.15
+    ],
+    "redraw_draws_pct": [
+     0.16,
+     -0.04,
+     -0.12
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.32,
+    "low_pct": -0.93,
+    "high_pct": 0.29,
+    "half_width_pct": 0.61,
+    "df": 7.1,
+    "drift_draws_pct": [
+     -0.76,
+     -0.0,
+     -0.31,
+     0.97,
+     -1.07,
+     -0.95,
+     0.4,
+     -0.87
+    ],
+    "redraw_draws_pct": [
+     0.02,
+     -0.03,
+     0.06,
+     -0.05
+    ]
+   }
+  },
+  "band 60-75 humidity_ocean p90": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": -0.13,
+    "low_pct": -1.39,
+    "high_pct": 1.12,
+    "half_width_pct": 1.25,
+    "df": 3.3,
+    "drift_draws_pct": [
+     -1.01,
+     -0.47,
+     0.88,
+     0.07
+    ],
+    "redraw_draws_pct": [
+     0.17,
+     -0.06,
+     -0.11
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.28,
+    "low_pct": -0.57,
+    "high_pct": 1.12,
+    "half_width_pct": 0.84,
+    "df": 7.6,
+    "drift_draws_pct": [
+     -0.02,
+     -0.48,
+     1.67,
+     1.63,
+     0.64,
+     0.43,
+     -1.06,
+     -0.57
+    ],
+    "redraw_draws_pct": [
+     0.03,
+     0.1,
+     -0.21,
+     0.08
+    ]
+   }
+  },
+  "band 75-90 precip_land_mm": {
+   "verdict": "under 5% of land",
+   "s649": {
+    "gap_pct": -11.89,
+    "low_pct": -22.15,
+    "high_pct": -1.64,
+    "half_width_pct": 10.26,
+    "df": 3.1,
+    "drift_draws_pct": [
+     -14.31,
+     -19.19,
+     -3.75,
+     -10.32
+    ],
+    "redraw_draws_pct": [
+     0.85,
+     -0.85,
+     -0.01
+    ]
+   },
+   "s997": {
+    "gap_pct": -2.65,
+    "low_pct": -18.52,
+    "high_pct": 13.21,
+    "half_width_pct": 15.86,
+    "df": 7.3,
+    "drift_draws_pct": [
+     10.63,
+     -0.47,
+     -5.02,
+     -17.96,
+     1.55,
+     -23.13,
+     33.79,
+     -20.61
+    ],
+    "redraw_draws_pct": [
+     -2.45,
+     1.94,
+     -0.46,
+     0.97
+    ]
+   }
+  },
+  "band 75-90 precip_ocean_mm": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.28,
+    "low_pct": -7.21,
+    "high_pct": 7.77,
+    "half_width_pct": 7.49,
+    "df": 3.1,
+    "drift_draws_pct": [
+     3.02,
+     -2.56,
+     5.45,
+     -4.78
+    ],
+    "redraw_draws_pct": [
+     0.26,
+     0.37,
+     -0.63
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.31,
+    "low_pct": -2.35,
+    "high_pct": 2.96,
+    "half_width_pct": 2.66,
+    "df": 7.5,
+    "drift_draws_pct": [
+     1.49,
+     -2.63,
+     3.93,
+     3.72,
+     -0.81,
+     -2.46,
+     -3.95,
+     3.16
+    ],
+    "redraw_draws_pct": [
+     0.51,
+     -0.2,
+     -0.51,
+     0.21
+    ]
+   }
+  },
+  "band 75-90 humidity_land_g_kg": {
+   "verdict": "under 5% of land",
+   "s649": {
+    "gap_pct": -10.71,
+    "low_pct": -20.03,
+    "high_pct": -1.39,
+    "half_width_pct": 9.32,
+    "df": 3.6,
+    "drift_draws_pct": [
+     -15.03,
+     -15.67,
+     -9.63,
+     -2.5
+    ],
+    "redraw_draws_pct": [
+     1.49,
+     -1.83,
+     0.33
+    ]
+   },
+   "s997": {
+    "gap_pct": -1.42,
+    "low_pct": -18.55,
+    "high_pct": 15.71,
+    "half_width_pct": 17.13,
+    "df": 7.0,
+    "drift_draws_pct": [
+     5.09,
+     -11.79,
+     -12.97,
+     -2.18,
+     -8.29,
+     -18.02,
+     46.2,
+     -9.4
+    ],
+    "redraw_draws_pct": [
+     -0.84,
+     0.31,
+     0.98,
+     -0.45
+    ]
+   }
+  },
+  "band 75-90 humidity_ocean_g_kg": {
+   "verdict": "unchanged",
+   "s649": {
+    "gap_pct": 0.86,
+    "low_pct": -0.27,
+    "high_pct": 1.98,
+    "half_width_pct": 1.13,
+    "df": 4.4,
+    "drift_draws_pct": [
+     0.84,
+     0.59,
+     1.88,
+     0.11
+    ],
+    "redraw_draws_pct": [
+     -0.13,
+     0.38,
+     -0.25
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.45,
+    "low_pct": -0.34,
+    "high_pct": 1.25,
+    "half_width_pct": 0.8,
+    "df": 7.5,
+    "drift_draws_pct": [
+     0.84,
+     -0.4,
+     0.33,
+     -0.29,
+     0.4,
+     -0.63,
+     1.13,
+     2.25
+    ],
+    "redraw_draws_pct": [
+     -0.15,
+     -0.04,
+     0.04,
+     0.15
+    ]
+   }
+  },
+  "band 75-90 precip_land p10": {
+   "verdict": "under 5% of land",
+   "s649": {
+    "gap_pct": 0.0,
+    "low_pct": 0.0,
+    "high_pct": 0.0,
+    "half_width_pct": 0.0,
+    "df": 1.0,
+    "drift_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "redraw_draws_pct": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.0,
+    "low_pct": 0.0,
+    "high_pct": 0.0,
+    "half_width_pct": 0.0,
+    "df": 1.0,
+    "drift_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "redraw_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  "band 75-90 precip_land p50": {
+   "verdict": "under 5% of land",
+   "s649": {
+    "gap_pct": -8.38,
+    "low_pct": -17.68,
+    "high_pct": 0.92,
+    "half_width_pct": 9.3,
+    "df": 3.1,
+    "drift_draws_pct": [
+     -11.69,
+     -11.71,
+     -10.58,
+     0.45
+    ],
+    "redraw_draws_pct": [
+     0.5,
+     -0.85,
+     0.35
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.58,
+    "low_pct": -29.15,
+    "high_pct": 27.98,
+    "half_width_pct": 28.56,
+    "df": 7.2,
+    "drift_draws_pct": [
+     22.39,
+     -4.32,
+     -13.44,
+     -11.25,
+     -19.69,
+     -29.83,
+     74.28,
+     -22.81
+    ],
+    "redraw_draws_pct": [
+     -3.68,
+     4.18,
+     -0.24,
+     -0.27
+    ]
+   }
+  },
+  "band 75-90 precip_land p90": {
+   "verdict": "under 5% of land",
+   "s649": {
+    "gap_pct": -16.01,
+    "low_pct": -30.32,
+    "high_pct": -1.71,
+    "half_width_pct": 14.31,
+    "df": 3.0,
+    "drift_draws_pct": [
+     -17.29,
+     -26.15,
+     -4.18,
+     -16.43
+    ],
+    "redraw_draws_pct": [
+     -0.74,
+     0.39,
+     0.34
+    ]
+   },
+   "s997": {
+    "gap_pct": -3.11,
+    "low_pct": -20.47,
+    "high_pct": 14.25,
+    "half_width_pct": 17.36,
+    "df": 7.4,
+    "drift_draws_pct": [
+     12.69,
+     -1.05,
+     0.24,
+     -24.98,
+     10.16,
+     -24.31,
+     29.4,
+     -27.03
+    ],
+    "redraw_draws_pct": [
+     -2.46,
+     2.53,
+     -1.73,
+     1.66
+    ]
+   }
+  },
+  "band 75-90 precip_ocean p10": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": -0.69,
+    "low_pct": -16.6,
+    "high_pct": 15.22,
+    "half_width_pct": 15.91,
+    "df": 3.0,
+    "drift_draws_pct": [
+     6.74,
+     -9.92,
+     9.16,
+     -8.74
+    ],
+    "redraw_draws_pct": [
+     0.52,
+     0.23,
+     -0.75
+    ]
+   },
+   "s997": {
+    "gap_pct": -0.28,
+    "low_pct": -5.25,
+    "high_pct": 4.7,
+    "half_width_pct": 4.98,
+    "df": 7.1,
+    "drift_draws_pct": [
+     4.46,
+     -2.14,
+     5.31,
+     0.56,
+     -0.73,
+     -2.36,
+     -12.66,
+     5.35
+    ],
+    "redraw_draws_pct": [
+     -0.23,
+     -0.45,
+     0.52,
+     0.16
+    ]
+   }
+  },
+  "band 75-90 precip_ocean p50": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.34,
+    "low_pct": -7.75,
+    "high_pct": 8.43,
+    "half_width_pct": 8.09,
+    "df": 3.1,
+    "drift_draws_pct": [
+     2.74,
+     -3.68,
+     6.43,
+     -4.13
+    ],
+    "redraw_draws_pct": [
+     -0.05,
+     0.59,
+     -0.54
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.38,
+    "low_pct": -2.14,
+    "high_pct": 2.9,
+    "half_width_pct": 2.52,
+    "df": 7.7,
+    "drift_draws_pct": [
+     2.02,
+     -3.8,
+     3.53,
+     3.29,
+     -1.35,
+     -1.72,
+     -2.36,
+     3.46
+    ],
+    "redraw_draws_pct": [
+     0.52,
+     -0.14,
+     -0.59,
+     0.21
+    ]
+   }
+  },
+  "band 75-90 precip_ocean p90": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.45,
+    "low_pct": -5.18,
+    "high_pct": 6.08,
+    "half_width_pct": 5.63,
+    "df": 3.3,
+    "drift_draws_pct": [
+     2.3,
+     0.04,
+     3.91,
+     -4.44
+    ],
+    "redraw_draws_pct": [
+     0.61,
+     0.14,
+     -0.74
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.42,
+    "low_pct": -2.28,
+    "high_pct": 3.11,
+    "half_width_pct": 2.7,
+    "df": 8.1,
+    "drift_draws_pct": [
+     -0.63,
+     -1.61,
+     4.04,
+     5.53,
+     -0.27,
+     -2.38,
+     -3.48,
+     2.13
+    ],
+    "redraw_draws_pct": [
+     0.79,
+     -0.25,
+     -0.74,
+     0.21
+    ]
+   }
+  },
+  "band 75-90 humidity_land p10": {
+   "verdict": "under 5% of land",
+   "s649": {
+    "gap_pct": 0.0,
+    "low_pct": 0.0,
+    "high_pct": 0.0,
+    "half_width_pct": 0.0,
+    "df": 1.0,
+    "drift_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "redraw_draws_pct": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.0,
+    "low_pct": 0.0,
+    "high_pct": 0.0,
+    "half_width_pct": 0.0,
+    "df": 1.0,
+    "drift_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "redraw_draws_pct": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  "band 75-90 humidity_land p50": {
+   "verdict": "under 5% of land",
+   "s649": {
+    "gap_pct": -6.87,
+    "low_pct": -14.44,
+    "high_pct": 0.71,
+    "half_width_pct": 7.58,
+    "df": 4.8,
+    "drift_draws_pct": [
+     -9.33,
+     -9.33,
+     -9.19,
+     0.4
+    ],
+    "redraw_draws_pct": [
+     -0.54,
+     -2.51,
+     3.05
+    ]
+   },
+   "s997": {
+    "gap_pct": -2.75,
+    "low_pct": -37.97,
+    "high_pct": 32.48,
+    "half_width_pct": 35.23,
+    "df": 7.0,
+    "drift_draws_pct": [
+     2.42,
+     -24.24,
+     -22.05,
+     8.05,
+     -31.38,
+     -27.07,
+     95.34,
+     -23.06
+    ],
+    "redraw_draws_pct": [
+     -0.96,
+     1.75,
+     0.26,
+     -1.04
+    ]
+   }
+  },
+  "band 75-90 humidity_land p90": {
+   "verdict": "under 5% of land",
+   "s649": {
+    "gap_pct": -13.32,
+    "low_pct": -27.91,
+    "high_pct": 1.28,
+    "half_width_pct": 14.59,
+    "df": 3.2,
+    "drift_draws_pct": [
+     -18.24,
+     -22.9,
+     -10.46,
+     -1.68
+    ],
+    "redraw_draws_pct": [
+     1.47,
+     -0.88,
+     -0.59
+    ]
+   },
+   "s997": {
+    "gap_pct": -3.06,
+    "low_pct": -17.96,
+    "high_pct": 11.84,
+    "half_width_pct": 14.9,
+    "df": 7.0,
+    "drift_draws_pct": [
+     7.1,
+     -13.72,
+     -13.55,
+     -8.29,
+     -6.47,
+     -20.22,
+     36.37,
+     -5.72
+    ],
+    "redraw_draws_pct": [
+     -0.74,
+     0.06,
+     0.89,
+     -0.21
+    ]
+   }
+  },
+  "band 75-90 humidity_ocean p10": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 1.19,
+    "low_pct": -0.78,
+    "high_pct": 3.16,
+    "half_width_pct": 1.97,
+    "df": 4.1,
+    "drift_draws_pct": [
+     1.51,
+     -0.45,
+     2.7,
+     0.99
+    ],
+    "redraw_draws_pct": [
+     -0.24,
+     0.59,
+     -0.35
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.79,
+    "low_pct": -0.01,
+    "high_pct": 1.59,
+    "half_width_pct": 0.8,
+    "df": 9.5,
+    "drift_draws_pct": [
+     2.16,
+     0.06,
+     -0.8,
+     0.41,
+     1.11,
+     0.86,
+     1.06,
+     1.44
+    ],
+    "redraw_draws_pct": [
+     -0.46,
+     0.04,
+     0.21,
+     0.2
+    ]
+   }
+  },
+  "band 75-90 humidity_ocean p50": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.76,
+    "low_pct": -0.71,
+    "high_pct": 2.23,
+    "half_width_pct": 1.47,
+    "df": 3.7,
+    "drift_draws_pct": [
+     0.61,
+     0.29,
+     2.16,
+     -0.02
+    ],
+    "redraw_draws_pct": [
+     -0.14,
+     0.35,
+     -0.21
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.52,
+    "low_pct": -0.45,
+    "high_pct": 1.49,
+    "half_width_pct": 0.97,
+    "df": 7.4,
+    "drift_draws_pct": [
+     0.93,
+     -0.81,
+     0.8,
+     -0.34,
+     0.62,
+     -0.92,
+     1.38,
+     2.47
+    ],
+    "redraw_draws_pct": [
+     -0.13,
+     -0.07,
+     0.03,
+     0.17
+    ]
+   }
+  },
+  "band 75-90 humidity_ocean p90": {
+   "verdict": "unresolved",
+   "s649": {
+    "gap_pct": 0.99,
+    "low_pct": -0.25,
+    "high_pct": 2.22,
+    "half_width_pct": 1.23,
+    "df": 3.7,
+    "drift_draws_pct": [
+     1.1,
+     1.74,
+     1.27,
+     -0.16
+    ],
+    "redraw_draws_pct": [
+     -0.06,
+     0.27,
+     -0.21
+    ]
+   },
+   "s997": {
+    "gap_pct": 0.13,
+    "low_pct": -0.9,
+    "high_pct": 1.16,
+    "half_width_pct": 1.03,
+    "df": 7.2,
+    "drift_draws_pct": [
+     -0.24,
+     -0.46,
+     0.6,
+     -0.91,
+     -0.6,
+     -1.0,
+     1.02,
+     2.64
+    ],
+    "redraw_draws_pct": [
+     0.04,
+     -0.02,
+     -0.12,
+     0.1
+    ]
+   }
+  }
+ }
+}
