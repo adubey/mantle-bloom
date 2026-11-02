@@ -519,10 +519,21 @@ across all arms of a window to the nearest km³.
 - The windows replace A as well as B and C. RFC 0016 allows replacement only for an input or
   data-integrity reason, a failed frozen screen or a lost event, and A passes the frozen screen and
   still fills. The rescan's rule that a registered window keeps no priority therefore needs the
-  owner's decision, as does the routed-supply rule. A's G0 arms at `50f153ef` are
+  owner's decision. The owner approved the routed-supply rule. A's G0 arms at `50f153ef` are
   simulation-identical to this source, so A can stand in without a rerun. Its anchor is about 1,500 km
   from D's.
 - Each event's `|ΔV|` is about 2% of the target's supply over one 100 kyr step, and world river
   inventory is about 0.013% of `|ΔV|`. A river store of this size can't hold the swing, while a change
   of about 0.2% in delivered water could meet the 10% materiality limit. G1's result will turn on
   the flux, not on the storage.
+
+**Window A's status.** Its registered event survives once, not as a repeating flicker. On current
+source, `bin/debug/measure_lake_step_budget.py` from A's checkpoint for 0.8 Myr finds one qualifying
+reversal on A's lake, at 221.8 Myr: 424,670→863,389 km³, or `ΔV` +438,719 km³ against the registered
++495,624. The lake then holds at 783,206–856,022 km³ through the window, with no further reversal
+on it. The anchor node is dry at step 1 although the matched lake is present, because the anchor is a
+location rather than a lake identity. A's checkpoint came from an older source, so its history
+differs from the rescan's. Whole-world lake volume at 221.8 Myr is 2.54 million km³ from A's
+checkpoint and 1.64 million km³ in the scan. In the scan's history, A's anchor reads dry, dry, 991,432,
+dry, dry, 768,249 km³ from 221.6 to 222.1 Myr, so the location flickers, but the detector records no
+qualifying reversal there.
