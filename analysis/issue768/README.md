@@ -104,3 +104,11 @@ volume is 464,680 km³; #757's recorded main-equivalent result is 27.87 M km³. 
 terrain input; its mismatches are not accepted as evidence of solver error or success.
 The audit now evaluates inside the solve-return wrapper, before those mutations, and the
 same probe will be repeated. Both attempts' full outputs remain in the private capture set.
+
+The second probe (`3907747f`) preserves those water results and evaluates before erosion.
+E's anchor agrees with final-level demand to 2.7e-17, but the worst nearly dry bodies show
+2.8e-8 relative error when a kilometre-scale level is reconstructed and the bed subtracted
+again. The audit now derives partial wet fraction directly from stored mean depth
+(`wet = sqrt(depth / relief)`, bounded by 1), avoiding that cancellation. It also reports
+the within-body water-level spread and the five largest relative errors. The 1e-9 loss
+threshold is unchanged; a third probe will check this numerically stable evaluation.

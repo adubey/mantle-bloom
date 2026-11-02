@@ -62,8 +62,18 @@ def audit_lake_losses(forest, elevation, years, climate, hyps, solved):
         wet_members = members[solved.lake_depth[members] > 0.0]
         if not len(wet_members):
             continue
-        level = float(hyps.level_from_depth(solved.lake_depth[wet_members], wet_members).max())
-        wet = hyps.wet_fraction(level, members)
+        levels = hyps.level_from_depth(solved.lake_depth[wet_members], wet_members)
+        level = float(levels.max())
+        # For a partial cell d = relief * wet_fraction². Invert stored depth directly:
+        # reconstructing a km-scale level and subtracting the bed again loses relative
+        # precision for almost-dry cells, despite the underlying volume being accurate.
+        depth = solved.lake_depth[members]
+        relief = hyps.relief_m[members]
+        wet = np.where(
+            relief > 0.0,
+            np.sqrt(np.clip(np.divide(depth, relief, out=np.zeros_like(depth), where=relief > 0.0), 0.0, 1.0)),
+            (depth > 0.0).astype(float),
+        )
         expected_evap = float(np.dot(
             hyps.area_m2[members] * wet,
             climate.evaporation_m_per_yr[members] * (1.0 + lakes.SHALLOW_EVAPORATION_BOOST * (1.0 - wet)),
@@ -77,6 +87,7 @@ def audit_lake_losses(forest, elevation, years, climate, hyps, solved):
         scale = max(expected_evap + expected_sub, 1.0)
         records.append({
             "lake_id": body.lake_id, "nodes": len(members), "level_m": level,
+            "level_spread_m": float(levels.max() - levels.min()),
             "storage_km3": float(np.dot(solved.lake_depth[members], hyps.area_m2[members])) / M3_PER_KM3,
             "member_nodes": members,
             "expected_evaporation_km3": expected_evap / M3_PER_KM3,
@@ -95,7 +106,9 @@ def summarize_loss_audit(records, anchor_nodes):
         record["anchor_indices"] = [i for i, node in enumerate(anchor_nodes) if node in members]
     return {
         "worst_normalized_loss_error": max((r["normalized_loss_error"] for r in records), default=0.0),
+        "worst_level_spread_m": max((r["level_spread_m"] for r in records), default=0.0),
         "largest_bodies": sorted(records, key=lambda r: -r["storage_km3"])[:LARGEST_LAKES],
+        "worst_bodies": sorted(records, key=lambda r: -r["normalized_loss_error"])[:LARGEST_LAKES],
         "anchor_bodies": [r for r in records if r["anchor_indices"]],
     }
 
