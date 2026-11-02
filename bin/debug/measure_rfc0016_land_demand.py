@@ -73,7 +73,8 @@ def monthly_forcing(fields, world, mask):
     monthly_temperature = temperature + amplitude * np.cos(phase)
     strength = np.clip(world.axial_tilt_deg / biomes._SEASON_TILT_REFERENCE_DEG, 0.0, 1.3)
     summer_share, _ = biomes._precip_season(lat, strength)
-    warm_half = np.cos(phase) >= 0.0
+    # Exactly six months: a test on `cos(phase)` lands on its zeros and can take a seventh (#751).
+    warm_half = np.mod((np.arange(MONTHS) + 0.5)[:, None] - (warm_peak - 3.0), MONTHS) < 6.0
     monthly_rain = rain * np.where(warm_half, summer_share, 1.0 - summer_share) / 6.0
     insolation = monthly_insolation_w_m2(lat, world.axial_tilt_deg) * W_M2_TO_MJ_M2_DAY
     daily_demand = insolation / LATENT_HEAT_MJ_KG * np.clip(monthly_temperature + 5.0, 0.0, None) / 100.0

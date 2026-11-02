@@ -648,26 +648,29 @@ the humidity source against the control's. The liquid ledger must close to 0.1% 
 
 From [`g1a-scale-check.json`](g1a-scale-check.json), using `bin/debug/measure_rfc0016_land_demand.py`
 on unfrozen land on the climate grid. The private `g1a/SHA256SUMS` has SHA-256
-`134e592ad9eeb18463fe967e8340a4a850cb7d9f471cec6ac8a29a591a41f4d5`. It uses sub-stepped integration,
+`9505c745a97af1f18b8c7060b72110e386253c93f31988078369f98fbec6de71`. It uses sub-stepped integration,
 not the closed form, and it's a scale check: no parameter was chosen from it.
+
+These numbers replace a first version whose warm half-year had seven months, so rain wasn't conserved
+(#751). The law's equation 2 was always six; only this script's and the treatment's code were wrong.
 
 | Window | Rain (mm/yr) | Oudin demand (mm/yr) | Control demand (mm/yr) | Treatment ET (mm/yr) | Excess (mm/yr) | Control runoff (mm/yr) | Change |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| A | 839 | 1,002 | 1,130 | 488 | 355 | 389 | −8.7% |
-| D | 785 | 998 | 1,127 | 456 | 329 | 362 | −9.1% |
-| E | 758 | 998 | 1,126 | 449 | 309 | 343 | −10.0% |
+| A | 839 | 1,002 | 1,130 | 485 | 354 | 389 | −9.2% |
+| D | 785 | 998 | 1,127 | 454 | 331 | 362 | −8.5% |
+| E | 758 | 998 | 1,126 | 446 | 311 | 343 | −9.2% |
 
-Central transpiration is 250–270 mm/yr, or 32–33% of rain, within the 39 ± 10% of a compilation of 81
+Central transpiration is 247–269 mm/yr, or 32–33% of rain, within the 39 ± 10% of a compilation of 81
 studies ([Schlesinger & Jasechko](https://agu.confex.com/agu/fm14/webprogram/Paper2691.html),
 conference abstract), for Earth, which is a sanity check only.
 
-Across the range, excess changes by +4.7% to −22.4% from the control:
+Across the range, excess changes by +4.9% to −21.4% from the control:
 
 | Parameter, low to high | Change in excess across windows |
 |---|---:|
-| `C` | −5.5% to −12.0% |
-| `p` | −7.7% to −10.8% |
-| `D` | +4.7% to −22.4% |
+| `C` | −5.2% to −11.2% |
+| `p` | −7.4% to −10.0% |
+| `D` | +4.9% to −21.4% |
 
 **What this means for G1b.**
 
@@ -678,7 +681,7 @@ Across the range, excess changes by +4.7% to −22.4% from the control:
   million km² catchment holds about 1,000 km³, or 0.04% of its `|ΔV|`. That's why the partition-match
   and sham arms are registered. If they're also material, G1b shows these events respond to any small
   change in water supply, not that storage or plant use caused them.
-- **The humidity source roughly triples,** at 2.6–3.2× the control, because the control's proxy is
+- **The humidity source roughly triples,** at 2.5–3.2× the control, because the control's proxy is
   tuned to 16% of rain at most. RFC 0016 says to pass the volume, so this registers that as written.
   It's the largest forcing in the package, and coupling off separates it.
 - **The step from control to treatment is a shock.** Both arms open from a control checkpoint, so 0.4
