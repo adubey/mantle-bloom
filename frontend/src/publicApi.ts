@@ -20,6 +20,8 @@ export interface PublicWorldListing extends PublicWorld {
   name: string;
   // Whether this world's run loop is on: live worlds list even when private (#597).
   running: boolean;
+  // The owner's chosen landing world: /view opens on it first (#755).
+  is_default: boolean;
 }
 
 export interface PublicStepProgress {
@@ -30,6 +32,11 @@ export interface PublicStepProgress {
 export interface PublicState {
   // The planet's name, on the state itself so /view can always show it (#711).
   name: string;
+  // The shared presentation every viewer of this world sees (#755): the
+  // owner's map view and orientation (9 row-major floats).
+  view: PublicView;
+  rotation: number[];
+  is_default: boolean;
   world: PublicWorld | null;
   // Whether the selected world's run loop is on (#597).
   running: boolean;

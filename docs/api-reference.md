@@ -41,11 +41,13 @@ Open to anyone, for the logged-out `/view` page (#373). See
 - `GET /public/worlds` lists every generated public world, plus any generated
   world whose run loop is on even when private, so anyone can watch a planet
   that is currently stepping (#597): `{"worlds": [{"world_id", "name",
-  "running", "revision", "seed", "elapsed_years"}]}`. A private world drops back
-  out of the list when its run stops.
+  "running", "is_default", "revision", "seed", "elapsed_years"}]}`. A private world drops back
+  out of the list when its run stops. `is_default` marks the owner's one
+  default world (#755), which `/view` opens on before any other heuristic.
 - `GET /public/worlds/{world_id}/world`: `{"name", "world": {"revision", "seed", "elapsed_years"},
-  "running": bool, "steps_remaining": int | null, "step_limit": 30, "step_years": 100000,
-  "step_progress": {"fraction", "phase"} | null}`.
+  "running": bool, "is_default": bool, "view", "rotation": [9 floats], "steps_remaining": int | null, "step_limit": 30, "step_years": 100000,
+  "step_progress": {"fraction", "phase"} | null}`. `view` and `rotation` are
+  the shared presentation every viewer of the world sees (#755).
   `name` is the planet's name, which changes with a rename or once a regenerate's new world
   is published. `steps_remaining` is null (unlimited) for the admin. `revision` is an
   opaque string that changes whenever the world does (#374). `step_progress` is a guest
@@ -59,12 +61,18 @@ Open to anyone, for the logged-out `/view` page (#373). See
   so the wait progress bar moves mid-step (#653), and on an owner rename or visibility change.
   A world that went private during the wait answers `404`.
 - `GET /public/worlds/{world_id}/render?view=elevation|biome&width=&height=`: like `/worlds/{world_id}/render`, but always
-  Eckert IV at the default orientation, with width and height at most 2400. It returns
+  Eckert IV in the world's shared view and orientation (below) -- a `view` naming another
+  viewer view is answered with the shared one, not a render of its own -- with width and
+  height at most 2400. It returns
   `{"revision", "seed", "elapsed_years", "image_base64"}`. Each view and size is rendered once
   per revision and then served from a cache shared by all viewers, even while the owner holds the world.
   While a viewer follows a public world, every published change also pre-renders the canonical
-  viewer image (combined at the viewer's size) into that cache, so the next poll's render is
-  already a hit; unwatched worlds and other sizes still render on demand (#658). `400` for
+  viewer image (the shared view at the viewer's size) into that cache, so the next poll's render is
+  already a hit; unwatched worlds and other sizes still render on demand (#658). The default
+  world (#755) is pre-rendered on every change whether or not anyone is watching, and its
+  canonical image is also written through to `viewer_image.json` beside its checkpoint:
+  a cold in-memory cache (a restart) is served that file, key-checked against the published
+  seed and age, without re-rendering. `400` for
   any other view or size, `404` before a world exists, `503` if a render is needed and the
   owner holds the world for more than 10 s.
 - `POST /public/worlds/{world_id}/step` with `{"revision": str}`, the revision the viewer is showing: advances
@@ -96,8 +104,12 @@ the v5 manifest for `POST /worlds/import` to restore (#652):
   discovery letter, `c`/`d`/`e` weighted more, #597).
   World IDs are server-generated UUIDs. `409` past `MANTLE_BLOOM_MAX_WORLDS`
   records (default 4).
-- `PATCH /worlds/{world_id}` renames (`{"name"}`) or changes visibility
-  (`{"is_public"}`).
+- `PATCH /worlds/{world_id}` renames (`{"name"}`), changes visibility
+  (`{"is_public"}`), sets or clears the one `/view` default (`{"is_default"}`,
+  #755: setting it also makes the world public, and clears the flag on every
+  other world), or changes the shared `/view` presentation
+  (`{"viewer_view": "elevation"|"biome"|"combined"}`,
+  `{"viewer_rotation": [9 finite floats]}`; `400` for anything else).
 - `DELETE /worlds/{world_id}` removes the world's record and checkpoint. `409`
   while its run loop is on, or while a generate, step, or animation is in progress
   on it.

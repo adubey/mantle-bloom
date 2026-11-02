@@ -163,6 +163,20 @@ def test_garbage_metadata_types_fail_closed(tmp_path, field, value):
         root.load_index()
 
 
+def test_nonfinite_viewer_rotation_in_index_fails_closed(tmp_path):
+    # Review on #756: Python's json accepts NaN/Infinity, and the PATCH route
+    # rejects a non-finite shared rotation -- a crafted index must not smuggle
+    # one past restore into the public state JSON.
+    root = CheckpointStore(tmp_path)
+    record = {
+        "world_id": "a" * 32, "name": "A", "is_public": True, "created_at": 1.0, "updated_at": 2.0,
+        "viewer_rotation": [float("nan")] * 9,
+    }
+    root.save_index([record])
+    with pytest.raises(checkpoint.RegistryIndexError):
+        root.load_index()
+
+
 def test_directory_comes_from_the_env_or_the_railway_volume(monkeypatch, tmp_path):
     monkeypatch.delenv(checkpoint.CHECKPOINT_DIR_ENV, raising=False)
     monkeypatch.delenv(checkpoint.RAILWAY_VOLUME_ENV, raising=False)
@@ -171,6 +185,43 @@ def test_directory_comes_from_the_env_or_the_railway_volume(monkeypatch, tmp_pat
     assert CheckpointStore.from_env().directory == tmp_path / "volume"
     monkeypatch.setenv(checkpoint.CHECKPOINT_DIR_ENV, str(tmp_path / "explicit"))
     assert CheckpointStore.from_env().directory == tmp_path / "explicit"
+
+
+def test_viewer_image_round_trip_clear_and_garbage(tmp_path):
+    # #755: the default world's ready /view image survives a restart on disk,
+    # beside its world checkpoint. Anything unexpected reads as no image.
+    store = CheckpointStore(tmp_path)
+    entry = {
+        "version": 1,
+        "key": {"seed": 7, "elapsed_years": 3.0, "view": "combined", "width": 2200, "height": 1222},
+        "image_base64": "png",
+    }
+    assert store.load_viewer_image() is None
+    store.save_viewer_image(entry)
+    assert CheckpointStore(tmp_path).load_viewer_image() == entry
+    (tmp_path / checkpoint.VIEWER_IMAGE_FILE).write_bytes(b"not json{{")
+    assert store.load_viewer_image() is None
+    store.save_viewer_image(entry)
+    store.clear_viewer_image()
+    assert store.load_viewer_image() is None
+    store.clear_viewer_image()  # a missing file must not raise either
+
+
+def test_concurrent_viewer_image_writes_leave_one_whole_entry(tmp_path):
+    # #755: a single writer lock means racing renders never interleave into a
+    # torn file: the reader always gets one writer's complete entry.
+    import threading
+
+    store = CheckpointStore(tmp_path)
+    entries = [
+        {"version": 1, "key": {"seed": n}, "image_base64": f"png{n}"} for n in range(8)
+    ]
+    threads = [threading.Thread(target=store.save_viewer_image, args=(entry,)) for entry in entries]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(5)
+    assert store.load_viewer_image() in entries
 
 
 def test_animation_progress_round_trip_and_clear(tmp_path):

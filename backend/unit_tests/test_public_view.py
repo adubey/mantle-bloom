@@ -274,14 +274,17 @@ def test_cross_site_step_is_refused(guest, steps):
     assert steps == []
 
 
-def test_render_is_fixed_to_eckert4_and_the_viewer_views(guest, steps, monkeypatch):
+def test_render_is_fixed_to_eckert4_and_the_shared_view(guest, steps, monkeypatch):
+    # The caller's view/projection/rotation choices are not theirs to make:
+    # every public caller is served the world's shared presentation (#755,
+    # review on #756). An unknown view is still a 400.
     calls = []
     monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: calls.append(args) or "png")
     resp = guest.get(f"/public/worlds/{_S.world_id}/render", params={"view": "biome", "projection": "behrmann", "rotation": "0,1,0,1,0,0,0,0,1"})
     assert resp.status_code == 200
     assert resp.json()["image_base64"] == "png"
     _, projection, view, *_rest, rotation, _m, _p = calls[0]
-    assert (projection, view) == ("eckert4", "biome")
+    assert (projection, view) == ("eckert4", public_view.GUEST_DEFAULT_VIEW)
     assert rotation.tolist() == main._parse_view_rotation(None).tolist()
     assert guest.get(f"/public/worlds/{_S.world_id}/render", params={"view": "temperature"}).status_code == 400
     assert guest.get(f"/public/worlds/{_S.world_id}/render", params={"width": 4000}).status_code == 400
@@ -467,10 +470,13 @@ def test_viewers_share_one_render_per_revision(guest, steps, monkeypatch):
     other = TestClient(app, base_url="https://testserver").get(f"/public/worlds/{_S.world_id}/render", params={"view": "biome"}).json()
     assert other == first
     assert len(calls) == 1
-    assert guest.get(f"/public/worlds/{_S.world_id}/render", params={"view": "elevation"}).json()["image_base64"] == "png2"
+    # Another viewer's different view choice is the same shared image, not a
+    # render of its own (#755, review on #756).
+    assert guest.get(f"/public/worlds/{_S.world_id}/render", params={"view": "elevation"}).json() == first
+    assert len(calls) == 1
     _step(guest)
     after = guest.get(f"/public/worlds/{_S.world_id}/render", params={"view": "biome"}).json()
-    assert after["image_base64"] == "png3"
+    assert after["image_base64"] == "png2"
     assert after["revision"] == _revision(guest) != first["revision"]
     assert after["elapsed_years"] == public_view.GUEST_STEP_YEARS
 
@@ -698,6 +704,241 @@ def test_visibility_toggle_does_not_publish_a_queued_regenerates_name(guest, ste
     main._apply_generate_identity(_S, "next-planet", None)
     assert _local().patch(f"/worlds/{_S.world_id}", json={"is_public": True}).status_code == 200
     assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["name"] == "public-test"
+
+
+# --- The default world and its always-ready image (#755) -----------------------------------
+
+
+def _canonical_params():
+    return {
+        "view": public_view.GUEST_DEFAULT_VIEW,
+        "width": public_view.GUEST_DEFAULT_WIDTH,
+        "height": public_view.GUEST_DEFAULT_HEIGHT,
+    }
+
+
+def test_setting_a_default_is_exclusive_and_makes_it_viewable(guest, steps, monkeypatch):
+    monkeypatch.setattr(main, "_record_json", lambda session: {})
+    monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: "png")
+    other = main._wire_session(main._registry.create(name="other", is_public=True))
+    other.world = SimpleNamespace(seed=9, elapsed_years=0.0)
+    other.feed.publish(other.world, other.name)
+    try:
+        _S.is_public = False
+        assert _local().patch(f"/worlds/{_S.world_id}", json={"is_default": True}).status_code == 200
+        assert _S.is_default is True and _S.is_public is True
+        assert _local().patch(f"/worlds/{other.world_id}", json={"is_default": True}).status_code == 200
+        assert other.is_default is True and _S.is_default is False
+        listed = {w["world_id"]: w for w in guest.get("/public/worlds").json()["worlds"]}
+        assert listed[other.world_id]["is_default"] is True
+        assert listed[_S.world_id]["is_default"] is False
+        assert _local().patch(f"/worlds/{other.world_id}", json={"is_default": False}).status_code == 200
+        assert other.is_default is False
+    finally:
+        _S.is_default = False
+        if other.runner is not None:
+            other.runner.close()
+        main._registry.remove(other.world_id)
+
+
+def test_default_world_prerenders_without_any_viewer_watching(guest, steps, monkeypatch):
+    # #755: the default world's image is kept ready even with no /view audience,
+    # unlike an ordinary public world (which still skips the cost, #658).
+    calls = []
+    monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: calls.append(args) or "png")
+    _S.is_default = True
+    try:
+        assert not _S.feed.has_waiters()
+        main._world_changed(_S)
+    finally:
+        _S.is_default = False
+    assert len(calls) == 1
+    key = (public_view.GUEST_DEFAULT_VIEW, public_view.GUEST_DEFAULT_WIDTH, public_view.GUEST_DEFAULT_HEIGHT)
+    assert _S.public_renders.get(_S.feed.revision(), key)["image_base64"] == "png"
+
+
+def test_default_render_is_cached_on_disk_and_served_when_memory_is_cold(guest, steps, monkeypatch, tmp_path):
+    # #755: first render writes memory + disk; a cold memory (a restart, with the
+    # world restored from its checkpoint) is served from disk with no re-render,
+    # and a changed world never serves the stale file.
+    from app.checkpoint import CheckpointStore
+
+    calls = []
+    monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: calls.append(args) or f"png{len(calls)}")
+    _S.is_default = True
+    _S.checkpoint_store = CheckpointStore(tmp_path)
+    try:
+        first = guest.get(f"/public/worlds/{_S.world_id}/render", params=_canonical_params()).json()
+        assert first["image_base64"] == "png1"
+        assert _S.checkpoint_store.load_viewer_image()["image_base64"] == "png1"
+        _S.public_renders.clear()  # the in-memory cache a restart throws away
+        again = guest.get(f"/public/worlds/{_S.world_id}/render", params=_canonical_params()).json()
+        assert again["image_base64"] == "png1"
+        assert len(calls) == 1
+        _S.world.elapsed_years += 1.0
+        _S.feed.publish(_S.world)
+        changed = guest.get(f"/public/worlds/{_S.world_id}/render", params=_canonical_params()).json()
+        assert changed["image_base64"] == "png2"
+        assert len(calls) == 2
+    finally:
+        _S.is_default = False
+        _S.checkpoint_store = None
+
+
+def test_disk_image_validated_before_a_publish_is_not_relabelled(guest, steps, monkeypatch, tmp_path):
+    # Review on #756: the world publishes while the disk file is being read.
+    # The old image must not be promoted into the new revision's cache entry
+    # (or returned wearing the new age); the request falls through and is
+    # answered with the new revision's own image.
+    from app.checkpoint import CheckpointStore
+
+    monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: "rendered")
+    _S.is_default = True
+    store = CheckpointStore(tmp_path)
+    _S.checkpoint_store = store
+    try:
+        store.save_viewer_image({
+            "version": 1,
+            "key": {
+                "seed": 7, "elapsed_years": 0.0, "view": public_view.GUEST_DEFAULT_VIEW,
+                "width": public_view.GUEST_DEFAULT_WIDTH, "height": public_view.GUEST_DEFAULT_HEIGHT,
+                "rotation": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+            },
+            "image_base64": "old",
+        })
+        real_load = store.load_viewer_image
+
+        def publish_mid_read():
+            entry = real_load()
+            _S.world.elapsed_years = 100.0
+            _S.feed.publish(_S.world)
+            _S.public_renders.put(
+                _S.feed.revision(),
+                (public_view.GUEST_DEFAULT_VIEW, public_view.GUEST_DEFAULT_WIDTH, public_view.GUEST_DEFAULT_HEIGHT),
+                {**_S.feed.summary(), "image_base64": "new"},
+            )
+            return entry
+
+        monkeypatch.setattr(store, "load_viewer_image", publish_mid_read)
+        resp = guest.get(f"/public/worlds/{_S.world_id}/render", params=_canonical_params()).json()
+        assert resp["image_base64"] == "new"
+        assert resp["elapsed_years"] == 100.0
+        cached = _S.public_renders.get(
+            _S.feed.revision(),
+            (public_view.GUEST_DEFAULT_VIEW, public_view.GUEST_DEFAULT_WIDTH, public_view.GUEST_DEFAULT_HEIGHT),
+        )
+        assert cached["image_base64"] == "new"
+    finally:
+        _S.is_default = False
+        _S.checkpoint_store = None
+
+
+def test_viewer_patch_prerender_waits_for_the_compute_gate(guest, steps, monkeypatch):
+    # Review on #756: a PATCH that pre-renders must serialize through the
+    # compute gate (gate before session lock, like every compute route), not
+    # render parallel kernels alongside another world's step.
+    monkeypatch.setattr(main, "_record_json", lambda session: {})
+    calls = []
+    monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: calls.append(args) or "png")
+    main._compute_gate.acquire()
+    result = {}
+
+    def patch():
+        result["status"] = _local().patch(f"/worlds/{_S.world_id}", json={"is_default": True}).status_code
+
+    worker = threading.Thread(target=patch)
+    try:
+        worker.start()
+        worker.join(0.5)
+        assert worker.is_alive() and calls == []  # parked at the gate: no render yet
+    finally:
+        main._compute_gate.release()
+    worker.join(5)
+    assert result["status"] == 200
+    assert len(calls) == 1
+    assert _S.is_default is True
+    _S.is_default = False
+
+
+def test_unpublishing_the_default_clears_it(guest, steps, monkeypatch):
+    # Review on #756: default and public must not silently diverge -- a world
+    # /view cannot show is no longer presented as its default.
+    monkeypatch.setattr(main, "_record_json", lambda session: {})
+    _S.is_default = True
+    try:
+        assert _local().patch(f"/worlds/{_S.world_id}", json={"is_public": False}).status_code == 200
+        assert _S.is_public is False and _S.is_default is False
+    finally:
+        _S.is_public = True
+        _S.is_default = False
+
+
+def test_viewer_patch_on_a_world_deleted_mid_request_is_404(guest, steps, monkeypatch):
+    # Review on #756: a delete landing between the route's lookup and the
+    # registry update must answer 404, not a 500 from the registry.
+    from app.world_registry import UnknownWorldError
+
+    monkeypatch.setattr(main, "_record_json", lambda session: {})
+
+    def gone(_world_id):
+        raise UnknownWorldError(_S.world_id)
+
+    monkeypatch.setattr(main._registry, "set_default", gone)
+    assert _local().patch(f"/worlds/{_S.world_id}", json={"is_default": True}).status_code == 404
+
+
+def test_load_is_refused_while_the_compute_gate_is_held(steps, monkeypatch):
+    # Review on #756: publishing a loaded world can pre-render the viewer
+    # image, so load takes the gate (non-blocking) before the session lock
+    # and refuses while another world's compute holds it.
+    monkeypatch.setattr(main.persistence, "load_world_file", lambda file: _AnyWorld(
+        seed=8, elapsed_years=0.0, hydrology_cache=None))
+    before = _revision(_local())
+    main._compute_gate.acquire()
+    try:
+        assert _local().post(f"/worlds/{_S.world_id}/load", content=b"save").status_code == 503
+    finally:
+        main._compute_gate.release()
+    assert _revision(_local()) == before
+    assert not _S.lock.locked()
+
+
+def test_non_default_render_leaves_no_disk_image(guest, steps, monkeypatch, tmp_path):
+    from app.checkpoint import CheckpointStore
+
+    monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: "png")
+    _S.checkpoint_store = CheckpointStore(tmp_path)
+    try:
+        guest.get(f"/public/worlds/{_S.world_id}/render", params=_canonical_params())
+        assert _S.checkpoint_store.load_viewer_image() is None
+    finally:
+        _S.checkpoint_store = None
+
+
+def test_owner_shared_view_and_rotation_are_what_viewers_see(guest, steps, monkeypatch):
+    # #755: the logged-in owner decides the shared /view presentation; every
+    # viewer of the world then gets that same view and orientation.
+    monkeypatch.setattr(main, "_record_json", lambda session: {})
+    calls = []
+    monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: calls.append(args) or "png")
+    rotation = [0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    try:
+        resp = _local().patch(
+            f"/worlds/{_S.world_id}", json={"viewer_view": "biome", "viewer_rotation": rotation}
+        )
+        assert resp.status_code == 200
+        state = guest.get(f"/public/worlds/{_S.world_id}/world").json()
+        assert state["view"] == "biome"
+        assert state["rotation"] == rotation
+        guest.get(f"/public/worlds/{_S.world_id}/render", params={"view": "biome"})
+        assert calls[-1][2] == "biome"
+        assert calls[-1][5].reshape(-1).tolist() == rotation
+        assert _local().patch(f"/worlds/{_S.world_id}", json={"viewer_view": "temperature"}).status_code == 400
+        bad = _local().patch(f"/worlds/{_S.world_id}", json={"viewer_rotation": [1.0, 0.0]})
+        assert bad.status_code == 400
+    finally:
+        _S.viewer_view = public_view.GUEST_DEFAULT_VIEW
+        _S.viewer_rotation = None
 
 
 def test_failed_regenerate_publishes_its_rename(guest, steps, monkeypatch):

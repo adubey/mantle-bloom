@@ -14,7 +14,7 @@ import {
   type PublicWorldListing,
 } from "./publicApi";
 import { worldIdFromSearch, type WorldId } from "./worldRoutes";
-import { IDENTITY_ROTATION } from "./rotation";
+import { IDENTITY_ROTATION, type Mat3 } from "./rotation";
 import { useSession } from "./session";
 
 // The logged-out viewer at /view (#373): the shared world in Eckert IV, elevation and biome
@@ -128,6 +128,13 @@ function usePublicWorldId(): { worlds: PublicWorldListing[] | null; worldId: Wor
         selectWorld(null);
         return;
       }
+      // The owner's default world wins over every heuristic (#755): it is
+      // the planet /view exists to show, with its image kept ready.
+      const chosen = list.find((w) => w.is_default);
+      if (chosen) {
+        selectWorld(chosen.world_id);
+        return;
+      }
       // No selection and exactly one live world: adopt it, so /view opens on
       // the planet that is currently stepping (#597).
       const live = list.filter((w) => w.running);
@@ -220,10 +227,23 @@ export default function Viewer() {
   );
 }
 
+// The owner's shared presentation every viewer of a world sees (#755): the
+// same map view and orientation, served from the one cached image.
+function sharedPresentation(state: PublicState | null): { view: PublicView; rotation: Mat3 } {
+  return {
+    view: state?.view ?? "combined",
+    rotation: state?.rotation?.length === 9 ? state.rotation : IDENTITY_ROTATION,
+  };
+}
+
 // One public world's page: its state, stepping, and map (#563).
 function WorldView({ worldId }: { worldId: WorldId }) {
   const [state, setState] = useState<PublicState | null>(null);
-  const view: PublicView = "combined";
+  const { view, rotation: sharedRotation } = sharedPresentation(state);
+  // A value key for the orientation: every poll response deserializes a fresh
+  // array, so depending on the array itself would re-download the PNG on
+  // progress-only answers whose orientation never changed (review on #756).
+  const rotationKey = sharedRotation.join(",");
   const [image, setImage] = useState<string | null>(null);
   const [stepping, setStepping] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -264,7 +284,7 @@ function WorldView({ worldId }: { worldId: WorldId }) {
     const poll = () => {
       fetchPublicState(worldId, seen, controller.signal, isDemo).then(
         (next) => {
-          const followKey = JSON.stringify([next.name, next.running, next.step_progress ?? null]);
+          const followKey = JSON.stringify([next.name, next.running, next.view, next.rotation, next.step_progress ?? null]);
           const sameRevision = (next.world?.revision ?? "") === seen;
           if (sameRevision && followKey === followKeyRef.current) {
             poll();
@@ -301,7 +321,9 @@ function WorldView({ worldId }: { worldId: WorldId }) {
     return () => {
       cancelled = true;
     };
-  }, [view, revision, worldId]);
+    // rotationKey: a changed shared orientation re-fetches, since the cached
+    // image on screen is the old orientation's (#755).
+  }, [view, revision, worldId, rotationKey]);
 
   const step = useCallback(async () => {
     if (revision === null) return;
@@ -378,7 +400,7 @@ function WorldView({ worldId }: { worldId: WorldId }) {
           displayWidth={displayWidth}
           displayHeight={displayHeight}
           projection="eckert4"
-          rotation={IDENTITY_ROTATION}
+          rotation={sharedRotation}
           onRotationPreview={noop}
           onRotationCommitted={noop}
           alphaEncodedIds

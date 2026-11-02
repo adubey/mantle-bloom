@@ -226,6 +226,18 @@ and the rest are served without the session lock. Any route that changes the wor
 call `main._world_changed(session)` (or `_set_world(session, ...)`) before it releases the
 session lock, or viewers keep seeing, and the cache keeps serving, the old world.
 
+One world can be the default (#755), set in World → Manage (which also publishes it):
+`/view` opens on it before the live/first-listed heuristics, and the registry holds the
+exactly-one invariant under its lock, so two owner tabs cannot leave two defaults. Its
+canonical viewer image is pre-rendered on every published change whether or not anyone is
+watching, and written through to `viewer_image.json` beside its checkpoint (one writer at a
+time, atomically replaced); a cold in-memory cache after a restart is served that file,
+key-checked against the published seed and age, instead of re-rendering. Every viewer of a
+world also shares one presentation: the owner-chosen map view and orientation
+(`viewer_view`/`viewer_rotation` on the record, set from Manage), which the render path and
+the disk-cache key both use, so viewers are served the same cached image rather than each
+rendering their own.
+
 Only a request that runs the simulation is charged. A step request names the world revision
 (seed and elapsed years) that its viewer is looking at. If the world has already moved past
 that revision, the request gets the current world for free. If another guest's step is
@@ -261,6 +273,7 @@ The layout is a registry index plus one subdirectory per world:
   worlds.json
   worlds/<world_id>/world.mbworld
   worlds/<world_id>/run_status.json
+  worlds/<world_id>/viewer_image.json   (the default world's cached /view image, #755)
 ```
 
 - `worlds.json` is metadata only (id, name, visibility, timestamps): written on record
