@@ -305,3 +305,55 @@ PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_rift_settings.py \
 PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_rift_settings.py \
   --summarize <a.json> <b.json> <c.json> --out analysis/rfc0010/gate-d1.json
 ```
+
+### Rerun on dated rock (2026-11-01)
+
+A [labeled rerun](https://github.com/adubey/mantle-bloom/issues/737#issuecomment-6569971922) of the
+same three seeds on base `b3356fa6`, commit `8a082ebe`, after #745 and #752 dated starting rock.
+Probe hash unchanged during the runs. It's the same frozen census, except that `age_verdict` reads
+negative dates as given. Tables: [`gate-d1-rerun.json`](gate-d1-rerun.json).
+
+**Outcome: the four-settings rule is met, narrowly, but the age read fails and the rate is still not
+compatible with fewer than 40 plates.** Under the rerun's frozen rule, rollback pauses before D2.
+
+| Age read on ocean-ocean fronts | Amendment | Rerun | Limit |
+|---|---:|---:|---:|
+| Front-steps decided | 65.8% | **95.9%** of 7,815 | at least 80% |
+| Fronts reversed, of all fronts | 15.3% of 502 | **20.7%** of 487 (101) | at most 10% |
+| Reversed, of fronts that froze a verdict | 23.5% of 327 | 24.3% of 416 | none |
+| Agreement with consumption evidence | 63.1% | 46.7% | none |
+
+Dating fixed the undecided share. It did not touch reversal: among fronts that froze a verdict, the
+rate is unchanged. The headline rose because more fronts now freeze one.
+
+| Events by seed | D1 and amendment | Rerun | Rerun rate, per world per 100 Myr |
+|---|---:|---:|---:|
+| Active | 34 / 14 / 26 | 38 / 13 / 27 | 13.00 |
+| Passive | 15 / 13 / 26 | 11 / 14 / 25 | 8.33 |
+| Rollback, oceanic upper | 0 / 10 / 0 | 0 / 17 / 1 | 3.00 |
+| Rollback, continental upper | 1 / 0 / 0 | 1 / 1 / 0 | 0.33 |
+| Transtension | 50 / 46 / 49 | 38 / 43 / 54 | 22.50 |
+
+`main` also moved in hydroclimate between these columns, so a change can't be credited to ages alone.
+
+**Rollback's pass is thin.** The failed read bars oceanic events from carrying the setting, so it passes
+on two continental events. One starts at 3 Myr, lasts 2 Myr and ends in a production split; the other
+starts at 155 Myr and lasts 25. Oceanic events would be on two seeds too, but 17 of 18 are on one seed,
+and 1 of 10 closed routed events outlasts its route growth.
+
+**Plate count.** Worst case 64, 61 and 58, or 46, 49 and 48 on separating routes only; every seed
+remains incompatible. Production ends at 28, 27 and 23 plates with one merge in 600 Myr.
+
+**Passive after a head:** 1 of 50. Fourteen passive events again last over 100 Myr, up to 191.
+
+**Why fronts reversed, measured afterward** with `probe_age_polarity.py` on the same seeds, fingerprints
+matching. Between freeze and reversal, a median 20% of the front's nodes are still in place, 67% of
+reversals keep under half, and 8% keep them all. The median lag is 10 Myr. So the amendment's reading
+holds: tracks slide onto other crust, and dated crust doesn't help. Only 32% of reversals started
+from a gap under 20 Myr, so a wider gap would not clear them, and 53% end with a gap of at least 20 Myr.
+By seed, 4 of 31, 89 of 353 and 8 of 32 frozen fronts reversed. Of 319 undecided steps, 115 have
+both medians on starting rock and 204 have younger rock, all inside the 10 Myr gap. Whether a frozen
+verdict or a per-step one is right can't be read from these runs; there is no independent truth for
+ocean-ocean polarity, as consumption evidence mostly records the deform shuffle.
+
+The dated pattern is a proxy, and the gap's sensitivity, step size and seed count remain untested.
