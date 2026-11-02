@@ -448,3 +448,42 @@ blocked cells were entered.
 - Breakup routes now have a median longest arm of 2,392 km and growth of 23.9 Myr. The median smaller
   daughter is 12.8%.
 - Worst-case plates are 66, 57 and 58, or 56, 56 and 51 on separating routes only.
+
+### Router amendment: edge cost (2026-11-02)
+
+A second [labeled rerun](https://github.com/adubey/mantle-bloom/issues/737#issuecomment-6582123300)
+at the owner's request, after the route pictures, commit `a3a53877`. Inside the 150 km margin band, a
+step costs up to 2× by how far it runs along the edge rather than toward it, so an arm's own approach
+stays free. The margin skip stays. Tables: [`gate-d2-edge-cost.json`](gate-d2-edge-cost.json).
+
+**Integrity:** fingerprints and every D1 event match both earlier D2 runs.
+
+**Outcome: does not pass, now on detached craton for one seed.** All four outcome tests pass.
+
+| Setting | Breakups of non-barrier sites | Skip only | First D2 run | Misses |
+|---|---:|---:|---:|---|
+| Active | 77 of 78 (98.7%) | 82.1% | 94.9% | 1 daughter too small |
+| Passive | 47 of 50 (94.0%) | 86.0% | 94.0% | 3 no second arm |
+| Rollback | 20 of 20 (100%) | 100% | 100% | — |
+| Transtension | 133 of 135 (98.5%) | 94.8% | 97.8% | 1 daughter too small, 1 `hugs_margin` |
+
+All 18 former `hugs_margin` sites now separate. Zero blocked cells were entered. Detached craton:
+
+| Seed | Detached km² | Budget km² | |
+|---|---:|---:|---|
+| 1173383782 | **1,603,887** | 394,538 | fails |
+| 1183015207 | 17,910 | 318,041 | passes |
+| 1486436815 | 0 | 0 | passes (no cratons) |
+
+**Read after the freeze:**
+- One event carries the failure: passive, plate 3 at 5 Myr on seed 1173383782 detaches 1,409,509 km².
+  Without it the seed would hold 194,378 km². Its route barely moves, crossing the same 8 enterable
+  craton cells, but now leaves a piece of a craton on the far side
+  ([picture](d2-edge-cost-craton-cut.png)). In every run this route is about 15,600 km long, winding
+  through gaps in the craton on a plate holding 12% of the sphere.
+- 140 of 255 routes that separated in both runs changed. In those, the median smaller daughter fell
+  from 11.6% to 7.1%. Across all breakups it is 9.2%, against 12.8% with the skip only, and 37% of
+  breakups now leave a daughter under 7%, against 25%. A free approach to the edge makes a short cut
+  across a plate's corner cheap, so routes now cut off corners where they used to hug edges.
+- Breakup routes have a median longest arm of 2,424 km and growth of 24.2 Myr.
+- Worst-case plates are 58, 64 and 58, or 55, 63 and 58 on separating routes only.
