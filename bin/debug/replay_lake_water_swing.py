@@ -46,7 +46,7 @@ def add_arguments(ap) -> None:
     ap.add_argument("--audit-losses", action="store_true", help="Audit wet final bodies against full-step loss rates (#768)")
 
 
-def audit_lake_losses(captured, anchor_nodes):
+def audit_lake_losses(forest, elevation, years, climate, hyps, solved):
     """Compare booked losses with independent final-level demands, excluding dry bodies.
 
     A dry body may consume its entire supply while ending with zero wet area, so the
@@ -54,7 +54,6 @@ def audit_lake_losses(captured, anchor_nodes):
     """
     from app.hydroclimate import lakes
 
-    forest, elevation, years, climate, hyps, solved = captured
     records = []
     for body in lakes._active_bodies(
         forest, elevation, solved.lake_depth, hyps,
@@ -79,13 +78,21 @@ def audit_lake_losses(captured, anchor_nodes):
         records.append({
             "lake_id": body.lake_id, "nodes": len(members), "level_m": level,
             "storage_km3": float(np.dot(solved.lake_depth[members], hyps.area_m2[members])) / M3_PER_KM3,
-            "anchor_indices": [i for i, node in enumerate(anchor_nodes) if node in members],
+            "member_nodes": members,
             "expected_evaporation_km3": expected_evap / M3_PER_KM3,
             "expected_sublimation_km3": expected_sub / M3_PER_KM3,
             "booked_evaporation_km3": booked_evap / M3_PER_KM3,
             "booked_sublimation_km3": booked_sub / M3_PER_KM3,
             "normalized_loss_error": (abs(booked_evap - expected_evap) + abs(booked_sub - expected_sub)) / scale,
         })
+    return records
+
+
+def summarize_loss_audit(records, anchor_nodes):
+    """Attach end-of-step anchor indices to loss rates captured before terrain changes."""
+    for record in records:
+        members = record.pop("member_nodes")
+        record["anchor_indices"] = [i for i, node in enumerate(anchor_nodes) if node in members]
     return {
         "worst_normalized_loss_error": max((r["normalized_loss_error"] for r in records), default=0.0),
         "largest_bodies": sorted(records, key=lambda r: -r["storage_km3"])[:LARGEST_LAKES],
@@ -157,7 +164,9 @@ def main() -> None:
             nonlocal captured
             kwargs["diagnostic_trace"] = True
             solved = original_solve(forest, elevation, previous, years, climate, hypsometry, **kwargs)
-            captured = forest, elevation, years, climate, hypsometry, solved
+            # Erosion updates terrain after hydrology. Evaluate now, before its shared
+            # elevation arrays can change, then attach geographic anchors after the step.
+            captured = audit_lake_losses(forest, elevation, years, climate, hypsometry, solved)
             return solved
 
         lakes.solve_lakes_prognostic = capture_solve
@@ -217,7 +226,7 @@ def main() -> None:
         })
         if captured is not None:
             anchor_nodes = [int(np.argmin(np.linalg.norm(hydro.points - anchor, axis=1))) for anchor in anchors]
-            result["steps"][-1]["loss_audit"] = audit_lake_losses(captured, anchor_nodes)
+            result["steps"][-1]["loss_audit"] = summarize_loss_audit(captured, anchor_nodes)
         liquid_residual = (
             lake.external_supply_m3 - lake.evaporation_m3 - lake.sublimation_m3
             - lake.overflow_out_m3 - lake.storage_change_m3 - lake.freezing_m3 + lake.melting_m3

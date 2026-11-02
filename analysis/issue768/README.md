@@ -68,6 +68,8 @@ triggers investigation before delivery; it is a diagnostic threshold, not proof 
 While waiting for a quiet machine, a two-step E branch probe may run after a successful budget
 check to test settling and the loss audit at the first refill. Its timing is excluded from
 the runtime comparison; the run and any failure will still be recorded.
+The first two-step probe peaked at 1.25 GB; repeat probes of that same short horizon reserve
+2 GB. Full E comparisons retain the 5 GB estimate from the longer #757 runs.
 
 ```bash
 backend/.venv/bin/python bin/debug/replay_lake_water_swing.py <checkpoint.mbworld> \
@@ -92,3 +94,13 @@ Full outputs remain outside the repository; only compact results and findings ar
   regression. Ruff and the dead/duplicate-code gates pass. The full affected run on code
   revision `65d27be8` passes: **1,969 tests**, 512 warnings, 817.54 s, two workers. Its
   command was `./bin/affected_test.sh --base origin/main -n 2 -x --ff`.
+
+## Functional probes
+
+The first two-step E probe ran on `b715e7aa`, starting with no other heavy run. It settled,
+with worst normalized lake and land residuals 3.3e-12 and 4.9e-13. The target's step-2 liquid
+volume is 464,680 km³; #757's recorded main-equivalent result is 27.87 M km³. Peak RSS was
+1.25 GB. The loss audit was initially evaluated after erosion, which can mutate its shared
+terrain input; its mismatches are not accepted as evidence of solver error or success.
+The audit now evaluates inside the solve-return wrapper, before those mutations, and the
+same probe will be repeated. Both attempts' full outputs remain in the private capture set.
