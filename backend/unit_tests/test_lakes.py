@@ -356,6 +356,52 @@ def test_late_transfer_replaces_an_unchanged_receivers_losses(monkeypatch):
     assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1e-8)
 
 
+@pytest.mark.parametrize("opening_level", [None, 13.0])
+def test_partial_cell_merged_balance_uses_its_own_opening_storage(opening_level):
+    from scipy.optimize import brentq
+
+    forest = lakes.build_lake_hierarchy(_MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS)
+    relief = np.array([2.0, 20.0, 4.0, 2.0, 0.0, 0.0])
+    hyps = lakes.CellHypsometry(_MERGE_ELEVATION, np.ones(6), relief, 1.0)
+    previous = np.zeros(6)
+    members = forest[0].members
+    if opening_level is not None:
+        previous[members] = hyps.mean_depth(opening_level, members)
+    supply = np.zeros(6)
+    supply[3] = 50.0
+    climate = lakes.LakeClimate(
+        supply, np.full(6, 0.4), external_supply_m3_per_yr=supply,
+        wet_precip_m3_per_yr=supply, dry_runoff_m3_per_yr=np.zeros(6),
+        meltwater_m3_per_yr=np.zeros(6), sublimation_m_per_yr=np.full(6, 0.6),
+    )
+
+    def balance(level):
+        volume = evaporation = sublimation = 0.0
+        for node in members:
+            z, r = _MERGE_ELEVATION[node], relief[node]
+            wet = min(max((level - z + r) / (2.0 * r), 0.0), 1.0)
+            volume += max(level - z, 0.0) if wet == 1.0 else r * wet**2
+            evaporation += 0.4 * wet * (1.0 + 0.3 * (1.0 - wet))
+            sublimation += 0.6 * wet
+        return volume, evaporation, sublimation
+
+    opening_storage = float(previous.sum())
+    expected_level = brentq(lambda h: sum(balance(h)) - opening_storage - 50.0, 12.0, 30.0)
+    expected_volume, expected_evap, expected_sub = balance(expected_level)
+    result = lakes.solve_lakes_prognostic(
+        forest, _MERGE_ELEVATION, previous, 1.0, climate, hyps, diagnostic_trace=True,
+    )
+
+    levels = hyps.level_from_depth(result.lake_depth[members], members)
+    assert levels == pytest.approx(expected_level, abs=1e-7)
+    assert result.lake_depth.sum() == pytest.approx(expected_volume, abs=1e-7)
+    assert result.ledger.evaporation_m3 == pytest.approx(expected_evap, abs=1e-7)
+    assert result.ledger.sublimation_m3 == pytest.approx(expected_sub, abs=1e-7)
+    assert result.trace.evaporation_m3.sum() == pytest.approx(expected_evap, abs=1e-7)
+    assert result.trace.liquid_sublimation_m3.sum() == pytest.approx(expected_sub, abs=1e-7)
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1e-7)
+
+
 def test_prognostic_lake_solver_splits_below_saddle_without_resetting_water():
     forest = lakes.build_lake_hierarchy(_MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS)
     hyps = lakes.CellHypsometry.whole_cells(_MERGE_ELEVATION)

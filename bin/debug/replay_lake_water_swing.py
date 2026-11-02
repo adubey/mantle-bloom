@@ -218,6 +218,15 @@ def main() -> None:
         if captured is not None:
             anchor_nodes = [int(np.argmin(np.linalg.norm(hydro.points - anchor, axis=1))) for anchor in anchors]
             result["steps"][-1]["loss_audit"] = audit_lake_losses(captured, anchor_nodes)
+        liquid_residual = (
+            lake.external_supply_m3 - lake.evaporation_m3 - lake.sublimation_m3
+            - lake.overflow_out_m3 - lake.storage_change_m3 - lake.freezing_m3 + lake.melting_m3
+        )
+        ice_residual = lake.freezing_m3 - lake.melting_m3 - lake.ice_storage_change_m3
+        result["steps"][-1].update(
+            normalized_liquid_residual=abs(liquid_residual) / max(lake.external_supply_m3, 1.0),
+            normalized_ice_residual=abs(ice_residual) / max(lake.freezing_m3 + lake.melting_m3, 1.0),
+        )
 
     def close_window(_steps: int) -> dict:
         result["summary"] = summarize(result["steps"])

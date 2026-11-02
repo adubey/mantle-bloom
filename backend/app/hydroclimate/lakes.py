@@ -455,12 +455,11 @@ class _PrognosticAccounting:
     sea_cap_body_ids: set[int] = field(default_factory=set)
     lake_cap_overflow_m3: float = 0.0
     sea_cap_overflow_m3: float = 0.0
-    # Surplus that reached a closed capped-sibling cycle in the step's last integration slice,
+    # Surplus that reached a closed capped-sibling cycle in the current integration slice,
     # by the leaf it would have been deferred to. Neither body can take it while both stay
     # active, so it waits for the final export instead of circulating through the flush passes
     # (#696). `_release_broken_cycles` returns it if either body stops being active.
     cycle_surplus: dict[int, _CycleSurplus] = field(default_factory=dict)
-    final_slice: bool = False
     pending_owner_handoffs: dict[int, set[int]] = field(default_factory=dict)
     completed_owner_handoffs: set[tuple[int, int]] = field(default_factory=set)
     # Provisional losses for the current time slice. A late transfer or merger replaces
@@ -941,8 +940,7 @@ def _advance_prognostic_body(
                 # reach their saddle, the pair never merges, and deferring this would resend it
                 # on every flush pass until the pass limit (#696).
                 if (
-                    accounting.final_slice
-                    and receiver_is_capped
+                    receiver_is_capped
                     and _cap_is_artificial(route_source, prev_lake_depth, node_area_km2, hypsometry)
                     and _spills_back_to(receiver, route_source, leaf_of_node, body_for_leaf, node_count)
                 ):
@@ -1130,8 +1128,9 @@ def _settle_prognostic_slice(
     accounting.slice_years = dt
     accounting.slice_evaporation = np.zeros(n)
     accounting.slice_sublimation = np.zeros(n)
-    accounting.final_slice = True
     accounting.final_spilling_ids.clear()
+    accounting.pending_owner_handoffs.clear()
+    accounting.completed_owner_handoffs.clear()
     routed_surplus_sources: set[int] = set()
     refreshed: set[int] = set()
     for pass_index in range(2 * max(1, len(leaves)) + 3):
