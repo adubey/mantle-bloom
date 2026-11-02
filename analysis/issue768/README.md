@@ -30,8 +30,12 @@ checkpoints are those of #757; no alternative checkpoint will be substituted.
 | E | 910211954 | 224.0 | `4045b915a2d3d9e534a84089bba7277bbd488690e51d70f4e928f58c8cf674b1` | `analysis/rfc0016/target-anchor-window-e.json` |
 | S | 317739385 | 201.6 | `ad8d34d60ac89db97efdfd722bc3db0287db22d8917288871502fe9a7747f94e` | `analysis/issue757/anchor-seed317739385-201.6.json` |
 
-S is absent from the configured save directory and the B2 listing at registration; its
-location has been requested. E was retrieved from B2 and its SHA-256 matches.
+E was retrieved from B2 and its SHA-256 matches. The original S checkpoint is absent from
+the configured save directory and B2. Before any replay, the owner supplied the 200.8 Myr
+save of seed 317739385 instead. The registered **S200.8** comparison therefore uses that
+save directly, at 200.8–202.0 Myr, with SHA-256
+`6c806f913e4c79bb351b5eb5a143abcfc273df39b3bdf4ce9823fec7d27fb0cd`.
+It is a matched comparison on the owner's replacement, not a reproduction of original S.
 
 **Primary metric and decision.** `--audit-losses` captures the solved water column before
 the ice split. For every wet final body, compare its trace's booked evaporation and

@@ -56,7 +56,7 @@ def audit_lake_losses(captured, anchor_nodes):
 
     forest, elevation, years, climate, hyps, solved = captured
     records = []
-    for body in lakes.governing_bodies(
+    for body in lakes._active_bodies(
         forest, elevation, solved.lake_depth, hyps,
     ):
         members = body.members

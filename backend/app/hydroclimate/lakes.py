@@ -299,7 +299,21 @@ class LakeSolveTrace:
 
 def _active_bodies(forest, elevation, depth, hypsometry):
     """Return the current connected water bodies, using only current-step levels."""
-    return governing_bodies(forest, elevation, depth, hypsometry)
+    bodies = []
+    pending = governing_bodies(forest, elevation, depth, hypsometry)
+    while pending:
+        body = pending.pop()
+        if body.children:
+            # A floor can reach the pass while partly flooded margins still lack the
+            # volume supporting a common surface. Promoting it would lower that surface
+            # below the pass and alternate merge/split on every flush (#768).
+            stored = float(np.dot(depth[body.members], hypsometry.area_m2[body.members]))
+            saddle_storage = hypsometry.volume(body.min_depth, body.members)
+            if stored < saddle_storage - 1e-10 * max(saddle_storage, 1.0):
+                pending.extend(governing_bodies(body.children, elevation, depth, hypsometry))
+                continue
+        bodies.append(body)
+    return bodies
 
 
 def _ordered_spill_bodies(bodies, leaf_of_node, body_for_leaf, body_by_id, node_count):

@@ -904,6 +904,19 @@ def test_compute_spill_routing_routes_both_original_sinks_to_the_parents_rim_onc
     assert rim_dry[3] == 2  # leaf {2,3}'s own outlet_node_idx
 
 
+def test_prognostic_merge_requires_enough_storage_to_support_the_saddle_surface():
+    # #768: preliminary spill routing reads the two main floor cells. The prognostic
+    # solve must also fund the other wet cells before redistributing a merged surface.
+    forest = lakes.build_lake_hierarchy(_MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS)
+    hyps = lakes.CellHypsometry.whole_cells(_MERGE_ELEVATION)
+    floor_only = np.array([10.0, 0.0, 0.0, 8.0, 0.0, 0.0])
+    active = lakes._active_bodies(forest, _MERGE_ELEVATION, floor_only, hyps)
+    assert {id(body) for body in active} == {id(child) for child in forest[0].children}
+
+    supported = np.array([10.0, 0.0, 3.0, 8.0, 0.0, 0.0])
+    assert lakes._active_bodies(forest, _MERGE_ELEVATION, supported, hyps) == forest
+
+
 def test_perched_water_does_not_merge_parent_or_govern_its_spill_rim():
     # Node 4 is a perched sub-basin in the left child's upstream members. Its water surface is
     # above the parent saddle, but the main lake in each child remains below it.

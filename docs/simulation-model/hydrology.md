@@ -287,6 +287,8 @@ discharge, channel-width growth, deposition, geology or lake silt.
   external supply is added only once. These transfer passes advance no additional time,
   but their receiving bodies still face the slice's full implicit loss balance. A bounded
   pass count exposes unresolved transfers or topology rather than accepting a partial solve.
+  Promotion also requires enough stored volume to support a common surface at the saddle;
+  checking the floor cells alone can otherwise alternate between a merge and a split.
 - **Flow direction** (`_compute_flow_direction`): among each node's k nearest neighbors
   strictly below its own elevation (a downhill candidate), prefers whichever one already has
   the deepest established channel (`channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`),
