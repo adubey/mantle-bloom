@@ -80,10 +80,27 @@ rule's behavior only; the chosen values are not physical strength estimates.
 
 ### `probe_rift_settings.py`
 
-Looks for active, passive, rollback and transtension rift settings on saved worlds, routes a
-craton-free rift from each site, and compares it with the great circle through that site. Read-only.
+Looks for active, passive, rollback and transtension rift settings, routes a craton-free rift from
+each site, and compares it with the great circle through that site. Read-only. `--saves` surveys
+snapshots. `--seed` is RFC 0010 Gate D1: one fresh world with production topology unchanged, detecting
+just before topology, merging boundary fragments into fronts and tracking them until they persist
+for 2 Myr. `--no-detect` is its control arm, whose `fingerprint` must match. `--summarize` builds the
+gate tables from the per-seed reports.
 
 ```bash
 PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_rift_settings.py \
     --saves <a.mbworld> <b.mbworld> --out /tmp/rift-settings.json --image-dir /tmp/rift-images
+PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_rift_settings.py \
+    --seed <n> --myr 200 --step-myr 1 --out <seed.json> --save-dir <private-dir>
+PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_rift_settings.py \
+    --summarize <a.json> <b.json> <c.json> --out analysis/rfc0010/gate-d1.json
+```
+
+### `probe_age_polarity.py`
+
+Runs the `probe_rift_settings.py` census on one seed and records why ocean-ocean age verdicts stay
+undecided and why frozen verdicts reverse. Read-only; its fingerprint matches the census.
+
+```bash
+PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_age_polarity.py <seed> <out.json>
 ```

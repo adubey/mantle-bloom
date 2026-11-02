@@ -1,0 +1,213 @@
+{
+ "gate_settings_passing": [
+  "active",
+  "passive",
+  "transtension"
+ ],
+ "passive_after_head": 3,
+ "passive_events": 54,
+ "plate_count": [
+  {
+   "compatible": false,
+   "final_plates": 26,
+   "gated_per_100myr": 27.0,
+   "max_plates": 26,
+   "merges_per_100myr": 0.0,
+   "production_splits_per_100myr": 5.0,
+   "seed": 1183015207,
+   "worst_case_plates": 70.0,
+   "worst_case_plates_routed_only": 48.0
+  },
+  {
+   "compatible": false,
+   "final_plates": 30,
+   "gated_per_100myr": 22.5,
+   "max_plates": 30,
+   "merges_per_100myr": 0.0,
+   "production_splits_per_100myr": 7.5,
+   "seed": 1486436815,
+   "worst_case_plates": 60.0,
+   "worst_case_plates_routed_only": 50.0
+  },
+  {
+   "compatible": false,
+   "final_plates": 26,
+   "gated_per_100myr": 24.0,
+   "max_plates": 26,
+   "merges_per_100myr": 0.0,
+   "production_splits_per_100myr": 9.0,
+   "seed": 1173383782,
+   "worst_case_plates": 56.0,
+   "worst_case_plates_routed_only": 45.0
+  }
+ ],
+ "polarity": {
+  "continent_ocean": {
+   "decided_share": 0.963,
+   "flip_share": 0.013,
+   "flips": 6,
+   "front_steps": 3193,
+   "fronts": 453,
+   "ocean_lower_share": 0.995,
+   "verdicts": {
+    "ambiguous": 90,
+    "lower": 16,
+    "none": 29,
+    "upper": 3058
+   }
+  },
+  "ocean_ocean": {
+   "decided_share": 0.213,
+   "flip_share": 0.104,
+   "flips": 117,
+   "front_steps": 7562,
+   "fronts": 1123,
+   "verdicts": {
+    "ambiguous": 5894,
+    "lower": 954,
+    "none": 61,
+    "upper": 653
+   },
+   "works": false
+  }
+ },
+ "pre_onset_tracks": {
+  "active:lapsed": 3,
+  "active:production_split": 1,
+  "passive:lapsed": 32,
+  "passive:production_split": 25,
+  "rollback:lapsed": 99,
+  "rollback:production_split": 3,
+  "rollback:run_end": 4,
+  "transtension:lapsed": 365,
+  "transtension:production_split": 10
+ },
+ "rollback_by_upper_plate": {
+  "continental": {
+   "closed_routed": 0,
+   "ended": {
+    "production_split": 1
+   },
+   "events": 1,
+   "events_by_seed": {
+    "1173383782": 0,
+    "1183015207": 1,
+    "1486436815": 0
+   },
+   "events_per_100myr": 0.17,
+   "gated_per_100myr": 0.0,
+   "median_duration_myr": null,
+   "median_growth_myr": null,
+   "outlast_growth": 0,
+   "routed": 0,
+   "seeds_with_events": 1
+  },
+  "oceanic": {
+   "closed_routed": 7,
+   "ended": {
+    "lapsed": 11,
+    "run_end": 2
+   },
+   "events": 13,
+   "events_by_seed": {
+    "1173383782": 1,
+    "1183015207": 0,
+    "1486436815": 12
+   },
+   "events_per_100myr": 2.17,
+   "gated_per_100myr": 1.83,
+   "median_duration_myr": 6.0,
+   "median_growth_myr": 23.54,
+   "outlast_growth": 0,
+   "routed": 9,
+   "seeds_with_events": 2
+  }
+ },
+ "settings": {
+  "active": {
+   "closed_routed": 45,
+   "ended": {
+    "lapsed": 60,
+    "production_split": 5,
+    "run_end": 9
+   },
+   "events": 74,
+   "events_by_seed": {
+    "1173383782": 26,
+    "1183015207": 34,
+    "1486436815": 14
+   },
+   "events_per_100myr": 12.33,
+   "gated_per_100myr": 7.33,
+   "median_duration_myr": 21.0,
+   "median_growth_myr": 20.905,
+   "outlast_growth": 20,
+   "routed": 52,
+   "seeds_with_events": 3
+  },
+  "passive": {
+   "closed_routed": 22,
+   "ended": {
+    "lapsed": 7,
+    "production_split": 18,
+    "run_end": 29
+   },
+   "events": 54,
+   "events_by_seed": {
+    "1173383782": 26,
+    "1183015207": 15,
+    "1486436815": 13
+   },
+   "events_per_100myr": 9.0,
+   "gated_per_100myr": 6.67,
+   "median_duration_myr": 7.0,
+   "median_growth_myr": 22.924999999999997,
+   "outlast_growth": 8,
+   "routed": 46,
+   "seeds_with_events": 3
+  },
+  "rollback": {
+   "closed_routed": 7,
+   "ended": {
+    "lapsed": 11,
+    "production_split": 1,
+    "run_end": 2
+   },
+   "events": 14,
+   "events_by_seed": {
+    "1173383782": 1,
+    "1183015207": 1,
+    "1486436815": 12
+   },
+   "events_per_100myr": 2.33,
+   "gated_per_100myr": 1.83,
+   "median_duration_myr": 6.0,
+   "median_growth_myr": 23.54,
+   "outlast_growth": 0,
+   "routed": 9,
+   "seeds_with_events": 3
+  },
+  "transtension": {
+   "closed_routed": 88,
+   "ended": {
+    "lapsed": 117,
+    "production_split": 20,
+    "run_end": 8
+   },
+   "events": 145,
+   "events_by_seed": {
+    "1173383782": 49,
+    "1183015207": 50,
+    "1486436815": 46
+   },
+   "events_per_100myr": 24.17,
+   "gated_per_100myr": 8.67,
+   "median_duration_myr": 11.5,
+   "median_growth_myr": 22.78,
+   "outlast_growth": 29,
+   "routed": 93,
+   "seeds_with_events": 3
+  }
+ },
+ "span_100myr": 6.0
+}

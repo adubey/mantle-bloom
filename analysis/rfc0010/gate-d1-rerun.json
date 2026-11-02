@@ -1,0 +1,230 @@
+{
+ "age_polarity": {
+  "consumption_agreement": 0.467,
+  "decided_share": 0.959,
+  "decided_share_after_100myr": 0.969,
+  "front_steps": 7815,
+  "fronts": 487,
+  "reversed_fronts": 101,
+  "reversed_share": 0.207,
+  "verdicts": {
+   "lower": 3805,
+   "undecided": 319,
+   "upper": 3691
+  },
+  "works": false
+ },
+ "gate_settings_passing": [
+  "active",
+  "passive",
+  "rollback",
+  "transtension"
+ ],
+ "passive_after_head": 1,
+ "passive_events": 50,
+ "plate_count": [
+  {
+   "compatible": false,
+   "final_plates": 28,
+   "gated_per_100myr": 24.0,
+   "max_plates": 28,
+   "merges_per_100myr": 0.0,
+   "production_splits_per_100myr": 6.0,
+   "seed": 1183015207,
+   "worst_case_plates": 64.0,
+   "worst_case_plates_routed_only": 46.0
+  },
+  {
+   "compatible": false,
+   "final_plates": 27,
+   "gated_per_100myr": 23.5,
+   "max_plates": 28,
+   "merges_per_100myr": 0.0,
+   "production_splits_per_100myr": 6.5,
+   "seed": 1486436815,
+   "worst_case_plates": 61.0,
+   "worst_case_plates_routed_only": 49.0
+  },
+  {
+   "compatible": false,
+   "final_plates": 23,
+   "gated_per_100myr": 25.5,
+   "max_plates": 23,
+   "merges_per_100myr": 0.5,
+   "production_splits_per_100myr": 8.0,
+   "seed": 1173383782,
+   "worst_case_plates": 58.0,
+   "worst_case_plates_routed_only": 48.0
+  }
+ ],
+ "polarity": {
+  "continent_ocean": {
+   "decided_share": 0.951,
+   "flip_share": 0.004,
+   "flips": 1,
+   "front_steps": 2985,
+   "fronts": 250,
+   "ocean_lower_share": 0.997,
+   "verdicts": {
+    "ambiguous": 127,
+    "lower": 8,
+    "none": 19,
+    "upper": 2831
+   }
+  },
+  "ocean_ocean": {
+   "decided_share": 0.221,
+   "flip_share": 0.099,
+   "flips": 48,
+   "front_steps": 7815,
+   "fronts": 487,
+   "verdicts": {
+    "ambiguous": 6037,
+    "lower": 892,
+    "none": 53,
+    "upper": 833
+   },
+   "works": false
+  }
+ },
+ "pre_onset_tracks": {
+  "active:lapsed": 2,
+  "active:production_split": 2,
+  "passive:lapsed": 27,
+  "passive:production_split": 26,
+  "rollback:lapsed": 100,
+  "transtension:lapsed": 397,
+  "transtension:production_split": 10
+ },
+ "rollback_by_upper_plate": {
+  "continental": {
+   "closed_routed": 1,
+   "ended": {
+    "lapsed": 1,
+    "production_split": 1
+   },
+   "events": 2,
+   "events_by_seed": {
+    "1173383782": 0,
+    "1183015207": 1,
+    "1486436815": 1
+   },
+   "events_per_100myr": 0.33,
+   "gated_per_100myr": 0.17,
+   "median_duration_myr": 25.0,
+   "median_growth_myr": 13.42,
+   "outlast_growth": 1,
+   "routed": 1,
+   "seeds_with_events": 2
+  },
+  "oceanic": {
+   "closed_routed": 10,
+   "ended": {
+    "lapsed": 15,
+    "run_end": 3
+   },
+   "events": 18,
+   "events_by_seed": {
+    "1173383782": 1,
+    "1183015207": 0,
+    "1486436815": 17
+   },
+   "events_per_100myr": 3.0,
+   "gated_per_100myr": 2.17,
+   "median_duration_myr": 8.0,
+   "median_growth_myr": 23.82,
+   "outlast_growth": 1,
+   "routed": 13,
+   "seeds_with_events": 2
+  }
+ },
+ "settings": {
+  "active": {
+   "closed_routed": 48,
+   "ended": {
+    "lapsed": 59,
+    "plate_merged": 1,
+    "production_split": 9,
+    "run_end": 9
+   },
+   "events": 78,
+   "events_by_seed": {
+    "1173383782": 27,
+    "1183015207": 38,
+    "1486436815": 13
+   },
+   "events_per_100myr": 13.0,
+   "gated_per_100myr": 8.17,
+   "median_duration_myr": 21.0,
+   "median_growth_myr": 21.12,
+   "outlast_growth": 20,
+   "routed": 54,
+   "seeds_with_events": 3
+  },
+  "passive": {
+   "closed_routed": 25,
+   "ended": {
+    "lapsed": 12,
+    "plate_merged": 1,
+    "production_split": 15,
+    "run_end": 22
+   },
+   "events": 50,
+   "events_by_seed": {
+    "1173383782": 25,
+    "1183015207": 11,
+    "1486436815": 14
+   },
+   "events_per_100myr": 8.33,
+   "gated_per_100myr": 6.0,
+   "median_duration_myr": 28.0,
+   "median_growth_myr": 22.72,
+   "outlast_growth": 12,
+   "routed": 43,
+   "seeds_with_events": 3
+  },
+  "rollback": {
+   "closed_routed": 11,
+   "ended": {
+    "lapsed": 16,
+    "production_split": 1,
+    "run_end": 3
+   },
+   "events": 20,
+   "events_by_seed": {
+    "1173383782": 1,
+    "1183015207": 1,
+    "1486436815": 18
+   },
+   "events_per_100myr": 3.33,
+   "gated_per_100myr": 2.33,
+   "median_duration_myr": 8.0,
+   "median_growth_myr": 21.265,
+   "outlast_growth": 2,
+   "routed": 14,
+   "seeds_with_events": 3
+  },
+  "transtension": {
+   "closed_routed": 87,
+   "ended": {
+    "lapsed": 110,
+    "production_split": 18,
+    "run_end": 7
+   },
+   "events": 135,
+   "events_by_seed": {
+    "1173383782": 54,
+    "1183015207": 38,
+    "1486436815": 43
+   },
+   "events_per_100myr": 22.5,
+   "gated_per_100myr": 7.83,
+   "median_duration_myr": 14.0,
+   "median_growth_myr": 22.32,
+   "outlast_growth": 28,
+   "routed": 91,
+   "seeds_with_events": 3
+  }
+ },
+ "span_100myr": 6.0
+}
