@@ -80,6 +80,9 @@ ARM_REACH_KM = 300.0
 # Gate D2 (#737): endpoint bearings tried per side, and the plate-margin band a route may not hug.
 ENDPOINT_SECTORS = 12
 ROUTE_MARGIN_BAND_KM = 150.0
+# Cost multiplier on a step along the plate edge inside the margin band: above the craton margin's
+# 1.5 but below a full-strength craton's 1 + CRATON_COST, which a rift should avoid far more (#737).
+EDGE_BAND_COST = 2.0
 ROUTE_MIN_OUTCOME_SHARE = 0.9
 ROUTE_MARGIN_MAX_SHARE = 0.2
 ROUTE_MARGIN_MIN_PASSING = 0.9
@@ -339,7 +342,13 @@ def _sites_passive(world, plate):
     return [{"setting": "passive", "seed": seed, "extension": cut_normal, "relax": float(relax)}]
 
 
-def _graph(plate, points, extension, forbidden, resistance):
+def _edge_distance(points, edge):
+    """Angular distance from each cell to the nearest plate-edge cell."""
+    chord = cKDTree(points[edge]).query(points)[0]
+    return 2.0 * np.arcsin(np.minimum(chord / 2.0, 1.0))
+
+
+def _graph(plate, points, extension, forbidden, resistance, edge_distance):
     adjacency = plate.adjacency()
     rows = np.repeat(np.arange(plate.node_count()), np.diff(adjacency.offsets))
     cols = adjacency.neighbours
@@ -353,6 +362,13 @@ def _graph(plate, points, extension, forbidden, resistance):
     norm = np.maximum(np.linalg.norm(tangent_axis, axis=1), 1e-12)
     opening = np.abs(np.einsum("ij,ij->i", along, tangent_axis / norm[:, None]))
     weight = length * 0.5 * (resistance[rows] + resistance[cols]) * (1.0 + ALIGN_PENALTY * opening)
+    # Steps along the plate edge inside the margin band cost more, so the search keeps arms in the
+    # interior instead of sliding them along the edge (#737 Gate D2). A step heading straight to or
+    # from the edge pays nothing extra, so an arm's own approach to the boundary stays free.
+    band = ROUTE_MARGIN_BAND_KM * 1e3 / lithosphere.PLANET_RADIUS_M
+    in_band = 0.5 * ((edge_distance[rows] < band).astype(float) + (edge_distance[cols] < band))
+    toward = np.minimum(np.abs(edge_distance[cols] - edge_distance[rows]) / length, 1.0)
+    weight *= 1.0 + (EDGE_BAND_COST - 1.0) * in_band * (1.0 - toward)
     return csr_matrix((weight, (rows, cols)), shape=(len(points),) * 2)
 
 
@@ -387,6 +403,7 @@ def route_by_daughters(plate, points, seed, extension, forbidden, resistance, ar
     Returns (route, status, cheapest_separating). A site is a true barrier when open rock does not
     reach the boundary on both sides; that is allowed, and the rift stops as weakened rock."""
     edge = _edge_cells(plate)
+    edge_distance = _edge_distance(points, edge)
     if forbidden[seed]:
         open_cells = np.flatnonzero(~forbidden)
         if not len(open_cells):
@@ -394,7 +411,7 @@ def route_by_daughters(plate, points, seed, extension, forbidden, resistance, ar
         seed = int(open_cells[np.argmax(points[open_cells] @ points[seed])])
     strike = geometry.normalize(np.cross(points[seed], extension))
     side = (points - points[seed]) @ strike
-    distances, previous = dijkstra(_graph(plate, points, extension, forbidden, resistance), indices=seed,
+    distances, previous = dijkstra(_graph(plate, points, extension, forbidden, resistance, edge_distance), indices=seed,
                                    return_predecessors=True)
     reachable = edge & np.isfinite(distances)
     if not (np.any(reachable & (side > 0.0)) and np.any(reachable & (side < 0.0))):
@@ -408,8 +425,9 @@ def route_by_daughters(plate, points, seed, extension, forbidden, resistance, ar
         first = _walk(previous, target)
         blocked = forbidden.copy()
         blocked[first[1:]] = True
-        second_distances, second_previous = dijkstra(_graph(plate, points, extension, blocked, resistance),
-                                                     indices=seed, return_predecessors=True)
+        second_distances, second_previous = dijkstra(
+            _graph(plate, points, extension, blocked, resistance, edge_distance), indices=seed,
+            return_predecessors=True)
         seconds = np.flatnonzero(far & np.isfinite(second_distances) & (side < 0.0))
         for other in _sector_targets(points, seed, strike, seconds, second_distances):
             pairs.append((distances[target] + second_distances[other], first, second_previous, other))
@@ -1158,7 +1176,8 @@ def main():
                         "align_penalty": ALIGN_PENALTY, "craton_edge_km": CRATON_EDGE_KM,
                         "craton_block_strength": CRATON_BLOCK_STRENGTH, "craton_cost": CRATON_COST,
                         "keel_breach_m": KEEL_BREACH_M, "craton_margin_km": CRATON_MARGIN_KM,
-                        "craton_margin_cost": CRATON_MARGIN_COST, "onset_myr": ONSET_MYR,
+                        "craton_margin_cost": CRATON_MARGIN_COST, "edge_band_cost": EDGE_BAND_COST,
+                        "onset_myr": ONSET_MYR,
                         "lapse_myr": LAPSE_MYR, "propagation_km_per_myr": PROPAGATION_KM_PER_MYR,
                         "retry_myr": RETRY_MYR, "retry_near_km": RETRY_NEAR_KM,
                         "age_polarity_min_gap_myr": AGE_POLARITY_MIN_GAP_MYR},

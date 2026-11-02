@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "bin" / "debug"))
@@ -378,3 +379,23 @@ def test_router_skips_a_route_that_hugs_the_margin_for_the_next_cheapest():
     assert probe.margin_share(plate.points, loose, edge, band) > 0.2
     assert status == "separates"
     assert probe.margin_share(plate.points, found[0], edge, band) <= 0.2
+
+
+def test_a_step_along_the_edge_costs_more_than_one_heading_to_it_or_through_the_interior():
+    size = 41
+    plate = _GridPlate(size, 0.5, {})
+    # Extension at 45 degrees, so east and north steps open the rift equally and only the edge cost differs.
+    extension = probe.geometry.normalize(np.array([0.0, 1.0, 1.0]))
+    none = np.zeros(plate.node_count(), dtype=bool)
+    edge_distance = probe._edge_distance(plate.points, probe._edge_cells(plate))
+    graph = probe._graph(plate, plate.points, extension, none, np.ones(plate.node_count()), edge_distance)
+    mid = size // 2
+
+    def per_length(a, b):
+        return graph[a, b] / np.linalg.norm(plate.points[a] - plate.points[b])
+
+    interior = per_length(plate.index[mid, mid], plate.index[mid, mid + 1])
+    along_edge = per_length(plate.index[0, mid], plate.index[0, mid + 1])
+    to_edge = per_length(plate.index[1, mid], plate.index[0, mid])
+    assert along_edge == pytest.approx(probe.EDGE_BAND_COST * interior, rel=0.05)
+    assert to_edge == pytest.approx(interior, rel=0.05)
