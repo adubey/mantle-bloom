@@ -412,3 +412,39 @@ plate size alone doesn't explain them.
   incompatibility stands, and more events now separate.
 
 Sector count, margin band and limit sensitivity are untested.
+
+### Router amendment: skip margin-hugging routes (2026-11-02)
+
+A [labeled rerun](https://github.com/adubey/mantle-bloom/issues/737#issuecomment-6573751625) at the
+owner's request, commit `b8df3585`, probe hash unchanged during the runs. A size-clearing route with a
+margin share over 0.2 is now skipped for the next cheapest pair, so route shape holds by construction
+and the outcome test carries the cost. Tables: [`gate-d2-amendment.json`](gate-d2-amendment.json).
+
+**Integrity:** fingerprints and every D1 event match, and all 245 routes that were within the limit
+in the first D2 run are unchanged. My first comparison keyed events on setting, plate and timing,
+which some plates share across two fronts. It reported 11 false changes until the key added the
+neighbour and site.
+
+**Outcome: still does not pass, now on outcomes for active and passive.**
+
+| Setting | Breakups of non-barrier sites | First D2 run | `hugs_margin` | Other misses |
+|---|---:|---:|---:|---|
+| Active | **64 of 78 (82.1%)** | 94.9% | 10 | 4 daughter too small |
+| Passive | **43 of 50 (86.0%)** | 94.0% | 4 | 3 no second arm |
+| Rollback | 20 of 20 (100%) | 100% | 0 | — |
+| Transtension | 128 of 135 (94.8%) | 97.8% | 4 | 3 daughter too small |
+
+Of the 28 routes over the limit, 10 found a clean pair and 18 have none among the sector candidates.
+Detached craton stays within budget: seed 1183015207 falls from 17,910 km² to 0, since its one
+detaching route hugged the margin. Seed 1173383782 is unchanged at 277,374 of 394,538 km², and zero
+blocked cells were entered.
+
+**Read after the freeze:**
+- The 18 misses are on 10 plates, with a median 5.4% of the sphere against 3.8% for breakups, so they
+  aren't small plates. 7 of the 18 sites began on blocked craton and moved to the nearest open cell.
+  Not traced.
+- The router keeps only the cheapest target in each of 12 sectors, so a clean route outside those
+  candidates isn't tried.
+- Breakup routes now have a median longest arm of 2,392 km and growth of 23.9 Myr. The median smaller
+  daughter is 12.8%.
+- Worst-case plates are 66, 57 and 58, or 56, 56 and 51 on separating routes only.
