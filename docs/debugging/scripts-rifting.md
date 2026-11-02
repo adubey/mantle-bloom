@@ -106,3 +106,14 @@ undecided and why frozen verdicts reverse. Read-only; its fingerprint matches th
 ```bash
 PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_age_polarity.py <seed> <out.json>
 ```
+
+### `draw_d2_routes.py`
+
+Replays one seed with the `probe_rift_settings.py` census and draws listed Gate D2 events side by
+side, routed without and with the margin limit. Each panel shows the plate's daughters, craton, the
+150 km margin band and the route. Read-only.
+
+```bash
+PYTHONPATH=backend backend/.venv/bin/python bin/debug/draw_d2_routes.py \
+    --seed <n> --events <setting:plate:neighbour:onset_myr> [...] --out-dir <private-dir>
+```
