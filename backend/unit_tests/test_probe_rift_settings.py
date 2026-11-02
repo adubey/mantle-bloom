@@ -399,3 +399,20 @@ def test_a_step_along_the_edge_costs_more_than_one_heading_to_it_or_through_the_
     to_edge = per_length(plate.index[1, mid], plate.index[0, mid])
     assert along_edge == pytest.approx(probe.EDGE_BAND_COST * interior, rel=0.05)
     assert to_edge == pytest.approx(interior, rel=0.05)
+
+
+def test_damage_proxy_makes_thin_rock_cheaper_and_lets_belt_weakness_fade_with_age():
+    count = 5
+    belt_formed = np.array([0.0, 0.0, 0.0, 99e6, -400e6])
+    plate = _GridPlate(1, 1.0, {"crustal_thickness_m": np.full(count, 35e3),
+                                "mantle_lithosphere_thickness_m": np.array([65e3, 15e3, 400e3, 65e3, 65e3]),
+                                "belt_formed_years": belt_formed})
+    plate.node_count = lambda: count
+    belts = np.array([False, False, False, True, True])
+    resistance = probe.damage_resistance(plate, belts, now_years=100e6)
+    assert resistance[0] == pytest.approx(1.0)
+    assert resistance[1] == pytest.approx(0.5)
+    assert resistance[2] == pytest.approx(2.0)
+    young, old = resistance[3], resistance[4]
+    assert young == pytest.approx(probe.BELT_RESISTANCE, abs=0.01)
+    assert young < old < 1.0

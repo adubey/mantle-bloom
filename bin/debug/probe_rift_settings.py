@@ -83,6 +83,12 @@ ROUTE_MARGIN_BAND_KM = 150.0
 # Cost multiplier on a step along the plate edge inside the margin band: above the craton margin's
 # 1.5 but below a full-strength craton's 1 + CRATON_COST, which a rift should avoid far more (#737).
 EDGE_BAND_COST = 2.0
+# Exploration, off unless --damage-proxy (#737, #770): a stand-in for local damage from fields the
+# model already has. Lithosphere thinner than its plate's median is weaker, and a belt's weakness
+# fades with age instead of lasting forever.
+DAMAGE_PROXY = False
+DAMAGE_THICKNESS_CLIP = (0.5, 2.0)
+BELT_FADE_MYR = 500.0
 ROUTE_MIN_OUTCOME_SHARE = 0.9
 ROUTE_MARGIN_MAX_SHARE = 0.2
 ROUTE_MARGIN_MIN_PASSING = 0.9
@@ -533,9 +539,22 @@ def craton_margin(plate, cratons_mask, spacing):
     return near & ~cratons_mask
 
 
-def route_resistance(plate, belts, forbidden, margin):
-    resistance = np.ones(plate.node_count())
-    resistance[belts] = BELT_RESISTANCE
+def damage_resistance(plate, belts, now_years):
+    """The damage proxy's base resistance: total lithosphere thickness over the plate's median,
+    clipped, times belt weakness fading from BELT_RESISTANCE back to 1 over BELT_FADE_MYR."""
+    thickness = plate.collect("crustal_thickness_m") + plate.collect("mantle_lithosphere_thickness_m")
+    resistance = np.clip(thickness / max(float(np.median(thickness)), 1.0), *DAMAGE_THICKNESS_CLIP)
+    age_myr = np.maximum(now_years - plate.collect("belt_formed_years"), 0.0) / 1e6
+    fade = 1.0 - (1.0 - BELT_RESISTANCE) * np.exp(-age_myr / BELT_FADE_MYR)
+    return np.where(belts, resistance * fade, resistance)
+
+
+def route_resistance(plate, belts, forbidden, margin, now_years=0.0):
+    if DAMAGE_PROXY:
+        resistance = damage_resistance(plate, belts, now_years)
+    else:
+        resistance = np.ones(plate.node_count())
+        resistance[belts] = BELT_RESISTANCE
     resistance[plate.collect("plume_heat_myr") > 0.0] = PLUME_RESISTANCE
     resistance[margin] *= CRATON_MARGIN_COST
     craton_strength = cratons.strength(plate.collect("craton_crust_m"))
@@ -544,12 +563,19 @@ def route_resistance(plate, belts, forbidden, margin):
                     np.maximum(1.0 + CRATON_COST * craton_strength, CRATON_MARGIN_COST), resistance)
 
 
+def _thin_share(plate, route):
+    """Share of route cells whose lithosphere is thinner than the plate's median: whether a route
+    follows weak rock (#770)."""
+    thickness = plate.collect("crustal_thickness_m") + plate.collect("mantle_lithosphere_thickness_m")
+    return float((thickness[route] < np.median(thickness)).mean())
+
+
 def score_site(world, plate, state, site, cratons_mask, belts):
     points, areas = state["points"], plate.node_areas_m2()
     spacing = state["spacing"]
     forbidden, interior = craton_barrier(plate, cratons_mask, spacing)
     margin = craton_margin(plate, cratons_mask, spacing)
-    resistance = route_resistance(plate, belts, forbidden, margin)
+    resistance = route_resistance(plate, belts, forbidden, margin, world.elapsed_years)
     extension = geometry.normalize(np.asarray(site["extension"], dtype=float))
     seed = site["seed"]
     band = np.sin(merge_split.FAILED_RIFT_BAND_MULT * spacing)
@@ -590,6 +616,7 @@ def score_site(world, plate, state, site, cratons_mask, belts):
                route_craton_cells=int(cratons_mask[route].sum()), cratons_divided=cut,
                craton_detached_km2=float(sum(detached) / 1e6), craton_largest_detached_share=float(share),
                route_blocked_cells=int(forbidden[route].sum()), route_margin_cells=int(margin[route].sum()), route_cells=len(route),
+               route_thin_share=_thin_share(plate, route), route_belt_cells=int(belts[route].sum()),
                route_interior_cells=int(interior[route].sum()),
                margin_share=margin_share(points, route, _edge_cells(plate),
                                          ROUTE_MARGIN_BAND_KM * 1e3 / lithosphere.PLANET_RADIUS_M),
@@ -857,7 +884,8 @@ class Census:
         if "area_km2" in site:
             row["head_area_km2"] = round(site["area_km2"], 0)
         for key in ("seed_blocked", "qualifying_strip", "margin_share", "smaller_daughter_fraction",
-                    "craton_detached_km2", "route_blocked_cells", "route_craton_cells", "cratons_divided"):
+                    "craton_detached_km2", "route_blocked_cells", "route_craton_cells", "cratons_divided",
+                    "route_thin_share", "route_belt_cells"):
             if key in scored:
                 row[key] = round(scored[key], 4) if isinstance(scored[key], float) else scored[key]
         row["world_craton_km2"] = round(sum(
@@ -959,7 +987,8 @@ def run_seed(seed, myr, step_myr, save_dir=None, detect=True):
         collision_polarity.record_consumption = consumption
         plate_class.deform = deform
     events, pre_onset = census.finish(world.elapsed_years / 1e6)
-    report = {"seed": seed, "myr": myr, "step_myr": step_myr, "fingerprint": world_fingerprint(world),
+    report = {"seed": seed, "myr": myr, "step_myr": step_myr, "damage_proxy": DAMAGE_PROXY,
+              "fingerprint": world_fingerprint(world),
               "plates": census.plate_series[::10] + census.plate_series[-1:],
               "plates_max": max((count for _at, count in census.plate_series), default=0),
               "production": dict(census.production), "plume_heads_emplaced": int(world.plume_heads_emplaced),
@@ -1158,7 +1187,11 @@ def main():
     parser.add_argument("--summarize", type=Path, nargs="+")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--image-dir", type=Path)
+    parser.add_argument("--damage-proxy", action="store_true",
+                        help="exploration: weight route resistance by lithosphere thickness and belt age (#770)")
     args = parser.parse_args()
+    global DAMAGE_PROXY
+    DAMAGE_PROXY = args.damage_proxy
     args.out.parent.mkdir(parents=True, exist_ok=True)
     if args.seed is not None:
         report = run_seed(args.seed, args.myr, args.step_myr, args.save_dir, detect=not args.no_detect)
