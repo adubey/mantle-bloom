@@ -292,6 +292,7 @@ class LakeSolveTrace:
     dry_runoff_m3: np.ndarray
     meltwater_m3: np.ndarray
     evaporation_m3: np.ndarray
+    # All sublimation the solve charges against the liquid-plus-ice column (#757).
     liquid_sublimation_m3: np.ndarray
     transfers: tuple[LakeTransferTrace, ...]
 

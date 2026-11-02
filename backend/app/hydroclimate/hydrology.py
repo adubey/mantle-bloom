@@ -1933,16 +1933,21 @@ def compute_hydrology(
     # Use persisted water from the start of this step to partition precipitation over wet and
     # dry area. Partial cells retain their actual flooded fraction (#587).
     hypsometry = lakes.CellHypsometry.from_terrain(elevation, areas, neighbor_idx)
+    # Floating ice displaces its own mass of water, so last step's lake is its liquid and ice
+    # together: every reader of the lagged lake below sees the column the solve opens with.
+    # Otherwise a shallow cold cell frozen to its bed reads as dry land (#757).
+    prev_lake_ice_m = collect_all_lake_ice(plates_in_order)
+    prev_lake_water_m = prev_lake_depth + prev_lake_ice_m
     lake_temperature_c = _lake_water_surface_temperature_c(
         temperature_at_nodes if air_temperature_at_nodes is None else air_temperature_at_nodes,
         temperature_at_nodes if ocean_temperature_at_nodes is None else ocean_temperature_at_nodes,
         is_ocean,
         elevation,
-        prev_lake_depth,
+        prev_lake_water_m,
         hypsometry,
         air_temperature_elevation_at_nodes,
     )
-    wet_fraction = _lagged_lake_wet_fraction(prev_lake_depth, hypsometry)
+    wet_fraction = _lagged_lake_wet_fraction(prev_lake_water_m, hypsometry)
     wet_fraction = np.where(is_ocean, 0.0, wet_fraction)
     dry_fraction = 1.0 - wet_fraction
     # One in-transit loss rule for all physical water (issue #355): the breach gate and the
@@ -1997,13 +2002,13 @@ def compute_hydrology(
     # sub-cell relief, so the water surface is recovered through the same hypsometry rather
     # than as elevation + depth.
     filled_elevation, spill_target, rim_node_idx = lakes.compute_spill_routing(
-        forest, elevation, prev_lake_depth, hypsometry
+        forest, elevation, prev_lake_water_m, hypsometry
     )
     # Water surface above each wet cell's centre, for _compute_flow_direction's spill test
     # (`elevation + offset >= filled_elevation`). It's the mean depth itself without relief.
     lake_surface_offset = np.zeros(n)
-    wet_idx = np.flatnonzero(prev_lake_depth > 0.0)
-    lake_surface_offset[wet_idx] = hypsometry.level_from_depth(prev_lake_depth[wet_idx], wet_idx) - elevation[wet_idx]
+    wet_idx = np.flatnonzero(prev_lake_water_m > 0.0)
+    lake_surface_offset[wet_idx] = hypsometry.level_from_depth(prev_lake_water_m[wet_idx], wet_idx) - elevation[wet_idx]
 
     flow_target, should_spill = _compute_flow_direction(
         elevation, is_ocean, neighbor_idx, lake_surface_offset, filled_elevation, spill_target, prev_channel_depth
@@ -2094,7 +2099,7 @@ def compute_hydrology(
     has_interval = years > 0.0
     interval_years = years if has_interval else 1.0
     river_reach = (
-        ~is_ocean & (prev_lake_depth <= LAKE_MIN_VISIBLE_DEPTH_M) & (source_targets >= 0)
+        ~is_ocean & (prev_lake_water_m <= LAKE_MIN_VISIBLE_DEPTH_M) & (source_targets >= 0)
         & (areas > 0.0) & has_interval
     )
     prior_river_storage_m3 = prev_river_water_m * areas * has_interval
@@ -2116,7 +2121,7 @@ def compute_hydrology(
     # Identify terminal land sinks independently of the solver's consumption ledger (#731).
     # Missing supply at an owned cell must remain visible as a residual.
     lake_owned = np.zeros(n, dtype=bool)
-    for body in lakes.governing_bodies(forest, elevation, prev_lake_depth, hypsometry):
+    for body in lakes.governing_bodies(forest, elevation, prev_lake_water_m, hypsometry):
         lake_owned[body.members] = True
 
     lake_climate = lakes.LakeClimate(
@@ -2129,13 +2134,12 @@ def compute_hydrology(
         meltwater_m3_per_yr=melt_settled,
         river_storage_m3_per_yr=river_storage_settled,
     )
-    # D2(c) keeps lake ice as a separate water-equivalent reservoir, but floating ice displaces
-    # its own mass of water, so a lake's level, losses and spill depend on liquid and ice
-    # together. The solve integrates that whole column, and `advance_lake_ice` then splits what
-    # is left between ice and liquid (#757). Ice on a cell the solve empties goes with its water.
-    prev_lake_ice_m = collect_all_lake_ice(plates_in_order)
+    # D2(c) keeps lake ice as a separate water-equivalent reservoir, but a lake's level, losses
+    # and spill depend on liquid and ice together. The solve integrates that whole column, and
+    # `advance_lake_ice` then splits what is left between ice and liquid (#757). Ice on a cell
+    # the solve empties goes with its water.
     lake_result = lakes.solve_lakes_prognostic(
-        forest, elevation, prev_lake_depth + prev_lake_ice_m, years, lake_climate, hypsometry,
+        forest, elevation, prev_lake_water_m, years, lake_climate, hypsometry,
         is_ocean=is_ocean,
         diagnostic_trace=diagnostic_trace,
     )
@@ -2155,7 +2159,7 @@ def compute_hydrology(
 
     # The erosion-only breach surge uses this step's resolved spill bodies. Its size remains
     # lagged to the prior lake extent, but the spill state and rim now agree with discharge.
-    lake_component_size = _lake_component_sizes(prev_lake_depth > LAKE_MIN_VISIBLE_DEPTH_M, neighbor_idx)
+    lake_component_size = _lake_component_sizes(prev_lake_water_m > LAKE_MIN_VISIBLE_DEPTH_M, neighbor_idx)
     lake_breach_source = np.where(should_spill, LAKE_BREACH_EROSION_COEFFICIENT * lake_component_size, 0.0)
     rim_breach_source = np.zeros(n)
     spilling_idx = np.nonzero(should_spill)[0]
@@ -2218,11 +2222,10 @@ def compute_hydrology(
         freezing_m3=ice_budget["freezing_m3"],
         melting_m3=ice_budget["melting_m3"],
     )
-    # Close the liquid and ice sub-budgets separately; freezing and melting cancel when
-    # combined, while the ice-only residual exposes any error in the phase transfer itself.
-    # Sublimation sits in the liquid budget beside evaporation: the solve charged it against the
-    # column, and the ice it takes is replaced by freezing liquid, so the layer itself only
-    # exchanges its net change (#757).
+    # Close the liquid and ice sub-budgets separately. Since the ice layer only exchanges its net
+    # change, the ice-only residual is zero by construction; the combined residual is the
+    # solve's own. Sublimation sits in the liquid budget beside evaporation: the solve charged it
+    # against the column, and the ice it takes is replaced by freezing liquid (#757).
     liquid_residual_m3 = (
         phase_ledger.external_supply_m3 - phase_ledger.evaporation_m3 - phase_ledger.sublimation_m3
         - phase_ledger.overflow_out_m3 - phase_ledger.storage_change_m3
@@ -2317,7 +2320,7 @@ def compute_hydrology(
     # lake's shore instead of its classification jumping straight across to whatever's on
     # the far side of the water.
     land = ~is_ocean
-    is_lake = fields.lake_depth > LAKE_MIN_VISIBLE_DEPTH_M
+    is_lake = fields.lake_depth + fields.lake_ice_m > LAKE_MIN_VISIBLE_DEPTH_M
     is_river = np.zeros(n, dtype=bool)
     if np.any(land) and np.any(fields.discharge_m3_s[land] > 0):
         threshold = np.percentile(fields.discharge_m3_s[land], RIVER_FLOW_PERCENTILE)

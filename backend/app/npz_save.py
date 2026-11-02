@@ -90,7 +90,8 @@ _DERIVED_SCRATCH = frozenset(
 
 # Dataclass fields this build no longer declares, by class, that saves from an earlier build
 # still carry. `thaw` drops them before rebuilding the class, so those saves load; any other
-# field the class lacks still fails the load as a changed shape.
+# field the class lacks still fails the load as a changed shape. A retired name stays reserved:
+# remove its entry before reusing it, or saves would silently drop the new field.
 _RETIRED_FIELDS = {
     # A transient per-node lake-ice trace, saved empty unless lineage tracing was on (#757).
     "app.hydroclimate.hydrology.HydrologyFields": frozenset({"lake_ice_trace"}),

@@ -7,7 +7,9 @@ spill, compare equilibrium endpoint volume with an independently substepped C in
 The default is 1,000 substeps; use `--transient-substeps 4000` for a convergence check. Merged,
 incoming-transfer, capped-overflow, invalid, and unsampled bodies are counted as C fallback.
 This is an offline qualification screen; its per-body transient measurements are not available
-to production code and must not be treated as a production eligibility cache.
+to production code and must not be treated as a production eligibility cache. Since #757 the
+captured solve opens with liquid and lake ice together, so the `liquid_*` measures cover that
+column and the combined comparison repeats them.
 
 Follow the compute-budget skill before starting each save:
 
