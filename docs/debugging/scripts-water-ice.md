@@ -154,7 +154,9 @@ bodies. Merged bodies, leaves that could receive hierarchy transfers, spilling b
 and unsampled bodies count as fallback. It records liquid endpoint error (the G1 criterion), a
 secondary combined liquid-plus-ice comparison, relaxation and fill times, starting-volume
 coverage and the capture step runtime. Direct offline measurements do not form a production
-eligibility cache.
+eligibility cache. Since #757 the solve opens with liquid and lake ice together, so the "liquid"
+measures cover that column and the combined comparison repeats them; compare runs only across
+builds on the same side of that change.
 
 ```bash
 backend/.venv/bin/python bin/debug/gate_lake_endpoint.py \

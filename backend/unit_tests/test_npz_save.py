@@ -301,6 +301,38 @@ def test_loading_a_v5_with_an_unknown_tag_raises(stepped_bytes):
         persistence.load_world_bytes(_remanifested(stepped_bytes, retag))
 
 
+def _dataclass_node(node, dotted):
+    """The first manifest node encoding a `dotted` dataclass."""
+    if isinstance(node, dict):
+        if node.get("__dc__") == dotted:
+            return node
+        node = list(node.values())
+    if isinstance(node, list):
+        for v in node:
+            hit = _dataclass_node(v, dotted)
+            if hit is not None:
+                return hit
+    return None
+
+
+@pytest.mark.parametrize(
+    ("field", "loads"), [("lake_ice_trace", True), ("not_a_hydrology_field", False)],
+    ids=["retired", "unknown"],
+)
+def test_a_retired_dataclass_field_is_dropped_but_an_unknown_one_still_fails(stepped_bytes, field, loads):
+    # Saves before #757 carry `HydrologyFields.lake_ice_trace`, which this build no longer
+    # declares. Their hydrology cache must still load, because the next step reads it (H9).
+    def add_field(manifest):
+        _dataclass_node(manifest, "app.hydroclimate.hydrology.HydrologyFields")["fields"][field] = None
+
+    data = _remanifested(stepped_bytes, add_field)
+    if loads:
+        assert persistence.load_world_bytes(data).hydrology_cache is not None
+    else:
+        with pytest.raises(persistence.CorruptSaveError, match="changed shape"):
+            persistence.load_world_bytes(data)
+
+
 def test_loading_a_v5_with_a_bad_healpix_nside_raises(stepped_bytes):
     def spoil(manifest):
         _first_with_key(manifest, "__healpix_grid__")["__healpix_grid__"] = -4

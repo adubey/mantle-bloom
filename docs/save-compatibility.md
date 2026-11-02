@@ -121,6 +121,12 @@ left unchanged on load; only newly generated worlds receive negative starting ag
 an existing save anyway, run `bin/debug/date_saved_world.py` (#747), which writes a separate
 copy with ages read from the ridges and cratons at the save's time.
 
+**Fields a build retires.** A v5 save rebuilds each saved dataclass, such as the hydrology
+cache, from its saved fields, so a field this build no longer declares would fail the load.
+`npz_save._RETIRED_FIELDS` lists such fields by class, and the loader drops them before
+rebuilding the class. It holds `HydrologyFields.lake_ice_trace`, a transient per-node lake-ice
+trace removed in #757. Any other field the class lacks still makes the save a `CorruptSaveError`.
+
 **Fields from a newer build.** A save from a newer build has a newer envelope version and is
 refused. Conversion separately refuses line state it doesn't recognise (§3) instead of
 dropping it.

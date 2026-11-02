@@ -48,7 +48,8 @@ anchor files, which are not yet on `main`.
 The wrappers around `lakes._trace_transfer` and `lakes.solve_lakes_prognostic` only record
 values and return the original results. The zero-depth reconciliation below comes from one step
 of window A with `bin/debug/measure_lake_ice_phase_loss.py`, which observes
-`hydrology.advance_lake_ice` the same way.
+`hydrology.advance_lake_ice` the same way. #757 retired that script, since `advance_lake_ice` no
+longer removes water; it is in the history at `0e3111c0`.
 
 ## Sediment pathways
 

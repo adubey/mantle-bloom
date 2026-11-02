@@ -215,7 +215,8 @@ class LakeClimate:
     back to inflow for direct callers. Optional component arrays let the step ledger keep wet
     precipitation, dry runoff and meltwater distinct. `evaporation_m_per_yr` is open-season
     evaporation at each node; optional `sublimation_m_per_yr` is the frozen-season loss, without
-    the shallow-margin boost."""
+    the shallow-margin boost. Both act on the same implicit level, and the step ledger books
+    them separately (#757)."""
 
     inflow_m3_per_yr: np.ndarray
     evaporation_m_per_yr: np.ndarray
@@ -232,7 +233,11 @@ class LakeClimate:
 
 @dataclass(frozen=True)
 class LakeStepLedger:
-    """Integrated lake liquid-plus-ice budget for one hydrology step, all values in m³."""
+    """Integrated lake liquid-plus-ice budget for one hydrology step, all values in m³.
+
+    `evaporation_m3` is open-water loss and `sublimation_m3` is ice-season loss; the lake solve
+    charges both against the water column (#757). `freezing_m3` and `melting_m3` are the net
+    exchange between the ice layer and liquid."""
 
     external_supply_m3: float
     evaporation_m3: float
@@ -287,6 +292,7 @@ class LakeSolveTrace:
     dry_runoff_m3: np.ndarray
     meltwater_m3: np.ndarray
     evaporation_m3: np.ndarray
+    # All sublimation the solve charges against the liquid-plus-ice column (#757).
     liquid_sublimation_m3: np.ndarray
     transfers: tuple[LakeTransferTrace, ...]
 
@@ -434,6 +440,8 @@ class _PrognosticAccounting:
     # Spilled volume by (a leaf of the source body, receiving leaf). Silt reads this once the
     # final bodies are known, because only then can a transfer be judged internal (#693).
     transfer_by_leaf_pair: dict[tuple[int, int], float] = field(default_factory=dict)
+    # Ice-season loss, booked apart from open-water `evaporation_total` (#757).
+    sublimation_total: float = 0.0
     trace_external_by_node: np.ndarray | None = None
     trace_wet_precip_by_node: np.ndarray | None = None
     trace_dry_runoff_by_node: np.ndarray | None = None
@@ -676,14 +684,23 @@ def _trace_node_source(accounting, rates, climate, members, dt_step):
         ) * dt_step
 
 
-def _trace_body_losses(accounting, evaporated, members, level, dt_step, evaporation, sublimation, hypsometry):
-    if accounting.trace_evaporation_by_node is None:
+def _book_body_losses(accounting, lost, members, level, dt_step, evaporation, sublimation, hypsometry):
+    """Book one body's integrated loss as open-water evaporation and ice-season sublimation,
+    split at its solved level (#757)."""
+    if lost <= 0.0:
+        return
+    if sublimation is None and accounting.trace_evaporation_by_node is None:
+        accounting.evaporation_total += lost
         return
     evaporation_loss, sublimation_loss = _loss_by_node(
-        evaporated, members, level, dt_step, evaporation, sublimation, hypsometry
+        lost, members, level, dt_step, evaporation, sublimation, hypsometry
     )
-    accounting.trace_evaporation_by_node[members] += evaporation_loss
-    accounting.trace_sublimation_by_node[members] += sublimation_loss
+    sublimated = float(sublimation_loss.sum())
+    accounting.sublimation_total += sublimated
+    accounting.evaporation_total += lost - sublimated
+    if accounting.trace_evaporation_by_node is not None:
+        accounting.trace_evaporation_by_node[members] += evaporation_loss
+        accounting.trace_sublimation_by_node[members] += sublimation_loss
 
 
 def _integrate_body_volume(available, members, cap_level, dry_level, dt_step, evaporation, sublimation, hypsometry):
@@ -869,14 +886,13 @@ def _advance_prognostic_body(
     if body.drains_at_floor:
         cap_level = dry_level
     available = stored + input_volume
-    _, evap_volume, overflow, new_level = _integrate_body_volume(
+    _, lost_volume, overflow, new_level = _integrate_body_volume(
         available, members, cap_level, dry_level, dt_step, evaporation, sublimation, hypsometry
     )
-    _trace_body_losses(
-        accounting, evap_volume, members, new_level, dt_step, evaporation, sublimation, hypsometry
+    _book_body_losses(
+        accounting, lost_volume, members, new_level, dt_step, evaporation, sublimation, hypsometry
     )
     _record_tier_cap_overflow(accounting, body, is_sea, overflow, tier_cap_limits_body)
-    accounting.evaporation_total += evap_volume
     if len(members) == 1:
         node = int(members[0])
         z = float(hypsometry.elevation[node])
@@ -1110,11 +1126,13 @@ def solve_lakes_prognostic(
     """Integrate lake storage over this timestep, promoting and splitting bodies as water
     crosses hierarchy saddles (#588).
 
-    Each substep advances physical volume, limits evaporation to available liquid water, and
-    sends only water above a body's active cap to the leaf selected by the hierarchy outlet.
-    The uniform temporal partition is deterministic. An implicit volume update keeps the fast
-    evaporation response stable when one slice spans thousands of years, while spill cascades
-    settle through hierarchy receivers rather than repeated terrain-routing rounds.
+    Each substep advances physical volume, limits evaporation and sublimation to the water
+    available, and sends only water above a body's active cap to the leaf selected by the
+    hierarchy outlet. The uniform temporal partition is deterministic. An implicit volume update
+    keeps the fast loss response stable when one slice spans thousands of years, while spill
+    cascades settle through hierarchy receivers rather than repeated terrain-routing rounds.
+    `prev_lake_depth` is the opening water column: hydrology passes liquid and lake ice
+    together, because floating ice displaces its own mass of water (#757).
     """
     n = len(elevation)
     depth = np.asarray(prev_lake_depth, dtype=float).copy()
@@ -1244,7 +1262,10 @@ def solve_lakes_prognostic(
     storage_change = final_storage - total_initial
     # External supply and internal transfers are both included at their receiving body; the
     # global residual excludes internal transfers because each is debited and credited once.
-    residual = accounting.external_used_total - accounting.evaporation_total - accounting.overflow_out_total - storage_change
+    residual = (
+        accounting.external_used_total - accounting.evaporation_total - accounting.sublimation_total
+        - accounting.overflow_out_total - storage_change
+    )
     ledger = LakeStepLedger(
         external_supply_m3=accounting.external_used_total,
         evaporation_m3=accounting.evaporation_total,
@@ -1256,6 +1277,7 @@ def solve_lakes_prognostic(
         wet_precip_m3=accounting.wet_precip_total,
         dry_runoff_m3=accounting.dry_runoff_total,
         meltwater_m3=accounting.meltwater_total,
+        sublimation_m3=accounting.sublimation_total,
         river_storage_m3=accounting.river_storage_total,
     )
     _warn_if_depth_caps_bound(accounting)

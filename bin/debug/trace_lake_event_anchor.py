@@ -233,8 +233,7 @@ def lineage_budget(before, after, old_ids, new_ids, old_component_ids, new_compo
     physical_delta = basin_delta
     connectivity = component_delta - basin_delta
     trace = after.lake_solve_trace
-    ice_trace = after.lake_ice_trace
-    if trace is None or ice_trace is None:
+    if trace is None:
         raise RuntimeError("lake lineage trace was not recorded")
     node_ids = id_tuples(after.lake_trace_node_ids)
     basin_after = np.zeros(len(after.lake_depth), dtype=bool)
@@ -244,8 +243,8 @@ def lineage_budget(before, after, old_ids, new_ids, old_component_ids, new_compo
     dry_runoff = float(trace.dry_runoff_m3[basin_after].sum())
     meltwater = float(trace.meltwater_m3[basin_after].sum())
     evaporation = float(trace.evaporation_m3[basin_after].sum())
-    liquid_sublimation = float(trace.liquid_sublimation_m3[basin_after].sum())
-    ice_sublimation = float(ice_trace["sublimation_by_node_m3"][basin_after].sum())
+    # The solve charges all sublimation against the liquid-plus-ice column (#757).
+    sublimation = float(trace.liquid_sublimation_m3[basin_after].sum())
     transfer_net = 0.0
     transfer_edges = []
     transfer_in_by_node = np.zeros(len(after.lake_depth))
@@ -296,7 +295,7 @@ def lineage_budget(before, after, old_ids, new_ids, old_component_ids, new_compo
         elif target_inside and not source_inside:
             transfer_net += edge.volume_m3
             transfer_edges.append(boundary_transfer_record(edge, "in"))
-    expected_physical = supply - evaporation - liquid_sublimation - ice_sublimation + transfer_net
+    expected_physical = supply - evaporation - sublimation + transfer_net
     residual = physical_delta - expected_physical
     traced_overflow = sum(edge.volume_m3 for edge in trace.transfers if not edge.internal)
     global_storage_change = float(new_stock.sum() - old_storage(set(before_index)))
@@ -304,7 +303,6 @@ def lineage_budget(before, after, old_ids, new_ids, old_component_ids, new_compo
         float(trace.external_supply_m3.sum())
         - float(trace.evaporation_m3.sum())
         - float(trace.liquid_sublimation_m3.sum())
-        - float(ice_trace["sublimation_by_node_m3"].sum())
         - traced_overflow
         - global_storage_change
     )
@@ -316,10 +314,7 @@ def lineage_budget(before, after, old_ids, new_ids, old_component_ids, new_compo
         old_idx = before_index.get(node_id)
         storage_delta = float(new_stock[idx] - old_stock_current_area[idx]) if old_idx is not None else float(new_stock[idx])
         source = float(trace.external_supply_m3[idx])
-        losses = float(
-            trace.evaporation_m3[idx] + trace.liquid_sublimation_m3[idx]
-            + ice_trace["sublimation_by_node_m3"][idx]
-        )
+        losses = float(trace.evaporation_m3[idx] + trace.liquid_sublimation_m3[idx])
         outflow = float(transfer_out_by_node[idx])
         inflow = float(transfer_in_by_node[idx])
         node_residual = storage_delta - source + losses + outflow - inflow
@@ -351,8 +346,7 @@ def lineage_budget(before, after, old_ids, new_ids, old_component_ids, new_compo
         "dry_runoff_m3": dry_runoff,
         "meltwater_m3": meltwater,
         "evaporation_m3": evaporation,
-        "liquid_sublimation_m3": liquid_sublimation,
-        "ice_sublimation_m3": ice_sublimation,
+        "sublimation_m3": sublimation,
         "internal_transfer_net_m3": transfer_net,
         "transfer_edges": transfer_edges,
         "residual_m3": residual,
@@ -369,20 +363,16 @@ def lineage_budget(before, after, old_ids, new_ids, old_component_ids, new_compo
             "dry_runoff_m3": float(trace.dry_runoff_m3.sum()),
             "meltwater_m3": float(trace.meltwater_m3.sum()),
             "evaporation_m3": float(trace.evaporation_m3.sum()),
-            "liquid_sublimation_m3": float(trace.liquid_sublimation_m3.sum()),
-            "ice_sublimation_m3": float(ice_trace["sublimation_by_node_m3"].sum()),
+            "sublimation_m3": float(trace.liquid_sublimation_m3.sum()),
         },
         "trace_vs_whole_world": {
             "supply_error_m3": float(trace.external_supply_m3.sum() - after.lake_water_ledger.external_supply_m3),
             "wet_precip_error_m3": float(trace.wet_precip_m3.sum() - after.lake_water_ledger.wet_precip_m3),
             "dry_runoff_error_m3": float(trace.dry_runoff_m3.sum() - after.lake_water_ledger.dry_runoff_m3),
             "meltwater_error_m3": float(trace.meltwater_m3.sum() - after.lake_water_ledger.meltwater_m3),
-            "evaporation_error_m3": float(
-                trace.evaporation_m3.sum() + trace.liquid_sublimation_m3.sum()
-                - after.lake_water_ledger.evaporation_m3
-            ),
-            "ice_sublimation_error_m3": float(
-                ice_trace["sublimation_by_node_m3"].sum() - after.lake_water_ledger.sublimation_m3
+            "evaporation_error_m3": float(trace.evaporation_m3.sum() - after.lake_water_ledger.evaporation_m3),
+            "sublimation_error_m3": float(
+                trace.liquid_sublimation_m3.sum() - after.lake_water_ledger.sublimation_m3
             ),
             "traced_overflow_error_m3": float(traced_overflow - after.lake_water_ledger.overflow_out_m3),
             "global_trace_residual_m3": global_trace_residual,

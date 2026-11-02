@@ -953,6 +953,190 @@ def test_compute_hydrology_sublimates_covered_lake_ice_and_closes_its_ledger(mon
     )
 
 
+def test_lake_ice_thickness_follows_its_stefan_trajectory():
+    cap = hydrology.LAKE_ICE_MAX_THICKNESS_M
+    thickness = hydrology._lake_ice_thickness_m
+    # No loss: pure Stefan growth, sqrt(h0^2 + 2 q t), held at the cap.
+    assert thickness(np.array([0.5, 0.5]), np.array([0.1, 10.0]), np.zeros(2), cap, 3.0) == pytest.approx(
+        [np.sqrt(0.25 + 0.6), cap]
+    )
+    # No growth: a linear decline that stops at zero.
+    assert thickness(np.array([1.0, 1.0]), np.zeros(2), np.array([0.2, 2.0]), cap, 2.0) == pytest.approx([0.6, 0.0])
+    # A long step ends at equilibrium q/loss from either side, or at the cap below it.
+    q, loss = np.array([0.5, 0.5, 4.0]), np.array([0.8, 0.8, 0.8])
+    assert thickness(np.array([0.0, cap, 0.0]), q, loss, cap, 1_000.0) == pytest.approx([0.625, 0.625, cap])
+    # A short step lands on the integrated trajectory of dh/dt = q/h - loss.
+    for h0 in (0.1, 1.9):
+        h, dt = h0, 1e-4
+        for _ in range(int(round(1.5 / dt))):
+            h += dt * (0.5 / h - 0.8)
+        assert thickness(np.array([h0]), np.array([0.5]), np.array([0.8]), cap, 1.5)[0] == pytest.approx(h, rel=1e-3)
+
+
+def test_advance_lake_ice_splits_the_solved_column_without_losing_water():
+    rng = np.random.default_rng(757)
+    n = 200
+    prior = rng.uniform(0.0, 1.834, n)
+    column = np.where(rng.random(n) < 0.2, 0.0, rng.uniform(0.0, 5.0, n))
+    area = rng.uniform(1e8, 1e10, n)
+    mean, amplitude, cover = rng.uniform(-20.0, 10.0, n), rng.uniform(0.0, 15.0, n), rng.random(n)
+    ice, liquid, budget = hydrology.advance_lake_ice(prior, column, area, mean, amplitude, cover, 100_000.0)
+    assert np.allclose(ice + liquid, column, rtol=0.0, atol=1e-12)
+    assert np.all(ice >= 0.0) and np.all(liquid >= 0.0)
+    assert np.all(ice <= np.minimum(hydrology.LAKE_ICE_MAX_THICKNESS_M * hydrology.LAKE_ICE_DENSITY_RATIO, column) + 1e-12)
+    assert np.all(ice[column == 0.0] == 0.0)  # a cell the solve left dry keeps no ice
+    assert "sublimation_m3" not in budget  # the solve books it
+    assert budget["freezing_m3"] - budget["melting_m3"] == pytest.approx(budget["ice_storage_change_m3"], rel=1e-12)
+    assert budget["ice_storage_change_m3"] == pytest.approx(float(np.dot(ice - prior, area)), rel=1e-12)
+    # A zero-length step changes no phase.
+    held, kept, _ = hydrology.advance_lake_ice(prior, prior + 1.0, area, mean, amplitude, cover, 0.0)
+    assert np.array_equal(held, prior) and np.allclose(kept, 1.0)
+
+
+def _cold_pit(prior_ice_m=0.0):
+    # A one-cell closed pit (node 29, 360 m deep) in a cold, dry band on a 300 m plateau. Warm
+    # rain beyond the band runs off into it. With no seasonal swing its water is ice-covered all
+    # year, so it loses water only by sublimation.
+    elevation = np.full(40, 300.0)
+    elevation[0:15] = -100.0
+    elevation[29] = -60.0
+    temperature = np.full(40, 15.0)
+    temperature[22:37] = -3.0
+    precipitation = np.where(temperature < 0.0, 0.0, 800.0)
+    lake_ice = np.zeros(40)
+    lake_ice[29] = prior_ice_m
+    plate = quad_plate(0, "continental", columns=_row(40), elevation=elevation, lake_ice_m=lake_ice)
+    return World(seed=0, plates=[plate]), plate, precipitation, temperature
+
+
+def _step_cold_pit(world, plate, precipitation, temperature, years, amplitude_c=0.0):
+    fields = hydrology.compute_hydrology(
+        world, precipitation, temperature, years=years, seasonal_amplitude_at_nodes=np.full(40, amplitude_c)
+    )
+    plate.set_fields_on_plate(
+        lake_depth=fields.lake_depth, lake_ice_m=fields.lake_ice_m,
+        glacier_depth=fields.glacier_depth, river_water_m=fields.river_water_m,
+    )
+    return fields
+
+
+def _hold_lake_surface_at_air_temperature(monkeypatch):
+    """Take lake water temperature from the air at the bed, as #754's level-lag knockout did,
+    so last step's water level can't change this step's climate."""
+    monkeypatch.setattr(
+        hydrology, "_lake_water_surface_temperature_c",
+        lambda air_c, ocean_c, is_ocean, *_: np.where(is_ocean, ocean_c, air_c),
+    )
+
+
+def test_lake_ice_sublimation_grows_with_step_length_at_its_closed_form_rate(monkeypatch):
+    # Sublimation used to be charged after the lake solve, through an integral that saturated,
+    # so a cold lake lost about 42 m whatever the step length (#754). It's now a loss in the
+    # solve's implicit balance: the rate times the solved wet area times the step. From one
+    # settled state, the lake loses 1,000 times as much in 1 Myr as in 1 kyr (#757).
+    _hold_lake_surface_at_air_temperature(monkeypatch)
+    world, plate, precipitation, temperature = _cold_pit()
+    for _ in range(3):
+        _step_cold_pit(world, plate, precipitation, temperature, 100_000.0)
+    settled = {
+        name: plate.collect(name).copy()
+        for name in ("lake_depth", "lake_ice_m", "glacier_depth", "river_water_m")
+    }
+    sublimated_m3 = {}
+    for years in (1_000.0, 100_000.0, 1_000_000.0):
+        plate.set_fields_on_plate(**settled)
+        fields = _step_cold_pit(world, plate, precipitation, temperature, years)
+        column = fields.lake_depth + fields.lake_ice_m
+        assert np.flatnonzero(column > 0.0).tolist() == [29]
+        level = fields.hypsometry.level_from_depth(column[[29]], np.array([29]))[0]
+        wet_area_m2 = fields.hypsometry.wet_area(level, np.array([29]))
+        ledger = fields.lake_water_ledger
+        assert ledger.sublimation_m3 == pytest.approx(
+            hydrology.LAKE_ICE_SUBLIMATION_M_PER_YR * wet_area_m2 * years, rel=1e-9
+        )
+        assert ledger.evaporation_m3 == 0.0  # no open-water season
+        assert abs(ledger.residual_m3) <= 1e-9 * ledger.external_supply_m3
+        sublimated_m3[years] = ledger.sublimation_m3
+    assert sublimated_m3[100_000.0] / sublimated_m3[1_000.0] == pytest.approx(100.0, rel=1e-6)
+    assert sublimated_m3[1_000_000.0] / sublimated_m3[1_000.0] == pytest.approx(1_000.0, rel=1e-6)
+
+
+def test_a_lake_frozen_to_its_bed_steps_like_the_same_water_left_liquid():
+    # Last step's lake is its liquid and ice together, since floating ice displaces its own
+    # mass of water. Every lagged reader (wet area for rain, water-surface temperature, spill
+    # routing, river reaches) must see that column, as the solve does, or rain on a lake frozen
+    # to its bed is routed as dry-land runoff (#757 review).
+    def step(lake_depth, lake_ice):
+        elevation = np.full(40, 300.0)
+        elevation[0:15] = -100.0
+        elevation[29] = 100.0
+        temperature = np.full(40, 15.0)
+        temperature[22:37] = 2.0
+        depth, ice = np.zeros(40), np.zeros(40)
+        depth[29], ice[29] = lake_depth, lake_ice
+        plate = quad_plate(
+            0, "continental", columns=_row(40), elevation=elevation, lake_depth=depth, lake_ice_m=ice
+        )
+        return hydrology.compute_hydrology(
+            World(seed=0, plates=[plate]), np.full(40, 800.0), temperature, years=100_000.0,
+            seasonal_amplitude_at_nodes=np.full(40, 15.0),
+        )
+
+    liquid, frozen = step(1.0, 0.0), step(0.0, 1.0)
+    assert frozen.lake_external_wet_precip_m3_per_yr[29] > 0.0
+    for name in ("lake_external_wet_precip_m3_per_yr", "lake_external_supply_m3_per_yr", "lake_depth", "lake_ice_m"):
+        np.testing.assert_allclose(getattr(frozen, name), getattr(liquid, name), rtol=1e-12, atol=1e-12)
+    assert frozen.lake_water_ledger.sublimation_m3 == pytest.approx(liquid.lake_water_ledger.sublimation_m3, rel=1e-12)
+
+
+@pytest.mark.parametrize("lagged_surface", [False, True], ids=["fixed-surface", "lagged-surface"])
+def test_cold_closed_lake_reaches_one_level_whatever_its_prior_ice(lagged_surface, monkeypatch):
+    # With sublimation charged after the solve, this pit filled to its rim and was stripped
+    # whenever its stored ice sat on equilibrium, so at fixed climate it went from full to
+    # empty every step (#754). In the solve, sublimation balances supply at one level, and the
+    # ice layer is a split of that column, so prior ice changes neither (#757). The lagged run
+    # adds a seasonal swing, so the ice-free share, and with it evaporation against
+    # sublimation, follows the water-surface temperature that last step's level sets.
+    amplitude_c = 6.0 if lagged_surface else 0.0
+    if not lagged_surface:
+        _hold_lake_surface_at_air_temperature(monkeypatch)
+    runs = []
+    for prior_ice_m in (0.0, hydrology.LAKE_ICE_MAX_THICKNESS_M * hydrology.LAKE_ICE_DENSITY_RATIO):
+        world, plate, precipitation, temperature = _cold_pit(prior_ice_m)
+        runs.append([
+            _step_cold_pit(world, plate, precipitation, temperature, 100_000.0, amplitude_c) for _ in range(6)
+        ])
+    for steps in runs:
+        column = np.array([fields.lake_depth[29] + fields.lake_ice_m[29] for fields in steps])
+        assert column.min() > 0.0  # never stripped
+        # The implicit solve approaches its level from one side, so it never swings back.
+        changes = np.diff(column)
+        significant = np.abs(changes) > 1e-12 * column[-1]
+        assert np.all(np.sign(changes[significant]) == np.sign(changes[0]))
+        # Each step closes most of the remaining gap, with or without the lagged feedback.
+        later = np.abs(changes[1:])[significant[1:]]
+        assert np.all(later[1:] <= 0.1 * later[:-1])
+        assert abs(changes[-1]) <= 1e-9 * column[-1]
+        assert abs(steps[-1].lake_depth[29] - steps[-2].lake_depth[29]) <= 1e-9 * column[-1]
+        final = steps[-1].lake_water_ledger
+        assert final.overflow_out_m3 == 0.0
+        assert final.evaporation_m3 + final.sublimation_m3 == pytest.approx(final.external_supply_m3, rel=1e-6)
+        assert final.sublimation_m3 > 0.0
+        assert (final.evaporation_m3 > 0.0) == lagged_surface  # only the swing opens an ice-free season
+        for fields in steps:
+            ledger, land = fields.lake_water_ledger, fields.land_water_ledger
+            assert abs(ledger.residual_m3) <= 1e-9 * ledger.external_supply_m3
+            assert abs(land.residual_m3) <= 1e-9 * (land.rain_m3 + land.meltwater_m3)
+    # With the lag, the first step's surface temperature reads the opening column, prior ice
+    # included, so that step's level differs by a few percent; one step later it doesn't.
+    first, rel = (1, 1e-2) if lagged_surface else (0, 1e-3)
+    for no_ice, full_ice in zip(runs[0][first:], runs[1][first:]):
+        for name in ("lake_depth", "lake_ice_m"):
+            assert getattr(full_ice, name)[29] == pytest.approx(getattr(no_ice, name)[29], rel=rel)
+    for name in ("lake_depth", "lake_ice_m"):
+        assert getattr(runs[1][-1], name)[29] == pytest.approx(getattr(runs[0][-1], name)[29], rel=1e-9)
+
+
 @pytest.mark.parametrize(
     "cold", [slice(28, 31), slice(33, 34), slice(20, 34)], ids=["cold-pit", "one-cold-member", "cold-band"]
 )

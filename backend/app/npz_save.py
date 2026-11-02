@@ -88,6 +88,16 @@ _DERIVED_SCRATCH = frozenset(
 )
 
 
+# Dataclass fields this build no longer declares, by class, that saves from an earlier build
+# still carry. `thaw` drops them before rebuilding the class, so those saves load; any other
+# field the class lacks still fails the load as a changed shape. A retired name stays reserved:
+# remove its entry before reusing it, or saves would silently drop the new field.
+_RETIRED_FIELDS = {
+    # A transient per-node lake-ice trace, saved empty unless lineage tracing was on (#757).
+    "app.hydroclimate.hydrology.HydrologyFields": frozenset({"lake_ice_trace"}),
+}
+
+
 def _drop_for(*, profile: str) -> frozenset:
     """The world-attribute names the save omits. `exact` keeps every data cache;
     `default` drops the erosion cache; `compact` additionally drops the step-read
@@ -262,8 +272,10 @@ def thaw(node, zf: zipfile.ZipFile, plates_by_id: dict | None = None):
     the plates are built; a reference with no table (or to an unknown id) is corrupt."""
     if isinstance(node, dict) and set(node) == {"__dc__", "fields"}:
         cls = _resolve(node["__dc__"])
+        retired = _RETIRED_FIELDS.get(node["__dc__"], frozenset())
+        fields = {k: v for k, v in node["fields"].items() if k not in retired}
         try:
-            return cls(**{k: thaw(v, zf, plates_by_id) for k, v in node["fields"].items()})
+            return cls(**{k: thaw(v, zf, plates_by_id) for k, v in fields.items()})
         except TypeError as exc:
             raise _corrupt(f"v5 dataclass {node['__dc__']!r} changed shape: {exc}") from exc
     if isinstance(node, dict) and set(node) == {"__dclist__", "cols"}:
