@@ -357,3 +357,12 @@ verdict or a per-step one is right can't be read from these runs; there is no in
 ocean-ocean polarity, as consumption evidence mostly records the deform shuffle.
 
 The dated pattern is a proxy, and the gap's sensitivity, step size and seed count remain untested.
+
+**Owner decision (2026-11-02), after the rerun.** The project owner accepts the age read despite its
+20.7% reversal, judging the 10% limit too strict against a geological estimate of about 15%. This
+overrides a frozen limit after the result was seen; it is not a pass. Two cautions stand. Most
+reversals come from tracks sliding onto other crust, not from plates changing roles, so they don't
+measure the same thing as the 15% estimate. And 20.7% still exceeds that figure. With oceanic-upper
+events counted, rollback has events on all three seeds (1 / 18 / 1), so all four settings pass the D1
+rule. The plate-count bound still fails, and the owner chose to start D2 anyway, since D2's route
+outcomes are what can tighten that worst case.
