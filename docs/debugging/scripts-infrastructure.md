@@ -48,6 +48,23 @@ backend/.venv/bin/python bin/debug/convert_legacy_saves.py SAVE.mbworld \
     --out analysis/issue248/conversions [--steps 3] [--render] [--jobs 4]
 ```
 
+### `date_saved_world.py`
+
+Writes a copy of a save with its starting rock dated the way new worlds are (#747). Each cell
+holding the `-1.0` sentinel in `node_created_years` takes a negative date: ocean ages away from
+the save's ridges and continental crust away from its cratons, ranked by area onto the
+Earth-like distributions. Cells with a real date keep it and take no part in the ranking, and
+no other state changes, so the copy evolves exactly as the source does.
+
+Ridges come from the plate motions stored at the save's time, not those of t=0, so this is an
+approximation: `World.initial_rock_ages` keys on the save's plate ids, and each record carries
+`dated_at_years`. The source is never overwritten, `--out` defaults to `<save>-dated.mbworld`,
+and a save with nothing undated writes nothing.
+
+```bash
+backend/.venv/bin/python bin/debug/date_saved_world.py SAVE.mbworld [--out DATED.mbworld] [--force]
+```
+
 ### `replay_logged_event.py`
 
 Replays one step recorded by the server's replay log and checks that it reproduces (#442).

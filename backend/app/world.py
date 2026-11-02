@@ -89,9 +89,9 @@ class World:
     plume_stream: dict = field(default_factory=dict)
     elapsed_years: float = 0.0
     next_plate_id: int = 0
-    # Per-plate ages assigned to the starting oceanic and continental crust at generation
-    # (#744). Node timestamps use the selected crust's negative years; this record preserves
-    # both draws and the plate's primary crust type for inspection. Old saves backfill empty.
+    # Each plate's primary crust type and the youngest, mean and oldest of the starting ages
+    # stamped on it (#744, #747), for inspection: `node_created_years` holds the ages
+    # themselves, as negative years. Old saves backfill empty.
     initial_rock_ages: dict[int, dict[str, float | str]] = field(default_factory=dict)
     # Count of step_world calls on this world. Drives the cadence of merge_split.py's
     # geometric defragmentation pass (see DEFRAG_INTERVAL_STEPS) -- a step counter, not a
@@ -821,7 +821,6 @@ def generate_world_progress(
         cratons_first=cratons_first,
         cratons_first_setup=layout_setup,
     )
-    initial_age_records = initial_rock_ages.assign_initial_rock_ages(plates, seed)
     if lithosphere_plate.uses_cratons_first_layout(cratons_first, sketch, premade_world_id):
         yield ("progress", 1 / 3, "Creating cratons")
     else:
@@ -850,7 +849,6 @@ def generate_world_progress(
         plates=plates,
         mantle_centers=mantle_centers,
         next_plate_id=len(plates),
-        initial_rock_ages=initial_age_records,
         axial_tilt_deg=axial_tilt_deg if axial_tilt_deg is not None else DEFAULT_AXIAL_TILT_DEG,
         premade_world_id=premade_world_id,
         node_density=node_density,
@@ -882,6 +880,10 @@ def generate_world_progress(
     # subdivision of the final third, same fiction as the thirds themselves (#611).
     if clock.due():
         yield ("heartbeat", 3 / 4)
+
+    # After the relief passes, once crust types have settled. The solve is read-only: it only
+    # says which boundaries are ridges, so plate motion and the world's streams are untouched.
+    world.initial_rock_ages = initial_rock_ages.assign_initial_rock_ages(world, torque.solve_plates_quasistatic(world))
 
     n_continents = sum(1 for p in plates if p.crust_type == "continental")
     for tick in finish_generation(

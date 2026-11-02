@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 from typing import TYPE_CHECKING
 
-from . import geometry, lithosphere, noise, rheology, torque
+from . import geometry, lithosphere, noise, torque
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from .hydroclimate import biomes, climate, hydrology
 from .plates import PLANET_RADIUS_KM, collect_all_elevation, gather_node_positions
@@ -126,14 +126,7 @@ def apply_predicted_orogens(world: "World") -> None:
         inputs = torque.gather_boundary_force_inputs(plate, neighbours, spacing, reach)
         if not neighbours:
             continue
-        neighbour_omega = np.zeros_like(inputs.neighbor_omega)
-        for neighbour in neighbours:
-            mask = inputs.neighbor_plate_id == neighbour.plate_id
-            if np.any(mask):
-                neighbour_omega[mask] = predicted[neighbour.plate_id]
-        closing = rheology.normal_closing_rate_m_per_s(
-            predicted[plate.plate_id], neighbour_omega, inputs.own_points, inputs.direction_to_neighbor
-        )
+        closing = torque.closing_rate_under(predicted, plate, neighbours, inputs)
         continental = effective_is_continental_from_codes(
             inputs.own_crust_type_codes, plate.crust_type == "continental"
         )
