@@ -52,8 +52,20 @@ def assign_initial_rock_ages(plates: list[Plate], seed: int) -> dict[int, dict[s
 
 def sample_plate_ages(rng: np.random.Generator) -> tuple[float, float]:
     """Draw one oceanic and continental age in positive years before t=0."""
-    oceanic_age_years = float(rng.triangular(0.0, 0.0, OCEANIC_MAX_AGE_YEARS))
+    oceanic_age_years = _non_sentinel_age(rng.triangular(0.0, 0.0, OCEANIC_MAX_AGE_YEARS))
     era = str(rng.choice(CONTINENTAL_ERA_NAMES, p=CONTINENTAL_ERA_PROBABILITIES))
     era_min, era_max = CONTINENTAL_AGE_RANGES_YEARS[era]
-    continental_age_years = float(rng.uniform(era_min, era_max))
+    continental_age_years = _non_sentinel_age(rng.uniform(era_min, era_max))
     return oceanic_age_years, continental_age_years
+
+
+def _non_sentinel_age(age: float) -> float:
+    """Keep generated timestamps strictly negative and distinct from the -1 save sentinel."""
+    age = float(age)
+    if age == 0.0:
+        # Zero would be drawn as a new node at t=0, and is not before the simulation start.
+        age = float(np.nextafter(0.0, 1.0))
+    elif age == 1.0:
+        # The timestamp is stored as -age; reserve exactly -1.0 for old saves.
+        age = float(np.nextafter(1.0, np.inf))
+    return age

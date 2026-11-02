@@ -22,6 +22,14 @@ def test_plate_age_samples_match_the_configured_distributions():
     np.testing.assert_allclose(shares, initial_rock_ages.CONTINENTAL_ERA_PROBABILITIES, atol=0.03)
 
 
+def test_exact_zero_and_one_year_draws_stay_distinct_from_time_zero_and_sentinel():
+    ages = [initial_rock_ages._non_sentinel_age(age) for age in (0.0, 1.0)]
+
+    assert all(age > 0.0 for age in ages)
+    assert all(-age < 0.0 for age in ages)
+    assert all(-age != -1.0 for age in ages)
+
+
 def test_generation_stamps_each_crust_type_and_records_both_plate_ages():
     world = generate_world(seed=744, num_plates=6, node_density=0.5)
 
