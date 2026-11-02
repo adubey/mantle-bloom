@@ -381,7 +381,8 @@ def _sector_targets(points, seed, strike, targets, distances):
 
 def route_by_daughters(plate, points, seed, extension, forbidden, resistance, areas, reach_rad):
     """Two node-disjoint arms from `seed` to the plate boundary, either side of the strike: the
-    cheapest pair of sector endpoints whose route leaves both daughters at MIN_DAUGHTER_SHARE.
+    cheapest pair of sector endpoints whose route leaves both daughters at MIN_DAUGHTER_SHARE and
+    doesn't hug the plate margin past ROUTE_MARGIN_MAX_SHARE.
 
     Returns (route, status, cheapest_separating). A site is a true barrier when open rock does not
     reach the boundary on both sides; that is allowed, and the rift stops as weakened rock."""
@@ -415,15 +416,23 @@ def route_by_daughters(plate, points, seed, extension, forbidden, resistance, ar
     if not pairs:
         return None, "no_second_arm", None
     status, cheapest = "does_not_separate", None
+    band_rad = ROUTE_MARGIN_BAND_KM * 1e3 / lithosphere.PLANET_RADIUS_M
     for _cost, first, second_previous, other in sorted(pairs, key=lambda pair: pair[0]):
         route = _walk(second_previous, other)[::-1] + first[1:]
         pieces = split_by_route(plate, points, route, areas)
         if pieces is None:
             continue
-        if min(areas[pieces].sum(), areas[~pieces].sum()) >= MIN_DAUGHTER_SHARE * areas.sum():
-            return (route, pieces), "separates", cheapest
-        status = "daughter_too_small"
-        cheapest = cheapest or (route, pieces)
+        if min(areas[pieces].sum(), areas[~pieces].sum()) < MIN_DAUGHTER_SHARE * areas.sum():
+            if status != "hugs_margin":
+                status = "daughter_too_small"
+            cheapest = cheapest or (route, pieces)
+            continue
+        # The cheapest size-clearing pair often runs an arm along the edge to enclose just enough
+        # area; D2's first run failed route shape on that (#737), so such a route is skipped.
+        if margin_share(points, route, edge, band_rad) > ROUTE_MARGIN_MAX_SHARE:
+            status = "hugs_margin"
+            continue
+        return (route, pieces), "separates", cheapest
     return None, status, cheapest
 
 

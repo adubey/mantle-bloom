@@ -352,3 +352,29 @@ def test_craton_budget_scales_with_the_run_and_counts_only_gated_breakups():
               _routed(80.0, "transtension", "daughter_too_small", craton_detached_km2=9000.0)]
     row = probe.craton_budget_row(_report(1, events))
     assert (row["budget_km2"], row["detached_km2"], row["passes"]) == (4000.0, 3000.0, True)
+
+
+def test_router_skips_a_route_that_hugs_the_margin_for_the_next_cheapest():
+    size = 41
+    plate = _GridPlate(size, 0.5, {})
+    # A cheap corridor three cells in from the south edge, below a site six cells in: the cheapest
+    # route drops to it and carves the southern rows off as a 7% daughter along the margin.
+    seed = int(plate.index[6, size // 2])
+    resistance = np.ones(plate.node_count())
+    resistance[plate.index[3]] = 0.05
+    none = np.zeros(plate.node_count(), dtype=bool)
+    args = (plate, plate.points, seed, np.array([0.0, 0.0, 1.0]), none, resistance, plate.node_areas_m2(),
+            np.radians(1.0))
+    edge = probe._edge_cells(plate)
+    original = probe.ROUTE_MARGIN_BAND_KM, probe.ROUTE_MARGIN_MAX_SHARE
+    try:
+        probe.ROUTE_MARGIN_BAND_KM, probe.ROUTE_MARGIN_MAX_SHARE = 250.0, 1.0
+        band = probe.ROUTE_MARGIN_BAND_KM * 1e3 / probe.lithosphere.PLANET_RADIUS_M
+        loose = probe.route_by_daughters(*args)[0][0]
+        probe.ROUTE_MARGIN_MAX_SHARE = 0.2
+        found, status, _cheapest = probe.route_by_daughters(*args)
+    finally:
+        probe.ROUTE_MARGIN_BAND_KM, probe.ROUTE_MARGIN_MAX_SHARE = original
+    assert probe.margin_share(plate.points, loose, edge, band) > 0.2
+    assert status == "separates"
+    assert probe.margin_share(plate.points, found[0], edge, band) <= 0.2

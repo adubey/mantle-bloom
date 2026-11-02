@@ -86,7 +86,7 @@ snapshots. `--seed` is RFC 0010 Gate D1: one fresh world with production topolog
 just before topology, merging boundary fragments into fronts and tracking them until they persist
 for 2 Myr. `--no-detect` is its control arm, whose `fingerprint` must match. Gate D2 routes each event
 as it starts: arms run to the cheapest pair of boundary endpoints, spread by bearing, that leaves both
-daughters at 5% of the plate, and a site with no open path to the boundary on both sides is a barrier.
+daughters at 5% of the plate without hugging its margin, and a site with no open path to the boundary on both sides is a barrier.
 `--summarize` builds the D1 and D2 tables from the per-seed reports.
 
 ```bash
