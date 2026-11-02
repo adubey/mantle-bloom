@@ -122,5 +122,23 @@ under this step's inputs and at most 2 do at control steps. It counts as a sensi
 fraction lies between. E1 under last step's climate, and E2, are read as a change in that fraction;
 with 12 members, a gap under 5 members isn't called a difference.
 
-**Not tested:** other draws' drops. If time allows, the same factorial runs on the largest step of
+### Part B second amendment, after the ensembles
+
+Written after E1–E4 and before any run below, so it is post hoc too.
+
+E1–E3 found a change in the climate that isn't the noise, then E4's march path showed its form: on
+the drop step one substep takes the volume from 13.1 to 5.9 M km³, and it rebounds to about 9.8.
+
+| Run | What | Reads |
+|---|---|---|
+| E5 | Draw 1, 97.4: log every substep, capture the solve's node fields on any that moves volume over 15% | What the collapsing substep does, and where its ice goes |
+| E6 | Draw 0, 97.4: the 12-member ensemble | Does a draw with no drop have the same switch? |
+| E7 | Draw 2, 96.65, its largest step: the ensemble and substep log | Is draw 2's −12.3% the same event? |
+
+**Reading.** The collapse is a defect of the solve if the ledger can't account for it as physical
+melt, or if one substep removes ice no flux or melt rate at that substep's length could. It's the
+same event on draw 2 if that step holds one substep over 30% on the same plateau body. E6 and E7 use
+the same 5-member gap.
+
+**Not tested:** other draws' drops beyond these. If time allows, the same factorial runs on the largest step of
 draw 2. Any change to the drift period, the noise or the march is proposed separately.
