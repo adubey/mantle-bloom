@@ -100,6 +100,7 @@ def add_arguments(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--adopt-opening", type=float, nargs=2, default=None, metavar=("MYR", "FACTOR"), help="#741: scale the opening ice of the step closing at MYR, and keep the result")
     ap.add_argument("--hold-noise-from", type=float, default=None, help="#741: hold the drifting noise at this time (Myr) onwards")
     ap.add_argument("--substep-log-myr", type=float, default=None, help="#741: log every substep of this step, and capture any that moves the volume over 15%%")
+    ap.add_argument("--g1-myr", type=float, nargs="*", default=[], help="#766: steps (by closing time) to measure G1's response times on")
     ap.add_argument("--capture-dir", type=Path, default=None, help="#741: where --factorial-myr writes its node fields and cells")
 
 
@@ -321,6 +322,21 @@ def install_factorial(args: argparse.Namespace, world) -> None:
     hydrology._g0_march_ice = wrapped
 
 
+def lake_under_ice_share(world, hydrology) -> float | None:
+    """#766, G1: liquid lake water under visible glacier ice, as a share of all lake water."""
+    from app import plates as plates_mod  # noqa: E402
+    from app.elevation_lines import line_spacing_rad  # noqa: E402
+
+    hydro = world.hydrology_cache
+    if hydro is None:
+        return None
+    areas = plates_mod.collect_all_accounting_areas_m2(hydro.plates_in_order, line_spacing_rad(world.node_density))
+    lake = np.clip(hydro.lake_depth, 0.0, None) * areas
+    under = hydro.glacier_depth >= hydrology.GLACIER_VISIBLE_DEPTH_M
+    total = float(lake.sum())
+    return round(float(lake[under].sum()) / total, 6) if total > 0.0 else 0.0
+
+
 def summarise_roots(log: list[dict]) -> dict:
     multi = [r for r in log if r["stable"] > 1]
     return {
@@ -393,6 +409,10 @@ def main() -> None:
     result["config"] = configure(args, world)
     if args.factorial_myr or args.adopt_opening is not None or args.substep_log_myr is not None:
         install_factorial(args, world)
+    if args.g1_myr:
+        import g1_march
+
+        g1_march.install(args, world)
     if args.hold_noise_from is not None:
         drifting = climate._drifting_white_noise
         held = args.hold_noise_from * 1e6
@@ -421,6 +441,7 @@ def main() -> None:
             "ice_max_depth_m": float(depth.max()) if len(depth) else 0.0,
             "sea_level_m": float(world.sea_level_m),
             "ice_age_intensity": round(climate.ice_age_glacial_intensity(world), 4),
+            "lake_under_ice_share": lake_under_ice_share(world, hydrology),
         }
 
     def after_step(seconds: float) -> None:
