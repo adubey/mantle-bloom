@@ -1092,6 +1092,7 @@ def _g0_march_ice(world, points, neighbor_idx, elevation, deflection, areas, pre
         "substeps": substeps, "marched_years": elapsed, "held_years": max(remaining, 0.0), "settled": settled >= g0.march_patience,
         "last_change": None if change is None else round(change, 6), "sea_level_m": sea_level,
         "volume_path_km3": [round(v / 1e9) for v in volumes[:: max(1, len(volumes) // 12)]],
+        "volume_full_km3": [round(v / 1e9) for v in volumes],
     })
     ice_sheet.G0_MARCH_LOG[-1].update(flips=flips, last_substep_years=sub)
     ice_sheet.G0.reference_depth = None
