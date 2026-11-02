@@ -71,6 +71,8 @@ TUNING_MULTIPLIER_FIELDS = (
     "ocean_deposition_multiplier",
     "collision_uplift_multiplier",
     "collision_uplift_reach_multiplier",
+    "contact_drag_multiplier",
+    "craton_drag_multiplier",
     "volcanism_multiplier",
     "fault_relief_multiplier",
     "plume_multiplier",
@@ -471,8 +473,9 @@ class World:
     # solar_multiplier. Every one is a dimensionless multiplier, 1.0 == the model's
     # untuned behaviour exactly (so an old save, or a user who never opens the panel, is
     # bit-identical to before these existed). They exist because mantle-bloom's long-run
-    # land budget is a balance between a handful of erosion, deposition, uplift and
-    # volcanism processes whose individual hard-coded rates can't be re-tuned for one seed
+    # land budget is a balance between a handful of erosion, deposition, uplift,
+    # contact-braking and volcanism processes whose individual hard-coded rates
+    # can't be re-tuned for one seed
     # without regressing another -- these let the user rebalance a *live* world and watch
     # the result. Read directly off `world` by erosion.apply_erosion (the *_erosion_/
     # *_deposition_ knobs), quad_tectonics.deform (the collision_uplift_*
@@ -491,6 +494,8 @@ class World:
     ocean_deposition_multiplier: float = 1.0  # marine + beach sediment settling onto the shelf
     collision_uplift_multiplier: float = 1.0  # convergent mountain-building rate (rate, not reach)
     collision_uplift_reach_multiplier: float = 1.0  # horizontal reach of the collision/subduction uplift bands
+    contact_drag_multiplier: float = 1.0  # the whole RFC 0008 contact brake (relief, craton and jam factors combined)
+    craton_drag_multiplier: float = 1.0  # only the brake's craton component, against the relief term (#760)
     volcanism_multiplier: float = 1.0  # per-node eruption frequency *and* per-eruption elevation added
     # Fault-based-only: scales the relief individual fault traces stamp onto the terrain (see
     # faults._apply_plate_fault_relief's `rate_scale`). A true no-op in "boundary"

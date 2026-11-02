@@ -681,6 +681,9 @@ def contact_drag_pa_s_per_m(
     spacing_rad: float,
     craton_m: np.ndarray | None = None,
     jam: np.ndarray | None = None,
+    *,
+    contact_gain: float = 1.0,
+    craton_gain: float = 1.0,
 ) -> np.ndarray:
     """Per node, the contact drag coefficient in Pa*s/m: traction per unit relative velocity.
 
@@ -693,7 +696,9 @@ def contact_drag_pa_s_per_m(
     stays in [0, 1]: one bounded factor in place of the multiplicative overlap, relief and
     craton gains tuned against the old inert coefficient. A contact with no buoyant crust
     forced down, no relief and no craton resists with nothing until relief builds, as
-    Copley's resistance comes from mountain building."""
+    Copley's resistance comes from mountain building. `contact_gain` scales the whole
+    brake and `craton_gain` only its craton component (the live tuners are the world's
+    `contact_drag_multiplier`/`craton_drag_multiplier`, #760); both are 1.0-exact no-ops."""
     n = len(inputs.own_points)
     factor = np.zeros(n) if jam is None else np.asarray(jam, dtype=float).copy()
     if np.any(collision_mask):
@@ -702,12 +707,12 @@ def contact_drag_pa_s_per_m(
         relief = np.clip(elevation - CONTINENTAL_REFERENCE_ELEVATION_M, 0.0, None)
         relief_factor = np.clip(relief / COLLISION_RELIEF_FRICTION_SCALE_M, 0.0, 1.0)
         craton_factor = cratons.strength(craton_m[collision_mask]) if craton_m is not None else 0.0
-        factor[collision_mask] = np.maximum(factor[collision_mask], np.maximum(relief_factor, craton_factor))
+        factor[collision_mask] = np.maximum(factor[collision_mask], np.maximum(relief_factor, craton_gain * craton_factor))
     factor = np.clip(factor, 0.0, 1.0)
     v_ref_m_per_s = CONTACT_RESISTANCE_REF_CM_PER_YR * 0.01 / SECONDS_PER_YEAR
     node_area_m2 = plate.accounting_areas_m2(spacing_rad)
     boundary_length_m = boundary_node_length_m(inputs, spacing_rad)
-    return CONTACT_RESISTANCE_N_PER_M * boundary_length_m / (node_area_m2 * v_ref_m_per_s) * factor
+    return contact_gain * CONTACT_RESISTANCE_N_PER_M * boundary_length_m / (node_area_m2 * v_ref_m_per_s) * factor
 
 
 def collision_drag_coefficients(
@@ -717,6 +722,9 @@ def collision_drag_coefficients(
     spacing_rad: float,
     craton_m: np.ndarray | None = None,
     jam: np.ndarray | None = None,
+    *,
+    contact_gain: float = 1.0,
+    craton_gain: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Resistive drag at continent-continent contested nodes (`collision_mask`) and jammed
     contacts (`jam`), in `basal_drag_coefficients`' own affine `tau(omega) = b - K @ omega`
@@ -732,7 +740,9 @@ def collision_drag_coefficients(
     and resistance balance but never reverses it in one step."""
     if len(inputs.own_points) == 0:
         return np.zeros(3), np.zeros((3, 3))
-    coefficient = contact_drag_pa_s_per_m(plate, inputs, collision_mask, spacing_rad, craton_m, jam)
+    coefficient = contact_drag_pa_s_per_m(
+        plate, inputs, collision_mask, spacing_rad, craton_m, jam, contact_gain=contact_gain, craton_gain=craton_gain
+    )
     drag = coefficient > 0.0
     if not np.any(drag):
         return np.zeros(3), np.zeros((3, 3))
@@ -753,10 +763,15 @@ def contact_drag_force_vectors_n(
     spacing_rad: float,
     craton_m: np.ndarray | None = None,
     jam: np.ndarray | None = None,
+    *,
+    contact_gain: float = 1.0,
+    craton_gain: float = 1.0,
 ) -> np.ndarray:
     """Spatial contact/jam drag forces on all own nodes, in N."""
     force = np.zeros_like(inputs.own_points, dtype=float)
-    coefficient = contact_drag_pa_s_per_m(plate, inputs, collision_mask, spacing_rad, craton_m, jam)
+    coefficient = contact_drag_pa_s_per_m(
+        plate, inputs, collision_mask, spacing_rad, craton_m, jam, contact_gain=contact_gain, craton_gain=craton_gain
+    )
     active = coefficient > 0.0
     if np.any(active):
         relative_velocity_m_s = (
@@ -796,7 +811,10 @@ def gather_per_node_force_field(
         slab_drag_n=slab_drag_force_vectors_n(inputs, subducting_mask, spacing_rad, plate.omega),
         ridge_push_n=ridge_push_force_vectors_n(plate, inputs, divergent_mask, spacing_rad),
         basal_drag_n=basal_drag_force_vectors_n(plate, world, spacing_rad),
-        contact_drag_n=contact_drag_force_vectors_n(plate, inputs, collision_mask, spacing_rad, craton_m, jam),
+        contact_drag_n=contact_drag_force_vectors_n(
+            plate, inputs, collision_mask, spacing_rad, craton_m, jam,
+            contact_gain=world.contact_drag_multiplier, craton_gain=world.craton_drag_multiplier,
+        ),
     )
 
 
@@ -807,12 +825,17 @@ def collision_friction_torque(
     spacing_rad: float,
     craton_m: np.ndarray | None = None,
     jam: np.ndarray | None = None,
+    *,
+    contact_gain: float = 1.0,
+    craton_gain: float = 1.0,
 ) -> np.ndarray:
     """`collision_drag_coefficients` evaluated at the plate's current `omega` (`b - K @ omega`)
     -- a standalone entry point for tests / callers that just want the resistive torque, same
     role `slab_drag_torque`/`basal_drag_torque` play for their own `(b, K)` splits; `shift_plate`
     itself uses the split form for implicit integration."""
-    b, k = collision_drag_coefficients(plate, inputs, collision_mask, spacing_rad, craton_m, jam)
+    b, k = collision_drag_coefficients(
+        plate, inputs, collision_mask, spacing_rad, craton_m, jam, contact_gain=contact_gain, craton_gain=craton_gain
+    )
     return b - k @ plate.omega
 
 
@@ -1111,7 +1134,8 @@ def solve_plates_quasistatic(world, *, diagnostics: dict | None = None) -> dict[
             pair = (min(plate.plate_id, neighbour.plate_id), max(plate.plate_id, neighbour.plate_id))
             pair_mask = collision_mask & (inputs.neighbor_plate_id == neighbour.plate_id)
             _b_side, k_side = collision_drag_coefficients(
-                plate, inputs, pair_mask, spacing_rad, craton_m, jam
+                plate, inputs, pair_mask, spacing_rad, craton_m, jam,
+                contact_gain=world.contact_drag_multiplier, craton_gain=world.craton_drag_multiplier,
             )
             pair_side_k.setdefault(pair, {})[plate.plate_id] = k_side
 

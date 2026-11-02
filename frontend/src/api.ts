@@ -740,6 +740,8 @@ export const TUNING_MULTIPLIER_KEYS = [
   "ocean_deposition_multiplier",
   "collision_uplift_multiplier",
   "collision_uplift_reach_multiplier",
+  "contact_drag_multiplier",
+  "craton_drag_multiplier",
   "volcanism_multiplier",
   "fault_relief_multiplier",
 ] as const;

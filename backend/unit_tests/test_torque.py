@@ -173,6 +173,10 @@ def test_spatial_force_field_preserves_each_existing_torque_term():
 
     class FakeWorld:
         mantle_centers = []
+        # Mirrors World's untuned defaults (#760): this fake stands in for a
+        # world whose tuners were never touched.
+        contact_drag_multiplier = 1.0
+        craton_drag_multiplier = 1.0
 
     plate = FakePlate()
     subducting = np.ones(n, dtype=bool)
@@ -550,6 +554,9 @@ def _contact_band(spacing_rad: float, rows: int, hc: float = 70_000.0, hm: float
         def __init__(self):
             self.omega = np.array(omega, dtype=float)
 
+        def all_points_and_elevation(self):
+            return points, np.zeros(n)
+
         def accounting_areas_m2(self, spacing):
             return np.full(n, lithosphere.node_area_m2(spacing))
 
@@ -595,6 +602,64 @@ def test_contact_drag_factor_is_the_larger_of_relief_and_craton_and_stays_bounde
     flat, inputs, mask = _contact_band(spacing, 2, hc=35_000.0, hm=100_000.0)
     assert np.all(torque.contact_drag_pa_s_per_m(flat, inputs, mask, spacing, np.zeros(len(mask))) == 0.0)
     assert np.all(torque.contact_drag_pa_s_per_m(flat, inputs, mask, spacing, np.full(len(mask), 80_000.0)) == pytest.approx(full))
+
+
+def test_contact_drag_tuners_scale_the_whole_brake_and_the_craton_part():
+    # #760: both knobs are 1.0-exact no-ops. The whole-brake tuner scales the
+    # full per-node coefficient; the craton-only tuner scales just the craton
+    # factor against the relief term.
+    spacing = line_spacing_rad(1.0)
+    plate, inputs, mask = _contact_band(spacing, 2, hc=50_000.0, hm=140_000.0)
+    craton_m = np.full(len(mask), 80_000.0)
+    base = torque.contact_drag_pa_s_per_m(plate, inputs, mask, spacing, craton_m)
+    # 1.0 on either knob reproduces the untuned coefficient exactly.
+    np.testing.assert_allclose(
+        torque.contact_drag_pa_s_per_m(plate, inputs, mask, spacing, craton_m, contact_gain=1.0, craton_gain=1.0),
+        base,
+    )
+    # The whole-brake knob: 0 removes the drag, 2.0 doubles it.
+    assert np.all(torque.contact_drag_pa_s_per_m(plate, inputs, mask, spacing, craton_m, contact_gain=0.0) == 0.0)
+    np.testing.assert_allclose(
+        torque.contact_drag_pa_s_per_m(plate, inputs, mask, spacing, craton_m, contact_gain=2.0), 2.0 * base
+    )
+    # The craton-only knob: 0 drops the result to the relief term alone, and
+    # it never rescales the relief term itself.
+    no_craton = torque.contact_drag_pa_s_per_m(plate, inputs, mask, spacing, craton_m, craton_gain=0.0)
+    relief_only = torque.contact_drag_pa_s_per_m(plate, inputs, mask, spacing)
+    np.testing.assert_allclose(no_craton, relief_only)
+    assert np.all(no_craton < base)
+    # Above 1 the craton term saturates: the factor is maxed against relief and
+    # clipped to [0, 1], so a bigger craton knob never brakes past the factor-1
+    # coefficient (the jam=1 ceiling here).
+    ceiling = torque.contact_drag_pa_s_per_m(plate, inputs, mask, spacing, craton_m, jam=np.ones(len(mask)))
+    tuned3 = torque.contact_drag_pa_s_per_m(plate, inputs, mask, spacing, craton_m, craton_gain=3.0)
+    assert np.all(tuned3 <= ceiling)
+
+
+def test_world_brake_tuners_reach_the_assembled_contact_forces():
+    # #760 review: the multipliers live on the world, and
+    # gather_per_node_force_field is where the solver's inputs are assembled --
+    # the per-node contact forces must scale with the world's own values.
+    spacing = line_spacing_rad(1.0)
+    rate = mantle.cm_per_yr_to_rad_per_yr(4.0)
+    plate, inputs, mask = _contact_band(spacing, 2, hc=50_000.0, hm=140_000.0, omega=(0.0, 0.0, rate))
+    n = len(inputs.own_points)
+    craton_m = np.full(n, 80_000.0)
+    empty = np.zeros(n, dtype=bool)
+
+    def contact_forces(world, craton):
+        field = torque.gather_per_node_force_field(plate, world, inputs, spacing, empty, empty, mask, craton)
+        return field.contact_drag_n
+
+    def tuned(contact, craton_gain):
+        return SimpleNamespace(mantle_centers=[], contact_drag_multiplier=contact, craton_drag_multiplier=craton_gain)
+
+    base = contact_forces(tuned(1.0, 1.0), craton_m)
+    assert np.any(base != 0.0)
+    np.testing.assert_allclose(contact_forces(tuned(2.0, 1.0), craton_m), 2.0 * base)
+    assert np.all(contact_forces(tuned(0.0, 1.0), craton_m) == 0.0)
+    # Craton off == the same field gathered with no craton at the contact.
+    np.testing.assert_allclose(contact_forces(tuned(1.0, 0.0), craton_m), contact_forces(tuned(1.0, 1.0), None))
 
 
 def test_contact_drag_slows_but_never_reverses_a_plate_in_one_step():

@@ -569,6 +569,14 @@ rejected with a `400`.
 | `ocean_deposition_multiplier` | *settled* beach + marine sediment (see caveat below) | `erosion.apply_erosion` |
 | `collision_uplift_multiplier` | plastic crustal-thickening rate across the convergent band | `rheology.apply_convergent_deformation`'s `strength` arg, driven from `lithosphere_plate.boundary_context` |
 | `collision_uplift_reach_multiplier` | how far the shortening cascade carries a collision into the plate (`shortening.py`'s `reach_scale`); `<1` also weakens the contested-band thickening in proportion | `lithosphere_plate.boundary_context`, `shortening.py` |
+| `contact_drag_multiplier` | the whole RFC 0008 contact brake (relief, craton and jam factors); `0` disables that brake | `torque.contact_drag_pa_s_per_m`'s `contact_gain`, via `world` (#760) |
+| `craton_drag_multiplier` | only the brake's craton component, against the relief term | `torque.contact_drag_pa_s_per_m`'s `craton_gain`, via `world` (#760) |
+
+Neither knob touches the separate blocked-contact resistance in the same solve (RFC 0011's
+capacity from craton strength): `contact_drag_multiplier = 0` disables the RFC 0008 drag, not
+every form of collision resistance. The craton knob is bounded by the brake's own design --
+the craton term is `max`ed against relief and clipped to [0, 1], so values above 1 do nothing
+where relief already dominates or craton strength is saturated.
 | `volcanism_multiplier` | per-step eruption probability **and** metres added per eruption | `volcanism.apply_volcanic_activity` |
 
 **Mass-conservation caveats.** The erosion terms are scaled where they are computed, so the
