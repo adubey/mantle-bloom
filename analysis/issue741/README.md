@@ -29,9 +29,12 @@ period and over draws, match the per-step redraw's.
 4. **The +8.3% and −10.0% steps aren't changes in the ice.** Each closes inside its own march's
    scatter, and neither has a large substep.
 
-For the owner: whether finding 1 is enough to check #575's banding box; whether finding 2 needs
-work; and finding 3 for RFC 0015's D2 and G1, since a march substep longer than the ice's turnover
-can switch its state.
+**Owner's decisions, 2026-11-02:**
+- **Finding 1:** #575's banding item is reworded to "no shift on average", and land within ±2%
+  isn't required. The item is checked.
+- **Finding 2:** the 15–30° persistence is left for now.
+- **Finding 3:** it goes to a D2 revision, [#765](https://github.com/adubey/mantle-bloom/issues/765),
+  and to G1 run on the march, [#766](https://github.com/adubey/mantle-bloom/issues/766).
 
 ## Preregistration
 
@@ -280,7 +283,8 @@ as an observation, not a finding.
 **Judgement for the owner.** Nothing shifts, and the ocean is unchanged. The land can't be shown
 within ±2% at these draw counts, and the reason is the design: a slow texture leaves each world's
 land more or less wet for tens of Myr. More draws would narrow the average but not that spread.
-Checking #575's box on "no shift" is defensible; on "within ±2%" it isn't.
+Checking #575's box on "no shift" is defensible; on "within ±2%" it isn't. The owner chose "no shift"
+(2026-11-02).
 
 ### Part B: arm (m3)'s ice drops
 
