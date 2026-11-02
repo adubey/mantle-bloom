@@ -537,3 +537,25 @@ differs from the rescan's. Whole-world lake volume at 221.8 Myr is 2.54 million 
 checkpoint and 1.64 million km³ in the scan. In the scan's history, A's anchor reads dry, dry, 991,432,
 dry, dry, 768,249 km³ from 221.6 to 222.1 Myr, so the location flickers, but the detector records no
 qualifying reversal there.
+
+### Windows for G1
+
+The owner chose A, D and E on 2026-11-02. This keeps RFC 0016's replacement rule and three-window
+criterion unchanged: D replaces B, whose event was lost, and E replaces C, which fails the frozen
+screen. A stays, so the registered-window-has-no-priority clause of the rescan's rule is set aside
+for it. F isn't used.
+
+| Window | Replaces | Checkpoint SHA-256 | Frozen share | G0 source |
+|---|---|---|---:|---|
+| A | Stays | `9882568e681a0f9f207e3302453b3a92f18865d5640d7baa8d9d8eb09ab4633e` | 1.0% | `50f153ef` |
+| D | B | `6a8d6f90…` | 4.3% | `2e465887` |
+| E | C | `4045b915…` | 4.5% | `2e465887` |
+
+G1's pinned source is `0bda513d`, which is simulation-identical to both G0 sources. Anything later,
+including #745's starting rock ages, is unmeasured against these windows, so it needs a G0 rerun
+before it can replace that pin. Full hashes for D and E are in
+[`window-rescan-summary.json`](window-rescan-summary.json).
+
+G0 passes on these three windows: river law, reach closure, initial state, liquid ledger and the
+frozen screen. Two limits carry into G1. D and E share a basin, so the two-of-three test has two
+basins behind it, and A's checkpoint comes from an older source's history, with a one-way fill.
