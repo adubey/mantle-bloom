@@ -65,6 +65,9 @@ use a 0.01% tolerance against unrounded data. Record the SHA and commit for ever
 other heavy run on the machine; disclose overlap. E previously peaked at 4.5 GB, S at 7.1 GB;
 reserve 5 and 8 GB respectively. An increase above 25% in comparable median step runtime
 triggers investigation before delivery; it is a diagnostic threshold, not proof of a regression.
+While waiting for a quiet machine, a two-step E branch probe may run after a successful budget
+check to test settling and the loss audit at the first refill. Its timing is excluded from
+the runtime comparison; the run and any failure will still be recorded.
 
 ```bash
 backend/.venv/bin/python bin/debug/replay_lake_water_swing.py <checkpoint.mbworld> \
