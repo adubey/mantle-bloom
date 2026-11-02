@@ -2118,6 +2118,8 @@ def test_controls_tuning_multipliers_round_trip_and_validate(client):
 
     assert client.post("/world/controls", json={"volcanism_multiplier": -0.5}).status_code == 400
     assert world.volcanism_multiplier == 1.0  # rejected write did not land
+    assert client.post("/world/controls", json={"contact_drag_multiplier": -1.0}).status_code == 400
+    assert world.contact_drag_multiplier == 0.0  # rejected write did not land
 
 
 # --- Run status and checkpoint (#375) -------------------------------------------------------

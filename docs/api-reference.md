@@ -432,7 +432,8 @@ The body also accepts the sixteen **geomorphic-budget tuning multipliers**
 run is a matched plume-off twin -- see RFC 0007). Each is a dimensionless scale on
 one erosion / deposition / uplift / braking / volcanism process, default `1.0` (== untuned, bit for
 bit), and a negative value is a `400`. `contact_drag_multiplier` scales the whole RFC 0008
-contact brake; `craton_drag_multiplier` scales only its craton component (#760). See
+contact brake (not RFC 0011's blocked-contact resistance); `craton_drag_multiplier` scales
+only its craton component (#760). See
 [simulation-model/surface-processes.md#tuning-knobs](simulation-model/surface-processes.md#live-tuning-knobs-worldtuning_multiplier_fields) for what each one scales
 and measured effect sizes.
 

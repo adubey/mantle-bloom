@@ -38,6 +38,47 @@ def test_old_pickle_without_the_fields_reads_one():
         assert getattr(loaded, name) == 1.0
 
 
+def test_brake_multipliers_reach_the_quasistatic_solve(monkeypatch):
+    # #760 review: solve_plates_quasistatic passes the world's own multipliers
+    # into every assembled pair drag, so a live Controls change reaches the
+    # solver rather than only the coefficient function.
+    from app import torque
+
+    world = generate_world(seed=21, num_plates=8)
+    world.contact_drag_multiplier = 2.0
+    world.craton_drag_multiplier = 0.5
+    gains = []
+    real = torque.collision_drag_coefficients
+
+    def spy(*args, **kwargs):
+        gains.append((kwargs["contact_gain"], kwargs["craton_gain"]))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(torque, "collision_drag_coefficients", spy)
+    torque.solve_plates_quasistatic(world)
+    assert gains and all(gain == (2.0, 0.5) for gain in gains)
+
+
+def test_brake_multipliers_round_trip_and_default_when_absent():
+    # #760 review: tuned values survive a save/load round trip, and a save
+    # written before the fields existed (no instance attributes) reads the
+    # untuned 1.0 from the class defaults -- no backfill needed.
+    from app import persistence
+
+    world = generate_world(seed=5, num_plates=4, node_density=0.5, climate_density=0.5, fluid_density=0.5)
+    world.contact_drag_multiplier = 0.25
+    world.craton_drag_multiplier = 3.0
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert loaded.contact_drag_multiplier == 0.25
+    assert loaded.craton_drag_multiplier == 3.0
+
+    world.__dict__.pop("contact_drag_multiplier")
+    world.__dict__.pop("craton_drag_multiplier")
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert loaded.contact_drag_multiplier == 1.0
+    assert loaded.craton_drag_multiplier == 1.0
+
+
 def test_erosion_multipliers_at_one_are_bit_identical_to_untuned():
     a = generate_world(seed=21, num_plates=8)
     b = generate_world(seed=21, num_plates=8)

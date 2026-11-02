@@ -825,12 +825,17 @@ def collision_friction_torque(
     spacing_rad: float,
     craton_m: np.ndarray | None = None,
     jam: np.ndarray | None = None,
+    *,
+    contact_gain: float = 1.0,
+    craton_gain: float = 1.0,
 ) -> np.ndarray:
     """`collision_drag_coefficients` evaluated at the plate's current `omega` (`b - K @ omega`)
     -- a standalone entry point for tests / callers that just want the resistive torque, same
     role `slab_drag_torque`/`basal_drag_torque` play for their own `(b, K)` splits; `shift_plate`
     itself uses the split form for implicit integration."""
-    b, k = collision_drag_coefficients(plate, inputs, collision_mask, spacing_rad, craton_m, jam)
+    b, k = collision_drag_coefficients(
+        plate, inputs, collision_mask, spacing_rad, craton_m, jam, contact_gain=contact_gain, craton_gain=craton_gain
+    )
     return b - k @ plate.omega
 
 
