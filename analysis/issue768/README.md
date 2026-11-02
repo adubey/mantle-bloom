@@ -89,4 +89,6 @@ Full outputs remain outside the repository; only compact results and findings ar
   to the prognostic active set; the legacy behavior is preserved.
 - The scoped revision passes all 88 lake tests, including partial-cell balances, both sibling
   processing orders, late transfers without a merger, loss-trace totals and the saddle-volume
-  regression. Ruff and the dead/duplicate-code gates pass. The full affected run is pending.
+  regression. Ruff and the dead/duplicate-code gates pass. The full affected run on code
+  revision `65d27be8` passes: **1,969 tests**, 512 warnings, 817.54 s, two workers. Its
+  command was `./bin/affected_test.sh --base origin/main -n 2 -x --ff`.
