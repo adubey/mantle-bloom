@@ -797,6 +797,14 @@ where the control and shams stay wet. That's after the registered event, so it i
 The materiality rule is the owner's (#680), so reading E's trace as uninformative is a decision for
 the owner, not this report. It isn't applied above.
 
+**The coupled arms overstate recycling.** Rain is read from humidity and never debited from it,
+and carried moisture decays by a fixed half-life whatever has rained, so transpiration passed to
+humidity becomes rain at its cell and again downwind. Land rain rises 38–51% in the coupled arms and
+water to the ocean rises with it; coupling off, which keeps the control's source, moves land rain
+by under 2%. Until the climate conserves moisture
+([#771](https://github.com/adubey/mantle-bloom/issues/771)), only coupling off approximates
+recycled water that is redistributed rather than multiplied, so G1b can't evaluate the coupling.
+
 ### Assumptions to disclose
 
 - The breach gate uses the control's Budyko runoff in every arm; the treatment changes only the
