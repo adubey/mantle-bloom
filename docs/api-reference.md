@@ -421,16 +421,18 @@ distance-band thickening at the polygon edge, `"fault"` localises it onto active
 (and scales the fault-relief layer up to compensate), `"both"` runs both. See
 simulation-model/tectonics.md#faults.
 
-The body also accepts the fourteen **geomorphic-budget tuning multipliers**
+The body also accepts the sixteen **geomorphic-budget tuning multipliers**
 (`world.TUNING_MULTIPLIER_FIELDS`): `rain_erosion_multiplier`, `river_erosion_multiplier`,
 `wind_erosion_multiplier`, `ocean_erosion_multiplier`, `coastal_leveling_multiplier`,
 `glacier_erosion_multiplier`, `seismic_erosion_multiplier`, `river_deposition_multiplier`,
 `ocean_deposition_multiplier`, `collision_uplift_multiplier`,
-`collision_uplift_reach_multiplier`, `volcanism_multiplier`, `fault_relief_multiplier`,
+`collision_uplift_reach_multiplier`, `contact_drag_multiplier`,
+`craton_drag_multiplier`, `volcanism_multiplier`, `fault_relief_multiplier`,
 `plume_multiplier` (plume production rate; `0` thins every scheduled event away, so the
 run is a matched plume-off twin -- see RFC 0007). Each is a dimensionless scale on
-one erosion / deposition / uplift / volcanism process, default `1.0` (== untuned, bit for
-bit), and a negative value is a `400`. See
+one erosion / deposition / uplift / braking / volcanism process, default `1.0` (== untuned, bit for
+bit), and a negative value is a `400`. `contact_drag_multiplier` scales the whole RFC 0008
+contact brake; `craton_drag_multiplier` scales only its craton component (#760). See
 [simulation-model/surface-processes.md#tuning-knobs](simulation-model/surface-processes.md#live-tuning-knobs-worldtuning_multiplier_fields) for what each one scales
 and measured effect sizes.
 
@@ -440,7 +442,7 @@ change without waiting for a step -- `climate_cache` is otherwise only refreshed
 step by `erosion.py`, and not at all while `simulate_climate_biomes` is `false`. `404` if no
 world has been generated yet.
 
-Response echoes back the world's current values for all six controls plus all twelve tuning
+Response echoes back the world's current values for all six controls plus all sixteen tuning
 multipliers:
 
 ```json

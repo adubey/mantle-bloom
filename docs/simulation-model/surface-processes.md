@@ -569,6 +569,8 @@ rejected with a `400`.
 | `ocean_deposition_multiplier` | *settled* beach + marine sediment (see caveat below) | `erosion.apply_erosion` |
 | `collision_uplift_multiplier` | plastic crustal-thickening rate across the convergent band | `rheology.apply_convergent_deformation`'s `strength` arg, driven from `lithosphere_plate.boundary_context` |
 | `collision_uplift_reach_multiplier` | how far the shortening cascade carries a collision into the plate (`shortening.py`'s `reach_scale`); `<1` also weakens the contested-band thickening in proportion | `lithosphere_plate.boundary_context`, `shortening.py` |
+| `contact_drag_multiplier` | the whole RFC 0008 contact brake (relief, craton and jam factors); `0` disables it | `torque.contact_drag_pa_s_per_m`'s `contact_gain`, via `world` (#760) |
+| `craton_drag_multiplier` | only the brake's craton component, against the relief term | `torque.contact_drag_pa_s_per_m`'s `craton_gain`, via `world` (#760) |
 | `volcanism_multiplier` | per-step eruption probability **and** metres added per eruption | `volcanism.apply_volcanic_activity` |
 
 **Mass-conservation caveats.** The erosion terms are scaled where they are computed, so the

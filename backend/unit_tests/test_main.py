@@ -2108,6 +2108,14 @@ def test_controls_tuning_multipliers_round_trip_and_validate(client):
     assert world.collision_uplift_multiplier == 2.5
     assert world.river_erosion_multiplier == 1.0  # untouched knob unchanged
 
+    # The RFC 0008 brake tuners round-trip the same way (#760).
+    resp = client.post("/world/controls", json={"contact_drag_multiplier": 0.0, "craton_drag_multiplier": 2.0})
+    assert resp.status_code == 200
+    assert resp.json()["contact_drag_multiplier"] == 0.0
+    assert resp.json()["craton_drag_multiplier"] == 2.0
+    assert world.contact_drag_multiplier == 0.0
+    assert world.craton_drag_multiplier == 2.0
+
     assert client.post("/world/controls", json={"volcanism_multiplier": -0.5}).status_code == 400
     assert world.volcanism_multiplier == 1.0  # rejected write did not land
 

@@ -65,6 +65,8 @@ const TUNING_GROUPS: { heading: string; tab: TabKey; knobs: { key: TuningKey; la
     knobs: [
       { key: "collision_uplift_multiplier", label: "Collision uplift — amount" },
       { key: "collision_uplift_reach_multiplier", label: "Collision uplift — reach" },
+      { key: "contact_drag_multiplier", label: "Collision braking — all contacts" },
+      { key: "craton_drag_multiplier", label: "Collision braking — craton only" },
       { key: "volcanism_multiplier", label: "Volcanism" },
     ],
   },
