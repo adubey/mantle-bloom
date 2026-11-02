@@ -209,10 +209,12 @@ timestamp stamped when a cell is inserted (`quad_tectonics._new_cell_fields`, wh
 advance, rift opening and gap filling all go through), so this view covers every place
 brand-new crust originates. Unlike `overlap_onset_years`, it never reverts: a node's birth date
 is permanent, carried through merges and remaps by nearest neighbour (never interpolated --
-averaging two birth years would invent a meaningless date). The sentinel is `-1.0`, not `0.0`
--- a world's initial genesis nodes (from generation, not from a tracked creation event) read as
-"predates tracking," not "created at year 0," and a save written before this field existed
-backfills the same way. `plates.collect_all_node_created_years` is the accessor.
+averaging two birth years would invent a meaningless date). New worlds start with negative
+birth years that represent rock ages before t=0; the `nodeAge` view leaves these old genesis
+nodes on the backdrop because it shows recent lattice changes. The `-1.0` sentinel remains
+reserved for saves predating age tracking, and a save written before `node_created_years`
+existed backfills that way. `plates.collect_all_node_created_years` is the accessor. The click
+inspector reports negative dates as Myr before the simulation start.
 
 **Removed** has no live node to carry a field on, so it comes from a short-lived side buffer
 instead: `World.removed_points_log`, a `(world_xyz, removed_years, plate_id)` list appended to

@@ -148,6 +148,18 @@ density" choice (`NODE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)`, see below).
   sea level implausible regardless). Confirmed directly: at the defaults, measured land
   fraction across several seeds lands within about a percentage point of 29%.
 
+Each starting plate also draws one oceanic and one continental rock age from a seed-derived
+stream that leaves other generation choices unchanged. Oceanic age uses a triangular
+distribution from 0 to 192.6 Myr with mode zero, giving the 64.2 Myr mean reported by
+[Seton et al. (2020)](https://doi.org/10.1029/2020GC009214). Continental age first selects
+Archean, Proterozoic, or Phanerozoic with probabilities 33%, 43%, and 24% (the regional
+Laurentia split specified in #744), then samples uniformly within that era. Each starting
+cell uses the draw for its own crust type, so a mixed plate does not give ocean floor a
+continental age. These are uniform plate ages, not a ridge-to-trench age pattern; newly
+formed crust keeps using its positive creation time. `World.initial_rock_ages` records both
+draws and the plate's primary crust type, while `node_created_years` stores the starting ages
+as negative years. The `-1` value remains reserved for old saves that predate age tracking.
+
 Each plate's cells are populated by `PlateWithSparseQuadPatch.from_lattice`: sweep the plate's
 whole cube-sphere lattice at `TARGET_LINE_SPACING_KM` resolution (or a finer one -- see
 "Elevation point density" below), and for every candidate cell, keep it only if the

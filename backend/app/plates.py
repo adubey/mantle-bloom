@@ -892,9 +892,9 @@ def collect_all_overlap_onset_years(plate_list: list[Plate]) -> np.ndarray:
 
 
 def collect_all_node_created_years(plate_list: list[Plate]) -> np.ndarray:
-    """Every live node's `world.elapsed_years` at creation (-1.0 = predates tracking / a
-    genesis node from initial world generation) -- used by render_image.py's `nodeAge` debug
-    view. See the `node_created_years` field."""
+    """Every live node's creation date. Negative dates are starting rock ages in new worlds;
+    -1.0 is the pre-tracking sentinel in old saves. Used by render_image.py's `nodeAge` view.
+    See the `node_created_years` field."""
     return _collect_all(plate_list, "node_created_years")
 
 

@@ -506,8 +506,8 @@ def test_overlap_age_view_renders_gap_age_dots_once_tracked():
 
 def test_node_age_view_renders_more_once_points_have_been_added_and_removed():
     world = _world(seed=7, num_plates=8)
-    # Freshly generated: every node predates tracking (-1.0 sentinel) and nothing has been
-    # removed yet -- an all-backdrop render, same "healthy/quiet" convention overlapAge uses.
+    # Freshly generated nodes have negative genesis ages, not addition events, and nothing has
+    # been removed yet -- keep the all-backdrop "quiet" convention of this recent-activity view.
     before = np.asarray(Image.open(io.BytesIO(render_image.render_png(world, "behrmann", "nodeAge", 320, 180))).convert("RGB"))
 
     for _ in range(6):

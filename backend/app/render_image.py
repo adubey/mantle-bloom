@@ -2191,8 +2191,9 @@ def _render_node_age_view(world: World, projection: str, width: int, height: int
     """Renders the "nodeAge" ("Added/Removed Points") debug view (see docs/debugging/map-views.md): the
     same muted land/ocean backdrop as overlapAge, overlaid with two independent dot layers --
     warm dots for still-live nodes created recently (the `node_created_years` field, via
-    `plates.collect_all_node_created_years`; the -1.0 "predates tracking" sentinel and anything
-    past `_NODE_ADDED_STOP_MYR`'s top stop are left as plain backdrop), and cool dots for
+    `plates.collect_all_node_created_years`; the -1.0 "predates tracking" sentinel, negative
+    genesis rock ages, and anything past `_NODE_ADDED_STOP_MYR`'s top stop are left as plain
+    backdrop), and cool dots for
     `World.removed_points_log` entries -- nodes no longer part of any plate, drawn at their
     last known position rather than resampled onto the render grid the way a live node is.
     All-backdrop (no dots) means nothing has been created or removed recently, which is the
@@ -2213,6 +2214,8 @@ def _render_node_age_view(world: World, projection: str, width: int, height: int
     canvas = _DotOverlayCanvas(world, grid, [node_xy, removed_xy], width, height, projection, view_rotation)
 
     r = NODE_DOT_RADIUS_PX * canvas.pixel_scale
+    # This view tracks recent cell creation, not geological rock age: negative starting ages
+    # are older than t=0 and remain part of the muted backdrop (#744).
     added_mask = (created >= 0.0) & ((world.elapsed_years - created) <= _NODE_ADDED_STOP_MYR[-1] * 1e6)
     if np.any(added_mask):
         age_myr = (world.elapsed_years - created[added_mask]) / 1e6

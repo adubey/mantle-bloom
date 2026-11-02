@@ -902,8 +902,8 @@ export interface NodeAtResponse {
     phi: number; // plate-local latitude, radians
     theta: number; // plate-local longitude, radians
     elevation_m: number;
-    // world.elapsed_years this node was created; -1 = predates creation-time tracking (a
-    // genesis node from initial world generation). See the `node_created_years` node field.
+    // Creation date in simulation years; negative values are new-world genesis rock ages before
+    // t=0, while -1 = predates tracking in an older save. See the `node_created_years` node field.
     node_created_years: number;
   } | null;
   // The nearest World.removed_points_log entry, only if one sits within the backend's own

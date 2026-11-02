@@ -1088,7 +1088,10 @@ def _preserved(legacy: list[LegacyPlate], converted: list[PlateWithSparseQuadPat
             created = plate.fields["node_created_years"][at]
             cell_created = quad.collect("node_created_years")[cell]
             set_ = created >= 0.0
-            violations["node_created_years"] += int(np.count_nonzero(set_ & ((cell_created < 0.0) | (cell_created > created))))
+            # A negative target-cell age is a valid pre-generation date (#744), and -1.0
+            # remains the older-save "predates tracking" sentinel. Either is no later than
+            # a positively-dated legacy node; only a younger target cell loses provenance.
+            violations["node_created_years"] += int(np.count_nonzero(set_ & (cell_created > created)))
 
     def before(name: str) -> np.ndarray:
         return np.concatenate([p.fields[name] for p in legacy]) if legacy else np.zeros(0)

@@ -359,6 +359,35 @@ def test_overlapping_plates_stack_their_crust_instead_of_dropping_it(stepped_lin
     assert not any(report.preserved["provenance_violations"].values())
 
 
+def test_preserved_accepts_prestart_cell_age_for_positive_legacy_node():
+    from types import SimpleNamespace
+
+    legacy = SimpleNamespace(fields={
+        "is_volcano": np.array([False]),
+        "volcano_active_years_remaining": np.array([0.0]),
+        "node_created_years": np.array([10.0]),
+        "elevation": np.array([0.0]),
+    })
+
+    class Quad:
+        def node_count(self):
+            return 1
+
+        def collect(self, name):
+            fields = {
+                "is_volcano": np.array([False]),
+                "volcano_active_years_remaining": np.array([0.0]),
+                "node_created_years": np.array([-64.2e6]),
+                "elevation": np.array([0.0]),
+            }
+            return fields[name]
+
+    targets = [(np.array([0]), np.array([0]))]
+    report = legacy_conversion._preserved([legacy], [Quad()], targets)
+
+    assert report["provenance_violations"]["node_created_years"] == 0
+
+
 def test_stacking_overflow_spreads_across_the_plate_and_conserves_volume():
     world = generate_world(seed=3, num_plates=4, node_density=0.5)
     plate = world.plates[0]
