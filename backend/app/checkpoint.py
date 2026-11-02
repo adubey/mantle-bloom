@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 import tempfile
@@ -145,7 +146,10 @@ class CheckpointStore:
                         or (
                             isinstance(record.get("viewer_rotation"), list)
                             and len(record["viewer_rotation"]) == 9
-                            and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in record["viewer_rotation"])
+                            and all(
+                                isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+                                for v in record["viewer_rotation"]
+                            )
                         )
                     )
                     or not self._is_timestamp(record.get("created_at"))

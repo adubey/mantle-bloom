@@ -240,6 +240,10 @@ function sharedPresentation(state: PublicState | null): { view: PublicView; rota
 function WorldView({ worldId }: { worldId: WorldId }) {
   const [state, setState] = useState<PublicState | null>(null);
   const { view, rotation: sharedRotation } = sharedPresentation(state);
+  // A value key for the orientation: every poll response deserializes a fresh
+  // array, so depending on the array itself would re-download the PNG on
+  // progress-only answers whose orientation never changed (review on #756).
+  const rotationKey = sharedRotation.join(",");
   const [image, setImage] = useState<string | null>(null);
   const [stepping, setStepping] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -317,9 +321,9 @@ function WorldView({ worldId }: { worldId: WorldId }) {
     return () => {
       cancelled = true;
     };
-    // sharedRotation: a new shared orientation re-fetches, since the cached
+    // rotationKey: a changed shared orientation re-fetches, since the cached
     // image on screen is the old orientation's (#755).
-  }, [view, revision, worldId, sharedRotation]);
+  }, [view, revision, worldId, rotationKey]);
 
   const step = useCallback(async () => {
     if (revision === null) return;

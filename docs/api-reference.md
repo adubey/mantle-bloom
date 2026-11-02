@@ -61,7 +61,9 @@ Open to anyone, for the logged-out `/view` page (#373). See
   so the wait progress bar moves mid-step (#653), and on an owner rename or visibility change.
   A world that went private during the wait answers `404`.
 - `GET /public/worlds/{world_id}/render?view=elevation|biome&width=&height=`: like `/worlds/{world_id}/render`, but always
-  Eckert IV at the world's shared orientation (below), with width and height at most 2400. It returns
+  Eckert IV in the world's shared view and orientation (below) -- a `view` naming another
+  viewer view is answered with the shared one, not a render of its own -- with width and
+  height at most 2400. It returns
   `{"revision", "seed", "elapsed_years", "image_base64"}`. Each view and size is rendered once
   per revision and then served from a cache shared by all viewers, even while the owner holds the world.
   While a viewer follows a public world, every published change also pre-renders the canonical

@@ -43,7 +43,7 @@ from . import (
     world_names,
     worldsketch,
 )
-from .world_registry import FairComputeGate, WorldLimitReached, WorldRegistry, WorldSession
+from .world_registry import FairComputeGate, UnknownWorldError, WorldLimitReached, WorldRegistry, WorldSession
 from .hydroclimate import biomes, climate, coastline, eustasy, hydrology, lakes, stranded_basins
 from .elevation_lines import NODE_DENSITY_CHOICES
 from .world import (
@@ -390,7 +390,7 @@ def _public_session_or_404(world_id: str) -> WorldSession:
     return session
 
 
-def _world_changed(session: WorldSession, completed: bool = True) -> None:
+def _world_changed(session: WorldSession, completed: bool = True, *, prerender_viewer: bool = True) -> None:
     """Publish a new revision of `session`'s world to its viewers. Call it after every change
     to the world, before releasing the session lock: a viewer's render takes the lock and
     caches what it draws under the revision it reads there, so a change published after the
@@ -409,13 +409,21 @@ def _world_changed(session: WorldSession, completed: bool = True) -> None:
     # check afterwards would always see nobody (#658).
     watched = session.feed.has_waiters()
     session.public_renders.clear()
-    if getattr(session, "is_default", False):
+    # Read once: another thread can move the default to a different world
+    # mid-publish, and the clear/pre-render pair must agree on the answer
+    # (review on #756).
+    is_default = getattr(session, "is_default", False)
+    if is_default:
         # The disk image is keyed to the world this change replaces: drop it
         # before publishing, so no reader can serve it for the new world. The
         # pre-render below writes the new one (#755).
         _clear_disk_viewer_image(session)
     session.feed.publish(session.world, session.name)
-    if watched or getattr(session, "is_default", False):
+    # `prerender_viewer=False` is for callers that do not hold the compute
+    # gate (the animate disconnect finalizer): rendering here would run
+    # parallel kernels alongside another world's step, so those publishes
+    # leave the image to the next gated change or on-demand render.
+    if prerender_viewer and (watched or is_default):
         _prerender_viewer_image(session)
     if completed:
         _checkpoint_world(session)
@@ -465,7 +473,7 @@ def _save_disk_viewer_image(session: WorldSession, world, view: str, width: int,
     file instead of re-rendering. Best-effort, like the checkpoint itself: a
     failed write only costs the next viewer a render."""
     store = getattr(session, "checkpoint_store", None)
-    if store is None or not getattr(session, "is_default", False) or world is None:
+    if store is None or not getattr(session, "is_default", False) or world is None or getattr(session, "deleted", False):
         return
     try:
         store.save_viewer_image({
@@ -487,12 +495,13 @@ def _clear_disk_viewer_image(session: WorldSession) -> None:
         _logger.exception("viewer image disk cache: couldn't clear for world %s", session.world_id)
 
 
-def _disk_viewer_image(session: WorldSession, view: str, width: int, height: int) -> str | None:
-    """The default world's on-disk viewer image for exactly this request, or
-    None (#755). The published summary (seed and age, readable without the
-    world lock) must match the file's key: that pair is what a restart
-    restores, so it is the check that keeps a previous world's image from
-    being served for this one."""
+def _disk_viewer_image(session: WorldSession, view: str, width: int, height: int) -> dict | None:
+    """The default world's on-disk viewer image for exactly this request, as
+    a render entry ({**summary, "image_base64"}), or None (#755). The entry
+    keeps the summary it was validated against -- seed and age, readable
+    without the world lock -- so the caller can carry that revision through
+    and refuse to relabel the image if the world publishes while the file is
+    being read (review on #756)."""
     store = getattr(session, "checkpoint_store", None)
     if store is None or not getattr(session, "is_default", False):
         return None
@@ -517,7 +526,7 @@ def _disk_viewer_image(session: WorldSession, view: str, width: int, height: int
     }
     if any(key.get(name) != value for name, value in expected.items()):
         return None
-    return entry["image_base64"]
+    return {**summary, "image_base64": entry["image_base64"]}
 
 
 def _prerender_viewer_image(session: WorldSession) -> None:
@@ -533,7 +542,7 @@ def _prerender_viewer_image(session: WorldSession) -> None:
     captured before publishing pops the waiter list, or the world being the
     /view default, #755); this helper only enforces the public-world gate."""
     world = session.world
-    if world is None or not session.is_public:
+    if world is None or not session.is_public or getattr(session, "deleted", False):
         return
     try:
         revision = session.feed.revision()
@@ -560,13 +569,13 @@ def _prerender_viewer_image(session: WorldSession) -> None:
         _logger.exception("viewer pre-render failed for world %s", session.world_id)
 
 
-def _set_world(session: WorldSession, world: World) -> None:
+def _set_world(session: WorldSession, world: World, *, prerender_viewer: bool = True) -> None:
     """Replace `session`'s world; the caller holds the session lock."""
     session.world = world
     session.load_error = None
     if session.replay_log is not None:
         session.replay_log.clear_recent_events()
-    _world_changed(session)
+    _world_changed(session, prerender_viewer=prerender_viewer)
 
 
 def _require_world(session: WorldSession) -> World:
@@ -1023,11 +1032,16 @@ def _apply_viewer_patch(session: WorldSession, req: PatchWorldRequest) -> None:
     re-renders the canonical image, so the next viewer is served the owner's
     choice from cache, not a re-render of their own."""
     changed_defaults: list[WorldSession] = []
-    if req.is_default:
-        changed_defaults = _registry.set_default(session.world_id)
-        session.is_public = True
-    elif req.is_default is False and session.is_default:
-        changed_defaults = _registry.set_default(None)
+    try:
+        if req.is_default:
+            changed_defaults = _registry.set_default(session.world_id)
+            session.is_public = True
+        elif req.is_default is False and session.is_default:
+            changed_defaults = _registry.set_default(None)
+    except UnknownWorldError:
+        # Deleted between the route's lookup and here (review on #756): the
+        # outcome the owner asked for is a world that no longer exists.
+        raise HTTPException(status_code=404, detail=f"unknown world {session.world_id!r}") from None
     presentation_changed = False
     if req.viewer_view is not None and req.viewer_view != session.viewer_view:
         session.viewer_view = req.viewer_view
@@ -1051,11 +1065,32 @@ def _apply_viewer_patch(session: WorldSession, req: PatchWorldRequest) -> None:
 def patch_world(world_id: str, req: PatchWorldRequest) -> dict:
     _validate_viewer_patch(req)
     session = _session_or_404(world_id)
+    # A /view patch can pre-render (_apply_viewer_patch), and rendering must
+    # hold the compute gate like every other render: take it before the
+    # session lock, preserving the gate -> lock order every compute route
+    # uses. Rename/visibility patches never render and skip the gate, so they
+    # still answer while a step holds it (review on #756).
+    gated = req.is_default is not None or req.viewer_view is not None or req.viewer_rotation is not None
+    if gated:
+        _compute_gate.acquire()
+    try:
+        return _patch_world_locked(session, req)
+    finally:
+        if gated:
+            _compute_gate.release()
+
+
+def _patch_world_locked(session: WorldSession, req: PatchWorldRequest) -> dict:
     with session.lock:
         if req.name is not None:
             session.name = req.name
         if req.is_public is not None:
             session.is_public = req.is_public
+            if req.is_public is False and session.is_default:
+                # Unpublishing the default clears it: a default /view cannot
+                # show is no default (review on #756). A same-request
+                # is_default below can still re-set it (and re-publish).
+                _registry.set_default(None)
         _apply_viewer_patch(session, req)
         session.touch()
         _save_index()
@@ -1558,15 +1593,23 @@ async def load_world(world_id: str, request: Request) -> dict:
         # world -- for as long as the step or animation holding it runs. The runner
         # and guest steps hold the lock without setting the busy flag, so refuse
         # instead, like an overlapping manual operation would.
-        if not session.lock.acquire(blocking=False):
+        # The compute gate comes first (gate -> lock, like every compute
+        # route): publishing the loaded world can pre-render the viewer image
+        # (#755), which must not run alongside another world's kernels.
+        if not _compute_gate.acquire(timeout=0):
             raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
         try:
-            if session.deleted:
-                raise HTTPException(status_code=404, detail="no such world")
-            _set_world(session, world)
-            return _summary(session, world)
+            if not session.lock.acquire(blocking=False):
+                raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
+            try:
+                if session.deleted:
+                    raise HTTPException(status_code=404, detail="no such world")
+                _set_world(session, world)
+                return _summary(session, world)
+            finally:
+                session.lock.release()
         finally:
-            session.lock.release()
+            _compute_gate.release()
     finally:
         session.end_operation()
 
@@ -1836,6 +1879,27 @@ def _animate_message_line(session, world, message, last_frame, anim_spec: dict):
     }) + "\n", last_frame, True
 
 
+def _publish_disconnected_animation(session: WorldSession) -> None:
+    """Publish a disconnected animation's completed frames (review on #756).
+
+    The frames were checkpointed individually, but without this the feed
+    revision, render cache and index would still describe the pre-animation
+    world; publishing without re-checkpointing (completed=False) skips the
+    redundant pickle. Non-blocking: disconnect finalization must never park
+    on the session lock. The gate is tried first (gate -> lock); without it
+    the publish skips its viewer pre-render rather than render ungated."""
+    gate_held = _compute_gate.acquire(timeout=0)
+    try:
+        if session.lock.acquire(blocking=False):
+            try:
+                _world_changed(session, False, prerender_viewer=gate_held)
+            finally:
+                session.lock.release()
+    finally:
+        if gate_held:
+            _compute_gate.release()
+
+
 @app.post("/worlds/{world_id}/animate")
 def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
     """The "File > Make Animation" action: streams newline-delimited JSON progress while
@@ -1996,17 +2060,7 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
                 session.lock.release()
                 _compute_gate.release()
             elif last_frame:
-                # Disconnected mid-run: the completed frames were checkpointed
-                # individually, but without this the feed revision, render cache
-                # and index would still describe the pre-animation world. Publish
-                # them without re-checkpointing (completed=False skips the
-                # redundant pickle). Non-blocking: disconnect finalization must
-                # never park on the session lock.
-                if session.lock.acquire(blocking=False):
-                    try:
-                        _world_changed(session, False)
-                    finally:
-                        session.lock.release()
+                _publish_disconnected_animation(session)
             session.end_operation()
 
     return StreamingResponse(_stream(), media_type="application/x-ndjson")
@@ -2880,30 +2934,34 @@ async def public_world(world_id: str, request: Request, after: str | None = None
 
 @app.get("/public/worlds/{world_id}/render")
 def public_render(world_id: str, view: str = "elevation", width: int = 1100, height: int = 611) -> dict:
-    """The admin render restricted to the viewer's fixed choices: Eckert IV, the default
-    orientation, and the viewer's supported views. Each (view, size) is rendered once per
-    world revision and then served from that world's RenderCache without touching the
-    world. `503` if the owner holds the world for longer than GUEST_LOCK_WAIT_S."""
+    """The admin render restricted to the viewer's fixed choices: Eckert IV and the
+    world's shared view and orientation (#755), so every caller is served the one
+    image the owner chose -- a `view` naming another viewer view is answered with
+    the shared one, not a render of its own (review on #756). Each (view, size) is
+    rendered once per world revision and then served from that world's RenderCache
+    without touching the world. `503` if the owner holds the world for longer than
+    GUEST_LOCK_WAIT_S."""
     session = _public_session_or_404(world_id)
     if view not in public_view.GUEST_VIEWS:
         raise HTTPException(status_code=400, detail=f"unknown view {view!r}; choices are {public_view.GUEST_VIEWS}")
     limit = public_view.GUEST_MAX_RENDER_PX
     if not (1 <= width <= limit and 1 <= height <= limit):
         raise HTTPException(status_code=400, detail=f"width/height must be in [1, {limit}]")
+    view = _viewer_view(session)
     key = (view, width, height)
     cached = session.public_renders.get(session.feed.revision(), key)
     if cached is not None:
         return cached
     # A cold in-memory cache (a restart restored the world from its
     # checkpoint) is served the default world's on-disk image instead of
-    # re-rendering (#755): repopulate memory from it and answer.
-    disk_image = _disk_viewer_image(session, view, width, height)
-    if disk_image is not None:
-        summary = session.feed.summary()
-        if summary is not None:
-            entry = {**summary, "image_base64": disk_image}
-            session.public_renders.put(session.feed.revision(), key, entry)
-            return entry
+    # re-rendering (#755): repopulate memory from it and answer. The entry
+    # keeps the revision it was validated against; if the world published
+    # while the file was read, fall through to the locked path rather than
+    # relabel the old image with the new revision (review on #756).
+    disk_entry = _disk_viewer_image(session, view, width, height)
+    if disk_entry is not None and session.feed.revision() == disk_entry["revision"]:
+        session.public_renders.put(disk_entry["revision"], key, disk_entry)
+        return disk_entry
     if not _compute_gate.acquire(timeout=public_view.GUEST_LOCK_WAIT_S):
         raise HTTPException(status_code=503, detail="the world is busy; try again shortly")
     try:

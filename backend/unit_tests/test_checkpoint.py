@@ -163,6 +163,20 @@ def test_garbage_metadata_types_fail_closed(tmp_path, field, value):
         root.load_index()
 
 
+def test_nonfinite_viewer_rotation_in_index_fails_closed(tmp_path):
+    # Review on #756: Python's json accepts NaN/Infinity, and the PATCH route
+    # rejects a non-finite shared rotation -- a crafted index must not smuggle
+    # one past restore into the public state JSON.
+    root = CheckpointStore(tmp_path)
+    record = {
+        "world_id": "a" * 32, "name": "A", "is_public": True, "created_at": 1.0, "updated_at": 2.0,
+        "viewer_rotation": [float("nan")] * 9,
+    }
+    root.save_index([record])
+    with pytest.raises(checkpoint.RegistryIndexError):
+        root.load_index()
+
+
 def test_directory_comes_from_the_env_or_the_railway_volume(monkeypatch, tmp_path):
     monkeypatch.delenv(checkpoint.CHECKPOINT_DIR_ENV, raising=False)
     monkeypatch.delenv(checkpoint.RAILWAY_VOLUME_ENV, raising=False)
