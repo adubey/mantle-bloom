@@ -156,5 +156,14 @@ march overshoot from the plateau's high state to its low one.
 member has a substep that loses over 20%. If 8 or more still drop with no such substep, the drop is
 a real transition the long substeps only hasten. Anything between is reported as it stands.
 
+### Part B fourth amendment, after E7 and E8
+
+Written after E7 and E8 and before E9. E8 met the rule for "long substeps cause the drop" on draw
+1. E7's draw-2 drop, on the same plateau body, has no substep over 15% but uses 2.5–10 kyr substeps.
+
+| Run | What | Reads |
+|---|---|---|
+| E9 | Draw 2, 96.65: E7's ensemble with the longest substep capped at 1 kyr | Same rule as E8, against E7's 9 of 12 |
+
 **Not tested:** other draws' drops beyond these. If time allows, the same factorial runs on the largest step of
 draw 2. Any change to the drift period, the noise or the march is proposed separately.
