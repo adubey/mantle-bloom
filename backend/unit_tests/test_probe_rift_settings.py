@@ -238,3 +238,117 @@ def test_worst_case_plate_count_replaces_production_splits_with_gated_events():
     row = probe.summarize([_report(1, events, final=36, splits=4)])["plate_count"][0]
     assert row["worst_case_plates"] == 41.0
     assert row["compatible"] is False
+
+
+class _GridPlate:
+    """A square of cells on the sphere, 4-connected, for routing tests."""
+
+    def __init__(self, size, step_deg, fields):
+        lat, lon = np.meshgrid(np.radians((np.arange(size) - size // 2) * step_deg),
+                               np.radians((np.arange(size) - size // 2) * step_deg), indexing="ij")
+        self.points = np.column_stack(((np.cos(lat) * np.cos(lon)).ravel(), (np.cos(lat) * np.sin(lon)).ravel(), np.sin(lat).ravel()))
+        index = np.arange(size * size).reshape(size, size)
+        links = [[] for _ in range(size * size)]
+        for a, b in ((index[:-1], index[1:]), (index[:, :-1], index[:, 1:])):
+            for i, j in zip(a.ravel(), b.ravel()):
+                links[i].append(j)
+                links[j].append(i)
+        self._adjacency = SimpleNamespace(offsets=np.r_[0, np.cumsum([len(row) for row in links])],
+                                          neighbours=np.array([j for row in links for j in row]))
+        self.fields, self.size, self.index = fields, size, index
+
+    def adjacency(self):
+        return self._adjacency
+
+    def node_count(self):
+        return len(self.points)
+
+    def collect(self, name):
+        return self.fields[name]
+
+    def node_areas_m2(self):
+        return np.ones(len(self.points))
+
+
+def _craton_ring_plate(heated, keel_m):
+    """Craton everywhere but a small hole around the centre, so every path out crosses its interior."""
+    size, step = 41, 0.5
+    centre = size // 2
+    rows, cols = np.indices((size, size))
+    hole = ((rows - centre) ** 2 + (cols - centre) ** 2 <= 9).ravel()
+    craton = np.where(hole, 0.0, 2.0 * probe.cratons.CRATON_FULL_STRENGTH_HC_M)
+    fields = {"craton_crust_m": craton, "plume_heat_myr": np.full(size * size, 5.0 if heated else 0.0),
+              "mantle_lithosphere_thickness_m": np.full(size * size, keel_m),
+              "belt_formed_years": np.zeros(size * size)}
+    return _GridPlate(size, step, fields), int(centre * size + centre), np.radians(step)
+
+
+def _route_ring(heated, keel_m):
+    plate, seed, spacing = _craton_ring_plate(heated, keel_m)
+    cratons_mask = plate.collect("craton_crust_m") > 0.0
+    forbidden, _interior = probe.craton_barrier(plate, cratons_mask, spacing)
+    resistance = probe.route_resistance(plate, np.zeros(plate.node_count(), dtype=bool), forbidden,
+                                        probe.craton_margin(plate, cratons_mask, spacing))
+    found, status, _cheapest = probe.route_by_daughters(plate, plate.points, seed, np.array([0.0, 1.0, 0.0]),
+                                                        forbidden, resistance, plate.node_areas_m2(), np.radians(1.0))
+    return found, status, forbidden
+
+
+def test_plume_heat_alone_leaves_an_intact_craton_a_barrier():
+    found, status, _forbidden = _route_ring(heated=True, keel_m=100e3)
+    assert (found, status) == (None, "barrier")
+    assert _route_ring(heated=False, keel_m=40e3)[1] == "barrier"
+
+
+def test_heat_with_an_eroded_keel_opens_the_craton_and_the_route_enters_no_blocked_cell():
+    found, status, forbidden = _route_ring(heated=True, keel_m=40e3)
+    assert status == "separates"
+    route, mask = found
+    assert not forbidden[route].any()
+    assert min(mask.sum(), (~mask).sum()) >= probe.MIN_DAUGHTER_SHARE * len(mask)
+
+
+def test_router_picks_endpoints_that_leave_both_daughters_large_enough():
+    size = 41
+    fields = {"craton_crust_m": np.zeros(size * size), "plume_heat_myr": np.zeros(size * size),
+              "mantle_lithosphere_thickness_m": np.full(size * size, 100e3), "belt_formed_years": np.zeros(size * size)}
+    plate = _GridPlate(size, 0.5, fields)
+    # A site 3 cells from the south edge, opening north-south: the nearest boundary either side
+    # of the east-west strike is the south edge, which would cut a sliver.
+    seed = int(plate.index[3, size // 2])
+    none = np.zeros(plate.node_count(), dtype=bool)
+    found, status, _cheapest = probe.route_by_daughters(plate, plate.points, seed, np.array([0.0, 0.0, 1.0]), none,
+                                                        np.ones(plate.node_count()), plate.node_areas_m2(), np.radians(1.0))
+    assert status == "separates"
+    assert min(found[1].sum(), (~found[1]).sum()) >= probe.MIN_DAUGHTER_SHARE * plate.node_count()
+
+
+def test_margin_share_ignores_an_arms_approach_but_counts_a_hook_along_the_edge():
+    plate = _GridPlate(21, 0.5, {})
+    edge = probe._edge_cells(plate)
+    band = np.radians(1.0)
+    straight = list(plate.index[:, 10])
+    assert probe.margin_share(plate.points, straight, edge, band) == 0.0
+    hook = list(plate.index[:12, 10]) + list(plate.index[11, 11:20]) + list(plate.index[11:, 20][1:])
+    assert probe.margin_share(plate.points, hook, edge, band) > 0.0
+
+
+def _routed(onset, setting, status, **extra):
+    return _full_event(onset, setting, route_status=status, world_craton_km2=1e6, **extra)
+
+
+def test_route_summary_excludes_barriers_and_applies_the_outcome_and_shape_limits():
+    events = ([_routed(float(i), "passive", "separates", margin_share=0.0) for i in range(9)]
+              + [_routed(50.0, "passive", "barrier"), _routed(60.0, "passive", "daughter_too_small")])
+    row = probe.route_summary([_report(1, events)])["settings"]["passive"]
+    assert (row["non_barrier"], row["breakup_share"], row["outcome_passes"]) == (10, 0.9, True)
+    hooked = events[:8] + [_routed(9.0, "passive", "separates", margin_share=0.5)] * 2
+    assert probe.route_summary([_report(1, hooked)])["settings"]["passive"]["shape_passes"] is False
+
+
+def test_craton_budget_scales_with_the_run_and_counts_only_gated_breakups():
+    # 2%/Gyr over 200 Myr of a 1e6 km2 craton is 4,000 km2.
+    events = [_routed(10.0, "passive", "separates", craton_detached_km2=3000.0),
+              _routed(80.0, "transtension", "daughter_too_small", craton_detached_km2=9000.0)]
+    row = probe.craton_budget_row(_report(1, events))
+    assert (row["budget_km2"], row["detached_km2"], row["passes"]) == (4000.0, 3000.0, True)
