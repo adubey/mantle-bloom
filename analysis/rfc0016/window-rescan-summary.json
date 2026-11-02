@@ -1,0 +1,883 @@
+{
+ "source_commit": "2e465887 (simulation-identical to origin/main 0bda513d)",
+ "flicker": {
+  "current-910211954": {
+   "commit": "2e465887",
+   "save_sha256": "bd4874092efc805e8b174e115fe567c82d35fc2ee606686938b5b6eb96b060d2",
+   "start_years": 220400000.0,
+   "reversals": 23,
+   "comparable": 239,
+   "event_steps": [
+    13,
+    22,
+    25,
+    26,
+    30,
+    34,
+    35,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    49,
+    50
+   ]
+  },
+  "current-317739385": {
+   "commit": "2e465887",
+   "save_sha256": "6c806f913e4c79bb351b5eb5a143abcfc273df39b3bdf4ce9823fec7d27fb0cd",
+   "start_years": 200800000.0,
+   "reversals": 23,
+   "comparable": 110,
+   "event_steps": [
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    18,
+    19,
+    22,
+    23,
+    26,
+    27,
+    28,
+    29,
+    32,
+    33,
+    34,
+    38,
+    39,
+    40,
+    41,
+    42,
+    45
+   ]
+  },
+  "pre736-910211954": {
+   "commit": "9d6fb5e2",
+   "save_sha256": "bd4874092efc805e8b174e115fe567c82d35fc2ee606686938b5b6eb96b060d2",
+   "start_years": 220400000.0,
+   "reversals": 27,
+   "comparable": 271,
+   "event_steps": [
+    11,
+    13,
+    19,
+    22,
+    23,
+    24,
+    26,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    41,
+    42,
+    43,
+    45,
+    46,
+    49
+   ]
+  },
+  "pre736-317739385": {
+   "commit": "9d6fb5e2",
+   "save_sha256": "6c806f913e4c79bb351b5eb5a143abcfc273df39b3bdf4ce9823fec7d27fb0cd",
+   "start_years": 200800000.0,
+   "reversals": 27,
+   "comparable": 106,
+   "event_steps": [
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    18,
+    19,
+    20,
+    22,
+    23,
+    24,
+    26,
+    27,
+    28,
+    29,
+    32,
+    33,
+    34,
+    38,
+    40,
+    41,
+    42,
+    45,
+    46,
+    48
+   ]
+  }
+ },
+ "candidates": [
+  {
+   "seed": "910211954",
+   "scan_step": 49,
+   "checkpoint_myr": 225.1,
+   "abs_delta_km3": 2290847.728770148,
+   "reload_reproduces": true,
+   "window_frozen_share": 0.042989283962737344,
+   "routed_supply": true,
+   "target_volume_km3": [
+    2293615.55076828,
+    2767.8219981320044,
+    268996.25245000987,
+    788970.9922186952
+   ],
+   "screened": true
+  },
+  {
+   "seed": "910211954",
+   "scan_step": 42,
+   "checkpoint_myr": 224.4,
+   "abs_delta_km3": 2288694.663813563,
+   "reload_reproduces": true,
+   "window_frozen_share": 0.5095027361725498,
+   "routed_supply": true,
+   "target_volume_km3": [
+    null,
+    2293772.013552601,
+    null,
+    2287004.869552482
+   ],
+   "screened": true
+  },
+  {
+   "seed": "910211954",
+   "scan_step": 38,
+   "checkpoint_myr": 224.0,
+   "abs_delta_km3": 2162217.567461813,
+   "reload_reproduces": true,
+   "window_frozen_share": 0.04483498984615505,
+   "routed_supply": true,
+   "target_volume_km3": [
+    106434.7009434391,
+    2268652.268405252,
+    6422.056957506176,
+    2271028.118484506
+   ],
+   "screened": true
+  },
+  {
+   "seed": "910211954",
+   "scan_step": 26,
+   "checkpoint_myr": 222.8,
+   "abs_delta_km3": 1736162.5392955465,
+   "reload_reproduces": true,
+   "window_frozen_share": 0.06982082027271472,
+   "routed_supply": true,
+   "target_volume_km3": [
+    1808527.9377541884,
+    72365.39845864206,
+    694236.1509468568,
+    970045.0093477239
+   ],
+   "screened": true
+  },
+  {
+   "seed": "910211954",
+   "scan_step": 34,
+   "checkpoint_myr": 223.6,
+   "abs_delta_km3": 1005586.6225979559,
+   "screened": false
+  },
+  {
+   "seed": "910211954",
+   "scan_step": 22,
+   "checkpoint_myr": 222.4,
+   "abs_delta_km3": 531215.3653078952,
+   "screened": false
+  },
+  {
+   "seed": "910211954",
+   "scan_step": 30,
+   "checkpoint_myr": 223.2,
+   "abs_delta_km3": 391305.3790090395,
+   "screened": false
+  },
+  {
+   "seed": "910211954",
+   "scan_step": 13,
+   "checkpoint_myr": 221.5,
+   "abs_delta_km3": 109808.27283151931,
+   "screened": false
+  },
+  {
+   "seed": "317739385",
+   "scan_step": 33,
+   "checkpoint_myr": 203.9,
+   "abs_delta_km3": 383912.97563421354,
+   "reload_reproduces": true,
+   "window_frozen_share": 0.20004807688147794,
+   "routed_supply": false,
+   "target_volume_km3": [
+    null,
+    403035.3383513278,
+    null,
+    268690.67527722305
+   ],
+   "screened": true
+  },
+  {
+   "seed": "317739385",
+   "scan_step": 42,
+   "checkpoint_myr": 204.8,
+   "abs_delta_km3": 380688.3079145793,
+   "reload_reproduces": true,
+   "window_frozen_share": 0.19169807659618301,
+   "routed_supply": false,
+   "target_volume_km3": [
+    392628.33239834465,
+    11940.024483765294,
+    269607.45987277856,
+    53885.58850285568
+   ],
+   "screened": true
+  },
+  {
+   "seed": "317739385",
+   "scan_step": 28,
+   "checkpoint_myr": 203.4,
+   "abs_delta_km3": 376670.69015048683,
+   "reload_reproduces": true,
+   "window_frozen_share": 0.2164565479582259,
+   "routed_supply": false,
+   "target_volume_km3": [
+    388114.5053059535,
+    11443.815155466662,
+    382804.0501887253,
+    11336.127582587456
+   ],
+   "screened": true
+  },
+  {
+   "seed": "317739385",
+   "scan_step": 23,
+   "checkpoint_myr": 202.9,
+   "abs_delta_km3": 373620.94801674783,
+   "reload_reproduces": true,
+   "window_frozen_share": 0.19146375091904697,
+   "routed_supply": false,
+   "target_volume_km3": [
+    null,
+    390226.18001757,
+    null,
+    387837.7550043921
+   ],
+   "screened": true
+  },
+  {
+   "seed": "317739385",
+   "scan_step": 19,
+   "checkpoint_myr": 202.5,
+   "abs_delta_km3": 373023.69072436664,
+   "reload_reproduces": true,
+   "window_frozen_share": 0.1994074010874249,
+   "routed_supply": false,
+   "target_volume_km3": [
+    null,
+    389791.0793182905,
+    null,
+    390095.59094768437
+   ],
+   "screened": true
+  },
+  {
+   "seed": "317739385",
+   "scan_step": 38,
+   "checkpoint_myr": 204.4,
+   "abs_delta_km3": 372138.0482769915,
+   "reload_reproduces": true,
+   "window_frozen_share": 0.21061714380779983,
+   "routed_supply": false,
+   "target_volume_km3": [
+    392206.15989076317,
+    20068.111613771704,
+    386142.85602620174,
+    19990.784413061494
+   ],
+   "screened": true
+  },
+  {
+   "seed": "317739385",
+   "scan_step": 10,
+   "checkpoint_myr": 201.6,
+   "abs_delta_km3": 370150.4948285914,
+   "reload_reproduces": true,
+   "window_frozen_share": 0.21513976017327338,
+   "routed_supply": false,
+   "target_volume_km3": [
+    373064.88211859914,
+    2914.387290007711,
+    263920.50476848026,
+    18362.93778116752
+   ],
+   "screened": true
+  },
+  {
+   "seed": "317739385",
+   "scan_step": 14,
+   "checkpoint_myr": 202.0,
+   "abs_delta_km3": 357534.4536594061,
+   "reload_reproduces": true,
+   "window_frozen_share": 0.20880184717440098,
+   "routed_supply": false,
+   "target_volume_km3": [
+    371089.3440693125,
+    13554.890409906347,
+    264012.6921415389,
+    26717.195882829226
+   ],
+   "screened": true
+  }
+ ],
+ "arms": {
+  "d-jobson-cap1": {
+   "save_sha256": "6a8d6f90959b3cc4235a48ebbd6ddb0373041f79db131d9ac9f370dd6806bff7",
+   "initial_river_km3": 296.7555931935949,
+   "final_river_km3": 489.37714572648554,
+   "max_step_liquid_residual": 1.275936509454686e-14,
+   "stranded_overflow_m3": 0.0,
+   "max_step_lake_residual": 7.781756172032975e-14,
+   "max_reach_residual_m3": 64.0,
+   "target_volume_km3": [
+    2293615.55076828,
+    2767.8219981295883,
+    268996.25245018466,
+    788970.9915481582
+   ],
+   "target_supply_m3_per_yr": [
+    {
+     "wet_precip": 267383698377.50253,
+     "dry_runoff": 727493961493.3042,
+     "meltwater": 882538.8667347484,
+     "river_storage": 20897.14525486112
+    },
+    {
+     "wet_precip": 1002371732113.3386,
+     "dry_runoff": 295412146770.3332,
+     "meltwater": 586297.7499282649,
+     "river_storage": 23655.65894176123
+    },
+    {
+     "wet_precip": 86835115421.76251,
+     "dry_runoff": 545155164135.3521,
+     "meltwater": 802740.8466439925,
+     "river_storage": 25996.256120909165
+    },
+    {
+     "wet_precip": 977554271973.1157,
+     "dry_runoff": 440195003550.01154,
+     "meltwater": 1089507.0653137928,
+     "river_storage": 36300.98458126779
+    }
+   ],
+   "window_frozen_share": 0.04298928392420144,
+   "max_step_frozen_share": 0.0632252718435572,
+   "peak_rss_mb": null
+  },
+  "d-raymond-cap0.1": {
+   "save_sha256": "6a8d6f90959b3cc4235a48ebbd6ddb0373041f79db131d9ac9f370dd6806bff7",
+   "initial_river_km3": 296.7555931935949,
+   "final_river_km3": 284.8651214039609,
+   "max_step_liquid_residual": 1.250426705482369e-14,
+   "stranded_overflow_m3": 0.0,
+   "max_step_lake_residual": 7.751778306634509e-14,
+   "max_reach_residual_m3": 64.0,
+   "target_volume_km3": [
+    2293615.55076828,
+    2767.82199813199,
+    268996.2524495444,
+    788970.9922382408
+   ],
+   "target_supply_m3_per_yr": [
+    {
+     "wet_precip": 267383698377.50253,
+     "dry_runoff": 727493959979.3518,
+     "meltwater": 882537.7532931735,
+     "river_storage": 20897.145104426098
+    },
+    {
+     "wet_precip": 1002371732001.2299,
+     "dry_runoff": 295412145882.50543,
+     "meltwater": 586297.0925235206,
+     "river_storage": 23765.757962322445
+    },
+    {
+     "wet_precip": 86835115359.7114,
+     "dry_runoff": 545155159861.06616,
+     "meltwater": 802739.8557698757,
+     "river_storage": 26972.757039394317
+    },
+    {
+     "wet_precip": 977554213631.5568,
+     "dry_runoff": 440194976171.16284,
+     "meltwater": 1089505.67462898,
+     "river_storage": 40063.18736370558
+    }
+   ],
+   "window_frozen_share": 0.042989283962912024,
+   "max_step_frozen_share": 0.0632252718435572,
+   "peak_rss_mb": null
+  },
+  "d-raymond-cap1": {
+   "save_sha256": "6a8d6f90959b3cc4235a48ebbd6ddb0373041f79db131d9ac9f370dd6806bff7",
+   "initial_river_km3": 296.7555931935949,
+   "final_river_km3": 284.86243592539404,
+   "max_step_liquid_residual": 1.2666289033401608e-14,
+   "stranded_overflow_m3": 0.0,
+   "max_step_lake_residual": 7.852284007986049e-14,
+   "max_reach_residual_m3": 64.0,
+   "target_volume_km3": [
+    2293615.55076828,
+    2767.8219981320044,
+    268996.25245000987,
+    788970.9922186952
+   ],
+   "target_supply_m3_per_yr": [
+    {
+     "wet_precip": 267383698377.50253,
+     "dry_runoff": 727493959979.3518,
+     "meltwater": 882537.6441312683,
+     "river_storage": 20897.14510439184
+    },
+    {
+     "wet_precip": 1002371732061.8013,
+     "dry_runoff": 295412145911.5524,
+     "meltwater": 586297.0453869884,
+     "river_storage": 23765.80830357868
+    },
+    {
+     "wet_precip": 86835115352.12103,
+     "dry_runoff": 545155159825.18494,
+     "meltwater": 802739.7808616925,
+     "river_storage": 26972.82012661248
+    },
+    {
+     "wet_precip": 977554213298.8484,
+     "dry_runoff": 440194975970.59924,
+     "meltwater": 1089505.571886025,
+     "river_storage": 40063.27650862654
+    }
+   ],
+   "window_frozen_share": 0.042989283962737344,
+   "max_step_frozen_share": 0.0632252718435572,
+   "peak_rss_mb": null
+  },
+  "d-raymond-cap10": {
+   "save_sha256": "6a8d6f90959b3cc4235a48ebbd6ddb0373041f79db131d9ac9f370dd6806bff7",
+   "initial_river_km3": 296.7555931935949,
+   "final_river_km3": 284.86245145196915,
+   "max_step_liquid_residual": 1.2758624338718641e-14,
+   "stranded_overflow_m3": 0.0,
+   "max_step_lake_residual": 7.918279760535558e-14,
+   "max_reach_residual_m3": 64.0,
+   "target_volume_km3": [
+    2293615.55076828,
+    2767.8219981320044,
+    268996.2524500619,
+    788970.9922187047
+   ],
+   "target_supply_m3_per_yr": [
+    {
+     "wet_precip": 267383698377.50253,
+     "dry_runoff": 727493959979.3518,
+     "meltwater": 882537.6441312683,
+     "river_storage": 20897.14510439184
+    },
+    {
+     "wet_precip": 1002371732067.7754,
+     "dry_runoff": 295412145914.4367,
+     "meltwater": 586297.0453976146,
+     "river_storage": 23765.80830357868
+    },
+    {
+     "wet_precip": 86835115358.09418,
+     "dry_runoff": 545155159885.78784,
+     "meltwater": 802739.7809799004,
+     "river_storage": 26972.82012702397
+    },
+    {
+     "wet_precip": 977554213328.9536,
+     "dry_runoff": 440194975985.45514,
+     "meltwater": 1089505.572047614,
+     "river_storage": 40063.27651229057
+    }
+   ],
+   "window_frozen_share": 0.04298928396406772,
+   "max_step_frozen_share": 0.0632252718435572,
+   "peak_rss_mb": null
+  },
+  "e-jobson-cap1": {
+   "save_sha256": "4045b915a2d3d9e534a84089bba7277bbd488690e51d70f4e928f58c8cf674b1",
+   "initial_river_km3": 273.08775051004636,
+   "final_river_km3": 519.7340162443767,
+   "max_step_liquid_residual": 8.074574641878836e-13,
+   "stranded_overflow_m3": 0.0,
+   "max_step_lake_residual": 5.2004026376978745e-12,
+   "max_reach_residual_m3": 32.0,
+   "target_volume_km3": [
+    106434.7009434391,
+    2268652.268404742,
+    6422.051173494376,
+    2271028.118347704
+   ],
+   "target_supply_m3_per_yr": [
+    {
+     "wet_precip": 921884582365.5504,
+     "dry_runoff": 642959404591.8357,
+     "meltwater": 2175588.6192055373,
+     "river_storage": 27045.8484528976
+    },
+    {
+     "wet_precip": 578059661048.4199,
+     "dry_runoff": 550823912079.6765,
+     "meltwater": 2057543.7777823415,
+     "river_storage": 34097.93042837967
+    },
+    {
+     "wet_precip": 1756889967816.391,
+     "dry_runoff": 321754950562.3455,
+     "meltwater": 1960688.969009709,
+     "river_storage": 24320.64804849589
+    },
+    {
+     "wet_precip": 102849493869.7991,
+     "dry_runoff": 478294716866.7099,
+     "meltwater": 1483854.1628681165,
+     "river_storage": 17499.713639172867
+    }
+   ],
+   "window_frozen_share": 0.044834993009222494,
+   "max_step_frozen_share": 0.06188382819811979,
+   "peak_rss_mb": null
+  },
+  "e-raymond-cap0.1": {
+   "save_sha256": "4045b915a2d3d9e534a84089bba7277bbd488690e51d70f4e928f58c8cf674b1",
+   "initial_river_km3": 273.08775051004636,
+   "final_river_km3": 268.87041441084517,
+   "max_step_liquid_residual": 8.075468126409952e-13,
+   "stranded_overflow_m3": 0.0,
+   "max_step_lake_residual": 5.2003821003659835e-12,
+   "max_reach_residual_m3": 32.0,
+   "target_volume_km3": [
+    106434.7009434391,
+    2268652.268405251,
+    6422.056957522785,
+    2271028.118484465
+   ],
+   "target_supply_m3_per_yr": [
+    {
+     "wet_precip": 921884582365.5504,
+     "dry_runoff": 642959404188.0748,
+     "meltwater": 2175586.893409153,
+     "river_storage": 27045.848370762185
+    },
+    {
+     "wet_precip": 578059661058.6847,
+     "dry_runoff": 550823908039.6724,
+     "meltwater": 2057542.059505242,
+     "river_storage": 34615.54358806314
+    },
+    {
+     "wet_precip": 1756889965289.8232,
+     "dry_runoff": 321754947427.7694,
+     "meltwater": 1960687.4752348606,
+     "river_storage": 28280.058411392987
+    },
+    {
+     "wet_precip": 102849496745.169,
+     "dry_runoff": 478294728424.18866,
+     "meltwater": 1483852.743402103,
+     "river_storage": 19715.785081384154
+    }
+   ],
+   "window_frozen_share": 0.044834989849837664,
+   "max_step_frozen_share": 0.0618838188475558,
+   "peak_rss_mb": null
+  },
+  "e-raymond-cap1": {
+   "save_sha256": "4045b915a2d3d9e534a84089bba7277bbd488690e51d70f4e928f58c8cf674b1",
+   "initial_river_km3": 273.08775051004636,
+   "final_river_km3": 268.8663291027886,
+   "max_step_liquid_residual": 8.075520549710345e-13,
+   "stranded_overflow_m3": 0.0,
+   "max_step_lake_residual": 5.199871161327517e-12,
+   "max_reach_residual_m3": 32.0,
+   "target_volume_km3": [
+    106434.7009434391,
+    2268652.268405252,
+    6422.056957506176,
+    2271028.118484506
+   ],
+   "target_supply_m3_per_yr": [
+    {
+     "wet_precip": 921884582365.5504,
+     "dry_runoff": 642959404188.0748,
+     "meltwater": 2175586.863658577,
+     "river_storage": 27045.848370757296
+    },
+    {
+     "wet_precip": 578059661087.4518,
+     "dry_runoff": 550823908146.668,
+     "meltwater": 2057541.968949223,
+     "river_storage": 34615.62217820245
+    },
+    {
+     "wet_precip": 1756889965204.212,
+     "dry_runoff": 321754947416.8716,
+     "meltwater": 1960687.431626214,
+     "river_storage": 28280.105973295133
+    },
+    {
+     "wet_precip": 102849496638.67921,
+     "dry_runoff": 478294727781.6419,
+     "meltwater": 1483852.647972005,
+     "river_storage": 19715.876466628855
+    }
+   ],
+   "window_frozen_share": 0.04483498984615505,
+   "max_step_frozen_share": 0.06188381885147591,
+   "peak_rss_mb": null
+  },
+  "e-raymond-cap10": {
+   "save_sha256": "4045b915a2d3d9e534a84089bba7277bbd488690e51d70f4e928f58c8cf674b1",
+   "initial_river_km3": 273.08775051004636,
+   "final_river_km3": 268.866329373486,
+   "max_step_liquid_residual": 8.074834782999144e-13,
+   "stranded_overflow_m3": 0.0,
+   "max_step_lake_residual": 5.199241476137568e-12,
+   "max_reach_residual_m3": 32.0,
+   "target_volume_km3": [
+    106434.7009434391,
+    2268652.268405252,
+    6422.056957506176,
+    2271028.118484648
+   ],
+   "target_supply_m3_per_yr": [
+    {
+     "wet_precip": 921884582365.5504,
+     "dry_runoff": 642959404188.0748,
+     "meltwater": 2175586.863658577,
+     "river_storage": 27045.848370757296
+    },
+    {
+     "wet_precip": 578059661087.4518,
+     "dry_runoff": 550823908146.668,
+     "meltwater": 2057541.968949223,
+     "river_storage": 34615.62217820245
+    },
+    {
+     "wet_precip": 1756889965237.6494,
+     "dry_runoff": 321754947436.2218,
+     "meltwater": 1960687.431670214,
+     "river_storage": 28280.105973295133
+    },
+    {
+     "wet_precip": 102849496264.77356,
+     "dry_runoff": 478294725563.71924,
+     "meltwater": 1483852.6440872385,
+     "river_storage": 19715.876467517035
+    }
+   ],
+   "window_frozen_share": 0.04483498983000942,
+   "max_step_frozen_share": 0.06188381885929618,
+   "peak_rss_mb": null
+  },
+  "f-jobson-cap1": {
+   "save_sha256": "1f9f2493ae57150771949b9a0f96fc6da7de729e35a97d51e54656853b3a4d46",
+   "initial_river_km3": 245.7998477885628,
+   "final_river_km3": 434.5038762595399,
+   "max_step_liquid_residual": 2.6201456554363262e-14,
+   "stranded_overflow_m3": 0.0,
+   "max_step_lake_residual": 1.8486172191319765e-13,
+   "max_reach_residual_m3": 32.0,
+   "target_volume_km3": [
+    1808527.9377541884,
+    72365.39845856673,
+    694236.1509421706,
+    970045.008938976
+   ],
+   "target_supply_m3_per_yr": [
+    {
+     "wet_precip": 570601616162.3972,
+     "dry_runoff": 542462924316.055,
+     "meltwater": 2721586.7082662787,
+     "river_storage": 21571.263598721293
+    },
+    {
+     "wet_precip": 508900847036.18726,
+     "dry_runoff": 317061286816.49084,
+     "meltwater": 478697.12362678366,
+     "river_storage": 12193.372256196903
+    },
+    {
+     "wet_precip": 279578501529.7557,
+     "dry_runoff": 399383085812.3768,
+     "meltwater": 2268604.669308164,
+     "river_storage": 17140.60812704647
+    },
+    {
+     "wet_precip": 375432833641.78864,
+     "dry_runoff": 299864089093.3925,
+     "meltwater": 552871.7322333227,
+     "river_storage": 10811.380219476167
+    }
+   ],
+   "window_frozen_share": 0.0698209126381122,
+   "max_step_frozen_share": 0.10755775851324996,
+   "peak_rss_mb": null
+  },
+  "f-raymond-cap0.1": {
+   "save_sha256": "1f9f2493ae57150771949b9a0f96fc6da7de729e35a97d51e54656853b3a4d46",
+   "initial_river_km3": 245.7998477885628,
+   "final_river_km3": 254.0526757534964,
+   "max_step_liquid_residual": 2.617431492674953e-14,
+   "stranded_overflow_m3": 0.0,
+   "max_step_lake_residual": 1.875091824176003e-13,
+   "max_reach_residual_m3": 32.0,
+   "target_volume_km3": [
+    1808527.9377541884,
+    72365.39845864201,
+    694236.1509431875,
+    970045.0093514808
+   ],
+   "target_supply_m3_per_yr": [
+    {
+     "wet_precip": 570601616162.3972,
+     "dry_runoff": 542462923092.1584,
+     "meltwater": 2721584.6549730767,
+     "river_storage": 21571.263438857208
+    },
+    {
+     "wet_precip": 508900847217.8778,
+     "dry_runoff": 317061286858.4257,
+     "meltwater": 478696.59476363077,
+     "river_storage": 13200.749508527188
+    },
+    {
+     "wet_precip": 279578701451.14496,
+     "dry_runoff": 399383370757.088,
+     "meltwater": 2268603.8454574207,
+     "river_storage": 19012.46551613086
+    },
+    {
+     "wet_precip": 375433122530.6401,
+     "dry_runoff": 299864422642.70526,
+     "meltwater": 552871.5943640091,
+     "river_storage": 12044.851233172818
+    }
+   ],
+   "window_frozen_share": 0.06982081955043457,
+   "max_step_frozen_share": 0.10755750319284481,
+   "peak_rss_mb": null
+  },
+  "f-raymond-cap1": {
+   "save_sha256": "1f9f2493ae57150771949b9a0f96fc6da7de729e35a97d51e54656853b3a4d46",
+   "initial_river_km3": 245.7998477885628,
+   "final_river_km3": 254.05641866753723,
+   "max_step_liquid_residual": 2.647578026882846e-14,
+   "stranded_overflow_m3": 0.0,
+   "max_step_lake_residual": 1.8581246865964062e-13,
+   "max_reach_residual_m3": 32.0,
+   "target_volume_km3": [
+    1808527.9377541884,
+    72365.39845864206,
+    694236.1509468568,
+    970045.0093477239
+   ],
+   "target_supply_m3_per_yr": [
+    {
+     "wet_precip": 570601616162.3972,
+     "dry_runoff": 542462923092.1584,
+     "meltwater": 2721584.6177533166,
+     "river_storage": 21571.263438852387
+    },
+    {
+     "wet_precip": 508900848301.7086,
+     "dry_runoff": 317061288548.0682,
+     "meltwater": 478696.58418132266,
+     "river_storage": 13200.756099209635
+    },
+    {
+     "wet_precip": 279578700219.65234,
+     "dry_runoff": 399383369286.85547,
+     "meltwater": 2268603.8044715277,
+     "river_storage": 19012.49958278317
+    },
+    {
+     "wet_precip": 375433123698.24207,
+     "dry_runoff": 299864422450.8029,
+     "meltwater": 552871.5947258144,
+     "river_storage": 12044.85935981553
+    }
+   ],
+   "window_frozen_share": 0.06982082027271472,
+   "max_step_frozen_share": 0.10755750471184423,
+   "peak_rss_mb": null
+  },
+  "f-raymond-cap10": {
+   "save_sha256": "1f9f2493ae57150771949b9a0f96fc6da7de729e35a97d51e54656853b3a4d46",
+   "initial_river_km3": 245.7998477885628,
+   "final_river_km3": 254.28186300301178,
+   "max_step_liquid_residual": 2.615543410505631e-14,
+   "stranded_overflow_m3": 0.0,
+   "max_step_lake_residual": 1.8778173258176078e-13,
+   "max_reach_residual_m3": 32.0,
+   "target_volume_km3": [
+    1808527.9377541884,
+    72365.39845864206,
+    694236.1509474359,
+    970045.0093735978
+   ],
+   "target_supply_m3_per_yr": [
+    {
+     "wet_precip": 570601616162.3972,
+     "dry_runoff": 542462923092.1584,
+     "meltwater": 2721584.6177533166,
+     "river_storage": 21571.263438852387
+    },
+    {
+     "wet_precip": 508900848454.3567,
+     "dry_runoff": 317061288824.2187,
+     "meltwater": 478696.5842369321,
+     "river_storage": 13200.756099209635
+    },
+    {
+     "wet_precip": 279578699939.2913,
+     "dry_runoff": 399383368781.96515,
+     "meltwater": 2268603.8023627745,
+     "river_storage": 19012.49958937522
+    },
+    {
+     "wet_precip": 375433124049.88257,
+     "dry_runoff": 299864423316.9367,
+     "meltwater": 552871.6317101393,
+     "river_storage": 12044.859349200218
+    }
+   ],
+   "window_frozen_share": 0.06982082076720376,
+   "max_step_frozen_share": 0.10755750599787083,
+   "peak_rss_mb": null
+  }
+ }
+}

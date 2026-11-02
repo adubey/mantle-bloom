@@ -86,8 +86,12 @@ def components(fields):
     area = hypsometry.area_m2
     records = []
     for nodes in members:
+        node_points = np.asarray(fields.points)[nodes]
+        centre = node_points.mean(axis=0)
         records.append({
             "nodes": nodes,
+            # The wet node nearest the normalized centroid, #680's anchor rule.
+            "anchor": node_points[int(np.argmax(node_points @ (centre / np.linalg.norm(centre))))].tolist(),
             "area_km2": float(area[nodes].sum() / 1e6),
             "volume_m3": float(np.dot(fields.lake_depth[nodes], area[nodes])),
         })
@@ -124,6 +128,7 @@ def step_record(fields, step, runtime_s, previous_bodies):
     old_for_new = match_bodies(previous_bodies, bodies)
     reversals = 0
     eligible = 0
+    events = []
     for new_i, old_i in old_for_new.items():
         old, new = previous_bodies[old_i], bodies[new_i]
         if old["area_km2"] <= 10_000.0 or new["area_km2"] <= 10_000.0:
@@ -135,6 +140,16 @@ def step_record(fields, step, runtime_s, previous_bodies):
             baseline = max(old["volume_m3"], 1.0)
             if abs(prior_delta) > 0.5 * baseline and abs(delta) > 0.5 * baseline:
                 reversals += 1
+                # RFC 0016's window scan needs to know which lake reversed, not just how many.
+                events.append({
+                    "prior_delta_km3": prior_delta / 1e9,
+                    "delta_km3": delta / 1e9,
+                    "volume_before_km3": old["volume_m3"] / 1e9,
+                    "volume_after_km3": new["volume_m3"] / 1e9,
+                    "area_before_km2": old["area_km2"],
+                    "area_after_km2": new["area_km2"],
+                    "anchor": new["anchor"],
+                })
         new["delta_m3"] = delta
 
     hypsometry = getattr(fields, "hypsometry", None) or lakes.CellHypsometry.whole_cells(fields.elevation)
@@ -175,6 +190,7 @@ def step_record(fields, step, runtime_s, previous_bodies):
         "split_events": sum(event.kind == "split" for event in (getattr(fields, "lake_events", []) or [])),
         "large_body_flicker_reversals": reversals,
         "large_body_flicker_comparable": eligible,
+        "large_body_flicker_events": events,
         "breached_pits": int(np.count_nonzero(notch > 0.0)) if len(notch) == len(fields.elevation) else 0,
         "floor_drain_leaves": len(drains),
         "floor_drain_toggles": len(drains.symmetric_difference(prior_drains)),

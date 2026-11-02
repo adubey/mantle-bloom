@@ -415,3 +415,114 @@ that basin's water. C fails either way.
 **G0 conclusion.** River law, reach closure, initial state and liquid ledger pass on this source.
 The windows don't: only A is usable, so G1 needs two replacements, chosen and hashed before any
 treatment under PR #743. Rerun G0 on them.
+
+## Window rescan
+
+Preregistered before any scan run. PR #743 allows replacing a window whose event is lost or which
+fails the frozen-precipitation screen. This scan selects windows on current source and measures
+whether #736 changed how often flicker occurs.
+
+**Arms.** Current source `0bda513d`, and `9d6fb5e2`, the last `main` commit before #736, which has
+#734. Both replay in series with `bin/debug/measure_lake_step_budget.py`, 100 kyr steps, ice-age
+cycle off, for 5 Myr.
+
+**Worlds.** #680's two event worlds, by SHA-256: seed 910211954 at 220.2 Myr (`bd487409…`) and seed
+317739385 at 200.8 Myr (`6c806f91…`). Neither is an RFC 0016 held-out save.
+
+**Detector.** #680's unchanged #588 rule: a matched component over 10,000 km², whose successive
+volume changes reverse sign, both above 50% of the prior volume. Results from the first 0.4 Myr
+after load are excluded in both arms, because the current arm's noise changes at load.
+
+**Flicker comparison, descriptive only.** Reversal counts and comparable-body counts per world and
+arm, with the qualifying step ages. Two worlds and one noise history can't separate a real change
+from chance, so any difference is reported as an indication, not a result.
+
+**Window selection, current arm only, in order.**
+
+1. Candidates are qualifying reversals. A window is four steps from a checkpoint two steps before
+   the reversal, as #680 used. Windows don't overlap.
+2. Rank by largest absolute `ΔV`, then take the matched component as the target, with its anchor at
+   the wet node nearest its centroid.
+3. Save the checkpoint from the source world, and require that a reload reproduces the event.
+4. Pass RFC 0016's frozen-precipitation screen: at most 10% across the window.
+5. Require nonzero routed supply to the target in the window. G1 tests an upstream store, and window
+   C shows a lake with none can't respond through that path. This rule is new, is a selection rule
+   rather than a gate, and is disclosed for the owner's review.
+6. Take the three highest-ranked windows that pass, with at least one from each world if both
+   supply a passing candidate. A registered window keeps no priority: it qualifies only by this rule.
+
+If fewer than three pass, report that and stop; don't relax a threshold. Rerun G0's 12 arms on the
+selected windows and record them with hashes before any treatment.
+
+
+### Rescan results
+
+Source `2e465887`, simulation-identical to `origin/main` `0bda513d`. Whole-run values are in
+[`window-rescan-summary.json`](window-rescan-summary.json). Scans, checkpoints and G0 replay JSON are
+under `window-rescan/` in the private captures; their `SHA256SUMS` has SHA-256
+`ad8ba73bd59e2bc38411d2e5f4f8d4f1f4aaaffdea8667ed72f5b68a8943bc42`.
+
+**Flicker continues after #736.** Steps 5–50 of each scan, so results from the first 0.4 Myr are out.
+
+| World | Arm | Reversals | Comparable bodies | Rate | Steps with a reversal |
+|---|---|---:|---:|---:|---:|
+| Seed 910211954 | Before #736 | 27 | 271 | 10.0% | 23 of 46 |
+| Seed 910211954 | Current | 23 | 239 | 9.6% | 18 of 46 |
+| Seed 317739385 | Before #736 | 27 | 106 | 25.5% | 26 of 46 |
+| Seed 317739385 | Current | 23 | 110 | 20.9% | 23 of 46 |
+
+The totals are 54 and 46 reversals. As registered, this is an indication only. It doesn't support the
+reading that #736 stopped flicker: B's event was lost, but the rate barely moved, and reversals now
+fall on different steps. Seed 910211954's save is at 220.4 Myr, not the 220.2 Myr in its file name.
+
+**Candidates.** Eight non-overlapping windows per world, ranked by `|ΔV|`. The top four of seed
+910211954 and all eight of seed 317739385 were screened. Every screened reload reproduced the scan's
+volume exactly.
+
+| Seed | Checkpoint (Myr) | `|ΔV|` (km³) | Frozen share | Routed supply | Result |
+|---|---:|---:|---:|---|---|
+| 910211954 | 225.1 | 2,290,848 | 4.3% | Yes | **Window D** |
+| 910211954 | 224.4 | 2,288,695 | 51.0% | Yes | Fails frozen screen |
+| 910211954 | 224.0 | 2,162,218 | 4.5% | Yes | **Window E** |
+| 910211954 | 222.8 | 1,736,163 | 7.0% | Yes | **Window F** |
+| 317739385 | All eight | 357,534–383,913 | 19.1–21.6% | None | Fail both |
+
+Seed 317739385 supplies no passing candidate, so the one-per-world clause doesn't apply. Its target
+is the lake from window C: no routed supply reaches it in any step. Candidate 224.4's share comes
+from one step whose catchment reaches 29 million km².
+
+**Selected windows.** All three start from seed 910211954 and run 0.4 Myr at 100 kyr steps. Each
+anchor stays wet on all four steps.
+
+| Window | Checkpoint SHA-256 | Target volume, steps 1–4 (km³) | Anchor file |
+|---|---|---|---|
+| D | `6a8d6f90…` | 2,293,616, 2,768, 268,996, 788,971 | [`d`](target-anchor-window-d.json) |
+| E | `4045b915…` | 106,435, 2,268,652, 6,422, 2,271,028 | [`e`](target-anchor-window-e.json) |
+| F | `1f9f2493…` | 1,808,528, 72,365, 694,236, 970,045 | [`f`](target-anchor-window-f.json) |
+
+**G0 on the selected windows passes.** Twelve arms: Raymond at 0.1-, 1- and 10-year caps, and Jobson
+at 1 year.
+
+| Window | Inventory, central (km³) | Jobson (km³) | Largest reach error (m³) | Liquid residual, worst step | Stranded overflow | Frozen share, window | Worst step |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| D | 296.8→284.9 | 296.8→489.4 | 64 | 1.3e-14 | 0 | 4.3% | 6.3% |
+| E | 273.1→268.9 | 273.1→519.7 | 32 | 8.1e-13 | 0 | 4.5% | 6.2% |
+| F | 245.8→254.1 | 245.8→434.5 | 32 | 2.6e-14 | 0 | 7.0% | 10.8% |
+
+F passes because the screen applies across the window, but one step exceeds 10%. Target volumes match
+across all arms of a window to the nearest km³.
+
+**Limits on what these windows can show.**
+
+- All three anchors lie within about 290 km of each other, so "two of three windows" would rest on
+  one lake basin in one world.
+- The windows replace A as well as B and C. RFC 0016 allows replacement only for an input or
+  data-integrity reason, a failed frozen screen or a lost event, and A passes the frozen screen and
+  still fills. The rescan's rule that a registered window keeps no priority therefore needs the
+  owner's decision, as does the routed-supply rule. A's G0 arms at `50f153ef` are
+  simulation-identical to this source, so A can stand in without a rerun. Its anchor is about 1,500 km
+  from D's.
+- Each event's `|ΔV|` is about 2% of the target's supply over one 100 kyr step, and world river
+  inventory is about 0.013% of `|ΔV|`. A river store of this size can't hold the swing, while a change
+  of about 0.2% in delivered water could meet the 10% materiality limit. G1's result will turn on
+  the flux, not on the storage.
