@@ -559,3 +559,132 @@ before it can replace that pin. Full hashes for D and E are in
 G0 passes on these three windows: river law, reach closure, initial state, liquid ledger and the
 frozen screen. Two limits carry into G1. D and E share a basin, so the two-of-three test has two
 basins behind it, and A's checkpoint comes from an older source's history, with a one-way fill.
+
+## G1a preregistration
+
+Frozen by the merge of its PR, before any paired run. Nothing here has run a treatment: the scale
+check below only reads each checkpoint's saved climate. Design principles 3, 5 and 8 apply: the
+store is a fast process inside a long step, every flux has physical units, and the land law replaces
+a proxy with its own physics.
+
+**Why the store is seasonal.** A store of about a metre reaches balance within a few years, far
+shorter than a 100 kyr step. With annual-mean forcing the balance is `ET = min(L, Eᵖ)`, whatever the
+capacity, so `C` would have no effect at all. Capacity changes the annual water balance through
+seasonality [[Milly, 1994]](https://doi.org/10.1029/94WR00586). So the law below runs a monthly bucket
+to its repeating year.
+
+**Inputs.** The model has no net radiation, leaf area, diurnal range or cloud, so Penman-type,
+Priestley–Taylor and Hargreaves methods can't run without an invented input. It has annual
+temperature `Ta`, seasonal amplitude `a` (`biomes.seasonal_temp_amplitude`), axial tilt, the
+half-year rain share `s` (`biomes._precip_season`) and the Köppen class.
+
+**Equations, for each dry, unfrozen land node and month `m`.** All depths are mm over the month.
+
+1. Monthly temperature: `Ta_m = Ta + a cos(2π(m − m_w)/12)`, with `m_w` a month after the summer
+   solstice.
+2. Rain: `L_m = L s/6` in the warm half-year and `L (1 − s)/6` in the cold half. `L` is the node's
+   annual liquid rain, so `Σ L_m = L`.
+3. Demand: `Eᵖ_m = D · R_m/(λρ) · max(Ta_m + 5, 0)/100 · d_m`, where `R_m` is monthly
+   top-of-atmosphere radiation in MJ m⁻² d⁻¹ from the formula in `climate.compute_insolation_w_m2`,
+   `λρ` = 2.45 MJ m⁻² mm⁻¹ and `d_m` is days in the month
+   [[Oudin et al., 2005]](https://doi.org/10.1016/j.jhydrol.2004.08.026). It needs only these inputs, and
+   was proposed for rainfall-runoff modelling after a test of 27 methods on 308 catchments. `D` is the demand factor. The formula replaces `open_water_evaporation_mm` in the
+   treatment only.
+4. Water limit: `β(S) = min(1, S/((1 − p) C))`, the FAO-56 stress form
+   [[Allen et al., 1998]](https://www.fao.org/3/x0490e/x0490e0e.htm), for `S` in `[0, C]`.
+5. Store: `dS/dt = L_m/Δ − (Eᵖ_m/Δ) β(S)`, with `Δ` the month length. Within a month this is linear
+   above `(1 − p) C` and exponential below it, so it's integrated in closed form with the crossing
+   solved exactly. `S` above `C` leaves as saturation excess, the only surface water.
+6. Actual ET: `ET_m = ∫ Eᵖ_m β dt`, which can't exceed `S + L_m`. Each flux is debited once.
+7. Split: `T_m = f ET_m` and `ET_soil,m = (1 − f) ET_m`. `f` is by Köppen class, below. Wei's ratio
+   includes interception, so `ET_soil` covers it too. `f` is a measured actual-flux ratio applied to
+   the whole of `ET`, not a stress-dependent split.
+8. Interval: step the year from the node's opening `S` until it repeats, to 1e-6 of `C`, booking
+   those years explicitly. Then multiply the repeating year by the remaining years. Fluxes therefore
+   don't depend on step length once the year repeats, and the interval closes exactly.
+9. Opening state: at each checkpoint, `S` starts on the repeating year's January value under the
+   checkpoint's climate. That's recorded as initial inventory, not an input, as with `Q τ`.
+10. Humidity: on the next climate update, `T` replaces `_vegetation_transpiration_source` on land,
+    at `T_mm/PRECIP_MM_PER_G_KG` g/kg, area-binned from nodes to the climate grid.
+11. Unchanged: wet-fraction rain, the `is_frozen` mask, `M_scaled`, routing, river reservoirs and
+    lakes. Frozen nodes keep control behaviour.
+
+**Parameters.** `C` is uniform across nodes, because the model has no field to justify a pattern.
+
+| Parameter | Low | Central | High | Source, and what's a design choice |
+|---|---:|---:|---:|---|
+| `C` (mm) | 150 | 300 | 1,000 | Low: [Gupta et al., 2023](https://doi.org/10.1029/2022MS003277), 19,941 km³ in the top 1 m, over about 1.3e8 km² of ice-free land (the area is my assumption). Central: twice that for 2 m, which [Stocker et al., 2023](https://doi.org/10.1038/s41561-023-01125-2) exceed across 37% of vegetated land. High: **design choice**, for deeper water, with no global value behind it. |
+| `p` | 0.30 | 0.50 | 0.70 | FAO-56's stated range and common value, for crops; applied to natural land as an assumption. |
+| `D` | 0.85 | 1.00 | 1.15 | **Design choice.** No published uncertainty transfers to this formula here. Scaled from the 1.08–1.34 range quoted for the Priestley–Taylor coefficient of 1.26, widened to be symmetric. |
+| `f` shift | −0.14 | 0 | +0.18 | [Wei et al., 2017](https://doi.org/10.1002/2016GL072235): global 57.2%, ensemble 42.9–74.9%. Applied to every class, clipped to `[0, 1]`. |
+
+| Köppen group | `f` | Source |
+|---|---:|---|
+| A | 0.61 | Wei table 1, broad-leaf forest |
+| C, D | 0.55 | Wei, needle-leaf and mixed forest |
+| BS, ET | 0.65 | Wei, shrubs and grasses, which includes tundra |
+| BW | 0.25 | **Design choice.** Wei maps deserts as low and gives no value |
+| EF | 0 | No plants |
+
+**Windows and source.** A, D and E on `0bda513d`, with the checkpoints under
+[Windows for G1](#windows-for-g1), at 100 kyr steps for 0.4 Myr, and the registered 10 kyr
+connectivity trace. No held-out save is used.
+
+**Arms.** Each is paired to the same control, with the same noise history.
+
+| Arm | Change | Role |
+|---|---|---|
+| Central | Central values | Primary |
+| `C` low, high; `p` low, high; `D` low, high; `f` low, high | One at a time | Range: eight arms |
+| Partition match | Control, with each node's runoff scaled uniformly by the treatment's land-wide excess ratio for that step, no store, control humidity | Reported, not counted |
+| Coupling off | Central, with the control humidity source | Reported, not counted |
+| Sham ±0.2% | Control, with runoff scaled by 1.002 and 0.998 | Reported, not counted |
+
+**Readouts.** Those in RFC 0016's G1b, per arm and window, plus each step's land-wide excess ratio and
+the humidity source against the control's. The liquid ledger must close to 0.1% in every arm, with
+`S` as a reservoir. The materiality rule is unchanged.
+
+### Scale check
+
+From [`g1a-scale-check.json`](g1a-scale-check.json), using `bin/debug/measure_rfc0016_land_demand.py`
+on unfrozen land on the climate grid. The private `g1a/SHA256SUMS` has SHA-256
+`134e592ad9eeb18463fe967e8340a4a850cb7d9f471cec6ac8a29a591a41f4d5`. It uses sub-stepped integration,
+not the closed form, and it's a scale check: no parameter was chosen from it.
+
+| Window | Rain (mm/yr) | Oudin demand (mm/yr) | Control demand (mm/yr) | Treatment ET (mm/yr) | Excess (mm/yr) | Control runoff (mm/yr) | Change |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| A | 839 | 1,002 | 1,130 | 488 | 355 | 389 | −8.7% |
+| D | 785 | 998 | 1,127 | 456 | 329 | 362 | −9.1% |
+| E | 758 | 998 | 1,126 | 449 | 309 | 343 | −10.0% |
+
+Central transpiration is 250–270 mm/yr, or 32–33% of rain, within the 39 ± 10% of a compilation of 81
+studies ([Schlesinger & Jasechko](https://agu.confex.com/agu/fm14/webprogram/Paper2691.html),
+conference abstract), for Earth, which is a sanity check only.
+
+Across the range, excess changes by +4.7% to −22.4% from the control:
+
+| Parameter, low to high | Change in excess across windows |
+|---|---:|
+| `C` | −5.5% to −12.0% |
+| `p` | −7.7% to −10.8% |
+| `D` | +4.7% to −22.4% |
+
+**What this means for G1b.**
+
+- **The treatment will probably pass materiality for a reason unrelated to storage.** Each event's
+  `|ΔV|` is about 2% of the lake's supply in a step, so a 10% change needs about 0.2% more or less
+  delivered water, and the central arm moves land-wide runoff by about 9%. The law's central
+  partition differs from Budyko's, and the store can't buffer across steps: at 300 mm, D's 3.3
+  million km² catchment holds about 1,000 km³, or 0.04% of its `|ΔV|`. That's why the partition-match
+  and sham arms are registered. If they're also material, G1b shows these events respond to any small
+  change in water supply, not that storage or plant use caused them.
+- **The humidity source roughly triples,** at 2.6–3.2× the control, because the control's proxy is
+  tuned to 16% of rain at most. RFC 0016 says to pass the volume, so this registers that as written.
+  It's the largest forcing in the package, and coupling off separates it.
+- **The step from control to treatment is a shock.** Both arms open from a control checkpoint, so 0.4
+  Myr of treatment includes the lake system's response to a sudden change in supply.
+
+**Sources not read in full.** Oudin's equation is from later reproductions of it and FAO-56's `Ks`
+from its description of equation 84. The primary pages could not be opened; the method's
+catchment counts are from the abstract. Stocker's figure and the Priestley–Taylor range are from
+search summaries. Check these before citing them outside this report.
