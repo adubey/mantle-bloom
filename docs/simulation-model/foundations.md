@@ -148,17 +148,23 @@ density" choice (`NODE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)`, see below).
   sea level implausible regardless). Confirmed directly: at the defaults, measured land
   fraction across several seeds lands within about a percentage point of 29%.
 
-Each starting plate also draws one oceanic and one continental rock age from a seed-derived
-stream that leaves other generation choices unchanged. Oceanic age uses a triangular
+Every starting cell gets a rock age that varies across its plate, read from the layout with no
+random draw (#744, #747). Generation solves the first-step plate motions read-only and treats
+oceanic cells at opening boundaries as ridges. Ocean then ages with spreading time, the distance
+from its own plate's ridges over that plate's half-spreading rate, so a plate runs from zero at
+its ridge toward its far margin. Measuring per plate is what makes age jump at a trench, where
+two histories meet: one world-wide distance is continuous and ties converging contacts. A plate
+with no ridge of its own reads the world's ridges at their median rate. Continental crust ages
+with distance from cratons, or with depth inland on a world with none, giving old cores and
+younger margins. Area-weighted rank maps each crust type onto a fixed distribution, so the
+world's age shape is set while its pattern follows the layout. Ocean takes a triangular
 distribution from 0 to 192.6 Myr with mode zero, giving the 64.2 Myr mean reported by
-[Seton et al. (2020)](https://doi.org/10.1029/2020GC009214). Continental age first selects
-Archean, Proterozoic, or Phanerozoic with probabilities 33%, 43%, and 24% (the regional
-Laurentia split specified in #744), then samples uniformly within that era. Each starting
-cell uses the draw for its own crust type, so a mixed plate does not give ocean floor a
-continental age. These are uniform plate ages, not a ridge-to-trench age pattern; newly
-formed crust keeps using its positive creation time. `World.initial_rock_ages` records both
-draws and the plate's primary crust type, while `node_created_years` stores the starting ages
-as negative years. The `-1` value remains reserved for old saves that predate age tracking.
+[Seton et al. (2020)](https://doi.org/10.1029/2020GC009214). Continental crust takes 33%
+Archean, 43% Proterozoic and 24% Phanerozoic (the regional Laurentia split specified in #744),
+uniform within each era. Distance is straight across the sphere. Newly formed crust keeps using its positive creation time.
+`World.initial_rock_ages` records each plate's primary crust type and its youngest, mean and
+oldest starting age, while `node_created_years` stores the ages as negative years. The `-1`
+value remains reserved for old saves that predate age tracking.
 
 Each plate's cells are populated by `PlateWithSparseQuadPatch.from_lattice`: sweep the plate's
 whole cube-sphere lattice at `TARGET_LINE_SPACING_KM` resolution (or a finer one -- see

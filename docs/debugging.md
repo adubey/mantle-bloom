@@ -173,6 +173,7 @@ Gate 2 load, mesh and capacity diagnostics.
 | [`surface_parity.py`](debugging/scripts-infrastructure.md#surface_paritypy) | plate-surface audit runs and quality gates |
 | [`measure_quad_area_churn.py`](debugging/scripts-infrastructure.md#measure_quad_area_churnpy) | per-step churn in represented area and the sea-level jitter it drives |
 | [`convert_legacy_saves.py`](debugging/scripts-infrastructure.md#convert_legacy_savespy) | converting line-backed saves to quads, with audits |
+| [`date_saved_world.py`](debugging/scripts-infrastructure.md#date_saved_worldpy) | dating the starting rock of an existing save |
 | [`replay_logged_event.py`](debugging/scripts-infrastructure.md#replay_logged_eventpy) | whether a replay-log record reproduces |
 | [`run_sweep.py`](debugging/scripts-infrastructure.md#run_sweeppy) | the multi-parameter sensitivity sweep |
 | [`aggregate_sweep.py`](debugging/scripts-infrastructure.md#aggregate_sweeppy) | sweep rows summarised per parameter and checkpoint |

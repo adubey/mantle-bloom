@@ -882,6 +882,19 @@ def boundary_closing_rate_m_per_s(plate, inputs: BoundaryForceInputs) -> np.ndar
     )
 
 
+def closing_rate_under(omegas: dict[int, np.ndarray], plate, neighbours: list, inputs: BoundaryForceInputs) -> np.ndarray:
+    """`boundary_closing_rate_m_per_s` under trial angular velocities instead of the plates'
+    own: the read-only reads of a motion solve, or of a save, at generation or after it."""
+    from . import rheology
+
+    neighbour_omega = np.zeros_like(inputs.neighbor_omega)
+    for neighbour in neighbours:
+        mask = inputs.neighbor_plate_id == neighbour.plate_id
+        if np.any(mask):
+            neighbour_omega[mask] = omegas[neighbour.plate_id]
+    return rheology.normal_closing_rate_m_per_s(omegas[plate.plate_id], neighbour_omega, inputs.own_points, inputs.direction_to_neighbor)
+
+
 def classify_boundary_nodes(
     plate, neighbours: list, inputs: BoundaryForceInputs, reach_rad: float, cache: BoundarySearchCache | None = None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:

@@ -117,7 +117,9 @@ line state.
 
 The per-plate `initial_rock_ages` record added in #744 backfills to an empty mapping on older
 saves. Existing `node_created_years` values, including the `-1.0` pre-tracking sentinel, are
-left unchanged; only newly generated worlds receive negative starting ages.
+left unchanged on load; only newly generated worlds receive negative starting ages. To date
+an existing save anyway, run `bin/debug/date_saved_world.py` (#747), which writes a separate
+copy with ages read from the ridges and cratons at the save's time.
 
 **Fields from a newer build.** A save from a newer build has a newer envelope version and is
 refused. Conversion separately refuses line state it doesn't recognise (§3) instead of
