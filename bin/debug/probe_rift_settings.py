@@ -218,10 +218,10 @@ def front_polarity(world, plate, state, neighbour, nodes, plates_by_id):
 
 def age_verdict(own_created_years, other_created_years, now_myr):
     """"upper" or "lower" for the plate owning `own_created_years`, older ocean going under, or
-    "tied" inside AGE_POLARITY_MIN_GAP_MYR. Cells from t = 0 and untracked cells read as the
-    run's full age: all starting ocean is one age, so two such sides tie instead of guessing."""
-    own = now_myr - max(float(np.median(own_created_years)) / 1e6, 0.0)
-    other = now_myr - max(float(np.median(other_created_years)) / 1e6, 0.0)
+    "tied" inside AGE_POLARITY_MIN_GAP_MYR. Starting rock carries a negative date, so it reads
+    older than the run (#745, #752); the -1 undated sentinel reads as rock from t = 0."""
+    own = now_myr - float(np.median(own_created_years)) / 1e6
+    other = now_myr - float(np.median(other_created_years)) / 1e6
     if abs(own - other) < AGE_POLARITY_MIN_GAP_MYR:
         return "tied"
     return "lower" if own > other else "upper"

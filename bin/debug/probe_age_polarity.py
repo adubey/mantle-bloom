@@ -23,7 +23,7 @@ def fronts(world, plate, state, by):
         other = by.get(r['neighbour'])
         own = plate.collect('node_created_years')[r['nodes']] / 1e6
         oth = other.collect('node_created_years')[state['inputs'].neighbor_node_index[r['nodes']]] / 1e6 if other else own
-        r['stats'] = dict(own_med=now - max(np.median(own), 0), oth_med=now - max(np.median(oth), 0),
+        r['stats'] = dict(own_med=now - np.median(own), oth_med=now - np.median(oth),
                           own_start=float((own <= 0).mean()), oth_start=float((oth <= 0).mean()))
     return rows
 p.polarity_fronts = fronts

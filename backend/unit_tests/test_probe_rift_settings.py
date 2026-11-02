@@ -193,7 +193,9 @@ def test_older_ocean_is_lower_only_past_the_age_gap():
     assert probe.age_verdict(np.full(3, 150e6), np.full(3, 145e6), 200.0) == "tied"
 
 
-def test_starting_ocean_on_both_sides_ties_and_sentinels_read_as_starting_ocean():
+def test_negative_starting_dates_decide_and_sentinels_read_as_rock_from_the_start():
+    assert probe.age_verdict(np.full(3, -80e6), np.full(3, -20e6), 200.0) == "lower"
+    assert probe.age_verdict(np.full(3, -20e6), np.full(3, -80e6), 200.0) == "upper"
     assert probe.age_verdict(np.zeros(3), np.full(3, -1.0), 200.0) == "tied"
     assert probe.age_verdict(np.zeros(3), np.full(3, 100e6), 200.0) == "lower"
 
