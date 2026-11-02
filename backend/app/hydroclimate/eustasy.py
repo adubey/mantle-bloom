@@ -169,11 +169,12 @@ def _seeded_connected_mask(
     genuinely monotonic: raising `h` can only ever merge more nodes into the seed's own
     component (never remove one, see `connected_ocean_mask`'s own docstring for the same
     argument), so "how much water sits in the seed's component" only ever grows with `h`. This
-    also transitively keeps a real second ocean recognized (`hydro.is_ocean` already includes
-    one, from `connected_ocean_mask`'s own `SECOND_OCEAN_SIZE_FRACTION` handling, so the seed
-    set already covers it) and correctly grows to include a landlocked lake/sea the instant
-    `h` actually rises enough to reconnect it -- both sides of that same boundary edge then
-    share one label, same as any other merge.
+    also transitively keeps an enclosed ocean basin recognized (`hydro.is_ocean` already
+    includes one, from `connected_ocean_mask`'s own enclosed-basin rule, #758, so the seed set
+    already covers it and the solve fills it to sea level from the ocean's budget) and
+    correctly grows to include a landlocked lake/sea the instant `h` actually rises enough to
+    reconnect it -- both sides of that same boundary edge then share one label, same as any
+    other merge.
 
     Returns all-`False` when no seed node is below `h` at all (the seed's own component hasn't
     reached down this far at this candidate) -- correctly zero ocean volume for a candidate

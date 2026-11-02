@@ -2,7 +2,7 @@ import pickle
 
 import numpy as np
 import pytest
-from app import geometry
+from app import elevation_lines, geometry
 from app.elevation_lines import line_spacing_rad
 from app.hydroclimate import breaching, erosion, eustasy, hydrology, lakes
 from app.plates import collect_all_accounting_areas_m2
@@ -324,7 +324,8 @@ def test_connected_ocean_mask_excludes_an_enclosed_interior_pit():
     elevation[0:15] = -100.0   # the world ocean
     elevation[28:31] = -60.0   # an enclosed interior depression
 
-    mask = hydrology.connected_ocean_mask(xyz, elevation, sea_level_m=0.0)
+    # Real cells, not 1/40 of the sphere each: at that size the pit would be an ocean basin.
+    mask = hydrology.connected_ocean_mask(xyz, elevation, sea_level_m=0.0, areas_m2=np.full(40, 4.0e9))
 
     assert mask[0:15].all()          # the ocean is ocean
     assert not mask[28:31].any()     # the enclosed pit is not
@@ -339,6 +340,143 @@ def test_connected_ocean_mask_leaves_a_single_connected_ocean_untouched():
 
     mask = hydrology.connected_ocean_mask(xyz, elevation, sea_level_m=0.0)
     assert mask.tolist() == [True] * 12 + [False] * 8
+
+
+def _enclosed_basin_arc(basin_nodes: int, cell_km2: float = 1.0e6):
+    """60 nodes along an arc, each `cell_km2`: a 20-node ocean (0-19), a land ridge far wider
+    than the k-NN neighbour count (20-34), then an enclosed basin of `basin_nodes` nodes at
+    -3,000 m starting at node 35. Returns (xyz, elevation, areas_m2, basin slice)."""
+    theta = 0.05 * np.arange(60)
+    xyz = np.stack([np.cos(theta), np.sin(theta), np.zeros_like(theta)], axis=1)
+    elevation = np.full(60, 500.0)
+    elevation[0:20] = -4_000.0
+    basin = slice(35, 35 + basin_nodes)
+    elevation[basin] = -3_000.0
+    return xyz, elevation, np.full(60, cell_km2 * 1e6), basin
+
+
+def test_connected_ocean_mask_counts_an_enclosed_ocean_floor_basin_as_ocean():
+    # #758: a body cut off from the main ocean is ocean when it is an ocean basin -- oceanic
+    # floor at ocean scale -- whatever its share of the largest body (6 of 20 nodes here).
+    xyz, elevation, areas, basin = _enclosed_basin_arc(6)
+    oceanic = np.ones(60, dtype=bool)
+
+    mask = hydrology.connected_ocean_mask(xyz, elevation, 0.0, areas_m2=areas, oceanic=oceanic)
+    assert mask[basin].all() and mask[0:20].all()
+
+    # The same basin floored by continental crust is a drowned inland depression: a lake.
+    continental_floor = oceanic.copy()
+    continental_floor[basin] = False
+    mask = hydrology.connected_ocean_mask(xyz, elevation, 0.0, areas_m2=areas, oceanic=continental_floor)
+    assert not mask[basin].any()
+
+    # A small enclosed pit on oceanic crust is still a lake (3 million km^2 < 5 million).
+    xyz, elevation, areas, pit = _enclosed_basin_arc(3)
+    mask = hydrology.connected_ocean_mask(xyz, elevation, 0.0, areas_m2=areas, oceanic=oceanic)
+    assert not mask[pit].any() and mask[0:20].all()
+
+
+def test_connected_ocean_mask_keeps_a_basin_near_the_threshold_in_its_class():
+    # A 5.1 million km^2 basin crosses the threshold when sea level, or a few metres of uplift
+    # on its rim cell, moves one cell's worth of area. Its class follows last step's ocean,
+    # so it doesn't flip with each small elevation change (design principle 10).
+    xyz, elevation, areas, basin = _enclosed_basin_arc(5, cell_km2=1.02e6)
+    oceanic = np.ones(60, dtype=bool)
+    rim = basin.stop - 1
+
+    def classify(rim_elevation_m, prior):
+        z = elevation.copy()
+        z[rim] = rim_elevation_m
+        return hydrology.connected_ocean_mask(xyz, z, 0.0, areas_m2=areas, oceanic=oceanic, prior_ocean=prior)
+
+    entered = classify(-5.0, None)
+    assert entered[basin].all()
+    # The rim cell rises 10 m above the sea: 4.08 million km^2 left, but it was ocean.
+    kept = classify(5.0, entered)
+    assert kept[basin.start : rim].all() and not kept[rim]
+    assert classify(-5.0, kept)[basin].all()
+    # Without that history the same 4.08 million km^2 basin is a lake, and it stays one.
+    assert not classify(5.0, None)[basin].any()
+    assert not classify(5.0, np.zeros(60, dtype=bool))[basin].any()
+    # The hysteresis has a floor: a former ocean cut down to 2 million km^2 is a lake.
+    z = elevation.copy()
+    z[basin.start + 2 : basin.stop] = 5.0
+    shrunk = hydrology.connected_ocean_mask(xyz, z, 0.0, areas_m2=areas, oceanic=oceanic, prior_ocean=entered)
+    assert not shrunk[basin].any()
+
+
+def _enclosed_ocean_basin_world(lake_depth_m: float, lake_ice_m: float):
+    """The 40-node interior-pit row below, with its 3-node basin (28-30) floored by oceanic
+    crust at -3,000 m and holding `lake_depth_m` of water under `lake_ice_m` of ice."""
+    elevation = np.full(40, 300.0)
+    elevation[0:15] = -4_000.0
+    elevation[28:31] = -3_000.0
+    depth = np.zeros(40)
+    depth[28:31] = lake_depth_m
+    ice = np.zeros(40)
+    ice[28:31] = lake_ice_m
+    crust = np.zeros(40, dtype=np.int8)
+    crust[28:31] = elevation_lines.CRUST_TYPE_OCEANIC
+    plate = quad_plate(
+        0, "continental", columns=_row(40), elevation=elevation, lake_depth=depth, lake_ice_m=ice,
+        crust_type_code=crust,
+    )
+    return World(seed=0, plates=[plate]), plate
+
+
+def test_reclassified_basin_hands_its_lake_water_to_the_ocean_and_closes_the_ledgers(monkeypatch):
+    # #758: the moment an enclosed basin becomes ocean, the lake water and lake ice it holds
+    # leave the lake reservoirs for the ocean, booked in the lake and land ledgers, and
+    # eustasy fills it to sea level from the conserved total budget. The 3-node basin is about
+    # 51,000 km^2, so the thresholds are scaled to this fixture once it has stepped as a lake.
+    world, plate = _enclosed_ocean_basin_world(lake_depth_m=1_000.0, lake_ice_m=1.5)
+    areas = _node_areas(world)
+    basin = slice(28, 31)
+    # 5 C keeps some lake ice through the step (colder, main's #757 sublimation strips it).
+    precipitation, temperature, years = np.full(40, 800.0), np.full(40, 5.0), 10_000.0
+
+    def step():
+        fields = hydrology.compute_hydrology(world, precipitation, temperature, years=years)
+        world.hydrology_cache = fields
+        plate.set_fields_on_plate(
+            lake_depth=fields.lake_depth, lake_ice_m=fields.lake_ice_m, river_water_m=fields.river_water_m
+        )
+        return fields
+
+    as_lake = step()
+    assert not as_lake.is_ocean[basin].any()
+    eustasy.initialize_water_budget(world)
+    total_m3 = world.ocean_water_volume_m3
+    liquid_m3 = float(np.dot(areas[basin], as_lake.lake_depth[basin]))
+    ice_m3 = float(np.dot(areas[basin], as_lake.lake_ice_m[basin]))
+    assert liquid_m3 > 0.0 and ice_m3 > 0.0
+
+    monkeypatch.setattr(hydrology, "ENCLOSED_OCEAN_MIN_AREA_KM2", 40_000.0)
+    monkeypatch.setattr(hydrology, "ENCLOSED_OCEAN_KEEP_AREA_KM2", 20_000.0)
+    fields = step()
+
+    assert fields.is_ocean[basin].all()
+    assert not fields.lake_depth[basin].any() and not fields.lake_ice_m[basin].any()
+    lake, land = fields.lake_water_ledger, fields.land_water_ledger
+    assert lake.melting_m3 >= ice_m3 * (1 - 1e-12)
+    assert lake.overflow_out_m3 >= (liquid_m3 + ice_m3) * (1 - 1e-12)
+    assert abs(lake.residual_m3) <= 1e-9 * liquid_m3
+    assert abs(land.residual_m3) <= 1e-9 * liquid_m3
+
+    # Eustasy: the basin's water is no longer trapped, the ocean fills it to sea level, and
+    # the total surface-water budget is unchanged.
+    eustasy.update_sea_level(world)
+    assert world.ocean_water_volume_m3 == total_m3
+    ocean_m3 = eustasy.water_volume_for_sea_level(world, world.sea_level_m)
+    solve_tolerance_m3 = eustasy._SOLVE_TOLERANCE_M * float(areas.mean())
+    assert ocean_m3 + eustasy.trapped_water_volume_m3(world) == pytest.approx(total_m3, abs=solve_tolerance_m3)
+    assert eustasy._ocean_connected_mask(world, plate.collect("elevation"), world.sea_level_m)[basin].all()
+
+    # On the next step it stays ocean, and the ledgers still close.
+    again = step()
+    assert again.is_ocean[basin].all()
+    assert abs(again.lake_water_ledger.residual_m3) <= 1e-9 * liquid_m3
+    assert abs(again.land_water_ledger.residual_m3) <= 1e-9 * liquid_m3
 
 
 def test_compute_hydrology_treats_an_interior_pit_as_an_endorheic_basin_that_silts_in():

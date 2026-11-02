@@ -378,7 +378,7 @@ def drain_land(points: np.ndarray, elevation: np.ndarray, land: np.ndarray, area
     z = np.where(land, elevation, np.minimum(np.nan_to_num(elevation, nan=0.0), 0.0))
     # Water drains to the world ocean as hydrology sees it; a submerged hole enclosed by land
     # is a closed basin there, so it is one here too.
-    ocean = connected_ocean_mask(points, z, 0.0, neighbours) & ~land
+    ocean = connected_ocean_mask(points, z, 0.0, neighbours, areas_m2=area_km2 * 1e6) & ~land
     hole = ~land & ~ocean
     seeds = np.where(ocean, z, np.inf)
 

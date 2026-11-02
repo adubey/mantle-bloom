@@ -323,6 +323,54 @@ discharge, channel-width growth, deposition, geology or lake silt.
   pass because every node's target is guaranteed strictly lower, so it's always visited
   *later* in this same order.
 
+### Which water below sea level is ocean
+
+`connected_ocean_mask` labels the connected components of below-sea-level cells over the
+hydrology neighbor graph. The largest component is always ocean. Any other component is
+an enclosed ocean basin, and ocean too, when at least half its floor area
+(`ENCLOSED_OCEAN_MIN_OCEANIC_SHARE`) is oceanic crust and it covers at least
+`ENCLOSED_OCEAN_MIN_AREA_KM2` (5 million km²). Every other below-sea-level component is
+land to hydrology: rivers pool there as lakes and silt it in. `compute_hydrology` passes
+the cells' accounting areas, their crust (`plates.node_is_continental`) and last step's
+`is_ocean` resampled onto this step's cells (`sample_is_ocean`).
+
+The rule is set by what the body is, not by its share of the largest one (#758). A
+15.1 million km² basin of young, still-spreading oceanic crust on seed 910211954 was 4.7% of
+the main ocean, so the earlier 5% share rule kept it a lake. It got no currents, ocean
+temperature or ocean-strength humidity, and it filled to the 3,500 m sea-tier guard. The
+lake model has no circulation or heat capacity for a body that size, so the ocean model is
+the closer approximation for its climate. The cost is that its surface is held at sea
+level, as if a strait narrower than the node graph joined it to the main ocean, whatever
+its real sill. That basin's lowest pass is about 1.4 km above sea level at cell centres.
+The 5 million km² threshold is twice the Mediterranean and larger than any of Earth's
+marginal seas. On nine mature saves no other enclosed body floored by oceanic crust
+exceeded 1.9 million km² (`bin/debug/survey_enclosed_basins.py`, `analysis/issue758/`).
+A drowned continental basin of the same size stays a lake.
+
+**Hysteresis.** A component holding any cell of last step's ocean stays ocean down to
+`ENCLOSED_OCEAN_KEEP_AREA_KM2` (2.5 million km², about the Mediterranean). A body near the
+entry threshold therefore doesn't change class when sea level or a strait moves its area
+by a few percent. Each class change moves the body's whole volume between the lake and
+ocean budgets.
+
+**Water at reclassification.** On the step a lake's cells become ocean, whether by this
+rule or by a rising sea reaching it, the lake solver exports their liquid water to the ocean
+as orphaned storage, booked as overflow to the ocean. Lake ice on those cells is melted into
+that liquid first and booked as melt in `lake_water_ledger`, so it leaves the trapped-water
+inventory in the same step and doesn't stay as lake ice on the ocean. Eustasy then fills
+the basin to sea level from the conserved total budget (`World.ocean_water_volume_m3`). Its
+seeded ocean mask starts from this step's `is_ocean`, so the basin's volume below sea level
+counts as ocean (see
+[Eustatic sea level](surface-processes.md#eustatic-sea-level-eustasypy)). Sea level falls
+when the basin needs more water than it held and rises when it held more.
+
+From then on the basin has the main ocean's climate and hydrology, because every consumer
+reads the cached `is_ocean`. Climate gives it ocean currents, advected ocean temperature and
+ocean evaporation (see [climate](climate.md)). Rivers end at its coast, and the coastline
+and map views draw it as ocean. Glacier flotation (`ice_sheet.is_grounded`) takes water
+depth as sea level minus bed, which is now right for such a basin. Smaller enclosed basins
+below sea level still have the mismatch described in #552.
+
 ### Lakes are an explicit tree
 
 **Conceptual diagram — catchment floors join at a saddle; a size-limited depth tier can leave the merged lake surface below that saddle, preserving separate child lakes.**
