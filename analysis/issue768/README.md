@@ -121,3 +121,13 @@ evaluates demand over a two-ULP interval around the reconstructed level (one rou
 solve's absolute level, one in the diagnostic inversion), and reports any discrepancy outside
 that interval. This is a numerical representation bound, not a changed model parameter or
 denominator floor. Its uncovered discrepancy is checked against the same 1e-9 threshold.
+
+The fourth probe (`d00ff3b9`) covers the worst raw error with the representation interval,
+but the largest uncovered error at step 2 is 6.54e-9 in a body holding only 6.1 m³. The
+existing multi-cell integrator accepts a volume-balance residual up to 1e-8 of available
+water before invoking its bisection fallback. The extra all-body 1e-9 loss gate is therefore
+stricter than that numerical solve and is **not met**; it remains reported as such. This
+does not change the agreed 1e-9 lake/land accounting gates or the independent unit-level
+equation test. Full comparisons will report raw errors, rounding intervals and the anchor's
+loss balance separately, with this numerical limit explicit. No solver precision parameter
+has been changed to obtain a passing audit.
