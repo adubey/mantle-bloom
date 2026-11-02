@@ -427,7 +427,6 @@ class HydrologyFields:
     lake_ice_m: np.ndarray = field(default_factory=lambda: np.zeros(0))
     # Opt-in event accounting; omitted from saves because it is a transient diagnostic.
     lake_solve_trace: "lakes.LakeSolveTrace | None" = None
-    lake_ice_trace: dict[str, np.ndarray] | None = None
     lake_trace_node_ids: np.ndarray | None = None
     # Persistent river water-equivalent depth and its step budgets (RFC 0016 G0, #725).
     river_water_m: np.ndarray = field(default_factory=lambda: np.zeros(0))
@@ -449,7 +448,6 @@ class HydrologyFields:
         state = self.__dict__.copy()
         state.pop("_spill_path_cache", None)
         state.pop("lake_solve_trace", None)
-        state.pop("lake_ice_trace", None)
         state.pop("lake_trace_node_ids", None)
         for key in _RIVER_REACH_READOUTS:
             state.pop(key, None)
@@ -1707,163 +1705,98 @@ LAKE_ICE_MAX_THICKNESS_M = 2.0
 LAKE_ICE_DENSITY_RATIO = 917.0 / 1000.0
 
 
-def advance_lake_ice(
-    prior_ice_we_m: np.ndarray,
-    liquid_depth_m: np.ndarray,
-    area_m2: np.ndarray,
-    mean_c: np.ndarray,
-    amplitude_c: np.ndarray,
-    ice_cover_fraction: np.ndarray,
-    years: float,
-    *,
-    trace_node_budget: bool = False,
-) -> tuple[np.ndarray, np.ndarray, dict[str, float | np.ndarray]]:
-    """Advance the capped lake-ice reservoir with jointly integrated growth and loss.
+def _lake_ice_thickness_m(
+    h0: np.ndarray, q: np.ndarray, loss_rate: np.ndarray, cap_m: float, years: float
+) -> np.ndarray:
+    """Ice thickness after `years` of ``dh/dt = q/h - loss_rate`` from `h0`, held at `cap_m`.
 
-    This solves ``dh/dt = q/h - loss`` toward its equilibrium thickness, rather than
-    applying a long step's sublimation and then refreezing the same water. The physical
-    growth/melt/sublimation terms are split after the integrated trajectory; all mass
-    transfers use water-equivalent metres.
-    """
-    area = np.asarray(area_m2, dtype=float)
-    ice = np.clip(np.asarray(prior_ice_we_m, dtype=float), 0.0, None)
-    liquid = np.clip(np.asarray(liquid_depth_m, dtype=float), 0.0, None)
-    dt = max(float(years), 0.0)
-    zero_budget = {
-        "sublimation_m3": 0.0, "ice_storage_change_m3": 0.0,
-        "freezing_m3": 0.0, "melting_m3": 0.0,
-    }
-    if trace_node_budget:
-        zero_budget.update(
-            sublimation_by_node_m3=np.zeros_like(area),
-            freezing_by_node_m3=np.zeros_like(area),
-            melting_by_node_m3=np.zeros_like(area),
-        )
-    if dt == 0.0 or len(ice) == 0:
-        return ice.copy(), liquid.copy(), zero_budget
-
-    rho_i = 917.0
-    latent_heat = 334_000.0
-    conductivity = 2.1
-    ratio = LAKE_ICE_DENSITY_RATIO
-    h0 = ice / ratio
-    fdd_c_days_yr = seasonal_freezing_degrees(mean_c, amplitude_c) * 365.25
-    pdd_c_years = seasonal_positive_degrees(mean_c, amplitude_c, GLACIER_MELT_THRESHOLD_C)
-    q = conductivity * fdd_c_days_yr * 86_400.0 / (rho_i * latent_heat)
-    melt_rate = (GLACIER_MELT_RATE_M_PER_MYR / 1.0e6) * np.clip(
-        pdd_c_years / GLACIER_MELT_REFERENCE_DEGREES_C, 0.0, GLACIER_MELT_MAX_FACTOR
-    )
-    sublimation_rate = (
-        LAKE_ICE_SUBLIMATION_M_PER_YR
-        * np.clip(ice_cover_fraction, 0.0, 1.0)
-        / ratio
-    )
-    loss_rate = melt_rate + sublimation_rate
-    available_h = (ice + liquid) / ratio
-    max_h = np.minimum(LAKE_ICE_MAX_THICKNESS_M, available_h)
-    equilibrium = np.divide(q, loss_rate, out=np.full_like(q, np.inf), where=loss_rate > 0.0)
-
+    Stefan growth `q/h` competes with melt and sublimation thinning toward the equilibrium
+    `q / loss_rate`. The exact time integral is monotone between the opening thickness and
+    equilibrium, so each cell bisects on it. A cap below equilibrium is reached in finite time;
+    otherwise equilibrium is an asymptote and bisection stays strictly between the endpoints."""
     h = h0.copy()
     no_loss = loss_rate <= 0.0
-    h[no_loss] = np.minimum(
-        np.sqrt(h0[no_loss] ** 2 + 2.0 * q[no_loss] * dt), max_h[no_loss]
-    )
-    no_growth = (~no_loss) & (q <= 0.0)
-    h[no_growth] = np.maximum(h0[no_growth] - loss_rate[no_growth] * dt, 0.0)
-    active = (q > 0.0) & (loss_rate > 0.0)
-    capped = np.zeros_like(active)
-    cap_elapsed = np.zeros_like(h0)
-    balanced = active & np.isclose(h0, equilibrium, rtol=1e-12, atol=1e-15)
-    growing = active & (h0 < equilibrium)
-    shrinking = active & (h0 > equilibrium)
-    growing &= ~balanced
-    shrinking &= ~balanced
-
-    # The exact time integral is monotone between the opening thickness and equilibrium.
-    for mask, toward in ((growing, 1.0), (shrinking, -1.0)):
-        indices = np.flatnonzero(mask)
+    h[no_loss] = np.minimum(np.sqrt(h0[no_loss] ** 2 + 2.0 * q[no_loss] * years), cap_m)
+    no_growth = ~no_loss & (q <= 0.0)
+    h[no_growth] = np.maximum(h0[no_growth] - loss_rate[no_growth] * years, 0.0)
+    active = ~no_loss & (q > 0.0)
+    equilibrium = np.divide(q, loss_rate, out=np.full_like(q, np.inf), where=~no_loss)
+    for growing in (True, False):
+        indices = np.flatnonzero(active & ((h0 < equilibrium) if growing else (h0 > equilibrium)))
         if not len(indices):
             continue
         eq = equilibrium[indices]
         start_h = h0[indices]
-        limit_h = np.where(toward > 0.0, np.minimum(eq, max_h[indices]), eq)
-        # A cap below equilibrium is reached in finite time; otherwise equilibrium is an
-        # asymptote and bisection stays strictly between the endpoints.
+        limit_h = np.minimum(eq, cap_m) if growing else eq
+
         def elapsed(candidate):
             gap0 = np.maximum(np.abs(eq - start_h), 1e-15)
             gap = np.maximum(np.abs(eq - candidate), 1e-15)
             return (eq * np.log(gap0 / gap) - (candidate - start_h)) / loss_rate[indices]
 
-        hit_cap = (toward > 0.0) & (limit_h < eq) & (elapsed(limit_h) <= dt)
-        capped[indices] = hit_cap
-        cap_elapsed[indices] = np.where(hit_cap, elapsed(limit_h), 0.0)
-        low = np.minimum(start_h, limit_h).copy()
-        high = np.maximum(start_h, limit_h).copy()
+        low = np.minimum(start_h, limit_h)
+        high = np.maximum(start_h, limit_h)
         for _ in range(52):
             mid = 0.5 * (low + high)
-            time_to_mid = elapsed(mid)
-            if toward > 0.0:
-                reached = time_to_mid < dt
-                low = np.where(reached, mid, low)
-                high = np.where(reached, high, mid)
+            reached = elapsed(mid) < years
+            if growing:
+                low, high = np.where(reached, mid, low), np.where(reached, high, mid)
             else:
-                reached = time_to_mid < dt
-                high = np.where(reached, mid, high)
-                low = np.where(reached, low, mid)
-        solved = 0.5 * (low + high)
-        solved = np.where(hit_cap, limit_h, solved)
-        h[indices] = np.clip(solved, 0.0, max_h[indices])
+                low, high = np.where(reached, low, mid), np.where(reached, mid, high)
+        hit_cap = (limit_h < eq) & (elapsed(limit_h) <= years)
+        h[indices] = np.where(hit_cap, limit_h, 0.5 * (low + high))
+    return np.clip(h, 0.0, cap_m)
 
-    # Integrate the Stefan growth along the solved trajectory. Since dh/dt=q/h-loss,
-    # integrated growth minus net thickness change is the total physical ice loss.
-    integrated_growth_i = np.zeros_like(h)
-    integrated_growth_i[no_loss] = h[no_loss] - h0[no_loss]
-    # At the exact growth/loss equilibrium, thickness is constant while both gross
-    # transfers continue. Account for both so sublimation is not silently suppressed.
-    integrated_growth_i[balanced] = loss_rate[balanced] * dt
-    integrated_growth_i[active & ~balanced] = equilibrium[active & ~balanced] * np.log(
-        np.maximum(np.abs(equilibrium[active & ~balanced] - h0[active & ~balanced]), 1e-15)
-        / np.maximum(np.abs(equilibrium[active & ~balanced] - h[active & ~balanced]), 1e-15)
-    )
-    integrated_growth_i[capped] = (
-        h[capped] - h0[capped] + loss_rate[capped] * (dt - cap_elapsed[capped])
-    )
-    total_loss_i = np.clip(integrated_growth_i - (h - h0), 0.0, None)
-    sublimation_i = np.divide(
-        total_loss_i * sublimation_rate, loss_rate,
-        out=np.zeros_like(total_loss_i), where=loss_rate > 0.0,
-    )
-    melting_i = total_loss_i - sublimation_i
-    growth_we = np.clip(integrated_growth_i, 0.0, None) * ratio
-    sublimation_we = sublimation_i * ratio
-    melting_we = melting_i * ratio
-    # A shallow bed limit can be reached before the end of a long step. The unconstrained
-    # Stefan trajectory must not keep cycling new ice through melt/sublimation after all local
-    # liquid has frozen. Freeze only liquid available at step start, melt only ice already
-    # stored, and limit sublimation to the remaining ice inventory.
-    growth_we = np.minimum(growth_we, liquid)
-    melting_we = np.minimum(melting_we, ice)
-    sublimation_we = np.minimum(sublimation_we, np.maximum(ice + growth_we - melting_we, 0.0))
-    new_ice = np.maximum(ice + growth_we - melting_we - sublimation_we, 0.0)
-    max_ice_we = np.minimum(LAKE_ICE_MAX_THICKNESS_M * ratio, ice + liquid)
-    excess_ice_we = np.maximum(new_ice - max_ice_we, 0.0)
-    growth_we = np.maximum(growth_we - excess_ice_we, 0.0)
-    new_ice = np.maximum(ice + growth_we - melting_we - sublimation_we, 0.0)
-    new_liquid = np.maximum(liquid - growth_we + melting_we, 0.0)
-    ice_delta = float(np.dot(new_ice - ice, area))
-    budget = {
-        "sublimation_m3": float(np.dot(sublimation_we, area)),
-        "ice_storage_change_m3": ice_delta,
-        "freezing_m3": float(np.dot(growth_we, area)),
-        "melting_m3": float(np.dot(melting_we, area)),
-    }
-    if trace_node_budget:
-        budget.update(
-            sublimation_by_node_m3=sublimation_we * area,
-            freezing_by_node_m3=growth_we * area,
-            melting_by_node_m3=melting_we * area,
+
+def advance_lake_ice(
+    prior_ice_we_m: np.ndarray,
+    lake_water_m: np.ndarray,
+    area_m2: np.ndarray,
+    mean_c: np.ndarray,
+    amplitude_c: np.ndarray,
+    ice_cover_fraction: np.ndarray,
+    years: float,
+) -> tuple[np.ndarray, np.ndarray, dict[str, float]]:
+    """Split each cell's solved lake water between its capped ice layer and liquid (#757).
+
+    `lake_water_m` is the lake solve's closing column, liquid and ice together in
+    water-equivalent metres. The solve opened with the prior ice in that column and has already
+    charged ice-season sublimation against it, beside open-water evaporation. So this books no
+    sublimation and no gross throughput: the layer exchanges only its net change with the
+    liquid. Its thickness follows ``dh/dt = q/h - loss`` from the prior thickness, where Stefan
+    growth competes with melt and sublimation thinning, capped at `LAKE_ICE_MAX_THICKNESS_M` and
+    by the column itself, so a cell the solve left dry keeps no ice. At production rates the
+    layer settles within about a century, so a step of millennia ends it at equilibrium
+    whatever its prior thickness. Returns `(ice, liquid, budget)`: depths in water-equivalent
+    metres, budget in m³."""
+    area = np.asarray(area_m2, dtype=float)
+    ice = np.clip(np.asarray(prior_ice_we_m, dtype=float), 0.0, None)
+    water = np.clip(np.asarray(lake_water_m, dtype=float), 0.0, None)
+    ratio = LAKE_ICE_DENSITY_RATIO
+    dt = max(float(years), 0.0)
+    target = ice
+    if dt > 0.0 and len(ice):
+        rho_i = 917.0
+        latent_heat = 334_000.0
+        conductivity = 2.1
+        fdd_c_days_yr = seasonal_freezing_degrees(mean_c, amplitude_c) * 365.25
+        pdd_c_years = seasonal_positive_degrees(mean_c, amplitude_c, GLACIER_MELT_THRESHOLD_C)
+        q = conductivity * fdd_c_days_yr * 86_400.0 / (rho_i * latent_heat)
+        melt_rate = (GLACIER_MELT_RATE_M_PER_MYR / 1.0e6) * np.clip(
+            pdd_c_years / GLACIER_MELT_REFERENCE_DEGREES_C, 0.0, GLACIER_MELT_MAX_FACTOR
         )
-    return new_ice, new_liquid, budget
+        sublimation_rate = LAKE_ICE_SUBLIMATION_M_PER_YR * np.clip(ice_cover_fraction, 0.0, 1.0) / ratio
+        target = ratio * _lake_ice_thickness_m(
+            ice / ratio, q, melt_rate + sublimation_rate, LAKE_ICE_MAX_THICKNESS_M, dt
+        )
+    new_ice = np.minimum(target, water)
+    change = new_ice - ice
+    budget = {
+        "ice_storage_change_m3": float(np.dot(change, area)),
+        "freezing_m3": float(np.dot(np.clip(change, 0.0, None), area)),
+        "melting_m3": float(np.dot(np.clip(-change, 0.0, None), area)),
+    }
+    return new_ice, water - new_ice, budget
 
 
 def _ice_surface_flow_target(
@@ -2029,6 +1962,11 @@ def compute_hydrology(
     lake_open_evaporation_m_per_yr = (
         breaching.open_water_evaporation_mm(open_season_temperature_c) / 1000.0 * ice_free_fraction
     )
+    # Ice-season sublimation is a lake loss like open-water evaporation, so both act in the lake
+    # solve and set one balanced level against supply (#757). Charged after the solve instead,
+    # it stripped whole columns that the solve had just filled. The two split the year, open
+    # water for `f_free` and ice for the rest, so neither counts the other's season.
+    lake_sublimation_m_per_yr = LAKE_ICE_SUBLIMATION_M_PER_YR * (1.0 - ice_free_fraction)
     evaporation_mm = breaching.open_water_evaporation_mm(temperature_at_nodes)
     wet_precip_m3, dry_runoff_m3, dry_et_m3 = _partition_precipitation_sources(
         liquid_precip, evaporation_mm, areas, wet_fraction
@@ -2048,7 +1986,7 @@ def compute_hydrology(
                 loss_fraction=dry_transit_loss, dry_fraction=dry_fraction,
                 direct_supply_m3_per_yr=wet_precip_m3,
                 lake_evaporation_m_per_yr=lake_open_evaporation_m_per_yr,
-                lake_sublimation_m_per_yr=np.zeros(n),
+                lake_sublimation_m_per_yr=lake_sublimation_m_per_yr,
             ),
             mobile_cover_m=mobile_cover,
             prior_notch_m=collect_all_breach_notch_depth(plates_in_order),
@@ -2184,26 +2122,26 @@ def compute_hydrology(
     lake_climate = lakes.LakeClimate(
         inflow_m3_per_yr=external_supply,
         evaporation_m_per_yr=lake_open_evaporation_m_per_yr,
-        sublimation_m_per_yr=np.zeros(n),
+        sublimation_m_per_yr=lake_sublimation_m_per_yr,
         external_supply_m3_per_yr=external_supply,
         wet_precip_m3_per_yr=wet_settled,
         dry_runoff_m3_per_yr=dry_settled,
         meltwater_m3_per_yr=melt_settled,
         river_storage_m3_per_yr=river_storage_settled,
     )
+    # D2(c) keeps lake ice as a separate water-equivalent reservoir, but floating ice displaces
+    # its own mass of water, so a lake's level, losses and spill depend on liquid and ice
+    # together. The solve integrates that whole column, and `advance_lake_ice` then splits what
+    # is left between ice and liquid (#757). Ice on a cell the solve empties goes with its water.
+    prev_lake_ice_m = collect_all_lake_ice(plates_in_order)
     lake_result = lakes.solve_lakes_prognostic(
-        forest, elevation, prev_lake_depth, years, lake_climate, hypsometry,
+        forest, elevation, prev_lake_depth + prev_lake_ice_m, years, lake_climate, hypsometry,
         is_ocean=is_ocean,
         diagnostic_trace=diagnostic_trace,
     )
-    # D2(c) keeps lake ice as a separate water-equivalent reservoir. Phase transfers happen
-    # after liquid routing: they conserve local water, while any routed overflow remains the
-    # liquid solver's already-booked external export for this step.
-    prev_lake_ice_m = collect_all_lake_ice(plates_in_order)
     lake_ice_m, lake_depth_after_phase, ice_budget = advance_lake_ice(
         prev_lake_ice_m, lake_result.lake_depth, areas, lake_temperature_c,
         seasonal_amplitude, 1.0 - ice_free_fraction, years,
-        trace_node_budget=lake_result.trace is not None,
     )
     lake_result.lake_depth[:] = lake_depth_after_phase
     flow_target = flow_target.copy()
@@ -2275,21 +2213,23 @@ def compute_hydrology(
         dry_runoff_m3=ledger.dry_runoff_m3,
         meltwater_m3=ledger.meltwater_m3,
         river_storage_m3=ledger.river_storage_m3,
-        sublimation_m3=ice_budget["sublimation_m3"],
+        sublimation_m3=ledger.sublimation_m3,
         ice_storage_change_m3=ice_budget["ice_storage_change_m3"],
         freezing_m3=ice_budget["freezing_m3"],
         melting_m3=ice_budget["melting_m3"],
     )
     # Close the liquid and ice sub-budgets separately; freezing and melting cancel when
     # combined, while the ice-only residual exposes any error in the phase transfer itself.
+    # Sublimation sits in the liquid budget beside evaporation: the solve charged it against the
+    # column, and the ice it takes is replaced by freezing liquid, so the layer itself only
+    # exchanges its net change (#757).
     liquid_residual_m3 = (
-        phase_ledger.external_supply_m3 - phase_ledger.evaporation_m3
+        phase_ledger.external_supply_m3 - phase_ledger.evaporation_m3 - phase_ledger.sublimation_m3
         - phase_ledger.overflow_out_m3 - phase_ledger.storage_change_m3
         - phase_ledger.freezing_m3 + phase_ledger.melting_m3
     )
     ice_residual_m3 = (
-        phase_ledger.freezing_m3 - phase_ledger.melting_m3
-        - phase_ledger.sublimation_m3 - phase_ledger.ice_storage_change_m3
+        phase_ledger.freezing_m3 - phase_ledger.melting_m3 - phase_ledger.ice_storage_change_m3
     )
     lake_water_ledger = replace(phase_ledger, residual_m3=liquid_residual_m3 + ice_residual_m3)
     through_m3 = (river_route.routed_m3 + overflow_route.routed_m3) / interval_years + wet_through
@@ -2333,10 +2273,6 @@ def compute_hydrology(
         np.zeros(n, dtype=bool), prev_lake_depth, new_glacier_depth, plates_in_order, ice_flow_target=ice_flow_target,
         lake_ice_m=lake_ice_m,
         lake_solve_trace=lake_result.trace,
-        lake_ice_trace=(
-            {name: ice_budget[name] for name in ("sublimation_by_node_m3", "freezing_by_node_m3", "melting_by_node_m3")}
-            if lake_result.trace is not None else None
-        ),
         lake_trace_node_ids=trace_node_ids,
         channel_width=prev_channel_width,
         breach_notch_m=breach.notch_m if breach is not None else np.zeros(0),

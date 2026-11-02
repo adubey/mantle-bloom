@@ -208,7 +208,8 @@ discharge, channel-width growth, deposition, geology or lake silt.
   - every node on its path can be cut down to the pit's level within its own carving limit
     for the step, so a breached pit always drains;
   - it would overflow: the water reaching it, routed with the same per-node river losses the
-    lakes use, exceeds the evaporation of a lake filled to its rim (`ENDORHEIC_DEMAND_FACTOR`).
+    lakes use, exceeds the loss of a lake filled to its rim (`ENDORHEIC_DEMAND_FACTOR`), from
+    the same seasonal open-water evaporation and ice-season sublimation the lake solve uses.
     Runoff comes from Fu's Budyko curve, and open-water evaporation rises with temperature.
     Steepest descent carries runoff only to the first pit downhill, so each pit hands its
     water on to the pit that steepest descent reaches from where its least-cost path leaves its
@@ -240,7 +241,8 @@ discharge, channel-width growth, deposition, geology or lake silt.
   volume / cell area). Flooded area and volume therefore change continuously rather than by
   whole cells. Lake silt settles over the wet area in proportion to each cell's wet fraction.
 - **Prognostic lake storage** (`lakes.solve_lakes_prognostic`, issue #588): lakes use real
-  water-balance units and integrate liquid volume through the timestep over the hierarchy.
+  water-balance units and integrate water volume, liquid and lake ice together, through the
+  timestep over the hierarchy.
   Inflow is direct precipitation on the lagged wet area plus settled dry-cell Budyko runoff
   and glacier melt, routed as volume (m^3/yr). Dry runoff transit losses use a fixed per-node
   fraction at a 100 kyr reference step (`hydrology.river_transit_loss_fraction`), scaled by each
@@ -248,14 +250,15 @@ discharge, channel-width growth, deposition, geology or lake silt.
   gate applies the same source-specific losses. Wet-cell precipitation travels through lake
   storage without land runoff or transit loss. Each leaf sink is held terminal while external
   supply is routed, so persisted spill state cannot route this step's full inflow past its lake.
-  The solve starts from persisted depth, limits evaporation to available liquid water, promotes
-  sibling basins when current-step water reaches their saddle, and routes only surplus above a
-  rim or depth cap to the hierarchy's receiver. A parent supersedes its children as one body, so
+  The solve starts from persisted liquid depth plus lake ice, limits evaporation and sublimation
+  to the water available, promotes sibling basins when current-step water reaches their saddle,
+  and routes only surplus above a rim or depth cap to the hierarchy's receiver. A parent supersedes its children as one body, so
   silt is deposited once from its step-integrated supply over its final wet area. Only overflow
   leaving the lake system enters downstream discharge; transfers between sibling basins stay
   internal. `should_spill`, `spill_target`, final water levels and `Lake.is_spilling` all come
-  from this solve. The per-step ledger residual is external supply minus evaporation, exported
-  overflow and storage change; internal transfers are recorded separately and cancel globally.
+  from this solve. The per-step ledger residual is external supply minus evaporation,
+  sublimation, exported overflow and storage change; internal transfers are recorded separately
+  and cancel globally.
   Lake losses use the sinusoidal seasonal cycle (#608). For a previously wet lake cell,
   hydrology recovers the lagged water-surface elevation from its persisted mean depth and
   `CellHypsometry`, then adjusts the cell's air temperature from bed to water surface with the
@@ -266,7 +269,10 @@ discharge, channel-width growth, deposition, geology or lake silt.
   amplitude (`A_w = A`, selected by G3). `seasonal_open_mean_c` gives the mean temperature
   during that open season. Open-water
   evaporation is `open_water_evaporation_mm(T_open) × f_free`, and ice-season sublimation is
-  `0.6 m/yr × (1 − f_free)`. Only open-water evaporation receives the up-to-30% shallow-margin
+  `0.6 m/yr × (1 − f_free)` (`LAKE_ICE_SUBLIMATION_M_PER_YR`). The two divide the year between
+  them, so neither counts the other's season. Both act on the wet area at the solve's implicit
+  level, so together they set one balanced level against supply, and the ledger books them
+  separately (#757). Only open-water evaporation receives the up-to-30% shallow-margin
   boost (`SHALLOW_EVAPORATION_BOOST`). Dry-land Budyko runoff keeps its existing annual-mean
   potential evaporation. A lake with no ice-free season retains liquid water and balances
   supply against sublimation and overflow; water is not converted to ice at `WATER_TO_ICE`.
@@ -369,13 +375,14 @@ Each step, `compute_hydrology` builds this hierarchy fresh from current terrain
 (`lakes.build_lake_hierarchy`, bare `elevation`) and reuses the same tree for initial routing,
 lake integration and final spill metadata. External sources route to leaf sinks with those sinks
 held terminal. `lakes.solve_lakes_prognostic` advances stored volume through the timestep using
-an implicit evaporation update. It promotes siblings when the integrated water reaches their
-shared saddle, and splits a merged body when its level falls below that saddle. Spills go to the
-hierarchy-assigned receiver, independent of the channel that later carries exported overflow.
-No cross-step `Lake` registry is needed: continuity comes from persisted per-node
-`lake_depth`, not matching freshly rebuilt tree objects by member overlap.
+an implicit update for evaporation and sublimation. It promotes siblings when the integrated
+water reaches their shared saddle, and splits a merged body when its level falls below that
+saddle. Spills go to the hierarchy-assigned receiver, independent of the channel that later
+carries exported overflow. No cross-step `Lake` registry is needed: continuity comes from
+persisted per-node `lake_depth` and `lake_ice_m`, not matching freshly rebuilt tree objects by
+member overlap.
 
-**Lake ice is a separate water-equivalent reservoir (RFC 0014 D2(c), #632).** `lake_ice_m` is a persistent extensive surface field, independent from liquid `lake_depth`. The seasonal ice proxy grows by a Stefan freezing-degree relation, melts with the existing glacier positive-degree law, and loses water through sublimation weighted by the ice-covered fraction. Physical thickness is capped at 2 m (the 0.917 ice-to-water density ratio converts this to 1.834 m water equivalent); freezing and melt transfer water locally between liquid and ice. Sublimation is charged to the ice reservoir, not liquid storage. `lake_water_ledger` reports liquid and ice storage changes plus sublimation, and tracks phase-specific residuals as well as the combined water budget. Production replays confirm the cap, inventory and ledger bounds; ice volume need not plateau under evolving climate and terrain. The 2 m cap is an owner-selected empirical assumption for non-permafrost lakes, not a ground-heat or permafrost calculation. Existing saves default the new field to zero through the surface-field registry.
+**Lake ice is a separate water-equivalent reservoir (RFC 0014 D2(c), #632, #757).** `lake_ice_m` is a persistent extensive surface field, stored apart from liquid `lake_depth`. Floating ice displaces its own mass of water, so the lake solve opens each step with liquid and ice together as one water column, and charges open-water evaporation and ice-season sublimation against that column. `advance_lake_ice` then splits the solved column between ice and liquid. The ice layer's thickness follows Stefan freezing-degree growth against positive-degree melt and sublimation thinning, `dh/dt = q/h − loss`, from its prior thickness. Physical thickness is capped at 2 m (the 0.917 ice-to-water density ratio converts this to 1.834 m water equivalent) and by the column itself, so a cell the solve leaves dry keeps no ice. At production rates the layer settles within about a century, so a step of millennia ends it at equilibrium whatever its prior thickness. Only the net exchange between ice and liquid is booked, as freezing or melting. Sublimation is booked once, by the solve, which keeps it in one water balance with evaporation and supply (#754). `lake_water_ledger` reports liquid and ice storage changes, evaporation and sublimation, and closes the liquid and ice sub-budgets separately as well as combined. Sublimation sits in the liquid budget, because ice lost at the surface is replaced by liquid freezing beneath. The 2 m cap is an owner-selected empirical assumption for non-permafrost lakes, not a ground-heat or permafrost calculation. Existing saves default the field to zero through the surface-field registry.
 
 **Lakes accumulate silt.** `silt_depth` (a persistent per-node field, carried exactly like `lake_depth`) is a
 small volume fraction (`SILT_ACCUMULATION_COEFFICIENT`, m^3 of silt per m^3 of water) of each
