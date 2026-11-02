@@ -17,6 +17,10 @@ swaps Raymond's mean velocity for Jobson's (1996) peak tracer velocity, with mea
 set to the interval discharge because the model has no such climatology. `--reach-dir` writes each
 step's per-reach arrays there as compressed `.npz`; keep those outside the repository.
 
+G1b's arms: `--treatment` with the parameter flags installs the G1a land store
+(`rfc0016_land_store.py`), and `--runoff-scale` or `--runoff-scale-from <central arm json>` runs the
+sham and partition-match controls.
+
 Example:
 
     backend/.venv/bin/python bin/debug/replay_rfc0016_river_water.py <checkpoint.mbworld> \\
@@ -34,6 +38,7 @@ import numpy as np
 from scipy.sparse import csr_matrix
 from scipy.spatial import cKDTree
 
+import rfc0016_land_store
 from replay_lib import load_replay, parse_replay_args, run_replay
 
 GRAVITY_M_S2 = 9.80665
@@ -45,6 +50,14 @@ def add_arguments(ap) -> None:
     ap.add_argument("--residence-cap-years", type=float, default=1.0)
     ap.add_argument("--reach-dir", type=Path, help="write per-reach arrays for each step here")
     ap.add_argument("--keep-ice-age", action="store_true", help="keep the save's ice-age cycle")
+    ap.add_argument("--treatment", action="store_true", help="install the G1a land store (G1b)")
+    ap.add_argument("--capacity-mm", type=float, default=300.0)
+    ap.add_argument("--depletion", type=float, default=0.5)
+    ap.add_argument("--demand-factor", type=float, default=1.0)
+    ap.add_argument("--split-shift", type=float, default=0.0)
+    ap.add_argument("--no-humidity", action="store_true", help="keep the control's humidity source")
+    ap.add_argument("--runoff-scale", type=float, help="control runoff times this, every step (sham)")
+    ap.add_argument("--runoff-scale-from", type=Path, help="control runoff times this arm's step ratios")
 
 
 def jobson_residence_time_s(length_m, discharge_m3_s, drainage_m2, slope, cap_s):
@@ -93,17 +106,52 @@ def upstream_catchment(flow_target, is_ocean, members) -> np.ndarray:
     return reached & ~is_ocean
 
 
-def target_lake(hydro, areas, anchor_points, visible_depth, lake_components, precipitation) -> dict:
-    """The wet component under the registered anchor, with this step's supply by source. The
-    anchor is a location, not a lake identity, so a dry anchor reports no component."""
+def lake_bodies(hydro, areas, wet, lake_components) -> dict:
+    """Each wet component's node label and volume, for matching the target to the previous step."""
+    labels = np.full(len(wet), -1, dtype=np.int64)
+    volumes = []
+    for index, nodes in enumerate(lake_components(wet, hydro.neighbor_idx)):
+        nodes = np.asarray(nodes)
+        labels[nodes] = index
+        volumes.append(float(np.dot(hydro.lake_depth[nodes], areas[nodes])) / 1e9)
+    return {"labels": labels, "volumes_km3": np.asarray(volumes), "sizes": np.bincount(labels[labels >= 0])}
+
+
+def matched_previous_km3(members: np.ndarray, previous: dict | None) -> float | None:
+    """The previous step's volume of the body this one matches under #588's detector rule: the
+    largest overlap, of at least half the smaller body. The anchor is a location, so a lake that
+    reaches it only at the event step still has an event `ΔV` against its own earlier volume (#751)."""
+    if previous is None or members.max() >= len(previous["labels"]):
+        return None
+    overlap = np.bincount(previous["labels"][members][previous["labels"][members] >= 0])
+    if not overlap.size or not overlap.any():
+        return None
+    best = int(np.argmax(overlap))
+    if overlap[best] < max(1, min(len(members), int(previous["sizes"][best])) // 2):
+        return None
+    return float(previous["volumes_km3"][best])
+
+
+def target_lake(hydro, areas, anchor_points, visible_depth, lake_components, precipitation, previous=None):
+    """The wet component under the registered anchor, with this step's supply by source and its
+    matched volume at the previous step, plus this step's bodies for the next match. The anchor is
+    a location, not a lake identity, so a dry anchor reports only the nearest component."""
     _, nearest = cKDTree(hydro.points).query(anchor_points, k=1)
     wet = np.asarray(hydro.lake_depth) > visible_depth
     anchor = int(np.atleast_1d(nearest)[0])
+    bodies = lake_bodies(hydro, areas, wet, lake_components)
     if not wet[anchor]:
-        return {"anchor_wet": False}
-    members = next(
-        np.asarray(nodes) for nodes in lake_components(wet, hydro.neighbor_idx) if anchor in set(nodes.tolist())
-    )
+        # The anchor is a location. Window A's lake is present beside it at step 1, and its event
+        # size needs that volume (#751).
+        wet_nodes = np.flatnonzero(wet)
+        nearest_wet = wet_nodes[cKDTree(hydro.points[wet_nodes]).query(hydro.points[anchor], k=1)[1]]
+        members = np.flatnonzero(bodies["labels"] == bodies["labels"][nearest_wet])
+        return {
+            "anchor_wet": False,
+            "nearest_lake_km3": float(np.dot(hydro.lake_depth[members], areas[members])) / 1e9,
+            "nearest_matched_previous_km3": matched_previous_km3(members, previous),
+        }, bodies
+    members = np.flatnonzero(bodies["labels"] == bodies["labels"][anchor])
     # RFC 0016's frozen-precipitation screen: how much of this lake's upstream precipitation
     # is outside the liquid boundary (#725).
     catchment = upstream_catchment(np.asarray(hydro.flow_target), np.asarray(hydro.is_ocean), members)
@@ -117,6 +165,7 @@ def target_lake(hydro, areas, anchor_points, visible_depth, lake_components, pre
     return {
         "anchor_wet": True,
         "volume_km3": float(np.dot(hydro.lake_depth[members], areas[members])) / 1e9,
+        "matched_previous_km3": matched_previous_km3(members, previous),
         "area_km2": float(areas[members].sum()) / 1e6,
         "catchment": {
             "nodes": int(catchment.sum()),
@@ -125,7 +174,7 @@ def target_lake(hydro, areas, anchor_points, visible_depth, lake_components, pre
             "frozen_m3": float(frozen_m3[catchment].sum()),
         },
         "supply_m3_per_yr": {name: float(rate[members].sum()) for name, rate in sources.items()},
-    }
+    }, bodies
 
 
 def glacier_step(hydro, land, hydrology) -> dict:
@@ -153,6 +202,23 @@ def glacier_step(hydro, land, hydrology) -> dict:
     }
 
 
+def install_treatment(args, world, hydrology, plates_mod):
+    """G1b's arm, if any: the land store, or a scaled-runoff control (#751)."""
+    from app.hydroclimate import biomes, climate  # noqa: E402
+
+    if args.runoff_scale is not None:
+        return rfc0016_land_store.install_runoff_scale([args.runoff_scale], hydrology)
+    if args.runoff_scale_from is not None:
+        steps = json.loads(args.runoff_scale_from.read_text())["steps"]
+        return rfc0016_land_store.install_runoff_scale([s["land_store"]["excess_ratio"] for s in steps], hydrology)
+    if not args.treatment:
+        return None
+    arm = rfc0016_land_store.Arm(
+        args.capacity_mm, args.depletion, args.demand_factor, args.split_shift, not args.no_humidity
+    )
+    return rfc0016_land_store.install(world, arm, hydrology, climate, biomes, plates_mod)
+
+
 def main() -> None:
     args = parse_replay_args(__doc__, add_arguments)
     world, result = load_replay(args, issue=725)
@@ -166,11 +232,13 @@ def main() -> None:
     hydrology.RIVER_MAX_RESIDENCE_SECONDS = args.residence_cap_years * 365.25 * 86400.0
     if args.velocity == "jobson":
         use_jobson_velocity(world, hydrology, plates_mod, line_spacing_rad)
+    land_store = install_treatment(args, world, hydrology, plates_mod)
     anchors = np.asarray(json.loads(args.anchors.read_text())["anchor_points"], dtype=float)
     result.update(velocity=args.velocity, residence_cap_years=args.residence_cap_years, steps=[])
     if args.reach_dir is not None:
         args.reach_dir.mkdir(parents=True, exist_ok=True)
     previous_final_m3 = [None]
+    previous_bodies = [None]
     precipitation = {}
     original_partition = hydrology.partition_precipitation_m3
 
@@ -209,6 +277,10 @@ def main() -> None:
         drift = None if previous_final_m3[0] is None else river.initial_storage_m3 - previous_final_m3[0]
         previous_final_m3[0] = river.final_storage_m3
         external = land.rain_m3 + land.meltwater_m3
+        target, previous_bodies[0] = target_lake(
+            hydro, areas, anchors, hydrology.LAKE_MIN_VISIBLE_DEPTH_M, hydrology.lake_components,
+            precipitation, previous_bodies[0],
+        )
         result["steps"].append({
             "step": step,
             "elapsed_myr": world.elapsed_years / 1e6,
@@ -236,10 +308,8 @@ def main() -> None:
             "glacier_volume_km3": float(np.dot(hydro.glacier_depth, areas)) / 1e9,
             "sea_level_m": world.sea_level_m,
             **glacier_step(hydro, land, hydrology),
-            "target": target_lake(
-                hydro, areas, anchors, hydrology.LAKE_MIN_VISIBLE_DEPTH_M, hydrology.lake_components,
-                precipitation,
-            ),
+            **({} if land_store is None else {"land_store": land_store.pop_step()}),
+            "target": target,
         })
         if args.reach_dir is not None:
             write_reaches(hydro, areas, step)
