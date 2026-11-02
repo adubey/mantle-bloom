@@ -140,5 +140,21 @@ melt, or if one substep removes ice no flux or melt rate at that substep's lengt
 same event on draw 2 if that step holds one substep over 30% on the same plateau body. E6 and E7 use
 the same 5-member gap.
 
+### Part B third amendment, after E5
+
+Written after E5 and E6 and before E8, so it is post hoc too.
+
+E5's collapsing substep is 10 kyr long, the march's longest, while the ice turns over about five
+times in 10 kyr. The hypothesis is that a substep much longer than the ice's turnover lets the
+march overshoot from the plateau's high state to its low one.
+
+| Run | What | Reads |
+|---|---|---|
+| E8 | Draw 1, 97.4: E1's 12-member ensemble with the march's longest substep capped at 1 kyr | Does the drop need long substeps? |
+
+**Reading.** Long substeps cause the drop if at most 2 of 12 members drop (against E1's 9) and no
+member has a substep that loses over 20%. If 8 or more still drop with no such substep, the drop is
+a real transition the long substeps only hasten. Anything between is reported as it stands.
+
 **Not tested:** other draws' drops beyond these. If time allows, the same factorial runs on the largest step of
 draw 2. Any change to the drift period, the noise or the march is proposed separately.
