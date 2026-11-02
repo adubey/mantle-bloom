@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import type { WorldRecord } from "./api";
+import type { ViewerView, WorldRecord } from "./api";
 import { worldLabel } from "./api";
 import ModalShell from "./ModalShell";
 import { useModalAction } from "./useModalAction";
@@ -52,13 +52,25 @@ function RenameForm({ world, busy, onSave, onCancel }: RenameFormProps) {
 interface Props {
   worlds: WorldRecord[];
   selectedWorldId: WorldId | null;
-  // Both reject on failure, so the error shows here rather than behind the modal.
+  // All reject on failure, so the error shows here rather than behind the modal.
   onRename: (id: WorldId, name: string) => Promise<void>;
   onDelete: (id: WorldId) => Promise<void>;
+  // The /view default and its shared presentation (#755).
+  onSetDefault: (id: WorldId, isDefault: boolean) => Promise<void>;
+  onViewerViewChange: (id: WorldId, view: ViewerView) => Promise<void>;
+  onShareOrientation: (id: WorldId) => Promise<void>;
   onClose: () => void;
 }
 
-export default function ManageWorldsModal({ worlds, selectedWorldId, onRename, onDelete, onClose }: Props) {
+const VIEWER_VIEWS: { value: ViewerView; label: string }[] = [
+  { value: "combined", label: "Combined" },
+  { value: "elevation", label: "Elevation" },
+  { value: "biome", label: "Biome" },
+];
+
+export default function ManageWorldsModal({
+  worlds, selectedWorldId, onRename, onDelete, onSetDefault, onViewerViewChange, onShareOrientation, onClose,
+}: Props) {
   const { busy, error, runAction } = useModalAction();
   const [editingId, setEditingId] = useState<WorldId | null>(null);
   // A world deleted elsewhere mid-edit drops out of the list without ending the edit.
@@ -74,6 +86,18 @@ export default function ManageWorldsModal({ worlds, selectedWorldId, onRename, o
     void runAction(`delete:${world.world_id}`, () => onDelete(world.world_id));
   }, [runAction, onDelete]);
 
+  const handleSetDefault = useCallback((world: WorldRecord) => {
+    void runAction(`default:${world.world_id}`, () => onSetDefault(world.world_id, !world.is_default));
+  }, [runAction, onSetDefault]);
+
+  const handleViewerView = useCallback((world: WorldRecord, view: ViewerView) => {
+    void runAction(`viewer-view:${world.world_id}`, () => onViewerViewChange(world.world_id, view));
+  }, [runAction, onViewerViewChange]);
+
+  const handleShareOrientation = useCallback((world: WorldRecord) => {
+    void runAction(`share-orientation:${world.world_id}`, () => onShareOrientation(world.world_id));
+  }, [runAction, onShareOrientation]);
+
   // Held open while a request is out: its failure can only be reported here.
   const handleClose = useCallback(() => {
     if (busy === null) onClose();
@@ -86,43 +110,88 @@ export default function ManageWorldsModal({ worlds, selectedWorldId, onRename, o
       {worlds.map((world) => {
         const running = world.run?.running ?? false;
         return (
-          <div key={world.world_id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-            {world.world_id === editingId ? (
-              <RenameForm
-                world={world}
-                busy={busy !== null}
-                onSave={(name) => handleRename(world, name)}
-                onCancel={() => setEditingId(null)}
-              />
-            ) : (
-              <>
-                <span
-                  title={world.name}
-                  style={{
-                    flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    fontWeight: world.world_id === selectedWorldId ? 600 : undefined,
-                  }}
-                >
-                  {worldLabel(world)}
-                </span>
+          <div key={world.world_id} style={{ marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {world.world_id === editingId ? (
+                <RenameForm
+                  world={world}
+                  busy={busy !== null}
+                  onSave={(name) => handleRename(world, name)}
+                  onCancel={() => setEditingId(null)}
+                />
+              ) : (
+                <>
+                  <span
+                    title={world.name}
+                    style={{
+                      flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      fontWeight: world.world_id === selectedWorldId ? 600 : undefined,
+                    }}
+                  >
+                    {worldLabel(world)}
+                  </span>
+                  <button
+                    onClick={() => setEditingId(world.world_id)}
+                    disabled={busy !== null || editing}
+                    style={{ fontSize: 12 }}
+                  >
+                    Rename
+                  </button>
+                  {/* The polled list can lag a run started elsewhere; the server refuses those too. */}
+                  <button
+                    onClick={() => handleDelete(world)}
+                    disabled={busy !== null || running}
+                    title={running ? "Stop this world's run first" : undefined}
+                    style={{ fontSize: 12 }}
+                  >
+                    {busy === `delete:${world.world_id}` ? "Deleting..." : "Delete"}
+                  </button>
+                </>
+              )}
+            </div>
+            {/* The /view default (#755): one world, shown to every visitor
+                with the presentation chosen here. Setting it publishes it. */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, fontSize: 12 }}>
+              {world.is_default ? (
+                <>
+                  <span style={{ fontWeight: 600 }}>Default on /view</span>
+                  <button onClick={() => handleSetDefault(world)} disabled={busy !== null} style={{ fontSize: 12 }}>
+                    {busy === `default:${world.world_id}` ? "Clearing..." : "Clear default"}
+                  </button>
+                  <label>
+                    View{" "}
+                    <select
+                      value={world.viewer_view}
+                      onChange={(e) => handleViewerView(world, e.target.value as ViewerView)}
+                      disabled={busy !== null}
+                      aria-label={`Map view viewers of ${world.name} see`}
+                      style={{ fontSize: 12 }}
+                    >
+                      {VIEWER_VIEWS.map((view) => (
+                        <option key={view.value} value={view.value}>{view.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    onClick={() => handleShareOrientation(world)}
+                    disabled={busy !== null}
+                    title="Show viewers this tab's current map orientation"
+                    style={{ fontSize: 12 }}
+                  >
+                    {busy === `share-orientation:${world.world_id}` ? "Sharing..." : "Use my orientation"}
+                  </button>
+                </>
+              ) : (
                 <button
-                  onClick={() => setEditingId(world.world_id)}
-                  disabled={busy !== null || editing}
+                  onClick={() => handleSetDefault(world)}
+                  disabled={busy !== null}
+                  title="Open /view on this world and keep its image ready; this also makes it public"
                   style={{ fontSize: 12 }}
                 >
-                  Rename
+                  {busy === `default:${world.world_id}` ? "Setting..." : "Set as /view default"}
                 </button>
-                {/* The polled list can lag a run started elsewhere; the server refuses those too. */}
-                <button
-                  onClick={() => handleDelete(world)}
-                  disabled={busy !== null || running}
-                  title={running ? "Stop this world's run first" : undefined}
-                  style={{ fontSize: 12 }}
-                >
-                  {busy === `delete:${world.world_id}` ? "Deleting..." : "Delete"}
-                </button>
-              </>
-            )}
+              )}
+            </div>
           </div>
         );
       })}

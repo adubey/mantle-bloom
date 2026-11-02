@@ -700,6 +700,123 @@ def test_visibility_toggle_does_not_publish_a_queued_regenerates_name(guest, ste
     assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["name"] == "public-test"
 
 
+# --- The default world and its always-ready image (#755) -----------------------------------
+
+
+def _canonical_params():
+    return {
+        "view": public_view.GUEST_DEFAULT_VIEW,
+        "width": public_view.GUEST_DEFAULT_WIDTH,
+        "height": public_view.GUEST_DEFAULT_HEIGHT,
+    }
+
+
+def test_setting_a_default_is_exclusive_and_makes_it_viewable(guest, steps, monkeypatch):
+    monkeypatch.setattr(main, "_record_json", lambda session: {})
+    monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: "png")
+    other = main._wire_session(main._registry.create(name="other", is_public=True))
+    other.world = SimpleNamespace(seed=9, elapsed_years=0.0)
+    other.feed.publish(other.world, other.name)
+    try:
+        _S.is_public = False
+        assert _local().patch(f"/worlds/{_S.world_id}", json={"is_default": True}).status_code == 200
+        assert _S.is_default is True and _S.is_public is True
+        assert _local().patch(f"/worlds/{other.world_id}", json={"is_default": True}).status_code == 200
+        assert other.is_default is True and _S.is_default is False
+        listed = {w["world_id"]: w for w in guest.get("/public/worlds").json()["worlds"]}
+        assert listed[other.world_id]["is_default"] is True
+        assert listed[_S.world_id]["is_default"] is False
+        assert _local().patch(f"/worlds/{other.world_id}", json={"is_default": False}).status_code == 200
+        assert other.is_default is False
+    finally:
+        _S.is_default = False
+        if other.runner is not None:
+            other.runner.close()
+        main._registry.remove(other.world_id)
+
+
+def test_default_world_prerenders_without_any_viewer_watching(guest, steps, monkeypatch):
+    # #755: the default world's image is kept ready even with no /view audience,
+    # unlike an ordinary public world (which still skips the cost, #658).
+    calls = []
+    monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: calls.append(args) or "png")
+    _S.is_default = True
+    try:
+        assert not _S.feed.has_waiters()
+        main._world_changed(_S)
+    finally:
+        _S.is_default = False
+    assert len(calls) == 1
+    key = (public_view.GUEST_DEFAULT_VIEW, public_view.GUEST_DEFAULT_WIDTH, public_view.GUEST_DEFAULT_HEIGHT)
+    assert _S.public_renders.get(_S.feed.revision(), key)["image_base64"] == "png"
+
+
+def test_default_render_is_cached_on_disk_and_served_when_memory_is_cold(guest, steps, monkeypatch, tmp_path):
+    # #755: first render writes memory + disk; a cold memory (a restart, with the
+    # world restored from its checkpoint) is served from disk with no re-render,
+    # and a changed world never serves the stale file.
+    from app.checkpoint import CheckpointStore
+
+    calls = []
+    monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: calls.append(args) or f"png{len(calls)}")
+    _S.is_default = True
+    _S.checkpoint_store = CheckpointStore(tmp_path)
+    try:
+        first = guest.get(f"/public/worlds/{_S.world_id}/render", params=_canonical_params()).json()
+        assert first["image_base64"] == "png1"
+        assert _S.checkpoint_store.load_viewer_image()["image_base64"] == "png1"
+        _S.public_renders.clear()  # the in-memory cache a restart throws away
+        again = guest.get(f"/public/worlds/{_S.world_id}/render", params=_canonical_params()).json()
+        assert again["image_base64"] == "png1"
+        assert len(calls) == 1
+        _S.world.elapsed_years += 1.0
+        _S.feed.publish(_S.world)
+        changed = guest.get(f"/public/worlds/{_S.world_id}/render", params=_canonical_params()).json()
+        assert changed["image_base64"] == "png2"
+        assert len(calls) == 2
+    finally:
+        _S.is_default = False
+        _S.checkpoint_store = None
+
+
+def test_non_default_render_leaves_no_disk_image(guest, steps, monkeypatch, tmp_path):
+    from app.checkpoint import CheckpointStore
+
+    monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: "png")
+    _S.checkpoint_store = CheckpointStore(tmp_path)
+    try:
+        guest.get(f"/public/worlds/{_S.world_id}/render", params=_canonical_params())
+        assert _S.checkpoint_store.load_viewer_image() is None
+    finally:
+        _S.checkpoint_store = None
+
+
+def test_owner_shared_view_and_rotation_are_what_viewers_see(guest, steps, monkeypatch):
+    # #755: the logged-in owner decides the shared /view presentation; every
+    # viewer of the world then gets that same view and orientation.
+    monkeypatch.setattr(main, "_record_json", lambda session: {})
+    calls = []
+    monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: calls.append(args) or "png")
+    rotation = [0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    try:
+        resp = _local().patch(
+            f"/worlds/{_S.world_id}", json={"viewer_view": "biome", "viewer_rotation": rotation}
+        )
+        assert resp.status_code == 200
+        state = guest.get(f"/public/worlds/{_S.world_id}/world").json()
+        assert state["view"] == "biome"
+        assert state["rotation"] == rotation
+        guest.get(f"/public/worlds/{_S.world_id}/render", params={"view": "biome"})
+        assert calls[-1][2] == "biome"
+        assert calls[-1][5].reshape(-1).tolist() == rotation
+        assert _local().patch(f"/worlds/{_S.world_id}", json={"viewer_view": "temperature"}).status_code == 400
+        bad = _local().patch(f"/worlds/{_S.world_id}", json={"viewer_rotation": [1.0, 0.0]})
+        assert bad.status_code == 400
+    finally:
+        _S.viewer_view = public_view.GUEST_DEFAULT_VIEW
+        _S.viewer_rotation = None
+
+
 def test_failed_regenerate_publishes_its_rename(guest, steps, monkeypatch):
     # Fails while iterating, which is where the route's error line catches a real failure.
     monkeypatch.setattr(main, "generate_world_progress", lambda *_args, **_kwargs: map(int, ["no room"]))

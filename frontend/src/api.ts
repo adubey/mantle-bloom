@@ -7,11 +7,19 @@ export type { WorldId } from "./worldRoutes";
 /** One world's admin-route base (`${API_BASE}/worlds/<id>`), #563. */
 const W = (worldId: WorldId, path: string) => `${worldBase(API_BASE, worldId)}${path}`;
 
+/** The map views the logged-out viewer can show, as the owner picks one for
+ * every viewer of a world (#755). */
+export type ViewerView = "elevation" | "biome" | "combined";
+
 /** One row of `GET /worlds`: registry metadata plus state when populated. */
 export interface WorldRecord {
   world_id: WorldId;
   name: string;
   is_public: boolean;
+  // The one world /view opens on, and the shared /view presentation (#755).
+  is_default: boolean;
+  viewer_view: ViewerView;
+  viewer_rotation: number[] | null;
   created_at: number;
   updated_at: number;
   load_error: string | null;
@@ -31,7 +39,10 @@ export function createWorld(name?: string): Promise<WorldRecord> {
   }).then(asJson<WorldRecord>);
 }
 
-export function patchWorld(worldId: WorldId, patch: { name?: string; is_public?: boolean }): Promise<WorldRecord> {
+export function patchWorld(
+  worldId: WorldId,
+  patch: { name?: string; is_public?: boolean; is_default?: boolean; viewer_view?: ViewerView; viewer_rotation?: number[] },
+): Promise<WorldRecord> {
   return fetch(W(worldId, ""), {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

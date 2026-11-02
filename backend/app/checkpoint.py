@@ -41,6 +41,11 @@ CHECKPOINT_DIR_ENV = "MANTLE_BLOOM_CHECKPOINT_DIR"
 RAILWAY_VOLUME_ENV = "RAILWAY_VOLUME_MOUNT_PATH"
 
 WORLD_FILE = "world.mbworld"
+# The default world's cached /view image (#755), beside its world checkpoint:
+# one JSON entry ({version, key, image_base64}) replaced atomically, so a cold
+# in-memory cache after a restart is served from disk without re-rendering.
+VIEWER_IMAGE_FILE = "viewer_image.json"
+VIEWER_IMAGE_VERSION = 1
 STATUS_FILE = "run_status.json"
 ANIMATION_PROGRESS_FILE = "animation_progress.json"
 STATUS_VERSION = 1
@@ -130,6 +135,19 @@ class CheckpointStore:
                     # (bool is an int subclass; a True timestamp is nonsense too.)
                     or not isinstance(record.get("name"), str)
                     or not isinstance(record.get("is_public"), bool)
+                    # Added with the /view default (#755): absent in older
+                    # indexes (read as the defaults at restore), garbage fails
+                    # closed like every other field above.
+                    or not isinstance(record.get("is_default", False), bool)
+                    or not isinstance(record.get("viewer_view", "combined"), str)
+                    or not (
+                        record.get("viewer_rotation") is None
+                        or (
+                            isinstance(record.get("viewer_rotation"), list)
+                            and len(record["viewer_rotation"]) == 9
+                            and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in record["viewer_rotation"])
+                        )
+                    )
                     or not self._is_timestamp(record.get("created_at"))
                     or not self._is_timestamp(record.get("updated_at"))
                 ):
@@ -137,6 +155,41 @@ class CheckpointStore:
         except Exception as exc:  # noqa: BLE001 - any bad index must fail closed
             raise RegistryIndexError(f"can't read registry index {path}: {exc}") from exc
         return payload["worlds"]
+
+    @property
+    def viewer_image_path(self) -> Path:
+        return self.directory / VIEWER_IMAGE_FILE
+
+    # Serializes viewer-image writes (#755): racing renders of the default
+    # world must never interleave, so only one entry is ever being written and
+    # a reader always sees one writer's whole file (the write itself is the
+    # same atomic replace every checkpoint uses).
+    _viewer_image_lock = threading.Lock()
+
+    def save_viewer_image(self, entry: dict) -> None:
+        with self._viewer_image_lock:
+            self._replace(self.viewer_image_path, json.dumps(entry).encode())
+
+    def load_viewer_image(self) -> dict | None:
+        """The cached /view image entry, or None when there isn't a usable
+        one. Never raises: a missing, corrupt or foreign-shaped file just
+        means the image is rendered again."""
+        try:
+            payload = json.loads(self.viewer_image_path.read_bytes())
+        except (OSError, ValueError):
+            return None
+        if (
+            not isinstance(payload, dict)
+            or payload.get("version") != VIEWER_IMAGE_VERSION
+            or not isinstance(payload.get("key"), dict)
+            or not isinstance(payload.get("image_base64"), str)
+        ):
+            return None
+        return payload
+
+    def clear_viewer_image(self) -> None:
+        with self._viewer_image_lock:
+            self.viewer_image_path.unlink(missing_ok=True)
 
     @property
     def world_path(self) -> Path:

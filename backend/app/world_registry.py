@@ -108,6 +108,14 @@ class WorldSession:
     world_id: str
     name: str = "Untitled world"
     is_public: bool = False
+    # The one world /view opens on (#755): at most one session carries this at
+    # a time (WorldRegistry.set_default enforces it under the registry lock).
+    is_default: bool = False
+    # The shared /view presentation the owner decides for every viewer of this
+    # world (#755): the map view, and the orientation as 9 row-major floats
+    # (None is the identity). Guests cannot override either per request.
+    viewer_view: str = public_view.GUEST_DEFAULT_VIEW
+    viewer_rotation: list[float] | None = None
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     world: World | None = None
@@ -181,6 +189,9 @@ class WorldSession:
             "world_id": self.world_id,
             "name": self.name,
             "is_public": self.is_public,
+            "is_default": self.is_default,
+            "viewer_view": self.viewer_view,
+            "viewer_rotation": self.viewer_rotation,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -223,6 +234,32 @@ class WorldRegistry:
                 raise ValueError(f"duplicate world_id {session.world_id!r}")
             self._sessions[session.world_id] = session
             return session
+
+    def set_default(self, world_id: str | None) -> list[WorldSession]:
+        """Make `world_id` the one default world (None: no default, #755).
+
+        The check and the clearing of every other session happen under the
+        registry lock, so two owner tabs setting different worlds at once can
+        never leave two defaults. Returns the sessions whose flag changed."""
+        with self._lock:
+            sessions = list(self._sessions.values())
+            if world_id is not None and world_id not in self._sessions:
+                raise UnknownWorldError(world_id)
+            changed = []
+            for session in sessions:
+                wanted = session.world_id == world_id
+                if session.is_default != wanted:
+                    session.is_default = wanted
+                    changed.append(session)
+            return changed
+
+    def default(self) -> WorldSession | None:
+        """The default world, if one is set (#755)."""
+        with self._lock:
+            for session in self._sessions.values():
+                if session.is_default:
+                    return session
+            return None
 
     def get(self, world_id: str) -> WorldSession:
         with self._lock:

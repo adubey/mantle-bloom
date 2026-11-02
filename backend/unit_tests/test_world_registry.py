@@ -64,9 +64,34 @@ def test_record_round_trip_fields():
         "world_id": session.world_id,
         "name": "Kepler",
         "is_public": True,
+        "is_default": False,
+        "viewer_view": "combined",
+        "viewer_rotation": None,
         "created_at": session.created_at,
         "updated_at": session.updated_at,
     }
+
+
+def test_set_default_keeps_exactly_one_default_under_concurrency():
+    # #755: at most one world is the /view default, even when two owner tabs
+    # set different worlds at the same time.
+    registry = WorldRegistry(max_worlds=4)
+    sessions = [registry.create(name=name) for name in "ABCD"]
+    threads = [
+        threading.Thread(target=registry.set_default, args=(session.world_id,))
+        for session in sessions
+        for _ in range(5)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(5)
+    defaults = [s for s in registry.list() if s.is_default]
+    assert len(defaults) == 1
+    assert registry.default() is defaults[0]
+    registry.set_default(None)
+    assert registry.default() is None
+    assert not any(s.is_default for s in registry.list())
 
 
 def test_session_operation_busy_flag():

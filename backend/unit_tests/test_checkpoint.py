@@ -173,6 +173,43 @@ def test_directory_comes_from_the_env_or_the_railway_volume(monkeypatch, tmp_pat
     assert CheckpointStore.from_env().directory == tmp_path / "explicit"
 
 
+def test_viewer_image_round_trip_clear_and_garbage(tmp_path):
+    # #755: the default world's ready /view image survives a restart on disk,
+    # beside its world checkpoint. Anything unexpected reads as no image.
+    store = CheckpointStore(tmp_path)
+    entry = {
+        "version": 1,
+        "key": {"seed": 7, "elapsed_years": 3.0, "view": "combined", "width": 2200, "height": 1222},
+        "image_base64": "png",
+    }
+    assert store.load_viewer_image() is None
+    store.save_viewer_image(entry)
+    assert CheckpointStore(tmp_path).load_viewer_image() == entry
+    (tmp_path / checkpoint.VIEWER_IMAGE_FILE).write_bytes(b"not json{{")
+    assert store.load_viewer_image() is None
+    store.save_viewer_image(entry)
+    store.clear_viewer_image()
+    assert store.load_viewer_image() is None
+    store.clear_viewer_image()  # a missing file must not raise either
+
+
+def test_concurrent_viewer_image_writes_leave_one_whole_entry(tmp_path):
+    # #755: a single writer lock means racing renders never interleave into a
+    # torn file: the reader always gets one writer's complete entry.
+    import threading
+
+    store = CheckpointStore(tmp_path)
+    entries = [
+        {"version": 1, "key": {"seed": n}, "image_base64": f"png{n}"} for n in range(8)
+    ]
+    threads = [threading.Thread(target=store.save_viewer_image, args=(entry,)) for entry in entries]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(5)
+    assert store.load_viewer_image() in entries
+
+
 def test_animation_progress_round_trip_and_clear(tmp_path):
     # #638: an interrupted animation run's recovery record must survive a reload and
     # vanish once cleared (a finished run's video exists, so nothing is recoverable).

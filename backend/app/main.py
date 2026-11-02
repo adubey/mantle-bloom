@@ -409,11 +409,115 @@ def _world_changed(session: WorldSession, completed: bool = True) -> None:
     # check afterwards would always see nobody (#658).
     watched = session.feed.has_waiters()
     session.public_renders.clear()
+    if getattr(session, "is_default", False):
+        # The disk image is keyed to the world this change replaces: drop it
+        # before publishing, so no reader can serve it for the new world. The
+        # pre-render below writes the new one (#755).
+        _clear_disk_viewer_image(session)
     session.feed.publish(session.world, session.name)
-    if watched:
+    if watched or getattr(session, "is_default", False):
         _prerender_viewer_image(session)
     if completed:
         _checkpoint_world(session)
+
+
+def _viewer_view(session: WorldSession) -> str:
+    """The shared /view map view for this world (#755): the owner's choice,
+    falling back to the canonical one if a restored record names a view the
+    viewer no longer offers."""
+    view = getattr(session, "viewer_view", public_view.GUEST_DEFAULT_VIEW)
+    return view if view in public_view.GUEST_VIEWS else public_view.GUEST_DEFAULT_VIEW
+
+
+def _viewer_rotation(session: WorldSession):
+    """The shared /view orientation for this world (#755), as render_image
+    takes it: the owner's 9 floats, or the identity when none was chosen."""
+    rotation = getattr(session, "viewer_rotation", None)
+    if rotation is None:
+        return _parse_view_rotation(None)
+    return np.array(rotation, dtype=float).reshape(3, 3)
+
+
+def _viewer_rotation_list(session: WorldSession) -> list[float]:
+    return [float(v) for v in _viewer_rotation(session).reshape(-1)]
+
+
+def _viewer_image_key(session: WorldSession, world, view: str, width: int, height: int) -> dict:
+    """What a cached viewer image is an image *of* (#755): the world at one
+    age, under the shared presentation, at one size. A disk entry is served
+    only when its key matches the published world exactly, so a changed world
+    (or a changed presentation) can never be served a stale file; changes
+    that leave this key untouched (Controls, a rename of the presentation)
+    clear the file at publish time instead (see _world_changed)."""
+    return {
+        "seed": world.seed,
+        "elapsed_years": float(world.elapsed_years),
+        "view": view,
+        "width": width,
+        "height": height,
+        "rotation": _viewer_rotation_list(session),
+    }
+
+
+def _save_disk_viewer_image(session: WorldSession, world, view: str, width: int, height: int, image_base64: str) -> None:
+    """Cache the default world's rendered viewer image on disk (#755), beside
+    its checkpoint, so a restart's cold in-memory cache is served from the
+    file instead of re-rendering. Best-effort, like the checkpoint itself: a
+    failed write only costs the next viewer a render."""
+    store = getattr(session, "checkpoint_store", None)
+    if store is None or not getattr(session, "is_default", False) or world is None:
+        return
+    try:
+        store.save_viewer_image({
+            "version": checkpoint.VIEWER_IMAGE_VERSION,
+            "key": _viewer_image_key(session, world, view, width, height),
+            "image_base64": image_base64,
+        })
+    except Exception:  # noqa: BLE001 -- the render itself already succeeded
+        _logger.exception("viewer image disk cache: couldn't save for world %s", session.world_id)
+
+
+def _clear_disk_viewer_image(session: WorldSession) -> None:
+    store = getattr(session, "checkpoint_store", None)
+    if store is None:
+        return
+    try:
+        store.clear_viewer_image()
+    except Exception:  # noqa: BLE001 -- a stale file is key-checked on read anyway
+        _logger.exception("viewer image disk cache: couldn't clear for world %s", session.world_id)
+
+
+def _disk_viewer_image(session: WorldSession, view: str, width: int, height: int) -> str | None:
+    """The default world's on-disk viewer image for exactly this request, or
+    None (#755). The published summary (seed and age, readable without the
+    world lock) must match the file's key: that pair is what a restart
+    restores, so it is the check that keeps a previous world's image from
+    being served for this one."""
+    store = getattr(session, "checkpoint_store", None)
+    if store is None or not getattr(session, "is_default", False):
+        return None
+    summary = session.feed.summary()
+    if summary is None:
+        return None
+    try:
+        entry = store.load_viewer_image()
+    except Exception:  # noqa: BLE001 -- a bad cache file is a miss, never an error
+        _logger.exception("viewer image disk cache: couldn't load for world %s", session.world_id)
+        return None
+    if entry is None:
+        return None
+    key = entry["key"]
+    expected = {
+        "seed": summary["seed"],
+        "elapsed_years": summary["elapsed_years"],
+        "view": view,
+        "width": width,
+        "height": height,
+        "rotation": _viewer_rotation_list(session),
+    }
+    if any(key.get(name) != value for name, value in expected.items()):
+        return None
+    return entry["image_base64"]
 
 
 def _prerender_viewer_image(session: WorldSession) -> None:
@@ -426,27 +530,31 @@ def _prerender_viewer_image(session: WorldSession) -> None:
     owner's own sizes are rendered on demand. A failed render is logged, never
     raised -- the change itself already published and must not fail because its
     preview did. The caller checks the audience first (`WorldFeed.has_waiters`,
-    captured before publishing pops the waiter list); this helper only enforces
-    the public-world gate."""
+    captured before publishing pops the waiter list, or the world being the
+    /view default, #755); this helper only enforces the public-world gate."""
     world = session.world
     if world is None or not session.is_public:
         return
     try:
         revision = session.feed.revision()
+        view = _viewer_view(session)
         image_base64 = render_image.render_png_base64(
             world,
             public_view.GUEST_PROJECTION,
-            public_view.GUEST_DEFAULT_VIEW,
+            view,
             public_view.GUEST_DEFAULT_WIDTH,
             public_view.GUEST_DEFAULT_HEIGHT,
-            _parse_view_rotation(None),
+            _viewer_rotation(session),
             False,
             False,
         )
         session.public_renders.put(
             revision,
-            (public_view.GUEST_DEFAULT_VIEW, public_view.GUEST_DEFAULT_WIDTH, public_view.GUEST_DEFAULT_HEIGHT),
+            (view, public_view.GUEST_DEFAULT_WIDTH, public_view.GUEST_DEFAULT_HEIGHT),
             {**session.feed.summary(), "image_base64": image_base64},
+        )
+        _save_disk_viewer_image(
+            session, world, view, public_view.GUEST_DEFAULT_WIDTH, public_view.GUEST_DEFAULT_HEIGHT, image_base64
         )
     except Exception:  # noqa: BLE001 -- preview must not fail the change; see docstring
         _logger.exception("viewer pre-render failed for world %s", session.world_id)
@@ -844,6 +952,13 @@ class CreateWorldRequest(BaseModel):
 class PatchWorldRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     is_public: bool | None = None
+    # The /view default (#755): True makes this the one default (and public, so
+    # /view can show it); False clears it from this world only.
+    is_default: bool | None = None
+    # The shared /view presentation (#755): one of public_view.GUEST_VIEWS, and
+    # the orientation as 9 row-major floats. Validated in patch_world.
+    viewer_view: str | None = None
+    viewer_rotation: list[float] | None = None
 
 
 @app.get("/worlds")
@@ -887,14 +1002,61 @@ def get_world(world_id: str) -> dict:
         return _record_json(session)
 
 
+def _validate_viewer_patch(req: PatchWorldRequest) -> None:
+    if req.viewer_view is not None and req.viewer_view not in public_view.GUEST_VIEWS:
+        raise HTTPException(
+            status_code=400, detail=f"unknown viewer_view {req.viewer_view!r}; choices are {public_view.GUEST_VIEWS}"
+        )
+    if req.viewer_rotation is not None and (
+        len(req.viewer_rotation) != 9 or not all(np.isfinite(req.viewer_rotation))
+    ):
+        raise HTTPException(status_code=400, detail="viewer_rotation must be 9 finite floats")
+
+
+def _apply_viewer_patch(session: WorldSession, req: PatchWorldRequest) -> None:
+    """Apply a patch's /view fields (#755). The caller holds the session lock.
+
+    Setting the default goes through the registry, whose lock makes the
+    exactly-one check atomic against another tab doing the same; it also
+    publishes the world, since a default nobody can view is no default. A new
+    presentation (or a newly default world) clears the cached renders and
+    re-renders the canonical image, so the next viewer is served the owner's
+    choice from cache, not a re-render of their own."""
+    changed_defaults: list[WorldSession] = []
+    if req.is_default:
+        changed_defaults = _registry.set_default(session.world_id)
+        session.is_public = True
+    elif req.is_default is False and session.is_default:
+        changed_defaults = _registry.set_default(None)
+    presentation_changed = False
+    if req.viewer_view is not None and req.viewer_view != session.viewer_view:
+        session.viewer_view = req.viewer_view
+        presentation_changed = True
+    if req.viewer_rotation is not None and req.viewer_rotation != session.viewer_rotation:
+        session.viewer_rotation = [float(v) for v in req.viewer_rotation]
+        presentation_changed = True
+    if req.is_default is None and not presentation_changed:
+        return
+    for other in changed_defaults:
+        if other is not session:
+            other.feed.wake()
+    session.public_renders.clear()
+    if presentation_changed:
+        _clear_disk_viewer_image(session)
+    if session.is_default and session.world is not None:
+        _prerender_viewer_image(session)
+
+
 @app.patch("/worlds/{world_id}")
 def patch_world(world_id: str, req: PatchWorldRequest) -> dict:
+    _validate_viewer_patch(req)
     session = _session_or_404(world_id)
     with session.lock:
         if req.name is not None:
             session.name = req.name
         if req.is_public is not None:
             session.is_public = req.is_public
+        _apply_viewer_patch(session, req)
         session.touch()
         _save_index()
         # Only a real rename: a toggle while a regenerate queues must not publish its new
@@ -2670,7 +2832,10 @@ def public_worlds() -> dict:
             # loop is on even when private, so /view can watch a planet that is
             # currently stepping (#597). It drops back out when the run stops.
             if summary is not None and (session.is_public or running):
-                worlds.append({"world_id": session.world_id, "name": session.feed.name(), "running": running, **summary})
+                worlds.append({
+                    "world_id": session.world_id, "name": session.feed.name(), "running": running,
+                    "is_default": session.is_default, **summary,
+                })
     return {"worlds": worlds}
 
 
@@ -2702,6 +2867,10 @@ async def public_world(world_id: str, request: Request, after: str | None = None
         "name": session.feed.name(),
         "world": session.feed.summary(),
         "running": _session_running(session),
+        # The shared presentation every viewer of this world sees (#755).
+        "is_default": session.is_default,
+        "view": _viewer_view(session),
+        "rotation": _viewer_rotation_list(session),
         "steps_remaining": remaining,
         "step_limit": public_view.GUEST_STEP_LIMIT,
         "step_years": public_view.GUEST_STEP_YEARS,
@@ -2725,6 +2894,16 @@ def public_render(world_id: str, view: str = "elevation", width: int = 1100, hei
     cached = session.public_renders.get(session.feed.revision(), key)
     if cached is not None:
         return cached
+    # A cold in-memory cache (a restart restored the world from its
+    # checkpoint) is served the default world's on-disk image instead of
+    # re-rendering (#755): repopulate memory from it and answer.
+    disk_image = _disk_viewer_image(session, view, width, height)
+    if disk_image is not None:
+        summary = session.feed.summary()
+        if summary is not None:
+            entry = {**summary, "image_base64": disk_image}
+            session.public_renders.put(session.feed.revision(), key, entry)
+            return entry
     if not _compute_gate.acquire(timeout=public_view.GUEST_LOCK_WAIT_S):
         raise HTTPException(status_code=503, detail="the world is busy; try again shortly")
     try:
@@ -2738,11 +2917,19 @@ def public_render(world_id: str, view: str = "elevation", width: int = 1100, hei
             revision = session.feed.revision()
             entry = session.public_renders.get(revision, key)
             if entry is None:
+                world = _require_world(session)
                 image_base64 = render_image.render_png_base64(
-                    _require_world(session), public_view.GUEST_PROJECTION, view, width, height, _parse_view_rotation(None), False, False
+                    world, public_view.GUEST_PROJECTION, view, width, height, _viewer_rotation(session), False, False
                 )
                 entry = {**session.feed.summary(), "image_base64": image_base64}
                 session.public_renders.put(revision, key, entry)
+                # The canonical viewer image of the default world is also
+                # written through to disk (#755); other sizes and views stay
+                # memory-only, as before.
+                if (view, width, height) == (
+                    _viewer_view(session), public_view.GUEST_DEFAULT_WIDTH, public_view.GUEST_DEFAULT_HEIGHT
+                ):
+                    _save_disk_viewer_image(session, world, view, width, height, image_base64)
         finally:
             session.lock.release()
     finally:
@@ -2949,16 +3136,26 @@ def _restore_checkpoint() -> None:
     # ones left unloaded below.
     by_recency = sorted(records, key=lambda r: float(r.get("updated_at") or 0.0), reverse=True)
     restored = 0
+    # At most one record is the /view default (#755): a tampered index naming
+    # two keeps the most recently updated one and demotes the rest.
+    default_claimed = False
     for record in by_recency:
         # Reuse a live session with this ID when there is one (a restart in the
         # same process, as in tests): update it in place so references held by
         # callers stay valid.
         session = _registry.find(record["world_id"])
+        is_default = bool(record.get("is_default")) and not default_claimed
+        default_claimed = default_claimed or is_default
+        viewer_view = record.get("viewer_view")
+        viewer_rotation = record.get("viewer_rotation")
         if session is None:
             session = WorldSession(
                 world_id=record["world_id"],
                 name=record.get("name") or "Untitled world",
                 is_public=bool(record.get("is_public")),
+                is_default=is_default,
+                viewer_view=viewer_view if viewer_view in public_view.GUEST_VIEWS else public_view.GUEST_DEFAULT_VIEW,
+                viewer_rotation=None if viewer_rotation is None else [float(v) for v in viewer_rotation],
                 created_at=float(record.get("created_at") or 0.0),
                 updated_at=float(record.get("updated_at") or 0.0),
             )
@@ -2966,6 +3163,10 @@ def _restore_checkpoint() -> None:
         else:
             session.name = record.get("name") or session.name
             session.is_public = bool(record.get("is_public"))
+            session.is_default = is_default
+            if viewer_view in public_view.GUEST_VIEWS:
+                session.viewer_view = viewer_view
+            session.viewer_rotation = None if viewer_rotation is None else [float(v) for v in viewer_rotation]
         _wire_session(session)
         if restored >= _registry.max_worlds:
             # Memory bound: adopt() deliberately bypasses the create cap so saved

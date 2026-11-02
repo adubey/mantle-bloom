@@ -5,7 +5,7 @@ import {
   RunStateRefused, TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
-  AnimateResponse, AnimationRecovery, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
+  AnimateResponse, AnimationRecovery, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, ViewerView, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
 } from "./api";
 import { withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
 import MapCanvas from "./MapCanvas";
@@ -1293,6 +1293,26 @@ export default function App() {
     await patchWorld(id, { name });
     await refreshWorlds();
   }, [refreshWorlds]);
+
+  // The Manage Worlds dialog's /view choices (#755): which world is the
+  // default, and the shared presentation its viewers see. Reject on failure
+  // like handleRenameWorld, so the dialog reports it.
+  const handleWorldDefaultChange = useCallback(async (id: WorldId, isDefault: boolean) => {
+    await patchWorld(id, { is_default: isDefault });
+    await refreshWorlds();
+  }, [refreshWorlds]);
+
+  const handleViewerViewChange = useCallback(async (id: WorldId, viewerView: ViewerView) => {
+    await patchWorld(id, { viewer_view: viewerView });
+    await refreshWorlds();
+  }, [refreshWorlds]);
+
+  // Shares this tab's current map orientation with every /view viewer of the
+  // world (#755): the owner's rotation becomes the shared one.
+  const handleShareViewerOrientation = useCallback(async (id: WorldId) => {
+    await patchWorld(id, { viewer_rotation: [...rotation] });
+    await refreshWorlds();
+  }, [refreshWorlds, rotation]);
 
   // The Controls modal's World tab: renaming and publishing apply to the
   // selected world immediately (#597). A blank name keeps the current one.
@@ -2807,6 +2827,9 @@ export default function App() {
           selectedWorldId={worldId}
           onRename={handleRenameWorld}
           onDelete={handleDeleteWorld}
+          onSetDefault={handleWorldDefaultChange}
+          onViewerViewChange={handleViewerViewChange}
+          onShareOrientation={handleShareViewerOrientation}
           onClose={() => setShowManageWorlds(false)}
         />
       )}
