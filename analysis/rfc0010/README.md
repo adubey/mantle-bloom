@@ -487,3 +487,36 @@ All 18 former `hugs_margin` sites now separate. Zero blocked cells were entered.
   across a plate's corner cheap, so routes now cut off corners where they used to hug edges.
 - Breakup routes have a median longest arm of 2,424 km and growth of 24.2 Myr.
 - Worst-case plates are 58, 64 and 58, or 55, 63 and 58 on separating routes only.
+
+### Exploration: damage proxy (2026-11-02)
+
+This is not a gate run. At the owner's request, `--damage-proxy` (commit `15dc00a5`) tested whether
+local weakness, taken from fields the model already has, gives larger and more realistic splits
+before world generation changes (#770):
+- **Thickness:** resistance is total lithosphere thickness over the plate's median, clipped to
+  0.5–2.
+- **Belts:** belt weakness fades back toward 1 over 500 Myr.
+
+Everything else matches the edge-cost run, on the same three seeds. Fingerprints and every event
+match. Tables: [`exploration-damage-proxy.json`](exploration-damage-proxy.json).
+
+| | Edge cost | Edge cost + proxy |
+|---|---:|---:|
+| Breakups, active / passive / rollback / transtension | 98.7 / 94.0 / 100 / 98.5% | 91.0 / 94.0 / 100 / 97.0% |
+| Median smaller daughter | 9.2% | 10.1% |
+| Breakups under 7% | 37% | 33% |
+| Detached craton, seed 1173383782 (budget 394,538 km²) | 1,603,887 km² | 194,378 km² |
+| Route cells on thinner-than-median rock | — | median 50% |
+
+**Reading:** the gain is small. Routes cross thin rock at about the rate chance gives. Continental
+plates do have contrast: on seed 1183015207 at 200 Myr, 4–37% of their cells are under half the
+plate median. But that thin rock is on the plate's fringe:
+- 59–96% of it lies within 300 km of the plate edge, against a median 440–1,050 km for the rest.
+- 45–96% of it is oceanic crust.
+
+Plate interiors carry no thin or belted zones for a route to follow, so a better resistance map
+can't make interior cuts cheap. This supports #770: interior weak zones have to come from history,
+and default worlds start with none.
+
+The craton budget passes here only because the one failing event in the edge-cost run took a
+different route. That is not evidence that the proxy protects cratons.
