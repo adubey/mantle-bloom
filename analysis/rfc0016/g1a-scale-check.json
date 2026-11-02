@@ -1,0 +1,236 @@
+{
+ "a": {
+  "save": "seed910211954-221.6myr.mbworld",
+  "elapsed_years": 221600000.0,
+  "land_precipitation_mm": 838.7140263991571,
+  "control_open_water_demand_mm": 1129.9228847977047,
+  "arms": {
+   "central": {
+    "demand_mm": 1002.0012554974887,
+    "treatment_et_mm": 485.0299258612951,
+    "treatment_excess_mm": 353.6840198193782,
+    "control_runoff_mm": 389.367422477496,
+    "excess_change_percent": -9.164455113134217,
+    "treatment_transpiration_mm": 268.875081978553,
+    "control_humidity_source_mm": 93.33223158826117,
+    "source_ratio": 2.880838456372779
+   },
+   "capacity-150": {
+    "demand_mm": 1002.0012554974887,
+    "treatment_et_mm": 471.7903850894964,
+    "treatment_excess_mm": 366.92359144004433,
+    "control_runoff_mm": 389.367422477496,
+    "excess_change_percent": -5.764177931128489,
+    "treatment_transpiration_mm": 261.4967088691618,
+    "control_humidity_source_mm": 93.33223158826117,
+    "source_ratio": 2.8017835255752255
+   },
+   "capacity-1000": {
+    "demand_mm": 1002.0012554974887,
+    "treatment_et_mm": 492.5530080695204,
+    "treatment_excess_mm": 346.15477146303573,
+    "control_runoff_mm": 389.367422477496,
+    "excess_change_percent": -11.098168084916715,
+    "treatment_transpiration_mm": 273.08996140904037,
+    "control_humidity_source_mm": 93.33223158826117,
+    "source_ratio": 2.9259984119289846
+   },
+   "demand-0.85": {
+    "demand_mm": 851.7010671728655,
+    "treatment_et_mm": 433.29204106147336,
+    "treatment_excess_mm": 405.42194620252025,
+    "control_runoff_mm": 389.367422477496,
+    "excess_change_percent": 4.123232401640409,
+    "treatment_transpiration_mm": 239.21089635300555,
+    "control_humidity_source_mm": 93.33223158826117,
+    "source_ratio": 2.563004144252051
+   },
+   "demand-1.15": {
+    "demand_mm": 1152.3014438221117,
+    "treatment_et_mm": 531.7167804990072,
+    "treatment_excess_mm": 306.9971627858796,
+    "control_runoff_mm": 389.367422477496,
+    "excess_change_percent": -21.154892509369372,
+    "treatment_transpiration_mm": 295.68861519131144,
+    "control_humidity_source_mm": 93.33223158826117,
+    "source_ratio": 3.1681297035278604
+   },
+   "depletion-0.3": {
+    "demand_mm": 1002.0012554974887,
+    "treatment_et_mm": 480.79758668190493,
+    "treatment_excess_mm": 357.91635899878065,
+    "control_runoff_mm": 389.367422477496,
+    "excess_change_percent": -8.077476867118516,
+    "treatment_transpiration_mm": 266.5099609106911,
+    "control_humidity_source_mm": 93.33223158826117,
+    "source_ratio": 2.8554975743686315
+   },
+   "depletion-0.7": {
+    "demand_mm": 1002.0012554974887,
+    "treatment_et_mm": 488.03440644688465,
+    "treatment_excess_mm": 350.6794158297757,
+    "control_runoff_mm": 389.367422477496,
+    "excess_change_percent": -9.936118024860274,
+    "treatment_transpiration_mm": 270.5543522182344,
+    "control_humidity_source_mm": 93.33223158826117,
+    "source_ratio": 2.898830849901839
+   }
+  }
+ },
+ "d": {
+  "save": "seed910211954-225.1myr.mbworld",
+  "elapsed_years": 225100000.0,
+  "land_precipitation_mm": 785.0661178412656,
+  "control_open_water_demand_mm": 1127.1846826734711,
+  "arms": {
+   "central": {
+    "demand_mm": 998.1101442389056,
+    "treatment_et_mm": 454.09086754283203,
+    "treatment_excess_mm": 330.9751620302895,
+    "control_runoff_mm": 361.72578388478735,
+    "excess_change_percent": -8.501086520360456,
+    "treatment_transpiration_mm": 251.6049558560362,
+    "control_humidity_source_mm": 87.87117585421136,
+    "source_ratio": 2.863338898223901
+   },
+   "capacity-150": {
+    "demand_mm": 998.1101442389056,
+    "treatment_et_mm": 442.05836526248686,
+    "treatment_excess_mm": 343.0077124644747,
+    "control_runoff_mm": 361.72578388478735,
+    "excess_change_percent": -5.174657780622716,
+    "treatment_transpiration_mm": 244.91007418822974,
+    "control_humidity_source_mm": 87.87117585421136,
+    "source_ratio": 2.7871491624803615
+   },
+   "capacity-1000": {
+    "demand_mm": 998.1101442389056,
+    "treatment_et_mm": 461.3094701015182,
+    "treatment_excess_mm": 323.7496001077399,
+    "control_runoff_mm": 361.72578388478735,
+    "excess_change_percent": -10.498611232298316,
+    "treatment_transpiration_mm": 255.62880566104522,
+    "control_humidity_source_mm": 87.87117585421136,
+    "source_ratio": 2.9091315004725047
+   },
+   "demand-0.85": {
+    "demand_mm": 848.3936226030696,
+    "treatment_et_mm": 405.7191973849494,
+    "treatment_excess_mm": 379.34676781657,
+    "control_runoff_mm": 361.72578388478735,
+    "excess_change_percent": 4.871365193418198,
+    "treatment_transpiration_mm": 223.82796672885516,
+    "control_humidity_source_mm": 87.87117585421136,
+    "source_ratio": 2.5472285371509327
+   },
+   "demand-1.15": {
+    "demand_mm": 1147.8266658747414,
+    "treatment_et_mm": 497.8313123064564,
+    "treatment_excess_mm": 287.2346171882074,
+    "control_runoff_mm": 361.72578388478735,
+    "excess_change_percent": -20.59326982350421,
+    "treatment_transpiration_mm": 276.77096486151623,
+    "control_humidity_source_mm": 87.87117585421136,
+    "source_ratio": 3.149735532397016
+   },
+   "depletion-0.3": {
+    "demand_mm": 998.1101442389056,
+    "treatment_et_mm": 450.21125707933015,
+    "treatment_excess_mm": 334.85482064651984,
+    "control_runoff_mm": 361.72578388478735,
+    "excess_change_percent": -7.428545167470324,
+    "treatment_transpiration_mm": 249.44169834022932,
+    "control_humidity_source_mm": 87.87117585421136,
+    "source_ratio": 2.838720387150418
+   },
+   "depletion-0.7": {
+    "demand_mm": 998.1101442389056,
+    "treatment_et_mm": 456.885615971054,
+    "treatment_excess_mm": 328.1804139064552,
+    "control_runoff_mm": 361.72578388478735,
+    "excess_change_percent": -9.273701647161714,
+    "treatment_transpiration_mm": 253.16174468268454,
+    "control_humidity_source_mm": 87.87117585421136,
+    "source_ratio": 2.881055616038526
+   }
+  }
+ },
+ "e": {
+  "save": "seed910211954-224myr.mbworld",
+  "elapsed_years": 224000000.0,
+  "land_precipitation_mm": 757.4758049689113,
+  "control_open_water_demand_mm": 1125.9611659412897,
+  "arms": {
+   "central": {
+    "demand_mm": 997.8231615105263,
+    "treatment_et_mm": 446.0359455479056,
+    "treatment_excess_mm": 311.4397295652117,
+    "control_runoff_mm": 343.0057804320598,
+    "excess_change_percent": -9.202775191452062,
+    "treatment_transpiration_mm": 246.97377342187184,
+    "control_humidity_source_mm": 84.89109814591272,
+    "source_ratio": 2.9093011966621964
+   },
+   "capacity-150": {
+    "demand_mm": 997.8231615105263,
+    "treatment_et_mm": 434.1121548646885,
+    "treatment_excess_mm": 323.3636501042228,
+    "control_runoff_mm": 343.0057804320598,
+    "excess_change_percent": -5.726472102917679,
+    "treatment_transpiration_mm": 240.33022600817688,
+    "control_humidity_source_mm": 84.89109814591272,
+    "source_ratio": 2.8310415491986203
+   },
+   "capacity-1000": {
+    "demand_mm": 997.8231615105263,
+    "treatment_et_mm": 453.02190050097914,
+    "treatment_excess_mm": 304.44776735082195,
+    "control_runoff_mm": 343.0057804320598,
+    "excess_change_percent": -11.241213787321335,
+    "treatment_transpiration_mm": 250.87806472869588,
+    "control_humidity_source_mm": 84.89109814591272,
+    "source_ratio": 2.9552929601344187
+   },
+   "demand-0.85": {
+    "demand_mm": 848.1496872839473,
+    "treatment_et_mm": 399.41617097107473,
+    "treatment_excess_mm": 358.0596243568833,
+    "control_runoff_mm": 343.0057804320598,
+    "excess_change_percent": 4.388801817235066,
+    "treatment_transpiration_mm": 220.16740666119085,
+    "control_humidity_source_mm": 84.89109814591272,
+    "source_ratio": 2.593527607367762
+   },
+   "demand-1.15": {
+    "demand_mm": 1147.4966357371052,
+    "treatment_et_mm": 487.9491432249761,
+    "treatment_excess_mm": 269.5265897754597,
+    "control_runoff_mm": 343.0057804320598,
+    "excess_change_percent": -21.42214354639844,
+    "treatment_transpiration_mm": 271.1240649221905,
+    "control_humidity_source_mm": 84.89109814591272,
+    "source_ratio": 3.193786755546222
+   },
+   "depletion-0.3": {
+    "demand_mm": 997.8231615105263,
+    "treatment_et_mm": 442.1825482214566,
+    "treatment_excess_mm": 315.2932567474494,
+    "control_runoff_mm": 343.0057804320598,
+    "excess_change_percent": -8.079316812009097,
+    "treatment_transpiration_mm": 244.82101608129375,
+    "control_humidity_source_mm": 84.89109814591272,
+    "source_ratio": 2.8839421497468427
+   },
+   "depletion-0.7": {
+    "demand_mm": 997.8231615105263,
+    "treatment_et_mm": 448.8197957226872,
+    "treatment_excess_mm": 308.65587939047856,
+    "control_runoff_mm": 343.0057804320598,
+    "excess_change_percent": -10.014379640574312,
+    "treatment_transpiration_mm": 248.52734696920854,
+    "control_humidity_source_mm": 84.89109814591272,
+    "source_ratio": 2.927601979444702
+   }
+  }
+ }
+}
