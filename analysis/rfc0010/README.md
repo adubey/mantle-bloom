@@ -179,3 +179,129 @@ every subduction zone [Heuret & Lallemand, 2005](https://doi.org/10.1016/j.pepi.
 PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_rift_settings.py \
   --saves <saves> --out analysis/rfc0010/rift-settings.json --image-dir <private-dir>
 ```
+
+## Gate D1: census (2026-11-01)
+
+**Outcome: Gate D1 does not pass.** Active, passive and transtension produce events on all three
+seeds. Rollback misses under the frozen rule, because ocean-ocean polarity failed its test, so
+oceanic upper plates could not count and continental ones produced one event on one seed. The rate
+is not compatible with fewer than 40 plates on any seed. Both are findings to diagnose, as the gate
+expects. No detected rift acted on these worlds.
+
+Settings were [frozen on #737](https://github.com/adubey/mantle-bloom/issues/737#issuecomment-6560714067)
+before the runs: seeds 1183015207, 1486436815 and 1173383782, default worlds with plumes on, 1 Myr
+steps to 200 Myr, base `8ebea73b`, probe sha256 `7d287ffb…`. Rates below are per world per 100 Myr.
+Tables: [`gate-d1.json`](gate-d1.json).
+
+| Setting | Events | By seed | Rate | Rate after gating | Median life, Myr | Median route growth, Myr | Closed routed events that outlast growth |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Active | 74 | 34 / 14 / 26 | 12.33 | 7.33 | 21.0 | 20.9 | 20 of 45 |
+| Passive | 54 | 15 / 13 / 26 | 9.00 | 6.67 | 7.0 | 22.9 | 8 of 22 |
+| Rollback, oceanic upper | 13 | 0 / 12 / 1 | 2.17 | 1.83 | 6.0 | 23.5 | 0 of 7 |
+| Rollback, continental upper | 1 | 1 / 0 / 0 | 0.17 | 0.00 | — | — | — |
+| Transtension | 145 | 50 / 46 / 49 | 24.17 | 8.67 | 11.5 | 22.8 | 29 of 88 |
+
+Median life and "closed" exclude events still open at 200 Myr, and include events a production
+split cut short. So `outlast` understates what a rift would get on passive and transtension, where
+production splits ended 18 and 20 events. Median life is over closed routed events.
+
+**Ocean-ocean polarity fails.** `collision_polarity` cannot supply a lower plate on an ocean-ocean
+front. 21.3% of 7,562 qualifying front-steps were decided against the 80% limit, and 10.4% of 1,123
+fronts flipped against the 10% limit; 78% were ambiguous. The read itself works: continent-ocean
+fronts were 96.3% decided and 99.5% ocean-lower. The cause is in the model. Every contested oceanic
+node on both plates may retreat, so nothing selects a lower plate, and at ocean-ocean pairs the plate
+earlier in that step's shuffled deform order lost 80.8% of the cells (31,659 of 39,174). Only the
+earlier plate lost cells in 3,337 pair-steps, only the later in 718. So the evidence mostly records
+the shuffle. The per-cell `node_created_years` field is a candidate replacement, which these runs
+did not test: a cell gets the creation time once, and remaps keep the earliest. On the 200 Myr saves,
+the 51 ocean-ocean fronts have median side-to-side age gaps of 21–32 Myr by seed, and 43 of the 51
+exceed 5 Myr. But 24–60% of ocean cells date from t = 0 and tie.
+The 13 oceanic-upper events rest on this read and are not
+reliable; 12 are on one seed.
+
+**Plate count is incompatible on the frozen worst case.** Every seed fails, and fails even when only
+separating routes count.
+
+| Seed | Final plates | Gated events per 100 Myr | Production splits per 100 Myr | Worst case | Separating routes only |
+|---|---:|---:|---:|---:|---:|
+| 1183015207 | 26 | 27.0 | 5.0 | 70 | 48 |
+| 1486436815 | 30 | 22.5 | 7.5 | 60 | 50 |
+| 1173383782 | 26 | 24.0 | 9.0 | 56 | 45 |
+
+This bound assumes every gated event breaks up, which D2 will lower. But production recorded no
+merges in 600 Myr of history, and plate count climbs on every seed even at 5–9 splits per 100 Myr.
+Nothing removes plates at the rate rifts could add them.
+
+**Passive after a head.** 3 of 54 passive events follow a continental head on the same plate.
+Production splits took another 25 passive tracks before onset; those are not events.
+
+**After the freeze, reading the same reports (not frozen tests).**
+
+- **Passive is permanently detected, on small plates.** The RFC feared this on very large plates.
+  Instead, of 29 passive events open at 200 Myr, 14 have run over 100 Myr, the longest 196 Myr, on
+  plates of 2–5% of the sphere. `relax` never exceeded 0.78 on any event, so relaxed gates
+  are not the cause. Probably `plate.split` refuses these plates on size, so production never clears
+  them, but this has not been traced.
+- **Active outnumbers heads.** 74 events against 51 heads and 15 credited continental heads, and only
+  16 events follow a credit on the same plate. The candidates are plume tails heating continents and
+  heads that reach a plate other than the one credited; neither has been traced.
+- **Transtension still repeats.** One plate gave 18 events on one seed, and gating removes about two
+  thirds of the events.
+- **Rollback fronts are brief.** Median 6 Myr, against about 24 Myr of route growth. None of the 7
+  closed routed events outlast it.
+- **Seed 1173383782 starts at 8 plates** at 1 Myr and has 18 by 11 Myr, on production alone. That is
+  under D3's lower limit of more than 10 at every output.
+
+Fingerprints are `cfe10acf0a71`, `f27b4ada46d4` and `30ecd0440c6f`. The fingerprint matched a
+`--no-detect` control on a development seed, not on these seeds, to 12 Myr. Detection took 5–7% of
+runtime; peak RSS was 0.6 GB. Step-size sensitivity was not tested. Reports and 200 Myr saves are
+outside the repo, with checksums.
+
+### Rollback amendment: cell age (2026-11-01)
+
+**Outcome: the age read fails, and Gate D1 still does not pass.**
+
+A [labeled rerun](https://github.com/adubey/mantle-bloom/issues/737#issuecomment-6561849550) of the same three seeds, with ocean-ocean polarity read from cell age. Probe hash unchanged during the runs. The model is untouched.
+
+**Integrity:** all three fingerprints match D1, and active, passive and transtension events are identical on every seed. Only rollback changed.
+
+| Age read | Result | Limit |
+|---|---:|---:|
+| Front-steps decided | 65.8% of 7,562 | at least 80% |
+| Fronts reversed | 15.3% of 502 (77) | at most 10% |
+| Decided after 100 Myr (reported only) | 82.2% | none |
+| Agreement with consumption evidence | 63.1% | none |
+
+Fronts here are tracked across gaps of up to 5 Myr, so the 502 is not comparable with D1's 1,123. 69 of the 77 reversals are on seed 1486436815.
+
+| Rollback | Events by seed | Rate | After gating | Median life, Myr | Median route growth, Myr | Closed routed events that outlast growth |
+|---|---:|---:|---:|---:|---:|---:|
+| Oceanic upper | 0 / 10 / 0 | 1.67 | 1.33 | 12.0 | 19.6 | 2 of 5 |
+| Continental upper | 1 / 0 / 0 | 0.17 | 0.00 | — | — | — |
+
+**Reading:** rollback misses however the rule is taken. Under the frozen rule, oceanic events can't count. If they did, they are still on one seed of three. Age is a better read than consumption: decided share rises from 21.3% to 65.8%, and its events last twice as long (12 against 6 Myr). Its early failure is expected, since starting ocean is one age, but the reversals are not explained by that.
+
+**Likely cause of the miss, read after the freeze:** ocean-ocean fronts are scarce on two worlds. Seed 1486436815 holds 6,409 of the 7,562 front-steps, against 595 and 558 on the others. Rollback may be limited by how few oceanic plates those worlds have, more than by polarity. This has not been traced further.
+
+**Plate count** barely moves: worst case 70, 58 and 55, or 48, 48 and 44 on separating routes only. Every seed remains incompatible on the frozen bound.
+
+Tables: [`gate-d1-rollback-amendment.json`](gate-d1-rollback-amendment.json). Sensitivity to the 10 Myr gap is untested.
+
+**Why the age read missed, measured afterward** with `bin/debug/probe_age_polarity.py` on the same
+seeds, fingerprints matching. Undecided: in 2,261 of 2,584 undecided front-steps (87.5%), at least half
+the cells on both sides are starting ocean, so the median ages tie exactly; the other 323 are real
+gaps under 10 Myr. A smaller gap would not help the 87.5%. These persist after 100 Myr (740 steps).
+Reversed: the sampled cells change, because a fixed pair of cells keeps its gap. Between freeze and
+reversal a median 25% of the front's nodes are still in place, 61% of reversals keep under half, and
+only 4% keep them all; the sampled median age shifts by a median 16–33 Myr per side, and half of
+frozen gaps were under 20 Myr. So a tracked front slides along the boundary onto other crust, and a
+single verdict per front is too coarse or the track too loose. The 15.3% divides by all 502 fronts.
+Among the 327 fronts that ever froze a verdict, 77 (23.5%) reversed. By seed that is 69 of 276, 8 of
+39 and 0 of 12, so seed 1486436815 has more fronts, not a clearly worse rate.
+
+```bash
+PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_rift_settings.py \
+  --seed <n> --myr 200 --step-myr 1 --out <seed.json> --save-dir <private-dir>
+PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_rift_settings.py \
+  --summarize <a.json> <b.json> <c.json> --out analysis/rfc0010/gate-d1.json
+```
