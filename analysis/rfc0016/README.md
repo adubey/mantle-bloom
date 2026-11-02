@@ -691,3 +691,118 @@ Across the range, excess changes by +4.9% to −21.4% from the control:
 from its description of equation 84. The primary pages could not be opened; the method's
 catchment counts are from the abstract. Stocker's figure and the Priestley–Taylor range are from
 search summaries. Check these before citing them outside this report.
+
+## G1b result
+
+Run on `0bda513d` with the G1a law as frozen, after the warm-half correction in #750, on the three
+windows' registered checkpoints. Each window has a control and 13 arms, on two schedules: four
+100 kyr steps (production) and forty 10 kyr steps (the connectivity trace). That's 84 runs, none of
+which failed. Scores are in [`g1b-summary.json`](g1b-summary.json), from
+`bin/debug/score_rfc0016_g1b.py`. The treatment is `bin/debug/rfc0016_land_store.py`, installed by
+`replay_rfc0016_river_water.py --treatment`. The run outputs are private. Their `SHA256SUMS` files
+have SHA-256 `a158250f…cf1f0` (production) and `95ce6a38…c3ce1` (trace).
+
+```bash
+backend/.venv/bin/python bin/debug/replay_rfc0016_river_water.py <checkpoint.mbworld> \
+  --anchors analysis/rfc0016/target-anchor-window-<w>.json --myr 0.4 --step-years <100000|10000> \
+  --checkpoint-myr 0.1 [--treatment [--capacity-mm C] [--depletion p] [--demand-factor D] \
+  [--split-shift f] [--no-humidity] | --runoff-scale 1.002 | --runoff-scale-from <w>-central.json] \
+  --out <captures>/<w>-<arm>.json
+python3 bin/debug/score_rfc0016_g1b.py --production <100 kyr dir> --trace <10 kyr dir> \
+  --out analysis/rfc0016/g1b-summary.json
+```
+
+**Accounting closes in every arm.** The worst normalized land residual is 1.1e-12 on production and
+6.4e-12 on the trace, against a 0.1% limit. Stranded overflow is zero. The store's identity error
+is at most 2.1e-7 mm. Controls reproduce G0's targets exactly. The three events are A +438,718 km³,
+D −2,290,848 km³ and E +2,162,218 km³.
+
+**Event readout.** The event's `ΔV` is the target body's volume minus its volume at the previous
+step, matched under #588's rule (largest overlap, at least half the smaller body). A's anchor is
+dry the step before its event although its lake is present, so the anchor alone gives a different
+lake's volume. This readout reproduces the detector's 424,670→863,389 km³ for A. It was added after
+the first production matrix, which was then rerun in full; the preregistration names the event,
+not how it's read.
+
+### Scores
+
+Event change is `|ΔV|` against the control. The trace column is the longest run of consecutive
+10 kyr outputs where the anchor's wet/dry class differs from the control's, out of 40.
+
+| Arm | A event | D event | E event | A trace | D trace | E trace | Windows | Material |
+|---|---:|---:|---:|---:|---:|---:|---|---|
+| Central | +6.15% | −0.00% | −0.00% | 1 | 1 | **9** | E | No |
+| `C` 150 | +0.04% | −0.00% | −0.00% | 1 | 1 | **9** | E | No |
+| `C` 1,000 | **+13.69%** | +0.00% | −0.00% | 1 | 1 | **9** | A, E | **Yes** |
+| `p` 0.3 | +2.05% | −0.00% | −0.00% | 1 | 1 | **9** | E | No |
+| `p` 0.7 | **+10.07%** | −0.00% | −0.00% | 1 | 1 | **6** | A, E | **Yes** |
+| `D` 0.85 | +1.28% | −0.00% | −0.00% | 1 | 1 | **8** | E | No |
+| `D` 1.15 | **+10.11%** | −0.00% | −0.00% | 1 | 1 | **4** | A, E | **Yes** |
+| `f` low | +6.15% | −0.00% | −0.00% | 1 | **3** | **6** | D, E | **Yes** |
+| `f` high | +6.15% | −0.00% | −0.00% | 1 | 1 | **9** | E | No |
+| Partition match | +0.54% | −0.00% | −0.00% | 1 | 1 | **8** | E | Not counted |
+| Coupling off | +6.15% | −0.00% | −0.00% | 1 | 1 | **2** | E | Not counted |
+| Sham +0.2% | −0.00% | −0.00% | +0.00% | 1 | 0 | **9** | E | Not counted |
+| Sham −0.2% | +0.00% | +0.00% | −0.00% | 1 | 1 | **3** | E | Not counted |
+
+Read as written, the rule makes the package material: four range arms reach two windows.
+
+### Why E can't separate a treatment from noise
+
+**E's trace fails in every arm, including both shams.** The anchor alternates wet and dry every
+10 kyr for much of each trace, with stretches where it stays wet. A small change slides one arm's
+alternation by one output against the other's, or ends a wet stretch early, and every output after
+that differs. A change of 0.2% in runoff, with no store, does this to E as readily as the
+treatment does:
+
+```text
+E control  W.W.WWWWW.W.W.W.WWWWWWWW.W.WWWWW.W.W.W.W
+E sham +   W.W.WWWWW.W.W.WWWW.WWWWWWWWWWWW.W.W.W.W.
+E central  W.W.W.WW.W.W.W.W.W.WW.W.W.W.WWW.W.W.W.W.
+```
+
+The sham was registered for this question: if a perturbation with no mechanism behind it is
+material, the screen measures sensitivity rather than mechanism. On E's trace it is. Without E's
+trace, no arm reaches two windows: the four material arms are A's event plus E, or D's trace (a
+run of 3, in `f` low only) plus E.
+
+**D's and E's events don't respond to supply.** Every arm leaves both within 0.002%, although
+land rain rises 30–50% from the second step (the humidity source, which coupling off removes).
+D empties to 2,768 km³ and E fills to 2.27 million km³ whatever reaches them. Their later steps
+stay within 0.2%, except D's refill at step 3, which `C` 150 and `f` high raise 11% (on about
+269,000 km³). That fits the case [#754](https://github.com/adubey/mantle-bloom/issues/754)
+investigates, that these lakes switch on how they connect and spill, not on their supply.
+
+**A's event responds to where the law takes runoff.** The `f` arms and coupling off leave
+it at central's +6.15%, because the humidity source acts from the next climate update, so the
+event sees only the first step's partition. Partition match takes the same land-wide share as
+central, uniformly, and moves it +0.54%. So it's the law's pattern across A's catchment, not the
+land-wide total, that moves A, through the treatment's first-step shock. Across arms the response
+mostly grows as the first step's runoff falls, from +0.04% (`C` 150, ratio 0.97) to +13.69% (`C`
+1,000, 0.84), but not monotonically: `D` 1.15 cuts most (0.75) and gives +10.11%. On production
+A's anchor then dries at steps 3–4 in every treatment arm except `C` 150, and in partition match,
+where the control and shams stay wet. That's after the registered event, so it isn't scored.
+
+### What G1b shows
+
+- On the rule as written, the package is **material** in four range arms, so it isn't
+  deprioritized as a cause.
+- Each of those arms depends on E's trace, and E's trace fails under the ±0.2% shams. No arm is
+  material in two windows on evidence a sham doesn't also produce.
+- Two of the three events (D and E, which share a basin) don't respond to a 30–50% rise in land
+  rain. Neither storage nor plant water use can move them through supply.
+- A's event responds to the law's runoff pattern, by up to 14%, not to storage: the store holds
+  about 0.04% of an event's `|ΔV|`, and `C` 150 moves A under 0.1%.
+
+The materiality rule is the owner's (#680), so reading E's trace as uninformative is a decision for
+the owner, not this report. It isn't applied above.
+
+### Assumptions to disclose
+
+- The breach gate uses the control's Budyko runoff in every arm; the treatment changes only the
+  water partitioned to rivers.
+- The first step's humidity is the control's, because the treatment's transpiration enters at the
+  next climate update.
+- Each node's opening year starts in month 0, and pelagic cells take `f` 0.55.
+- The D and E trace arms were rerun after a script error ran them without their flags, as
+  controls. Their first outputs are kept apart from the results.
