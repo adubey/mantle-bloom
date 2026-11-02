@@ -107,8 +107,17 @@ same probe will be repeated. Both attempts' full outputs remain in the private c
 
 The second probe (`3907747f`) preserves those water results and evaluates before erosion.
 E's anchor agrees with final-level demand to 2.7e-17, but the worst nearly dry bodies show
-2.8e-8 relative error when a kilometre-scale level is reconstructed and the bed subtracted
-again. The audit now derives partial wet fraction directly from stored mean depth
+2.8e-8 relative error. The audit now derives partial wet fraction directly from stored mean depth
 (`wet = sqrt(depth / relief)`, bounded by 1), avoiding that cancellation. It also reports
 the within-body water-level spread and the five largest relative errors. The 1e-9 loss
 threshold is unchanged; a third probe will check this numerically stable evaluation.
+
+The third probe (`b536ebbb`) shows that direct depth inversion does not remove the remaining
+raw error. The worst body holds 0.0094 m³ at a 4,165 m absolute level, against roughly
+39.9 million m³ of demand; the booked loss is 1.1 m³ below final-level demand. The solve caps
+loss at available water, and the absolute level cannot represent an arbitrary demand exactly.
+Raw loss errors remain reported, including the original 1e-9 gate miss. An additional audit
+evaluates demand over a two-ULP interval around the reconstructed level (one rounding in the
+solve's absolute level, one in the diagnostic inversion), and reports any discrepancy outside
+that interval. This is a numerical representation bound, not a changed model parameter or
+denominator floor. Its uncovered discrepancy is checked against the same 1e-9 threshold.

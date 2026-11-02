@@ -46,6 +46,14 @@ def add_arguments(ap) -> None:
     ap.add_argument("--audit-losses", action="store_true", help="Audit wet final bodies against full-step loss rates (#768)")
 
 
+def loss_demand(wet, area, evaporation, sublimation, years, boost):
+    """Independent open-water and ice-season demand at a supplied wet fraction."""
+    return np.array([
+        np.dot(area * wet, evaporation * (1.0 + boost * (1.0 - wet))),
+        np.dot(area * wet, sublimation),
+    ]) * years
+
+
 def audit_lake_losses(forest, elevation, years, climate, hyps, solved):
     """Compare booked losses with independent final-level demands, excluding dry bodies.
 
@@ -74,16 +82,22 @@ def audit_lake_losses(forest, elevation, years, climate, hyps, solved):
             np.sqrt(np.clip(np.divide(depth, relief, out=np.zeros_like(depth), where=relief > 0.0), 0.0, 1.0)),
             (depth > 0.0).astype(float),
         )
-        expected_evap = float(np.dot(
-            hyps.area_m2[members] * wet,
-            climate.evaporation_m_per_yr[members] * (1.0 + lakes.SHALLOW_EVAPORATION_BOOST * (1.0 - wet)),
-        )) * years
-        expected_sub = (
-            float(np.dot(hyps.area_m2[members] * wet, climate.sublimation_m_per_yr[members])) * years
-            if climate.sublimation_m_per_yr is not None else 0.0
+        demand_args = (
+            hyps.area_m2[members], climate.evaporation_m_per_yr[members],
+            climate.sublimation_m_per_yr[members] if climate.sublimation_m_per_yr is not None else np.zeros(len(members)),
+            years, lakes.SHALLOW_EVAPORATION_BOOST,
         )
+        expected_evap, expected_sub = loss_demand(wet, *demand_args)
         booked_evap = float(solved.trace.evaporation_m3[members].sum())
         booked_sub = float(solved.trace.liquid_sublimation_m3[members].sum())
+        # One rounding at the solve's absolute level, another when depth is inverted for
+        # this diagnostic. Show the demand interval over those two representable steps.
+        lower_level = np.nextafter(np.nextafter(level, -np.inf), -np.inf)
+        upper_level = np.nextafter(np.nextafter(level, np.inf), np.inf)
+        lower = loss_demand(hyps.wet_fraction(lower_level, members), *demand_args)
+        upper = loss_demand(hyps.wet_fraction(upper_level, members), *demand_args)
+        booked = np.array([booked_evap, booked_sub])
+        outside_interval = np.maximum(lower - booked, 0.0) + np.maximum(booked - upper, 0.0)
         scale = max(expected_evap + expected_sub, 1.0)
         records.append({
             "lake_id": body.lake_id, "nodes": len(members), "level_m": level,
@@ -95,6 +109,8 @@ def audit_lake_losses(forest, elevation, years, climate, hyps, solved):
             "booked_evaporation_km3": booked_evap / M3_PER_KM3,
             "booked_sublimation_km3": booked_sub / M3_PER_KM3,
             "normalized_loss_error": (abs(booked_evap - expected_evap) + abs(booked_sub - expected_sub)) / scale,
+            "normalized_error_outside_roundoff_interval": float(outside_interval.sum()) / scale,
+            "roundoff_interval_width_m3": float((upper - lower).sum()),
         })
     return records
 
@@ -106,6 +122,9 @@ def summarize_loss_audit(records, anchor_nodes):
         record["anchor_indices"] = [i for i, node in enumerate(anchor_nodes) if node in members]
     return {
         "worst_normalized_loss_error": max((r["normalized_loss_error"] for r in records), default=0.0),
+        "worst_normalized_error_outside_roundoff_interval": max(
+            (r["normalized_error_outside_roundoff_interval"] for r in records), default=0.0
+        ),
         "worst_level_spread_m": max((r["level_spread_m"] for r in records), default=0.0),
         "largest_bodies": sorted(records, key=lambda r: -r["storage_km3"])[:LARGEST_LAKES],
         "worst_bodies": sorted(records, key=lambda r: -r["normalized_loss_error"])[:LARGEST_LAKES],
