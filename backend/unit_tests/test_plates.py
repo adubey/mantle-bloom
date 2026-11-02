@@ -754,11 +754,13 @@ def test_cratons_first_marks_its_generated_belts_and_nothing_else():
         assert np.all(plate.collect("belt_formed_years")[belt] == -cratons.CRATON_BELT_SEED_AGE_YEARS)
 
 
-def test_cratons_first_is_off_by_default():
-    a = generate_plates(seed=5, num_plates=8)
-    b = generate_plates(seed=5, num_plates=8, cratons_first=False)
-    assert _cell_signature(a) == _cell_signature(b)
-    assert all(np.all(p.collect("crust_type_code") == CRUST_TYPE_INHERIT) for p in a)
+def test_cratons_first_is_on_by_default_and_can_be_disabled():
+    default = generate_plates(seed=5, num_plates=8)
+    enabled = generate_plates(seed=5, num_plates=8, cratons_first=True)
+    disabled = generate_plates(seed=5, num_plates=8, cratons_first=False)
+    assert _cell_signature(default) == _cell_signature(enabled)
+    assert _cell_signature(default) != _cell_signature(disabled)
+    assert all(np.all(p.collect("crust_type_code") == CRUST_TYPE_INHERIT) for p in disabled)
 
 
 def test_cratons_first_leaves_sketch_and_premade_generation_unchanged():

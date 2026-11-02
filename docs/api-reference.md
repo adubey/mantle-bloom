@@ -121,7 +121,7 @@ Request body:
 ```json
 {
   "seed": 1,
-  "cratons_first": false,
+  "cratons_first": true,
   "synthetic_relief": false,
   "surface": "quad",
   "num_plates": null,
@@ -149,13 +149,14 @@ UI's two generation sliders (0 to 1, defaulting in the frontend to
 both optional, each falling back to its own default behavior when omitted (an independent
 per-plate coin flip for crust type, a fixed elevation floor for land). `continental_fraction`
 is a share of plates on today's plates-first worlds and a share of the surface on
-cratons-first ones (`plates.CONTINENTAL_AREA_FRACTION = 0.5` when omitted), a layout the
+cratons-first ones (`plates.CONTINENTAL_AREA_FRACTION = 0.5` when omitted; the requested
+share is bounded to 0.05–0.9), a layout
 selected by `cratons_first` -- see
 [simulation-model/foundations.md#initial-plate-generation](simulation-model/foundations.md#initial-plate-generation-platespy).
-`cratons_first` is the Random tab's optional terrain-generation choice. When true, continental
-cratons are laid out before plates and relief is generated from that layout; when false or
-omitted, generation uses the plate-first layout (omission follows
-`continent_layout.CRATONS_FIRST_DEFAULT`). Sketches and premade worlds ignore this choice.
+`cratons_first` selects random-world terrain generation. By default, continental cratons are
+laid out before plates and relief is generated from that layout
+(`continent_layout.CRATONS_FIRST_DEFAULT = True`). Pass false for the plate-first layout.
+Sketches and premade worlds ignore this choice.
 `synthetic_relief` applies only to a cratons-first layout: when true, continental relief and
 coastlines come from a synthetic tectonic history (sutures between cratons, cordilleras on
 leading margins, interior terrain types), backed by crustal thickness; when false or omitted,

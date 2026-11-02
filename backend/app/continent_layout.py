@@ -32,8 +32,8 @@ exists, on a whole-sphere lattice at the world's node spacing (`layout_lattice.L
 4. **Plates** are laid over the result by `plate_partition`, on the same
    `layout_lattice.Lattice`. `ContinentLayout` holds both stages' per-point output.
 
-`lithosphere_plate.generate_plates` builds mixed-crust plates from the result, behind
-`CRATONS_FIRST_DEFAULT` until RFC 0009's gate G3 decides whether it becomes the default.
+`lithosphere_plate.generate_plates` builds mixed-crust plates from the result by default
+for random worlds.
 """
 
 from __future__ import annotations
@@ -49,8 +49,7 @@ from .layout_lattice import Lattice, arc_km, cap_area_km2, lattice, poisson_disc
 from .noise import SphereNoise
 from .plate_partition import PlatePartition
 
-# Off until RFC 0009's gate G3 picks the layout: main's random worlds stay plates-first.
-CRATONS_FIRST_DEFAULT = False
+CRATONS_FIRST_DEFAULT = True
 
 # --- Continents --------------------------------------------------------------------------
 
