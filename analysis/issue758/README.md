@@ -9,9 +9,9 @@ component (5% of its nodes), not a property of the body, and 10, because a world
 near that share changes class with small changes in elevation or sea level.
 
 **The change.** `hydrology.connected_ocean_mask` keeps the largest below-sea-level component as
-ocean. Any other component is ocean when at least half its floor area is oceanic crust and it
-covers at least 5 million km² (`ENCLOSED_OCEAN_MIN_AREA_KM2`). A component holding any of last
-step's ocean stays ocean down to 2.5 million km² (`ENCLOSED_OCEAN_KEEP_AREA_KM2`). Lake water on a
+ocean. Any other component is ocean when it covers at least 8 million km²
+(`ENCLOSED_OCEAN_MIN_AREA_KM2`). A component holding any of last step's ocean stays ocean down to
+4 million km² (`ENCLOSED_OCEAN_KEEP_AREA_KM2`). Lake water on a
 cell that becomes ocean is exported to the ocean by the lake solve, as before; lake ice on such a
 cell now melts into it first, so it leaves with the water. Eustasy then fills the basin to sea
 level from the conserved budget. See
@@ -59,12 +59,19 @@ The other saves' largest enclosed bodies are under 0.4 million km². Save SHA-25
 
 What this shows:
 
-- **D's basin stands alone.** No other enclosed body floored by oceanic crust exceeds
-  1.9 million km², and D's is 15.1 million, about the Arctic Ocean's size. 5 million km² sits in
-  that gap. It is twice the Mediterranean, larger than any of Earth's marginal seas.
-- **Crust separates the next-largest bodies.** The 5.0 million km² body on seed 628977350 is 92%
-  continental crust, and S's 2.4 million km² body is all continental: drowned inland basins, not
-  ocean basins. That save's sea level is +4,856 m, which is unusual, and wasn't investigated.
+- **D's basin stands alone.** No other enclosed body exceeds 2.4 million km² except a
+  5.0 million km² one on seed 628977350, a world whose sea level stands at +4,856 m, which wasn't
+  investigated. D's is 15.1 million, about the Arctic Ocean's size. 8 million km² sits in that
+  gap: about half the Arctic and larger than any of Earth's marginal seas (the Philippine and
+  Coral Seas are about 5 million km²).
+- **Why not crust.** The first version also required an oceanic floor (at least half by area),
+  which would have kept the continental 5.0 and 2.4 million km² bodies lakes at a 5 million km²
+  threshold. The affected unit tests showed the cost:
+  `test_sea_level_and_land_carry_over_and_the_world_keeps_stepping`'s low-resolution world has a
+  41–47 million km² drowned continental shelf that splits from the main ocean across a one-cell
+  land bridge and rejoins it. The crust test made it a dry lake at each split, and sea level fell
+  170 m in one step to refill it; the old 5% rule always kept it ocean. Size alone, with the
+  hysteresis, keeps that shelf ocean through the split. This changed before any replay ran.
 - **D's basin isn't a hidden strait.** Its lowest pass is 1.2–1.4 km above sea level at cell
   centres. #754 found the hierarchy's notched rim between about −1,070 and +330 m in the steps it
   checked. So the rule doesn't claim a real connection: it treats an ocean-scale basin with the

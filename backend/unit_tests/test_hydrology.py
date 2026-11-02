@@ -2,7 +2,7 @@ import pickle
 
 import numpy as np
 import pytest
-from app import elevation_lines, geometry
+from app import geometry
 from app.elevation_lines import line_spacing_rad
 from app.hydroclimate import breaching, erosion, eustasy, hydrology, lakes
 from app.plates import collect_all_accounting_areas_m2
@@ -355,59 +355,70 @@ def _enclosed_basin_arc(basin_nodes: int, cell_km2: float = 1.0e6):
     return xyz, elevation, np.full(60, cell_km2 * 1e6), basin
 
 
-def test_connected_ocean_mask_counts_an_enclosed_ocean_floor_basin_as_ocean():
-    # #758: a body cut off from the main ocean is ocean when it is an ocean basin -- oceanic
-    # floor at ocean scale -- whatever its share of the largest body (6 of 20 nodes here).
-    xyz, elevation, areas, basin = _enclosed_basin_arc(6)
-    oceanic = np.ones(60, dtype=bool)
-
-    mask = hydrology.connected_ocean_mask(xyz, elevation, 0.0, areas_m2=areas, oceanic=oceanic)
+def test_connected_ocean_mask_counts_an_ocean_sized_enclosed_basin_as_ocean():
+    # #758: a body cut off from the main ocean is ocean when it is ocean-sized, by its area in
+    # km^2: 9 million km^2 here. A small enclosed pit is still a lake (3 million km^2).
+    xyz, elevation, areas, basin = _enclosed_basin_arc(9)
+    mask = hydrology.connected_ocean_mask(xyz, elevation, 0.0, areas_m2=areas)
     assert mask[basin].all() and mask[0:20].all()
 
-    # The same basin floored by continental crust is a drowned inland depression: a lake.
-    continental_floor = oceanic.copy()
-    continental_floor[basin] = False
-    mask = hydrology.connected_ocean_mask(xyz, elevation, 0.0, areas_m2=areas, oceanic=continental_floor)
-    assert not mask[basin].any()
-
-    # A small enclosed pit on oceanic crust is still a lake (3 million km^2 < 5 million).
     xyz, elevation, areas, pit = _enclosed_basin_arc(3)
-    mask = hydrology.connected_ocean_mask(xyz, elevation, 0.0, areas_m2=areas, oceanic=oceanic)
+    mask = hydrology.connected_ocean_mask(xyz, elevation, 0.0, areas_m2=areas)
     assert not mask[pit].any() and mask[0:20].all()
 
 
 def test_connected_ocean_mask_keeps_a_basin_near_the_threshold_in_its_class():
-    # A 5.1 million km^2 basin crosses the threshold when sea level, or a few metres of uplift
+    # An 8.1 million km^2 basin crosses the threshold when sea level, or a few metres of uplift
     # on its rim cell, moves one cell's worth of area. Its class follows last step's ocean,
     # so it doesn't flip with each small elevation change (design principle 10).
-    xyz, elevation, areas, basin = _enclosed_basin_arc(5, cell_km2=1.02e6)
-    oceanic = np.ones(60, dtype=bool)
+    xyz, elevation, areas, basin = _enclosed_basin_arc(5, cell_km2=1.62e6)
     rim = basin.stop - 1
 
     def classify(rim_elevation_m, prior):
         z = elevation.copy()
         z[rim] = rim_elevation_m
-        return hydrology.connected_ocean_mask(xyz, z, 0.0, areas_m2=areas, oceanic=oceanic, prior_ocean=prior)
+        return hydrology.connected_ocean_mask(xyz, z, 0.0, areas_m2=areas, prior_ocean=prior)
 
     entered = classify(-5.0, None)
     assert entered[basin].all()
-    # The rim cell rises 10 m above the sea: 4.08 million km^2 left, but it was ocean.
+    # The rim cell rises 10 m above the sea: 6.48 million km^2 left, but it was ocean.
     kept = classify(5.0, entered)
     assert kept[basin.start : rim].all() and not kept[rim]
     assert classify(-5.0, kept)[basin].all()
-    # Without that history the same 4.08 million km^2 basin is a lake, and it stays one.
+    # Without that history the same 6.48 million km^2 basin is a lake, and it stays one.
     assert not classify(5.0, None)[basin].any()
     assert not classify(5.0, np.zeros(60, dtype=bool))[basin].any()
-    # The hysteresis has a floor: a former ocean cut down to 2 million km^2 is a lake.
+    # The hysteresis has a floor: a former ocean cut down to 3.24 million km^2 is a lake.
     z = elevation.copy()
     z[basin.start + 2 : basin.stop] = 5.0
-    shrunk = hydrology.connected_ocean_mask(xyz, z, 0.0, areas_m2=areas, oceanic=oceanic, prior_ocean=entered)
+    shrunk = hydrology.connected_ocean_mask(xyz, z, 0.0, areas_m2=areas, prior_ocean=entered)
     assert not shrunk[basin].any()
 
 
+def test_connected_ocean_mask_keeps_a_sea_that_splits_off_the_main_ocean():
+    # A 5 million km^2 sea joined to the main ocean across a shallow sill (cells 20-25) is part
+    # of the largest component. When the sill rises 20 m above the sea, the sea stays ocean: it
+    # held last step's ocean, so it doesn't become a dry lake that eustasy must refill when the
+    # sill next drops (the flicker test_sea_level_and_land_carry_over_and_the_world_keeps_
+    # stepping caught, with a 41-47 million km^2 shelf sea and the earlier crust rule).
+    xyz, elevation, areas, _ = _enclosed_basin_arc(0)
+    sea = slice(26, 31)
+    elevation[sea] = -3_000.0
+
+    def classify(sill_elevation_m, prior):
+        z = elevation.copy()
+        z[20:26] = sill_elevation_m
+        return hydrology.connected_ocean_mask(xyz, z, 0.0, areas_m2=areas, prior_ocean=prior)
+
+    joined = classify(-10.0, None)
+    assert joined[sea].all()
+    assert classify(10.0, joined)[sea].all()
+    assert not classify(10.0, None)[sea].any()
+
+
 def _enclosed_ocean_basin_world(lake_depth_m: float, lake_ice_m: float):
-    """The 40-node interior-pit row below, with its 3-node basin (28-30) floored by oceanic
-    crust at -3,000 m and holding `lake_depth_m` of water under `lake_ice_m` of ice."""
+    """The 40-node interior-pit row below, with its 3-node basin (28-30) at -3,000 m holding
+    `lake_depth_m` of water under `lake_ice_m` of ice."""
     elevation = np.full(40, 300.0)
     elevation[0:15] = -4_000.0
     elevation[28:31] = -3_000.0
@@ -415,12 +426,7 @@ def _enclosed_ocean_basin_world(lake_depth_m: float, lake_ice_m: float):
     depth[28:31] = lake_depth_m
     ice = np.zeros(40)
     ice[28:31] = lake_ice_m
-    crust = np.zeros(40, dtype=np.int8)
-    crust[28:31] = elevation_lines.CRUST_TYPE_OCEANIC
-    plate = quad_plate(
-        0, "continental", columns=_row(40), elevation=elevation, lake_depth=depth, lake_ice_m=ice,
-        crust_type_code=crust,
-    )
+    plate = quad_plate(0, "continental", columns=_row(40), elevation=elevation, lake_depth=depth, lake_ice_m=ice)
     return World(seed=0, plates=[plate]), plate
 
 

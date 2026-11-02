@@ -326,32 +326,35 @@ discharge, channel-width growth, deposition, geology or lake silt.
 ### Which water below sea level is ocean
 
 `connected_ocean_mask` labels the connected components of below-sea-level cells over the
-hydrology neighbor graph. The largest component is always ocean. Any other component is
-an enclosed ocean basin, and ocean too, when at least half its floor area
-(`ENCLOSED_OCEAN_MIN_OCEANIC_SHARE`) is oceanic crust and it covers at least
-`ENCLOSED_OCEAN_MIN_AREA_KM2` (5 million km²). Every other below-sea-level component is
-land to hydrology: rivers pool there as lakes and silt it in. `compute_hydrology` passes
-the cells' accounting areas, their crust (`plates.node_is_continental`) and last step's
-`is_ocean` resampled onto this step's cells (`sample_is_ocean`).
+hydrology neighbor graph. The largest component is always ocean. Any other component is an
+enclosed ocean, and ocean too, when it covers at least `ENCLOSED_OCEAN_MIN_AREA_KM2`
+(8 million km²). Every other below-sea-level component is land to hydrology: rivers pool there
+as lakes and silt it in. `compute_hydrology` passes the cells' accounting areas and last
+step's `is_ocean` resampled onto this step's cells (`sample_is_ocean`).
 
-The rule is set by what the body is, not by its share of the largest one (#758). A
+The rule is set by the body's size, not by its share of the largest one (#758). A
 15.1 million km² basin of young, still-spreading oceanic crust on seed 910211954 was 4.7% of
 the main ocean, so the earlier 5% share rule kept it a lake. It got no currents, ocean
-temperature or ocean-strength humidity, and it filled to the 3,500 m sea-tier guard. The
-lake model has no circulation or heat capacity for a body that size, so the ocean model is
-the closer approximation for its climate. The cost is that its surface is held at sea
-level, as if a strait narrower than the node graph joined it to the main ocean, whatever
-its real sill. That basin's lowest pass is about 1.4 km above sea level at cell centres.
-The 5 million km² threshold is twice the Mediterranean and larger than any of Earth's
-marginal seas. On nine mature saves no other enclosed body floored by oceanic crust
-exceeded 1.9 million km² (`bin/debug/survey_enclosed_basins.py`, `analysis/issue758/`).
-A drowned continental basin of the same size stays a lake.
+temperature or ocean-strength humidity, and it filled to the 3,500 m sea-tier guard. The lake
+model has no circulation or heat capacity for a body that size, so the ocean model is the
+closer approximation for its climate. The cost is that its surface is held at sea level, as if
+a strait narrower than the node graph joined it to the main ocean, whatever its real sill.
+That basin's lowest pass is about 1.4 km above sea level at cell centres.
+
+8 million km² is about half the Arctic Ocean and larger than any of Earth's marginal seas (the
+largest, the Philippine and Coral Seas, are about 5 million km²).
+On nine mature saves no other enclosed body exceeded 2.4 million km², except a 5.0 million km²
+one on a world whose sea level stands at +4,856 m (`bin/debug/survey_enclosed_basins.py`,
+`analysis/issue758/`). The rule doesn't test crust. A drowned continental shelf tens of millions
+of km² across can split from the main ocean across a one-cell land bridge and rejoin it a step
+later; a crust test made it a dry lake at each split, and eustasy moved sea level by 170 m in a
+step to refill it.
 
 **Hysteresis.** A component holding any cell of last step's ocean stays ocean down to
-`ENCLOSED_OCEAN_KEEP_AREA_KM2` (2.5 million km², about the Mediterranean). A body near the
-entry threshold therefore doesn't change class when sea level or a strait moves its area
-by a few percent. Each class change moves the body's whole volume between the lake and
-ocean budgets.
+`ENCLOSED_OCEAN_KEEP_AREA_KM2` (4 million km²). A body near the entry threshold therefore
+doesn't change class when sea level or a strait moves its area by a few percent, and a sea
+that splits off the main ocean stays ocean. Each class change would move the body's whole
+volume between the lake and ocean budgets.
 
 **Water at reclassification.** On the step a lake's cells become ocean, whether by this
 rule or by a rising sea reaching it, the lake solver exports their liquid water to the ocean
