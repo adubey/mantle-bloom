@@ -366,3 +366,49 @@ measure the same thing as the 15% estimate. And 20.7% still exceeds that figure.
 events counted, rollback has events on all three seeds (1 / 18 / 1), so all four settings pass the D1
 rule. The plate-count bound still fails, and the owner chose to start D2 anyway, since D2's route
 outcomes are what can tighten that worst case.
+
+## Gate D2: routes (2026-11-02)
+
+Run as [frozen](https://github.com/adubey/mantle-bloom/issues/737#issuecomment-6572374984) on the D1
+rerun's seeds, commit `7ac57e37`, probe hash unchanged during the runs. All three fingerprints match
+the D1 rerun, and every event's setting, plate, timing and end is identical; only route fields changed.
+Tables: [`gate-d2.json`](gate-d2.json) (its `routes` key).
+
+**Outcome: does not pass. Outcomes, detached craton and blocked cells pass; route shape fails for
+active and passive.**
+
+| Setting | Sites | Barriers | Breakups of non-barrier sites | Within margin limit | Misses |
+|---|---:|---:|---:|---:|---|
+| Active | 78 | 0 | 74 (94.9%) | **83.8%** | 4 daughter too small |
+| Passive | 50 | 0 | 47 (94.0%) | **89.4%** | 3 no second arm |
+| Rollback | 20 | 0 | 20 (100%) | 100% | — |
+| Transtension | 135 | 0 | 132 (97.8%) | 91.7% | 3 daughter too small, no qualifying strips |
+
+The limits are 90% for both columns. The census baseline was 68% for transtension, and D1's own
+router reached 72% across these events.
+
+| Seed | Gated breakups | Craton detached, km² | Budget, km² |
+|---|---:|---:|---:|
+| 1183015207 | 46 | 17,910 | 318,041 |
+| 1486436815 | 43 | 0 | 0 |
+| 1173383782 | 47 | 277,374 | 394,538 |
+
+Zero blocked cells were entered. Of 273 breakup routes, 28 touch craton and 4 divide one. **Seed
+1486436815 has no craton at all**, from generation on, with 4 continental plates. Its budget test is
+vacuous. That isn't traced.
+
+**Why routes hug the margin, read after the freeze.** The 28 routes over the limit have a median
+longest arm of 5,486 km against 2,382 km, and a smaller daughter of 6.4% against 12.6%. The router
+takes the cheapest pair of endpoints that clears 5%. On a small plate, that is often an arm running
+along the edge until it encloses just enough area. So the size rule that fixed outcomes is what makes
+the hooks. Hugging routes sit on plates of a median 4.7% of the sphere, against 3.8% for the rest, so
+plate size alone doesn't explain them.
+
+**Also reported:**
+- **Daughters:** the smaller daughter is a median 11%, and 52 of 273 are under 6%.
+- **Route growth:** the median is 23–28 Myr by setting. Closed breakup events outlast their growth in
+  22 of 65 active, 12 of 27 passive, 3 of 17 rollback and 31 of 125 transtension events.
+- **Plate count:** worst case 64, 57 and 58, or 62, 57 and 54 on separating routes only. D1's
+  incompatibility stands, and more events now separate.
+
+Sector count, margin band and limit sensitivity are untested.
