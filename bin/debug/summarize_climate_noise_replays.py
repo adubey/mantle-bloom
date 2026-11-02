@@ -146,7 +146,10 @@ def main() -> None:
             if len(drift) >= 2 and len(redraw) >= 2:
                 by_metric[metric][save] = welch_gap(drift, redraw)
     for metric, gaps in by_metric.items():
-        report["metrics"][metric] = {"verdict": overall_verdict(gaps), **gaps}
+        band = re.match(r"band (\d+-\d+) ", metric)
+        shares = [report["saves"][s]["band_land_share_pct"].get(band.group(1), 0.0) for s in gaps] if band and "_land" in metric else []
+        small = any(share < MIN_LAND_SHARE_PCT for share in shares)
+        report["metrics"][metric] = {"verdict": "under 5% of land" if small else overall_verdict(gaps), **gaps}
     args.out.write_text(json.dumps(report, indent=1) + "\n")
     print(f"{'metric':46s} {'verdict':11s} " + " ".join(f"{s:>30s}" for s in saves))
     for metric, row in report["metrics"].items():
