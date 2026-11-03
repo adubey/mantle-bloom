@@ -20,7 +20,8 @@ rates, march arm m3 with longest substep 250 yr). Its `G0Config` carries the kno
 `ddf_snow_mm` (4.0), `ddf_ice_mm` (8.0) and `rain_snow_c` (1.0), overridable per run
 with `--set KEY=VALUE`.
 
-Run: march arm (m3), 0.25 Myr steps, draw 0 (each world's own noise), 10 Myr:
+Run: march arm (m3) with `--set f_snow=True` (see amendment), 0.25 Myr steps, draw 0
+(each world's own noise), 10 Myr:
 
 | Save | Arms |
 |---|---|
@@ -33,9 +34,23 @@ is the preregistered design. Each run alone (peak ~1.2 GB).
 
 ```bash
 .venv/bin/python ../bin/debug/replay_g0.py <local-save> --arm m3 --step-years 250000 \
-  --checkpoint-myr 0.25 --myr 10 --set march_max_substep_years=250 [--set <knob>=<value>] \
-  [--ice-age-period-years 8e6] --out <scratch-output>/<arm>.json
+  --checkpoint-myr 0.25 --myr 10 --set march_max_substep_years=250 --set f_snow=True \
+  [--set <knob>=<value>] [--ice-age-period-years 8e6] --out <scratch-output>/<arm>.json
 ```
+
+### Amendment (before any reported result): every arm sets `f_snow=True`
+
+The launched sweep ran arm (m3) as defined, which uses the old `is_frozen` snow
+switch (`f_snow=False`). Under that switch `rain_snow_c` (`T_rs`) is never read
+(`ice_sheet.py:205-208`), so the trs0/trs2 arms would repeat base bit-for-bit, and
+the `DDF_snow` arms would measure the old switch's snow rather than D1's `f_snow`
+partition. G2 measures D1's knobs, so every arm adds `--set f_snow=True` (arm (e)'s
+fix composed with the march). The `f_snow`+march combination is previously unrun;
+its settling behavior is observed, not assumed.
+
+Discarded (wrong switch; peeked but not reported as results): s997 base, snow3,
+snow5, ice55 with end volumes 13.36, 13.70, 11.23, 13.37 M km³. Their logs stay in
+the captures dir under the same run labels.
 
 ### Reading
 
