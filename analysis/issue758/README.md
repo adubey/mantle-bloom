@@ -12,9 +12,9 @@ near that share changes class with small changes in elevation or sea level.
 ocean. Any other component is ocean when it covers at least 8 million km²
 (`ENCLOSED_OCEAN_MIN_AREA_KM2`). A component holding any of last step's ocean stays ocean down to
 4 million km² (`ENCLOSED_OCEAN_KEEP_AREA_KM2`). Lake water on a
-cell that becomes ocean is exported to the ocean by the lake solve, as before; lake ice on such a
-cell now melts into it first, so it leaves with the water. Eustasy then fills the basin to sea
-level from the conserved budget. See
+cell that becomes ocean is exported to the ocean by the lake solve, with its lake ice, which the
+solve opens with since #757 and books as melt. Eustasy then fills the basin to sea level from
+the conserved budget. See
 [Which water below sea level is ocean](../../docs/simulation-model/hydrology.md#which-water-below-sea-level-is-ocean).
 
 ## Survey: where the threshold falls
@@ -151,6 +151,14 @@ is about 8 m of sea level, so sea-level gaps under about 10 m aren't meaningful.
 these numbers.
 
 ## Replay results
+
+**Stale baseline.** These arms ran before #757 (sublimation inside the lake solve) and #768
+(lake losses after within-step transfers) reached `origin/main`, which has since moved on from
+`38c2460d`. The branch was then rebased onto it. The classification result doesn't depend on
+those changes (the basin's size and class are set by `connected_ocean_mask`), but D's and E's lake
+volumes, sea levels and rain do, since #757 alone moves their lakes from about 1.5 to about
+10 million km³. The numbers below must be rerun on the rebased tree before they are used for
+anything but the classification behavior. #757's own PR says the same of its numbers.
 
 Run as preregistered, except as noted under "Deviations". Main is `38c2460d`; the branch is
 `e96e9414`, which carries the preregistration. Each arm is 50 steps of 100 kyr with the ice-age

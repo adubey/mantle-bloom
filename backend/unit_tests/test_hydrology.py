@@ -438,7 +438,7 @@ def test_reclassified_basin_hands_its_lake_water_to_the_ocean_and_closes_the_led
     world, plate = _enclosed_ocean_basin_world(lake_depth_m=1_000.0, lake_ice_m=1.5)
     areas = _node_areas(world)
     basin = slice(28, 31)
-    # 5 C keeps some lake ice through the step (colder, main's #757 sublimation strips it).
+    # 5 C keeps some lake ice through the step; colder, sublimation in the solve strips it.
     precipitation, temperature, years = np.full(40, 800.0), np.full(40, 5.0), 10_000.0
 
     def step():

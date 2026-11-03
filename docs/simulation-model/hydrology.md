@@ -358,9 +358,10 @@ volume between the lake and ocean budgets.
 
 **Water at reclassification.** On the step a lake's cells become ocean, whether by this
 rule or by a rising sea reaching it, the lake solver exports their liquid water to the ocean
-as orphaned storage, booked as overflow to the ocean. Lake ice on those cells is melted into
-that liquid first and booked as melt in `lake_water_ledger`, so it leaves the trapped-water
-inventory in the same step and doesn't stay as lake ice on the ocean. Eustasy then fills
+as orphaned storage, booked as overflow to the ocean. The solve opens with liquid and ice
+together (#757), so lake ice on those cells goes with their water and is booked as melt in
+`lake_water_ledger`. It leaves the trapped-water inventory in the same step and doesn't stay
+as lake ice on the ocean. Eustasy then fills
 the basin to sea level from the conserved total budget (`World.ocean_water_volume_m3`). Its
 seeded ocean mask starts from this step's `is_ocean`, so the basin's volume below sea level
 counts as ocean (see
