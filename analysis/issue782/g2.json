@@ -1,0 +1,99 @@
+{
+ "tree": "claude/issue-766-g1-march at 884fe85",
+ "arms": {
+  "s997": {
+   "save_sha256": "08ad9461d9585e92be93a58d81e326c7e4b685ae7d462135d01b0e9931ed762b",
+   "runs": {
+    "base": {
+     "end_vol_Mkm3": 12.56,
+     "end_area_Mkm2": 13.43,
+     "max_swing_post2Myr_pct": 2.01,
+     "mean_step_s": 20.3
+    },
+    "snow3": {
+     "end_vol_Mkm3": 13.24,
+     "end_area_Mkm2": 14.11,
+     "max_swing_post2Myr_pct": 2.26,
+     "mean_step_s": 21.8
+    },
+    "snow5": {
+     "end_vol_Mkm3": 11.84,
+     "end_area_Mkm2": 12.79,
+     "max_swing_post2Myr_pct": 3.41,
+     "mean_step_s": 18.8
+    },
+    "ice55": {
+     "end_vol_Mkm3": 12.68,
+     "end_area_Mkm2": 14.31,
+     "max_swing_post2Myr_pct": 3.18,
+     "mean_step_s": 36.3
+    },
+    "ice82": {
+     "end_vol_Mkm3": 12.1,
+     "end_area_Mkm2": 13.1,
+     "max_swing_post2Myr_pct": 5.06,
+     "mean_step_s": 40.5
+    },
+    "trs0": {
+     "end_vol_Mkm3": 12.34,
+     "end_area_Mkm2": 13.48,
+     "max_swing_post2Myr_pct": 1.7,
+     "mean_step_s": 20.0
+    },
+    "trs2": {
+     "end_vol_Mkm3": 11.76,
+     "end_area_Mkm2": 13.31,
+     "max_swing_post2Myr_pct": 4.02,
+     "mean_step_s": 30.0
+    }
+   }
+  },
+  "s649": {
+   "save_sha256": "ebbfb5da073ae27b3baa20e53ef958cedd9153f4ce38ca549b742c561273f7b3",
+   "runs": {
+    "base": {
+     "end_vol_Mkm3": 2.12,
+     "end_area_Mkm2": 2.85,
+     "max_swing_post2Myr_pct": 2.4,
+     "mean_step_s": 29.1
+    },
+    "snow3": {
+     "end_vol_Mkm3": 2.15,
+     "end_area_Mkm2": 2.98,
+     "max_swing_post2Myr_pct": 2.92,
+     "mean_step_s": 16.2
+    },
+    "snow5": {
+     "end_vol_Mkm3": 2.09,
+     "end_area_Mkm2": 2.88,
+     "max_swing_post2Myr_pct": 4.59,
+     "mean_step_s": 61.9
+    },
+    "ice55": {
+     "end_vol_Mkm3": 2.12,
+     "end_area_Mkm2": 3.02,
+     "max_swing_post2Myr_pct": 4.37,
+     "mean_step_s": 27.8
+    },
+    "ice82": {
+     "end_vol_Mkm3": 2.05,
+     "end_area_Mkm2": 2.91,
+     "max_swing_post2Myr_pct": 4.2,
+     "mean_step_s": 55.7
+    },
+    "trs0": {
+     "end_vol_Mkm3": 2.13,
+     "end_area_Mkm2": 2.96,
+     "max_swing_post2Myr_pct": 4.09,
+     "mean_step_s": 83.7
+    },
+    "trs2": {
+     "end_vol_Mkm3": 2.1,
+     "end_area_Mkm2": 2.98,
+     "max_swing_post2Myr_pct": 2.58,
+     "mean_step_s": 101.8
+    }
+   }
+  }
+ }
+}

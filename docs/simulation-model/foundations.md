@@ -418,6 +418,11 @@ continental-crust node:
     it and always stays closed, since filling it would move the coastline.
   - Higher basins (intermontane and plateau basins) and smaller ones stay closed and drain
     to their own floor.
+  - After drainage, an isolated below-sea continental component is capped at 371,000 km²
+    and a floor of -1,050 m relative to generated sea level (#785). If its area exceeds the
+    bound, generation keeps a connected patch around its deepest node, prioritizing nearby
+    nodes by spherical distance, and raises the excess to `MIN_LAND_M` (5 m). This can
+    increase initial land area. Ocean-connected water and oceanic crust are not changed.
 
   The river bootstrap's breach and water balance decide whether a closed basin holds a lake
   or spills. The fill is sediment: the crust it adds over the undrained surface is booked as

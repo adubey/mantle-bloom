@@ -93,7 +93,12 @@ shared storage.
 Elevation/is_ocean are resampled from scratch on every call, from whatever the *current* plate
 elevation/crust_type happens to be (the same `cKDTree` nearest-neighbor sampling
 `_render_grid_arrays` already uses) -- there's no persistent terrain field of climate's own to
-keep in sync, since terrain itself already persists incrementally on the plates. Temperature/
+keep in sync, since terrain itself already persists incrementally on the plates. `is_ocean`
+comes from last step's hydrology cache (`hydrology.sample_is_ocean`), so an enclosed lake below
+sea level is land here, while an enclosed ocean -- at least 8 million km² (#758, see
+[Which water below sea level is ocean](hydrology.md#which-water-below-sea-level-is-ocean)) --
+gets the ocean's currents, advected ocean temperature, ocean evaporation and coastal
+deflection of currents, like the main ocean. Temperature/
 wind/currents are read off the world's own always-on, genuinely prognostic CFD states (see
 above); humidity/precipitation are recomputed by this module's own steps 9-10 every call, from
 that CFD-sourced wind/ocean temperature. Either way climate is genuinely recomputed every step

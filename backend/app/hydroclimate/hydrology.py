@@ -149,30 +149,37 @@ CHANNEL_PREFERENCE_THRESHOLD_M = 5.0
 # docstring and lakes.py's own module docstring for why.
 LAKE_MIN_VISIBLE_DEPTH_M = 1.0
 
-# `connected_ocean_mask`'s own "second ocean" threshold: any below-sea-level connected
-# component whose node count is at least this fraction of the single largest one is *also*
-# classified as ocean, not demoted to a giant lake. Without this, a world with two genuinely
-# separate, ocean-scale bodies of water sees the smaller permanently misclassified as an
-# endorheic basin -- and worse, right at the strait between them, a few meters of ordinary
-# per-step erosion/tectonic drift is enough to open or close that connection, which flips the
-# smaller body between "merged into the one ocean component" and "its own giant lake" every
-# few steps (confirmed directly against a real save: an 11,151-node, -5856m-floor basin ~186km
-# from the 77,748-node main ocean, oscillating in and out of the lake list). Picked from that
-# same save's own size gap: the second-largest component there was 14.3% of the largest, while
-# every genuine lake was under 0.4% -- 5% sits well inside that gap, generously catching a
-# real second ocean while still demoting an actual Caspian-Sea-scale closed basin to a lake.
-SECOND_OCEAN_SIZE_FRACTION = 0.05
+# `connected_ocean_mask`'s rule for a below-sea-level body that isn't joined to the largest
+# one: it is ocean too when it is ocean-sized, at least `ENCLOSED_OCEAN_MIN_AREA_KM2`, not by
+# its share of the largest body (#758). The old rule (5% of the largest component's nodes) left
+# a 15.1 million km^2 basin of young, still-spreading oceanic crust a lake at 4.7%: no currents,
+# ocean temperature or ocean-strength humidity, and the share moved whenever the main ocean
+# did. A body cut off from the main ocean is still an ocean at this size, for climate: the lake
+# model has no circulation or heat capacity to give a body the size of the Arctic Ocean. The
+# cost is that its surface is held at sea level, as a strait too narrow for the node graph
+# would hold it, whatever its real sill (that basin's sits about 1.4 km above sea level at node
+# centres).
+#
+# Area alone, not crust: a drowned continental shelf tens of millions of km^2 across splits
+# from and rejoins the main ocean across a one-cell land bridge, and a crust test made it a dry
+# lake each time it split, moving sea level by 170 m in one step
+# (test_sea_level_and_land_carry_over_and_the_world_keeps_stepping's 41-47 million km^2 shelf).
+# 8 million km^2 is about half the Arctic Ocean and larger than any of Earth's marginal seas
+# (the Philippine and Coral Seas, about 5 million km^2). It sits in a wide gap on nine mature
+# saves: no other enclosed body exceeded 2.4 million km^2 except a 5.0 million km^2 one on a
+# world whose sea level stands at +4,856 m, and the basin above is 15.1 million
+# (`bin/debug/survey_enclosed_basins.py`, `analysis/issue758/`).
+# In km^2 rather than nodes, so the rule doesn't move with node density (design principle 4).
+ENCLOSED_OCEAN_MIN_AREA_KM2 = 8.0e6
 
-# ...and an absolute floor alongside that fraction, since a *fraction* of the largest component
-# alone can't tell a real second ocean apart from an ordinary small enclosed pit sitting in a
-# proportionally tiny world -- this codebase's own unit tests exercise `connected_ocean_mask`
-# on toy fixtures as small as ~15-40 total nodes, where an enclosed 3-node pit is already 20%
-# of a 15-node "ocean" (see test_connected_ocean_mask_excludes_an_enclosed_interior_pit) despite
-# being exactly the kind of small interior depression this function must still demote. A real
-# generated world runs tens of thousands of nodes at minimum (node_density in world.py), so a
-# floor comfortably above any toy fixture but far below a genuine ocean-scale component costs
-# nothing on real worlds while keeping the small-fixture case exact.
-SECOND_OCEAN_MIN_NODE_COUNT = 500
+# Hysteresis: a body that held last step's ocean stays ocean down to this area. Without it a
+# body near the threshold flips class whenever sea level or a strait moves its area a few
+# percent, and every flip moves its whole volume between the lake and ocean budgets -- the
+# flicker the old share rule was itself introduced to stop (an 11,151-node basin oscillating
+# in and out of the lake list as the strait to the main ocean opened and closed). The same
+# test keeps a piece that splits off the main ocean as ocean. Half the entry area, still above
+# every enclosed lake the survey found.
+ENCLOSED_OCEAN_KEEP_AREA_KM2 = 4.0e6
 
 # A spilling lake's outlet channel erodes based on the *lake's* own surface area, not just
 # the ordinary precip-routed flow passing through that one node. Real overflowing lakes carry
@@ -636,13 +643,15 @@ def connected_ocean_mask(
     elevation: np.ndarray,
     sea_level_m: float,
     neighbor_idx: np.ndarray | None = None,
+    *,
+    areas_m2: np.ndarray | None = None,
+    prior_ocean: np.ndarray | None = None,
 ) -> np.ndarray:
     """Per-node bool, True only where a node is both below sea level *and* part of the world
-    ocean -- the single largest connected below-sea-level body, plus any other component within
-    `SECOND_OCEAN_SIZE_FRACTION` of its size (see that constant's own comment for why: without
-    it, a world with two genuinely separate, ocean-scale bodies of water not only misclassifies
-    the smaller as a giant lake, but flickers it in and out of the lake list every few steps as
-    the strait between them opens/closes). Found by a connected-components pass
+    ocean -- the single largest connected below-sea-level body, plus any other body that is an
+    enclosed ocean (`_enclosed_ocean_components`: at least `ENCLOSED_OCEAN_MIN_AREA_KM2`, or
+    `ENCLOSED_OCEAN_KEEP_AREA_KM2` for a body that was ocean last step; see those constants for
+    why). Found by a connected-components pass
     (`scipy.sparse.csgraph`, same tool `plates.node_components` uses) over the k-NN graph
     restricted to below-sea-level nodes. Every *other* below-sea-level region -- an enclosed
     interior depression that erosion or plate deformation dropped beneath sea level without
@@ -650,10 +659,12 @@ def connected_ocean_mask(
     endorheic basin (rivers pool there and silt it in, see lakes.py) and biome/climate code
     stops painting it as shallow ocean.
 
-    `neighbor_idx` (this module's own FLOW_NEIGHBOR_COUNT graph) is reused when passed, else a
-    fresh graph is built from `points`. Returns the bare `elevation <= sea_level_m` mask
-    unchanged when there are too few nodes to build a graph, or when every below-sea-level node
-    is already one connected body -- the ordinary single-ocean world, the common case."""
+    `areas_m2` is each node's area (equal cells over the sphere when omitted), and
+    `prior_ocean` last step's ocean resampled onto these nodes (no hysteresis when omitted). `neighbor_idx` (this module's own FLOW_NEIGHBOR_COUNT graph) is reused when
+    passed, else a fresh graph is built from `points`. Returns the bare `elevation <=
+    sea_level_m` mask unchanged when there are too few nodes to build a graph, or when every
+    below-sea-level node is already one connected body -- the ordinary single-ocean world, the
+    common case."""
     below = elevation <= sea_level_m
     n = len(elevation)
     if n == 0 or not below.any() or below.all():
@@ -670,17 +681,40 @@ def connected_ocean_mask(
     if np.unique(below_labels).size <= 1:
         return below  # every below-sea-level node is one connected ocean already
     counts = np.bincount(below_labels)
-    largest_label = counts.argmax()
-    largest_count = counts[largest_label]
-    # The largest component is always ocean, full stop, regardless of the floor below -- that
-    # floor exists only to gate whether some *other* component also counts as ocean, not to
-    # second-guess the single biggest below-sea-level body itself (which would otherwise
-    # wrongly demote the whole ocean to "no ocean at all" on a small enough world, toy test
-    # fixtures included).
-    qualifies = (counts >= largest_count * SECOND_OCEAN_SIZE_FRACTION) & (counts >= SECOND_OCEAN_MIN_NODE_COUNT)
-    qualifies[largest_label] = True
+    # The largest component is always ocean, whatever its floor or area -- the enclosed-basin
+    # rule only gates whether some *other* component also counts, and must not demote the whole
+    # ocean to "no ocean at all" on a small world, toy test fixtures included.
+    qualifies = _enclosed_ocean_components(
+        below_idx, below_labels, len(counts), n,
+        areas_m2=areas_m2, prior_ocean=prior_ocean,
+    )
+    qualifies[counts.argmax()] = True
     ocean_labels = np.nonzero(qualifies)[0]
     return below & np.isin(labels, ocean_labels)
+
+
+def _enclosed_ocean_components(
+    below_idx: np.ndarray,
+    below_labels: np.ndarray,
+    n_labels: int,
+    n: int,
+    *,
+    areas_m2: np.ndarray | None,
+    prior_ocean: np.ndarray | None,
+) -> np.ndarray:
+    """Per component label, whether it is an enclosed ocean: at least
+    `ENCLOSED_OCEAN_MIN_AREA_KM2`, or `ENCLOSED_OCEAN_KEEP_AREA_KM2` when any of its nodes was
+    ocean last step (`prior_ocean`)."""
+    node_area = (
+        np.asarray(areas_m2, dtype=float)[below_idx] if areas_m2 is not None
+        else np.full(len(below_idx), 4.0 * np.pi * (PLANET_RADIUS_KM * 1000.0) ** 2 / n)
+    )
+    area_m2 = np.bincount(below_labels, weights=node_area, minlength=n_labels)
+    was_ocean = (
+        np.bincount(below_labels, weights=np.asarray(prior_ocean, dtype=bool)[below_idx], minlength=n_labels) > 0
+        if prior_ocean is not None else np.zeros(n_labels, dtype=bool)
+    )
+    return area_m2 >= np.where(was_ocean, ENCLOSED_OCEAN_KEEP_AREA_KM2, ENCLOSED_OCEAN_MIN_AREA_KM2) * 1e6
 
 
 # (lon, lat) degrees on each side of a real strait narrower than this engine can ever resolve
@@ -1901,7 +1935,14 @@ def compute_hydrology(
     # "below sea level *and* connected to the world ocean" now that the k-NN graph exists, so an
     # enclosed interior depression that dipped below sea level is routed/pooled/silted as an
     # endorheic basin (see connected_ocean_mask) rather than treated as a vanishing ocean sink.
-    is_ocean = connected_ocean_mask(points, elevation, world.sea_level_m, neighbor_idx)
+    # An ocean-sized enclosed basin is ocean too (#758); last step's ocean, resampled onto this
+    # step's nodes, gives that rule its hysteresis.
+    areas = collect_all_accounting_areas_m2(plates_in_order, line_spacing_rad(world.node_density))
+    is_ocean = connected_ocean_mask(
+        points, elevation, world.sea_level_m, neighbor_idx,
+        areas_m2=areas,
+        prior_ocean=sample_is_ocean(world, points, np.zeros(n, dtype=bool)),
+    )
     if world.premade_world_id == "earth":
         is_ocean = force_earth_strait_connections(points, is_ocean, elevation, world.sea_level_m, neighbor_idx)
 
@@ -1929,7 +1970,6 @@ def compute_hydrology(
     # bare centres. A pit cheap enough to carve through this step then merges toward the ocean
     # at its own floor, so it drains instead of ponding. A costlier pit keeps its centre-height
     # rim and is filled or held as an endorheic lake as before (see breaching.py).
-    areas = collect_all_accounting_areas_m2(plates_in_order, line_spacing_rad(world.node_density))
     # Use persisted water from the start of this step to partition precipitation over wet and
     # dry area. Partial cells retain their actual flooded fraction (#587).
     hypsometry = lakes.CellHypsometry.from_terrain(elevation, areas, neighbor_idx)

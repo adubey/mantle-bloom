@@ -73,6 +73,19 @@ def test_uniform_strip_conserves_shortening_and_fades_inland():
     np.testing.assert_allclose(per_row, np.broadcast_to(per_row[0], per_row.shape), rtol=1e-9)
 
 
+def test_wider_reach_carries_shortening_farther_inland():
+    narrow, _, col = _problem(8, 50)
+    wide, _, _ = _problem(8, 50)
+    wide.reach_scale = 3.0
+
+    narrow_result = shortening.ring_cascade(narrow)
+    wide_result = shortening.ring_cascade(wide)
+    narrow_extent = int(col[narrow_result.absorbed_m2 > 0.0].max())
+    wide_extent = int(col[wide_result.absorbed_m2 > 0.0].max())
+
+    assert wide_extent > narrow_extent
+
+
 def test_a_plate_with_no_collision_is_a_no_op():
     problem, _, _ = _problem(5, 10, demand_per_km=0.0)
     result = shortening.ring_cascade(problem)

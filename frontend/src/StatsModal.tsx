@@ -108,7 +108,7 @@ function entryLabel(e: TabEntry): string {
   return e.kind === "metric" ? e.metric.label : e.group.label;
 }
 
-type TabKey = "physical" | "temperature" | "precipitation" | "biome" | "simulation";
+type TabKey = "physical" | "temperature" | "precipitation" | "biome" | "simulation" | "plates";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "physical", label: "Physical" },
@@ -116,9 +116,10 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "precipitation", label: "Precipitation" },
   { key: "biome", label: "Biome" },
   { key: "simulation", label: "Simulation" },
+  { key: "plates", label: "Plates" },
 ];
 
-const TAB_METRICS: Record<Exclude<TabKey, "simulation" | "biome">, TabEntry[]> = {
+const TAB_METRICS: Record<Exclude<TabKey, "simulation" | "biome" | "plates">, TabEntry[]> = {
   physical: [
     metricEntry(pctMetric("land_fraction", "Land", (s) => s.land_fraction, (s) => s.land_fraction_stale ?? false)),
     metricEntry(pctMetric("ocean_fraction", "Water", (s) => s.ocean_fraction, (s) => s.land_fraction_stale ?? false)),
@@ -204,7 +205,6 @@ const SIMULATION_ENTRIES: TabEntry[] = [
     0, " m",
   )),
   metricEntry(numMetric("elevation_point_count", "Elevation points", (s) => s.elevation_point_count, 0)),
-  metricEntry(numMetric("plate_count", "Plates", (s) => s.plate_count, 0)),
   // Land/volume-conservation check (see api.ts's own comment): land area is read straight off
   // world.plates -- immune to the climate-grid land_fraction's hydrology-cache staleness --
   // and crust volume is continental crust only, so a real mass-conservation bug (a topology
@@ -227,6 +227,18 @@ const SIMULATION_ENTRIES: TabEntry[] = [
   metricEntry(numMetric("craton_destroyed_km3", "Craton destroyed (cumulative)", (s) => s.craton_destroyed_km3 ?? null, 0, " km³")),
   // Belts (RFC 0009): welded and rifted crust that never forms craton.
   metricEntry(numMetric("belt_area_km2", "Belt area", (s) => s.belt_area_km2 ?? null, 0, " km²")),
+];
+
+const PLATES_ENTRIES: TabEntry[] = [
+  groupEntry(numGroup(
+    "plate_speed_cm_per_yr", "Plate speed",
+    (s) => s.plate_speed_min_cm_per_yr ?? null,
+    (s) => s.plate_speed_mean_cm_per_yr ?? null,
+    (s) => s.plate_speed_max_cm_per_yr ?? null,
+    (s) => s.plate_speed_std_cm_per_yr ?? null,
+    2, " cm/yr",
+  )),
+  metricEntry(numMetric("plate_count", "# of Plates", (s) => s.plate_count, 0)),
 ];
 
 interface HistoryStats {
@@ -400,6 +412,18 @@ function Row({ label, value, title }: { label: string; value: string; title?: st
   );
 }
 
+function StatGroupRows({ group, current }: { group: StatGroup; current: WorldStats }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>{group.label}</div>
+      <Row label="Min" value={group.tableFormat(group.min(current))} />
+      <Row label="Avg" value={group.tableFormat(group.mean(current))} />
+      <Row label="Max" value={group.tableFormat(group.max(current))} />
+      <Row label="Std dev" value={group.tableFormat(group.std(current))} />
+    </div>
+  );
+}
+
 function TabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
@@ -514,15 +538,7 @@ function MetricTab({ entries, history, current }: { entries: TabEntry[]; history
                   : undefined
               }
             />
-          ) : (
-            <div key={e.group.key} style={{ marginBottom: 14 }}>
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>{e.group.label}</div>
-              <Row label="Min" value={e.group.tableFormat(e.group.min(current))} />
-              <Row label="Avg" value={e.group.tableFormat(e.group.mean(current))} />
-              <Row label="Max" value={e.group.tableFormat(e.group.max(current))} />
-              <Row label="Std dev" value={e.group.tableFormat(e.group.std(current))} />
-            </div>
-          ),
+          ) : <StatGroupRows key={e.group.key} group={e.group} current={current} />,
         )
       ) : (
         <>
@@ -642,13 +658,7 @@ function SimulationTab({ history, current }: { history: WorldStats[]; current: W
         ) : (
           SIMULATION_ENTRIES.map((e) =>
             e.kind === "group" ? (
-              <div key={e.group.key} style={{ marginBottom: 14 }}>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>{e.group.label}</div>
-                <Row label="Min" value={e.group.tableFormat(e.group.min(current))} />
-                <Row label="Avg" value={e.group.tableFormat(e.group.mean(current))} />
-                <Row label="Max" value={e.group.tableFormat(e.group.max(current))} />
-                <Row label="Std dev" value={e.group.tableFormat(e.group.std(current))} />
-              </div>
+              <StatGroupRows key={e.group.key} group={e.group} current={current} />
             ) : (
               <MetricHistoryRow key={e.metric.key} metric={e.metric} history={history} />
             ),
@@ -665,6 +675,41 @@ function SimulationTab({ history, current }: { history: WorldStats[]; current: W
               <option key={entryKey(e)} value={entryKey(e)}>
                 {entryLabel(e)}
               </option>
+            ))}
+          </select>
+          <TimeSeriesChart series={chartSeries} data={chartData} yFormat={yFormat} bands={chartBands} />
+        </>
+      )}
+    </>
+  );
+}
+
+// Plate speed is a per-snapshot distribution, while plate count is a single value per
+// snapshot whose table summary is calculated over the run history.
+function PlatesTab({ history, current }: { history: WorldStats[]; current: WorldStats }) {
+  const [viewMode, setViewMode] = useState<"table" | "graph">("graph");
+  const { selectedKey, setSelectedKey, chartData, chartSeries, chartBands, yFormat } = useEntryChart(PLATES_ENTRIES, history);
+
+  return (
+    <>
+      <ViewModeToggle viewMode={viewMode} onChange={setViewMode} />
+      {viewMode === "table" ? (
+        history.length === 0 ? (
+          <div style={{ opacity: 0.6 }}>No history yet -- step the world to start tracking.</div>
+        ) : (
+          PLATES_ENTRIES.map((e) => e.kind === "group" ? (
+            <StatGroupRows key={e.group.key} group={e.group} current={current} />
+          ) : <MetricHistoryRow key={e.metric.key} metric={e.metric} history={history} />)
+        )
+      ) : (
+        <>
+          <select
+            value={selectedKey}
+            onChange={(e) => setSelectedKey(e.target.value)}
+            style={{ width: "100%", padding: "5px 4px", marginBottom: 10, fontSize: 12 }}
+          >
+            {PLATES_ENTRIES.map((e) => (
+              <option key={entryKey(e)} value={entryKey(e)}>{entryLabel(e)}</option>
             ))}
           </select>
           <TimeSeriesChart series={chartSeries} data={chartData} yFormat={yFormat} bands={chartBands} />
@@ -695,6 +740,8 @@ export default function StatsModal({ stats, history, onClose }: Props) {
                 switching to a tab whose metrics don't include the old selection. */}
             {activeTab === "simulation" ? (
               <SimulationTab history={history} current={stats} />
+            ) : activeTab === "plates" ? (
+              <PlatesTab history={history} current={stats} />
             ) : activeTab === "biome" ? (
               <BiomeTab key={activeTab} history={history} current={stats} />
             ) : (

@@ -517,7 +517,9 @@ by the nominal area would drift the budget as water moves between cells of diffe
 water currently held in ice and lakes (`trapped_water_volume_m3`) from `V` and solves
 `ocean_water_volume_m3(h) == V - trapped` for the new `h` by bisection. `ocean_water_volume_m3`
 counts only ocean connected to the open sea at that candidate `h`, so a landlocked basin below
-sea level isn't counted as free ocean depth; raising `h` can only merge components, so it is
+sea level isn't counted as free ocean depth. An enclosed ocean that hydrology classes as ocean
+is counted, since the connectivity is seeded from the cached `is_ocean` (see
+[Which water below sea level is ocean](hydrology.md#which-water-below-sea-level-is-ocean)); raising `h` can only merge components, so it is
 still strictly increasing in `h` and the bracket `[min z, max z + headroom]` holds exactly one
 root.
 

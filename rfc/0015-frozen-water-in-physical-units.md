@@ -950,6 +950,16 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
   multi-season fits on bare ice in [[Hock, 2003]](#ref-hock2003), Table 1, and 7.5–8.2 observed
   in West Greenland [[Braithwaite, 1995]](#ref-braithwaite1995). Single-season values reach 20,
   which G5 runs as an extreme. The sensitivity runs wait for the D1 prototype.
+
+  **Sensitivity (2026-11-03, #782).** One-at-a-time around the starts on the D1+march
+  prototype with `f_snow` on (arm m3, longest substep 250 yr), 0.25 Myr steps, draw 0,
+  10 Myr on seeds 997271774 and 649658380; the ice-age arm is G1's 250 yr cost run
+  (report-only, runaway). End volumes (M km³): base 12.56 / 2.12; `DDF_snow` 3: 13.24 /
+  2.15, 5: 11.84 / 2.09; `DDF_ice` 5.5: 12.68 / 2.12, 8.2: 12.10 / 2.05; `T_rs` 0: 12.34
+  / 2.13, 2: 11.76 / 2.10. Max/min per knob: 1.12 and 1.03 (`DDF_snow`), 1.05 and 1.03
+  (`DDF_ice`), 1.07 and 1.01 (`T_rs`). No knob is flagged weakly constrained; all
+  three starts are kept (`DDF_snow` 4, `DDF_ice` 8, `T_rs` 1.0 C). Largest post-spin-up
+  swing on any arm: 5.1%. See [`analysis/issue782/`](../analysis/issue782/README.md).
 - **G3: erosion and its limits.** For each (K_G, l) pair in D3, report applied glacial
   erosion, its applied/raw ratio and its 0.25 vs 1 Myr gap. Report flattening's volume beside
   abrasion's, and the effect of `glacier_erosion_multiplier` at 0.25× and 4× on ice-cap area

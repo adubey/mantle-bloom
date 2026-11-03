@@ -158,6 +158,11 @@ CRUST_EDGE_SLOPE_KM = 100.0
 CRUST_EDGE_DEPTH_M = -3_200.0
 MAX_SUBMERGED_M = -5.0
 
+# Initial isolated continental holes are limited to a Caspian-scale footprint and floor.
+# These are world-generation bounds, not limits on lakes formed during simulation (#785).
+MAX_ISOLATED_HOLE_AREA_KM2 = 371_000.0
+MAX_ISOLATED_HOLE_DEPTH_M = 1_050.0
+
 
 @dataclass
 class _Cloud:
@@ -357,13 +362,83 @@ def _kept_basin_floors(
     return floors[keep]
 
 
-def drain_land(points: np.ndarray, elevation: np.ndarray, land: np.ndarray, area_km2: np.ndarray, seed: int) -> np.ndarray:
+def _bound_isolated_continental_holes(
+    points: np.ndarray,
+    elevation: np.ndarray,
+    continental: np.ndarray,
+    area_km2: np.ndarray,
+    neighbours: np.ndarray,
+    ocean_mask: np.ndarray | None = None,
+) -> np.ndarray:
+    """Keep each isolated submerged continental component within area and depth bounds (#785)."""
+    below = elevation <= 0.0
+    ocean = connected_ocean_mask(points, elevation, 0.0, neighbours) if ocean_mask is None else ocean_mask
+    holes = below & ~ocean & continental
+    if not holes.any():
+        return elevation
+
+    n = len(points)
+    src = np.repeat(np.arange(n), neighbours.shape[1])
+    dst = neighbours.ravel()
+    edge = holes[src] & holes[dst]
+    graph = coo_matrix((np.ones(int(edge.sum())), (src[edge], dst[edge])), shape=(n, n)).tocsr()
+    graph = graph.maximum(graph.T).tocsr()
+    _, labels = connected_components(graph, directed=False)
+    out = elevation.copy()
+
+    for label in np.unique(labels[holes]):
+        component = holes & (labels == label)
+        nodes = np.flatnonzero(component)
+        if float(area_km2[nodes].sum()) > MAX_ISOLATED_HOLE_AREA_KM2:
+            floor = int(nodes[np.argmin(out[nodes])])
+            kept = np.zeros(n, dtype=bool)
+            frontier = []
+            queued = np.zeros(n, dtype=bool)
+            kept_area = float(area_km2[floor])
+            if kept_area <= MAX_ISOLATED_HOLE_AREA_KM2:
+                kept[floor] = True
+                floor_neighbours = graph.indices[graph.indptr[floor] : graph.indptr[floor + 1]]
+                for neighbour in floor_neighbours:
+                    neighbour = int(neighbour)
+                    if component[neighbour] and not queued[neighbour]:
+                        distance = float(np.arccos(np.clip(points[neighbour] @ points[floor], -1.0, 1.0)))
+                        heapq.heappush(frontier, (distance, neighbour))
+                        queued[neighbour] = True
+                while frontier:
+                    _, node = heapq.heappop(frontier)
+                    cell_area = float(area_km2[node])
+                    if kept_area + cell_area > MAX_ISOLATED_HOLE_AREA_KM2:
+                        continue
+                    kept[node] = True
+                    kept_area += cell_area
+                    node_neighbours = graph.indices[graph.indptr[node] : graph.indptr[node + 1]]
+                    for neighbour in node_neighbours:
+                        neighbour = int(neighbour)
+                        if component[neighbour] and not queued[neighbour]:
+                            distance = float(np.arccos(np.clip(points[neighbour] @ points[floor], -1.0, 1.0)))
+                            heapq.heappush(frontier, (distance, neighbour))
+                            queued[neighbour] = True
+            out[component & ~kept] = MIN_LAND_M
+            component &= kept
+        out[component] = np.maximum(out[component], -MAX_ISOLATED_HOLE_DEPTH_M)
+    return out
+
+
+def drain_land(
+    points: np.ndarray,
+    elevation: np.ndarray,
+    land: np.ndarray,
+    area_km2: np.ndarray,
+    seed: int,
+    continental: np.ndarray | None = None,
+) -> np.ndarray:
     """`elevation` (m above sea level) with land raised so that every land node has a strictly
     lower neighbour among its `hydrology.FLOW_NEIGHBOR_COUNT` nearest, leading to the world
     ocean, except inside the closed basins that stay closed (`_kept_basin_floors`), which drain
     to their own lowest node instead. Raised ground climbs `DRAIN_GRADIENT_M_PER_KM` from
     where it drains. `area_km2` is each node's area; which large low basins stay closed comes
-    from an rng keyed by `seed`. Sea nodes are unchanged."""
+    from an rng keyed by `seed`. Sea nodes are unchanged unless `continental` is supplied, in
+    which case isolated submerged continental components are capped after drainage (#785)."""
     n = len(points)
     k = min(FLOW_NEIGHBOR_COUNT, n - 1)
     if k < 1 or not land.any() or land.all():
@@ -378,7 +453,7 @@ def drain_land(points: np.ndarray, elevation: np.ndarray, land: np.ndarray, area
     z = np.where(land, elevation, np.minimum(np.nan_to_num(elevation, nan=0.0), 0.0))
     # Water drains to the world ocean as hydrology sees it; a submerged hole enclosed by land
     # is a closed basin there, so it is one here too.
-    ocean = connected_ocean_mask(points, z, 0.0, neighbours) & ~land
+    ocean = connected_ocean_mask(points, z, 0.0, neighbours, areas_m2=area_km2 * 1e6) & ~land
     hole = ~land & ~ocean
     seeds = np.where(ocean, z, np.inf)
 
@@ -391,7 +466,10 @@ def drain_land(points: np.ndarray, elevation: np.ndarray, land: np.ndarray, area
         seeds[kept] = z[kept]
     level = _flood(reverse, seeds, z, DRAIN_GRADIENT_M_PER_KM * reverse.data)
     # A node no flood reaches (a k-NN cluster listing only itself) keeps its elevation.
-    return np.where(land & np.isfinite(level), level, elevation)
+    out = np.where(land & np.isfinite(level), level, elevation)
+    if continental is not None:
+        out = _bound_isolated_continental_holes(points, out, continental, area_km2, neighbours, ocean)
+    return out
 
 
 def land_mask(potential: np.ndarray, continental: np.ndarray, n_land: int) -> np.ndarray:
@@ -545,7 +623,7 @@ def _target_elevation(cloud, noise, layout, seed, n_land, collision_contact):
     z_sea = np.minimum((1.0 - t) * z_shelf + t * CRUST_EDGE_DEPTH_M, MAX_SUBMERGED_M)
 
     undrained = np.where(land, z_land, z_sea)
-    target = drain_land(p, undrained, land, cloud.area_km2, seed)
+    target = drain_land(p, undrained, land, cloud.area_km2, seed, continental=cloud.continental)
     return np.where(cloud.continental, target, np.nan), np.where(cloud.continental, undrained, np.nan), young_share
 
 
