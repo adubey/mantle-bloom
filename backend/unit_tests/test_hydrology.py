@@ -395,6 +395,23 @@ def test_connected_ocean_mask_keeps_a_basin_near_the_threshold_in_its_class():
     assert not shrunk[basin].any()
 
 
+def test_connected_ocean_mask_one_prior_ocean_cell_does_not_latch_hysteresis():
+    # #758 review: `prior_ocean` is a nearest-neighbour resample, so a stray cell can alias
+    # across a one-cell ridge. One aliased cell must not drop a lake between the keep and
+    # entry areas (6.5 million km^2 here) to the keep threshold -- latched, its own cells
+    # would become next step's prior and hold it ocean. Most of the body having been ocean
+    # does keep it.
+    xyz, elevation, areas, basin = _enclosed_basin_arc(5, cell_km2=1.3e6)
+
+    stray = np.zeros(60, dtype=bool)
+    stray[basin.start] = True
+    assert not hydrology.connected_ocean_mask(xyz, elevation, 0.0, areas_m2=areas, prior_ocean=stray)[basin].any()
+
+    majority = np.zeros(60, dtype=bool)
+    majority[basin.start : basin.start + 3] = True
+    assert hydrology.connected_ocean_mask(xyz, elevation, 0.0, areas_m2=areas, prior_ocean=majority)[basin].all()
+
+
 def test_connected_ocean_mask_keeps_a_sea_that_splits_off_the_main_ocean():
     # A 5 million km^2 sea joined to the main ocean across a shallow sill (cells 20-25) is part
     # of the largest component. When the sill rises 20 m above the sea, the sea stays ocean: it
@@ -483,6 +500,49 @@ def test_reclassified_basin_hands_its_lake_water_to_the_ocean_and_closes_the_led
     assert again.is_ocean[basin].all()
     assert abs(again.lake_water_ledger.residual_m3) <= 1e-9 * liquid_m3
     assert abs(again.land_water_ledger.residual_m3) <= 1e-9 * liquid_m3
+
+
+def test_reclassified_basin_gets_ocean_currents_on_the_next_climate_step(monkeypatch):
+    # #758 review: once hydrology classes the basin as ocean, climate must give it real
+    # currents, not just the `is_ocean` flag. Climate runs before hydrology in a world step,
+    # so the currents arrive on the step after reclassification, read off the new
+    # `hydrology_cache` (`climate._sample_elevation_and_crust` -> `sample_is_ocean` ->
+    # `compute_ocean_currents`, which has no connectivity gate of its own).
+    from app.hydroclimate import climate
+
+    world, plate = _enclosed_ocean_basin_world(lake_depth_m=1_000.0, lake_ice_m=1.5)
+    basin = slice(28, 31)
+    precipitation, temperature, years = np.full(40, 800.0), np.full(40, 5.0), 10_000.0
+
+    def step():
+        fields = hydrology.compute_hydrology(world, precipitation, temperature, years=years)
+        world.hydrology_cache = fields
+        plate.set_fields_on_plate(
+            lake_depth=fields.lake_depth, lake_ice_m=fields.lake_ice_m, river_water_m=fields.river_water_m
+        )
+        return fields
+
+    def basin_cells(fields):
+        cells = climate.compute_climate(world)
+        points = fields.points[basin]
+        lat = np.degrees(np.arcsin(points[:, 2] / np.linalg.norm(points, axis=1)))
+        lon = np.degrees(np.arctan2(points[:, 1], points[:, 0]))
+        rows = np.argmin(np.abs(cells.lat_deg[:, None] - lat[None, :]), axis=0)
+        cols = np.argmin(np.abs(cells.lon_deg[:, None] - lon[None, :]), axis=0)
+        return cells, rows, cols
+
+    as_lake = step()
+    cells, rows, cols = basin_cells(as_lake)
+    assert not cells.is_ocean[rows, cols].any()
+    assert not np.hypot(cells.current_u[rows, cols], cells.current_v[rows, cols]).any()
+
+    monkeypatch.setattr(hydrology, "ENCLOSED_OCEAN_MIN_AREA_KM2", 40_000.0)
+    monkeypatch.setattr(hydrology, "ENCLOSED_OCEAN_KEEP_AREA_KM2", 20_000.0)
+    as_ocean = step()
+    assert as_ocean.is_ocean[basin].all()
+    cells, rows, cols = basin_cells(as_ocean)
+    assert cells.is_ocean[rows, cols].all()
+    assert np.hypot(cells.current_u[rows, cols], cells.current_v[rows, cols]).max() > 0.0
 
 
 def test_compute_hydrology_treats_an_interior_pit_as_an_endorheic_basin_that_silts_in():

@@ -350,10 +350,13 @@ of km² across can split from the main ocean across a one-cell land bridge and r
 later; a crust test made it a dry lake at each split, and eustasy moved sea level by 170 m in a
 step to refill it.
 
-**Hysteresis.** A component holding any cell of last step's ocean stays ocean down to
+**Hysteresis.** A component whose area was mostly ocean last step
+(`ENCLOSED_OCEAN_KEEP_OVERLAP_FRACTION`, one half by area) stays ocean down to
 `ENCLOSED_OCEAN_KEEP_AREA_KM2` (4 million km²). A body near the entry threshold therefore
 doesn't change class when sea level or a strait moves its area by a few percent, and a sea
-that splits off the main ocean stays ocean. Each class change would move the body's whole
+that splits off the main ocean stays ocean. The majority test matters because last step's
+ocean arrives by nearest-neighbour resampling: a stray cell aliased across a one-cell ridge
+must not latch a lake at the lower threshold. Each class change would move the body's whole
 volume between the lake and ocean budgets.
 
 **Water at reclassification.** On the step a lake's cells become ocean, whether by this
@@ -368,8 +371,10 @@ counts as ocean (see
 [Eustatic sea level](surface-processes.md#eustatic-sea-level-eustasypy)). Sea level falls
 when the basin needs more water than it held and rises when it held more.
 
-From then on the basin has the main ocean's climate and hydrology, because every consumer
-reads the cached `is_ocean`. Climate gives it ocean currents, advected ocean temperature and
+From the next step on the basin has the main ocean's climate and hydrology, because every
+consumer reads the cached `is_ocean`. (Climate runs before hydrology in a world step, so
+the reclassification step's climate still treats it as a lake; the following step's climate
+picks it up.) Climate gives it ocean currents, advected ocean temperature and
 ocean evaporation (see [climate](climate.md)). Rivers end at its coast, and the coastline
 and map views draw it as ocean. Glacier flotation (`ice_sheet.is_grounded`) takes water
 depth as sea level minus bed, which is now right for such a basin. Smaller enclosed basins
