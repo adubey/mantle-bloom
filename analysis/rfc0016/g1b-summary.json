@@ -1,0 +1,1853 @@
+{
+ "rule": {
+  "event_threshold": 0.1,
+  "consecutive_outputs": 2,
+  "windows_needed": 2,
+  "event_step": {
+   "a": 2,
+   "d": 2,
+   "e": 2
+  }
+ },
+ "control_ledger": {
+  "a": {
+   "max_normalized_land_residual": 1.954479214670651e-13,
+   "max_normalized_lake_residual": 1.0595828869197694e-12,
+   "stranded_overflow_m3": 0.0,
+   "max_store_identity_mm": null
+  },
+  "d": {
+   "max_normalized_land_residual": 1.2666289033401608e-14,
+   "max_normalized_lake_residual": 7.852284007986049e-14,
+   "stranded_overflow_m3": 0.0,
+   "max_store_identity_mm": null
+  },
+  "e": {
+   "max_normalized_land_residual": 8.075520549710345e-13,
+   "max_normalized_lake_residual": 5.199871161327517e-12,
+   "stranded_overflow_m3": 0.0,
+   "max_store_identity_mm": null
+  }
+ },
+ "package_material": true,
+ "arms": {
+  "central": {
+   "counted": true,
+   "material_windows": [
+    "e"
+   ],
+   "material": false,
+   "windows": {
+    "a": {
+     "control_event_dv_km3": 438718.3707266257,
+     "event_dv_km3": 465690.4633082468,
+     "event_change": 0.06147928689867399,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      null,
+      868261.5301025398,
+      null,
+      null
+     ],
+     "trace_mismatched_outputs": [
+      9,
+      13,
+      21,
+      23,
+      25,
+      29,
+      33
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      0.9074491835911945,
+      0.9159404850683248,
+      0.9177700985825751,
+      0.9188830091880493
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 2.6801520613139613e-13,
+      "max_normalized_lake_residual": 1.551833324014709e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 5.346286794456867e-13,
+      "max_normalized_lake_residual": 2.912518812857613e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "d": {
+     "control_event_dv_km3": -2290847.728770148,
+     "event_dv_km3": -2290847.489249172,
+     "event_change": -1.0455560739419667e-07,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      2293615.55076828,
+      2768.061519107737,
+      269339.6430758508,
+      788403.7544871606
+     ],
+     "trace_mismatched_outputs": [
+      4,
+      6,
+      8,
+      24,
+      36,
+      40
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      0.9069963226106775,
+      0.9161356500632974,
+      0.918304462200434,
+      0.9196656830993047
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 6.9075821362790785e-15,
+      "max_normalized_lake_residual": 4.3173384920248595e-14,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 1.0254926108291877e-12,
+      "max_normalized_lake_residual": 6.5094488660501154e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "e": {
+     "control_event_dv_km3": 2162217.567461813,
+     "event_dv_km3": 2162183.1366745858,
+     "event_change": -1.592383104509487e-05,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      106434.7009434391,
+      2268617.837618025,
+      6418.7091213976955,
+      2270150.857766818
+     ],
+     "trace_mismatched_outputs": [
+      6,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      19,
+      22,
+      24,
+      25,
+      26,
+      27,
+      28,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40
+     ],
+     "trace_longest_mismatch": 9,
+     "trace_material": true,
+     "excess_ratio": [
+      0.9064553764747856,
+      0.9158182781948774,
+      0.9178333157378522,
+      0.919113841737908
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 2.224558479116763e-14,
+      "max_normalized_lake_residual": 1.6524661991600722e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 2.396852308709988e-12,
+      "max_normalized_lake_residual": 1.661133363884386e-11,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    }
+   }
+  },
+  "capacity-150": {
+   "counted": true,
+   "material_windows": [
+    "e"
+   ],
+   "material": false,
+   "windows": {
+    "a": {
+     "control_event_dv_km3": 438718.3707266257,
+     "event_dv_km3": 438904.25156676414,
+     "event_change": 0.00042369057815050404,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      null,
+      863574.7131311091,
+      783576.8095952037,
+      855760.8726009574
+     ],
+     "trace_mismatched_outputs": [
+      9,
+      13,
+      15,
+      21,
+      25,
+      27,
+      29,
+      33
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      0.968974149474476,
+      0.9738997332421991,
+      0.9743256022697658,
+      0.9746502129385718
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 4.242259739125988e-14,
+      "max_normalized_lake_residual": 2.430139126834642e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 2.1339701330798398e-13,
+      "max_normalized_lake_residual": 1.0396356901749003e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "d": {
+     "control_event_dv_km3": -2290847.728770148,
+     "event_dv_km3": -2290847.3780576116,
+     "event_change": -1.5309290612997017e-07,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      2293615.55076828,
+      2768.1727106681656,
+      298577.62623253226,
+      750744.4237835841
+     ],
+     "trace_mismatched_outputs": [
+      4,
+      6,
+      8,
+      24,
+      36,
+      40
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      0.9677966248661617,
+      0.9720648613973806,
+      0.9732301125759963,
+      0.9734763920227818
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 9.328184044471414e-15,
+      "max_normalized_lake_residual": 6.90838229590746e-14,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 1.3012327783303866e-12,
+      "max_normalized_lake_residual": 8.745971310353084e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "e": {
+     "control_event_dv_km3": 2162217.567461813,
+     "event_dv_km3": 2162189.3112025843,
+     "event_change": -1.3068185021558598e-05,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      106434.7009434391,
+      2268624.0121460236,
+      6418.542451530706,
+      2270231.167545899
+     ],
+     "trace_mismatched_outputs": [
+      6,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      18,
+      20,
+      22,
+      24,
+      25,
+      26,
+      27,
+      28,
+      30,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40
+     ],
+     "trace_longest_mismatch": 9,
+     "trace_material": true,
+     "excess_ratio": [
+      0.9673927900415422,
+      0.9721246982360577,
+      0.9727226650192412,
+      0.9734194543034388
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 2.2522703643242178e-14,
+      "max_normalized_lake_residual": 1.5078229495848687e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 1.9675152179698664e-12,
+      "max_normalized_lake_residual": 1.1811334819652725e-11,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    }
+   }
+  },
+  "capacity-1000": {
+   "counted": true,
+   "material_windows": [
+    "a",
+    "e"
+   ],
+   "material": true,
+   "windows": {
+    "a": {
+     "control_event_dv_km3": 438718.3707266257,
+     "event_dv_km3": 498794.32349071535,
+     "event_change": 0.13693512005113684,
+     "event_lost": false,
+     "event_material": true,
+     "target_volume_km3": [
+      null,
+      879478.7432588282,
+      null,
+      null
+     ],
+     "trace_mismatched_outputs": [
+      9,
+      13,
+      23,
+      25
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      0.843667561023879,
+      0.8550743207636153,
+      0.8579584764757668,
+      0.8600764314596668
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 1.8140382526805148e-13,
+      "max_normalized_lake_residual": 1.061383814372374e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 6.477624214024721e-13,
+      "max_normalized_lake_residual": 3.0279216901247003e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "d": {
+     "control_event_dv_km3": -2290847.728770148,
+     "event_dv_km3": -2290847.7329912265,
+     "event_change": 1.8425836412205854e-09,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      2293615.55076828,
+      2767.8177770533716,
+      269342.9540246131,
+      788150.8734807028
+     ],
+     "trace_mismatched_outputs": [
+      4,
+      6,
+      8,
+      24,
+      36,
+      40
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      0.8448960521998058,
+      0.8583974414681033,
+      0.8613832133488492,
+      0.863845783501761
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 4.9511986862886594e-15,
+      "max_normalized_lake_residual": 3.5996305575343326e-14,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 1.0400189799235857e-12,
+      "max_normalized_lake_residual": 7.08474230130296e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "e": {
+     "control_event_dv_km3": 2162217.567461813,
+     "event_dv_km3": 2162185.4501145356,
+     "event_change": -1.4853892485455766e-05,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      106434.7009434391,
+      2268620.151057975,
+      6418.552033685574,
+      2271261.3687775396
+     ],
+     "trace_mismatched_outputs": [
+      6,
+      8,
+      16,
+      24,
+      25,
+      26,
+      27,
+      28,
+      30,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40
+     ],
+     "trace_longest_mismatch": 9,
+     "trace_material": true,
+     "excess_ratio": [
+      0.8439818854038144,
+      0.8575747837558242,
+      0.860787489291798,
+      0.8627109903351909
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 2.3263383747358135e-14,
+      "max_normalized_lake_residual": 1.778711416988186e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 8.711509410731473e-13,
+      "max_normalized_lake_residual": 5.53518553026978e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    }
+   }
+  },
+  "depletion-0.3": {
+   "counted": true,
+   "material_windows": [
+    "e"
+   ],
+   "material": false,
+   "windows": {
+    "a": {
+     "control_event_dv_km3": 438718.3707266257,
+     "event_dv_km3": 447707.7461819225,
+     "event_change": 0.020490082146339406,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      null,
+      857682.6406821155,
+      null,
+      null
+     ],
+     "trace_mismatched_outputs": [
+      9,
+      13,
+      19,
+      21,
+      25
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      0.930060419875197,
+      0.9370618083504252,
+      0.938368876912922,
+      0.9392057560212143
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 5.749346306748553e-14,
+      "max_normalized_lake_residual": 3.3157114003307904e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 1.6300281538224551e-12,
+      "max_normalized_lake_residual": 8.542121061661517e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "d": {
+     "control_event_dv_km3": -2290847.728770148,
+     "event_dv_km3": -2290847.241814053,
+     "event_change": -2.12565893775718e-07,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      2293615.55076828,
+      2768.308954226831,
+      269394.99528066185,
+      788454.4797886756
+     ],
+     "trace_mismatched_outputs": [
+      4,
+      6,
+      8,
+      24,
+      36,
+      40
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      0.929242002361316,
+      0.9365550768447027,
+      0.9382537123029429,
+      0.9392498952911912
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 1.4931984453657482e-15,
+      "max_normalized_lake_residual": 1.1441040590427862e-14,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 9.383684865249535e-13,
+      "max_normalized_lake_residual": 6.316439916071349e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "e": {
+     "control_event_dv_km3": 2162217.567461813,
+     "event_dv_km3": 2162202.8833380807,
+     "event_change": -6.791233201131064e-06,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      106434.7009434391,
+      2268637.58428152,
+      6418.544325826713,
+      2270170.720058224
+     ],
+     "trace_mismatched_outputs": [
+      6,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      19,
+      21,
+      23,
+      29,
+      31
+     ],
+     "trace_longest_mismatch": 9,
+     "trace_material": true,
+     "excess_ratio": [
+      0.9288295476285174,
+      0.9363511111613004,
+      0.9378366631194202,
+      0.9388110153417986
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 3.531992051040458e-14,
+      "max_normalized_lake_residual": 2.593858658398541e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 2.1619118607200122e-12,
+      "max_normalized_lake_residual": 1.3720213204943683e-11,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    }
+   }
+  },
+  "depletion-0.7": {
+   "counted": true,
+   "material_windows": [
+    "a",
+    "e"
+   ],
+   "material": true,
+   "windows": {
+    "a": {
+     "control_event_dv_km3": 438718.3707266257,
+     "event_dv_km3": 482889.4446534344,
+     "event_change": 0.1006820704901199,
+     "event_lost": false,
+     "event_material": true,
+     "target_volume_km3": [
+      null,
+      879237.2243772426,
+      null,
+      null
+     ],
+     "trace_mismatched_outputs": [
+      9,
+      13,
+      19,
+      23,
+      25
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      0.8893957608806247,
+      0.8989997740530378,
+      0.9011623585046952,
+      0.9025177936889399
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 4.014723298286186e-14,
+      "max_normalized_lake_residual": 2.327445410378073e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 2.279311826475553e-13,
+      "max_normalized_lake_residual": 1.2108750830934053e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "d": {
+     "control_event_dv_km3": -2290847.728770148,
+     "event_dv_km3": -2290847.533260166,
+     "event_change": -8.53439446890647e-08,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      2293615.55076828,
+      2768.0175081137163,
+      269327.89581884537,
+      788387.9555731216
+     ],
+     "trace_mismatched_outputs": [
+      4,
+      6,
+      8,
+      24,
+      36,
+      40
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      0.8892753828065287,
+      0.8998180019217705,
+      0.9023004103015212,
+      0.9039259617960236
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 5.0397062050641094e-14,
+      "max_normalized_lake_residual": 3.8622087527011995e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 8.565422154302702e-13,
+      "max_normalized_lake_residual": 5.819389699907206e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "e": {
+     "control_event_dv_km3": 2162217.567461813,
+     "event_dv_km3": 2162188.1972384625,
+     "event_change": -1.358338022605654e-05,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      106434.7009434391,
+      2268622.898181902,
+      6418.77985574642,
+      2270111.1755993636
+     ],
+     "trace_mismatched_outputs": [
+      6,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      19,
+      21,
+      23,
+      25,
+      27,
+      28,
+      30,
+      32,
+      33
+     ],
+     "trace_longest_mismatch": 6,
+     "trace_material": true,
+     "excess_ratio": [
+      0.8886068601954435,
+      0.8993944748078051,
+      0.9017709265057169,
+      0.9032822717995211
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 1.8733236165752352e-14,
+      "max_normalized_lake_residual": 1.3943613627095835e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 1.422278705367321e-12,
+      "max_normalized_lake_residual": 9.95080740897438e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2564222490473185e-08
+     }
+    }
+   }
+  },
+  "demand-0.85": {
+   "counted": true,
+   "material_windows": [
+    "e"
+   ],
+   "material": false,
+   "windows": {
+    "a": {
+     "control_event_dv_km3": 438718.3707266257,
+     "event_dv_km3": 444350.76990967407,
+     "event_change": 0.012838302562347081,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      null,
+      857665.1022138001,
+      null,
+      null
+     ],
+     "trace_mismatched_outputs": [
+      9,
+      13,
+      23,
+      25,
+      27,
+      29
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      1.0870837531400734,
+      1.0884954111063194,
+      1.0882980875060357,
+      1.0881798859202991
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 9.33892693791242e-14,
+      "max_normalized_lake_residual": 5.227882466894032e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 5.82817557718297e-13,
+      "max_normalized_lake_residual": 3.0773545447332298e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "d": {
+     "control_event_dv_km3": -2290847.728770148,
+     "event_dv_km3": -2290847.2479427475,
+     "event_change": -2.0989059834608526e-07,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      2293615.55076828,
+      2768.3028255323784,
+      269393.2442311364,
+      788517.054764589
+     ],
+     "trace_mismatched_outputs": [
+      4,
+      6,
+      8,
+      24,
+      36,
+      40
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      1.0862944509637906,
+      1.0868764397295898,
+      1.086526092129023,
+      1.0869779862193185
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 6.604258576136181e-15,
+      "max_normalized_lake_residual": 4.2535807494240175e-14,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 1.371898541487183e-12,
+      "max_normalized_lake_residual": 8.770215069309243e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "e": {
+     "control_event_dv_km3": 2162217.567461813,
+     "event_dv_km3": 2162189.5911984877,
+     "event_change": -1.2938690234554073e-05,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      106434.7009434391,
+      2268624.292141927,
+      6419.322461344117,
+      2270254.8551897947
+     ],
+     "trace_mismatched_outputs": [
+      6,
+      8,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      19,
+      21,
+      23,
+      29,
+      31
+     ],
+     "trace_longest_mismatch": 8,
+     "trace_material": true,
+     "excess_ratio": [
+      1.0863666767811446,
+      1.0867508411485258,
+      1.0866173786872935,
+      1.086584099112012
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 1.9241805378868504e-14,
+      "max_normalized_lake_residual": 1.3658799954484085e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 1.1943098594073218e-12,
+      "max_normalized_lake_residual": 6.936379777002107e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    }
+   }
+  },
+  "demand-1.15": {
+   "counted": true,
+   "material_windows": [
+    "a",
+    "e"
+   ],
+   "material": true,
+   "windows": {
+    "a": {
+     "control_event_dv_km3": 438718.3707266257,
+     "event_dv_km3": 483058.8796824313,
+     "event_change": 0.1010682750356835,
+     "event_lost": false,
+     "event_material": true,
+     "target_volume_km3": [
+      null,
+      879244.591177401,
+      null,
+      null
+     ],
+     "trace_mismatched_outputs": [
+      9,
+      13,
+      21,
+      23,
+      25,
+      27,
+      29,
+      33,
+      35,
+      37,
+      39
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      0.7510113463537531,
+      0.7665172340207768,
+      0.7699957984840672,
+      0.7719820067201465
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 1.8763207076243252e-13,
+      "max_normalized_lake_residual": 1.136995524619524e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 9.375001528586765e-13,
+      "max_normalized_lake_residual": 5.249617313433575e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "d": {
+     "control_event_dv_km3": -2290847.728770148,
+     "event_dv_km3": -2290847.667339467,
+     "event_change": -2.6815698106474883e-08,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      2293615.55076828,
+      2767.8834288130806,
+      269249.0547598141,
+      788241.6460246126
+     ],
+     "trace_mismatched_outputs": [
+      4,
+      6,
+      8,
+      24,
+      36,
+      40
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      0.7508844163489807,
+      0.7682387676831164,
+      0.7724365428274518,
+      0.7744800898331483
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 1.0032023306535478e-13,
+      "max_normalized_lake_residual": 7.889531022696455e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 8.898697032176189e-13,
+      "max_normalized_lake_residual": 6.14702051025019e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "e": {
+     "control_event_dv_km3": 2162217.567461813,
+     "event_dv_km3": 2162190.4166869037,
+     "event_change": -1.2556911625272171e-05,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      106434.7009434391,
+      2268625.117630343,
+      6418.602551852245,
+      2270081.742313251
+     ],
+     "trace_mismatched_outputs": [
+      6,
+      8,
+      10,
+      11,
+      12,
+      14,
+      15,
+      16,
+      17,
+      19,
+      21,
+      24,
+      25,
+      26,
+      27,
+      29,
+      31,
+      35,
+      37,
+      38,
+      39,
+      40
+     ],
+     "trace_longest_mismatch": 4,
+     "trace_material": true,
+     "excess_ratio": [
+      0.7496966974642336,
+      0.7677335027411456,
+      0.7714047461829511,
+      0.7736150906233416
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 3.263094190524634e-14,
+      "max_normalized_lake_residual": 2.5650780652802975e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 1.7474135397173872e-12,
+      "max_normalized_lake_residual": 1.1588167886611923e-11,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    }
+   }
+  },
+  "split-low": {
+   "counted": true,
+   "material_windows": [
+    "d",
+    "e"
+   ],
+   "material": true,
+   "windows": {
+    "a": {
+     "control_event_dv_km3": 438718.3707266257,
+     "event_dv_km3": 465690.4633082468,
+     "event_change": 0.06147928689867399,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      null,
+      868261.5301025398,
+      null,
+      null
+     ],
+     "trace_mismatched_outputs": [
+      9,
+      13,
+      19,
+      23,
+      27,
+      31
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      0.9074491835911945,
+      0.9132379110862,
+      0.9146003134541097,
+      0.9149318402342678
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 1.155420765121776e-13,
+      "max_normalized_lake_residual": 7.035819670807142e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 1.7881393432617188e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 8.393055477161392e-13,
+      "max_normalized_lake_residual": 4.901992383810017e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "d": {
+     "control_event_dv_km3": -2290847.728770148,
+     "event_dv_km3": -2290847.489249172,
+     "event_change": -1.0455560739419667e-07,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      2293615.55076828,
+      2768.061519107737,
+      269266.78531333304,
+      788637.171034688
+     ],
+     "trace_mismatched_outputs": [
+      4,
+      6,
+      8,
+      24,
+      30,
+      34,
+      37,
+      38,
+      39
+     ],
+     "trace_longest_mismatch": 3,
+     "trace_material": true,
+     "excess_ratio": [
+      0.9069963226106775,
+      0.9133878544504968,
+      0.9147876736385246,
+      0.9153412753654283
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 5.750888519506692e-15,
+      "max_normalized_lake_residual": 4.330267254374e-14,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 6.726296754336986e-13,
+      "max_normalized_lake_residual": 4.3887434957705364e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "e": {
+     "control_event_dv_km3": 2162217.567461813,
+     "event_dv_km3": 2162183.1366745858,
+     "event_change": -1.592383104509487e-05,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      106434.7009434391,
+      2268617.837618025,
+      6420.297786847168,
+      2270458.591605545
+     ],
+     "trace_mismatched_outputs": [
+      6,
+      8,
+      10,
+      12,
+      18,
+      20,
+      22,
+      25,
+      29,
+      31,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40
+     ],
+     "trace_longest_mismatch": 6,
+     "trace_material": true,
+     "excess_ratio": [
+      0.9064553764747856,
+      0.9131524046052836,
+      0.9144281507776061,
+      0.9149078935159404
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 2.224558479116763e-14,
+      "max_normalized_lake_residual": 1.6524661991600722e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 4.233058718970647e-12,
+      "max_normalized_lake_residual": 2.7649450877011422e-11,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    }
+   }
+  },
+  "split-high": {
+   "counted": true,
+   "material_windows": [
+    "e"
+   ],
+   "material": false,
+   "windows": {
+    "a": {
+     "control_event_dv_km3": 438718.3707266257,
+     "event_dv_km3": 465690.4633082468,
+     "event_change": 0.06147928689867399,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      null,
+      868261.5301025398,
+      null,
+      null
+     ],
+     "trace_mismatched_outputs": [
+      9,
+      13,
+      19,
+      23,
+      29,
+      39
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      0.9074491835911945,
+      0.9182541604475838,
+      0.9207561458189607,
+      0.9239253601011953
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 1.6715666795168903e-14,
+      "max_normalized_lake_residual": 9.925901181348963e-14,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 1.3563085693135276e-13,
+      "max_normalized_lake_residual": 7.280535380330815e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2372034891304793e-08
+     }
+    },
+    "d": {
+     "control_event_dv_km3": -2290847.728770148,
+     "event_dv_km3": -2290847.489249172,
+     "event_change": -1.0455560739419667e-07,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      2293615.55076828,
+      2768.061519107737,
+      297981.251984189,
+      755722.4100228843
+     ],
+     "trace_mismatched_outputs": [
+      4,
+      6,
+      8,
+      24,
+      36,
+      40
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      0.9069963226106775,
+      0.9184355790515918,
+      0.9213465800716134,
+      0.9249049257797775
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 7.042278516484062e-15,
+      "max_normalized_lake_residual": 4.576400342689634e-14,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 1.7674603440641473e-13,
+      "max_normalized_lake_residual": 1.0663121781242836e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "e": {
+     "control_event_dv_km3": 2162217.567461813,
+     "event_dv_km3": 2162183.1366745858,
+     "event_change": -1.592383104509487e-05,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      106434.7009434391,
+      2268617.837618025,
+      6417.162432647183,
+      2269827.661172735
+     ],
+     "trace_mismatched_outputs": [
+      6,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      19,
+      21,
+      23,
+      29,
+      31
+     ],
+     "trace_longest_mismatch": 9,
+     "trace_material": true,
+     "excess_ratio": [
+      0.9064553764747856,
+      0.9180245654537141,
+      0.9210083318478487,
+      0.9243537255038216
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 2.224558479116763e-14,
+      "max_normalized_lake_residual": 1.6524661991600722e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 2.396852308709988e-12,
+      "max_normalized_lake_residual": 1.661133363884386e-11,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    }
+   }
+  },
+  "partition-match": {
+   "counted": false,
+   "material_windows": [
+    "e"
+   ],
+   "material": false,
+   "windows": {
+    "a": {
+     "control_event_dv_km3": 438718.3707266257,
+     "event_dv_km3": 441098.5368305534,
+     "event_change": 0.00542527111409874,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      null,
+      857671.1451843154,
+      null,
+      null
+     ],
+     "trace_mismatched_outputs": [
+      9,
+      13,
+      19,
+      21,
+      25,
+      31
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": null,
+     "ledger": {
+      "max_normalized_land_residual": 3.5909153729020815e-13,
+      "max_normalized_lake_residual": 2.0113431667441054e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": null
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 3.28082545829853e-13,
+      "max_normalized_lake_residual": 1.6587469214453254e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": null
+     }
+    },
+    "d": {
+     "control_event_dv_km3": -2290847.728770148,
+     "event_dv_km3": -2290847.6953807147,
+     "event_change": -1.4575142981421152e-08,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      2293615.55076828,
+      2767.855387565225,
+      269015.0106515301,
+      788983.3225566336
+     ],
+     "trace_mismatched_outputs": [
+      10,
+      12,
+      14,
+      16,
+      18,
+      24,
+      34,
+      38
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": null,
+     "ledger": {
+      "max_normalized_land_residual": 1.4327623825144726e-14,
+      "max_normalized_lake_residual": 1.1065524052844453e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": null
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 1.3123152871702358e-12,
+      "max_normalized_lake_residual": 7.47431976557777e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": null
+     }
+    },
+    "e": {
+     "control_event_dv_km3": 2162217.567461813,
+     "event_dv_km3": 2162213.7537717572,
+     "event_change": -1.7637864537789483e-06,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      106434.7009434391,
+      2268648.4547151965,
+      6421.880170611478,
+      2271020.944127835
+     ],
+     "trace_mismatched_outputs": [
+      18,
+      20,
+      22,
+      24,
+      25,
+      27,
+      29,
+      31,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40
+     ],
+     "trace_longest_mismatch": 8,
+     "trace_material": true,
+     "excess_ratio": null,
+     "ledger": {
+      "max_normalized_land_residual": 3.476345104981923e-14,
+      "max_normalized_lake_residual": 2.4673362573393536e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": null
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 6.433064221261927e-12,
+      "max_normalized_lake_residual": 4.2169691946194e-11,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": null
+     }
+    }
+   }
+  },
+  "coupling-off": {
+   "counted": false,
+   "material_windows": [
+    "e"
+   ],
+   "material": false,
+   "windows": {
+    "a": {
+     "control_event_dv_km3": 438718.3707266257,
+     "event_dv_km3": 465690.4633082468,
+     "event_change": 0.06147928689867399,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      null,
+      868261.5301025398,
+      null,
+      null
+     ],
+     "trace_mismatched_outputs": [
+      9,
+      13,
+      19,
+      21,
+      25
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      0.9074491835911945,
+      0.9070035968073751,
+      0.9067707521817666,
+      0.9068050172244083
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 7.235153195898864e-14,
+      "max_normalized_lake_residual": 4.273757363464565e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 3.1526718990135997e-13,
+      "max_normalized_lake_residual": 1.6955320088019672e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "d": {
+     "control_event_dv_km3": -2290847.728770148,
+     "event_dv_km3": -2290847.489249172,
+     "event_change": -1.0455560739419667e-07,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      2293615.55076828,
+      2768.061519107737,
+      269078.0242839787,
+      789093.4227475822
+     ],
+     "trace_mismatched_outputs": [
+      10,
+      12,
+      14,
+      16,
+      18,
+      20,
+      22,
+      26,
+      28,
+      30,
+      32,
+      34,
+      38
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": [
+      0.9069963226106775,
+      0.9067340291235008,
+      0.9066121090928861,
+      0.9066834838549661
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 2.348552237309058e-14,
+      "max_normalized_lake_residual": 1.5767570238181238e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 9.302173482288655e-14,
+      "max_normalized_lake_residual": 6.435278642985429e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    },
+    "e": {
+     "control_event_dv_km3": 2162217.567461813,
+     "event_dv_km3": 2162183.1366745858,
+     "event_change": -1.592383104509487e-05,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      106434.7009434391,
+      2268617.837618025,
+      6422.298385310862,
+      2270988.77294352
+     ],
+     "trace_mismatched_outputs": [
+      6,
+      10,
+      12,
+      14,
+      16,
+      18,
+      20,
+      22,
+      24,
+      25,
+      27,
+      31,
+      33,
+      35
+     ],
+     "trace_longest_mismatch": 2,
+     "trace_material": true,
+     "excess_ratio": [
+      0.9064553764747856,
+      0.9064436844929697,
+      0.9063857943022291,
+      0.9062798268027064
+     ],
+     "ledger": {
+      "max_normalized_land_residual": 2.224558479116763e-14,
+      "max_normalized_lake_residual": 1.6524661991600722e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.086162567138672e-07
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 2.396852308709988e-12,
+      "max_normalized_lake_residual": 1.661133363884386e-11,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": 2.2351741790771484e-08
+     }
+    }
+   }
+  },
+  "sham-up": {
+   "counted": false,
+   "material_windows": [
+    "e"
+   ],
+   "material": false,
+   "windows": {
+    "a": {
+     "control_event_dv_km3": 438718.3707266257,
+     "event_dv_km3": 438717.2155357288,
+     "event_change": -2.6331035444249196e-06,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      null,
+      863387.6771000738,
+      783206.1944003926,
+      856022.0804418573
+     ],
+     "trace_mismatched_outputs": [
+      11,
+      13,
+      21,
+      25
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": null,
+     "ledger": {
+      "max_normalized_land_residual": 2.36528449707695e-13,
+      "max_normalized_lake_residual": 1.2804118564008494e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": null
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 5.511897666252965e-13,
+      "max_normalized_lake_residual": 2.785139132459931e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": null
+     }
+    },
+    "d": {
+     "control_event_dv_km3": -2290847.728770148,
+     "event_dv_km3": -2290847.7286742246,
+     "event_change": -4.187250546294763e-11,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      2293615.55076828,
+      2767.822094055157,
+      268996.1551114364,
+      788967.651090623
+     ],
+     "trace_mismatched_outputs": [],
+     "trace_longest_mismatch": 0,
+     "trace_material": false,
+     "excess_ratio": null,
+     "ledger": {
+      "max_normalized_land_residual": 1.8247915976267095e-14,
+      "max_normalized_lake_residual": 1.1367877703211277e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": null
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 1.0233670395407564e-12,
+      "max_normalized_lake_residual": 5.538929376376433e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": null
+     }
+    },
+    "e": {
+     "control_event_dv_km3": 2162217.567461813,
+     "event_dv_km3": 2162217.630248973,
+     "event_change": 2.9038317528318203e-08,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      106434.7009434391,
+      2268652.3311924124,
+      6422.029353861903,
+      2271028.209280933
+     ],
+     "trace_mismatched_outputs": [
+      16,
+      19,
+      25,
+      27,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40
+     ],
+     "trace_longest_mismatch": 9,
+     "trace_material": true,
+     "excess_ratio": null,
+     "ledger": {
+      "max_normalized_land_residual": 1.0627681578653077e-12,
+      "max_normalized_lake_residual": 6.836769649982947e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": null
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 2.592015027066635e-12,
+      "max_normalized_lake_residual": 1.5170184523587715e-11,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": null
+     }
+    }
+   }
+  },
+  "sham-down": {
+   "counted": false,
+   "material_windows": [
+    "e"
+   ],
+   "material": false,
+   "windows": {
+    "a": {
+     "control_event_dv_km3": 438718.3707266257,
+     "event_dv_km3": 438719.52545069036,
+     "event_change": 2.63203946238022e-06,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      null,
+      863389.9870150354,
+      783204.26664775,
+      856021.3743769625
+     ],
+     "trace_mismatched_outputs": [
+      11,
+      13,
+      21,
+      25
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": null,
+     "ledger": {
+      "max_normalized_land_residual": 1.437181323339496e-13,
+      "max_normalized_lake_residual": 7.793198981310123e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": null
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 3.7004819774118436e-13,
+      "max_normalized_lake_residual": 1.8881416026732965e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": null
+     }
+    },
+    "d": {
+     "control_event_dv_km3": -2290847.728770148,
+     "event_dv_km3": -2290847.728867057,
+     "event_change": 4.2302605862687415e-11,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      2293615.55076828,
+      2767.821901223152,
+      268996.3509510076,
+      788971.093216706
+     ],
+     "trace_mismatched_outputs": [
+      36
+     ],
+     "trace_longest_mismatch": 1,
+     "trace_material": false,
+     "excess_ratio": null,
+     "ledger": {
+      "max_normalized_land_residual": 1.4013912245798603e-14,
+      "max_normalized_lake_residual": 1.0162355442102602e-13,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": null
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 2.348509549639758e-12,
+      "max_normalized_lake_residual": 1.4040382140563097e-11,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": null
+     }
+    },
+    "e": {
+     "control_event_dv_km3": 2162217.567461813,
+     "event_dv_km3": 2162217.5046820976,
+     "event_change": -2.903487428262963e-08,
+     "event_lost": false,
+     "event_material": false,
+     "target_volume_km3": [
+      106434.7009434391,
+      2268652.205625537,
+      6422.059205690084,
+      2271028.122822523
+     ],
+     "trace_mismatched_outputs": [
+      14,
+      16,
+      19,
+      25,
+      26,
+      27,
+      37,
+      39,
+      40
+     ],
+     "trace_longest_mismatch": 3,
+     "trace_material": true,
+     "excess_ratio": null,
+     "ledger": {
+      "max_normalized_land_residual": 5.991626646887694e-13,
+      "max_normalized_lake_residual": 3.8624746195743e-12,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": null
+     },
+     "trace_ledger": {
+      "max_normalized_land_residual": 2.2771208035825685e-12,
+      "max_normalized_lake_residual": 1.3461459046272154e-11,
+      "stranded_overflow_m3": 0.0,
+      "max_store_identity_mm": null
+     }
+    }
+   }
+  }
+ }
+}

@@ -27,58 +27,22 @@ sys.path.insert(0, str(BACKEND))
 
 from app import persistence  # noqa: E402
 from app.hydroclimate import biomes, breaching, climate  # noqa: E402
+from rfc0016_land_store import MONTHS, monthly_forcing, transpiration_split_table  # noqa: E402
 
-MONTHS = 12
 SUBSTEPS = 30
 SPIN_YEARS = 40
-LATENT_HEAT_MJ_KG = 2.45
-W_M2_TO_MJ_M2_DAY = 0.0864
-DAYS_PER_MONTH = 365.25 / MONTHS
-
-# Wei et al. (2017) table 1, T/(E+T+I), by Köppen group. Arid and polar classes have no Wei class.
-SPLIT_BY_GROUP = {"A": 0.61, "C": 0.55, "D": 0.55, "BS": 0.65, "ET": 0.65, "BW": 0.25, "EF": 0.0}
 
 
-def transpiration_split(biome_ids: np.ndarray) -> np.ndarray:
-    """The potential transpiration share of demand for each cell's Köppen class."""
-    by_code = []
-    for code in biomes.KOPPEN_CODES:
-        group = code if code in SPLIT_BY_GROUP else code[:2] if code[:2] in SPLIT_BY_GROUP else code[0]
-        by_code.append(SPLIT_BY_GROUP[group])
-    table = np.array(by_code + [0.0] * len(biomes.PELAGIC_NAMES))
-    return table[biome_ids]
-
-
-def monthly_insolation_w_m2(lat_deg: np.ndarray, tilt_deg: float) -> np.ndarray:
-    """Daily-mean top-of-atmosphere flux, (months, cells), by the formula of
-    `climate.compute_insolation_w_m2`. Month 0 starts at the northern spring equinox."""
-    lat = np.radians(lat_deg)[None, :]
-    longitude = (np.arange(MONTHS) + 0.5) * 2.0 * np.pi / MONTHS
-    declination = np.arcsin(np.sin(np.radians(tilt_deg)) * np.sin(longitude))[:, None]
-    hour = np.arccos(np.clip(-np.tan(lat) * np.tan(declination), -1.0, 1.0))
-    daily = hour * np.sin(lat) * np.sin(declination) + np.cos(lat) * np.cos(declination) * np.sin(hour)
-    return np.clip(daily, 0.0, None) * climate.SOLAR_CONSTANT_W_M2 / np.pi
-
-
-def monthly_forcing(fields, world, mask):
-    """Monthly (temperature °C, rain mm, Oudin demand mm), each (months, cells), for the masked
-    cells. Temperature peaks a month after the solstice; rain falls by half-year shares."""
+def forcing(fields, world, mask):
+    """Monthly rain and Oudin demand on the masked cells, each (months, cells)."""
     lat = np.broadcast_to(fields.lat_deg[:, None], mask.shape)[mask]
-    temperature = fields.air_temperature_c[mask]
-    rain = fields.precipitation_mm[mask]
-    amplitude = biomes.seasonal_temp_amplitude(lat, biomes.grid_continentality(fields.is_ocean)[mask], world.axial_tilt_deg)
-    north = lat >= 0.0
-    warm_peak = np.where(north, 3.5, 9.5)
-    phase = 2.0 * np.pi * ((np.arange(MONTHS) + 0.5)[:, None] - warm_peak) / MONTHS
-    monthly_temperature = temperature + amplitude * np.cos(phase)
-    strength = np.clip(world.axial_tilt_deg / biomes._SEASON_TILT_REFERENCE_DEG, 0.0, 1.3)
-    summer_share, _ = biomes._precip_season(lat, strength)
-    # Exactly six months: a test on `cos(phase)` lands on its zeros and can take a seventh (#751).
-    warm_half = np.mod((np.arange(MONTHS) + 0.5)[:, None] - (warm_peak - 3.0), MONTHS) < 6.0
-    monthly_rain = rain * np.where(warm_half, summer_share, 1.0 - summer_share) / 6.0
-    insolation = monthly_insolation_w_m2(lat, world.axial_tilt_deg) * W_M2_TO_MJ_M2_DAY
-    daily_demand = insolation / LATENT_HEAT_MJ_KG * np.clip(monthly_temperature + 5.0, 0.0, None) / 100.0
-    return monthly_temperature, monthly_rain, daily_demand * DAYS_PER_MONTH
+    amplitude = biomes.seasonal_temp_amplitude(
+        lat, biomes.grid_continentality(fields.is_ocean)[mask], world.axial_tilt_deg
+    )
+    return monthly_forcing(
+        lat, fields.air_temperature_c[mask], amplitude, fields.precipitation_mm[mask],
+        world.axial_tilt_deg, climate.SOLAR_CONSTANT_W_M2, biomes,
+    )
 
 
 def repeating_year(rain, demand, capacity_mm, depletion_p):
@@ -104,7 +68,7 @@ def repeating_year(rain, demand, capacity_mm, depletion_p):
 
 
 def measure(fields, world, mask, weights, demand_factor, capacity_mm, depletion_p, split):
-    _, rain, demand = monthly_forcing(fields, world, mask)
+    rain, demand = forcing(fields, world, mask)
     et, excess = repeating_year(rain, demand_factor * demand, capacity_mm, depletion_p)
     precipitation = fields.precipitation_mm[mask]
     control_runoff = breaching.runoff_mm(
@@ -138,7 +102,7 @@ def main() -> None:
     fields = world.climate_cache
     mask = ~fields.is_ocean & (fields.air_temperature_c >= 0.0)
     weights = np.broadcast_to(np.cos(np.radians(fields.lat_deg))[:, None], mask.shape)[mask]
-    split = transpiration_split(fields.biome_ids[mask])
+    split = transpiration_split_table(biomes)[fields.biome_ids[mask]]
     precipitation = fields.precipitation_mm[mask]
     result = {
         "save": args.save.name,
