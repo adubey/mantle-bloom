@@ -149,3 +149,75 @@ E aren't independent. Main's lake volume swings by about 2.6 million km³ a step
 is about 8 m of sea level, so sea-level gaps under about 10 m aren't meaningful. #757's open PR
 (#761) changes the same lakes and lake-ice handling; whichever of the two lands second reruns
 these numbers.
+
+## Replay results
+
+Run as preregistered, except as noted under "Deviations". Main is `38c2460d`; the branch is
+`e96e9414`, which carries the preregistration. Each arm is 50 steps of 100 kyr with the ice-age
+cycle off. [`replay-comparison.json`](replay-comparison.json) holds the per-arm measures.
+
+| Measure | D main | D branch | E main | E branch | S main | S branch |
+|---|---:|---:|---:|---:|---:|---:|
+| Class changes in 5 Myr (to ocean / to lake) | 0 | 1 / 0 | 0 | 1 / 0 | 0 | 0 |
+| Enclosed 15 M km² body is ocean | 0 of 50 steps | 50 of 50 | 0 of 50 | 50 of 50 | n/a | n/a |
+| Sea level, step 1 (m) | −748.1 | −872.7 | −741.4 | −872.3 | −1,089.8 | −1,089.8 |
+| Sea level, step 50 (m) | −760.2 | −879.9 | −752.9 | −886.7 | −1,168.2 | −1,168.2 |
+| Ocean nodes, opening / step 1 | 85,360 / 85,515 | 85,360 / 89,563 | 85,538 / 85,538 | 85,538 / 89,580 | 153,339 / 153,401 | 153,339 / 153,401 |
+| Ocean area, step 50 (M km²) | 329.7 | 342.3 | 329.8 | 342.6 | 397.7 | 397.7 |
+| Lake water, step 50 / mean over steps (M km³) | 3.47 / 2.74 | 1.67 / 1.75 | 2.28 / 2.66 | 1.91 / 1.71 | 0.21 / 0.54 | 0.21 / 0.54 |
+| Mean rain on land near the body, steps 1–50 (mm) | 263.0 | 257.4 | 259.9 | 260.2 | 607.0 | 607.0 |
+| Worst normalized lake / land residual | 1.9e-12 / 2.7e-13 | 2.2e-12 / 2.5e-13 | 5.2e-12 / 8.1e-13 | 2.0e-12 / 2.2e-13 | 2.3e-11 / 1.8e-12 | 2.3e-11 / 1.8e-12 |
+| Worst eustasy closure (share of tolerance) | 0.98 | 0.93 | 0.98 | 0.96 | 1.00 | 1.00 |
+| Median step (s) / peak RSS (GB) | 9.2 / 5.3 | 9.5 / 3.8 | 9.0 / 6.7 | 8.2 / 5.4 | 11.0 / 8.7 | 10.1 / 7.3 |
+
+Main reproduces #757's baseline for D (sea level −744.04 m at 225.5 Myr). Runtime and peak RSS
+include other agents' runs alongside most arms, so the differences between arms are noise.
+
+| # | Prediction | Result |
+|---|---|---|
+| 1 | The basin is ocean from step 1 to 50 in D and E | **Held.** 50 of 50 steps in both; main never classes it ocean. |
+| 2 | Branch minus main sea level at step 1 is −100 to −180 m | **Held.** −124.7 m (D), −130.9 m (E); −119.7 m and −133.8 m at step 50. |
+| 3 | Ocean nodes at step 1 are 3,000–4,500 above main's | **Held.** +4,048 (D), +4,042 (E). |
+| 4 | Residuals at most 1e-9 and eustasy closure within tolerance | **Held** in every step of every arm. |
+| 5 | One class change into ocean, none back, and no more than main's | **Partly held.** Exactly one change into ocean in D and E (14.9 and 14.8 M km²) and none back. Main has none, so "no more than main's" fails by that one intended change. |
+| 6 | Lake water below main's at step 50 in D and E | **Held in D, fails in E at step 50.** D is 1.67 against 3.47 M km³. E is 1.91 against 2.28, which is lower, but E's main swings by millions of km³ a step (#754). The mean over steps is lower on the branch in both. |
+| 7 | Rain on nearby land is higher on the branch in D and E | **Failed in D, flat in E.** D is 257.4 against 263.0 mm. E is 260.2 against 259.9 mm. Open question below. |
+| 8 | S is unchanged | **Held.** Sea-level gap 1.6e-5 m, no class changes. |
+| 9 | Median step within 10% of main's | **Held.** |
+
+**Class-change frequency over the 5 Myr scan.** Counting groups of at least 200,000 km² that
+stay below sea level and flip class in a step: main has 0 in all three windows, and the branch
+has 1 in D, 1 in E and 0 in S, each the basin entering the ocean at step 1. The same body was
+never classed as a lake again. This doesn't test a body sitting at the threshold: no surveyed
+body is near 8 million km², so the hysteresis is covered by the unit tests only.
+
+**Water at reclassification.** At step 1 sea level falls 125–131 m, about the 137 m estimated
+from the basin's 45.4 M km³ fill volume over the main ocean's area, less the water main already
+holds in the basin. Whole-world lake water falls by the basin's former holdings, and the ledgers
+close in that step (worst residual 2.2e-12 of the larger of supply and overflow).
+
+### Open question: why D's nearby land is slightly drier (prediction 7)
+
+A post hoc probe (`bin/debug/probe_enclosed_ocean_climate.py`, D, 0.5 Myr, both arms) reads the
+climate grid over the basin and over the land ring around it (100–1,000 km out). Main and branch
+are identical at step 1, before the basin changes class. At step 2 the basin goes from lake to
+88% ocean. Over the basin, air temperature rises from −4.4 to +9.5 °C and humidity from 3.2–3.6
+to 6.3–6.4 g/kg, so the ocean is the stronger moisture source, not a weaker one. The land ring
+gets drier all the same: its humidity falls from about 1.05 to 0.95 g/kg and its rain from 256
+to 244 mm at step 2. By step 50 the gap is 6 mm in D and nil in E.
+
+I haven't found the cause. I haven't looked at wind direction relative to the ring, the humidity
+sweeps' treatment of an ocean patch surrounded by land, or continentality. The ring could simply
+be upwind of the basin; it could also be an artifact of the 1,000 km ring being a poor proxy
+for downwind land. This is left open, and the PR doesn't claim a rainfall benefit.
+
+### Deviations from the preregistration
+
+- The rule changed after the first test run from "oceanic floor over 5 million km²" to "area over
+  8 million km²" (see the survey section), before any replay. The preregistration in the commit
+  that precedes these results states the final rule.
+- S branch's first runner script was stopped while it waited for memory and restarted with the
+  same command and a higher memory reservation (9 GB). It ran alone once it started.
+- The class-change threshold (200,000 km²) is not near any surveyed body except the target
+  basin, so prediction 5 cannot show that the hysteresis prevents flicker on a real save.
+- #757 (PR #761) changes the same lakes. Whichever of the two lands second reruns these numbers.
