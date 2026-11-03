@@ -280,7 +280,15 @@ discharge, channel-width growth, deposition, geology or lake silt.
   The prognostic solver integrates storage through each timestep, limits losses to available
   water, and books overflow above the rim or tier depth ceiling. Production uses one implicit
   full-step solve by default (`substeps=1`); tests can request explicit substeps for a finer
-  partition.
+  partition. Each slice settles lake transfers and merges before the next slice begins
+  (#768). A body receiving a late transfer, or replacing its children after a merge, restores
+  the losses already charged to its cells and re-solves the combined available water over
+  the same slice duration. Its new evaporation and sublimation replace the earlier charges;
+  external supply is added only once. These transfer passes advance no additional time,
+  but their receiving bodies still face the slice's full implicit loss balance. A bounded
+  pass count exposes unresolved transfers or topology rather than accepting a partial solve.
+  Promotion also requires enough stored volume to support a common surface at the saddle;
+  checking the floor cells alone can otherwise alternate between a merge and a split.
 - **Flow direction** (`_compute_flow_direction`): among each node's k nearest neighbors
   strictly below its own elevation (a downhill candidate), prefers whichever one already has
   the deepest established channel (`channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`),

@@ -12,6 +12,9 @@ records per step:
   sea-tier depth guard (`lakes.SEA_MAX_DEPTH_M`) holds the level;
 - normalized lake and land residuals, and step runtime.
 
+With `--audit-losses`, transient solve traces compare each wet final body's booked losses
+against evaporation and sublimation evaluated at its final level over the full step (#768).
+
 The summary gives the lag-1 autocorrelation of the step change in whole-world lake volume (about
 -1 is period-2 alternation), the mean absolute step change from step 3, and the largest target
 ratio between consecutive steps, all computed as #754 did. Nothing here changes the model, so a run
@@ -40,6 +43,93 @@ LARGEST_LAKES = 5
 
 def add_arguments(ap) -> None:
     ap.add_argument("--anchors", type=Path, help="JSON file containing anchor_points")
+    ap.add_argument("--audit-losses", action="store_true", help="Audit wet final bodies against full-step loss rates (#768)")
+
+
+def loss_demand(wet, area, evaporation, sublimation, years, boost):
+    """Independent open-water and ice-season demand at a supplied wet fraction."""
+    return np.array([
+        np.dot(area * wet, evaporation * (1.0 + boost * (1.0 - wet))),
+        np.dot(area * wet, sublimation),
+    ]) * years
+
+
+def audit_lake_losses(forest, elevation, years, climate, hyps, solved):
+    """Compare booked losses with independent final-level demands, excluding dry bodies.
+
+    A dry body may consume its entire supply while ending with zero wet area, so the
+    final-area equation is not an equality there. The audit is for the default single slice.
+    """
+    from app.hydroclimate import lakes
+
+    records = []
+    for body in lakes._active_bodies(
+        forest, elevation, solved.lake_depth, hyps,
+    ):
+        members = body.members
+        wet_members = members[solved.lake_depth[members] > 0.0]
+        if not len(wet_members):
+            continue
+        levels = hyps.level_from_depth(solved.lake_depth[wet_members], wet_members)
+        level = float(levels.max())
+        # For a partial cell d = relief * wet_fraction². Invert stored depth directly:
+        # reconstructing a km-scale level and subtracting the bed again loses relative
+        # precision for almost-dry cells, despite the underlying volume being accurate.
+        depth = solved.lake_depth[members]
+        relief = hyps.relief_m[members]
+        wet = np.where(
+            relief > 0.0,
+            np.sqrt(np.clip(np.divide(depth, relief, out=np.zeros_like(depth), where=relief > 0.0), 0.0, 1.0)),
+            (depth > 0.0).astype(float),
+        )
+        demand_args = (
+            hyps.area_m2[members], climate.evaporation_m_per_yr[members],
+            climate.sublimation_m_per_yr[members] if climate.sublimation_m_per_yr is not None else np.zeros(len(members)),
+            years, lakes.SHALLOW_EVAPORATION_BOOST,
+        )
+        expected_evap, expected_sub = loss_demand(wet, *demand_args)
+        booked_evap = float(solved.trace.evaporation_m3[members].sum())
+        booked_sub = float(solved.trace.liquid_sublimation_m3[members].sum())
+        # One rounding at the solve's absolute level, another when depth is inverted for
+        # this diagnostic. Show the demand interval over those two representable steps.
+        lower_level = np.nextafter(np.nextafter(level, -np.inf), -np.inf)
+        upper_level = np.nextafter(np.nextafter(level, np.inf), np.inf)
+        lower = loss_demand(hyps.wet_fraction(lower_level, members), *demand_args)
+        upper = loss_demand(hyps.wet_fraction(upper_level, members), *demand_args)
+        booked = np.array([booked_evap, booked_sub])
+        outside_interval = np.maximum(lower - booked, 0.0) + np.maximum(booked - upper, 0.0)
+        scale = max(expected_evap + expected_sub, 1.0)
+        records.append({
+            "lake_id": body.lake_id, "nodes": len(members), "level_m": level,
+            "level_spread_m": float(levels.max() - levels.min()),
+            "storage_km3": float(np.dot(solved.lake_depth[members], hyps.area_m2[members])) / M3_PER_KM3,
+            "member_nodes": members,
+            "expected_evaporation_km3": expected_evap / M3_PER_KM3,
+            "expected_sublimation_km3": expected_sub / M3_PER_KM3,
+            "booked_evaporation_km3": booked_evap / M3_PER_KM3,
+            "booked_sublimation_km3": booked_sub / M3_PER_KM3,
+            "normalized_loss_error": (abs(booked_evap - expected_evap) + abs(booked_sub - expected_sub)) / scale,
+            "normalized_error_outside_roundoff_interval": float(outside_interval.sum()) / scale,
+            "roundoff_interval_width_m3": float((upper - lower).sum()),
+        })
+    return records
+
+
+def summarize_loss_audit(records, anchor_nodes):
+    """Attach end-of-step anchor indices to loss rates captured before terrain changes."""
+    for record in records:
+        members = record.pop("member_nodes")
+        record["anchor_indices"] = [i for i, node in enumerate(anchor_nodes) if node in members]
+    return {
+        "worst_normalized_loss_error": max((r["normalized_loss_error"] for r in records), default=0.0),
+        "worst_normalized_error_outside_roundoff_interval": max(
+            (r["normalized_error_outside_roundoff_interval"] for r in records), default=0.0
+        ),
+        "worst_level_spread_m": max((r["level_spread_m"] for r in records), default=0.0),
+        "largest_bodies": sorted(records, key=lambda r: -r["storage_km3"])[:LARGEST_LAKES],
+        "worst_bodies": sorted(records, key=lambda r: -r["normalized_loss_error"])[:LARGEST_LAKES],
+        "anchor_bodies": [r for r in records if r["anchor_indices"]],
+    }
 
 
 def lake_record(members, hydro, areas, sea_guard_m) -> dict:
@@ -98,6 +188,20 @@ def main() -> None:
         if args.anchors is not None else np.zeros((0, 3))
     )
     result.update(steps=[], anchors=anchors.tolist())
+    captured = None
+    if args.audit_losses:
+        original_solve = lakes.solve_lakes_prognostic
+
+        def capture_solve(forest, elevation, previous, years, climate, hypsometry, **kwargs):
+            nonlocal captured
+            kwargs["diagnostic_trace"] = True
+            solved = original_solve(forest, elevation, previous, years, climate, hypsometry, **kwargs)
+            # Erosion updates terrain after hydrology. Evaluate now, before its shared
+            # elevation arrays can change, then attach geographic anchors after the step.
+            captured = audit_lake_losses(forest, elevation, years, climate, hypsometry, solved)
+            return solved
+
+        lakes.solve_lakes_prognostic = capture_solve
 
     def snapshot() -> dict:
         return {"elapsed_myr": world.elapsed_years / 1e6, "sea_level_m": world.sea_level_m}
@@ -152,6 +256,18 @@ def main() -> None:
             "normalized_lake_residual": abs(lake.residual_m3) / max(lake.external_supply_m3, 1.0),
             "normalized_land_residual": abs(land.residual_m3) / (land.rain_m3 + land.meltwater_m3),
         })
+        if captured is not None:
+            anchor_nodes = [int(np.argmin(np.linalg.norm(hydro.points - anchor, axis=1))) for anchor in anchors]
+            result["steps"][-1]["loss_audit"] = summarize_loss_audit(captured, anchor_nodes)
+        liquid_residual = (
+            lake.external_supply_m3 - lake.evaporation_m3 - lake.sublimation_m3
+            - lake.overflow_out_m3 - lake.storage_change_m3 - lake.freezing_m3 + lake.melting_m3
+        )
+        ice_residual = lake.freezing_m3 - lake.melting_m3 - lake.ice_storage_change_m3
+        result["steps"][-1].update(
+            normalized_liquid_residual=abs(liquid_residual) / max(lake.external_supply_m3, 1.0),
+            normalized_ice_residual=abs(ice_residual) / max(lake.freezing_m3 + lake.melting_m3, 1.0),
+        )
 
     def close_window(_steps: int) -> dict:
         result["summary"] = summarize(result["steps"])

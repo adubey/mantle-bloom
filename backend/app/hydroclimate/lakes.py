@@ -299,7 +299,21 @@ class LakeSolveTrace:
 
 def _active_bodies(forest, elevation, depth, hypsometry):
     """Return the current connected water bodies, using only current-step levels."""
-    return governing_bodies(forest, elevation, depth, hypsometry)
+    bodies = []
+    pending = governing_bodies(forest, elevation, depth, hypsometry)
+    while pending:
+        body = pending.pop()
+        if body.children:
+            # A floor can reach the pass while partly flooded margins still lack the
+            # volume supporting a common surface. Promoting it would lower that surface
+            # below the pass and alternate merge/split on every flush (#768).
+            stored = float(np.dot(depth[body.members], hypsometry.area_m2[body.members]))
+            saddle_storage = hypsometry.volume(body.min_depth, body.members)
+            if stored < saddle_storage - 1e-10 * max(saddle_storage, 1.0):
+                pending.extend(governing_bodies(body.children, elevation, depth, hypsometry))
+                continue
+        bodies.append(body)
+    return bodies
 
 
 def _ordered_spill_bodies(bodies, leaf_of_node, body_for_leaf, body_by_id, node_count):
@@ -455,14 +469,18 @@ class _PrognosticAccounting:
     sea_cap_body_ids: set[int] = field(default_factory=set)
     lake_cap_overflow_m3: float = 0.0
     sea_cap_overflow_m3: float = 0.0
-    # Surplus that reached a closed capped-sibling cycle in the step's last integration slice,
+    # Surplus that reached a closed capped-sibling cycle in the current integration slice,
     # by the leaf it would have been deferred to. Neither body can take it while both stay
     # active, so it waits for the final export instead of circulating through the flush passes
     # (#696). `_release_broken_cycles` returns it if either body stops being active.
     cycle_surplus: dict[int, _CycleSurplus] = field(default_factory=dict)
-    final_slice: bool = False
     pending_owner_handoffs: dict[int, set[int]] = field(default_factory=dict)
     completed_owner_handoffs: set[tuple[int, int]] = field(default_factory=set)
+    # Provisional losses for the current time slice. A late transfer or merger replaces
+    # these, rather than adding another full-duration charge (#768).
+    slice_years: float = 0.0
+    slice_evaporation: np.ndarray | None = None
+    slice_sublimation: np.ndarray | None = None
 
 
 def _new_prognostic_accounting(leaf_count: int, node_count: int, diagnostic_trace: bool):
@@ -685,22 +703,19 @@ def _trace_node_source(accounting, rates, climate, members, dt_step):
 
 
 def _book_body_losses(accounting, lost, members, level, dt_step, evaporation, sublimation, hypsometry):
-    """Book one body's integrated loss as open-water evaporation and ice-season sublimation,
-    split at its solved level (#757)."""
-    if lost <= 0.0:
-        return
-    if sublimation is None and accounting.trace_evaporation_by_node is None:
-        accounting.evaporation_total += lost
-        return
+    """Replace the body's provisional slice losses at its newly solved level (#768)."""
     evaporation_loss, sublimation_loss = _loss_by_node(
         lost, members, level, dt_step, evaporation, sublimation, hypsometry
     )
-    sublimated = float(sublimation_loss.sum())
-    accounting.sublimation_total += sublimated
-    accounting.evaporation_total += lost - sublimated
+    evaporation_delta = evaporation_loss - accounting.slice_evaporation[members]
+    sublimation_delta = sublimation_loss - accounting.slice_sublimation[members]
+    accounting.evaporation_total += float(evaporation_delta.sum())
+    accounting.sublimation_total += float(sublimation_delta.sum())
+    accounting.slice_evaporation[members] = evaporation_loss
+    accounting.slice_sublimation[members] = sublimation_loss
     if accounting.trace_evaporation_by_node is not None:
-        accounting.trace_evaporation_by_node[members] += evaporation_loss
-        accounting.trace_sublimation_by_node[members] += sublimation_loss
+        accounting.trace_evaporation_by_node[members] += evaporation_delta
+        accounting.trace_sublimation_by_node[members] += sublimation_delta
 
 
 def _integrate_body_volume(available, members, cap_level, dry_level, dt_step, evaporation, sublimation, hypsometry):
@@ -869,7 +884,10 @@ def _advance_prognostic_body(
                 accounting.external_supply_at_leaf[leaf_id] += (
                     external_rate * dt_step * float(rates[leaf.members].sum()) / total_rate
                 )
-    if input_volume <= 0.0 and not np.any(depth[members] > 0.0):
+    prior_loss = float(
+        accounting.slice_evaporation[members].sum() + accounting.slice_sublimation[members].sum()
+    )
+    if input_volume <= 0.0 and prior_loss <= 0.0 and not np.any(depth[members] > 0.0):
         body.current_water_elevation = hypsometry.dry_level(members)
         return
     stored = (
@@ -885,12 +903,15 @@ def _advance_prognostic_body(
     dry_level = hypsometry.dry_level(members)
     if body.drains_at_floor:
         cap_level = dry_level
-    available = stored + input_volume
+    # Restore the loss provisionally charged to this body's cells, including any children
+    # it superseded. Re-solve their combined budget over the same slice, without adding
+    # external supply again. Flush passes settle equations; they do not advance time (#768).
+    available = stored + input_volume + prior_loss
     _, lost_volume, overflow, new_level = _integrate_body_volume(
-        available, members, cap_level, dry_level, dt_step, evaporation, sublimation, hypsometry
+        available, members, cap_level, dry_level, accounting.slice_years, evaporation, sublimation, hypsometry
     )
     _book_body_losses(
-        accounting, lost_volume, members, new_level, dt_step, evaporation, sublimation, hypsometry
+        accounting, lost_volume, members, new_level, accounting.slice_years, evaporation, sublimation, hypsometry
     )
     _record_tier_cap_overflow(accounting, body, is_sea, overflow, tier_cap_limits_body)
     if len(members) == 1:
@@ -933,8 +954,7 @@ def _advance_prognostic_body(
                 # reach their saddle, the pair never merges, and deferring this would resend it
                 # on every flush pass until the pass limit (#696).
                 if (
-                    accounting.final_slice
-                    and receiver_is_capped
+                    receiver_is_capped
                     and _cap_is_artificial(route_source, prev_lake_depth, node_area_km2, hypsometry)
                     and _spills_back_to(receiver, route_source, leaf_of_node, body_for_leaf, node_count)
                 ):
@@ -1111,6 +1131,62 @@ def _export_final_surplus(
     accounting.cycle_surplus.clear()
 
 
+def _settle_prognostic_slice(
+    forest, depth, prev_lake_depth, dt, rates, climate, evaporation, sublimation,
+    hypsometry, is_ocean, accounting, leaves, leaf_of_node, parent_by_id, events, seen_events,
+):
+    """Settle one implicit time slice, replacing losses after transfers and topology changes."""
+    n = len(depth)
+    elevation = hypsometry.elevation
+    node_area_km2 = (4.0 * np.pi * PLANET_RADIUS_KM**2) / max(n, 1)
+    accounting.slice_years = dt
+    accounting.slice_evaporation = np.zeros(n)
+    accounting.slice_sublimation = np.zeros(n)
+    accounting.final_spilling_ids.clear()
+    accounting.pending_owner_handoffs.clear()
+    accounting.completed_owner_handoffs.clear()
+    routed_surplus_sources: set[int] = set()
+    refreshed: set[int] = set()
+    for pass_index in range(2 * max(1, len(leaves)) + 3):
+        dt_input = dt if pass_index == 0 else 0.0
+        bodies = _active_bodies(forest, elevation, depth, hypsometry)
+        body_by_id = {id(body): body for body in bodies}
+        refreshed.intersection_update(body_by_id)
+        body_for_leaf, body_leaf_ids = _body_leaf_mapping(bodies, leaf_of_node)
+        pending: dict[int, float] = {}
+        for leaf_id, volume in accounting.deferred.items():
+            receiver = body_for_leaf.get(leaf_id)
+            if receiver is not None:
+                pending[id(receiver)] = pending.get(id(receiver), 0.0) + volume
+        accounting.deferred = {}
+        ordered = _ordered_spill_bodies(bodies, leaf_of_node, body_for_leaf, body_by_id, n)
+        processed: set[int] = set()
+        for body in ordered:
+            if id(body) not in refreshed or pending.get(id(body), 0.0) > 0.0:
+                _advance_prognostic_body(
+                    body, dt_input, rates, climate, evaporation, sublimation, depth,
+                    prev_lake_depth, hypsometry, node_area_km2, n, is_ocean, accounting,
+                    leaves, body_leaf_ids, leaf_of_node, body_for_leaf, pending, processed,
+                )
+                refreshed.add(id(body))
+            processed.add(id(body))
+        next_bodies = _active_bodies(forest, elevation, depth, hypsometry)
+        _record_body_transitions(bodies, next_bodies, events, seen_events)
+        _release_broken_cycles(accounting, next_bodies)
+        changed = {id(body) for body in next_bodies} != set(body_by_id)
+        if not changed and not accounting.deferred and accounting.cycle_surplus:
+            _reroute_final_surplus(
+                accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth, routed_surplus_sources
+            )
+        if not changed and not accounting.deferred:
+            owners, _ = _body_leaf_mapping(next_bodies, leaf_of_node)
+            _export_final_surplus(
+                accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth, current_owners=owners
+            )
+            return
+    raise RuntimeError("Lake slice failed to settle transfers and topology within its pass bound")
+
+
 def solve_lakes_prognostic(
     forest: list[Lake],
     elevation: np.ndarray,
@@ -1172,51 +1248,11 @@ def solve_lakes_prognostic(
     events: list[LakeEvent] = []
     seen_events: set[tuple[int, str]] = set()
 
-    routed_surplus_sources: set[int] = set()
-    for substep in range(steps + 2 * max(1, len(leaves)) + 2):
-        dt_step = dt if substep < steps else 0.0
-        accounting.final_slice = substep + 1 >= steps
-        if dt_step > 0.0:
-            accounting.final_spilling_ids.clear()
-        bodies = _active_bodies(forest, elevation, depth, hypsometry)
-        body_by_id = {id(body): body for body in bodies}
-        body_for_leaf, body_leaf_ids = _body_leaf_mapping(bodies, leaf_of_node)
-        pending: dict[int, float] = {}
-        for leaf_id, volume in accounting.deferred.items():
-            receiver = body_for_leaf.get(leaf_id)
-            if receiver is not None:
-                pending[id(receiver)] = pending.get(id(receiver), 0.0) + volume
-        accounting.deferred = {}
-        # Hierarchy outlets select receivers; terrain flow_target is used later for exported
-        # discharge only. Sibling cycles defer return flow until the next integration slice,
-        # except a closed capped pair in the last slice, which holds it for the final export.
-        ordered_bodies = _ordered_spill_bodies(bodies, leaf_of_node, body_for_leaf, body_by_id, n)
-        processed: set[int] = set()
-        for body in ordered_bodies:
-            if dt_step <= 0.0 and pending.get(id(body), 0.0) <= 0.0:
-                processed.add(id(body))
-                continue
-            _advance_prognostic_body(
-                body, dt_step, rates, climate, evaporation, sublimation, depth, prev_lake_depth, hypsometry,
-                node_area_km2, n, is_ocean, accounting, leaves, body_leaf_ids,
-                leaf_of_node, body_for_leaf, pending, processed,
-            )
-            processed.add(id(body))
-
-        next_bodies = _active_bodies(forest, elevation, depth, hypsometry)
-        _record_body_transitions(body_by_id.values(), next_bodies, events, seen_events)
-        _release_broken_cycles(accounting, next_bodies)
-        if substep + 1 >= steps and not accounting.deferred and accounting.cycle_surplus:
-            _reroute_final_surplus(
-                accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth, routed_surplus_sources
-            )
-        if substep + 1 >= steps and not accounting.deferred:
-            break
-
-    current_owners, _ = _body_leaf_mapping(next_bodies, leaf_of_node)
-    _export_final_surplus(
-        accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth, current_owners=current_owners
-    )
+    for _ in range(steps):
+        _settle_prognostic_slice(
+            forest, depth, prev_lake_depth, dt, rates, climate, evaporation, sublimation,
+            hypsometry, is_ocean, accounting, leaves, leaf_of_node, parent_by_id, events, seen_events,
+        )
 
     lake_depth = np.zeros(n)
     lake_is_sea = np.zeros(n, dtype=bool)
