@@ -814,3 +814,67 @@ recycled water that is redistributed rather than multiplied, so G1b can't evalua
 - Each node's opening year starts in month 0, and pelagic cells take `f` 0.55.
 - The D and E trace arms were rerun after a script error ran them without their flags, as
   controls. Their first outputs are kept apart from the results.
+
+## Window re-baseline (#791)
+
+Preregistered before any scan run. [G1b](#g1b-result) ran on windows A, D and E at `0bda513d`.
+[#754](https://github.com/adubey/mantle-bloom/issues/754) traced D's and E's events to lake-ice
+sublimation charged outside the lake solver, and #757 and #758 have since merged. This rescan
+asks which target events exist on current source and are clean enough to test a land-water store.
+It selects windows only: no treatment arm runs, and G0's 12 river arms rerun once, at the final
+pin, before G1b.
+
+**Source.** `origin/main` at `3854792f`, which includes #757 and #758. Every scan runs on this
+commit. If `main` moves before the scan ends, the scan stays on `3854792f`; the final pin for G0
+and G1b is chosen later and needs its own G0 rerun if it differs.
+
+**Worlds.** The two #680 event worlds, by SHA-256: seed 910211954 at 220.4 Myr (`bd487409…`) and
+seed 317739385 at 200.8 Myr (`6c806f91…`), plus window A's checkpoint (`9882568e…`) replayed for
+0.8 Myr. Neither seed is in RFC 0015's held-out set (447276134, 628977350, 295569319), and RFC 0016
+hasn't named one. Adding a world is an owner decision, taken before the scan.
+
+**Scan.** `bin/debug/measure_lake_step_budget.py`, 100 kyr steps, ice-age cycle off, 5 Myr per
+world. The detector is #680's unchanged #588 rule: a matched component over 10,000 km² whose
+successive volume changes reverse sign, both above 50% of the prior volume. Results from the first
+0.4 Myr after load are excluded.
+
+**Candidates and ranking.** Qualifying reversals, each a four-step window from a checkpoint two
+steps before the reversal, as in the [earlier rescan](#window-rescan). Windows don't overlap. Rank by
+largest `|ΔV|`; the matched component is the target and its anchor is the wet node nearest its
+centroid.
+
+**Screens, applied in order to ranked candidates.** A candidate that fails one is recorded with the
+reason and the next is taken.
+
+1. **Reload.** A checkpoint saved from the source world reproduces the event's volumes exactly.
+2. **Frozen precipitation.** At most 10% across the window, over the catchment of every land node
+   whose `flow_target` path reaches the target. Same rule as RFC 0016's G0.
+3. **Routed supply.** Nonzero routed supply to the target in every step of the window. A
+   selection rule, approved by the owner in the earlier rescan.
+4. **Artifact screen (new).** The event must not be one the lake solver's accounting produces.
+   - The normalized liquid-ledger residual is at most 0.1% in every step.
+   - A knockout of lake-ice sublimation, as in #754's K-sub arm, rerun over the window, leaves the
+     event at no less than 50% of its `|ΔV|`. This is a driver patch on the replay, not a model
+     change. An event that disappears or shrinks below half without sublimation is recorded as a
+     sublimation artifact and excluded. The 50% limit is a design choice set before measurement,
+     not a literature value.
+5. **Basin independence (new).** The three windows' targets share no node set in any step of
+   their windows, and no two anchors are within 1,000 km. Both limits are design choices.
+
+**Selection.** The three highest-ranked candidates that pass every screen. Window A competes under
+the same screens and keeps no priority; if it passes, it is ranked with the rest. The owner
+approved A in the earlier rescan, and this sets that approval aside for the new pin, so the
+owner's review applies.
+
+**If fewer than three pass, report which failed which screen and stop.** No threshold is relaxed
+after measurement.
+
+**Report.** Reversal counts and comparable-body counts per world on current source, with the
+qualifying step ages (descriptive only: two worlds and one noise history can't separate a real
+change from chance); whether D's, E's and A's events survive #757 and #758; each selected window's
+checkpoint SHA-256, anchor file, target volumes and frozen share. Compact JSON is checked in. Raw
+scans, knockout runs and checkpoints stay in the private captures with a `SHA256SUMS` file.
+
+**What this can't show.** Selection ranks by `|ΔV|`, so the windows favour the largest swings, as
+before. Two worlds supply the candidates. Passing the artifact screen shows the event survives
+removing sublimation, not that supply or storage drives it.
