@@ -481,7 +481,7 @@ integration). So the limit is a fixed longest substep of 250 yr, not a per-body 
 measuring τ every step would cost probe marches and buy nothing, since the cap range it
 implies doesn't converge anyway. The 250 yr march settles in about 4 kyr (13–16 substeps)
 and holds the rest of the step; at 10 kyr each substep overshoots, the alternation never
-damps, and it marches the whole step (33–73 substeps).
+damps, and it marches the whole step (45–73 substeps).
 
 **Why 250 yr is short enough.** #741 showed the failure mode a longer substep allows: on
 seed 997271774 the equatorial plateau ice turns over in about 2 kyr, and a 10 kyr substep
