@@ -18,11 +18,7 @@ The scope is the annual-mean diagnostic water cycle used by erosion, hydrology, 
 
 ### A. Conservative two-dimensional column-water budget (recommended for diagnosis)
 
-Represent atmospheric water as column-integrated vapour, `W` in kg/m². Represent evaporation and precipitation as mass fluxes, `E` and `P` in kg/m²/s, and horizontal vapour transport as `F` in kg/(m·s). On the spherical climate grid, solve the finite-volume balance
-
-`d(A_i W_i)/dt = A_i(E_i - P_i) - net outward edge flux_i`,
-
-where `A_i` is the spherical area of cell `i`. Use wind to transport moisture, and remove water from the column through explicit precipitation sinks. Each flux crosses a shared cell edge once, so transport cancels exactly in the global sum. The recommended first implementation is a steady climatological solve: the temporary atmospheric inventory reaches a converged field on each climate update, so its net storage change is zero. Keep the inventory and iteration ledger for the solve; it need not become saved `World` state. A future prognostic atmosphere would need a separately justified physical time interval and save-compatibility plan.
+Represent moisture as the total water in an air column. On each climate update, calculate a steady balance: evaporation adds water, wind moves it between grid cells, and rain removes it. The same amount that leaves one cell enters the next, so transport cannot create or lose water overall. Repeat the calculation until each cell stops gaining or losing water. This is a numerical way to find a steady state, not another simulated day or year.
 
 Use a positive, bounded precipitation sink linked to column water, initially `P = W / τp`, and test a saturation-triggered or orographic enhancement only as a sink that removes available water. Wind convergence is already in the finite-volume flux divergence; do not add it a second time as unbudgeted rain. A source tag (ocean, lakes/rivers, vegetation) is useful for diagnostics, but total water—not each tag's separate transport—is the closure requirement.
 
