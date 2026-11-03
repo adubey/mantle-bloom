@@ -6,6 +6,27 @@
 
 ## Revision note
 
+- **2026-11-03 — proposed by the #765 PR after #741's drop-step ensembles and G1 (#766).**
+  - **Old:** D2 solved each body implicitly at the end of the step
+    (`V(d) = V_open + Δt · B(d)`), substepping only bodies slower than the step at τ/4
+    (τ from finite-difference perturbations of the root) and unstable branches at a quarter
+    of their growth time, with a sea-level bracket, membership re-solve loop and deflection
+    outer loop adopted as G0 decided.
+  - **Evidence:** G0 found the instability in the solve itself (all 39 single-input arms
+    fail; the march passes) and the owner directed the march; #741 showed the march's own
+    failure form (a 10 kyr substep flips the plateau body, 9 of 12 drop; 0 of 12 at a
+    1 kyr cap); G1 measured τ on the march (τ/4 = 125 yr everywhere, floor binds; no cap
+    10 kyr–250 yr converges), the 250 yr cost (0.32–0.51× the 10 kyr march per step,
+    settles ~4 kyr), and the tipping body-step (losses grow ~10 kyr, gains decay at
+    τ ≈ 750 yr). See [`analysis/issue741/`](../analysis/issue741/README.md),
+    [`analysis/issue766/`](../analysis/issue766/README.md), and
+    [`analysis/issue765/`](../analysis/issue765/README.md) for the 250 yr ensemble and
+    step-gap re-measurement.
+  - **New:** D2 marches each body in fixed 250 yr substeps with settle-and-hold, per-substep
+    fast inputs, and tipping-point logging; the sea-level bracket, membership loop and
+    deflection loop are dropped. Knobs and cost record the march. One acceptance change:
+    the sea-level residual criterion is removed with the loop it measured.
+  - **Impact table:** in the PR body.
 - **2026-10-31 — proposed by [PR #735](https://github.com/adubey/mantle-bloom/pull/735) after G0's drifting-noise runs on #575.** The owner raised G0's step-gap limit.
   - **Old criterion:** on G0's pass rule (saves with and without ice ages) and its falsification criterion, a step gap, |V(0.25 Myr steps) − V(1 Myr steps)| / V at the run's end, below 10%.
   - **New criterion:** the same step gap below 20%. The swing limit stays at 25%. "Step robustness" in the acceptance criteria stays at 10%.
@@ -424,81 +445,85 @@ each row.
   `hydrology.WATER_TO_ICE`), and routed by D8. Calved ice leaves for the ocean unrouted, as
   today.
 
-### D2. Ice flow and the end-of-step solve
+### D2. Ice flow and the end-of-step march
 
-**What the solve does.** Each ice body is solved implicitly. `_solve_plastic_body` finds the
-margin position `d` with `V(d) = V_open + Δt · B(d)`, where `B` is evaluated on the trial
-plastic surface (`_shape` calls `SurfaceClimate.rates` with the mean thickness). The plastic
-profile is the equilibrium shape of ice flow. The balance flux routed down that surface gives
-each cell's depth-averaged velocity and, on a thawed bed, a sliding speed
-(`ICE_SLIDING_FRACTION` = 0.7 of it; `_diagnose_flow`). Till rides the ice-surface flow
-(`hydrology._ice_surface_flow_target`). Under D1 these velocities become physical m/yr.
+**What the march does.** Each ice body evolves in physical-time substeps within the step,
+with the fast inputs recomputed between substeps; the endpoint solve survives only as a
+single substep solve. Each substep is an ordinary `step_ice` solve from the current ice, so
+body membership and yield stress always read the current ice. Between substeps the other
+fast inputs are recomputed from it: frictional heat (D1's lag, damped: the mean of the
+last two substeps' heat, which cancels the residual two-substep alternation), the snow
+switch (current ice cover), the mass-balance surface (on the load-equilibrium deflection
+of the current ice), and sea level (re-solved from the current ice debit, with the ocean
+mask). The plastic profile is still the equilibrium shape of ice flow. The balance flux
+routed down that surface gives each cell's depth-averaged velocity and, on a thawed bed, a
+sliding speed (`ICE_SLIDING_FRACTION` = 0.7 of it; `_diagnose_flow`). Till rides the
+ice-surface flow (`hydrology._ice_surface_flow_target`). Under D1 these velocities become
+physical m/yr.
 
-**What is lagged or ambiguous** (each is a G0 arm):
-- the snow switch from last step's ice (fixed by D1);
-- body membership and yield stress, from last step's ice (`reference_balance` and the
-  thawed-bed test at the opening thickness);
-- the root: `B(d)` can change sign more than once, and the bracket walk keeps "the root
-  nearest last step's extent". When the opening volume stops mattering (fast ice), either
-  branch can win, and the winner can flip between steps;
-- sea level, read by flotation, calving, eligibility and climate at the step's opening
-  value;
-- the mass-balance surface, which uses last step's isostatic deflection.
-  `erosion._apply_ice_load` already brings the bed into balance with the closing ice in the
-  same step;
-- frictional heat, from last step's yield stress and sliding speed (D1);
-- frozen river and lake ice, injected a step late (removed by D4, D5).
+**Settling and hold.** Substeps are 250 yr (below). After each pair of substeps, the march
+compares the means of the last two pairs; when they differ by less than 0.1% three times
+in a row, the body has settled and the rest of the step is held: it keeps the mean rates
+(melt, calving, ledger flows) of its last 6 substeps, and its ice doesn't change. The
+small net over the alternation shows up as the ledger residual, not as ice. A body that
+never settles marches the whole step. Every step logs substeps, marched years, held
+years, whether it settled, and the volume path.
 
-**Fixes, each adopted only if G0 shows it is needed:**
-- **Root choice.** Every step enumerates every sign change of the body's residual on
-  `[d_min, d_max]` and logs, per body, the number of stable roots (where `B_V` decreases with
-  `V`) and which one was kept. If G0 shows root choice causes the swings, the rule becomes
-  the fixed rule that passed (largest stable root, or smallest), and every case with more than
-  one stable root is logged.
-- **Membership and yield stress** are re-evaluated at the solved thickness and re-solved, at
-  most 5 times; a body that hasn't converged keeps its last iterate and is logged.
-- **Sea level** becomes an outer unknown. Bracket `g(h) = h − SL(V_trapped(h)) = 0` with
-  Brent's method, to 1 m tolerance and at most 8 evaluations. `V_trapped(h)` is D6's
-  above-flotation debit after the ice solve at `h`.
-  - At each trial `h`, `is_ocean` is recomputed from the connected-ocean mask, so ice can
-    ground on newly exposed shelf within the step: that is the main positive feedback. The
-    flotation, eligibility (`eligible`) and membership (`positive`) masks follow it.
-  - Only bodies that are marine at some `h` in the bracket are re-solved at each trial; the
-    rest keep their solution. G1 counts bodies that change marine status within the bracket.
-    Their climate's relief term stays at the step's value.
-  - Beds: flotation and the thickness solve use the unloaded bed, elevation − deflection, as
-    `is_grounded` does today. Eustasy's hypsometry and D6's water depth use the deflected
-    elevation it already integrates.
-  - The feedback is positive (lower sea level grounds more ice), so convergence comes from
-    the bracket, not from fixed-point iteration. A bracket that can't be found (no sign
-    change within ±500 m) is logged and the step falls back to the opening sea level.
-  - **Discontinuities.** As `h` crosses a sill or a node's threshold, the connected-ocean,
-    flotation, eligibility and membership masks change, and `g(h)` can jump, so a sign change
-    need not hold a zero. The solve therefore checks water, not bracket width. Its residual is
-    the water-volume imbalance `r(h) = C(h) − (V_total − V_trapped(h))`, expressed as metres
-    of sea level over the ocean area.
-    - Converged: `|r|` ≤ 1 m at the final `h`.
-    - Otherwise the final bracket spans an active-set transition: the masks differ between
-      its two ends. The solve evaluates `r` on both sides, keeps the side with the smaller
-      `|r|`, and logs the step, the masks that changed, and both residuals.
-    - G1 reports the distribution of `|r|`, the share of transition steps, and the largest
-      transition residual, including steps where body membership changed.
-- **Deflection** for the mass-balance surface is updated inside the same outer loop.
+**Substep limit: longest 250 yr, fixed.** G1 (#766) measured the response time τ per body
+on the march: the e-folding time of a ±5% or ±10% opening-ice perturbation, marched at
+125 yr substeps. Volume-weighted τ (p5 / median / p95) is 250 yr / 438 yr / over 10 kyr
+on seed 997271774, 688 yr / 1.0 kyr / 1.06 kyr on seed 649658380, and 500 yr / over 10 kyr
+/ over 10 kyr on the ice-age save. D2's old τ/4 rule gives 125 yr on every save, below
+the prototype's 250 yr floor, which binds; and no longest-substep cap from 10 kyr down to
+250 yr passes the 1% convergence check on any save (the failing bodies are small: 0.7–
+5.9% of volume at 500 → 250 yr; which state each settles in is what moves, not the
+integration). So the limit is a fixed longest substep of 250 yr, not a per-body τ/4:
+measuring τ every step would cost probe marches and buy nothing, since the cap range it
+implies doesn't converge anyway. The 250 yr march settles in about 4 kyr (13–16 substeps)
+and holds the rest of the step; at 10 kyr each substep overshoots, the alternation never
+damps, and it marches the whole step (45–73 substeps).
 
-**Bodies slower than the step.** A body's response time is `τ = 1 / (−∂B_V/∂V)` at its root,
-measured by finite difference: re-solve with `V_open` perturbed by ±5% and ±10%, with the
-root tolerance tightened tenfold for the measurement, and report both. (For a fast body,
-`∂V_close/∂V_open = τ / (τ + Δt)`, about 0.09 at τ = 0.1 Δt, so smaller perturbations fall
-within today's `ICE_ROOT_TOLERANCE_M`.) `H/|b|` is reported alongside.
-- A body with τ > 0.1 Δt is integrated in substeps of at most τ/4.
-- A body on an unstable branch (`∂B_V/∂V ≥ 0`) has no decay time; it is integrated in
-  substeps of a quarter of its growth time `1 / (∂B_V/∂V)`, with a floor of Δt/100.
-- During a body's substeps, the other bodies stay at their endpoints, and sea level and
-  deflection are updated each substep if G0 kept their coupling.
+**Why 250 yr is short enough.** #741 showed the failure mode a longer substep allows: on
+seed 997271774 the equatorial plateau ice turns over in about 2 kyr, and a 10 kyr substep
+moves about five times the body's volume through it (46 M km³ accumulation and 53 melt),
+flipping the body from its high state to a low one it then keeps. At a 1 kyr cap none of
+12 opening-ice perturbations drops on either drop step (against 9 of 12 at 10 kyr);
+re-measured at 250 yr in #765: 0 of 12 on both drop steps (worst substep moves 0.7%
+and 0.6%; draw 2's members still split 12.2–13.1 M km³, the bistability without the
+drop). 250 yr is an order below the plateau's 2 kyr
+turnover, at or below every save's p5 τ (250–688 yr), and an order below the unstable
+branch's ~10 kyr growth time (below).
 
-**Timestep robustness:** rates are annual, and the endpoint shouldn't depend on Δt for fast
-bodies. G0's drifting-noise runs show step gaps of up to 17% on the fast-ice save, unexplained so
-far. Substepped bodies integrate along their path.
+**Unstable branches resolve by integration.** A body whose perturbation gap grows instead
+of decaying has no τ. G1 found one: the plateau body on the 97.4 Myr drop step, where a
+5–10% loss ends the 10 kyr window at 1.17–2.60 times its opening value (the tipping point
+#741 found; gains on the same step decay with τ ≈ 750 yr). The old quarter-growth-time
+substepping is dropped: the 250 yr cap is already far below the ~10 kyr growth time, so
+the march integrates through the instability instead of stepping over it. Ensembles
+straddling the tipping point legitimately split between the two states (draw 2: about
+12.3 vs 13.2 M km³ at the 1 kyr cap); the split is reported, not forced. Bodies with a
+growing gap are logged with the growth factor, not a τ.
+
+**What the march replaces.** The whole-step endpoint solve (`V(d) = V_open + Δt · B(d)`)
+is gone; the root rule ("nearest last extent") stays, but each substep starts 250 yr
+back, within the fastest passing response time (p5 τ is 250–688 yr), so the branch can't
+flip between substeps except across a logged tipping point. Re-evaluating
+membership and yield stress to convergence (≤ 5 iterations), the sea-level bracket
+(Brent, 1 m, ≤ 8 evaluations), and the deflection outer loop are all dropped: each
+substep reads the current ice, debit, deflection and masks directly. G1 marks their
+reports not applicable to the march.
+
+**Timestep robustness under the limit.** Rates are annual, and a fast body now integrates
+along its path instead of jumping to an endpoint. Re-measured under the 250 yr cap in
+#765 (draw 1, seed 997271774): the 0.25 vs 1 Myr end-volume gap is 9.71%
+(13.57 vs 12.26 M km³), against 17.0% as-run — the cap more than halves it, bringing
+this draw under the 10% bar (acceptance is on held-out saves). Max post-spin-up swings
+are 2.1% and 0.4%. G1's cost runs give a first read: without ice ages the 250 yr march
+ends within 3.6% of the 10 kyr march's volume (13.36 vs 12.90, and 2.11 vs 2.11 M km³),
+and the largest step change after 2 Myr is 2.9–3.2%, against 3.1–5.9%. The ice-age save
+still runs away, only later (50 M km³ at 2 Myr, then +667% in one step): the limit
+delays the runaway; it doesn't stop it. That is G4's and the ice-age forcing's problem,
+not the substep's.
 
 ### D3. Glacial erosion
 
@@ -911,7 +936,10 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
   - **Frictional heat** on warm-based ice is worth 52–98% of basal melt.
   - **Not applicable to the march:** the sea-level bracket's `|r|`, transition steps and
     marine-status changes, root enumeration, and membership iterations.
-  - The march's substep limit goes to D2's revision (#765). See
+  - The march's substep limit goes to D2's revision (#765). Seed 997271774's 20.08%
+    meets the "G1 fails broadly" falsification criterion by 0.08 points, all of it the
+    single tipping body-step; the criterion's prescribed remedy — substepping as the
+    default with the endpoint demoted — is what the #765 revision adopts. See
     [`analysis/issue766/`](../analysis/issue766/README.md).
 - **G2: melt factors and snow phase.** Source and verify `DDF_ice`. Run sensitivity of ice
   area and volume to `DDF_snow` ∈ {3, 4, 5}, `DDF_ice` across its sourced range and
@@ -999,31 +1027,37 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
 | `F_w` (ocean heat flux under sea ice) | 2 W m⁻² | [[Maykut & Untersteiner, 1971]](#ref-maykut1971) (1.3–2.7) | G5 sensitivity |
 | `T_si`, `A` over sea ice | Land construct at sea level; maritime amplitude | Design choice (proxies) | G5 |
 | Polar Sea Ice class threshold | `f_ice` ≥ 0.5 | Design choice | G5 |
-| Endpoint threshold τ / Δt | 0.1 | Design choice | Owner may revise after G1 |
-| τ perturbations | ±5%, ±10%, root tolerance ÷ 10 | Design choice | G1 |
-| Unstable-branch substep | ¼ growth time, floor Δt/100 | Design choice | G1 |
-| Membership iterations | ≤ 5 | Design choice | G1 |
-| Sea-level bracket | 1 m tolerance, ≤ 8 evaluations, ±500 m | Design choice | G1 cost report |
+| Longest substep | 250 yr, fixed (shortest = longest) | G1 #766: τ/4 gives 125 yr on every save, below the prototype's 250 yr floor, which binds; no cap 10 kyr–250 yr converges | Fixed; re-measure only if a prototype runs below the 250 yr floor |
+| τ probe (diagnostic) | ±5%, ±10%, e-folding at 125 yr substeps | G1 #766 | None; the march doesn't use τ |
+| Tipping-point log | Growth factor of a growing gap, no τ | G1 #766 | None |
+| Settling tolerance | 0.1% between pair-means, 3 in a row | m3 #554; G1 cost runs settle in ~4 kyr | Sensitivity only if steps stop settling |
+| Hold window | Mean rates of last 6 substeps | m3 #554 | None |
+| Substep damping | Lagged inputs read mean of last two substeps | m3 #554 | None |
+| Sea-level bracket, membership iterations, endpoint threshold | Dropped: each substep reads the current ice, debit, deflection and masks | G1 marks them not applicable to the march | None |
 | `GLACIER_MAX_DEPTH_M` | 5,000 m, unchanged | Existing guard | Report how often it binds |
 
 ### Cost and saves
 
 - **Runtime.** The ice solve is about 9% of step time today (#353).
-  - A full `step_ice` per outer iteration would cost ~9% each, so the sea-level loop
-    re-solves only bodies that are marine somewhere in the bracket (D2), and runs at all only
-    if G0 adopts it.
-  - The eustasy bisection (`eustasy._bisect_sea_level`, up to 80 iterations, each rebuilding
-    the connected-ocean mask) runs once per outer evaluation.
-  - Root enumeration scans each body's `[d_min, d_max]` instead of walking out from last
-    step's extent.
-  - G1 reports the actual counts and costs. Substepped bodies multiply their own cost.
+  - The march runs ~13–16 substeps per step (G1 cost runs: 13.0–15.5 at the 250 yr cap,
+    settling in ~4 kyr then holding), each a full `step_ice` solve plus a sea-level
+    re-solve from the current debit (connected-ocean mask rebuild) and a deflection update.
+    Root enumeration stays a diagnostic flag, not part of the production march.
+  - Measured at density 4, medians over 40 steps: 13.2–22.5 s per step at the 250 yr cap,
+    0.32–0.51× the 10 kyr march per step (30.9–65.7 s), which never settles and marches the
+    whole step (33–73 substeps). Peak RSS 1.0–1.6 GB.
+  - Against `origin/main` the +15% target is assessed by the D1–D2 implementation's replay:
+    ~14 substep solves per step replace one whole-step solve. If the implementation can't
+    meet it, the owner decides between the budget and the fix.
   - D6's sea ice, D7 and D8's routing are closed-form or one pass per cell, plus a priority
     flood of φ per ice body.
-  - If G1 finds more than 1% of lake volume under new ice during D4's one-step lag, the lake
-    hierarchy is rebuilt after the solve, adding a second `build_lake_hierarchy` per step;
-    G1 reports its cost.
-  - Target: ≤ +15% median step time at density 4. If G1 shows the adopted fixes can't meet
-    it, the owner decides between the budget and the fix.
+  - G1 found a median of 20% of lake volume under closing glacier ice on seed 997271774
+    (max 83%, counting water under any ice, so an upper bound on D4's lag) and 5.8% on the
+    ice-age save: two saves are likely past the 1% trigger for rebuilding the lake
+    hierarchy after the solve, adding a second `build_lake_hierarchy` per step. Its cost is
+    measured by the D1–D2 implementation.
+  - Target: ≤ +15% median step time at density 4. If the implementation shows the march
+    can't meet it, the owner decides between the budget and the fix.
 - **Saves.** No new persisted state. `glacier_depth` has always been metres of ice, so old
   saves' ice loads as it is and re-balances under physical rates on its first steps (#368
   shows it moves within 1–4 Myr). Frictional melt reads the hydrology cache's sliding speed
@@ -1096,9 +1130,11 @@ withdrawal can be handled part by part.
   - `warm_based` and `yield_stress_pa` read one thermal state from the full basal balance,
     with last step's frictional heat, each at its own thickness (D1);
   - `SurfaceClimate` takes `(1 − w) P`, so the lake's share isn't counted twice;
-  - `_solve_plastic_body`: root enumeration and logging; the root rule as G0 decides;
-  - `step_ice`: the sea-ice cap block removed; membership, sea level and deflection updates as
-    G0 decides; per-body substepping for slow and unstable bodies (new); last step's frictional
+  - `_solve_plastic_body`: the per-substep solve keeps today's extent walk and root rule;
+    full root enumeration and logging stay a diagnostic flag;
+  - `step_ice`: the sea-ice cap block removed; the march driver (new) evolves each body in
+    fixed 250 yr substeps with settling detection and hold, recomputing frictional heat
+    (damped), snow cover, deflection and sea level between substeps; last step's frictional
     heat (yield stress × sliding speed) as an input;
   - `IceLedger`: `frozen_river_ice_m3`, `frozen_river_capped_m3` and `frozen_lake_m3` deleted;
     lake-cap hand-off and frictional-melt terms (new).
@@ -1155,11 +1191,14 @@ withdrawal can be handled part by part.
 
 ## Assumptions and uncertainty
 
-- **Endpoint ice.** The premise that most ice volume balances within a step holds on one save
-  and is doubtful on the other (`H/|b|` ≈ 10 and 110 kyr). G1 measures the response time from
-  the solve itself.
-- **The swing's cause** is unknown; G0's arms cover the inputs that lag and the root choice,
-  but not every possibility.
+- **March, not endpoint ice.** The premise that most ice volume balances within a step is
+  replaced by the march: bodies integrate toward equilibrium in 250 yr substeps whether or
+  not they would balance in a step. G1 measured τ on the march itself (volume-weighted
+  medians 0.4–1.0 kyr without ice ages, over 10 kyr on the runaway ice-age save).
+- **The swing's cause** is established: G0's arms found the instability in the solve itself,
+  and #741 showed its form on the march — a substep far longer than the ice's turnover
+  (≈ 2 kyr on the plateau body) overshoots and flips a bistable body to the state it then
+  keeps. The 250 yr cap keeps every substep at or below the fastest measured τ.
 - **Climate doesn't see the ice:** no ice albedo, no ice-surface orography in the climate, no
   sea-ice albedo, and no change to the ocean temperature under sea ice. Those are real
   feedbacks this RFC leaves out; with them, the coupling problem would grow.
@@ -1222,9 +1261,9 @@ The thresholds below were confirmed by the project owner on 2026-10-23.
   visible river networks sourced at ice margins is reported against `origin/main`
   (G6 informs the report). Bare-ground snowmelt is reported separately.
 - [ ] **Sea level:** unit tests show floating ice, and ice grounded exactly at flotation,
-  leave sea level unchanged; G4's difference is recorded. If D2's sea-level loop is adopted,
-  on each held-out save the water residual `|r|` is ≤ 1 m of sea level on at least 99% of
-  steps, and ≤ 10 m on every active-set transition step.
+  leave sea level unchanged; G4's difference is recorded. D2's sea-level loop was dropped
+  in the #765 revision: sea level is re-solved from the current ice debit between substeps,
+  exact each time, so no residual criterion applies.
 - [ ] **Sea ice:** no ocean cell carries floating `glacier_depth` (every ice-bearing ocean
   cell is grounded by `is_grounded`); G5's extents recorded and its outcome met.
 - [ ] **Maps:** unit tests show perennial ice drawn on land, grounded marine, lake and sea
