@@ -109,7 +109,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from . import cratons, crust_transfer, lithosphere, orogeny
+from . import cratons, crust_transfer, lithosphere, mantle, orogeny
 from . import plates as plates_mod
 from .hydroclimate import biomes, climate, hydrology
 from .elevation_lines import PLANET_RADIUS_KM, line_spacing_rad
@@ -118,14 +118,13 @@ from .world import World
 
 @dataclass(frozen=True)
 class Stat4:
-    """A min/max/mean/std-dev quadruple for one quantity's spatial distribution over the
-    current world (elevation, ocean depth, land/air/ocean temperature, precipitation, Hc/Hm)
-    -- the same grouping the frontend's own `StatGroup` (see StatsModal.tsx) plots as one
-    avg/min/max graph plus a std-dev band, rather than four separately-named numbers. Replaces
-    what used to be four parallel tuple-unpacked locals per quantity here, and `to_dict` below
-    replaces the four individually-spelled keys each quantity contributed to `compute_stats`'
-    returned dict -- the dict's actual key names (and thus the frontend/save-file contract)
-    are unchanged."""
+    """A min/max/mean/std-dev quadruple for a quantity's spatial or per-plate distribution
+    over the current world (elevation, ocean depth, land/air/ocean temperature, precipitation,
+    Hc/Hm, plate speed) -- the same grouping the frontend's own `StatGroup` (see StatsModal.tsx)
+    plots as one avg/min/max graph plus a std-dev band, rather than four separately-named
+    numbers. Replaces what used to be four parallel tuple-unpacked locals per quantity here,
+    and `to_dict` below replaces the four individually-spelled keys each quantity contributed
+    to `compute_stats`' returned dict."""
 
     min: float | None
     max: float | None
@@ -301,6 +300,11 @@ def compute_stats(world: World) -> dict:
     hm = np.concatenate([p.collect("mantle_lithosphere_thickness_m") for p in world.plates]) if world.plates else np.empty(0)
     hc_stats = Stat4.of(hc)
     hm_stats = Stat4.of(hm)
+    plate_speed_cm_per_yr = np.asarray([
+        mantle.rad_per_yr_to_cm_per_yr(float(np.linalg.norm(plate.omega)))
+        for plate in world.plates
+    ])
+    plate_speed_stats = Stat4.of(plate_speed_cm_per_yr)
     fields = climate.compute_climate_cached(world)
     area_weights = _spherical_area_weights(fields.lat_deg, fields.elevation_m.shape[1])
     is_ocean, is_land = _reconcile_land_ocean(fields, world.sea_level_m)
@@ -357,6 +361,7 @@ def compute_stats(world: World) -> dict:
         **hm_stats.to_dict("hm", "_m"),
         "elapsed_years": world.elapsed_years,
         "plate_count": len(world.plates),
+        **plate_speed_stats.to_dict("plate_speed", "_cm_per_yr"),
         "elevation_point_count": elevation_point_count,
         "sea_level_m": world.sea_level_m,
         "total_land_area_km2": land_area_m2 / 1.0e6,
