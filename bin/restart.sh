@@ -44,6 +44,15 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Both modes need the frontend's node_modules (the production build below, or
+# the Vite dev server with --dev). setup.sh leaves
+# node_modules/.package-lock.json as its install marker; without it the build
+# fails with cryptic tsc TS2688 errors about missing type packages (#775).
+if [ ! -f frontend/node_modules/.package-lock.json ]; then
+  echo "Frontend dependencies are missing -- run ./bin/setup.sh first." >&2
+  exit 1
+fi
+
 "$SCRIPT_DIR/stop.sh" --port "$port" --frontend-port "$frontend_port"
 if [ "$stay_awake" = true ]; then
   CAFFEINATE=caffeinate
