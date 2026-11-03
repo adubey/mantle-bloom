@@ -863,7 +863,9 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
     a held-out failure of that kind goes to the owner, not to a rerun. Draw 1 on seed 997271774
     ends on a 19.2% drop at 10 Myr; extended to 14 Myr, the ice stays lower, the swing stays
     19.2% and the step gap is 13.4%. The drops under smooth noise are unexplained. See
-    [`analysis/issue575/`](../analysis/issue575/README.md).
+    [`analysis/issue575/`](../analysis/issue575/README.md). #741 later traced them to the
+    march's 10 kyr substeps on an equatorial plateau body: capped at 1 kyr, none of 12
+    perturbed runs drops on either draw tested ([`analysis/issue741/`](../analysis/issue741/README.md)).
   - The diagnosed sliding speeds aren't physical: the fastest thin margin nodes slide ~7 km/yr.
   - D2's revision (a march, possibly with shallow-ice flow) and the climate's per-step noise
     go to the owner and `rfc-authoring`.
@@ -880,6 +882,37 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
   substepped; report their share and cost. Seed 649658380's `H/|b|` of ≈ 110 kyr suggests it
   may fail there (see Falsification), though frozen river ice, which D5 removes, feeds much
   of that ice.
+
+  **Result (2026-11-02, #766): run on the march, arm (m3), by the owner's decision; the
+  endpoint solve isn't measured.** τ is the e-folding time of a ±5% or ±10% opening-ice
+  perturbation, marched at 125 yr substeps; four steps per diagnosis save.
+  - **Pass rule:** seed 649658380 passes (no volume over 0.1 Δt; volume-weighted median τ
+    1.0 kyr). Seed 997271774 meets the falsification criterion by 0.08 points (20.08% of volume),
+    all of it one body on one step: the equatorial plateau on the 97.4 Myr drop step, where a
+    loss of ice grows instead of decaying (#741). Its τ on the other steps is 375–438 yr, and
+    the save's median is 438 yr. The ice-age save meets it too (57%): its runaway sheets don't
+    decay within 10 kyr.
+  - **Substep limit:** τ/4 is under 250 yr on every save, so the prototype's 250 yr floor
+    binds.
+  - **Convergence (1% between successive caps from 10 kyr to 250 yr):** no cap passes on any
+    save. The failing bodies are small: they hold 0.5–14% of volume at 10 kyr → 5 kyr, and
+    0.7–5.9% at 500 → 250 yr.
+  - **Cost:** at a 250 yr longest substep, the march settles on 119 of 120 steps and holds
+    for the rest of the step. At 10 kyr it settles on 35 of 120, oscillating instead. Median
+    step time is 0.32–0.51× the 10 kyr march's, and substeps per step 13–15.5 against
+    45.5–72.5. Without ice ages the ice tracks the 10 kyr run (end volume within 3.6%), and the
+    largest step change after 2 Myr is 2.9% and 3.2%, against 3.1% and 5.9%. The ice-age save
+    still runs away, only later: the 10 kyr run goes from 1.9 to 802 M km³ on its first step,
+    the 250 yr run reaches 50 M km³ at 2 Myr and then jumps 667% in one step.
+  - **Lake water under visible closing ice:** a median of 20% of lake volume on seed
+    997271774, 5.8% on the ice-age save and 0.1% on seed 649658380. This counts water under any
+    ice, not only new ice, so it bounds D4's lag from above. Two saves are likely past the 1%
+    trigger for rebuilding the lake hierarchy after the solve.
+  - **Frictional heat** on warm-based ice is worth 52–98% of basal melt.
+  - **Not applicable to the march:** the sea-level bracket's `|r|`, transition steps and
+    marine-status changes, root enumeration, and membership iterations.
+  - The march's substep limit goes to D2's revision (#765). See
+    [`analysis/issue766/`](../analysis/issue766/README.md).
 - **G2: melt factors and snow phase.** Source and verify `DDF_ice`. Run sensitivity of ice
   area and volume to `DDF_snow` ∈ {3, 4, 5}, `DDF_ice` across its sourced range and
   `T_rs` ∈ {0, 1, 2} °C on the diagnosis set. *Outcome:* fix the starting values. A knob whose
