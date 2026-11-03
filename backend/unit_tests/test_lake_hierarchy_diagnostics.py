@@ -85,7 +85,7 @@ def test_build_report_json_serializable_and_formats(capsys):
 
 
 def test_build_report_handles_a_world_never_stepped():
-    world = generate_world(seed=7, num_plates=6)
+    world = generate_world(seed=7, num_plates=6, cratons_first=False)
     report = build_report(world)
     assert report["have_hydrology_snapshot"] is False
     assert report["num_roots"] == 0

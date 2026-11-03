@@ -93,7 +93,10 @@ def test_main_round_trips_a_saved_file(tmp_path, fresh_world, capsys):
     assert parsed["seed"] == 11
 
 
-def test_main_generates_a_fresh_world_when_no_save_is_given(capsys):
+def test_main_generates_a_fresh_world_when_no_save_is_given(capsys, monkeypatch):
+    from app import continent_layout
+
+    monkeypatch.setattr(continent_layout, "CRATONS_FIRST_DEFAULT", False)
     assert main(["--seed", "99", "--node-density", "1", "--years", "200000"]) == 0
     assert "seed:          99" in capsys.readouterr().out
 

@@ -7,7 +7,7 @@ from app.elevation_lines import CRUST_TYPE_INHERIT, CRUST_TYPE_OCEANIC, line_spa
 from app.lithosphere_plate import generate_plates
 from app.sparse_quad_patch import PlateWithSparseQuadPatch
 
-_GEN_KWARGS = dict(seed=7, num_plates=12, continental_fraction=0.5, land_fraction=0.2, node_density=1.0)
+_GEN_KWARGS = dict(seed=7, num_plates=12, continental_fraction=0.5, land_fraction=0.2, node_density=1.0, cratons_first=False)
 
 
 def _node_arrays(plates):
@@ -119,7 +119,7 @@ def test_bathymetry_shaping_keeps_elevation_consistent_with_isostasy():
 def test_shape_initial_bathymetry_no_op_on_single_crust_world():
     """A world with no continents has neither margins nor drowned continental crust -- must
     not raise or change anything."""
-    plates = generate_plates(seed=3, num_plates=6, continental_fraction=0.0, node_density=0.5)
+    plates = generate_plates(seed=3, num_plates=6, continental_fraction=0.0, node_density=0.5, cratons_first=False)
     before = np.concatenate([np.asarray(p.collect("elevation"), dtype=float) for p in plates])
     bathymetry.shape_initial_bathymetry(plates)
     after = np.concatenate([np.asarray(p.collect("elevation"), dtype=float) for p in plates])

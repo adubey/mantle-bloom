@@ -221,19 +221,14 @@ generation cost -- several times slower per step -- which the UI surfaces as a s
 
 ### Cratons-first layout (`continent_layout.py`, `plate_partition.py`)
 
-This option starts by placing ancient continental cores, then builds plate boundaries and
-younger crust around them. A **craton** is a long-lived, strong part of a continent's deep
-foundation. The option is experimental and off by default.
-
-Behind a flag, a random world (no sketch, no premade world) is laid out cratons first instead
-([RFC 0009](../../rfc/0009-craton-mosaic.md), #462). It is off by default
-(`continent_layout.CRATONS_FIRST_DEFAULT = False`) until the RFC's gate G3 decides whether it
-replaces the tiling above; `generate_plates(..., cratons_first=True)` or
-`world.generate_world(..., cratons_first=True)` turns it on. The Generate World dialog's
-Random tab enables it by default (Advanced settings is the only place to turn it off),
-and `POST /worlds/{world_id}/generate` accepts the `cratons_first` field. Sketch and
-premade worlds always keep plates first, since their geography comes from a drawing or
-from data.
+Random worlds start by placing ancient continental cores, then build continents around them
+and place plate boundaries. A **craton** is a long-lived, strong part of a continent's deep
+foundation. This is the default ([RFC 0009](../../rfc/0009-craton-mosaic.md), #462;
+`continent_layout.CRATONS_FIRST_DEFAULT = True`). Pass `cratons_first=False` to
+`generate_plates`, `world.generate_world`, or `POST /worlds/{world_id}/generate` to select
+the plate-first layout. The Generate World dialog exposes this choice in Advanced settings.
+Sketch and premade worlds keep plates first, since their geography comes from a drawing or
+data.
 
 `lithosphere_plate.cratons_first_layout` builds the layout before any plate exists, on a
 whole-sphere cell lattice at the world's node spacing (`layout_lattice.lattice`). Steps 1-3

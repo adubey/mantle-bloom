@@ -7,7 +7,7 @@ from app import world as world_mod
 
 
 def test_a_column_left_below_its_craton_is_booked_to_audit_clipped_not_a_mechanism(monkeypatch):
-    world = world_mod.generate_world(5, num_plates=4, node_density=0.1)
+    world = world_mod.generate_world(5, num_plates=4, node_density=0.1, cratons_first=False)
     world.simulate_climate_biomes = False
     plate = max(world.plates, key=lambda p: cratons.plate_volume_m3(world, p))
     cell = int(np.argmax(plate.collect("craton_crust_m")))

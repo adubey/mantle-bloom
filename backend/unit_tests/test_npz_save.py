@@ -86,7 +86,7 @@ def test_post_load_step_lands_on_identical_state():
 
 
 def test_fresh_world_keeps_the_empty_cache_signal():
-    world = generate_world(seed=3, num_plates=2, node_density=0.5)
+    world = generate_world(seed=3, num_plates=2, node_density=0.5, cratons_first=False)
 
     loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
 
@@ -424,7 +424,7 @@ def test_compact_profile_step_lands_within_tolerance():
     # ~5x the land-fraction and ~4x the sea-level divergence measured on the reference
     # world (seed 42, density 1.0, 1 Myr + 100 kyr: 2.1e-4, 0.26 m) -- a tripwire for
     # the envelope, not an exactness proof (that is H9, on the default/exact profiles).
-    world = generate_world(seed=42, node_density=1.0)
+    world = generate_world(seed=42, node_density=1.0, cratons_first=False)
     step_world(world, 1_000_000)
     loaded = persistence.load_world_bytes(persistence.save_compact_bytes(world))
     step_world(world, 100_000)

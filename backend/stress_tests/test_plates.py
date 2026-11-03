@@ -19,5 +19,5 @@ def _measured_continental_area_fraction(plates_list) -> float:
 
 def test_generate_plates_without_num_plates_picks_a_plausible_count():
     for seed in range(20):
-        plates = generate_plates(seed=seed)
+        plates = generate_plates(seed=seed, cratons_first=False)
         assert MIN_AUTO_PLATES <= len(plates) <= MAX_AUTO_PLATES

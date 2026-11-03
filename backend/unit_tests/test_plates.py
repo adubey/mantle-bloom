@@ -90,7 +90,7 @@ def test_every_node_is_closest_to_a_site_of_its_own_plate():
     then build_plate_tiling as its first draw (num_plates given, continental_fraction None)."""
     seed, num_plates = 3, 8
     tiling = build_plate_tiling(np.random.default_rng(seed), num_plates)
-    plates = generate_plates(seed=seed, num_plates=num_plates)
+    plates = generate_plates(seed=seed, num_plates=num_plates, cratons_first=False)
 
     for p in plates:
         world_pts = p.all_points_and_elevation()[0]
@@ -120,8 +120,8 @@ def test_voronoi_points_changes_the_tiling_but_not_the_plate_count():
     # extra-site count once the final plate count is known, then merges cells down to the
     # requested plate count. Different point counts -> different (lumpier vs. smoother) plate
     # outlines, same plate count.
-    sparse = generate_plates(seed=1, num_plates=8, voronoi_points=8)
-    dense = generate_plates(seed=1, num_plates=8, voronoi_points=120)
+    sparse = generate_plates(seed=1, num_plates=8, voronoi_points=8, cratons_first=False)
+    dense = generate_plates(seed=1, num_plates=8, voronoi_points=120, cratons_first=False)
     assert len(sparse) == len(dense) == 8
 
     def outline_signature(plates):
@@ -153,8 +153,8 @@ def test_generation_is_deterministic_for_same_seed():
 
 
 def test_generate_plates_auto_count_is_deterministic_for_same_seed():
-    p1 = generate_plates(seed=99)
-    p2 = generate_plates(seed=99)
+    p1 = generate_plates(seed=99, cratons_first=False)
+    p2 = generate_plates(seed=99, cratons_first=False)
     assert len(p1) == len(p2)
     for a, b in zip(p1, p2):
         assert a.crust_type == b.crust_type
@@ -164,19 +164,19 @@ def test_generate_plates_auto_count_is_deterministic_for_same_seed():
 def test_generate_plates_continental_fraction_gives_exact_continental_count():
     for n in range(1, 6):
         # n / 12 divides evenly, so round() introduces no rounding-error ambiguity here.
-        plates = generate_plates(seed=3, num_plates=12, continental_fraction=n / 12)
+        plates = generate_plates(seed=3, num_plates=12, continental_fraction=n / 12, cratons_first=False)
         continental = [p for p in plates if p.crust_type == "continental"]
         assert len(continental) == n
 
 
 def test_generate_plates_continental_fraction_bumps_up_total_plate_count_if_needed():
-    plates = generate_plates(seed=4, num_plates=5, continental_fraction=1.0)
+    plates = generate_plates(seed=4, num_plates=5, continental_fraction=1.0, cratons_first=False)
     assert len(plates) >= 5 + MIN_OCEANIC_PLATES
     assert sum(1 for p in plates if p.crust_type == "continental") == 5
 
 
 def test_generate_plates_continental_fraction_is_clamped_to_one():
-    plates = generate_plates(seed=5, num_plates=10, continental_fraction=999.0)
+    plates = generate_plates(seed=5, num_plates=10, continental_fraction=999.0, cratons_first=False)
     continental = sum(1 for p in plates if p.crust_type == "continental")
     assert continental == 10  # clamped to 1.0 -> round(1.0 * 10), not literally 999 plates
     assert len(plates) == 10 + MIN_OCEANIC_PLATES
@@ -195,7 +195,7 @@ def test_generate_plates_land_fraction_is_capped_by_continental_area():
     # Only ~1/4 of plates (by count, roughly by area too) are continental, so 80% land is
     # not achievable -- every continental node should end up as land (elevation > 0) and no
     # more, capping measured land at roughly the continental area fraction itself.
-    plates = generate_plates(seed=2, num_plates=14, continental_fraction=0.25, land_fraction=0.8)
+    plates = generate_plates(seed=2, num_plates=14, continental_fraction=0.25, land_fraction=0.8, cratons_first=False)
     continental_area = _measured_continental_area_fraction(plates)
     assert abs(_measured_land_fraction(plates) - continental_area) < 0.02
 
@@ -754,11 +754,13 @@ def test_cratons_first_marks_its_generated_belts_and_nothing_else():
         assert np.all(plate.collect("belt_formed_years")[belt] == -cratons.CRATON_BELT_SEED_AGE_YEARS)
 
 
-def test_cratons_first_is_off_by_default():
-    a = generate_plates(seed=5, num_plates=8)
-    b = generate_plates(seed=5, num_plates=8, cratons_first=False)
-    assert _cell_signature(a) == _cell_signature(b)
-    assert all(np.all(p.collect("crust_type_code") == CRUST_TYPE_INHERIT) for p in a)
+def test_cratons_first_is_on_by_default_and_can_be_disabled():
+    default = generate_plates(seed=5, num_plates=8)
+    enabled = generate_plates(seed=5, num_plates=8, cratons_first=True)
+    disabled = generate_plates(seed=5, num_plates=8, cratons_first=False)
+    assert _cell_signature(default) == _cell_signature(enabled)
+    assert _cell_signature(default) != _cell_signature(disabled)
+    assert all(np.all(p.collect("crust_type_code") == CRUST_TYPE_INHERIT) for p in disabled)
 
 
 def test_cratons_first_leaves_sketch_and_premade_generation_unchanged():

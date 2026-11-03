@@ -137,13 +137,13 @@ def test_apply_erosion_thins_crust_where_it_erodes_and_isostasy_compensates():
     # The crustal column fell by more than the surface did (the rest is isostatic rebound).
     assert np.all((hc_before - hc_after)[eroded] > (elev_before - elev_after)[eroded])
 
-    # elevation still tracks the Airy readout, per-plate (rho_c is per plate).
+    # elevation still tracks the Airy readout, using each node's crust density.
     resid = []
     for plate in plates_after:
         z = lithosphere.isostatic_elevation(
             plate.collect("crustal_thickness_m"),
             plate.collect("mantle_lithosphere_thickness_m"),
-            lithosphere.crust_density(plate.crust_type),
+            lithosphere.node_crust_density(plate.collect("crust_type_code"), plate.crust_type),
         )
         resid.append(np.abs(z - plate.collect("elevation")))
     resid = np.concatenate(resid)
@@ -767,7 +767,7 @@ def _force_glacier_depth(monkeypatch, depth_for_step):
 def test_ice_load_depresses_the_surface_and_meltback_rebounds_it_exactly(monkeypatch):
     from app import lithosphere
 
-    world = generate_world(seed=3, num_plates=8)
+    world = generate_world(seed=3, num_plates=8, cratons_first=False)
     _, elevation, _, _, _, plates_in_order = erosion._gather_nodes(world)
     hc = np.concatenate([p.collect("crustal_thickness_m") for p in plates_in_order])
     # Thick ice on high, comfortably-dry continental columns only.

@@ -44,7 +44,7 @@ def test_moving_water_onto_smaller_cells_keeps_its_volume():
 def test_deepening_the_ocean_basins_drops_sea_level():
     """The whole point: move crust down (a spreading basin) and the same water volume no
     longer reaches as high -- sea level falls, handing dry land back as freeboard."""
-    world = generate_world(seed=555, num_plates=8, continental_fraction=0.5, node_density=0.3)
+    world = generate_world(seed=555, num_plates=8, continental_fraction=0.5, node_density=0.3, cratons_first=False)
     eustasy.update_sea_level(world)
     sea_before = world.sea_level_m
 
@@ -61,7 +61,7 @@ def test_deepening_the_ocean_basins_drops_sea_level():
 
 
 def test_generate_world_snapshots_the_budget_and_keeps_sea_level_at_zero():
-    world = generate_world(seed=7, num_plates=8, continental_fraction=0.5, node_density=0.3)
+    world = generate_world(seed=7, num_plates=8, continental_fraction=0.5, node_density=0.3, cratons_first=False)
     assert world.ocean_water_volume_m3 is not None
     assert world.sea_level_m == 0.0  # the flat starting datum
     # Re-solving an unchanged world reproduces the same level (the solve is the exact inverse).
@@ -163,7 +163,7 @@ def test_trapped_ice_lowers_sea_level_and_total_budget_is_conserved():
     """Water frozen into ice caps/glaciers is debited from the ocean's share of the conserved
     total budget -- so the shoreline falls as the ice grows (glacio-eustasy), while the total
     surface-water budget itself doesn't change."""
-    world = generate_world(seed=321, num_plates=8, continental_fraction=0.5, node_density=0.3)
+    world = generate_world(seed=321, num_plates=8, continental_fraction=0.5, node_density=0.3, cratons_first=False)
     eustasy.update_sea_level(world)
     sea_before = world.sea_level_m
     total_before = world.ocean_water_volume_m3

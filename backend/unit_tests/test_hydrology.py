@@ -1513,7 +1513,7 @@ def test_nearest_hydro_node_idx_cache_does_not_cross_contaminate_between_modes()
 
 
 def test_sample_is_ocean_fallback_before_first_hydrology_pass_is_mode_independent():
-    world = generate_world(32, num_plates=8)  # no step_world -- no hydrology_cache yet
+    world = generate_world(32, num_plates=8, cratons_first=False)  # no step_world -- no hydrology_cache yet
     world_xyz = _grid_xyz(11, 21)
     fallback = np.zeros((11, 21), dtype=bool)
     fallback[0, 0] = True

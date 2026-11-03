@@ -183,7 +183,7 @@ class SketchRequest(BaseModel):
 
 class GenerateRequest(BaseModel):
     seed: int = 0
-    # The Random tab's optional craton-first terrain/plate layout (RFC 0009). None keeps
+    # Craton-first terrain/plate layout for random worlds (RFC 0009). None keeps
     # the configured default; sketches and premade worlds ignore this mode.
     cratons_first: bool | None = None
     # With cratons_first, relief from a synthetic tectonic history (#218, synthetic_relief.py).

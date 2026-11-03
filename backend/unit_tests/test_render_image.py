@@ -15,7 +15,7 @@ from .river_fixtures import spill_hop_fields
 
 
 def _world(seed=1, num_plates=10, continental_fraction=0.4):
-    return generate_world(seed, num_plates=num_plates, continental_fraction=continental_fraction)
+    return generate_world(seed, num_plates=num_plates, continental_fraction=continental_fraction, cratons_first=False)
 
 
 def _set_one_node_channel(world, depth_m, width_m) -> int:

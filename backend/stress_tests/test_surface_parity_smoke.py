@@ -9,7 +9,10 @@ from app import surface_parity_gates as gates
 HARD = ("H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8", "H9", "H10", "S1")
 
 
-def test_smoke_run_holds_every_hard_invariant_and_is_reproducible(tmp_path):
+def test_smoke_run_holds_every_hard_invariant_and_is_reproducible(tmp_path, monkeypatch):
+    from app import continent_layout
+
+    monkeypatch.setattr(continent_layout, "CRATONS_FIRST_DEFAULT", False)
     config = sp.PRESETS["smoke"]
     run = sp.run_world(config, 3, tmp_path, log=lambda _: None)
     evaluation = gates.evaluate([run])

@@ -59,7 +59,7 @@ def test_channel_depth_and_lake_depth_persist_across_boundary_and_erosion_steps(
     # A direct regression check on the field-threading work: a node's channel_depth/
     # lake_depth must survive being touched by boundary.py (which runs every step, before
     # erosion.py sets these) rather than getting silently reset to 0.
-    world = generate_world(seed=30, num_plates=8, continental_fraction=0.5)
+    world = generate_world(seed=30, num_plates=8, continental_fraction=0.5, cratons_first=False)
     step_world(world, years=2_000_000)
 
     channel_total_1 = sum(p.collect("channel_depth").sum() for p in world.plates)
@@ -75,7 +75,7 @@ def test_channel_depth_and_lake_depth_persist_across_boundary_and_erosion_steps(
 
 
 def test_apply_erosion_conserves_mass_between_erosion_and_deposition():
-    world = generate_world(seed=31, num_plates=8, continental_fraction=0.5)
+    world = generate_world(seed=31, num_plates=8, continental_fraction=0.5, cratons_first=False)
     for _ in range(3):
         step_world(world, years=2_000_000)
     assert world.hydrology_cache is not None
@@ -85,7 +85,7 @@ def test_apply_erosion_conserves_mass_between_erosion_and_deposition():
 def test_rivers_never_overlap_lakes_in_a_real_stepped_world():
     # Regression check for "rivers end at lakes and don't go through them": a lake, however
     # widely flooded, must never also be classified is_river.
-    world = generate_world(seed=32, num_plates=10, continental_fraction=0.5)
+    world = generate_world(seed=32, num_plates=10, continental_fraction=0.5, cratons_first=False)
     for _ in range(10):
         step_world(world, years=2_000_000)
     hydro = world.hydrology_cache
@@ -95,7 +95,7 @@ def test_rivers_never_overlap_lakes_in_a_real_stepped_world():
 
 
 def test_channel_width_grows_with_flow_and_persists_across_steps():
-    world = generate_world(seed=33, num_plates=8, continental_fraction=0.5)
+    world = generate_world(seed=33, num_plates=8, continental_fraction=0.5, cratons_first=False)
     for _ in range(4):
         step_world(world, years=2_000_000)
 
@@ -125,7 +125,7 @@ def test_is_volcano_survives_a_full_step_cycle():
     # RIFT_CRITICAL_THICKNESS_M) is a real, comparatively rare rift event under the isostasy-
     # driven engine, not v1's own flat per-step probability roll, so it isn't guaranteed (or
     # even likely) within any fixed step budget.
-    world = generate_world(seed=34, num_plates=10, continental_fraction=0.4)
+    world = generate_world(seed=34, num_plates=10, continental_fraction=0.4, cratons_first=False)
     plate = next(p for p in world.plates if p.node_count() > 0)
     is_volcano = np.zeros(plate.node_count(), dtype=bool)
     is_volcano[0] = True
@@ -143,7 +143,7 @@ def test_channel_lake_and_glacier_depth_persist_across_boundary_and_erosion_step
     # Regression check on the field-threading work: a node's channel_depth/lake_depth/
     # glacier_depth must survive being touched by boundary.py (which runs every step, before
     # erosion.py sets these) rather than getting silently reset to 0.
-    world = generate_world(seed=32, num_plates=10, continental_fraction=0.5)
+    world = generate_world(seed=32, num_plates=10, continental_fraction=0.5, cratons_first=False)
     for _ in range(6):
         step_world(world, years=2_000_000)
 
@@ -164,7 +164,7 @@ def test_silt_depth_persists_across_boundary_and_erosion_steps():
     # persistence test above: confirms boundary.py (which runs every step, before erosion.py
     # sets silt_depth) doesn't silently reset it to 0, and that it's actually accumulating
     # somewhere after several steps of real lake inflow.
-    world = generate_world(seed=34, num_plates=10, continental_fraction=0.5)
+    world = generate_world(seed=34, num_plates=10, continental_fraction=0.5, cratons_first=False)
     for _ in range(6):
         step_world(world, years=2_000_000)
 
@@ -178,7 +178,7 @@ def test_silt_depth_persists_across_boundary_and_erosion_steps():
 
 def test_mature_world_water_ledger_never_strands_exported_overflow():
     # A long routing history exercises cycle settlement after many lake and terrain remaps.
-    world = generate_world(seed=731, num_plates=10, continental_fraction=0.5)
+    world = generate_world(seed=731, num_plates=10, continental_fraction=0.5, cratons_first=False)
     for step_idx in range(48):
         step_world(world, years=4_000_000)
         hydro = world.hydrology_cache
