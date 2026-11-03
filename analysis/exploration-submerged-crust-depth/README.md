@@ -36,3 +36,9 @@ The largest component's floor rose by 756.22 m and landed within 0.001 m of the 
 **Interpretation.** For this seed, the 1,422 m floor is carried entirely by submerged continental crust. The synthetic relief's variable submerged-crust target creates that depth, while `drain_land` preserves the enclosed submerged hole rather than filling it. The perturbation demonstrates that replacing the submerged continental target applies directly to the basin.
 
 **Limits.** This is one seed at one resolution and one imposed target. It is a causal mechanism probe, not evidence that -666 m is a suitable production rule or that the same result generalizes across seeds. The source change existed only in `/private/tmp/mb-depth-666-probe`; no model implementation was changed in the shared checkout.
+
+## Classification clarification
+
+The basin's 638 nodes were all continental and below sea level, but they were not classified as land by the synthetic relief land mask, nor as open ocean by `connected_ocean_mask`. In `drain_land`, they are `hole = ~land & ~ocean`: an enclosed submerged hole. The drainage pass intentionally excludes sea nodes from its land-raising return, so the synthetic submerged-crust target survives there. The `-666 m` arm replaced the target for every submerged continental node, not only this basin; its exact effect on the basin confirms which field controls the floor, not that a basin-specific cap is a suitable fix.
+
+The temporary `-666 m` assignment has been removed from the scratch source copy. The shared model source was never changed.
