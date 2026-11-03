@@ -21,3 +21,18 @@
 ## Results
 
 Pending preregistration publication and paired run.
+
+## Probe outcome
+
+The paired runs support the hypothesis.
+
+| Arm | Largest matching component area (km²) | Nodes | Continental / oceanic nodes | Floor (m) | Total disconnected below-sea area (km²) | Area land fraction |
+|---|---:|---:|---:|---:|---:|---:|
+| Control | 2,270,390.76 | 638 | 638 / 0 | -1,422.22 | 2,278,782.05 | 0.28541105 |
+| Submerged continental target = -666 m | 2,270,390.76 | 638 | 638 / 0 | -666.00 | 2,278,782.05 | 0.28541105 |
+
+The largest component's floor rose by 756.22 m and landed within 0.001 m of the imposed target. Its node membership and accounting area were unchanged. The second, 2-node component also retained its 8,391.30 km² area but its floor moved from -40.05 m to -666.00 m. Land area, land-node fraction, sea level and both below-sea components' topology were unchanged. No oceanic nodes were present in either closed component.
+
+**Interpretation.** For this seed, the 1,422 m floor is carried entirely by submerged continental crust. The synthetic relief's variable submerged-crust target creates that depth, while `drain_land` preserves the enclosed submerged hole rather than filling it. The perturbation demonstrates that replacing the submerged continental target applies directly to the basin.
+
+**Limits.** This is one seed at one resolution and one imposed target. It is a causal mechanism probe, not evidence that -666 m is a suitable production rule or that the same result generalizes across seeds. The source change existed only in `/private/tmp/mb-depth-666-probe`; no model implementation was changed in the shared checkout.
