@@ -69,4 +69,45 @@ runaway is G4's problem; this gate does not re-litigate it.
 
 ## Results
 
-Pending.
+All 14 arms ran to 10 Myr alone (peak RSS ~1.2 GB) on gate branch `884fe85`.
+`g2.json` is the compact result; raw logs are `g2f-<save>-<arm>.log` in
+`~/mantle-bloom-captures/issue-782/` (private path).
+
+### End volumes and areas at 10 Myr
+
+| Arm | s997 vol (M km³) | s997 area (M km²) | s649 vol | s649 area |
+|---|---|---|---|---|
+| base (4 / 8 / 1.0) | 12.56 | 13.43 | 2.12 | 2.85 |
+| snow3 | 13.24 | 14.11 | 2.15 | 2.98 |
+| snow5 | 11.84 | 12.79 | 2.09 | 2.88 |
+| ice55 | 12.68 | 14.31 | 2.12 | 3.02 |
+| ice82 | 12.10 | 13.10 | 2.05 | 2.91 |
+| trs0 | 12.34 | 13.48 | 2.13 | 2.96 |
+| trs2 | 11.76 | 13.31 | 2.10 | 2.98 |
+
+### Per-knob max/min volume (flag rule: >2x)
+
+| Knob | s997 | s649 | Flag |
+|---|---|---|---|
+| `DDF_snow` {3, 4, 5} | 13.24 / 11.84 = 1.12 | 2.15 / 2.09 = 1.03 | none |
+| `DDF_ice` {5.5, 8, 8.2} | 12.68 / 12.10 = 1.05 | 2.12 / 2.05 = 1.03 | none |
+| `T_rs` {0, 1.0, 2} | 12.56 / 11.76 = 1.07 | 2.13 / 2.10 = 1.01 | none |
+
+Max step-to-step swing after 2 Myr is 1.7–5.1% on every arm, far under the 25%
+limit. Mean step times 16–102 s (the s649 trs arms march more substeps; cost is
+not a gate here).
+
+### Outcome: keep all three starts
+
+- **`DDF_snow` 4** stays: ±1 moves s997 volume +5.4% / −5.7%, s649 ±2%.
+- **`DDF_ice` 8** stays: the full sourced range {5.5, 8.2} plus the start moves
+  ≤5% on both saves. Bare-ice melt rarely binds: most melt is of snow.
+- **`T_rs` 1.0 C** stays: the full {0, 2} range moves ≤7%, and the knob is live
+  (trs0 and trs2 differ on both saves, so the dead-switch failure mode is
+  excluded). Note the ordering on s997 (trs2's 11.76 below trs0's 12.34) runs
+  against the naive more-snow→more-ice reading; the gap is within the save's
+  bistable scatter (E2 split 12.2–13.1 under identical forcing), so no
+  mechanism is claimed.
+
+No knob is flagged weakly constrained. The ice-age arm is G1's 250 yr cost run
+(end 629 M km³, runaway) as preregistered; it does not enter the flag rule.
