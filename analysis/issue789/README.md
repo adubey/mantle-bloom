@@ -27,8 +27,10 @@ this workstream and is flagged for the owner (see below).
 
 `bin/debug/replay_789_march.py` records wall time, the land ledger's residual against its
 external inputs (rain + meltwater), the ice ledger's residual against its accumulation,
-the march log entry (substeps, marched/held years, settlement, volume path), and closing
-ice volume and sea level.
+the march log entry (substeps, marched/held years, settlement, volume path -- null on
+the origin/main arm, which has no march), and closing ice volume and sea level. The
+baseline arm runs the same script with the baseline worktree's venv and
+`MANTLE_BLOOM_BACKEND=<baseline-worktree>/backend`.
 
 ### Expected direction and size
 

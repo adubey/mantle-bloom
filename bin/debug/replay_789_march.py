@@ -11,6 +11,9 @@ inputs, and the march must settle on the diagnosis replays.
     cd backend
     PYTHONPATH=backend .venv/bin/python ../bin/debug/replay_789_march.py \
         <save> --steps 10 --myr 0.25 --out <scratch-output>.json
+
+For the origin/main arm, run the same script with the baseline worktree's venv and
+`MANTLE_BLOOM_BACKEND=<baseline-worktree>/backend`; the march entry is then null.
 """
 
 from __future__ import annotations
@@ -18,12 +21,15 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import resource
 import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+sys.path.insert(0, os.environ.get(
+    "MANTLE_BLOOM_BACKEND", str(Path(__file__).resolve().parents[2] / "backend")
+))
 
 from app import persistence  # noqa: E402
 from app import world as world_mod  # noqa: E402
@@ -40,7 +46,9 @@ def main() -> None:
 
     raw = ns.save.read_bytes()
     world = persistence.load_world_bytes(raw)
-    ice_sheet.MARCH_LOG.clear()
+    march_log = getattr(ice_sheet, "MARCH_LOG", None)  # absent on origin/main
+    if march_log is not None:
+        march_log.clear()
 
     steps = []
     for i in range(ns.steps):
@@ -50,7 +58,7 @@ def main() -> None:
         land = world.hydrology_cache.land_water_ledger
         ice = world.hydrology_cache.ice.ledger
         external = land.rain_m3 + land.meltwater_m3
-        march = dict(ice_sheet.MARCH_LOG[-1])
+        march = dict(march_log[-1]) if march_log else None
         steps.append({
             "step": i,
             "wall_s": round(elapsed, 1),
@@ -64,9 +72,12 @@ def main() -> None:
             "sea_level_m": round(float(world.sea_level_m), 2),
             "march": march,
         })
+        march_txt = (
+            f"settled={march['settled']} substeps={march['substeps']} "
+            f"held={march['held_years']:.0f} " if march else "no-march "
+        )
         print(
-            f"step {i}: {elapsed:.0f}s settled={march['settled']} "
-            f"substeps={march['substeps']} held={march['held_years']:.0f} "
+            f"step {i}: {elapsed:.0f}s {march_txt}"
             f"land_closure={steps[-1]['land_closure']:.2e} "
             f"ice_closure={steps[-1]['ice_closure']:.2e}",
             flush=True,
