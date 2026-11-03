@@ -1,0 +1,197 @@
+{
+ "d": {
+  "main": {
+   "commit": "38c2460d",
+   "steps": 50,
+   "sea_level_step1_m": -748.051169886113,
+   "sea_level_end_m": -760.1596062669214,
+   "ocean_nodes_step1": 85515,
+   "ocean_nodes_end": 84990,
+   "ocean_area_end_mkm2": 329.689300132294,
+   "lake_water_end_km3": 3473586.5557249943,
+   "lake_water_mean_km3": 2737614.4555541445,
+   "basin_ocean_steps": 0,
+   "near_land_precip_mean_mm": 262.99740228479965,
+   "largest_enclosed_end": [
+    {
+     "label": 3229,
+     "area_km2": 14161257.693376532,
+     "oceanic_share": 0.9952032938912525,
+     "is_ocean": false
+    }
+   ],
+   "class_changes": 0,
+   "to_ocean": 0,
+   "to_lake": 0,
+   "steps_with_change": 0,
+   "max_abs_eustasy_closure_over_tolerance": 0.9781137138081466,
+   "max_abs_lake_residual_normalized": 1.865184564788137e-12,
+   "max_abs_land_residual_normalized": 2.67884025300176e-13,
+   "median_step_seconds": 9.218154271002277,
+   "peak_rss_mb": 5293.17888
+  },
+  "branch": {
+   "commit": "e96e9414",
+   "steps": 50,
+   "sea_level_step1_m": -872.7451549593113,
+   "sea_level_end_m": -879.8598823385157,
+   "ocean_nodes_step1": 89563,
+   "ocean_nodes_end": 88388,
+   "ocean_area_end_mkm2": 342.28589985291813,
+   "lake_water_end_km3": 1668800.6864592365,
+   "lake_water_mean_km3": 1752173.2237387833,
+   "basin_ocean_steps": 50,
+   "near_land_precip_mean_mm": 257.3925671190502,
+   "largest_enclosed_end": [
+    {
+     "label": 3380,
+     "area_km2": 14413897.286516005,
+     "oceanic_share": 0.995163514095325,
+     "is_ocean": true
+    }
+   ],
+   "class_changes": 1,
+   "to_ocean": 1,
+   "to_lake": 0,
+   "steps_with_change": 1,
+   "max_abs_eustasy_closure_over_tolerance": 0.9324723079310484,
+   "max_abs_lake_residual_normalized": 2.229834108181969e-12,
+   "max_abs_land_residual_normalized": 2.4957942380197843e-13,
+   "median_step_seconds": 9.473100582996267,
+   "peak_rss_mb": 3774.611456
+  },
+  "max_abs_sea_gap_m": 133.91874141344715,
+  "sea_gap_step1_m": -124.69398507319829,
+  "sea_gap_end_m": -119.70027607159432
+ },
+ "e": {
+  "main": {
+   "commit": "38c2460d",
+   "steps": 50,
+   "sea_level_step1_m": -741.436907296978,
+   "sea_level_end_m": -752.884002468233,
+   "ocean_nodes_step1": 85538,
+   "ocean_nodes_end": 85012,
+   "ocean_area_end_mkm2": 329.7534825491515,
+   "lake_water_end_km3": 2281100.193755992,
+   "lake_water_mean_km3": 2659783.823521341,
+   "basin_ocean_steps": 0,
+   "near_land_precip_mean_mm": 259.94012185031437,
+   "largest_enclosed_end": [
+    {
+     "label": 3217,
+     "area_km2": 15259787.94083553,
+     "oceanic_share": 0.9941138173136814,
+     "is_ocean": false
+    }
+   ],
+   "class_changes": 0,
+   "to_ocean": 0,
+   "to_lake": 0,
+   "steps_with_change": 0,
+   "max_abs_eustasy_closure_over_tolerance": 0.9781137138081466,
+   "max_abs_lake_residual_normalized": 5.199871161327517e-12,
+   "max_abs_land_residual_normalized": 8.075520549710345e-13,
+   "median_step_seconds": 8.984641749993898,
+   "peak_rss_mb": 6736.429056
+  },
+  "branch": {
+   "commit": "e96e9414",
+   "steps": 50,
+   "sea_level_step1_m": -872.3395486490898,
+   "sea_level_end_m": -886.6654774475073,
+   "ocean_nodes_step1": 89580,
+   "ocean_nodes_end": 88460,
+   "ocean_area_end_mkm2": 342.5562086497802,
+   "lake_water_end_km3": 1910791.6391490225,
+   "lake_water_mean_km3": 1707356.6677456852,
+   "basin_ocean_steps": 50,
+   "near_land_precip_mean_mm": 260.1881506394462,
+   "largest_enclosed_end": [
+    {
+     "label": 3460,
+     "area_km2": 14370725.871584984,
+     "oceanic_share": 0.9957740078231764,
+     "is_ocean": true
+    }
+   ],
+   "class_changes": 1,
+   "to_ocean": 1,
+   "to_lake": 0,
+   "steps_with_change": 1,
+   "max_abs_eustasy_closure_over_tolerance": 0.9578214168569283,
+   "max_abs_lake_residual_normalized": 2.0322406814444828e-12,
+   "max_abs_land_residual_normalized": 2.229287323194096e-13,
+   "median_step_seconds": 8.198904208518798,
+   "peak_rss_mb": 5428.084736
+  },
+  "max_abs_sea_gap_m": 137.76656315308014,
+  "sea_gap_step1_m": -130.9026413521118,
+  "sea_gap_end_m": -133.78147497927432
+ },
+ "s": {
+  "main": {
+   "commit": "38c2460d",
+   "steps": 50,
+   "sea_level_step1_m": -1089.815203455159,
+   "sea_level_end_m": -1168.18686535281,
+   "ocean_nodes_step1": 153401,
+   "ocean_nodes_end": 153185,
+   "ocean_area_end_mkm2": 397.6873912272075,
+   "lake_water_end_km3": 214675.29938432333,
+   "lake_water_mean_km3": 543522.4079356774,
+   "basin_ocean_steps": 0,
+   "near_land_precip_mean_mm": 607.0052606904787,
+   "largest_enclosed_end": [
+    {
+     "label": 7225,
+     "area_km2": 2300010.849333265,
+     "oceanic_share": 0.0,
+     "is_ocean": false
+    }
+   ],
+   "class_changes": 0,
+   "to_ocean": 0,
+   "to_lake": 0,
+   "steps_with_change": 0,
+   "max_abs_eustasy_closure_over_tolerance": 0.9955969580245622,
+   "max_abs_lake_residual_normalized": 2.2930604959101062e-11,
+   "max_abs_land_residual_normalized": 1.772147920369604e-12,
+   "median_step_seconds": 11.04837333301839,
+   "peak_rss_mb": 8650.162176
+  },
+  "branch": {
+   "commit": "e96e9414",
+   "steps": 50,
+   "sea_level_step1_m": -1089.815203455159,
+   "sea_level_end_m": -1168.186881460489,
+   "ocean_nodes_step1": 153401,
+   "ocean_nodes_end": 153185,
+   "ocean_area_end_mkm2": 397.6873912272075,
+   "lake_water_end_km3": 214675.2992243767,
+   "lake_water_mean_km3": 543522.3075042337,
+   "basin_ocean_steps": 0,
+   "near_land_precip_mean_mm": 607.0052606906892,
+   "largest_enclosed_end": [
+    {
+     "label": 7225,
+     "area_km2": 2300010.849333265,
+     "oceanic_share": 0.0,
+     "is_ocean": false
+    }
+   ],
+   "class_changes": 0,
+   "to_ocean": 0,
+   "to_lake": 0,
+   "steps_with_change": 0,
+   "max_abs_eustasy_closure_over_tolerance": 0.9955969580245622,
+   "max_abs_lake_residual_normalized": 2.2930604959101062e-11,
+   "max_abs_land_residual_normalized": 1.772147920369604e-12,
+   "median_step_seconds": 10.051638687495142,
+   "peak_rss_mb": 7285.489664
+  },
+  "max_abs_sea_gap_m": 1.6107679130072938e-05,
+  "sea_gap_step1_m": 0.0,
+  "sea_gap_end_m": -1.6107679130072938e-05
+ }
+}
