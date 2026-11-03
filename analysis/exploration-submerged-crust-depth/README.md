@@ -60,3 +60,23 @@ The temporary `-666 m` assignment has been removed from the scratch source copy.
 **Validity checks.** Sea level remains 0 m; no tectonic step advances; crustal backing reproduces the edited targets; oceanic elevations and all originally dry land targets remain unchanged. Report any failure, especially if selecting the compact core fragments it into multiple disconnected holes or causes other holes to exceed the cap.
 
 **Results.** Pending the paired scratch run.
+
+## Follow-up probe outcome
+
+The first scratch arm was invalid: its connected-components graph included above-sea nodes, so it grouped the large hole with the separate 2-node hole. I corrected the probe graph to include only below-sea edges and reran seed 528019447. The invalid arm is not used for the interpretation.
+
+| Measure | Control | Corrected Caspian-bound arm |
+|---|---:|---:|
+| Largest isolated-hole area | 2,270,390.76 km² | 369,092.45 km² |
+| Largest-hole nodes | 638 | 104 |
+| Largest-hole floor | -1,422.22 m | -1,050.00 m |
+| Other isolated hole | 8,391.30 km²; 2 nodes; -40.05 m | Unchanged |
+| Total below-sea isolated area | 2,278,782.05 km² | 377,483.75 km² |
+| Land area fraction | 0.285411 | 0.289139 |
+| Land-node fraction | 0.292776 | 0.296945 |
+
+The large component fell by 84% and met both exploratory bounds. The topology remained isolated; the small second hole remained a separate component. Raising the excess footprint to 5 m added 1,901,298 km² of dry land, increasing area-weighted land fraction by 0.003728 (0.37 percentage points of the globe) and land-node fraction by 0.004169. Sea level stayed at 0 m, and the selected hole was entirely continental.
+
+**Interpretation and limits.** A hole-specific area and depth cap can achieve the requested scale for this seed. The tested area rule preserves a compact radius around the deepest node and raises the remaining cells to `MIN_LAND_M`; that geometry rule is an exploratory convenience, not a validated production design. It also raises land fraction. This is one seed only; it does not show the behavior across generations. The Caspian bounds are approximate: NASA reports ~371,000 km² surface area; the JRC report gives 1,025 m maximum water depth, and ESA reports its surface near -28 m relative to global sea level, motivating the rounded -1,050 m bed-elevation bound ([NASA](https://science.nasa.gov/earth/earth-observatory/the-caspian-seas-shrinking-coastline/), [JRC](https://publications.jrc.ec.europa.eu/repository/bitstream/JRC110333/intercon_report_v03.pdf), [ESA](https://www.esa.int/Applications/Observing_the_Earth/The_Caspian_Sea)).
+
+The production source remains unchanged; both candidate rules existed only in the disposable scratch copy.
