@@ -1,0 +1,53 @@
+{
+ "s649": {
+  "step_s_250": 13.2,
+  "step_s_10k": 41.8,
+  "substeps_250": 14.0,
+  "substeps_10k": 72.5,
+  "settled_250": 40,
+  "settled_10k": 0,
+  "steps": 40,
+  "end_vol_250": 2.11,
+  "end_vol_10k": 2.11,
+  "peak_250": 3.56,
+  "peak_10k": 3.56,
+  "swing_after2_250": 3.2,
+  "swing_after2_10k": 5.9,
+  "peak_rss_gb": 0.96,
+  "lake_under_ice_max_250": 0.010222
+ },
+ "s997": {
+  "step_s_250": 15.9,
+  "step_s_10k": 30.9,
+  "substeps_250": 15.5,
+  "substeps_10k": 45.5,
+  "settled_250": 40,
+  "settled_10k": 2,
+  "steps": 40,
+  "end_vol_250": 13.36,
+  "end_vol_10k": 12.9,
+  "peak_250": 15.99,
+  "peak_10k": 15.99,
+  "swing_after2_250": 2.9,
+  "swing_after2_10k": 3.1,
+  "peak_rss_gb": 1.23,
+  "lake_under_ice_max_250": 0.8332
+ },
+ "s374": {
+  "step_s_250": 22.5,
+  "step_s_10k": 65.7,
+  "substeps_250": 13.0,
+  "substeps_10k": 48.5,
+  "settled_250": 39,
+  "settled_10k": 33,
+  "steps": 40,
+  "end_vol_250": 629.12,
+  "end_vol_10k": 658.45,
+  "peak_250": 736.14,
+  "peak_10k": 802.11,
+  "swing_after2_250": 667.3,
+  "swing_after2_10k": 5.1,
+  "peak_rss_gb": 1.0,
+  "lake_under_ice_max_250": 0.084007
+ }
+}
