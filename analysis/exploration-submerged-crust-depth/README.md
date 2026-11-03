@@ -42,3 +42,21 @@ The largest component's floor rose by 756.22 m and landed within 0.001 m of the 
 The basin's 638 nodes were all continental and below sea level, but they were not classified as land by the synthetic relief land mask, nor as open ocean by `connected_ocean_mask`. In `drain_land`, they are `hole = ~land & ~ocean`: an enclosed submerged hole. The drainage pass intentionally excludes sea nodes from its land-raising return, so the synthetic submerged-crust target survives there. The `-666 m` arm replaced the target for every submerged continental node, not only this basin; its exact effect on the basin confirms which field controls the floor, not that a basin-specific cap is a suitable fix.
 
 The temporary `-666 m` assignment has been removed from the scratch source copy. The shared model source was never changed.
+
+## Preregistered follow-up: Caspian-scale isolated-hole bounds
+
+**Question.** Can the oversized isolated submerged continental hole in seed 528019447 be bounded to roughly a Caspian-sized footprint and floor without changing the rest of the generated coastline or basin connectivity?
+
+**Working bounds.** Use 371,000 km² as the maximum below-sea footprint of any one isolated hole, matching the Caspian Sea's approximate surface area. Use -1,050 m as a rounded lower floor bound relative to world sea level: the Caspian surface is about 28 m below global sea level and its maximum water depth is about 1,025 m. These are exploratory Earth-scale ceilings, not calibrated Mantle-Bloom parameters.
+
+**Control.** The already-published seed 528019447 control at the UI defaults: largest isolated hole 2,270,390.76 km², 638 continental nodes, floor -1,422.22 m, land area fraction 0.285411. Sea level 0 m. The control commit is `6abd9947e857a738e8af8635193fdc91b43a1aba`.
+
+**Perturbation.** In a disposable source copy, act only on below-sea continental components disconnected from the main ocean. For a component above the area bound, keep a connected compact core around its deepest node up to the area limit and raise excess nodes to `MIN_LAND_M`; clamp the retained component's floor to -1,050 m. Leave land targets, open-ocean-connected nodes and oceanic crust unchanged. This is a test of the explicit size/depth policy, not a proposed production implementation.
+
+**Primary metrics.** Largest and total isolated-hole area, component count, deepest floor, land area fraction, land-node fraction, and unchanged area/elevation outside the selected hole.
+
+**Prediction.** For seed 528019447, the largest hole should shrink from 2.27 million km² to at most 371,000 km² (about 84% smaller), with its floor no lower than -1,050 m. Sea level and open-ocean connectivity should remain unchanged. The land area fraction should increase by approximately the excess raised area divided by planetary surface area; report the measured change rather than treating it as zero.
+
+**Validity checks.** Sea level remains 0 m; no tectonic step advances; crustal backing reproduces the edited targets; oceanic elevations and all originally dry land targets remain unchanged. Report any failure, especially if selecting the compact core fragments it into multiple disconnected holes or causes other holes to exceed the cap.
+
+**Results.** Pending the paired scratch run.
