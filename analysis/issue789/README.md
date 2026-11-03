@@ -57,7 +57,10 @@ other heavy runs listed. Save SHAs recorded at run time.
 
 Branch commit `d2ea1455`, baseline `origin/main` at `9e2ae610`. Compact numbers in
 `replay_ab.json` (checked in); full per-step JSONs stay in scratch
-(`~/mantle-bloom-captures/issue-789/`).
+(`~/mantle-bloom-captures/issue-789/`). The replay arms ran before the branch
+merged `origin/main` (`cba9875b`); the merge only brings enclosed-ocean hysteresis
+(#790) and tests, no ice/march changes, so the acceptance conclusions stand as
+recorded.
 
 ### Step time (acceptance: median within +15% of origin/main)
 
