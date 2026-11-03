@@ -33,7 +33,7 @@ GRID_H, GRID_W = 801, 1601
 
 
 def _phase0_world():
-    world = generate_world(SEED, node_density=NODE_DENSITY, climate_density=NODE_DENSITY)
+    world = generate_world(SEED, node_density=NODE_DENSITY, climate_density=NODE_DENSITY, cratons_first=False)
     for _ in range(STEPS):
         step_world(world, YEARS_PER_STEP)
     return world

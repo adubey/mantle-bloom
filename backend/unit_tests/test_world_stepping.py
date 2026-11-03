@@ -27,7 +27,7 @@ def test_generate_world_records_baseline_stats_without_leaking_a_climate_cache()
     # the baseline stats_history entry, but must not leave world.climate_cache populated as a
     # side effect of that -- other code (coastline.py, climate.py's vegetation-transpiration
     # source) reads climate_cache is None as "no step has run yet."
-    world = generate_world(seed=10, num_plates=8)
+    world = generate_world(seed=10, num_plates=8, cratons_first=False)
     assert len(world.stats_history) == 1
     assert world.stats_history[0]["elapsed_years"] == 0.0
     assert world.climate_cache is None
@@ -38,7 +38,7 @@ def test_step_world_skips_recording_stats_when_climate_is_off():
     # computation purely to snapshot stats -- that would defeat simulate_climate_biomes=False
     # existing to run tectonics-only steps fast. The elapsed_years=0 baseline from generation
     # is still there (finish_generation always forces it), just nothing gets appended on top.
-    world = generate_world(seed=10, num_plates=8)
+    world = generate_world(seed=10, num_plates=8, cratons_first=False)
     world.simulate_climate_biomes = False
     assert len(world.stats_history) == 1
     step_world(world, years=1_000_000)
@@ -118,7 +118,7 @@ def test_different_plates_generally_acquire_different_omegas_after_a_step():
 
 
 def test_generate_world_logs_a_generation_event():
-    world = generate_world(seed=15, num_plates=8, continental_fraction=3 / 8)
+    world = generate_world(seed=15, num_plates=8, continental_fraction=3 / 8, cratons_first=False)
     assert len(world.events) == 1
     elapsed, message = world.events[0]
     assert elapsed == 0.0
@@ -194,7 +194,7 @@ def test_quad_world_keeps_its_represented_area_between_gap_fill_intervals():
     the next interval and eustatic sea level jumps with it."""
     from app.sparse_quad_patch import PLANET_RADIUS_M
 
-    world = generate_world(seed=3, node_density=0.5)
+    world = generate_world(seed=3, node_density=0.5, cratons_first=False)
     sphere_m2 = 4.0 * np.pi * PLANET_RADIUS_M**2
     for _ in range(2):
         step_world(world, years=1_000_000)
@@ -245,7 +245,7 @@ def test_step_world_ends_with_every_column_inside_its_caps(monkeypatch):
     from app import lithosphere
     from app.hydroclimate import volcanism
 
-    world = generate_world(seed=3, node_density=0.5)
+    world = generate_world(seed=3, node_density=0.5, cratons_first=False)
     world.simulate_climate_biomes = False
     world.debug_diagnostics = True
     original = volcanism.apply_volcanic_activity

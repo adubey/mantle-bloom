@@ -9,7 +9,7 @@ from .quad_fixtures import globe_plate
 
 
 def _world(seed=1, num_plates=12, continental_fraction=0.7, land_fraction=0.29, steps=0, years=5_000_000):
-    world = generate_world(seed, num_plates=num_plates, continental_fraction=continental_fraction, land_fraction=land_fraction)
+    world = generate_world(seed, num_plates=num_plates, continental_fraction=continental_fraction, land_fraction=land_fraction, cratons_first=False)
     for _ in range(steps):
         step_world(world, years)
     return world

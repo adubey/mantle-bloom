@@ -10,7 +10,7 @@ from app.world import generate_world
 
 @functools.cache
 def _world():
-    return generate_world(seed=744, num_plates=6, node_density=0.5)
+    return generate_world(seed=744, num_plates=6, node_density=0.5, cratons_first=False)
 
 
 def _oceanic_cells(world):
@@ -116,5 +116,5 @@ def test_a_stamped_age_never_lands_on_the_sentinel():
 
 
 def test_the_same_seed_keeps_the_same_ages():
-    second = generate_world(seed=744, num_plates=6, node_density=0.5)
+    second = generate_world(seed=744, num_plates=6, node_density=0.5, cratons_first=False)
     assert second.initial_rock_ages == _world().initial_rock_ages
