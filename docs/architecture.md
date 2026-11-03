@@ -484,7 +484,8 @@ initial_terrain.py   cratons-first generation uses read-only coupled first-step 
                      climate/hydrology routing pass
 synthetic_relief.py  optional cratons-first relief from a synthetic tectonic history (#218):
                      sutures between cratons, leading-edge cordilleras, coastlines from the
-                     continental-crust edge, interior terrain types, all backed by Hc
+                     continental-crust edge, interior terrain types, all backed by Hc; caps
+                     isolated submerged continental holes during initial generation (#785)
 torque.py            slab-pull/ridge-push load assembly, coupled quasi-static solve
                      (`solve_plates_quasistatic`), and simultaneous plate rotation
 thin_shell.py        offline thin-shell membrane equilibrium diagnostic that transfers
