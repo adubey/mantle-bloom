@@ -235,6 +235,37 @@ finite-iteration solve near dryness; it has not been resolved or counted as pass
 The measured anchor is materially wet and passes throughout. These auxiliary flags and their
 underlying quantities are retained in the compact JSON.
 
+## Review follow-up
+
+The [posted review](https://github.com/adubey/mantle-bloom/pull/772#issuecomment-6592623888)
+approved without blocking findings. Its follow-ups were full stress coverage for fail-hard
+settling, explicit capped-cycle timing under `substeps > 1`, and retaining the runtime caveat.
+
+The cycle timing is intentional: every integration slice settles and exports its closed-cycle
+surplus before the next slice adds supply. The model guide and ordering helper's docstring
+now state this. A permanent positive-loss regression checks `substeps=1,4,16` against the
+closed-form balance for two constantly full bodies: evaporation and sublimation each charge
+once, storage remains fixed, and supply minus losses is exported to the parent outlet.
+All 91 lake tests pass on this revision.
+
+A separate independent reviewer found no actionable defect in 350 new synthetic cases:
+150 nested merges against independent final-level/budget calculations and 200 mixed
+split/merge cases with changed processing order. It did not rerun the reported author suite.
+The probes used `np.random.default_rng(772)` and `np.random.default_rng(7721)`, respectively,
+with four two-cell leaves joining at 3 m and 4 m, then a root joining at 6 m. The first
+constructed supply for a selected 7–20 m final level using random positive areas, relief,
+evaporation and sublimation over 0.1–1,000 years; it enforced 1e-6 m level and 1e-9 normalized
+ledger bounds. The second started merged at 7–10 m, varied forcing over 1–20 years, and
+permuted lake IDs with equal floors; it enforced 1e-6 m depth agreement between orders.
+That second probe did not separately assert ledger residuals. Measured worst errors were not
+retained; these are passing assertion bounds, not reported maxima.
+
+Current main `7c26c2cb` was merged before the added stress coverage. Its model change is the
+random-world generation default; the previously replayed saved-world stepping code is
+unchanged. The full stress suite is running with one budget-approved worker.
+The run completed successfully: **59 passed**, 61 warnings, 1,099.34 s, using
+`./bin/stress_test.sh -n 1 -x`. A fresh affected-test gate on the merged revision follows.
+
 ## Outcome and limits
 
 The independent unit fixture fails on main and passes on the branch, with evaporation,
@@ -246,8 +277,8 @@ pointwise accuracy gate is not met at numerical near-dry states and is explicitl
 The windows retain lagged climate feedback and cover 1.2 Myr each. Largest-lake guards remain
 in effect. If #758 changes these basins' ocean classification before this lands, its affected
 replays need updating against that new main. No persisted fields or frontend code changed.
-The full stress suite was not run; the verification here is the affected suite and the
-registered saved-world comparisons.
+Verification includes the affected suite, registered saved-world comparisons, and the
+59-test full stress suite added after review.
 
 ## Five largest lakes at each endpoint
 

@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 import numpy as np
 
@@ -634,6 +636,41 @@ def test_capped_pair_delivers_its_surplus_once_to_the_parent_outlet_owner(subste
     assert result.ledger.overflow_to_ocean_m3 == pytest.approx(supply)
     assert result.should_spill[0] and result.should_spill[2]
     assert result.lake_depth[2] == pytest.approx(previous[2])
+
+
+@pytest.mark.parametrize("substeps", [1, 4, 16])
+def test_capped_cycle_pays_losses_once_and_exports_each_slices_surplus(substeps):
+    # #768: both bodies stay full under constant forcing. Every slice must replace any
+    # provisional loss, settle the closed cycle, and export supply minus the two losses.
+    supply = 1.0e15
+    forest, elevation, previous, climate, hyps = _capped_pair_fixture(2, supply)
+    forest = forest[:1]
+    forest[0].outlet_target_idx = 4
+    is_ocean = np.zeros(len(elevation), dtype=bool)
+    is_ocean[4] = True
+    climate = replace(
+        climate, evaporation_m_per_yr=np.full(len(elevation), 0.2),
+        sublimation_m_per_yr=np.full(len(elevation), 0.3),
+    )
+
+    result = lakes.solve_lakes_prognostic(
+        forest, elevation, previous, 1.0, climate, hyps,
+        substeps=substeps, is_ocean=is_ocean, diagnostic_trace=True,
+    )
+
+    wet_area = float(hyps.area_m2[:3].sum())
+    expected_evaporation = 0.2 * wet_area
+    expected_sublimation = 0.3 * wet_area
+    expected_export = supply - expected_evaporation - expected_sublimation
+    assert result.lake_depth == pytest.approx(previous)
+    assert result.ledger.evaporation_m3 == pytest.approx(expected_evaporation, rel=1e-12)
+    assert result.ledger.sublimation_m3 == pytest.approx(expected_sublimation, rel=1e-12)
+    assert result.overflow_m3[4] == pytest.approx(expected_export, rel=1e-12)
+    assert np.count_nonzero(result.overflow_m3) == 1
+    assert result.ledger.overflow_to_ocean_m3 == pytest.approx(expected_export, rel=1e-12)
+    assert result.trace.evaporation_m3.sum() == pytest.approx(expected_evaporation, rel=1e-12)
+    assert result.trace.liquid_sublimation_m3.sum() == pytest.approx(expected_sublimation, rel=1e-12)
+    assert abs(result.ledger.residual_m3) / supply <= 1e-12
 
 
 def test_capped_pair_without_parent_outlet_names_its_fallback_leaf_sink():

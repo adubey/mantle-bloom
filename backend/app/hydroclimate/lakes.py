@@ -318,7 +318,7 @@ def _active_bodies(forest, elevation, depth, hypsometry):
 
 def _ordered_spill_bodies(bodies, leaf_of_node, body_for_leaf, body_by_id, node_count):
     """Topologically order active bodies by hierarchy receivers, breaking sibling cycles by
-    deterministic floor order so return transfers can be deferred to the next slice."""
+    deterministic floor order so return transfers can be deferred to the next settling pass."""
     active_ids = {id(body) for body in bodies}
     outgoing: dict[int, int] = {}
     indegree = {id(body): 0 for body in bodies}
