@@ -399,7 +399,7 @@ def test_drain_land_applies_hole_bounds_when_continental_mask_is_supplied(monkey
     points = _arc(np.arange(n, dtype=float) * (360.0 / n))
     ocean = np.zeros(n, dtype=bool)
     ocean[6:10] = True
-    monkeypatch.setattr(synthetic_relief, "connected_ocean_mask", lambda *_: ocean)
+    monkeypatch.setattr(synthetic_relief, "connected_ocean_mask", lambda *_, **__: ocean)
     monkeypatch.setattr(synthetic_relief, "FLOW_NEIGHBOR_COUNT", 2)
     monkeypatch.setattr(synthetic_relief, "MAX_ISOLATED_HOLE_AREA_KM2", 250_000.0)
 

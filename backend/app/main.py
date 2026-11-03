@@ -183,6 +183,9 @@ class SketchRequest(BaseModel):
 
 class GenerateRequest(BaseModel):
     seed: int = 0
+    # Reorient random worlds to keep initial land outside 10-degree polar caps; ignored
+    # for sketches and premade worlds.
+    keep_land_off_poles: bool = False
     # Craton-first terrain/plate layout for random worlds (RFC 0009). None keeps
     # the configured default; sketches and premade worlds ignore this mode.
     cratons_first: bool | None = None
@@ -1244,6 +1247,7 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
                 return
             progress = generate_world_progress(
                 req.seed,
+                keep_land_off_poles=req.keep_land_off_poles,
                 cratons_first=req.cratons_first,
                 synthetic_relief=req.synthetic_relief,
                 num_plates=req.num_plates,

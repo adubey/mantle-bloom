@@ -6,13 +6,14 @@ from dataclasses import dataclass, field
 import time
 
 import numpy as np
-from scipy.spatial import cKDTree
+from scipy.spatial import ConvexHull, QhullError, cKDTree
 
 from . import (
     collision_polarity,
     cratons,
     crust_transfer,
     faults,
+    geometry,
     gaps,
     healpix_grid,
     hm_ledger,
@@ -45,6 +46,8 @@ from .plates import Plate, gather_node_positions, query_workers
 
 DEFAULT_MANTLE_CENTERS = 8
 DEFAULT_AXIAL_TILT_DEG = 23.5
+POLAR_LAND_CLEARANCE_DEG = 10.0
+POLAR_FALLBACK_AXIS_SAMPLES = 8192
 # Bounds how large World.events can grow over a long play session -- the UI's console only
 # ever needs recent history, not an unbounded transcript.
 MAX_EVENT_LOG_LENGTH = 200
@@ -726,6 +729,80 @@ def generate_world(seed: int, **options) -> World:
     return world
 
 
+def _least_land_support_axis(land_xyz: np.ndarray) -> tuple[np.ndarray, float]:
+    """For #781, return the pole axis with greatest clearance from both land caps.
+
+    The convex hull of +/- land points is symmetric about the origin. Its closest facet
+    gives the smallest possible maximum absolute latitude projection over all pole axes.
+    """
+    symmetric = np.concatenate((land_xyz, -land_xyz), axis=0)
+    try:
+        hull = ConvexHull(symmetric)
+        equations = hull.equations
+        normal_norms = np.linalg.norm(equations[:, :3], axis=1)
+        distances = -equations[:, 3] / normal_norms
+        closest = int(np.argmin(distances))
+        axis = equations[closest, :3] / normal_norms[closest]
+    except QhullError:
+        # A lower-dimensional land set has a free pole direction perpendicular to its span.
+        _, _, right = np.linalg.svd(land_xyz, full_matrices=True)
+        axis = right[-1]
+    if axis[2] < 0.0:
+        axis = -axis
+    support = float(np.max(np.abs(land_xyz @ axis)))
+    return axis, support
+
+
+def _fibonacci_sphere_axes(count: int) -> np.ndarray:
+    """Deterministic, approximately uniform unit vectors for the #781 fallback search."""
+    indices = np.arange(count, dtype=float)
+    z = 1.0 - (2.0 * indices + 1.0) / count
+    longitude = indices * (np.pi * (3.0 - np.sqrt(5.0)))
+    radius = np.sqrt(1.0 - z * z)
+    return np.column_stack((radius * np.cos(longitude), radius * np.sin(longitude), z))
+
+
+def _least_polar_land_axis(land_xyz: np.ndarray, preferred_axis: np.ndarray) -> np.ndarray:
+    """For #781's infeasible case, sample axes and minimize land nodes in both polar caps."""
+    axes = np.vstack((preferred_axis, _fibonacci_sphere_axes(POLAR_FALLBACK_AXIS_SAMPLES)))
+
+    # For an axis n, land within either cap is land or antipodal land within 10° of n.
+    cap_chord = 2.0 * np.sin(np.deg2rad(POLAR_LAND_CLEARANCE_DEG) / 2.0)
+    land_tree = cKDTree(np.concatenate((land_xyz, -land_xyz), axis=0))
+    cap_counts = land_tree.query_ball_point(axes, r=cap_chord, return_length=True)
+    best = np.flatnonzero(cap_counts == np.min(cap_counts))
+    return axes[best[int(np.argmax(axes[best, 2]))]]
+
+
+def _rotate_world_to_clear_poles(world: World) -> None:
+    """Rigidly orient generated land to minimize land within 10-degree polar caps."""
+    land_chunks = []
+    for plate in world.plates:
+        points, elevation = plate.all_points_and_elevation()
+        land = elevation > world.sea_level_m
+        if np.any(land):
+            land_chunks.append(points[land])
+    if not land_chunks:
+        return
+
+    land_xyz = np.concatenate(land_chunks, axis=0)
+    clearance_limit = float(np.cos(np.deg2rad(POLAR_LAND_CLEARANCE_DEG)))
+    if float(np.max(np.abs(land_xyz[:, 2]))) <= clearance_limit:
+        return
+
+    axis, support = _least_land_support_axis(land_xyz)
+    if support > clearance_limit + 1e-12:
+        axis = _least_polar_land_axis(land_xyz, axis)
+
+    rotation = geometry.rotation_between(axis, np.array([0.0, 0.0, 1.0]))
+    for plate in world.plates:
+        plate.rotate(rotation)
+        plate.set_omega(rotation @ plate.omega)
+    for center in world.mantle_centers:
+        center.position = rotation @ center.position
+    world.pinned_omegas = {plate_id: rotation @ omega for plate_id, omega in world.pinned_omegas.items()}
+
+
 def generate_world_progress(
     seed: int,
     num_plates: int | None = None,
@@ -743,6 +820,7 @@ def generate_world_progress(
     premade_world_id: str | None = None,
     cratons_first: bool | None = None,
     synthetic_relief: bool | None = None,
+    keep_land_off_poles: bool = False,
 ):
     """Generate a world, yielding `("progress", fraction, phase)` at each of its three
     natural phase boundaries -- plate/site generation, mantle-center fitting, then the
@@ -803,7 +881,10 @@ def generate_world_progress(
     lithosphere_plate.generate_plates), defaulting to continent_layout.CRATONS_FIRST_DEFAULT.
     `synthetic_relief` (default `synthetic_relief.SYNTHETIC_RELIEF_DEFAULT`) replaces that
     layout's continental relief with relief from a synthetic tectonic history (#218, see
-    synthetic_relief.py); it applies only when the cratons-first layout does."""
+    synthetic_relief.py); it applies only when the cratons-first layout does.
+    `keep_land_off_poles` rigidly reorients random worlds to clear 10-degree polar caps when
+    possible, otherwise choosing an approximate orientation with the fewest land nodes in
+    those caps. Sketches and premade worlds ignore it."""
     clock = HeartbeatClock()
     if cratons_first is None:
         cratons_first = lithosphere_plate.continent_layout.CRATONS_FIRST_DEFAULT
@@ -881,6 +962,8 @@ def generate_world_progress(
     # synthetic pass moves it (#218); the others keep every node's land/sea side.
     if initial_soil_maturity is not None:
         geology.seed_initial_soil(world.plates, seed, initial_soil_maturity)
+    if keep_land_off_poles and sketch is None and premade_world_id is None:
+        _rotate_world_to_clear_poles(world)
     # 3/4: relief and soil behind us, into the finish bootstrap. Arbitrary equal
     # subdivision of the final third, same fiction as the thirds themselves (#611).
     if clock.due():

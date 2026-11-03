@@ -313,6 +313,7 @@ export default function App() {
   const [seed, setSeed] = useState(randomSeed());
   const [cratonsFirst, setCratonsFirst] = useState(true);
   const [syntheticRelief, setSyntheticRelief] = useState(true);
+  const [keepLandOffPoles, setKeepLandOffPoles] = useState(false);
   // The Generate World dialog's name field (blank: keep the record's name) and
   // Public checkbox (fresh worlds default to public, #597).
   const [generateName, setGenerateName] = useState("");
@@ -1399,6 +1400,7 @@ export default function App() {
               ...generateIdentity,
               cratonsFirst: generateMode === "random" ? cratonsFirst : false,
               syntheticRelief: generateMode === "random" && cratonsFirst ? syntheticRelief : false,
+              keepLandOffPoles: generateMode === "random" && keepLandOffPoles,
               continentalFraction: continentalPercent / 100,
               landFraction: landPercent / 100,
               axialTiltDeg,
@@ -1448,7 +1450,7 @@ export default function App() {
       setRunPhase(null);
     }
   }, [
-    seed, cratonsFirst, syntheticRelief, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
+    seed, cratonsFirst, syntheticRelief, keepLandOffPoles, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
     generateMode, sketchImageDataUrl, premadeWorldId, debugScenario, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats, createAndSelectWorld, generateName, generatePublic, refreshWorlds,
   ]);
 
@@ -2752,6 +2754,7 @@ export default function App() {
           fluidDensityChoices={FLUID_DETAIL_CHOICES}
           cratonsFirst={cratonsFirst}
           syntheticRelief={syntheticRelief}
+          keepLandOffPoles={keepLandOffPoles}
           onLandPercentChange={setLandPercent}
           onContinentalPercentChange={setContinentalPercent}
           onAutoPlatesChange={setAutoPlates}
@@ -2762,6 +2765,7 @@ export default function App() {
           onFluidDensityChange={setFluidDensity}
           onCratonsFirstChange={setCratonsFirst}
           onSyntheticReliefChange={setSyntheticRelief}
+          onKeepLandOffPolesChange={setKeepLandOffPoles}
           onClose={() => setShowAdvancedSettings(false)}
         />
       )}

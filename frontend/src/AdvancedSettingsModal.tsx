@@ -39,6 +39,7 @@ interface Props {
   // (#597); Advanced is the only place to turn them off.
   cratonsFirst: boolean;
   syntheticRelief: boolean;
+  keepLandOffPoles: boolean;
   onLandPercentChange: (v: number) => void;
   onContinentalPercentChange: (v: number) => void;
   onAutoPlatesChange: (v: boolean) => void;
@@ -49,6 +50,7 @@ interface Props {
   onFluidDensityChange: (v: number) => void;
   onCratonsFirstChange: (v: boolean) => void;
   onSyntheticReliefChange: (v: boolean) => void;
+  onKeepLandOffPolesChange: (v: boolean) => void;
   onClose: () => void;
 }
 
@@ -76,6 +78,7 @@ export default function AdvancedSettingsModal({
   fluidDensityChoices,
   cratonsFirst,
   syntheticRelief,
+  keepLandOffPoles,
   onLandPercentChange,
   onContinentalPercentChange,
   onAutoPlatesChange,
@@ -86,6 +89,7 @@ export default function AdvancedSettingsModal({
   onFluidDensityChange,
   onCratonsFirstChange,
   onSyntheticReliefChange,
+  onKeepLandOffPolesChange,
   onClose,
 }: Props) {
   const showVoronoiPreview = (generateMode === "human" || generateMode === "premade") && sketchImageDataUrl != null;
@@ -137,6 +141,16 @@ export default function AdvancedSettingsModal({
             relief.
           </GenerateOptionCheckbox>
         )}
+        <GenerateOptionCheckbox
+          checked={keepLandOffPoles}
+          onChange={onKeepLandOffPolesChange}
+          disabled={generateMode !== "random"}
+          title="Keep land away from the poles"
+        >
+          Rigidly rotate Random worlds so initial land stays outside 10° polar caps.
+          If that is impossible, choose an orientation with the least polar land.
+          Sketches and premade worlds keep their chosen orientation.
+        </GenerateOptionCheckbox>
 
         <label style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, fontSize: 12 }}>
           <input type="checkbox" checked={autoPlates} onChange={(e) => onAutoPlatesChange(e.target.checked)} />
