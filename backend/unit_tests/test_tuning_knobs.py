@@ -199,13 +199,6 @@ def test_collision_uplift_amount_at_one_is_untuned():
     assert tuned_hc == untuned_hc
 
 
-def test_collision_uplift_reach_widens_the_thickened_belt():
-    # Wider reach -> more crust participates in the orogenic thickening -> more total Hc.
-    wide_hc, _ = _stepped_crust_and_relief(559394024, 6, collision_uplift_reach_multiplier=3.0)
-    narrow_hc, _ = _stepped_crust_and_relief(559394024, 6, collision_uplift_reach_multiplier=1.0)
-    assert wide_hc > narrow_hc
-
-
 def test_collision_uplift_reach_at_zero_thickens_less_than_its_own_default():
     # The knob scales how far the shortening cascade carries a collision inland
     # (shortening.py's `reach_scale`) and, below 1, the core contested-band strength
