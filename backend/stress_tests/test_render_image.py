@@ -5,7 +5,7 @@ from app.world import generate_world
 
 
 def _world(seed=1, num_plates=10, continental_fraction=0.4):
-    return generate_world(seed, num_plates=num_plates, continental_fraction=continental_fraction)
+    return generate_world(seed, num_plates=num_plates, continental_fraction=continental_fraction, cratons_first=False)
 
 
 def _synthetic_converging_currents_fields(height=20, width=40) -> "climate.ClimateFields":

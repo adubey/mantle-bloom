@@ -767,7 +767,7 @@ def _force_glacier_depth(monkeypatch, depth_for_step):
 def test_ice_load_depresses_the_surface_and_meltback_rebounds_it_exactly(monkeypatch):
     from app import lithosphere
 
-    world = generate_world(seed=3, num_plates=8)
+    world = generate_world(seed=3, num_plates=8, cratons_first=False)
     _, elevation, _, _, _, plates_in_order = erosion._gather_nodes(world)
     hc = np.concatenate([p.collect("crustal_thickness_m") for p in plates_in_order])
     # Thick ice on high, comfortably-dry continental columns only.

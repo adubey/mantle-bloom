@@ -10,7 +10,7 @@ from app.replay_log import Health, ReplayLog, StepOutcome
 def saved_world() -> bytes:
     from app.world import generate_world
 
-    world = generate_world(seed=5, num_plates=2, node_density=0.5)
+    world = generate_world(seed=5, num_plates=2, node_density=0.5, cratons_first=False)
     # Tectonics only: a quarter of the step time, and these tests don't need climate.
     world.simulate_climate_biomes = False
     return persistence.save_world_bytes(world)

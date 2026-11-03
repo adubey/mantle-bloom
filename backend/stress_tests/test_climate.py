@@ -4,7 +4,7 @@ from app.world import generate_world, step_world
 
 
 def _world(seed=1, num_plates=12, continental_fraction=0.7, land_fraction=0.29, steps=0, years=5_000_000):
-    world = generate_world(seed, num_plates=num_plates, continental_fraction=continental_fraction, land_fraction=land_fraction)
+    world = generate_world(seed, num_plates=num_plates, continental_fraction=continental_fraction, land_fraction=land_fraction, cratons_first=False)
     for _ in range(steps):
         step_world(world, years)
     return world
@@ -68,8 +68,8 @@ def test_diagnostic_wind_model_tracks_the_cfd_biome_map():
     # 0.62 land-biome agreement and 0.52 precipitation rel-RMS, below these floors; #529 fixes
     # the setup and chooses floors from a multi-seed run.
     kw = dict(num_plates=10, continental_fraction=0.7, land_fraction=0.29, climate_density=2.0, fluid_density=2.0)
-    cfd_world = generate_world(7, **kw)
-    abl_world = generate_world(7, **kw)
+    cfd_world = generate_world(7, cratons_first=False, **kw)
+    abl_world = generate_world(7, cratons_first=False, **kw)
     abl_world.wind_model = "diagnostic"
     for _ in range(10):
         step_world(cfd_world, years=2_000_000)

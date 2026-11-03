@@ -244,7 +244,7 @@ def test_lattice_resolution_tracks_line_spacing():
 def test_generated_quad_plates_tile_the_sphere_from_the_shared_tiling():
     from app.lithosphere_plate import build_plate_tiling
 
-    quad = generate_plates(3, num_plates=6, node_density=1.0)
+    quad = generate_plates(3, num_plates=6, node_density=1.0, cratons_first=False)
     # generate_plates' first draw is the tiling (num_plates given, continental_fraction None).
     tiling = build_plate_tiling(np.random.default_rng(3), 6)
 

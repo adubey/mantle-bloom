@@ -9,7 +9,7 @@ def test_apply_topology_changes_runs_without_error_during_long_simulation():
     # node_density=0.5 (the coarsest choice, an eighth of the default 4.0, see
     # plates.NODE_DENSITY_CHOICES) -- this test only checks topology invariants (plate count,
     # unique ids), not exact node positions.
-    world = generate_world(seed=40, num_plates=10, node_density=0.5)
+    world = generate_world(seed=40, num_plates=10, node_density=0.5, cratons_first=False)
     # merge_split.py only reacts to plate/node geometry, never to climate/erosion/hydrology
     # output (see World.simulate_climate_biomes) -- skipping that per-step computation cuts
     # this long-running test's cost substantially without changing what it exercises.
@@ -30,7 +30,7 @@ def test_long_simulation_leaves_no_plate_severed_into_disconnected_landmasses():
     # comb of one-node rows, with maybe_split_plate (mantle-flow-only) never noticing. With
     # defragment_plates running on its cadence, every surviving plate should stay a single
     # connected component (barring a fragment younger than one defrag interval).
-    world = generate_world(seed=40, num_plates=10, node_density=0.5)
+    world = generate_world(seed=40, num_plates=10, node_density=0.5, cratons_first=False)
     world.simulate_climate_biomes = False
     connect_radius_rad = merge_split.DEFRAG_CONNECT_RADIUS_MULT * line_spacing_rad(world.node_density)
     min_fragment_nodes = max(1, round(merge_split.DEFRAG_FRAGMENT_MIN_NODES * world.node_density))

@@ -689,7 +689,7 @@ def test_generate_defaults_to_quad_surfaces(client):
 
 
 def test_generate_returns_a_generation_event(client):
-    resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "continental_fraction": 0.5})
+    resp = _post_generate(client, json={"cratons_first": False, "seed": 1, "num_plates": 6, "continental_fraction": 0.5})
     body = resp.json()
     assert len(body["events"]) == 1
     assert "6 plates" in body["events"][0]["message"]
@@ -736,7 +736,7 @@ def test_generate_with_continental_fraction_gives_exact_count(client):
     # crust_type per plate isn't part of the render response (see render_image.py) -- the
     # generation event log is the documented way to confirm the exact count (also covered by
     # test_generate_returns_a_generation_event above; this locks in a second seed/count pair).
-    resp = _post_generate(client, json={"seed": 1, "num_plates": 10, "continental_fraction": 0.4})
+    resp = _post_generate(client, json={"cratons_first": False, "seed": 1, "num_plates": 10, "continental_fraction": 0.4})
     assert "4 continental" in resp.json()["events"][0]["message"]
 
 
@@ -845,7 +845,7 @@ def test_generate_replaces_previous_world(client):
 
 
 def test_generate_without_num_plates_picks_a_plausible_count(client):
-    resp = _post_generate(client, json={"seed": 7})
+    resp = _post_generate(client, json={"cratons_first": False, "seed": 7})
     assert resp.status_code == 200
     assert MIN_AUTO_PLATES <= resp.json()["num_plates"] <= MAX_AUTO_PLATES
 
@@ -1082,7 +1082,7 @@ def test_rivers_and_river_at_are_empty_before_the_first_step(client):
     # hydrology_cache is None until erosion.py runs once (see World.hydrology_cache) --
     # /world/rivers should degrade to an empty list rather than erroring, same spirit as
     # /world/plates always having *something* right after generate.
-    _post_generate(client, json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    _post_generate(client, json={"cratons_first": False, "seed": 20, "num_plates": 10, "continental_fraction": 0.5})
     resp = client.get("/world/rivers")
     assert resp.status_code == 200
     assert resp.json()["rivers"] == []
@@ -1114,7 +1114,7 @@ def test_river_at_rejects_non_finite_query(client):
 def test_lakes_and_lake_at_are_empty_before_the_first_step(client):
     # hydrology_cache is None until erosion.py runs once, same degrade-to-empty contract
     # /world/rivers already has -- see test_rivers_and_river_at_are_empty_before_the_first_step.
-    _post_generate(client, json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    _post_generate(client, json={"cratons_first": False, "seed": 20, "num_plates": 10, "continental_fraction": 0.5})
     resp = client.get("/world/lakes")
     assert resp.status_code == 200
     assert resp.json()["lakes"] == []

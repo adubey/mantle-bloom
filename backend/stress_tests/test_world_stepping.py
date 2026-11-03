@@ -36,7 +36,7 @@ def test_plate_overlap_stays_bounded_over_many_steps():
     # matters is that it stays roughly flat over many steps rather than climbing toward
     # saturation, which would indicate territory genuinely running away unchecked (e.g. a
     # shrink/grow imbalance letting one plate's claimed footprint balloon).
-    world = generate_world(seed=3, num_plates=8, node_density=0.5)
+    world = generate_world(seed=3, num_plates=8, node_density=0.5, cratons_first=False)
     world.simulate_climate_biomes = False  # only plate geometry is checked here
     fractions = []
     for i in range(24):
@@ -55,8 +55,8 @@ def test_node_density_persists_through_stepping_and_gap_fill():
     # silently reverts a non-default density back to the reference one within a handful of
     # steps. Total node count should keep tracking node_density's ratio, not decay toward the
     # 1x baseline, across enough steps.
-    reference = generate_world(seed=5, num_plates=8, continental_fraction=0.5, node_density=1.0)
-    denser = generate_world(seed=5, num_plates=8, continental_fraction=0.5, node_density=4.0)
+    reference = generate_world(seed=5, num_plates=8, continental_fraction=0.5, node_density=1.0, cratons_first=False)
+    denser = generate_world(seed=5, num_plates=8, continental_fraction=0.5, node_density=4.0, cratons_first=False)
     # This test only checks node counts, never climate/erosion/hydrology output (see
     # World.simulate_climate_biomes) -- skipping that per-step computation speeds this up
     # without changing what it exercises.
@@ -75,7 +75,7 @@ def test_node_density_persists_through_stepping_and_gap_fill():
 
 
 def test_step_world_advances_elapsed_years():
-    world = generate_world(seed=11, num_plates=6)
+    world = generate_world(seed=11, num_plates=6, cratons_first=False)
     step_world(world, years=1_000_000)
     assert world.elapsed_years == 1_000_000
     step_world(world, years=500_000)
@@ -85,7 +85,7 @@ def test_step_world_advances_elapsed_years():
 def test_rigid_rotation_preserves_interior_node_spacing_exactly():
     """The whole point of the plate-local-frame design: rotating a plate must not disturb
     the relative spacing of its own nodes at all (no resampling)."""
-    world = generate_world(seed=12, num_plates=6)
+    world = generate_world(seed=12, num_plates=6, cratons_first=False)
     world.simulate_climate_biomes = False  # only node spacing/rotation is checked here
     plate = max(world.plates, key=lambda p: p.node_count())
     local = plate.surface_nodes().local_xyz
@@ -101,7 +101,7 @@ def test_rigid_rotation_preserves_interior_node_spacing_exactly():
 
 
 def test_rigid_rotation_preserves_plate_frame_orthonormality():
-    world = generate_world(seed=13, num_plates=6)
+    world = generate_world(seed=13, num_plates=6, cratons_first=False)
     world.simulate_climate_biomes = False  # only plate.frame orthonormality is checked here
     for _ in range(10):
         step_world(world, years=5_000_000)
@@ -111,7 +111,7 @@ def test_rigid_rotation_preserves_plate_frame_orthonormality():
 
 
 def test_step_world_events_are_timestamped_with_post_step_elapsed_years():
-    world = generate_world(seed=16, num_plates=10, continental_fraction=0.6)
+    world = generate_world(seed=16, num_plates=10, continental_fraction=0.6, cratons_first=False)
     # Only event timestamps/log length are checked here, never climate/erosion/hydrology
     # output (see World.simulate_climate_biomes) -- plate-movement events (merges/splits/
     # gap-fills/volcanism) still fire normally, since simulate_plate_movement stays on.
@@ -172,7 +172,7 @@ def test_continental_volume_budget_bounds_the_boundary_ratchet(monkeypatch):
 
     monkeypatch.setattr(quad_tectonics, "boundary_context", track_growth_gate)
 
-    world = generate_world(seed=1, num_plates=14, continental_fraction=0.6, node_density=0.5)
+    world = generate_world(seed=1, num_plates=14, continental_fraction=0.6, node_density=0.5, cratons_first=False)
     world.simulate_climate_biomes = False  # plate geometry only -- keeps the run quick
     before_continental_crust = _continental_crust_area_m2(world)
     before_plate_footprint = _continental_plate_footprint_area_m2(world)
@@ -252,7 +252,7 @@ def test_coastal_feedback_stays_stable_over_many_steps():
     # only asserts the pass doesn't destabilise a world with a broad near-waterline shelf:
     # elevation stays finite and in-bounds over many steps, and the pass is demonstrably
     # active at the shore.
-    world = generate_world(seed=17, num_plates=8, continental_fraction=0.6, node_density=1.0)
+    world = generate_world(seed=17, num_plates=8, continental_fraction=0.6, node_density=1.0, cratons_first=False)
     _, elevation, *_ = erosion._gather_nodes(world)
     world.sea_level_m = float(np.percentile(elevation[elevation > 0.0], 40))
     sl = world.sea_level_m
@@ -286,7 +286,7 @@ def test_quad_world_steps_with_bounded_coverage_and_valid_topology():
     # Issue #228 Phase 4: a quad world steps with plate movement. Boundary retreat/advance
     # must keep every plate a valid balanced leaf mesh, and keep the sphere covered about as
     # well as it started -- neither leaking territory nor piling it up.
-    world = generate_world(seed=5, num_plates=6, node_density=0.5)
+    world = generate_world(seed=5, num_plates=6, node_density=0.5, cratons_first=False)
     world.simulate_climate_biomes = False
     cells_before = sum(p.node_count() for p in world.plates)
     for _ in range(12):
@@ -304,7 +304,7 @@ def test_quad_world_steps_with_bounded_coverage_and_valid_topology():
 
 def test_quad_world_stepping_is_deterministic():
     def run():
-        world = generate_world(seed=9, num_plates=4, node_density=0.5)
+        world = generate_world(seed=9, num_plates=4, node_density=0.5, cratons_first=False)
         world.simulate_climate_biomes = False
         for _ in range(2):
             step_world(world, 1_000_000)
@@ -322,7 +322,7 @@ def test_quad_merge_of_neighbouring_plates_in_a_stepped_world():
     # the other plates' territory than the pair already overlapped.
     from app import merge_split
 
-    world = generate_world(seed=5, num_plates=6, node_density=0.5)
+    world = generate_world(seed=5, num_plates=6, node_density=0.5, cratons_first=False)
     world.simulate_climate_biomes = False
     for _ in range(3):
         step_world(world, years=1_000_000)
@@ -362,7 +362,7 @@ def test_mobile_cover_ledger_closes_over_full_quad_steps():
     # (see mobile_cover.py), so the live inventory equals sources less sinks every step.
     from app.hydroclimate import mobile_cover
 
-    world = generate_world(seed=7, num_plates=8)
+    world = generate_world(seed=7, num_plates=8, cratons_first=False)
     for _ in range(8):
         step_world(world, 5_000_000)
         live = mobile_cover.surface_volume_m3(world)

@@ -248,7 +248,7 @@ def test_loading_a_save_with_the_old_water_column_budget_rebuilds_it_in_m3():
     # Issue #257: saves before the budget was area-weighted carry `ocean_water_column_m`
     # (summed metres over nominal-area nodes). Loading drops it and re-snapshots the budget
     # as a volume from the save's own hypsometry, so sea level stays put.
-    world = generate_world(seed=3, num_plates=4)
+    world = generate_world(seed=3, num_plates=4, cratons_first=False)
     budget = world.ocean_water_volume_m3
     del world.__dict__["ocean_water_volume_m3"]
     world.__dict__["ocean_water_column_m"] = 1.0e7

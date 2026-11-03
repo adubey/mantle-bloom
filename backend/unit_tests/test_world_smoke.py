@@ -86,7 +86,7 @@ def test_finish_generation_baseline_solves_fresh_after_the_cfd_state_exists(monk
         return real_compute_climate(*args, **kwargs)
 
     monkeypatch.setattr(climate, "compute_climate", counting)
-    world = generate_world(seed=11, **_COARSE_KWARGS)
+    world = generate_world(seed=11, cratons_first=False, **_COARSE_KWARGS)
     assert calls == 2
     assert world.climate_cache is None
     assert len(world.stats_history) == 1

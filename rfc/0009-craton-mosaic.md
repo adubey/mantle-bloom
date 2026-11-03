@@ -579,6 +579,9 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
       formation on marked columns, which must be 0).
 - [ ] Generation time under 2 s at density 1; step time changes by less than 2% at
       density 4.
+- [ ] Switch the temporary `cratons_first=False` overrides in affected unit and stress tests
+      to `True`, update their expectations for cratons-first worlds, and pass both suites.
+      Keep explicit plate-first tests where they verify that supported option.
 - [ ] Ledgers balance; old saves load; sketch and premade worlds generate as before; unit
       tests above pass; affected tests, ruff and `bin/quality_check.sh` are green.
 
