@@ -70,6 +70,9 @@ with overlapping-work timings labelled. The four arms therefore require a succes
 check, but no longer wait for an otherwise idle machine. Runtime differences from overlapping
 arms cannot establish a speedup or slowdown, so the 25% clean-timing investigation threshold
 does not apply to those arms.
+E main completed at 4.14 GB; both full E arms started with a 5 GB reservation. S200.8
+reserves 7.5 GB against the previously measured 7.1 GB S peak. This includes the small
+transient audit arrays; the shared budget check retains its own machine headroom.
 While waiting for a quiet machine, a two-step E branch probe may run after a successful budget
 check to test settling and the loss audit at the first refill. Its timing is excluded from
 the runtime comparison; the run and any failure will still be recorded.
@@ -136,3 +139,55 @@ does not change the agreed 1e-9 lake/land accounting gates or the independent un
 equation test. Full comparisons will report raw errors, rounding intervals and the anchor's
 loss balance separately, with this numerical limit explicit. No solver precision parameter
 has been changed to obtain a passing audit.
+
+## Full comparison results
+
+### E baseline control
+
+The 12-step baseline on `dea1f6b5` reproduces #757's final E branch. Against that report's
+rounded compact data, the largest whole-world liquid difference is 0.50 km³ and the largest
+target difference is 0.04 km³, within the registered 0.01% control tolerance.
+
+- Target liquid is 27.87 M km³ at step 2 and 28.32 M km³ at step 10. The loss audit shows
+  demand shortfalls of 73.7% and 56.4% at those refills despite closing global accounts.
+- Final whole-world liquid is 14.298 M km³, ice 25,229 km³, sea level -773.201 m.
+- Lag-1 autocorrelation is -0.286; mean absolute step change is 6.686 M km³.
+- Worst normalized lake and land residuals are 5.84e-12 and 1.34e-12; liquid and ice
+  residuals are 5.84e-12 and 2.09e-16. All accounting gates pass.
+- Median step time is 8.36 s; peak RSS is 4.14 GB. Two other unit workers were listed at
+  the start, so runtime is reported under the owner's overlapping-load caveat.
+
+### E comparison
+
+| Measure | Main | Branch |
+|---|---:|---:|
+| Mean absolute liquid step change (km³) | 6,686,041 | 151,998 |
+| Lag-1 autocorrelation of liquid changes | -0.286 | +0.367 |
+| Final whole-world liquid (M km³) | 14.298 | 3.960 |
+| Final lake ice (km³) | 25,229 | 14,306 |
+| Final sea level (m) | -773.201 | -754.885 |
+| Final target area (M km²) | 11.092 | 5.644 |
+| Final target liquid (M km³) | 11.651 | 1.875 |
+| Step-2 target liquid (M km³) | 27.873 | 0.465 |
+| Step-10 target liquid (M km³) | 28.317 | 2.028 |
+| Median instrumented step time (s) | 8.36 | 7.76 |
+| Peak RSS (GB) | 4.14 | 4.88 |
+
+The liquid step-change metric falls 97.7%. The artificial refills are removed; later growth
+and changes through lagged climate remain. At the baseline's refill steps, the branch's
+booked losses match the final-level demands to 2.7e-17 and 7.3e-17. Across all 12 branch
+steps the anchor's worst normalized loss error is 3.4e-16. Main's corresponding refill
+shortfalls are 73.7% and 56.4%.
+
+All branch accounting gates pass: worst lake and land residuals 4.72e-12 and 9.70e-13;
+liquid and ice sub-ledgers 4.72e-12 and 2.11e-16. The largest branch target ends below the
+3,500 m guard; another large lake remains on that guard, as the endpoint records show.
+Runtimes include the loss audit and overlap different unit/stress workloads, so the median
+values do not establish a speedup. The measured memory increase is retained in the table.
+
+**Numerical audit limit.** The extra all-body 1e-9 raw loss gate is not met. The branch's
+largest raw normalized error, 0.537, comes from a body storing 2.1e-18 m³ with about 0.55 m³
+of calculated demand; it lies inside a 1.66 m³ two-ULP demand interval. The largest error
+outside the interval is 1.52e-8 in a body holding 6.28 m³, consistent with the pre-existing
+finite-iteration precision issue identified in the probes. These flags are retained, not
+counted as passing. The independent equation fixture and the materially wet E anchor pass.
