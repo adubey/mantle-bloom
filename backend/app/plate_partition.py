@@ -58,7 +58,12 @@ PARTITION_CANDIDATES = 8
 PLATE_AREA_BAND = (0.75, 1.25)
 REFINE_MAX_SWEEPS = 20
 MAX_PARTITION_ATTEMPTS = 50
+MIN_FALLBACK_PLATES = 9
 POINT_SEED_COUNT = 200
+
+
+class PartitionAttemptsExhausted(RuntimeError):
+    """No valid starting plate partition was found at this plate count."""
 
 
 @dataclass
@@ -333,7 +338,28 @@ def partition_plates(
             if len(candidates) == PARTITION_CANDIDATES:
                 break
     if not candidates:
-        raise RuntimeError(f"no valid {num_plates}-plate polygon-seed partition in {MAX_PARTITION_ATTEMPTS} attempts")
+        raise PartitionAttemptsExhausted(f"no valid {num_plates}-plate polygon-seed partition in {MAX_PARTITION_ATTEMPTS} attempts")
     _, attempts, initial, sites = min(candidates, key=lambda c: (c[0], c[1]))
     labels, history = refine_boundaries(lat, initial, cost, core >= 0, floor, land)
     return PlatePartition(plate=labels, initial_plate=initial, sites=sites, refine_costs=history, attempts=attempts)
+
+
+def partition_plates_with_fallback(
+    rng: np.random.Generator,
+    lat: Lattice,
+    num_plates: int,
+    continent: np.ndarray,
+    core: np.ndarray,
+    belt: np.ndarray,
+    node_density: float = 1.0,
+    land: np.ndarray | None = None,
+) -> PlatePartition:
+    """Retry an exhausted partition with fewer plates, keeping the geography fixed (#774)."""
+    minimum = min(num_plates, MIN_FALLBACK_PLATES)
+    for count in range(num_plates, minimum - 1, -1):
+        try:
+            return partition_plates(rng, lat, count, continent, core, belt, node_density, land)
+        except PartitionAttemptsExhausted:
+            if count == minimum:
+                raise
+    raise AssertionError("plate count must be positive")  # unreachable for valid inputs
