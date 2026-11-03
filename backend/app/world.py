@@ -753,14 +753,18 @@ def _least_land_support_axis(land_xyz: np.ndarray) -> tuple[np.ndarray, float]:
     return axis, support
 
 
-def _least_polar_land_axis(land_xyz: np.ndarray, preferred_axis: np.ndarray) -> np.ndarray:
-    """For #781's infeasible case, sample axes and minimize land nodes in both polar caps."""
-    indices = np.arange(POLAR_FALLBACK_AXIS_SAMPLES, dtype=float)
-    z = 1.0 - (2.0 * indices + 1.0) / POLAR_FALLBACK_AXIS_SAMPLES
+def _fibonacci_sphere_axes(count: int) -> np.ndarray:
+    """Deterministic, approximately uniform unit vectors for the #781 fallback search."""
+    indices = np.arange(count, dtype=float)
+    z = 1.0 - (2.0 * indices + 1.0) / count
     longitude = indices * (np.pi * (3.0 - np.sqrt(5.0)))
     radius = np.sqrt(1.0 - z * z)
-    axes = np.column_stack((radius * np.cos(longitude), radius * np.sin(longitude), z))
-    axes = np.vstack((preferred_axis, axes))
+    return np.column_stack((radius * np.cos(longitude), radius * np.sin(longitude), z))
+
+
+def _least_polar_land_axis(land_xyz: np.ndarray, preferred_axis: np.ndarray) -> np.ndarray:
+    """For #781's infeasible case, sample axes and minimize land nodes in both polar caps."""
+    axes = np.vstack((preferred_axis, _fibonacci_sphere_axes(POLAR_FALLBACK_AXIS_SAMPLES)))
 
     # For an axis n, land within either cap is land or antipodal land within 10° of n.
     cap_chord = 2.0 * np.sin(np.deg2rad(POLAR_LAND_CLEARANCE_DEG) / 2.0)
