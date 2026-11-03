@@ -69,6 +69,24 @@ def rotation_matrix(axis: np.ndarray, angle: float) -> np.ndarray:
     return np.eye(3) + np.sin(angle) * k + (1.0 - np.cos(angle)) * (k @ k)
 
 
+def rotation_between(source: np.ndarray, target: np.ndarray) -> np.ndarray:
+    """Shortest rigid rotation taking one unit-vector direction to another."""
+    source = normalize(source)
+    target = normalize(target)
+    cross = np.cross(source, target)
+    sine = float(np.linalg.norm(cross))
+    cosine = float(np.clip(np.dot(source, target), -1.0, 1.0))
+    if sine < _EPS:
+        if cosine > 0.0:
+            return np.eye(3)
+        # Antiparallel vectors have infinitely many half-turn axes; choose a stable one.
+        axis = np.cross(source, np.array([1.0, 0.0, 0.0]))
+        if np.linalg.norm(axis) < _EPS:
+            axis = np.cross(source, np.array([0.0, 1.0, 0.0]))
+        return rotation_matrix(axis, np.pi)
+    return rotation_matrix(cross / sine, float(np.arctan2(sine, cosine)))
+
+
 def rotation_matrix_from_omega(omega: np.ndarray, dt: float) -> np.ndarray:
     """Angular velocity vector (axis direction = pole, magnitude = rate) -> rotation matrix
     for advancing by time `dt` under that constant angular velocity."""

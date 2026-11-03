@@ -127,6 +127,7 @@ Request body:
   "num_plates": null,
   "continental_fraction": 0.7,
   "land_fraction": 0.29,
+  "keep_land_off_poles": false,
   "axial_tilt_deg": 23.5,
   "num_mantle_centers": 8,
   "node_density": 4.0,
@@ -165,6 +166,11 @@ the cratons-first relief is generated as before (omission follows
 World dialog's name field and Public checkbox: applied to the record being generated
 into (a null name keeps the record's name). See
 [simulation-model/foundations.md#synthetic-relief](simulation-model/foundations.md#relief-from-a-synthetic-tectonic-history-synthetic_reliefpy).
+`keep_land_off_poles` is the Advanced-settings option for Random worlds. When true, the
+backend rigidly reorients the generated geography to keep initial land nodes outside 10° caps
+around both poles when possible. If no such orientation exists, it samples candidate axes and
+chooses one with the fewest land nodes in the caps. It preserves the geography and land
+fraction; sketches and premade worlds ignore it.
 `axial_tilt_deg` is the UI's third generation slider (degrees), defaulting to
 `world.DEFAULT_AXIAL_TILT_DEG = 23.5` (Earth's real tilt) -- doesn't affect plate generation,
 only `climate.py`'s insolation on future renders (see

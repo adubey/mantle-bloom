@@ -35,7 +35,7 @@
 ```
 Browser (App.tsx)
   │
-  │  POST /worlds/{world_id}/generate  { seed, continental_fraction, land_fraction }
+  │  POST /worlds/{world_id}/generate  { seed, continental_fraction, land_fraction, keep_land_off_poles }
   ▼
 FastAPI (main.py)
   │  world.generate_world(seed, continental_fraction, land_fraction) -- builds the plate

@@ -148,6 +148,17 @@ density" choice (`NODE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)`, see below).
   sea level implausible regardless). Confirmed directly: at the defaults, measured land
   fraction across several seeds lands within about a percentage point of 29%.
 
+The Random tab's Advanced setting **Keep land away from the poles** applies a single rigid
+rotation after the starting relief and soil are settled, but before climate and atmosphere
+bootstrap. It finds the pole axis with the greatest clearance from the initial land nodes and
+rotates that axis to geographic north. When possible, both poles have 10° caps without initial
+land (absolute latitude stays below 80°). If no axis can clear both caps, it samples candidate
+axes and chooses the one with the fewest land nodes in the caps. The rotation moves plate
+frames, plate angular velocities, mantle centers and pinned plate motions together;
+plate-local terrain and material fields are unchanged. This preserves land area and every
+pairwise surface distance. The setting defaults off and does not affect Human-made sketches or
+Premade worlds.
+
 Every starting cell gets a rock age that varies across its plate, read from the layout with no
 random draw (#744, #747). Generation solves the first-step plate motions read-only and treats
 oceanic cells at opening boundaries as ridges. Ocean then ages with spreading time, the distance

@@ -648,6 +648,8 @@ export interface GenerateWorldOptions {
   cratonsFirst?: boolean;
   // With cratonsFirst, relief from a synthetic tectonic history (#218); omitted follows the backend default.
   syntheticRelief?: boolean;
+  // Reorient Random worlds to keep initial land outside 10° polar caps.
+  keepLandOffPoles?: boolean;
   continentalFraction: number;
   landFraction: number;
   axialTiltDeg: number;
@@ -664,7 +666,7 @@ export interface GenerateWorldOptions {
 
 export function generateWorld(worldId: WorldId, options: GenerateWorldOptions): Promise<WorldSummary> {
   const {
-    seed, cratonsFirst, syntheticRelief, continentalFraction, landFraction, axialTiltDeg, nodeDensity,
+    seed, cratonsFirst, syntheticRelief, keepLandOffPoles = false, continentalFraction, landFraction, axialTiltDeg, nodeDensity,
     initialSoilMaturity, climateDensity, fluidDensity, numPlates, voronoiPoints,
     sketchImageBase64 = null, premadeWorldId = null, name = null, isPublic = null, onProgress,
   } = options;
@@ -675,6 +677,7 @@ export function generateWorld(worldId: WorldId, options: GenerateWorldOptions): 
       seed,
       cratons_first: cratonsFirst,
       synthetic_relief: syntheticRelief,
+      keep_land_off_poles: keepLandOffPoles,
       num_plates: numPlates,
       voronoi_points: voronoiPoints,
       continental_fraction: continentalFraction,
