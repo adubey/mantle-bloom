@@ -2,9 +2,9 @@ import pickle
 
 import numpy as np
 import pytest
-from app import geometry
+from app import geometry, lithosphere
 from app.elevation_lines import line_spacing_rad
-from app.hydroclimate import breaching, erosion, eustasy, hydrology, lakes
+from app.hydroclimate import breaching, erosion, eustasy, hydrology, ice_sheet, lakes
 from app.plates import collect_all_accounting_areas_m2
 from app.world import World, generate_world, step_world
 
@@ -98,11 +98,13 @@ def test_compute_hydrology_exposes_wet_precipitation_once_in_external_supply():
 
 
 def test_seasonal_lake_inputs_leave_dry_land_budyko_pet_unchanged():
+    # At 25 C every drop is rain at any seasonal swing (RFC 0015 D1's snow share is 0), so
+    # the amplitude must not move dry-land runoff: Budyko PET reads the annual mean.
     theta = 0.05 * np.arange(40)
     elevation = np.linspace(100.0, -100.0, 40)
     world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
     precipitation = np.full(40, 800.0)
-    temperature = np.full(40, 5.0)
+    temperature = np.full(40, 25.0)
 
     steady = hydrology.compute_hydrology(
         world, precipitation, temperature, years=100_000, seasonal_amplitude_at_nodes=np.zeros(40)
@@ -937,15 +939,30 @@ def test_discharge_carries_the_ice_ledgers_meltwater_exactly_once_at_any_step_le
         assert ledger.surface_melt_m3 > 0.0 and ledger.basal_melt_m3 > 0.0
         assert fields.lake_external_meltwater_m3_per_yr.sum() > 0.0
         assert np.all(fields.discharge_m3_s >= 0.0)
-        assert fields.lake_water_ledger.residual_m3 == pytest.approx(0.0, abs=1.0e5)
+        # Physical fluxes are ~70x the old model-unit ones, so the lake's absolute
+        # residual scales with its throughput (RFC 0015 D1, #789).
+        supply_m3 = (
+            ledger.meltwater_m3 * lithosphere.RHO_ICE / lithosphere.RHO_WATER
+            + fields.lake_external_dry_runoff_m3_per_yr.sum() * years
+        )
+        assert fields.lake_water_ledger.residual_m3 == pytest.approx(0.0, abs=1e-9 * supply_m3)
         # A reach starts at `Q tau`, so what the river held back of this melt is matched by
-        # what its inventory released (#725).
+        # what its inventory released (#725). The match is to a part per million: the march
+        # (RFC 0015 D2, #789) sums hundreds of substep ledgers, and the initial-vs-final
+        # reach inventory differs by the transit transient, so single-solve 1e-9 no longer
+        # holds.
+        # Meltwater converts by mass (RFC 0015 D1, #789): the routed water is the ice
+        # ledger's meltwater times RHO_ICE / RHO_WATER.
         assert (
             fields.lake_external_meltwater_m3_per_yr.sum()
             + fields.lake_external_river_storage_m3_per_yr.sum()
-        ) == pytest.approx(ledger.meltwater_m3 / years, rel=1e-9)
+        ) == pytest.approx(
+            ledger.meltwater_m3 * lithosphere.RHO_ICE / lithosphere.RHO_WATER / years, rel=1e-6
+        )
         assert fields.lake_external_wet_precip_m3_per_yr.sum() == 0.0
-        assert fields.lake_external_dry_runoff_m3_per_yr.sum() == 0.0
+        # Rain on the ice (a third of the precipitation at -6 C with an 18 C swing) drains
+        # as ordinary runoff for now; D8 will route it on the ice instead.
+        assert fields.lake_external_dry_runoff_m3_per_yr.sum() > 0.0
 
 
 def test_discharge_from_fixed_rainfall_does_not_depend_on_step_length():
@@ -1097,7 +1114,9 @@ def test_compute_hydrology_threads_seasonal_amplitude_into_glacier_melt():
 
     no_swing, still = run(None)
     assert np.array_equal(no_swing, run(0.0)[0])
-    assert still.surface_melt_m3 == 0.0
+    # No degree-days at a -6 C mean with no swing: only the depression feedback's fringe
+    # melt, far below a percent of accumulation (RFC 0015 D1-D2, #789).
+    assert still.surface_melt_m3 < 0.01 * still.accumulation_m3
     # A -6C mean with an 18C swing has summers well above freezing: the ice melts.
     _, melting = run(18.0)
     assert melting.surface_melt_m3 > 0.0
@@ -1358,26 +1377,51 @@ def test_compute_hydrology_delivers_every_drop_of_liquid_water_past_cold_nodes(c
     elevation[0:15] = -100.0
     elevation[28:31] = -60.0
     temperature = np.zeros(40)
-    temperature[cold] = -10.0
+    # Below freezing on the annual mean (the D2(b) point) but mild enough with the 10 C
+    # swing that its snow melts in the step: at -10 C physical ice (RFC 0015 D1, #789)
+    # would sheet over in kyr and eat this bathtub sea, which is G4's problem, not this
+    # test's.
+    temperature[cold] = -2.0
     precipitation = np.full(40, 800.0)
+    # A 10 C seasonal swing so the 0 C plateau gets rain as well as snow (RFC 0015 D1,
+    # #789): at no swing a 0 C mean sits below the 1 C rain-snow threshold and nothing
+    # is liquid.
+    amplitude = np.full(40, 10.0)
     plate = _flow_line_plate(0, theta, elevation)
     world = World(seed=0, plates=[plate])
     areas = _node_areas(world)
     years = 10_000.0
 
     for _ in range(2):
-        fields = hydrology.compute_hydrology(world, precipitation, temperature, years=years)
+        fields = hydrology.compute_hydrology(
+            world, precipitation, temperature, years=years, seasonal_amplitude_at_nodes=amplitude
+        )
         plate.set_fields_on_plate(lake_depth=fields.lake_depth, glacier_depth=fields.glacier_depth)
     assert fields.lake_depth[28:31].min() > 0.0  # the pit holds a lake
-    liquid_m3 = float(np.dot(np.where((temperature < 0.0) | fields.is_ocean, 0.0, precipitation) / 1000.0, areas))
-    source_m3 = liquid_m3 + fields.ice.ledger.meltwater_m3 / years  # Budyko runoff is all of it with no evaporation
+    rain_mm = (1.0 - ice_sheet.snow_fraction(temperature, amplitude)) * precipitation
+    rain_mm = np.where(fields.is_ocean, 0.0, rain_mm)
+    liquid_m3 = float(np.dot(rain_mm / 1000.0, areas))
+    # Meltwater converts by mass (RFC 0015 D1, #789). Budyko runoff is all of the rain
+    # with no evaporation at or below 0 C.
+    source_m3 = (
+        liquid_m3
+        + fields.ice.ledger.meltwater_m3 * lithosphere.RHO_ICE / lithosphere.RHO_WATER / years
+    )
     ocean_m3 = float(fields.discharge_m3_s[fields.is_ocean].sum()) * hydrology.SECONDS_PER_YEAR
     ledger = fields.lake_water_ledger
     river = fields.river_water_ledger
+    # Physical ice (RFC 0015 D1, #789) stores kyr of snowfall within a step, so the glacier's
+    # own storage change -- grown ice plus calved export, in water -- belongs in the balance;
+    # under model units it was small enough to leave out.
+    ice = fields.ice.ledger
+    ice_storage_m3_per_year = (
+        (ice.closing_m3 - ice.opening_m3 + ice.calved_m3)
+        * lithosphere.RHO_ICE / lithosphere.RHO_WATER / years
+    )
     stored_or_lost_m3_per_year = (
         ledger.storage_change_m3 + ledger.ice_storage_change_m3 + ledger.evaporation_m3
         + ledger.sublimation_m3 + river.final_storage_m3 - river.initial_storage_m3
-    ) / years
+    ) / years + ice_storage_m3_per_year
     assert ocean_m3 == pytest.approx(source_m3 - stored_or_lost_m3_per_year, rel=1e-9)
     assert abs(ledger.residual_m3) <= 1e-9 * ledger.external_supply_m3
 
@@ -2157,6 +2201,7 @@ def test_glacier_account_chains_steps_and_closes_the_full_precipitation_ledger()
     assert not runs[1].glacier_water_ledger.initialized_from_ice
     assert runs[1].glacier_water_ledger.opening_m3 == runs[0].glacier_water_ledger.closing_m3
     areas = _node_areas(world)
+    opening = np.zeros(12)
     for fields in runs:
         land, glacier = fields.land_water_ledger, fields.glacier_water_ledger
         external = land.rain_m3 + glacier.external_input_m3 + land.meltwater_m3
@@ -2165,9 +2210,38 @@ def test_glacier_account_chains_steps_and_closes_the_full_precipitation_ledger()
         assert glacier.external_input_m3 == pytest.approx(frozen.retained_m3 + frozen.bare_melted_m3, rel=1e-12)
         # The frozen terms cancel by construction: this ledger names them, it doesn't test them.
         assert hydrology.full_land_water_residual_m3(land, glacier) == pytest.approx(land.residual_m3, abs=1e-9 * external)
+        # D1's partition reaches the ledgers (RFC 0015 D1, #789): this chain has no pits so
+        # no lake holds water and the wet share is 0 throughout.
+        assert fields.lake_depth.max() == 0.0
+        cover = (np.clip(opening, 0.0, None) >= hydrology.GLACIER_VISIBLE_DEPTH_M).astype(float)
+        snow_ground = ice_sheet.snow_fraction(temperature, amplitude)
+        snow_ice = ice_sheet.snow_fraction(
+            temperature - ice_sheet.LAPSE_RATE_C_PER_KM * np.clip(opening, 0.0, None) / 1000.0, amplitude
+        )
+        parts = hydrology.glacier_rain_partition_mm(
+            np.full(12, 800.0), np.zeros(12), cover, snow_ground, snow_ice
+        )
+        _, _, ice_rain, _, bare_rain = (np.asarray(p, dtype=float) for p in parts)
         land_mask = ~fields.is_ocean
-        precipitation_m3 = float(np.dot(np.full(12, 0.8), areas * land_mask)) * 100_000
-        assert land.rain_m3 + glacier.frozen.land_m3 == pytest.approx(precipitation_m3)
+        # The land ledger's rain is exactly the rain shares over land.
+        assert land.rain_m3 == pytest.approx(
+            float(np.dot((ice_rain + bare_rain)[land_mask] / 1000.0, areas[land_mask])) * 100_000
+        )
+        # Every land snowflake is kept as ice or melts in the step (land never vanishes);
+        # ocean snow can additionally feed the ice, and ocean bare snow outside any domain
+        # is the pre-existing gap, so the kept-plus-melted snow sits between the land snow
+        # and the all-node snow, in water.
+        snow_water = (fields.ice.ledger.accumulation_m3 + fields.ice.ledger.snow_melted_m3) * (
+            lithosphere.RHO_ICE / lithosphere.RHO_WATER
+        )
+        snow_land = float(np.dot(((800.0 - (ice_rain + bare_rain)) * land_mask) / 1000.0, areas)) * 100_000
+        # The snow share is at most the whole precipitation (f_snow <= 1 everywhere), so the
+        # kept-plus-melted snow is bounded above by all of P, in water. The cover only grows
+        # past the opening one here, so the opening land snow bounds it below.
+        snow_all = float(np.dot(np.full(12, 800.0) / 1000.0, areas)) * 100_000
+        assert snow_water >= snow_land * (1.0 - 1e-9)
+        assert snow_water <= snow_all * (1.0 + 1e-9)
+        opening = fields.glacier_depth
 
 
 def test_melting_ice_releases_its_account_outward_and_leaves_control_ice_to_the_solve():
@@ -2322,3 +2396,68 @@ def test_missing_owned_lake_supply_stays_in_land_residual(monkeypatch):
     assert broken.land_water_ledger.residual_m3 == pytest.approx(
         control.land_water_ledger.residual_m3 + control.lake_water_ledger.external_supply_m3, rel=1e-8
     )
+
+
+def test_d1_precipitation_partition_sums_to_p():
+    # Each cell's precipitation splits into disjoint parts that sum to it (RFC 0015 D1,
+    # #789): the lake's wet share, and on the dry share the ice-covered part's snow and
+    # rain plus the bare part's snow and rain. No liquid water is deleted.
+    rng = np.random.default_rng(789)
+    precipitation = rng.uniform(0.0, 2000.0, size=50)
+    wet = rng.uniform(0.0, 1.0, size=50)
+    cover = rng.uniform(0.0, 1.0, size=50)
+    snow_ground = rng.uniform(0.0, 1.0, size=50)
+    snow_ice = rng.uniform(0.0, 1.0, size=50)
+    parts = hydrology.glacier_rain_partition_mm(precipitation, wet, cover, snow_ground, snow_ice)
+    assert len(parts) == 5
+    for part in parts:
+        assert np.all(np.asarray(part) >= 0.0)
+        assert np.all(np.asarray(part) <= precipitation)
+    assert sum(np.asarray(p) for p in parts) == pytest.approx(precipitation)
+    lake, ice_snow, ice_rain, bare_snow, bare_rain = (np.asarray(p) for p in parts)
+    assert lake == pytest.approx(wet * precipitation)
+    dry = (1.0 - wet) * precipitation
+    assert ice_snow == pytest.approx(dry * cover * snow_ice)
+    assert ice_rain == pytest.approx(dry * cover * (1.0 - snow_ice))
+    assert bare_snow == pytest.approx(dry * (1.0 - cover) * snow_ground)
+    assert bare_rain == pytest.approx(dry * (1.0 - cover) * (1.0 - snow_ground))
+
+
+def test_d2_march_settles_and_holds_on_an_ice_free_world():
+    # With no ice and no snowfall the march settles within a few substeps and holds the
+    # rest of the step at zero rates; the ledger closes exactly (RFC 0015 D2, #789).
+    ice_sheet.MARCH_LOG.clear()
+    theta = 0.05 * np.arange(40)
+    elevation = np.linspace(100.0, -100.0, 40)
+    world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+    fields = hydrology.compute_hydrology(world, np.full(40, 800.0), np.full(40, 25.0), years=100_000)
+    entry = ice_sheet.MARCH_LOG[-1]
+    assert entry["settled"] is True
+    assert entry["marched_years"] < 100_000.0
+    assert entry["held_years"] == pytest.approx(100_000.0 - entry["marched_years"])
+    assert entry["tipping_growth"] is None
+    assert len(entry["volume_path_km3"]) > 0
+    assert fields.ice.ledger.opening_m3 == 0.0
+    assert fields.ice.ledger.closing_m3 == 0.0
+    assert fields.ice.ledger.residual_m3 == 0.0
+    assert np.all(fields.glacier_depth == 0.0)
+
+
+def test_d2_march_ledger_closes_on_growing_ice():
+    # The march's summed substep ledgers close against the closing ice to 0.1% of the
+    # step's accumulation, and every step logs its substeps, held years, settlement and
+    # volume path (RFC 0015 D2, #789).
+    ice_sheet.MARCH_LOG.clear()
+    theta = 0.002 * np.arange(12)
+    elevation = 500.0 - 60.0 * np.arange(12)
+    world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+    fields = hydrology.compute_hydrology(world, np.full(12, 800.0), np.full(12, -3.0), years=100_000)
+    ledger = fields.ice.ledger
+    assert ledger.accumulation_m3 > 0.0
+    assert abs(ledger.residual_m3) <= 1e-3 * ledger.accumulation_m3
+    entry = ice_sheet.MARCH_LOG[-1]
+    assert entry["substeps"] >= 1
+    assert entry["marched_years"] + entry["held_years"] == pytest.approx(100_000.0)
+    assert len(entry["volume_path_km3"]) > 0
+    assert "tipping_growth" in entry
+    assert float(np.dot(fields.glacier_depth, _node_areas(world))) == pytest.approx(ledger.closing_m3)

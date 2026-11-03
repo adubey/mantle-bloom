@@ -157,7 +157,9 @@ def test_volume_contract_closes_per_body_and_across_the_world():
     assert ledger.closing_m3 > 0.0
 
 
-def _steady_state(points, area, elevation, climate, years=1e10, start=None, steps=4):
+def _steady_state(points, area, elevation, climate, years=1e6, start=None, steps=4):
+    """Settle the ice toward its balance. Physical rates (RFC 0015 D1, #789) respond in kyr,
+    so Myr steps reach the steady sheet; the old 1e10 yr steps predate physical units."""
     depth = np.zeros(len(points)) if start is None else start
     for _ in range(steps):
         depth, _, ice = _step(points, area, elevation, depth, climate, years)
@@ -167,40 +169,45 @@ def _steady_state(points, area, elevation, climate, years=1e10, start=None, step
 def test_more_snowfall_on_the_same_positive_balance_area_builds_a_bigger_sheet():
     # Snow-covered and melt-free inside 500 km, strong summer melt outside it: the positive-
     # balance area is the same disc whatever the snowfall. Twice the snow must still give a
-    # larger steady sheet that reaches further out (accumulation magnitude, not just its sign).
+    # larger sheet that reaches further out (accumulation magnitude, not just its sign).
+    # Physical ice (RFC 0015 D1, #789) responds in kyr and pins at its margin within a few
+    # of them, so the magnitude is read on one short step from bare ground, in the explicit
+    # regime where the new volume is the opening balance times the step.
     points, r, elevation, area = _continent(land_radius_km=1100.0, half_km=1500.0)
     inside = r <= 500e3
     temperature = np.where(inside, -40.0, 8.0)
 
     def run(precipitation):
         climate = ice_sheet.SurfaceClimate(np.full(len(r), precipitation), temperature, np.full(len(r), 5.0), inside)
-        depth, ice = _steady_state(points, area, elevation, climate)
+        depth, _, ice = _step(points, area, elevation, np.zeros(len(r)), climate, 500.0)
         return float(np.dot(depth, area)), np.count_nonzero(depth >= hydrology.GLACIER_VISIBLE_DEPTH_M), ice
 
     v1, n1, ice1 = run(300.0)
     v2, n2, ice2 = run(600.0)
     assert not any(b.saturated for b in ice1.bodies + ice2.bodies)
-    assert v2 > 1.1 * v1
+    assert v2 == pytest.approx(2.0 * v1, rel=0.02)
     assert n2 > n1
 
 
 def test_backward_euler_converges_to_zero_balance_for_long_steps_and_to_explicit_for_short_ones():
     points, r, elevation, area = _continent(land_radius_km=1100.0, half_km=1500.0)
     climate = _graded_climate(r, inner_km=600.0)
-    depth, ice = _steady_state(points, area, elevation, climate, years=1e10, steps=3)
+    depth, ice = _steady_state(points, area, elevation, climate, years=1e6, steps=3)
     ledger = ice.ledger
     # dt * B = closing - opening, so with dt = 10 Gyr the balance is ~zero next to snowfall.
     assert not any(b.saturated for b in ice.bodies)
     assert abs(ledger.accumulation_m3 - ledger.surface_melt_m3 - ledger.basal_melt_m3) < 0.01 * ledger.accumulation_m3
 
-    # Short steps from a growing sheet: dV / dt is the explicit balance at the current extent,
-    # the same whichever short step is taken.
-    growing, _, _ = _step(points, area, elevation, np.zeros(len(points)), climate, 3e6)
-    rates = []
-    for years in (1e3, 1e4):
-        new, _, ice = _step(points, area, elevation, growing, climate, years)
-        rates.append((float(np.dot(new, area)) - float(np.dot(growing, area))) / years)
-    assert rates[0] == pytest.approx(rates[1], rel=0.02)
+    # Short steps from a growing sheet follow the explicit balance at the current extent:
+    # one 200 yr step moves the opening balance (accumulation minus melt at the opening ice)
+    # times the step. Physical ice (RFC 0015 D1, #789) responds in kyr, so Myr steps no
+    # longer read as explicit.
+    growing, _, _ = _step(points, area, elevation, np.zeros(len(points)), climate, 2e3)
+    acc, sm, bm = climate.rates(growing)
+    explicit_m3_per_yr = float(np.dot(acc - sm - bm, area)) / 1e6
+    new, _, _ = _step(points, area, elevation, growing, climate, 200.0)
+    rate_m3_per_yr = (float(np.dot(new, area)) - float(np.dot(growing, area))) / 200.0
+    assert rate_m3_per_yr == pytest.approx(explicit_m3_per_yr, rel=0.05)
 
 
 def test_height_mass_balance_feedback_gives_two_stable_sheets():
@@ -211,10 +218,10 @@ def test_height_mass_balance_feedback_gives_two_stable_sheets():
     elevation = np.where(elevation > 0.0, 2000.0, elevation)
     n = len(points)
     climate = ice_sheet.SurfaceClimate(np.full(n, 1000.0), np.full(n, -2.0), np.full(n, 8.0), np.ones(n, dtype=bool))
-    bare, _ = _steady_state(points, area, elevation, climate, years=2e7, steps=3)
+    bare, _ = _steady_state(points, area, elevation, climate, years=2e5, steps=3)
     assert bare.max() == 0.0
     start = np.where(elevation > 0.0, 1500.0, 0.0)
-    covered, ice = _steady_state(points, area, elevation, climate, years=2e7, start=start, steps=3)
+    covered, ice = _steady_state(points, area, elevation, climate, years=2e5, start=start, steps=3)
     assert float(np.dot(covered, area)) > 0.2 * float(np.dot(start, area))
 
     # Under fixed climate the chosen root moves continuously from the previous extent: a
@@ -229,7 +236,9 @@ def test_grounded_ice_matches_the_ice_load_classification_and_flows_below_sea_le
     points, r, elevation, area = _continent(land_radius_km=500.0)
     elevation = np.where((elevation < 0.0) & (r < 800e3), -150.0, elevation)
     start = np.where(r < 500e3, 2500.0, 0.0)
-    depth, _, ice = _step(points, area, elevation, start, _cold(len(points)), 1e6)
+    # Physical ice (RFC 0015 D1, #789) advances the grounding line in kyr; a Myr step would
+    # pile the interior past the depth guard and flatten the surface the test reads.
+    depth, _, ice = _step(points, area, elevation, start, _cold(len(points)), 2e3)
     loaded = lithosphere.grounded_ice_load_kg_m2(depth, elevation, 0.0, elevation <= 0.0) > 0.0
     assert np.array_equal(depth > 0.0, loaded)
     shelf = (elevation < 0.0) & (depth > 0.0)
@@ -253,7 +262,7 @@ def test_a_saturated_marine_body_calves_rather_than_melting():
     # #355 step 5: the hydrology handoff is a yearly liquid-water rate. Calving leaves
     # directly for the ocean, even when it occurs in the same step as melt.
     routed_melt_m3 = hydrology.meltwater_m3_per_yr(melt, area, 1e6).sum() * 1e6
-    assert routed_melt_m3 == pytest.approx(ledger.meltwater_m3)
+    assert routed_melt_m3 == pytest.approx(ledger.meltwater_m3 * lithosphere.RHO_ICE / lithosphere.RHO_WATER)
     assert routed_melt_m3 < ledger.meltwater_m3 + ledger.calved_m3
     assert ice.bodies[0].saturated
 
@@ -310,7 +319,8 @@ def test_uniform_slab_velocity_matches_balance_velocity():
     thickness = np.full(n, 500.0)
     surface = 2000.0 - 10.0 * np.arange(n) + thickness
     climate = _cold(n, precipitation=400.0)
-    b_m_per_yr = hydrology.GLACIER_ACCUMULATION_RATE * 400.0 / 1e6
+    # Physical snowfall by mass (RFC 0015 D1, #789): all 400 mm/yr falls as snow at -30 C.
+    b_m_per_yr = 400.0 * 1e-3 * lithosphere.RHO_WATER / lithosphere.RHO_ICE
     for warm in (True, False):
         _, velocity, sliding = ice_sheet._diagnose_flow(
             points, neighbors, area, surface, thickness, thickness, thickness, np.ones(n), climate, np.full(n, warm), 1e6,
@@ -333,21 +343,27 @@ def test_bed_thaws_under_thick_ice_and_yield_stress_softens_only_on_thawed_sedim
 
 
 def test_seasonal_melt_switches_on_around_the_freezing_threshold():
+    # Bare-ice melt (RFC 0015 D1, #789): with no snow on the ground, degree-days above 0 C
+    # ablate bare ice wherever the lapsed surface thaws. Read at 1 km of ice so the surface
+    # sits 6.5 C below the given annual mean.
     def surface_melt(temperature, amplitude):
         n = len(temperature)
-        clim = ice_sheet.SurfaceClimate(np.zeros(n), np.asarray(temperature, float), np.asarray(amplitude, float), np.ones(n, bool))
-        return clim.rates(np.zeros(n))[1]
+        clim = ice_sheet.SurfaceClimate(
+            np.zeros(n), np.asarray(temperature, float), np.asarray(amplitude, float), np.ones(n, bool)
+        )
+        return clim.rates(np.full(n, 1000.0))[1]
 
-    # With no swing, surface melt switches on exactly at a 0C annual mean.
-    no_swing = surface_melt([-0.1, 0.0, 0.1], [0.0, 0.0, 0.0])
+    # With no swing, surface melt switches on exactly at a 0C surface mean.
+    no_swing = surface_melt([6.4, 6.5, 6.6], [0.0, 0.0, 0.0])
     assert no_swing[0] == 0.0 and no_swing[1] == 0.0 and no_swing[2] > 0.0
     # A valley whose annual mean is below freezing but whose summer peaks above it melts; the
     # same mean with a swing too small to reach 0C doesn't.
-    melt = surface_melt([-5.0, -5.0, -15.0], [15.0, 4.0, 10.0])
+    melt = surface_melt([1.5, 1.5, -8.5], [15.0, 4.0, 10.0])
     assert melt[0] > 0.0 and melt[1] == 0.0 and melt[2] == 0.0
-    assert np.all(np.diff(surface_melt(np.full(4, -8.0), [10.0, 15.0, 20.0, 25.0])) > 0.0)
-    # A thicker sheet's surface is colder (lapse rate), so it melts less.
-    clim = ice_sheet.SurfaceClimate(np.zeros(2), np.full(2, -3.0), np.full(2, 10.0), np.ones(2, bool))
+    assert np.all(np.diff(surface_melt(np.full(4, -1.5), [10.0, 15.0, 20.0, 25.0])) > 0.0)
+    # A thicker sheet's surface is colder (lapse rate), so it melts less. Snow on the
+    # ground supplies this one: bare ice with no snow has nothing to melt.
+    clim = ice_sheet.SurfaceClimate(np.full(2, 1000.0), np.full(2, -3.0), np.full(2, 10.0), np.ones(2, bool))
     melt = clim.rates(np.array([0.0, 1500.0]))[1]
     assert melt[1] < melt[0]
 
@@ -369,30 +385,40 @@ def test_seasonal_melt_prevents_permanent_ice_from_annual_mean_alone():
 
 
 def test_sea_ice_cap_keeps_its_own_rule_and_other_floating_ice_calves():
+    # The cap is untouched by D1-D2 (D6 removes it; compute_hydrology already passes no cap):
+    # step_ice still accumulates on it, now at the physical rate, while other floating ice
+    # calves.
     points, r, elevation, area = _continent(land_radius_km=300.0, half_km=600.0)
     n = len(points)
     ocean = elevation < 0.0
     start = np.where(ocean, 20.0, 0.0)
     cap = ocean & (np.arange(n) % 2 == 0)
-    depth, _, ice = _step(points, area, elevation, start, _cold(n, 100.0), 1e6, allow_ocean_ice=cap)
-    gained = hydrology.GLACIER_ACCUMULATION_RATE * 100.0
+    climate = _cold(n, 100.0)
+    years = 1e3
+    depth, _, ice = _step(points, area, elevation, start, climate, years, allow_ocean_ice=cap)
+    gained = climate.rates(np.zeros(n))[0][cap] * (years / 1e6)
     assert depth[cap] == pytest.approx(20.0 + gained)
+    assert np.all(depth[cap] < hydrology.GLACIER_MAX_DEPTH_M)
     assert np.all(depth[ocean & ~cap] == 0.0)
     assert ice.ledger.calved_m3 == pytest.approx(float(np.dot(start[ocean & ~cap], area[ocean & ~cap])))
 
 
 def test_sea_ice_cap_is_held_to_the_depth_guard_booked_and_logged(caplog):
-    # A cold spell with no summer melt: the floating cap gains 20 m on 4,990 m. The guard keeps
-    # it at GLACIER_MAX_DEPTH_M, sheds the excess as meltwater, books it, and warns.
+    # Physical accumulation (RFC 0015 D1, #789) stacks a kilometre of ice per kyr at
+    # 1000 mm/yr, so the floating cap reaches the guard in one step. The guard keeps it at
+    # GLACIER_MAX_DEPTH_M, sheds the excess as meltwater, books it, and warns.
     points, r, elevation, area = _continent(land_radius_km=300.0, half_km=600.0)
     n = len(points)
     cap = elevation < 0.0
     start = np.where(cap, hydrology.GLACIER_MAX_DEPTH_M - 10.0, 0.0)
+    climate = _cold(n, 1000.0)
+    years = 1e3
     with caplog.at_level("WARNING", logger="app.hydroclimate.ice_sheet"):
-        depth, melt, ice = _step(points, area, elevation, start, _cold(n, 1000.0), 1e6, allow_ocean_ice=cap)
+        depth, melt, ice = _step(points, area, elevation, start, climate, years, allow_ocean_ice=cap)
     ledger = ice.ledger
+    gained = climate.rates(np.zeros(n))[0][cap] * (years / 1e6)
     assert np.all(depth[cap] == hydrology.GLACIER_MAX_DEPTH_M)
-    assert ledger.capped_m3 == pytest.approx(10.0 * float(area[cap].sum()))
+    assert ledger.capped_m3 == pytest.approx(float(np.dot(gained - 10.0, area[cap])))
     assert ledger.capped_nodes >= int(cap.sum())
     assert abs(ledger.residual_m3) < 1e-9 * ledger.closing_m3
     assert float(np.dot(melt[cap], area[cap])) == pytest.approx(ledger.capped_m3)
@@ -400,7 +426,7 @@ def test_sea_ice_cap_is_held_to_the_depth_guard_booked_and_logged(caplog):
 
     caplog.clear()
     with caplog.at_level("WARNING", logger="app.hydroclimate.ice_sheet"):
-        _, _, ice = _step(points, area, elevation, np.where(cap, 100.0, 0.0), _cold(n, 1000.0), 1e6, allow_ocean_ice=cap)
+        _, _, ice = _step(points, area, elevation, np.where(cap, 100.0, 0.0), _cold(n, 1000.0), 10.0, allow_ocean_ice=cap)
     assert ice.ledger.capped_m3 == 0.0 and ice.ledger.capped_nodes == 0
     assert caplog.text == ""
 
@@ -490,18 +516,22 @@ def test_frozen_precipitation_follows_the_ice_or_melts_on_bare_ground():
 
 
 def _assert_retained_snow_is_the_scaled_accumulation(ice):
-    # Everywhere frozen, the physical water the ice keeps and its scaled accumulation are the same
-    # snow, at `WATER_TO_ICE`.
+    # Everywhere frozen, the physical water the ice keeps and its accumulation are the same
+    # snow, by mass (RFC 0015 D1, #789): ice volume times RHO_ICE / RHO_WATER is water.
     assert ice.ledger.accumulation_m3 > 0.0
-    assert ice.frozen_precipitation.retained_m3 * hydrology.WATER_TO_ICE == pytest.approx(ice.ledger.accumulation_m3)
+    assert ice.frozen_precipitation.retained_m3 == pytest.approx(
+        ice.ledger.accumulation_m3 * lithosphere.RHO_ICE / lithosphere.RHO_WATER
+    )
 
 
 def test_plastic_body_keeps_snow_on_the_bare_ground_that_feeds_it():
     points, r, elevation, area = _continent()
     n = len(points)
-    # Bare margin cells are cold enough to feed the body without being covered by it.
+    # Bare margin cells are cold enough to feed the body without being covered by it. The
+    # step stays short (physical ice fills its whole domain within 2 kyr, leaving no bare
+    # feeders, #789).
     climate = _cold(n, 500.0)
-    _, _, ice = _step(points, area, elevation, np.zeros(n), climate, 100_000.0)
+    _, _, ice = _step(points, area, elevation, np.zeros(n), climate, 500.0)
     assert ice.bodies and np.any((ice.covered < 1.0) & (elevation > 0.0))
     _assert_retained_snow_is_the_scaled_accumulation(ice)
 
@@ -526,3 +556,114 @@ def test_sea_ice_cap_keeps_its_snow_as_ocean_input_to_the_account():
     expected = float(np.dot(np.full(n, 0.1), area * ocean)) * 100_000.0
     assert frozen.ocean_retained_m3 == pytest.approx(expected)
     assert frozen.land_m3 + frozen.ocean_retained_m3 == pytest.approx(frozen.retained_m3 + frozen.bare_melted_m3)
+
+
+def _still(n, precipitation=0.0, temperature=-30.0, amplitude=0.0, frictional=0.0):
+    return ice_sheet.SurfaceClimate(
+        np.full(n, precipitation), np.full(n, temperature), np.full(n, amplitude),
+        np.full(n, temperature < 0.0), np.full(n, frictional),
+    )
+
+
+def test_d1_units_table_rows():
+    # RFC 0015 D1's units table (#789), row by row. The DDF values and rain-snow
+    # threshold are G2's (#782): DDF_snow 4, DDF_ice 8 mm water/day/K, T_rs 1.0 C.
+    to_ice = lithosphere.RHO_WATER / lithosphere.RHO_ICE
+    # Precipitation to ice by mass: 1000 mm/yr of water is 1000/917 m/yr of ice.
+    acc, _, _ = _still(3, precipitation=1000.0).rates(np.zeros(3))
+    assert acc == pytest.approx(np.full(3, 1000.0 * 1e-3 * to_ice * 1e6))
+    # Surface melt ablates degree-days: 3.5 C over the whole year at DDF_ice 8.
+    _, melt, _ = _still(3, temperature=10.0).rates(np.full(3, 1000.0))
+    assert melt == pytest.approx(np.full(3, 8e-3 * (3.5 * 365.25) * to_ice * 1e6))
+    # Degree-day melt spends the year's snow first: at a lapsed surface of -0.5 C with a
+    # 1 C swing every drop is snow (the seasonal share clips: (1 - -0.5) / 1 > 1), and
+    # bare ice only sees the degree-days left after the snow melts.
+    snow_climate = ice_sheet.SurfaceClimate(
+        np.full(2, 100.0), np.full(2, 6.0), np.ones(2), np.zeros(2, dtype=bool)
+    )
+    _, melt, _ = snow_climate.rates(np.full(2, 1000.0))
+    snow_we = 100.0 * 1e-3
+    pdd = 365.25 * hydrology.seasonal_positive_degrees(np.array([-0.5]), np.array([1.0]), 0.0)[0]
+    expected = (snow_we + 8e-3 * (pdd - snow_we / 4e-3)) * to_ice * 1e6
+    assert expected > snow_we * to_ice * 1e6  # the bare ice really melts too
+    assert melt == pytest.approx(np.full(2, expected))
+    # Heat flux to basal melt: Y / (rho_i L_f) m/yr per W/m^2.
+    w_per_m_yr = ice_sheet.SECONDS_PER_YEAR / (lithosphere.RHO_ICE * ice_sheet.ICE_LATENT_HEAT_J_KG)
+    assert ice_sheet.W_M2_TO_M_ICE_PER_YR == pytest.approx(w_per_m_yr)
+    # Frictional heat from Pa times m/yr: 100 kPa sliding at 10 m/yr.
+    assert ice_sheet.frictional_heat_w_m2(np.array([100_000.0]), np.array([10.0])) == pytest.approx(
+        100_000.0 * 10.0 / ice_sheet.SECONDS_PER_YEAR
+    )
+
+
+def test_d1_snow_fraction_bounds_continuity_and_still_air_fallback():
+    # The snow share is a share: within [0, 1]; all snow where even the summer stays
+    # below the threshold, all rain where even the winter stays above it.
+    cold = ice_sheet.snow_fraction(np.full(4, -30.0), np.array([0.0, 5.0, 15.0, 29.0]))
+    assert np.all(cold == 1.0)
+    warm = ice_sheet.snow_fraction(np.full(4, 30.0), np.array([0.0, 5.0, 15.0, 28.0]))
+    assert np.all(warm == 0.0)
+    # Continuous in temperature: no jumps on a fine grid, including across the seasonal
+    # formula's clip edges and the still-air ramp.
+    grid = np.linspace(-30.0, 30.0, 1201)
+    for amplitude in (0.0, 1e-4, 5.0, 15.0):
+        share = ice_sheet.snow_fraction(grid, np.full_like(grid, amplitude))
+        assert np.all((share >= 0.0) & (share <= 1.0))
+        # The seasonal formula has a vertical tangent at its clip edges, so a fine grid
+        # still steps ~0.05 there; a true jump would step ~1.
+        assert np.max(np.abs(np.diff(share))) < 0.1
+    # Where the seasonal amplitude vanishes the sinusoid has no year to spread over, so
+    # the share falls back to the continuous ramp around the threshold.
+    ramp = np.clip(0.5 + (ice_sheet.RAIN_SNOW_THRESHOLD_C - grid) / ice_sheet.ICE_SNOW_RAMP_C, 0.0, 1.0)
+    assert ice_sheet.snow_fraction(grid, np.full_like(grid, 1e-9)) == pytest.approx(ramp)
+    assert ice_sheet.snow_fraction(grid, np.zeros_like(grid)) == pytest.approx(ramp)
+
+
+def test_d1_basal_melt_continuous_at_the_thaw_boundary_and_bounded_as_h_to_zero():
+    # At a fixed cold surface the bed thaws past a threshold thickness: conducted heat
+    # G = k (-p H - T_s) / H solves to H* = -k T_s / (G + k p). The melt is zero exactly
+    # there and small just past it (RFC 0015 D1, #789).
+    surface = -20.0
+    k = ice_sheet.ICE_THERMAL_CONDUCTIVITY_W_M_K
+    p = ice_sheet.ICE_PRESSURE_MELT_C_PER_M
+    g = ice_sheet.ICE_GEOTHERMAL_FLUX_W_M2
+    h_star = -k * surface / (g + k * p)
+    heats = ice_sheet.basal_heat_w_m2(np.array([h_star - 1.0, h_star + 1.0]), np.full(2, surface), 0.0)
+    assert heats[0] < 0.0 < heats[1]
+    melts = ice_sheet.W_M2_TO_M_ICE_PER_YR * np.clip(heats, 0.0, None) * 1e6
+    assert melts[0] == 0.0
+    deep = ice_sheet.W_M2_TO_M_ICE_PER_YR * (g - k * (-p * 5000.0 - surface) / 5000.0) * 1e6
+    assert 0.0 < melts[1] < 0.05 * deep
+    # No ice is no melt, and a vanishing sheet under a warm surface stays bounded: the
+    # conducted term clips at zero instead of blowing up as 1/H (RFC 0015 D1, #789).
+    assert ice_sheet.basal_heat_w_m2(np.array([0.0]), np.array([5.0]), 0.0)[0] < 0.0
+    thin = ice_sheet.W_M2_TO_M_ICE_PER_YR * ice_sheet.basal_heat_w_m2(
+        np.array([1e-6]), np.array([5.0]), 0.0
+    )[0] * 1e6
+    assert 0.0 < thin < 1e5
+
+
+def test_d1_frictional_melt_reads_last_step_heat_inside_the_root():
+    # A bed frozen under geothermal heat alone thaws with last step's frictional heat:
+    # at 500 m under -20 C conduction (0.082 W/m^2) beats geothermal (0.06), and 100 kPa
+    # sliding at 25 m/yr adds 0.079. The trial-thickness melt inside rates() then rises
+    # with diminishing steps (RFC 0015 D1, #789).
+    surface, thick = -20.0, 500.0
+    cold = _still(1, frictional=0.0)
+    _, _, still_basal = cold.rates(np.array([thick]))
+    assert still_basal[0] == 0.0
+    sliding = ice_sheet.frictional_heat_w_m2(
+        ice_sheet.yield_stress_pa(np.array([0.0]), np.array([True])), np.array([25.0])
+    )
+    assert sliding[0] > 0.0
+    warm = _still(1, temperature=surface, frictional=sliding[0])
+    _, _, basal = warm.rates(np.array([thick]))
+    assert basal[0] > 0.0
+    assert not ice_sheet.warm_based(np.array([thick]), np.array([surface]))[0]
+    assert bool(ice_sheet.warm_based(np.array([thick]), np.array([surface]), sliding)[0])
+    # Thicker ice conducts less, so basal melt rises toward its geothermal-plus-friction
+    # ceiling with diminishing steps (the conducted term decays as 1/H).
+    near = np.array([thick, thick + 50.0, thick + 100.0])
+    melts = warm.rates(near)[2]
+    assert np.all(np.diff(melts) >= 0.0)
+    assert melts[1] - melts[0] >= melts[2] - melts[1] - 1e-9

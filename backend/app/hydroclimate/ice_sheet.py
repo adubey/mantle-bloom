@@ -21,11 +21,13 @@ in the time-stepping sense. Each step instead:
    multiple-direction weights (Le Brocq et al. 2006), turned into a depth-averaged velocity
    and a basal sliding speed on warm-based beds, which erosion.py's glacial abrasion reads.
 
-Glacier mass balance is still in this model's own units (`hydrology.GLACIER_ACCUMULATION_RATE`
-is ~50,000x slower than real snowfall; see issue #353's open decision), so ice is *not* assumed
-to reach balance within a step, and the velocities here are a calibrated proxy, not m/yr of
-real ice. Nothing here is persisted: the opening volume comes from `glacier_depth`, and the
-previous extent from where that ice sits.
+Glacier mass balance is in physical units (RFC 0015 D1, #789): snowfall builds ice by mass,
+degree-day melt ablates it, and basal melt follows the bed's energy balance. Fast ice reaches
+its balance within a step, so each body marches there in fixed 250 yr substeps with its fast
+inputs recomputed between them (RFC 0015 D2, #789). The velocities here are m/yr of real ice.
+Nothing here is persisted: the opening volume comes from `glacier_depth`, the previous extent
+from where that ice sits, and last step's frictional heat from the hydrology cache's IceStep
+(0 where it is missing).
 """
 
 from __future__ import annotations
@@ -64,24 +66,62 @@ ICE_GEOTHERMAL_FLUX_W_M2 = 0.06
 ICE_THERMAL_CONDUCTIVITY_W_M_K = 2.1
 ICE_PRESSURE_MELT_C_PER_M = 8.7e-4
 
-# Geothermal basal melt on a warm bed, G / (rho_i L_f), about 6 mm/yr of real ice. It is scaled
-# into the same model units as accumulation: GLACIER_ACCUMULATION_RATE (m of ice per Myr per
-# mm/yr of snowfall) over the physical rate, 1 mm/yr of water = 1000/917 mm/yr of ice =
-# ~1090 m/Myr. Replaces the old depth-squared basal melt, whose only job was to stop ice
-# piling up on flat beds where bed-slope flow left it -- the plastic geometry spreads it instead.
+# Physical mass balance (RFC 0015 D1, #789): every rate below is metres of ice per year,
+# converted to m/Myr at the `rates()` interface its callers expect. Snowfall becomes ice by
+# mass (1 mm/yr of water = 1000/917 mm/yr of ice); meltwater converts back the same way.
 ICE_LATENT_HEAT_J_KG = 334_000.0
-_SECONDS_PER_MYR = 3.15576e13
-PHYSICAL_ACCUMULATION_M_PER_MM_MYR = 1000.0 / RHO_ICE * 1.0e-3 * 1.0e6
-MODEL_UNIT_SCALE = hydrology.GLACIER_ACCUMULATION_RATE / PHYSICAL_ACCUMULATION_M_PER_MM_MYR
-GEOTHERMAL_BASAL_MELT_M_PER_MYR = ICE_GEOTHERMAL_FLUX_W_M2 / (RHO_ICE * ICE_LATENT_HEAT_J_KG) * _SECONDS_PER_MYR * MODEL_UNIT_SCALE
+SECONDS_PER_YEAR = 3.15576e7
+# Metres of ice melted per year by one W/m^2 of basal heat: Y / (rho_i L_f) ~ 0.103.
+W_M2_TO_M_ICE_PER_YR = SECONDS_PER_YEAR / (RHO_ICE * ICE_LATENT_HEAT_J_KG)
 
-# Temperature ramps (C) that keep the mass balance continuous in ice thickness, so the
-# backward-Euler root find never lands on a jump (a jump in B is multiplied by dt, and a long
-# step turns a small one into a large volume error): snow starts falling on a thickening sheet
-# over the ICE_SNOW_RAMP_C below freezing, and geothermal melt starts over the
-# ICE_THAW_RAMP_C of bed warming past the pressure-melting point.
+# Degree-day melt factors (mm water equivalent per day per K) and the rain-snow threshold
+# (C): G2 keeps the starting values (DDF_snow 4, DDF_ice 8, T_rs 1.0 C, #782).
+DDF_SNOW_MM_WATER_PER_DAY_K = 4.0
+DDF_ICE_MM_WATER_PER_DAY_K = 8.0
+RAIN_SNOW_THRESHOLD_C = 1.0
+
+# The end-of-step march (RFC 0015 D2, #789): fixed substep, settle-and-hold, and the hold
+# window whose mean rates the rest of the step keeps.
+MARCH_SUBSTEP_YEARS = 250.0
+MARCH_SETTLE_TOLERANCE = 1.0e-3
+MARCH_SETTLE_PATIENCE = 3
+MARCH_HOLD_WINDOW = 6
+
+# The snowfall ramp (C) keeps the mass balance continuous where the seasonal amplitude
+# vanishes, so the backward-Euler root find never lands on a jump (a jump in B is multiplied
+# by dt, and a long step turns a small one into a large volume error).
 ICE_SNOW_RAMP_C = 1.0
-ICE_THAW_RAMP_C = 1.0
+
+
+def snow_fraction(temperature_c: np.ndarray, amplitude_c: np.ndarray, threshold_c: float = RAIN_SNOW_THRESHOLD_C) -> np.ndarray:
+    """Share of a sinusoidal year below the rain-snow threshold (RFC 0015 D1, #789).
+
+    Assumes precipitation spreads evenly over the year. Where the amplitude vanishes (a
+    zero-tilt world), falls back to the continuous ICE_SNOW_RAMP_C ramp around the
+    threshold, so the root find never meets a jump.
+    """
+    amp = np.asarray(amplitude_c, dtype=float)
+    ratio = np.clip((threshold_c - np.asarray(temperature_c, dtype=float)) / np.maximum(amp, 1e-6), -1.0, 1.0)
+    seasonal = 0.5 + np.arcsin(ratio) / np.pi
+    ramp = np.clip(0.5 + (threshold_c - np.asarray(temperature_c, dtype=float)) / ICE_SNOW_RAMP_C, 0.0, 1.0)
+    return np.where(amp > 1e-3, seasonal, ramp)
+
+
+def basal_heat_w_m2(thickness_m: np.ndarray, surface_c: np.ndarray, frictional_w_m2) -> np.ndarray:
+    """Net basal heat (W/m^2): geothermal plus frictional heating, less the heat conducted
+    up into colder ice (RFC 0015 D1, #789). Ice can't be warmer than its pressure-melting
+    point, so a surface above it conducts nothing; the clamp also keeps the term bounded
+    as H -> 0. Without ice the bed state is undefined (-inf: never thawed)."""
+    h = np.asarray(thickness_m, dtype=float)
+    t_pmp = -ICE_PRESSURE_MELT_C_PER_M * h
+    conducted = ICE_THERMAL_CONDUCTIVITY_W_M_K * np.clip(t_pmp - np.asarray(surface_c, dtype=float), 0.0, None) / np.maximum(h, 1e-9)
+    return np.where(h > 0.0, ICE_GEOTHERMAL_FLUX_W_M2 + np.asarray(frictional_w_m2, dtype=float) - conducted, -np.inf)
+
+
+def frictional_heat_w_m2(tau_b_pa: np.ndarray, sliding_m_per_yr: np.ndarray) -> np.ndarray:
+    """Frictional heating at the sliding base (W/m^2) from yield stress (Pa) times sliding
+    speed (m/yr): J/m^2/yr divided by seconds per year (RFC 0015 D1, #789)."""
+    return np.asarray(tau_b_pa, dtype=float) * np.asarray(sliding_m_per_yr, dtype=float) / SECONDS_PER_YEAR
 
 # A plastic profile on one or two cells is meaningless: a body with room for fewer cells than
 # this (its domain: its own nodes plus the ground it could advance onto) spreads its volume
@@ -106,6 +146,10 @@ ICE_FLOTATION_PASSES = 6
 
 _FLOTATION_RATIO = RHO_WATER / RHO_ICE
 
+# End-of-step march log (RFC 0015 D2, #789): one entry per marched step, with substeps,
+# marched/held years, whether the ice settled, the volume path, and any tipping-point growth.
+MARCH_LOG: list[dict] = []
+
 
 @dataclass
 class SurfaceClimate:
@@ -117,44 +161,54 @@ class SurfaceClimate:
     temperature_c: np.ndarray
     seasonal_amplitude_c: np.ndarray
     is_frozen: np.ndarray
+    # Last step's frictional heat (W/m^2), tau_b * u_b / Y, aligned with these nodes; 0
+    # where the hydrology cache has nothing to read (RFC 0015 D1, #789). `is_frozen` is kept
+    # so existing callers still construct: the snow switch no longer reads it.
+    frictional_heat_w_m2: np.ndarray | None = None
 
     def subset(self, idx: np.ndarray) -> "SurfaceClimate":
         return SurfaceClimate(
-            self.precipitation_mm[idx], self.temperature_c[idx], self.seasonal_amplitude_c[idx], self.is_frozen[idx]
+            self.precipitation_mm[idx], self.temperature_c[idx], self.seasonal_amplitude_c[idx], self.is_frozen[idx],
+            None if self.frictional_heat_w_m2 is None else self.frictional_heat_w_m2[idx],
         )
 
     def rates(self, thickness_m: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """(accumulation, surface melt, basal melt), metres of ice per Myr in model units, under
-        `thickness_m` of ice. Snow falls where the node already freezes or where the ice surface
-        is cold enough; surface melt is the same positive-degree law as before, on the
-        lapse-corrected surface; basal melt is geothermal, on warm beds only. Both switch on
-        over a ramp (ICE_SNOW_RAMP_C, ICE_THAW_RAMP_C) so the rates are continuous in thickness."""
-        thickness = np.clip(thickness_m, 0.0, None)
+        """(accumulation, surface melt, basal melt), metres of ice per Myr, under `thickness_m`
+        of ice (RFC 0015 D1, #789; the m/yr physical rates times 10^6 at this one interface).
+
+        Snowfall is the year's snow share `f_snow` of precipitation, on the lapse-corrected
+        surface, by mass. Surface melt ablates that snow first at DDF_snow, then bare ice at
+        DDF_ice with the degree-days left over. Basal melt is the net basal energy balance at
+        the trial thickness, so melt is zero exactly at the thaw boundary and continuous
+        across it. Every rate is >= 0."""
+        thickness = np.clip(np.asarray(thickness_m, dtype=float), 0.0, None)
         surface_c = self.temperature_c - LAPSE_RATE_C_PER_KM * thickness / 1000.0
-        snows = np.where(self.is_frozen, 1.0, np.clip((hydrology.FREEZE_POINT_C - surface_c) / ICE_SNOW_RAMP_C, 0.0, 1.0))
-        accumulation = snows * hydrology.GLACIER_ACCUMULATION_RATE * self.precipitation_mm
-        melt_factor = np.clip(
-            hydrology.seasonal_positive_degrees(surface_c, self.seasonal_amplitude_c) / hydrology.GLACIER_MELT_REFERENCE_DEGREES_C,
-            0.0,
-            hydrology.GLACIER_MELT_MAX_FACTOR,
+        to_ice = RHO_WATER / RHO_ICE
+        snows = snow_fraction(surface_c, self.seasonal_amplitude_c)
+        snow_we = snows * np.asarray(self.precipitation_mm, dtype=float) * 1.0e-3
+        pdd = 365.25 * hydrology.seasonal_positive_degrees(surface_c, self.seasonal_amplitude_c, 0.0)
+        snow_capacity = DDF_SNOW_MM_WATER_PER_DAY_K * 1.0e-3 * pdd
+        snow_melt = np.minimum(snow_we, snow_capacity)
+        pdd_left = np.where(
+            DDF_SNOW_MM_WATER_PER_DAY_K > 0.0,
+            np.maximum(pdd - snow_melt / (DDF_SNOW_MM_WATER_PER_DAY_K * 1.0e-3), 0.0),
+            pdd,
         )
-        surface_melt = hydrology.GLACIER_MELT_RATE_M_PER_MYR * melt_factor
-        thawed = np.where(thickness > 0.0, np.clip(_bed_excess_c(thickness, surface_c) / ICE_THAW_RAMP_C, 0.0, 1.0), 0.0)
-        return accumulation, surface_melt, thawed * GEOTHERMAL_BASAL_MELT_M_PER_MYR
+        ice_melt = np.where(thickness > 0.0, DDF_ICE_MM_WATER_PER_DAY_K * 1.0e-3 * pdd_left, 0.0)
+        frictional = 0.0 if self.frictional_heat_w_m2 is None else self.frictional_heat_w_m2
+        basal = W_M2_TO_M_ICE_PER_YR * np.clip(basal_heat_w_m2(thickness, surface_c, frictional), 0.0, None)
+        return snow_we * to_ice * 1.0e6, (snow_melt + ice_melt) * to_ice * 1.0e6, basal * 1.0e6
 
 
-def _bed_excess_c(thickness_m: np.ndarray, surface_temperature_c: np.ndarray) -> np.ndarray:
-    """How far (C) steady conduction through the ice puts the bed above its pressure-melting
-    point (negative: frozen)."""
-    gradient = ICE_GEOTHERMAL_FLUX_W_M2 / ICE_THERMAL_CONDUCTIVITY_W_M_K
-    thickness = np.asarray(thickness_m, dtype=float)
-    return surface_temperature_c + gradient * thickness + ICE_PRESSURE_MELT_C_PER_M * thickness
-
-
-def warm_based(thickness_m: np.ndarray, surface_temperature_c: np.ndarray) -> np.ndarray:
-    """True where steady conduction through `thickness_m` of ice brings the bed to the
-    pressure-melting point."""
-    return (np.asarray(thickness_m) > 0.0) & (_bed_excess_c(thickness_m, surface_temperature_c) >= 0.0)
+def warm_based(
+    thickness_m: np.ndarray, surface_temperature_c: np.ndarray, frictional_w_m2: np.ndarray | float | None = None
+) -> np.ndarray:
+    """Thawed bed under `thickness_m` of ice (RFC 0015 D1, #789): one thermal state, where
+    the net basal heat with last step's frictional heat is >= 0. Each caller reads it at its
+    own thickness (melt at the trial thickness inside `rates()`, membership at the opening
+    thickness, the diagnostic at the closing one). 0 heat where the cache has nothing."""
+    frictional = 0.0 if frictional_w_m2 is None else frictional_w_m2
+    return basal_heat_w_m2(thickness_m, np.asarray(surface_temperature_c, dtype=float), frictional) >= 0.0
 
 
 def yield_stress_pa(mobile_cover_m: np.ndarray, is_warm: np.ndarray) -> np.ndarray:
@@ -945,9 +999,12 @@ def step_ice(
         # body's own nodes always belong to it.
         label = np.where(eligible & (sources >= 0), comp[np.clip(sources, 0, None)], -1)
         label[members] = comp[members]
-        # Yield stress from last step's thermal state (a one-step lag: the new thickness
-        # isn't known until the profile it shapes is solved).
-        is_warm0 = warm_based(h0, climate.temperature_c - LAPSE_RATE_C_PER_KM * h0 / 1000.0)
+        # Yield stress from last step's thermal state at the opening thickness (a one-step
+        # lag: the new thickness isn't known until the profile it shapes is solved), with
+        # last step's frictional heat (RFC 0015 D1, #789).
+        is_warm0 = warm_based(
+            h0, climate.temperature_c - LAPSE_RATE_C_PER_KM * h0 / 1000.0, climate.frictional_heat_w_m2,
+        )
         c = yield_stress_pa(mobile_cover_m, is_warm0) / (RHO_ICE * GRAVITY_M_S2)
         step_m = float(np.median(graph.data)) if graph.nnz else 1.0
 
@@ -989,7 +1046,9 @@ def step_ice(
     warn_if_capped(ledger)
 
     thickness = out.thickness
-    is_warm = warm_based(thickness, climate.temperature_c - LAPSE_RATE_C_PER_KM * thickness / 1000.0)
+    is_warm = warm_based(
+        thickness, climate.temperature_c - LAPSE_RATE_C_PER_KM * thickness / 1000.0, climate.frictional_heat_w_m2,
+    )
     flux, _, sliding = _diagnose_flow(
         points, neighbor_idx, area, out.surface, out.depth, opening_depth, thickness, out.covered, climate, is_warm, years,
     )
