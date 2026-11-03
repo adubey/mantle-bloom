@@ -1498,7 +1498,7 @@ def cratons_first_layout(
     # the bathymetry pass never move a coastline.
     lat = geography.lattice
     land = geography.is_continental & (relief.sample(lat.xyz) - land_threshold > _continental_sealevel_noise_offset())
-    partition = plate_partition.partition_plates(
+    partition = plate_partition.partition_plates_with_fallback(
         rng, lat, num_plates, geography.continent, geography.core, geography.belt, node_density, land
     )
     return CratonsFirstSetup(continent_layout.ContinentLayout.from_parts(geography, partition, land), relief, ocean_relief, land_threshold)

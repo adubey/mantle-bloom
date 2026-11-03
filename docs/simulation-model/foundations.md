@@ -275,7 +275,11 @@ mask (continental crust whose relief sample clears the land threshold); steps 4-
    seed. This keeps the requested plate count while allowing several cratons to seed one
    plate and point seeds to shape oceanic territory. Seed placements are redrawn if a plate
    is disconnected or below `merge_split.SPLIT_MIN_NODES * node_density` cells. Of
-   `PARTITION_CANDIDATES = 8` valid draws, the one with the lowest `J` (below) is kept.
+   `PARTITION_CANDIDATES = 8` valid draws, the one with the lowest `J` (below) is kept. If all
+   50 draws are invalid, retry on the same geography with one fewer plate, down to 9 plates
+   (#774). If the original count is
+   already 9 or fewer, it is tried once without increasing it. Generation fails if the
+   lowest count tried has no valid partition.
 5. **Boundary refinement.** A boundary point moves to an adjacent plate while that lowers
    `J`, the summed length of plate-crossing links times the mean `PLATE_COST_*` of their two
    ends (ocean 0, belt 1, margin and core 3), plus `PLATE_COST_LAND_LINK = 10` per unit

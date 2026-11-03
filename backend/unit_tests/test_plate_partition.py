@@ -122,3 +122,45 @@ def test_the_kept_partition_is_the_cheapest_candidate(layout, monkeypatch):
         return partition.refine_costs[0]
 
     assert start_cost(4) <= start_cost(1)
+
+
+def test_fallback_reuses_geography_and_stops_at_the_first_success(monkeypatch):
+    rng = np.random.default_rng(17)
+    lat, continent, core, belt, land, expected = (object() for _ in range(6))
+    counts = []
+
+    def partition(got_rng, got_lat, count, got_continent, got_core, got_belt, density, got_land):
+        assert (got_rng, got_lat, got_continent, got_core, got_belt, density, got_land) == (
+            rng, lat, continent, core, belt, 4.0, land
+        )
+        counts.append(count)
+        if count > 10:
+            raise pp.PartitionAttemptsExhausted("no valid partition")
+        return expected
+
+    monkeypatch.setattr(pp, "partition_plates", partition)
+    assert pp.partition_plates_with_fallback(rng, lat, 12, continent, core, belt, 4.0, land) is expected
+    assert counts == [12, 11, 10]
+
+
+@pytest.mark.parametrize("initial, expected", [(11, [11, 10, 9]), (9, [9]), (8, [8])])
+def test_fallback_stops_after_the_minimum_count(monkeypatch, initial, expected):
+    counts = []
+
+    def partition(rng, lat, count, continent, core, belt, density, land):
+        counts.append(count)
+        raise pp.PartitionAttemptsExhausted(f"no valid {count}-plate partition")
+
+    monkeypatch.setattr(pp, "partition_plates", partition)
+    with pytest.raises(pp.PartitionAttemptsExhausted, match=f"no valid {expected[-1]}-plate"):
+        pp.partition_plates_with_fallback(np.random.default_rng(1), None, initial, None, None, None)
+    assert counts == expected
+
+
+def test_fallback_does_not_hide_other_errors(monkeypatch):
+    def partition(*args):
+        raise RuntimeError("unexpected failure")
+
+    monkeypatch.setattr(pp, "partition_plates", partition)
+    with pytest.raises(RuntimeError, match="unexpected failure"):
+        pp.partition_plates_with_fallback(np.random.default_rng(1), None, 12, None, None, None)
