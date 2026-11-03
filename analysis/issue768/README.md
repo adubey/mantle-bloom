@@ -3,6 +3,8 @@
 Issue [#768](https://github.com/adubey/mantle-bloom/issues/768) addresses principle 3:
 transfers settled after the timed pass must participate in the receiving lake's implicit
 water balance. Principle 2 requires measuring the cost of revisiting affected bodies.
+The saddle-volume check follows principle 4: floor samples must represent enough finite
+cell volume to support the proposed common water surface.
 
 ## Preregistration
 
@@ -142,6 +144,10 @@ has been changed to obtain a passing audit.
 
 ## Full comparison results
 
+The public per-step trajectories, anchor audits, numerical extremes and endpoint lakes are
+in [replay-comparison.json](replay-comparison.json). Full outputs remain in the private
+capture set with SHA-256 checksums.
+
 ### E baseline control
 
 The 12-step baseline on `dea1f6b5` reproduces #757's final E branch. Against that report's
@@ -191,3 +197,81 @@ of calculated demand; it lies inside a 1.66 m³ two-ULP demand interval. The lar
 outside the interval is 1.52e-8 in a body holding 6.28 m³, consistent with the pre-existing
 finite-iteration precision issue identified in the probes. These flags are retained, not
 counted as passing. The independent equation fixture and the materially wet E anchor pass.
+
+### Owner-selected S200.8 comparison
+
+This starts from the supplied 200.8 Myr save and ends at 202.0 Myr. It is a new matched
+window, not the original 201.6–202.8 Myr S replay.
+
+| Measure | Main | Branch |
+|---|---:|---:|
+| Mean absolute liquid step change (km³) | 578,594 | 445,460 |
+| Lag-1 autocorrelation of liquid changes | -0.057 | +0.856 |
+| Final whole-world liquid (M km³) | 8.510 | 7.364 |
+| Final lake ice (km³) | 11,682 | 10,795 |
+| Final sea level (m) | -1113.568 | -1111.433 |
+| Final target area (M km²) | 5.154 | 4.797 |
+| Final target liquid (M km³) | 7.516 | 6.440 |
+| Median instrumented step time (s) | 11.25 | 11.32 |
+| Peak RSS (GB) | 7.28 | 6.02 |
+
+The liquid step-change metric falls 23.0%. At step 2, main's target body charges 49.8%
+less than its final-level demand; the branch matches that demand to machine precision.
+Across the branch's 12 steps the anchor's largest normalized loss error is 3.5e-16.
+The visible wet component under the anchor is absent at step 1, so the script's enormous
+consecutive-target ratio against a zero denominator is not interpreted as a physical ratio.
+
+All four accounting gates pass in all **48** full-run steps. Across both windows and arms,
+the worst normalized residuals are 3.61e-11 for lakes and liquid, 3.13e-12 for land, and
+2.11e-16 for ice, below the agreed 1e-9 bound. S main started without another listed heavy
+run; another simulation was running by the branch's start. Runtime remains qualified by
+the owner's timing caveat.
+
+S also fails the extra all-body pointwise 1e-9 loss gate in essentially dry stores. Its
+worst uncovered raw-rate discrepancy occurs in a body storing 5.9e-12 m³, against about
+333 m³ of calculated final-level demand and availability-limited booked loss. The two-ULP
+interval does not explain that entire discrepancy. This appears associated with the existing
+finite-iteration solve near dryness; it has not been resolved or counted as passing here.
+The measured anchor is materially wet and passes throughout. These auxiliary flags and their
+underlying quantities are retained in the compact JSON.
+
+## Outcome and limits
+
+The independent unit fixture fails on main and passes on the branch, with evaporation,
+sublimation and both together, either sibling order, and partial-cell geometry. The replay
+anchors confirm that the intended full-step losses are charged at the formerly artificial
+refills. Global and phase accounting meet the acceptance bounds. The extra all-body
+pointwise accuracy gate is not met at numerical near-dry states and is explicitly disclosed.
+
+The windows retain lagged climate feedback and cover 1.2 Myr each. Largest-lake guards remain
+in effect. If #758 changes these basins' ocean classification before this lands, its affected
+replays need updating against that new main. No persisted fields or frontend code changed.
+The full stress suite was not run; the verification here is the affected suite and the
+registered saved-world comparisons.
+
+## Five largest lakes at each endpoint
+
+Rank is by wet-component area, as in #757. Volumes below are liquid; ice and the full per-step traces are in the compact JSON.
+
+| Window / arm | Rank | Area (M km²) | Liquid (M km³) | Level (m) | Floor (m) | At 3,500 m guard |
+|---|---:|---:|---:|---:|---:|---|
+| E main | 1 | 11.092 | 11.651 | -3322.8 | -5433.1 | no |
+| E main | 2 | 1.504 | 0.154 | 665.3 | 523.9 | no |
+| E main | 3 | 1.434 | 0.789 | 1819.9 | -644.8 | no |
+| E main | 4 | 0.677 | 1.001 | -741.6 | -4089.3 | no |
+| E main | 5 | 0.431 | 0.030 | 557.3 | 213.0 | no |
+| E branch | 1 | 5.644 | 1.875 | -4438.4 | -5418.0 | no |
+| E branch | 2 | 1.504 | 0.154 | 665.3 | 523.6 | no |
+| E branch | 3 | 0.827 | 0.116 | -4439.4 | -4723.0 | no |
+| E branch | 4 | 0.694 | 1.099 | -578.5 | -4078.5 | yes |
+| E branch | 5 | 0.431 | 0.030 | 557.3 | 213.0 | no |
+| S200.8 main | 1 | 5.154 | 7.516 | 865.1 | -1444.0 | no |
+| S200.8 main | 2 | 1.061 | 0.871 | 2925.7 | 327.1 | no |
+| S200.8 main | 3 | 0.314 | 0.049 | -876.3 | -1620.6 | no |
+| S200.8 main | 4 | 0.154 | 0.015 | -407.5 | -717.2 | no |
+| S200.8 main | 5 | 0.114 | 0.009 | 1283.2 | 1074.1 | no |
+| S200.8 branch | 1 | 4.797 | 6.440 | 646.9 | -1438.3 | no |
+| S200.8 branch | 2 | 0.986 | 0.810 | 2666.9 | 471.4 | no |
+| S200.8 branch | 3 | 0.311 | 0.049 | -876.3 | -1620.6 | no |
+| S200.8 branch | 4 | 0.139 | 0.002 | -991.5 | -1052.4 | no |
+| S200.8 branch | 5 | 0.114 | 0.009 | 1283.2 | 1074.1 | no |
