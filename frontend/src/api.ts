@@ -402,6 +402,12 @@ export interface WorldStats {
   // Single running totals, not a spatial snapshot distribution like every field below --
   // the Simulation tab is what turns a run of these into a min/max/mean/std-dev over time.
   plate_count: number;
+  // Per-plate angular speed as surface speed at the planet's radius, in cm/yr. Missing on
+  // history records captured before this field was added.
+  plate_speed_min_cm_per_yr?: number | null;
+  plate_speed_max_cm_per_yr?: number | null;
+  plate_speed_mean_cm_per_yr?: number | null;
+  plate_speed_std_cm_per_yr?: number | null;
   elevation_point_count: number;
   // Read straight off world.plates (see backend app/stats.py's own docstring) rather than
   // the climate grid every field below uses -- a mass/volume-conservation check independent
