@@ -169,7 +169,9 @@ def test_volcanism_multiplier_scales_total_land_built():
 def _stepped_crust_and_relief(seed: int, steps: int, **knobs) -> tuple[float, float]:
     from app import plates as plates_mod
 
-    world = generate_world(seed=seed, num_plates=8)
+    # Keep the colliding-plate fixture stable across world-generation default changes;
+    # these checks target the uplift knobs, not a particular random layout (#768).
+    world = generate_world(seed=seed, num_plates=8, cratons_first=False)
     # The collision-uplift knobs act on deform()'s smooth boundary-band thickening
     # (orogen_strength / the dilated near-field ring). In the default "fault" mode that band
     # is gated onto fault traces, which mutes the *reach* knob's extra near-field crust in

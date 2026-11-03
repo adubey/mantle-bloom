@@ -262,9 +262,11 @@ retained; these are passing assertion bounds, not reported maxima.
 
 Current main `7c26c2cb` was merged before the added stress coverage. Its model change is the
 random-world generation default; the previously replayed saved-world stepping code is
-unchanged. The full stress suite is running with one budget-approved worker.
-The run completed successfully: **59 passed**, 61 warnings, 1,099.34 s, using
-`./bin/stress_test.sh -n 1 -x`. A fresh affected-test gate on the merged revision follows.
+unchanged. The full stress suite used one budget-approved worker and completed successfully:
+**59 passed**, 61 warnings, 1,099.34 s, using
+`./bin/stress_test.sh -n 1 -x`. The fresh affected-test gate on the merged revision passed:
+**1,972 tests**, 512 warnings, 1,063.30 s, using
+`./bin/affected_test.sh --base origin/main -n 2 -x --ff`.
 
 ## Outcome and limits
 
