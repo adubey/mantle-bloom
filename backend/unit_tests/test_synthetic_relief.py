@@ -329,6 +329,94 @@ def test_drain_land_keeps_an_enclosed_submerged_hole_as_a_basin(monkeypatch):
     assert np.all(hole[end[land & inside]])
 
 
+def test_isolated_continental_hole_is_area_and_depth_bounded_without_touching_ocean(monkeypatch):
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    from scipy.spatial import cKDTree
+
+    n = 12
+    points = _arc(np.arange(n, dtype=float) * (360.0 / n))
+    neighbours = cKDTree(points).query(points, k=3)[1][:, 1:]
+    ocean = np.zeros(n, dtype=bool)
+    ocean[6:10] = True
+    monkeypatch.setattr(synthetic_relief, "connected_ocean_mask", lambda *_: ocean)
+    monkeypatch.setattr(synthetic_relief, "MAX_ISOLATED_HOLE_AREA_KM2", 250_000.0)
+    monkeypatch.setattr(synthetic_relief, "MAX_ISOLATED_HOLE_DEPTH_M", 1_050.0)
+
+    elevation = np.array([-700.0, -800.0, -1_400.0, -900.0, 5.0, 5.0, -400.0, -400.0, -400.0, -400.0, 5.0, 5.0])
+    continental = np.zeros(n, dtype=bool)
+    continental[:6] = True
+    continental[10:] = True
+    area_km2 = np.full(n, 100_000.0)
+
+    out = synthetic_relief._bound_isolated_continental_holes(points, elevation, continental, area_km2, neighbours)
+
+    np.testing.assert_array_equal(out[ocean], elevation[ocean])
+    np.testing.assert_array_equal(out[~(continental & ~ocean)], elevation[~(continental & ~ocean)])
+    assert out[2] == -1_050.0
+    assert np.count_nonzero((out[:4] <= 0.0)) == 2
+    assert np.all(out[:4] >= elevation[:4])
+
+    below = (out <= 0.0) & continental & ~ocean
+    src = np.repeat(np.arange(n), neighbours.shape[1])
+    dst = neighbours.ravel()
+    edge = below[src] & below[dst]
+    graph = coo_matrix((np.ones(edge.sum()), (src[edge], dst[edge])), shape=(n, n))
+    count, labels = connected_components(graph, directed=False)
+    for label in range(count):
+        component = below & (labels == label)
+        if component.any():
+            assert area_km2[component].sum() <= synthetic_relief.MAX_ISOLATED_HOLE_AREA_KM2
+    np.testing.assert_array_equal(
+        out,
+        synthetic_relief._bound_isolated_continental_holes(points, elevation, continental, area_km2, neighbours),
+    )
+
+
+def test_isolated_hole_depth_cap_does_not_raise_a_small_component(monkeypatch):
+    from scipy.spatial import cKDTree
+
+    n = 12
+    points = _arc(np.arange(n, dtype=float) * (360.0 / n))
+    neighbours = cKDTree(points).query(points, k=3)[1][:, 1:]
+    ocean = np.zeros(n, dtype=bool)
+    ocean[6:10] = True
+    monkeypatch.setattr(synthetic_relief, "connected_ocean_mask", lambda *_: ocean)
+
+    elevation = np.array([-700.0, -800.0, -1_400.0, -900.0, 5.0, 5.0, -400.0, -400.0, -400.0, -400.0, 5.0, 5.0])
+    continental = np.zeros(n, dtype=bool)
+    continental[:6] = True
+    area_km2 = np.full(n, 10_000.0)
+
+    out = synthetic_relief._bound_isolated_continental_holes(points, elevation, continental, area_km2, neighbours)
+
+    np.testing.assert_array_equal(out[:4], np.maximum(elevation[:4], -1_050.0))
+    np.testing.assert_array_equal(out[4:], elevation[4:])
+
+
+def test_drain_land_applies_hole_bounds_when_continental_mask_is_supplied(monkeypatch):
+    n = 12
+    points = _arc(np.arange(n, dtype=float) * (360.0 / n))
+    ocean = np.zeros(n, dtype=bool)
+    ocean[6:10] = True
+    monkeypatch.setattr(synthetic_relief, "connected_ocean_mask", lambda *_: ocean)
+    monkeypatch.setattr(synthetic_relief, "FLOW_NEIGHBOR_COUNT", 2)
+    monkeypatch.setattr(synthetic_relief, "MAX_ISOLATED_HOLE_AREA_KM2", 250_000.0)
+
+    elevation = np.array([-700.0, -800.0, -1_400.0, -900.0, 5.0, 5.0, -400.0, -400.0, -400.0, -400.0, 5.0, 5.0])
+    continental = np.zeros(n, dtype=bool)
+    continental[:6] = True
+    continental[10:] = True
+    land = elevation > 0.0
+    area_km2 = np.full(n, 100_000.0)
+
+    out = synthetic_relief.drain_land(points, elevation, land, area_km2, seed=17, continental=continental)
+
+    assert np.count_nonzero(out[:4] <= 0.0) == 2
+    assert out[2] == -1_050.0
+    np.testing.assert_array_equal(out[6:10], elevation[6:10])
+
+
 def test_drain_land_leaves_a_world_without_land_or_sea_unchanged():
     points = _sphere(200)
     elevation = np.linspace(-100.0, 100.0, 200)
