@@ -200,7 +200,9 @@ def _seeded_connected_mask(
     return _seeded_connected_mask_kernel(neighbor_idx, below, seed_below)
 
 
-def _ocean_connected_mask(world: "World", elevations: np.ndarray, sea_level_m: float) -> np.ndarray:
+def _ocean_connected_mask(
+    world: "World", elevations: np.ndarray, sea_level_m: float, areas_m2: np.ndarray | None = None
+) -> np.ndarray:
     """Per-node bool: is this node actually part of the connected world ocean at
     `sea_level_m` -- not merely sitting below it (see this module's own docstring for why
     that distinction is what keeps a landlocked lake/sea's volume from being double-counted).
@@ -223,7 +225,15 @@ def _ocean_connected_mask(world: "World", elevations: np.ndarray, sea_level_m: f
         return elevations <= sea_level_m
     seed = getattr(hydro, "is_ocean", None)
     if seed is None or len(seed) != len(elevations) or not seed.any():
-        return hydrology.connected_ocean_mask(hydro.points, elevations, sea_level_m, hydro.neighbor_idx)
+        # No seed to anchor to: classify fresh, with the caller's real cell areas when it
+        # has them, so the enclosed-ocean area rule (#758) measures the same bodies as
+        # hydrology's own classification. Without areas it falls back to equal-area cells,
+        # and without a prior ocean there is no hysteresis, so a body within resampling
+        # noise of the threshold can classify differently here than in hydrology -- only
+        # reachable before the first hydrology step, when no budget depends on it yet.
+        return hydrology.connected_ocean_mask(
+            hydro.points, elevations, sea_level_m, hydro.neighbor_idx, areas_m2=areas_m2
+        )
     return _seeded_connected_mask(elevations, sea_level_m, hydro.neighbor_idx, seed)
 
 
@@ -234,7 +244,7 @@ def ocean_water_volume_m3(world: "World", elevations: np.ndarray, areas_m2: np.n
     contributes nothing here even when its floor plunges far deeper than `sea_level_m` itself:
     it either holds no water at all (a dry catchment, however deep), or holds real, measured
     water already accounted for by `trapped_water_volume_m3`."""
-    mask = _ocean_connected_mask(world, elevations, sea_level_m)
+    mask = _ocean_connected_mask(world, elevations, sea_level_m, areas_m2=areas_m2)
     return total_water_volume_m3(elevations[mask], areas_m2[mask], sea_level_m)
 
 

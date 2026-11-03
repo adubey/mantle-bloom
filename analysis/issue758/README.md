@@ -10,8 +10,8 @@ near that share changes class with small changes in elevation or sea level.
 
 **The change.** `hydrology.connected_ocean_mask` keeps the largest below-sea-level component as
 ocean. Any other component is ocean when it covers at least 8 million km²
-(`ENCLOSED_OCEAN_MIN_AREA_KM2`). A component holding any of last step's ocean stays ocean down to
-4 million km² (`ENCLOSED_OCEAN_KEEP_AREA_KM2`). Lake water on a
+(`ENCLOSED_OCEAN_MIN_AREA_KM2`). A component whose area was mostly ocean last step stays ocean
+down to 4 million km² (`ENCLOSED_OCEAN_KEEP_AREA_KM2`). Lake water on a
 cell that becomes ocean is exported to the ocean by the lake solve, with its lake ice, which the
 solve opens with since #757 and books as melt. Eustasy then fills the basin to sea level from
 the conserved budget. See
@@ -152,45 +152,41 @@ these numbers.
 
 ## Replay results
 
-**Stale baseline.** These arms ran before #757 (sublimation inside the lake solve) and #768
-(lake losses after within-step transfers) reached `origin/main`, which has since moved on from
-`38c2460d`. The branch was then rebased onto it. The classification result doesn't depend on
-those changes (the basin's size and class are set by `connected_ocean_mask`), but D's and E's lake
-volumes, sea levels and rain do, since #757 alone moves their lakes from about 1.5 to about
-10 million km³. The numbers below must be rerun on the rebased tree before they are used for
-anything but the classification behavior. #757's own PR says the same of its numbers.
-
-Run as preregistered, except as noted under "Deviations". Main is `38c2460d`; the branch is
-`e96e9414`, which carries the preregistration. Each arm is 50 steps of 100 kyr with the ice-age
-cycle off. [`replay-comparison.json`](replay-comparison.json) holds the per-arm measures.
+Rerun after the rebase onto #757 and #768, as the review required (the first run's arms
+predated both). Main is `d7857499` (its `backend/` is identical to `origin/main` `6abd9947`,
+whose only later change is docs); the branch is `965d130a`, the PR head including the review
+fixes. The majority-overlap hysteresis fix is replay-neutral in these windows: no enclosed
+body in them sits between 4 and 8 million km², so no classification depends on it. Each arm
+is 50 steps of 100 kyr with the ice-age cycle off.
+[`replay-comparison.json`](replay-comparison.json) holds the per-arm measures.
 
 | Measure | D main | D branch | E main | E branch | S main | S branch |
 |---|---:|---:|---:|---:|---:|---:|
 | Class changes in 5 Myr (to ocean / to lake) | 0 | 1 / 0 | 0 | 1 / 0 | 0 | 0 |
 | Enclosed 15 M km² body is ocean | 0 of 50 steps | 50 of 50 | 0 of 50 | 50 of 50 | n/a | n/a |
-| Sea level, step 1 (m) | −748.1 | −872.7 | −741.4 | −872.3 | −1,089.8 | −1,089.8 |
-| Sea level, step 50 (m) | −760.2 | −879.9 | −752.9 | −886.7 | −1,168.2 | −1,168.2 |
+| Sea level, step 1 (m) | −741.5 | −871.6 | −744.3 | −873.4 | −1,091.8 | −1,091.8 |
+| Sea level, step 50 (m) | −767.6 | −880.9 | −765.3 | −885.8 | −1,175.2 | −1,175.2 |
 | Ocean nodes, opening / step 1 | 85,360 / 85,515 | 85,360 / 89,563 | 85,538 / 85,538 | 85,538 / 89,580 | 153,339 / 153,401 | 153,339 / 153,401 |
-| Ocean area, step 50 (M km²) | 329.7 | 342.3 | 329.8 | 342.6 | 397.7 | 397.7 |
-| Lake water, step 50 / mean over steps (M km³) | 3.47 / 2.74 | 1.67 / 1.75 | 2.28 / 2.66 | 1.91 / 1.71 | 0.21 / 0.54 | 0.21 / 0.54 |
-| Mean rain on land near the body, steps 1–50 (mm) | 263.0 | 257.4 | 259.9 | 260.2 | 607.0 | 607.0 |
-| Worst normalized lake / land residual | 1.9e-12 / 2.7e-13 | 2.2e-12 / 2.5e-13 | 5.2e-12 / 8.1e-13 | 2.0e-12 / 2.2e-13 | 2.3e-11 / 1.8e-12 | 2.3e-11 / 1.8e-12 |
-| Worst eustasy closure (share of tolerance) | 0.98 | 0.93 | 0.98 | 0.96 | 1.00 | 1.00 |
-| Median step (s) / peak RSS (GB) | 9.2 / 5.3 | 9.5 / 3.8 | 9.0 / 6.7 | 8.2 / 5.4 | 11.0 / 8.7 | 10.1 / 7.3 |
+| Ocean area, step 50 (M km²) | 329.4 | 342.3 | 329.8 | 342.7 | 397.7 | 397.7 |
+| Lake water, step 50 / mean over steps (M km³) | 5.48 / 4.73 | 1.63 / 1.57 | 4.61 / 4.16 | 1.59 / 1.61 | 4.26 / 5.68 | 4.26 / 5.68 |
+| Mean rain on land near the body, steps 1–50 (mm) | 291.3 | 255.1 | 289.6 | 258.9 | 562.2 | 562.2 |
+| Worst normalized lake / land residual | 2.4e-11 / 4.2e-12 | 5.0e-12 / 5.0e-13 | 4.2e-11 / 7.3e-12 | 4.4e-12 / 5.0e-13 | 4.0e-12 / 4.3e-13 | 4.0e-12 / 4.3e-13 |
+| Worst eustasy closure (share of tolerance) | 0.97 | 0.95 | 0.99 | 0.95 | 0.97 | 0.97 |
+| Median step (s) / peak RSS (GB) | 8.6 / 4.8 | 8.3 / 4.3 | 7.2 / 6.7 | 7.2 / 6.7 | 10.3 / 7.5 | 10.5 / 6.4 |
 
-Main reproduces #757's baseline for D (sea level −744.04 m at 225.5 Myr). Runtime and peak RSS
-include other agents' runs alongside most arms, so the differences between arms are noise.
+Runtime and peak RSS include other agents' runs alongside most arms, so the differences
+between arms are noise.
 
 | # | Prediction | Result |
 |---|---|---|
 | 1 | The basin is ocean from step 1 to 50 in D and E | **Held.** 50 of 50 steps in both; main never classes it ocean. |
-| 2 | Branch minus main sea level at step 1 is −100 to −180 m | **Held.** −124.7 m (D), −130.9 m (E); −119.7 m and −133.8 m at step 50. |
+| 2 | Branch minus main sea level at step 1 is −100 to −180 m | **Held.** −130.0 m (D), −129.1 m (E); −113.3 m and −120.5 m at step 50. |
 | 3 | Ocean nodes at step 1 are 3,000–4,500 above main's | **Held.** +4,048 (D), +4,042 (E). |
-| 4 | Residuals at most 1e-9 and eustasy closure within tolerance | **Held** in every step of every arm. |
-| 5 | One class change into ocean, none back, and no more than main's | **Partly held.** Exactly one change into ocean in D and E (14.9 and 14.8 M km²) and none back. Main has none, so "no more than main's" fails by that one intended change. |
-| 6 | Lake water below main's at step 50 in D and E | **Held in D, fails in E at step 50.** D is 1.67 against 3.47 M km³. E is 1.91 against 2.28, which is lower, but E's main swings by millions of km³ a step (#754). The mean over steps is lower on the branch in both. |
-| 7 | Rain on nearby land is higher on the branch in D and E | **Failed in D, flat in E.** D is 257.4 against 263.0 mm. E is 260.2 against 259.9 mm. Open question below. |
-| 8 | S is unchanged | **Held.** Sea-level gap 1.6e-5 m, no class changes. |
+| 4 | Residuals at most 1e-9 and eustasy closure within tolerance | **Held** in every step of every arm (worst lake residual 4.2e-11). |
+| 5 | One class change into ocean, none back, and no more than main's | **Partly held.** Exactly one change into ocean in D and E and none back. Main has none, so "no more than main's" fails by that one intended change. |
+| 6 | Lake water below main's at step 50 in D and E | **Held.** D is 1.63 against 5.48 M km³; E is 1.59 against 4.61. The mean over steps is lower on the branch in both. |
+| 7 | Rain on nearby land is higher on the branch in D and E | **Failed.** D is 255.1 against 291.3 mm; E is 258.9 against 289.6. On current main the lake world is wetter nearby than the stale run showed, so the gap widened. Open question below. |
+| 8 | S is unchanged | **Held.** Sea level identical at every step, no class changes, same rain. |
 | 9 | Median step within 10% of main's | **Held.** |
 
 **Class-change frequency over the 5 Myr scan.** Counting groups of at least 200,000 km² that
@@ -199,10 +195,10 @@ has 1 in D, 1 in E and 0 in S, each the basin entering the ocean at step 1. The 
 never classed as a lake again. This doesn't test a body sitting at the threshold: no surveyed
 body is near 8 million km², so the hysteresis is covered by the unit tests only.
 
-**Water at reclassification.** At step 1 sea level falls 125–131 m, about the 137 m estimated
+**Water at reclassification.** At step 1 sea level falls 129–130 m, about the 137 m estimated
 from the basin's 45.4 M km³ fill volume over the main ocean's area, less the water main already
 holds in the basin. Whole-world lake water falls by the basin's former holdings, and the ledgers
-close in that step (worst residual 2.2e-12 of the larger of supply and overflow).
+close in that step (worst branch residual 5.0e-12 of the larger of supply and overflow).
 
 ### Open question: why D's nearby land is slightly drier (prediction 7)
 
@@ -229,3 +225,6 @@ for downwind land. This is left open, and the PR doesn't claim a rainfall benefi
 - The class-change threshold (200,000 km²) is not near any surveyed body except the target
   basin, so prediction 5 cannot show that the hysteresis prevents flicker on a real save.
 - #757 (PR #761) changes the same lakes. Whichever of the two lands second reruns these numbers.
+  Done: #757 and #768 landed first, and the table above is the rerun on the rebased tree.
+- The climate probe under "Open question" ran on the pre-rebase tree and wasn't rerun; the
+  replay's rain gap it tries to explain is larger now (about −36 mm in D, −31 mm in E).

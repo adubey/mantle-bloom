@@ -181,6 +181,14 @@ ENCLOSED_OCEAN_MIN_AREA_KM2 = 8.0e6
 # every enclosed lake the survey found.
 ENCLOSED_OCEAN_KEEP_AREA_KM2 = 4.0e6
 
+# "Held last step's ocean" means most of the body was ocean, not any one cell (#758 review):
+# `prior_ocean` is a nearest-neighbour resample, so a cell or two can alias across a
+# one-cell ridge, and a single aliased cell must not drop a 4-8 million km^2 lake to the
+# keep-area threshold -- latched, its own cells become next step's prior and it would hold
+# itself ocean until it shrank under the keep area. A body that splits off the main ocean
+# overlaps almost completely, so a majority (by area) keeps it ocean.
+ENCLOSED_OCEAN_KEEP_OVERLAP_FRACTION = 0.5
+
 # A spilling lake's outlet channel erodes based on the *lake's* own surface area, not just
 # the ordinary precip-routed flow passing through that one node. Real overflowing lakes carry
 # far more erosive force at their outlet than an equivalent plain river of the same
@@ -667,6 +675,10 @@ def connected_ocean_mask(
     common case."""
     below = elevation <= sea_level_m
     n = len(elevation)
+    if areas_m2 is not None and len(areas_m2) != n:
+        raise ValueError(f"areas_m2 has {len(areas_m2)} entries for {n} nodes")
+    if prior_ocean is not None and len(prior_ocean) != n:
+        raise ValueError(f"prior_ocean has {len(prior_ocean)} entries for {n} nodes")
     if n == 0 or not below.any() or below.all():
         return below
     if neighbor_idx is None:
@@ -681,14 +693,16 @@ def connected_ocean_mask(
     if np.unique(below_labels).size <= 1:
         return below  # every below-sea-level node is one connected ocean already
     counts = np.bincount(below_labels)
-    # The largest component is always ocean, whatever its floor or area -- the enclosed-basin
-    # rule only gates whether some *other* component also counts, and must not demote the whole
-    # ocean to "no ocean at all" on a small world, toy test fixtures included.
-    qualifies = _enclosed_ocean_components(
+    # The largest component (by area, matching the enclosed-basin rule below; on a
+    # variable-density node cloud the largest by node count need not be the largest body)
+    # is always ocean, whatever its floor -- the enclosed-basin rule only gates whether some
+    # *other* component also counts, and must not demote the whole ocean to "no ocean at
+    # all" on a small world, toy test fixtures included.
+    qualifies, component_area_m2 = _enclosed_ocean_components(
         below_idx, below_labels, len(counts), n,
         areas_m2=areas_m2, prior_ocean=prior_ocean,
     )
-    qualifies[counts.argmax()] = True
+    qualifies[component_area_m2.argmax()] = True
     ocean_labels = np.nonzero(qualifies)[0]
     return below & np.isin(labels, ocean_labels)
 
@@ -703,18 +717,26 @@ def _enclosed_ocean_components(
     prior_ocean: np.ndarray | None,
 ) -> np.ndarray:
     """Per component label, whether it is an enclosed ocean: at least
-    `ENCLOSED_OCEAN_MIN_AREA_KM2`, or `ENCLOSED_OCEAN_KEEP_AREA_KM2` when any of its nodes was
-    ocean last step (`prior_ocean`)."""
+    `ENCLOSED_OCEAN_MIN_AREA_KM2`, or `ENCLOSED_OCEAN_KEEP_AREA_KM2` when most of its area
+    was ocean last step (`prior_ocean`; see `ENCLOSED_OCEAN_KEEP_OVERLAP_FRACTION`).
+    Also returns each component's area in m^2, so the caller can pick the largest body by
+    area rather than by node count."""
     node_area = (
         np.asarray(areas_m2, dtype=float)[below_idx] if areas_m2 is not None
         else np.full(len(below_idx), 4.0 * np.pi * (PLANET_RADIUS_KM * 1000.0) ** 2 / n)
     )
     area_m2 = np.bincount(below_labels, weights=node_area, minlength=n_labels)
-    was_ocean = (
-        np.bincount(below_labels, weights=np.asarray(prior_ocean, dtype=bool)[below_idx], minlength=n_labels) > 0
-        if prior_ocean is not None else np.zeros(n_labels, dtype=bool)
+    prior_ocean_area_m2 = (
+        np.bincount(
+            below_labels,
+            weights=np.where(np.asarray(prior_ocean, dtype=bool)[below_idx], node_area, 0.0),
+            minlength=n_labels,
+        )
+        if prior_ocean is not None else np.zeros(n_labels)
     )
-    return area_m2 >= np.where(was_ocean, ENCLOSED_OCEAN_KEEP_AREA_KM2, ENCLOSED_OCEAN_MIN_AREA_KM2) * 1e6
+    was_ocean = prior_ocean_area_m2 >= ENCLOSED_OCEAN_KEEP_OVERLAP_FRACTION * area_m2
+    threshold_m2 = np.where(was_ocean, ENCLOSED_OCEAN_KEEP_AREA_KM2, ENCLOSED_OCEAN_MIN_AREA_KM2) * 1e6
+    return area_m2 >= threshold_m2, area_m2
 
 
 # (lon, lat) degrees on each side of a real strait narrower than this engine can ever resolve
