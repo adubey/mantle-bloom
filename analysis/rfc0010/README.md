@@ -366,3 +366,157 @@ measure the same thing as the 15% estimate. And 20.7% still exceeds that figure.
 events counted, rollback has events on all three seeds (1 / 18 / 1), so all four settings pass the D1
 rule. The plate-count bound still fails, and the owner chose to start D2 anyway, since D2's route
 outcomes are what can tighten that worst case.
+
+## Gate D2: routes (2026-11-02)
+
+Run as [frozen](https://github.com/adubey/mantle-bloom/issues/737#issuecomment-6572374984) on the D1
+rerun's seeds, commit `7ac57e37`, probe hash unchanged during the runs. All three fingerprints match
+the D1 rerun, and every event's setting, plate, timing and end is identical; only route fields changed.
+Tables: [`gate-d2.json`](gate-d2.json) (its `routes` key).
+
+**Outcome: does not pass. Outcomes, detached craton and blocked cells pass; route shape fails for
+active and passive.**
+
+| Setting | Sites | Barriers | Breakups of non-barrier sites | Within margin limit | Misses |
+|---|---:|---:|---:|---:|---|
+| Active | 78 | 0 | 74 (94.9%) | **83.8%** | 4 daughter too small |
+| Passive | 50 | 0 | 47 (94.0%) | **89.4%** | 3 no second arm |
+| Rollback | 20 | 0 | 20 (100%) | 100% | — |
+| Transtension | 135 | 0 | 132 (97.8%) | 91.7% | 3 daughter too small, no qualifying strips |
+
+The limits are 90% for both columns. The census baseline was 68% for transtension, and D1's own
+router reached 72% across these events.
+
+| Seed | Gated breakups | Craton detached, km² | Budget, km² |
+|---|---:|---:|---:|
+| 1183015207 | 46 | 17,910 | 318,041 |
+| 1486436815 | 43 | 0 | 0 |
+| 1173383782 | 47 | 277,374 | 394,538 |
+
+Zero blocked cells were entered. Of 273 breakup routes, 28 touch craton and 4 divide one. **Seed
+1486436815 has no craton at all**, from generation on, with 4 continental plates. Its budget test is
+vacuous. That isn't traced.
+
+**Why routes hug the margin, read after the freeze.** The 28 routes over the limit have a median
+longest arm of 5,486 km against 2,382 km, and a smaller daughter of 6.4% against 12.6%. The router
+takes the cheapest pair of endpoints that clears 5%. On a small plate, that is often an arm running
+along the edge until it encloses just enough area. So the size rule that fixed outcomes is what makes
+the hooks. Hugging routes sit on plates of a median 4.7% of the sphere, against 3.8% for the rest, so
+plate size alone doesn't explain them.
+
+**Also reported:**
+- **Daughters:** the smaller daughter is a median 11%, and 52 of 273 are under 6%.
+- **Route growth:** the median is 23–28 Myr by setting. Closed breakup events outlast their growth in
+  22 of 65 active, 12 of 27 passive, 3 of 17 rollback and 31 of 125 transtension events.
+- **Plate count:** worst case 64, 57 and 58, or 62, 57 and 54 on separating routes only. D1's
+  incompatibility stands, and more events now separate.
+
+Sector count, margin band and limit sensitivity are untested.
+
+### Router amendment: skip margin-hugging routes (2026-11-02)
+
+A [labeled rerun](https://github.com/adubey/mantle-bloom/issues/737#issuecomment-6573751625) at the
+owner's request, commit `b8df3585`, probe hash unchanged during the runs. A size-clearing route with a
+margin share over 0.2 is now skipped for the next cheapest pair, so route shape holds by construction
+and the outcome test carries the cost. Tables: [`gate-d2-amendment.json`](gate-d2-amendment.json).
+
+**Integrity:** fingerprints and every D1 event match, and all 245 routes that were within the limit
+in the first D2 run are unchanged. My first comparison keyed events on setting, plate and timing,
+which some plates share across two fronts. It reported 11 false changes until the key added the
+neighbour and site.
+
+**Outcome: still does not pass, now on outcomes for active and passive.**
+
+| Setting | Breakups of non-barrier sites | First D2 run | `hugs_margin` | Other misses |
+|---|---:|---:|---:|---|
+| Active | **64 of 78 (82.1%)** | 94.9% | 10 | 4 daughter too small |
+| Passive | **43 of 50 (86.0%)** | 94.0% | 4 | 3 no second arm |
+| Rollback | 20 of 20 (100%) | 100% | 0 | — |
+| Transtension | 128 of 135 (94.8%) | 97.8% | 4 | 3 daughter too small |
+
+Of the 28 routes over the limit, 10 found a clean pair and 18 have none among the sector candidates.
+Detached craton stays within budget: seed 1183015207 falls from 17,910 km² to 0, since its one
+detaching route hugged the margin. Seed 1173383782 is unchanged at 277,374 of 394,538 km², and zero
+blocked cells were entered.
+
+**Read after the freeze:**
+- The 18 misses are on 10 plates, with a median 5.4% of the sphere against 3.8% for breakups, so they
+  aren't small plates. 7 of the 18 sites began on blocked craton and moved to the nearest open cell.
+  Not traced.
+- The router keeps only the cheapest target in each of 12 sectors, so a clean route outside those
+  candidates isn't tried.
+- Breakup routes now have a median longest arm of 2,392 km and growth of 23.9 Myr. The median smaller
+  daughter is 12.8%.
+- Worst-case plates are 66, 57 and 58, or 56, 56 and 51 on separating routes only.
+
+### Router amendment: edge cost (2026-11-02)
+
+A second [labeled rerun](https://github.com/adubey/mantle-bloom/issues/737#issuecomment-6582123300)
+at the owner's request, after the route pictures, commit `a3a53877`. Inside the 150 km margin band, a
+step costs up to 2× by how far it runs along the edge rather than toward it, so an arm's own approach
+stays free. The margin skip stays. Tables: [`gate-d2-edge-cost.json`](gate-d2-edge-cost.json).
+
+**Integrity:** fingerprints and every D1 event match both earlier D2 runs.
+
+**Outcome: does not pass, now on detached craton for one seed.** All four outcome tests pass.
+
+| Setting | Breakups of non-barrier sites | Skip only | First D2 run | Misses |
+|---|---:|---:|---:|---|
+| Active | 77 of 78 (98.7%) | 82.1% | 94.9% | 1 daughter too small |
+| Passive | 47 of 50 (94.0%) | 86.0% | 94.0% | 3 no second arm |
+| Rollback | 20 of 20 (100%) | 100% | 100% | — |
+| Transtension | 133 of 135 (98.5%) | 94.8% | 97.8% | 1 daughter too small, 1 `hugs_margin` |
+
+All 18 former `hugs_margin` sites now separate. Zero blocked cells were entered. Detached craton:
+
+| Seed | Detached km² | Budget km² | |
+|---|---:|---:|---|
+| 1173383782 | **1,603,887** | 394,538 | fails |
+| 1183015207 | 17,910 | 318,041 | passes |
+| 1486436815 | 0 | 0 | passes (no cratons) |
+
+**Read after the freeze:**
+- One event carries the failure: passive, plate 3 at 5 Myr on seed 1173383782 detaches 1,409,509 km².
+  Without it the seed would hold 194,378 km². Its route barely moves, crossing the same 8 enterable
+  craton cells, but now leaves a piece of a craton on the far side
+  ([picture](d2-edge-cost-craton-cut.png)). In every run this route is about 15,600 km long, winding
+  through gaps in the craton on a plate holding 12% of the sphere.
+- 140 of 255 routes that separated in both runs changed. In those, the median smaller daughter fell
+  from 11.6% to 7.1%. Across all breakups it is 9.2%, against 12.8% with the skip only, and 37% of
+  breakups now leave a daughter under 7%, against 25%. A free approach to the edge makes a short cut
+  across a plate's corner cheap, so routes now cut off corners where they used to hug edges.
+- Breakup routes have a median longest arm of 2,424 km and growth of 24.2 Myr.
+- Worst-case plates are 58, 64 and 58, or 55, 63 and 58 on separating routes only.
+
+### Exploration: damage proxy (2026-11-02)
+
+This is not a gate run. At the owner's request, `--damage-proxy` (commit `15dc00a5`) tested whether
+local weakness, taken from fields the model already has, gives larger and more realistic splits
+before world generation changes (#770):
+- **Thickness:** resistance is total lithosphere thickness over the plate's median, clipped to
+  0.5–2.
+- **Belts:** belt weakness fades back toward 1 over 500 Myr.
+
+Everything else matches the edge-cost run, on the same three seeds. Fingerprints and every event
+match. Tables: [`exploration-damage-proxy.json`](exploration-damage-proxy.json).
+
+| | Edge cost | Edge cost + proxy |
+|---|---:|---:|
+| Breakups, active / passive / rollback / transtension | 98.7 / 94.0 / 100 / 98.5% | 91.0 / 94.0 / 100 / 97.0% |
+| Median smaller daughter | 9.2% | 10.1% |
+| Breakups under 7% | 37% | 33% |
+| Detached craton, seed 1173383782 (budget 394,538 km²) | 1,603,887 km² | 194,378 km² |
+| Route cells on thinner-than-median rock | — | median 50% |
+
+**Reading:** the gain is small. Routes cross thin rock at about the rate chance gives. Continental
+plates do have contrast: on seed 1183015207 at 200 Myr, 4–37% of their cells are under half the
+plate median. But that thin rock is on the plate's fringe:
+- 59–96% of it lies within 300 km of the plate edge, against a median 440–1,050 km for the rest.
+- 45–96% of it is oceanic crust.
+
+Plate interiors carry no thin or belted zones for a route to follow, so a better resistance map
+can't make interior cuts cheap. This supports #770: interior weak zones have to come from history,
+and default worlds start with none.
+
+The craton budget passes here only because the one failing event in the edge-cost run took a
+different route. That is not evidence that the proxy protects cratons.

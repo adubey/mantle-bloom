@@ -4,6 +4,7 @@
 Two read-only modes. `--saves` surveys snapshots. `--seed` is Gate D1: it runs one fresh world
 with production topology unchanged and no detected rift acting on it, detects at the point in the
 step where the lifecycle will sit, and tracks each merged front until it persists for ONSET_MYR.
+Gate D2 routes each event as it starts, choosing endpoints by daughter size.
 `--summarize` turns the per-seed reports into the gate's tables.
 
 Active rifting is plume-heated continental lithosphere,
@@ -75,7 +76,24 @@ KEEL_BREACH_M = 60_000.0
 INBOARD_KM = 300.0
 MIN_DAUGHTER_SHARE = 0.05
 # An arm may not end nearer the site than this, widening until the daughters are real plates.
-ARM_REACH_KM = (300.0, 600.0, 1000.0, 1500.0, 2000.0, 3000.0)
+ARM_REACH_KM = 300.0
+# Gate D2 (#737): endpoint bearings tried per side, and the plate-margin band a route may not hug.
+ENDPOINT_SECTORS = 12
+ROUTE_MARGIN_BAND_KM = 150.0
+# Cost multiplier on a step along the plate edge inside the margin band: above the craton margin's
+# 1.5 but below a full-strength craton's 1 + CRATON_COST, which a rift should avoid far more (#737).
+EDGE_BAND_COST = 2.0
+# Exploration, off unless --damage-proxy (#737, #770): a stand-in for local damage from fields the
+# model already has. Lithosphere thinner than its plate's median is weaker, and a belt's weakness
+# fades with age instead of lasting forever.
+DAMAGE_PROXY = False
+DAMAGE_THICKNESS_CLIP = (0.5, 2.0)
+BELT_FADE_MYR = 500.0
+ROUTE_MIN_OUTCOME_SHARE = 0.9
+ROUTE_MARGIN_MAX_SHARE = 0.2
+ROUTE_MARGIN_MIN_PASSING = 0.9
+# RFC 0010 item 9: rifting may cost at most 2% of live craton per Gyr.
+CRATON_BUDGET_PER_GYR = 0.02
 CM_PER_RAD_YR = lithosphere.PLANET_RADIUS_M * 100.0
 ONSET_MYR = 2.0
 LAPSE_MYR = 5.0
@@ -330,7 +348,13 @@ def _sites_passive(world, plate):
     return [{"setting": "passive", "seed": seed, "extension": cut_normal, "relax": float(relax)}]
 
 
-def _graph(plate, points, extension, forbidden, resistance):
+def _edge_distance(points, edge):
+    """Angular distance from each cell to the nearest plate-edge cell."""
+    chord = cKDTree(points[edge]).query(points)[0]
+    return 2.0 * np.arcsin(np.minimum(chord / 2.0, 1.0))
+
+
+def _graph(plate, points, extension, forbidden, resistance, edge_distance):
     adjacency = plate.adjacency()
     rows = np.repeat(np.arange(plate.node_count()), np.diff(adjacency.offsets))
     cols = adjacency.neighbours
@@ -344,6 +368,13 @@ def _graph(plate, points, extension, forbidden, resistance):
     norm = np.maximum(np.linalg.norm(tangent_axis, axis=1), 1e-12)
     opening = np.abs(np.einsum("ij,ij->i", along, tangent_axis / norm[:, None]))
     weight = length * 0.5 * (resistance[rows] + resistance[cols]) * (1.0 + ALIGN_PENALTY * opening)
+    # Steps along the plate edge inside the margin band cost more, so the search keeps arms in the
+    # interior instead of sliding them along the edge (#737 Gate D2). A step heading straight to or
+    # from the edge pays nothing extra, so an arm's own approach to the boundary stays free.
+    band = ROUTE_MARGIN_BAND_KM * 1e3 / lithosphere.PLANET_RADIUS_M
+    in_band = 0.5 * ((edge_distance[rows] < band).astype(float) + (edge_distance[cols] < band))
+    toward = np.minimum(np.abs(edge_distance[cols] - edge_distance[rows]) / length, 1.0)
+    weight *= 1.0 + (EDGE_BAND_COST - 1.0) * in_band * (1.0 - toward)
     return csr_matrix((weight, (rows, cols)), shape=(len(points),) * 2)
 
 
@@ -354,33 +385,107 @@ def _walk(predecessors, target):
     return route[::-1]
 
 
-def route_rift(plate, points, seed, extension, forbidden, resistance, reach_rad):
-    """Two node-disjoint arms from `seed` to the plate boundary, either side of the strike."""
-    degree = np.diff(plate.adjacency().offsets)
-    edge = degree < np.median(degree)
+def _sector_targets(points, seed, strike, targets, distances):
+    """The cheapest target in each of ENDPOINT_SECTORS bearings around the site, cheapest first.
+    Spreading endpoints by bearing lets the router try cuts that give larger daughters, instead of
+    only the nearest boundary (#737 Gate D2)."""
+    if not len(targets):
+        return []
+    across = geometry.normalize(np.cross(points[seed], strike))
+    bearing = np.arctan2(points[targets] @ across, points[targets] @ strike)
+    sector = np.minimum((bearing + np.pi) / (2.0 * np.pi) * ENDPOINT_SECTORS, ENDPOINT_SECTORS - 1).astype(int)
+    best = {}
+    for target, bin_ in zip(targets, sector):
+        if bin_ not in best or distances[target] < distances[best[bin_]]:
+            best[bin_] = target
+    return sorted(best.values(), key=lambda target: distances[target])
+
+
+def route_by_daughters(plate, points, seed, extension, forbidden, resistance, areas, reach_rad):
+    """Two node-disjoint arms from `seed` to the plate boundary, either side of the strike: the
+    cheapest pair of sector endpoints whose route leaves both daughters at MIN_DAUGHTER_SHARE and
+    doesn't hug the plate margin past ROUTE_MARGIN_MAX_SHARE.
+
+    Returns (route, status, cheapest_separating). A site is a true barrier when open rock does not
+    reach the boundary on both sides; that is allowed, and the rift stops as weakened rock."""
+    edge = _edge_cells(plate)
+    edge_distance = _edge_distance(points, edge)
     if forbidden[seed]:
         open_cells = np.flatnonzero(~forbidden)
         if not len(open_cells):
-            return None, "no_open_cells"
+            return None, "barrier", None
         seed = int(open_cells[np.argmax(points[open_cells] @ points[seed])])
     strike = geometry.normalize(np.cross(points[seed], extension))
     side = (points - points[seed]) @ strike
-    edge = edge & (np.arccos(np.clip(points @ points[seed], -1.0, 1.0)) >= reach_rad)
-    distances, previous = dijkstra(_graph(plate, points, extension, forbidden, resistance), indices=seed,
+    distances, previous = dijkstra(_graph(plate, points, extension, forbidden, resistance, edge_distance), indices=seed,
                                    return_predecessors=True)
-    targets = np.flatnonzero(edge & np.isfinite(distances) & (side > 0.0))
-    if not len(targets):
-        return None, "no_first_arm"
-    first = _walk(previous, targets[np.argmin(distances[targets])])
-    blocked = forbidden.copy()
-    blocked[first[1:]] = True
-    distances, previous = dijkstra(_graph(plate, points, extension, blocked, resistance), indices=seed,
-                                   return_predecessors=True)
-    targets = np.flatnonzero(edge & np.isfinite(distances) & (side < 0.0))
-    if not len(targets):
-        return None, "no_second_arm"
-    second = _walk(previous, targets[np.argmin(distances[targets])])
-    return second[::-1] + first[1:], "routed"
+    reachable = edge & np.isfinite(distances)
+    if not (np.any(reachable & (side > 0.0)) and np.any(reachable & (side < 0.0))):
+        return None, "barrier", None
+    far = reachable & (np.arccos(np.clip(points @ points[seed], -1.0, 1.0)) >= reach_rad)
+    firsts = _sector_targets(points, seed, strike, np.flatnonzero(far & (side > 0.0)), distances)
+    if not firsts:
+        return None, "no_first_arm", None
+    pairs = []
+    for target in firsts:
+        first = _walk(previous, target)
+        blocked = forbidden.copy()
+        blocked[first[1:]] = True
+        second_distances, second_previous = dijkstra(
+            _graph(plate, points, extension, blocked, resistance, edge_distance), indices=seed,
+            return_predecessors=True)
+        seconds = np.flatnonzero(far & np.isfinite(second_distances) & (side < 0.0))
+        for other in _sector_targets(points, seed, strike, seconds, second_distances):
+            pairs.append((distances[target] + second_distances[other], first, second_previous, other))
+    if not pairs:
+        return None, "no_second_arm", None
+    status, cheapest = "does_not_separate", None
+    band_rad = ROUTE_MARGIN_BAND_KM * 1e3 / lithosphere.PLANET_RADIUS_M
+    for _cost, first, second_previous, other in sorted(pairs, key=lambda pair: pair[0]):
+        route = _walk(second_previous, other)[::-1] + first[1:]
+        pieces = split_by_route(plate, points, route, areas)
+        if pieces is None:
+            continue
+        if min(areas[pieces].sum(), areas[~pieces].sum()) < MIN_DAUGHTER_SHARE * areas.sum():
+            if status != "hugs_margin":
+                status = "daughter_too_small"
+            cheapest = cheapest or (route, pieces)
+            continue
+        # The cheapest size-clearing pair often runs an arm along the edge to enclose just enough
+        # area; D2's first run failed route shape on that (#737), so such a route is skipped.
+        if margin_share(points, route, edge, band_rad) > ROUTE_MARGIN_MAX_SHARE:
+            status = "hugs_margin"
+            continue
+        return (route, pieces), "separates", cheapest
+    return None, status, cheapest
+
+
+def _edge_cells(plate):
+    degree = np.diff(plate.adjacency().offsets)
+    return degree < np.median(degree)
+
+
+def margin_share(points, route, edge, band_rad):
+    """Share of route cells hugging the plate margin: within `band_rad` of the edge but more than
+    twice that along the route from either end, so an arm's own approach to the boundary is free."""
+    if not np.any(edge):
+        return 0.0
+    near = cKDTree(points[edge]).query(points[route])[0] < 2.0 * np.sin(band_rad / 2.0)
+    steps = np.r_[0.0, np.linalg.norm(np.diff(points[route], axis=0), axis=1)]
+    along = np.cumsum(steps)
+    from_end = np.minimum(along, along[-1] - along)
+    return float((near & (from_end > 2.0 * band_rad)).mean())
+
+
+def qualifying_strip(state, route, strip):
+    """A transtension strip that a boundary jump could move: both arms end facing one neighbour,
+    and the strip runs along that neighbour for at least MIN_FRONT_KM (RFC 0010 outcomes)."""
+    neighbours = state["inputs"].neighbor_plate_id
+    ends = {int(neighbours[route[0]]), int(neighbours[route[-1]])}
+    if len(ends) != 1 or -1 in ends:
+        return False
+    facing = np.flatnonzero(strip & (neighbours == ends.pop()))
+    return bool(len(facing) and front_km(state, facing) >= MIN_FRONT_KM)
 
 
 def longest_arm_km(points, route, seed):
@@ -434,9 +539,22 @@ def craton_margin(plate, cratons_mask, spacing):
     return near & ~cratons_mask
 
 
-def route_resistance(plate, belts, forbidden, margin):
-    resistance = np.ones(plate.node_count())
-    resistance[belts] = BELT_RESISTANCE
+def damage_resistance(plate, belts, now_years):
+    """The damage proxy's base resistance: total lithosphere thickness over the plate's median,
+    clipped, times belt weakness fading from BELT_RESISTANCE back to 1 over BELT_FADE_MYR."""
+    thickness = plate.collect("crustal_thickness_m") + plate.collect("mantle_lithosphere_thickness_m")
+    resistance = np.clip(thickness / max(float(np.median(thickness)), 1.0), *DAMAGE_THICKNESS_CLIP)
+    age_myr = np.maximum(now_years - plate.collect("belt_formed_years"), 0.0) / 1e6
+    fade = 1.0 - (1.0 - BELT_RESISTANCE) * np.exp(-age_myr / BELT_FADE_MYR)
+    return np.where(belts, resistance * fade, resistance)
+
+
+def route_resistance(plate, belts, forbidden, margin, now_years=0.0):
+    if DAMAGE_PROXY:
+        resistance = damage_resistance(plate, belts, now_years)
+    else:
+        resistance = np.ones(plate.node_count())
+        resistance[belts] = BELT_RESISTANCE
     resistance[plate.collect("plume_heat_myr") > 0.0] = PLUME_RESISTANCE
     resistance[margin] *= CRATON_MARGIN_COST
     craton_strength = cratons.strength(plate.collect("craton_crust_m"))
@@ -445,12 +563,19 @@ def route_resistance(plate, belts, forbidden, margin):
                     np.maximum(1.0 + CRATON_COST * craton_strength, CRATON_MARGIN_COST), resistance)
 
 
+def _thin_share(plate, route):
+    """Share of route cells whose lithosphere is thinner than the plate's median: whether a route
+    follows weak rock (#770)."""
+    thickness = plate.collect("crustal_thickness_m") + plate.collect("mantle_lithosphere_thickness_m")
+    return float((thickness[route] < np.median(thickness)).mean())
+
+
 def score_site(world, plate, state, site, cratons_mask, belts):
     points, areas = state["points"], plate.node_areas_m2()
     spacing = state["spacing"]
     forbidden, interior = craton_barrier(plate, cratons_mask, spacing)
     margin = craton_margin(plate, cratons_mask, spacing)
-    resistance = route_resistance(plate, belts, forbidden, margin)
+    resistance = route_resistance(plate, belts, forbidden, margin, world.elapsed_years)
     extension = geometry.normalize(np.asarray(site["extension"], dtype=float))
     seed = site["seed"]
     band = np.sin(merge_split.FAILED_RIFT_BAND_MULT * spacing)
@@ -463,24 +588,15 @@ def score_site(world, plate, state, site, cratons_mask, belts):
            "line_craton_cells": int((cratons_mask & line_band).sum()),
            "line_craton_area_km2": float(areas[cratons_mask & line_band].sum() / 1e6),
            "seed_blocked": bool(forbidden[seed])}
-    route, mask, status = None, None, "no_first_arm"
-    for reach_km in ARM_REACH_KM:
-        candidate, status = route_rift(plate, points, seed, extension, forbidden, resistance,
-                                       reach_km * 1e3 / lithosphere.PLANET_RADIUS_M)
-        if candidate is None:
-            continue
-        pieces = split_by_route(plate, points, candidate, areas)
-        if pieces is None:
-            status = "does_not_separate"
-            continue
-        if min(areas[pieces].sum(), areas[~pieces].sum()) >= MIN_DAUGHTER_SHARE * areas.sum():
-            route, mask, status = candidate, pieces, "separates"
-            row["arm_reach_km"] = reach_km
-            break
-        status = "daughter_too_small"
+    found, status, cheapest = route_by_daughters(plate, points, seed, extension, forbidden, resistance, areas,
+                                                 ARM_REACH_KM * 1e3 / lithosphere.PLANET_RADIUS_M)
     row["status"] = status
-    if route is None:
+    if found is None and cheapest is not None and site["setting"] == "transtension":
+        route, mask = cheapest
+        row["qualifying_strip"] = qualifying_strip(state, route, mask if mask.sum() < (~mask).sum() else ~mask)
+    if found is None:
         return row, None
+    route, mask = found
     segments = np.linalg.norm(np.diff(points[route], axis=0), axis=1).sum()
     ends = float(np.arccos(np.clip(points[route[0]] @ points[route[-1]], -1.0, 1.0)))
     smaller = float(min(areas[mask].sum(), areas[~mask].sum()) / areas.sum())
@@ -500,7 +616,10 @@ def score_site(world, plate, state, site, cratons_mask, belts):
                route_craton_cells=int(cratons_mask[route].sum()), cratons_divided=cut,
                craton_detached_km2=float(sum(detached) / 1e6), craton_largest_detached_share=float(share),
                route_blocked_cells=int(forbidden[route].sum()), route_margin_cells=int(margin[route].sum()), route_cells=len(route),
+               route_thin_share=_thin_share(plate, route), route_belt_cells=int(belts[route].sum()),
                route_interior_cells=int(interior[route].sum()),
+               margin_share=margin_share(points, route, _edge_cells(plate),
+                                         ROUTE_MARGIN_BAND_KM * 1e3 / lithosphere.PLANET_RADIUS_M),
                craton_area_km2=craton_area / 1e6, belt_share=float(belts[route].mean()))
     return row, {"route": route, "mask": mask, "line_band": line_band, "cratons": cratons_mask}
 
@@ -764,6 +883,13 @@ class Census:
             row["relax"] = round(site["relax"], 3)
         if "area_km2" in site:
             row["head_area_km2"] = round(site["area_km2"], 0)
+        for key in ("seed_blocked", "qualifying_strip", "margin_share", "smaller_daughter_fraction",
+                    "craton_detached_km2", "route_blocked_cells", "route_craton_cells", "cratons_divided",
+                    "route_thin_share", "route_belt_cells"):
+            if key in scored:
+                row[key] = round(scored[key], 4) if isinstance(scored[key], float) else scored[key]
+        row["world_craton_km2"] = round(sum(
+            float(other.node_areas_m2()[other.collect("craton_crust_m") > 0.0].sum()) for other in world.plates) / 1e6, 0)
         if "longest_arm_km" in scored:
             row["longest_arm_km"] = round(scored["longest_arm_km"], 1)
             row["growth_myr"] = round(scored["longest_arm_km"] / PROPAGATION_KM_PER_MYR, 2)
@@ -861,7 +987,8 @@ def run_seed(seed, myr, step_myr, save_dir=None, detect=True):
         collision_polarity.record_consumption = consumption
         plate_class.deform = deform
     events, pre_onset = census.finish(world.elapsed_years / 1e6)
-    report = {"seed": seed, "myr": myr, "step_myr": step_myr, "fingerprint": world_fingerprint(world),
+    report = {"seed": seed, "myr": myr, "step_myr": step_myr, "damage_proxy": DAMAGE_PROXY,
+              "fingerprint": world_fingerprint(world),
               "plates": census.plate_series[::10] + census.plate_series[-1:],
               "plates_max": max((count for _at, count in census.plate_series), default=0),
               "production": dict(census.production), "plume_heads_emplaced": int(world.plume_heads_emplaced),
@@ -959,6 +1086,51 @@ def age_polarity_summary(reports):
             "works": bool(decided / total >= POLARITY_MIN_DECIDED and reversed_fronts / max(fronts, 1) <= POLARITY_MAX_FLIPPED)}
 
 
+def _route_row(events):
+    counts = Counter(event["route_status"] for event in events)
+    non_barrier = len(events) - counts["barrier"]
+    breakups = [event for event in events if event["route_status"] == "separates"]
+    shares = [event["margin_share"] for event in breakups if "margin_share" in event]
+    hugging = sum(share > ROUTE_MARGIN_MAX_SHARE for share in shares)
+    outcome = counts["separates"] / non_barrier if non_barrier else None
+    shape = 1.0 - hugging / len(shares) if shares else None
+    return {"sites": len(events), "status": dict(counts), "non_barrier": non_barrier,
+            "breakup_share": None if outcome is None else round(outcome, 3),
+            "qualifying_strips": sum(bool(event.get("qualifying_strip")) for event in events),
+            "seed_blocked": sum(bool(event.get("seed_blocked")) for event in events),
+            "margin_share_median": round(statistics.median(shares), 3) if shares else None,
+            "margin_share_max": round(max(shares), 3) if shares else None,
+            "routes_over_margin_limit": hugging, "within_margin_share": None if shape is None else round(shape, 3),
+            "blocked_cells_entered": sum(event.get("route_blocked_cells", 0) for event in breakups),
+            "outcome_passes": outcome is None or outcome >= ROUTE_MIN_OUTCOME_SHARE,
+            "shape_passes": shape is None or shape >= ROUTE_MARGIN_MIN_PASSING}
+
+
+def craton_budget_row(report):
+    """Detached craton from the breakups a running rift would allow, against the 2%/Gyr budget over
+    this run's span and its mean live craton. Equivalent to a mean-per-rift limit at this rate."""
+    gated = [event for event in gated_events(report["events"]) if event["route_status"] == "separates"]
+    live = [event["world_craton_km2"] for event in report["events"] if "world_craton_km2" in event]
+    budget = CRATON_BUDGET_PER_GYR * report["myr"] / 1e3 * (statistics.mean(live) if live else 0.0)
+    detached = sum(event.get("craton_detached_km2", 0.0) for event in gated)
+    return {"seed": report["seed"], "gated_breakups": len(gated), "detached_km2": round(detached, 0),
+            "budget_km2": round(budget, 0),
+            "limit_per_rift_km2": round(budget / len(gated), 0) if gated else None,
+            "passes": bool(detached <= budget)}
+
+
+def route_summary(reports):
+    """Gate D2's tables: outcomes by setting, route shape, detached craton and blocked cells."""
+    events = [event for report in reports for event in report["events"]]
+    settings = {setting: _route_row([event for event in events if event["setting"] == setting])
+                for setting in ("active", "passive", "rollback", "transtension")}
+    budget = [craton_budget_row(report) for report in reports]
+    blocked = sum(row["blocked_cells_entered"] for row in settings.values())
+    return {"settings": settings, "craton_budget": budget, "blocked_cells_entered": blocked,
+            "passes": bool(all(row["outcome_passes"] and row["shape_passes"] for row in settings.values())
+                           and all(row["passes"] for row in budget) and blocked == 0)}
+
+
 def summarize(reports):
     """Gate D1's tables from one report per seed. A worst case for plate count: every gated event
     breaks up and replaces production's splits, while merges stay at production's rate."""
@@ -1000,6 +1172,7 @@ def summarize(reports):
             "age_polarity": age_polarity, "plate_count": plate_rows, "passive_after_head": sum(event["after_head"] for event in passive),
             "passive_events": len(passive), "span_100myr": span,
             "pre_onset_tracks": dict(sum((Counter(report["pre_onset_tracks"]) for report in reports), Counter())),
+            "routes": route_summary(reports),
             "gate_settings_passing": [setting for setting, row in counted.items() if row["seeds_with_events"] >= 2]}
 
 
@@ -1014,7 +1187,11 @@ def main():
     parser.add_argument("--summarize", type=Path, nargs="+")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--image-dir", type=Path)
+    parser.add_argument("--damage-proxy", action="store_true",
+                        help="exploration: weight route resistance by lithosphere thickness and belt age (#770)")
     args = parser.parse_args()
+    global DAMAGE_PROXY
+    DAMAGE_PROXY = args.damage_proxy
     args.out.parent.mkdir(parents=True, exist_ok=True)
     if args.seed is not None:
         report = run_seed(args.seed, args.myr, args.step_myr, args.save_dir, detect=not args.no_detect)
@@ -1032,7 +1209,8 @@ def main():
                         "align_penalty": ALIGN_PENALTY, "craton_edge_km": CRATON_EDGE_KM,
                         "craton_block_strength": CRATON_BLOCK_STRENGTH, "craton_cost": CRATON_COST,
                         "keel_breach_m": KEEL_BREACH_M, "craton_margin_km": CRATON_MARGIN_KM,
-                        "craton_margin_cost": CRATON_MARGIN_COST, "onset_myr": ONSET_MYR,
+                        "craton_margin_cost": CRATON_MARGIN_COST, "edge_band_cost": EDGE_BAND_COST,
+                        "onset_myr": ONSET_MYR,
                         "lapse_myr": LAPSE_MYR, "propagation_km_per_myr": PROPAGATION_KM_PER_MYR,
                         "retry_myr": RETRY_MYR, "retry_near_km": RETRY_NEAR_KM,
                         "age_polarity_min_gap_myr": AGE_POLARITY_MIN_GAP_MYR},

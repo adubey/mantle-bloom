@@ -1,0 +1,143 @@
+{
+ "damage_proxy": true,
+ "plate_count": [
+  {
+   "compatible": false,
+   "final_plates": 23,
+   "gated_per_100myr": 25.5,
+   "max_plates": 23,
+   "merges_per_100myr": 0.5,
+   "production_splits_per_100myr": 8.0,
+   "seed": 1173383782,
+   "worst_case_plates": 58.0,
+   "worst_case_plates_routed_only": 55.0
+  },
+  {
+   "compatible": false,
+   "final_plates": 28,
+   "gated_per_100myr": 24.0,
+   "max_plates": 28,
+   "merges_per_100myr": 0.0,
+   "production_splits_per_100myr": 6.0,
+   "seed": 1183015207,
+   "worst_case_plates": 64.0,
+   "worst_case_plates_routed_only": 58.0
+  },
+  {
+   "compatible": false,
+   "final_plates": 27,
+   "gated_per_100myr": 21.5,
+   "max_plates": 28,
+   "merges_per_100myr": 0.0,
+   "production_splits_per_100myr": 6.5,
+   "seed": 1486436815,
+   "worst_case_plates": 57.0,
+   "worst_case_plates_routed_only": 56.0
+  }
+ ],
+ "routes": {
+  "blocked_cells_entered": 0,
+  "craton_budget": [
+   {
+    "budget_km2": 394538.0,
+    "detached_km2": 194378.0,
+    "gated_breakups": 48,
+    "limit_per_rift_km2": 8220.0,
+    "passes": true,
+    "seed": 1173383782
+   },
+   {
+    "budget_km2": 318041.0,
+    "detached_km2": 17910.0,
+    "gated_breakups": 42,
+    "limit_per_rift_km2": 7572.0,
+    "passes": true,
+    "seed": 1183015207
+   },
+   {
+    "budget_km2": 0.0,
+    "detached_km2": 0.0,
+    "gated_breakups": 42,
+    "limit_per_rift_km2": 0.0,
+    "passes": true,
+    "seed": 1486436815
+   }
+  ],
+  "passes": true,
+  "settings": {
+   "active": {
+    "blocked_cells_entered": 0,
+    "breakup_share": 0.91,
+    "margin_share_max": 0.2,
+    "margin_share_median": 0.0,
+    "non_barrier": 78,
+    "outcome_passes": true,
+    "qualifying_strips": 0,
+    "routes_over_margin_limit": 0,
+    "seed_blocked": 7,
+    "shape_passes": true,
+    "sites": 78,
+    "status": {
+     "daughter_too_small": 4,
+     "hugs_margin": 3,
+     "separates": 71
+    },
+    "within_margin_share": 1.0
+   },
+   "passive": {
+    "blocked_cells_entered": 0,
+    "breakup_share": 0.94,
+    "margin_share_max": 0.195,
+    "margin_share_median": 0.0,
+    "non_barrier": 50,
+    "outcome_passes": true,
+    "qualifying_strips": 0,
+    "routes_over_margin_limit": 0,
+    "seed_blocked": 15,
+    "shape_passes": true,
+    "sites": 50,
+    "status": {
+     "no_second_arm": 3,
+     "separates": 47
+    },
+    "within_margin_share": 1.0
+   },
+   "rollback": {
+    "blocked_cells_entered": 0,
+    "breakup_share": 1.0,
+    "margin_share_max": 0.071,
+    "margin_share_median": 0.0,
+    "non_barrier": 20,
+    "outcome_passes": true,
+    "qualifying_strips": 0,
+    "routes_over_margin_limit": 0,
+    "seed_blocked": 0,
+    "shape_passes": true,
+    "sites": 20,
+    "status": {
+     "separates": 20
+    },
+    "within_margin_share": 1.0
+   },
+   "transtension": {
+    "blocked_cells_entered": 0,
+    "breakup_share": 0.97,
+    "margin_share_max": 0.2,
+    "margin_share_median": 0.0,
+    "non_barrier": 135,
+    "outcome_passes": true,
+    "qualifying_strips": 1,
+    "routes_over_margin_limit": 0,
+    "seed_blocked": 0,
+    "shape_passes": true,
+    "sites": 135,
+    "status": {
+     "daughter_too_small": 3,
+     "hugs_margin": 1,
+     "separates": 131
+    },
+    "within_margin_share": 1.0
+   }
+  }
+ }
+}
