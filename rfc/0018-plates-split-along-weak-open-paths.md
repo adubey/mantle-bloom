@@ -1,4 +1,4 @@
-# RFC 0017: Plates split along weak paths that are pulling apart
+# RFC 0018: Plates split along weak paths that are pulling apart
 
 - **Status:** Draft
 - **Date:** 2026-11-03
