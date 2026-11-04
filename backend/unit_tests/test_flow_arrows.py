@@ -27,6 +27,16 @@ def _arc_length_deg(points):
     return float(np.degrees(np.sum(geometry.angular_distance(points[:-1], points[1:]))))
 
 
+def _turning_deg(points):
+    """(net signed, unsigned) turning along a path, measured about the local vertical so a
+    great circle turns 0 -- the same quantity the tracer limits."""
+    d = np.diff(points, axis=0)
+    d -= np.sum(d * points[:-1], axis=1, keepdims=True) * points[:-1]
+    d /= np.linalg.norm(d, axis=1, keepdims=True)
+    angle = np.arctan2(np.sum(np.cross(d[:-1], d[1:]) * points[1:-1], axis=1), np.sum(d[:-1] * d[1:], axis=1))
+    return float(np.degrees(angle.sum())), float(np.degrees(np.abs(angle).sum()))
+
+
 def test_no_flow_draws_no_arrows():
     zeros = np.zeros((H, W))
     assert flow_arrows.trace_flow_arrows(zeros, zeros, np.ones((H, W), dtype=bool)) == []
@@ -65,18 +75,17 @@ def test_turn_limit_splits_a_vortex_into_arcs():
     # A closed circulation must not become one ring-shaped arrow: the turn limit cuts it into
     # arcs, which is how atlas maps draw a gyre.
     u, v = _vortex_about_x()
-    params = flow_arrows.FlowArrowParams(max_length_deg=400.0, max_turn_deg=120.0)
+    # Lengths well past the real cap (42 degrees) so turning, not length, ends the arcs. Under
+    # 180 degrees, since the vortex's widest streamline is a great circle that never turns.
+    params = flow_arrows.FlowArrowParams(max_length_deg=150.0, max_turn_deg=120.0)
     arrows = flow_arrows.trace_flow_arrows(u, v, np.ones((H, W), dtype=bool), params)
     assert arrows
     for arrow in arrows:
-        pts = arrow.points_xyz
-        # Total turning of the chord directions in each point's tangent plane.
-        d = np.diff(pts, axis=0)
-        d -= np.sum(d * pts[:-1], axis=1, keepdims=True) * pts[:-1]
-        d /= np.linalg.norm(d, axis=1, keepdims=True)
-        turning = np.degrees(np.sum(np.arccos(np.clip(np.sum(d[1:] * d[:-1], axis=1), -1, 1))))
-        assert turning < params.max_turn_deg + 15.0
-        assert _arc_length_deg(pts) < 300.0
+        net, total = _turning_deg(arrow.points_xyz)
+        assert abs(net) < params.max_turn_deg + 15.0
+        assert total < params.max_total_turn_deg + 15.0
+        assert _arc_length_deg(arrow.points_xyz) < params.max_length_deg + 1.0
+    assert max(abs(_turning_deg(a.points_xyz)[0]) for a in arrows) > 90.0, "the turn limit, not length, should end some arcs"
 
 
 def test_tracing_is_deterministic():
@@ -103,6 +112,61 @@ def test_catmull_rom_passes_through_its_control_points():
     lat = np.radians([0.0, 5.0, 8.0, 6.0, 10.0])
     lon = np.radians([0.0, 4.0, 10.0, 16.0, 20.0])
     control = geometry.latlon_to_xyz(lat, lon)
-    curve = flow_arrows._catmull_rom(control, samples_per_segment=6)
-    np.testing.assert_allclose(curve[::6], control, atol=1e-12)
+    curve = flow_arrows._catmull_rom(control)
+    closest = np.min(geometry.angular_distance(control[:, None, :], curve[None, :, :]), axis=1)
+    np.testing.assert_allclose(closest, 0.0, atol=1e-9)
     np.testing.assert_allclose(np.linalg.norm(curve, axis=1), 1.0)
+    # Sampled about every half degree, with no step much longer than that.
+    assert np.degrees(geometry.angular_distance(curve[:-1], curve[1:])).max() < 0.6
+
+
+# A 1-degree grid for the coast tests: the coastal band is 2 degrees, one cell on the coarse
+# grid above.
+H1, W1 = 180, 360
+LON1 = np.broadcast_to(np.radians(-180.0 + (np.arange(W1) + 0.5)), (H1, W1))
+
+
+def _eastward_into_a_continent():
+    """Eastward flow everywhere, with a continent from 20 to 60 degrees east, pole to pole."""
+    valid = ~((LON1 > np.radians(20.0)) & (LON1 < np.radians(60.0)))
+    return np.ones((H1, W1)), np.zeros((H1, W1)), valid
+
+
+def test_coast_weight_is_one_at_the_coast_and_zero_beyond_the_band():
+    _, _, valid = _eastward_into_a_continent()
+    weight = flow_arrows._coast_weight(valid, 2.0)
+    row = H1 // 2 - 30  # 30 N
+    lon_deg = np.degrees(LON1[row])
+    # 1 at the shore itself; a coastal cell's centre is half a cell out.
+    coastal, next_out = weight[row, np.argmin(np.abs(lon_deg - 19.5))], weight[row, np.argmin(np.abs(lon_deg - 18.5))]
+    assert 0.75 < coastal <= 1.0
+    assert 0.0 < next_out < coastal
+    assert np.all(weight[row, (lon_deg < 17.0) & (lon_deg > -170.0)] == 0.0)
+    assert np.all(weight[~valid] == 0.0)
+    assert not flow_arrows._coast_weight(np.ones((H1, W1), dtype=bool), 2.0).any()
+
+
+def test_currents_turn_along_a_coast_in_the_models_hemisphere_sense():
+    # climate._deflect_into_coast sends flow that meets land along the coast: clockwise around
+    # the land in the north, anticlockwise in the south. Flow striking a coast that faces west
+    # therefore turns south in the northern hemisphere and north in the southern one. The
+    # arrows must show that turn rather than stop at the coast.
+    u, v, valid = _eastward_into_a_continent()
+    arrows = flow_arrows.trace_flow_arrows(u, v, valid, flow_arrows.CURRENT_PARAMS)
+    turned = {"north": 0.0, "south": 0.0}
+    for arrow in arrows:
+        lat, lon = geometry.xyz_to_latlon(arrow.points_xyz)
+        near_coast = (np.degrees(lon) > 15.0) & (np.degrees(lon) < 20.0)
+        dlat = np.degrees(np.diff(lat))[near_coast[1:] & near_coast[:-1]]
+        hemisphere = "north" if np.mean(lat) > 0 else "south"
+        expected = -1.0 if hemisphere == "north" else 1.0
+        turned[hemisphere] += float(np.sum(dlat[np.sign(dlat) == expected]) * expected)
+        assert not np.any(np.sum(dlat[np.sign(dlat) == -expected]) * -expected > 2.0), "ran along the coast the wrong way"
+    assert turned["north"] > 5.0 and turned["south"] > 5.0
+
+
+def test_arrows_turning_at_a_coast_stay_off_the_land():
+    u, v, valid = _eastward_into_a_continent()
+    for arrow in flow_arrows.trace_flow_arrows(u, v, valid, flow_arrows.CURRENT_PARAMS):
+        _, lon = geometry.xyz_to_latlon(arrow.points_xyz)
+        assert not np.any((np.degrees(lon) > 20.5) & (np.degrees(lon) < 59.5))

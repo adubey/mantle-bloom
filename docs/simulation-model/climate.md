@@ -371,16 +371,47 @@ back to that grid with `healpix_grid.resample_to_equirect`.
    scored by its smoothed speed times the square of its *coherence*: the length of the mean
    vector over the mean speed, 1 where the neighbourhood flows one way and 0 where it
    cancels. Lattice points every `seed_spacing_deg` are tried in score order, so the first
-   seeds are the centres of the most coherent, fastest flow.
+   open-water seeds are the centres of the most coherent, fastest flow. Coastal impact
+   points, described below, are tried before any of them.
 2. **Grow.** A seed farther than `separation_deg` from every existing arrow grows into a
    streamline, forward and then backward, in `step_deg` midpoint steps on the sphere. It
    stops within `stop_deg` of another arrow, where the valid fraction drops below one half
    (a current reaching land), where the speed falls below `min_speed_fraction` of the 90th
-   percentile, after turning through `max_turn_deg` in total, or at `max_length_deg`. The
-   turn limit cuts a gyre into a few arcs. Traces shorter than `min_length_deg` are
+   percentile, after turning `max_turn_deg` net or `max_total_turn_deg` summed without
+   sign, or at `max_length_deg`. Net turning is signed about the local vertical, so a loop
+   is cut while an S-bend is not; the unsigned sum cuts squiggles along a convoluted coast.
+   The turn limit cuts a gyre into a few arcs. Traces shorter than `min_length_deg` are
    dropped.
-3. **Link.** Points every `control_spacing_deg` along the streamline become the control
-   points of a Catmull-Rom spline, which is the arrow's path.
+3. **Link.** Points every `control_spacing_deg` of arc along the streamline become the
+   control points of a centripetal Catmull-Rom spline, which is the arrow's path. Centripetal
+   knots keep the curve from overshooting where control points are unevenly spaced.
+
+**Coasts.** A current that meets land has to turn. The model does this in
+`_deflect_into_coast`: the part of the flow aimed into land is cancelled and sent along the
+coast at `DEFLECTION_SPEEDUP_FACTOR` times its speed, clockwise around land in the northern
+hemisphere and anticlockwise in the southern. That happens only in ocean cells touching
+land. On present-day Earth the flow one cell further out still points into the coast, and
+the turn reaches less than 1 degree offshore, so an arrow traced on the smoothed field
+would run into the coast and stop. Within `coast_band_deg` (2 degrees) of land, the tracer
+applies the same rule to its own field. The rule's share grows from nothing at the band's
+edge to all of it `coast_hold_off_deg` (1 degree) from land, so arrows curve before the
+coast and then run parallel to it. The coast normal comes from a smoothed proximity to land,
+so the grid's stepped shoreline doesn't make arrows wiggle. In the band, the trace also
+steps at most `coast_step_deg` and places control points every `coast_control_spacing_deg`,
+so the turn survives the spline. The speed floor and stop distance shrink across the band,
+to `coast_speed_floor_fraction` and `coast_stop_fraction` of their open-water values. Turned
+flow is slow more often near land (14% of cells within a degree of land on present-day
+Earth, against 3% in open water), and arrows from both sides reach the same stretch of coast.
+
+Arrows seeded in open water usually run out of length before reaching a coast, so seeding
+starts at *impact points*: cells where the rule turns at least `min_impact_fraction` of the
+flow, strongest first. Traced backward, an impact arrow runs out to sea along the incoming
+current; traced forward, it runs along the coast. On present-day Earth this draws the
+Brazil, Canary, California and Humboldt-like boundary currents, coloured warm or cold as
+expected. The share of current-arrow length within about a degree of land rises from 3.9%
+to 6.9%, and arrow points over land fall from 29 to 6. The arrows show the model's coastal
+rule at a scale a reader can see. The model's own deflection stays a cell or two wide, and
+that width is set in grid cells, so a finer climate grid narrows it.
 
 `WIND_PARAMS` spaces wind arrows 18 degrees apart and `CURRENT_PARAMS` spaces currents 10
 degrees apart. The broad, nearly zonal wind belts otherwise fill with a dense comb of
@@ -400,7 +431,8 @@ because the diagnostic SST has almost no zonal contrast: along present-day Earth
 stays within about 1 °C of each latitude's mean.
 
 The arrows only summarise the solved field, so they don't change the climate solve or its
-cost. Tracing takes 40 to 60 ms per view on the default 0.5-degree grid (present-day Earth).
+cost. On the default 0.5-degree grid, tracing takes about 70 ms for wind and 120 ms for
+currents on present-day Earth.
 
 ### Noise drift
 
