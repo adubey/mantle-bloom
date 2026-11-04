@@ -1,0 +1,375 @@
+{
+  "horizon_myr": 20.0,
+  "step_myr": 1.0,
+  "cases": [
+    {
+      "seed": 1173383782,
+      "input_save": "seed1173383782-3myr-rift-plate1.mbworld",
+      "initial_myr": 3.0,
+      "final_myr": 21.0,
+      "steps": 18,
+      "graph_candidate_evaluations": 17,
+      "wall_s": 33.536979332973715,
+      "split": {
+        "seed": 1173383782,
+        "elapsed_myr": 21.0,
+        "parent_plate_id": 1,
+        "daughter_plate_ids": [
+          1,
+          9
+        ],
+        "daughter_mass_fraction": 0.40243229679920733,
+        "net_opening_cm_per_yr": 0.012820992239771761,
+        "open_edge_fraction": 0.5073118565456451,
+        "cut_length_km": 17001.627049977134,
+        "cut_cost": 96.64680526320095,
+        "cut_trace_components": 4,
+        "largest_trace_length_share": 0.9560668768149676,
+        "candidate_count": 12,
+        "edge_signals": {
+          "craton_nodes": 1750,
+          "belt_nodes": 838,
+          "suture_nodes": 45,
+          "volcano_nodes": 28,
+          "plume_heated_nodes": 0,
+          "historic_or_active_fault_nodes": 131,
+          "thinned_nodes_below_plate_median_mass": 2887
+        },
+        "image": "seed1173383782-split-21.0myr.png"
+      },
+      "rejections": [
+        {
+          "plate_id": 1,
+          "reason": "net closing across the candidate cut",
+          "elapsed_myr": 5.0,
+          "net_opening_cm_per_yr": -3.247850443037474
+        },
+        {
+          "plate_id": 1,
+          "reason": "cut is not one dominant continuous trace between two plate-edge locations",
+          "elapsed_myr": 6.0,
+          "net_opening_cm_per_yr": -1.3334376848906897
+        },
+        {
+          "plate_id": 1,
+          "reason": "net closing across the candidate cut",
+          "elapsed_myr": 7.0,
+          "net_opening_cm_per_yr": -3.3124260161153543
+        },
+        {
+          "plate_id": 1,
+          "reason": "cut is not one dominant continuous trace between two plate-edge locations",
+          "elapsed_myr": 8.0,
+          "net_opening_cm_per_yr": -1.3275351075089787
+        },
+        {
+          "plate_id": 1,
+          "reason": "net closing across the candidate cut",
+          "elapsed_myr": 9.0,
+          "net_opening_cm_per_yr": -1.7643825807699969
+        },
+        {
+          "plate_id": 1,
+          "reason": "net closing across the candidate cut",
+          "elapsed_myr": 10.0,
+          "net_opening_cm_per_yr": -1.764778744592832
+        },
+        {
+          "plate_id": 1,
+          "reason": "net closing across the candidate cut",
+          "elapsed_myr": 11.0,
+          "net_opening_cm_per_yr": -3.7475776136316834
+        },
+        {
+          "plate_id": 1,
+          "reason": "net closing across the candidate cut",
+          "elapsed_myr": 12.0,
+          "net_opening_cm_per_yr": -3.8210790047970145
+        },
+        {
+          "plate_id": 1,
+          "reason": "net closing across the candidate cut",
+          "elapsed_myr": 13.0,
+          "net_opening_cm_per_yr": -2.531661939661721
+        },
+        {
+          "plate_id": 1,
+          "reason": "net closing across the candidate cut",
+          "elapsed_myr": 14.0,
+          "net_opening_cm_per_yr": -3.7857114615893264
+        },
+        {
+          "plate_id": 1,
+          "reason": "net closing across the candidate cut",
+          "elapsed_myr": 15.0,
+          "net_opening_cm_per_yr": -1.4471915376736364
+        },
+        {
+          "plate_id": 1,
+          "reason": "net closing across the candidate cut",
+          "elapsed_myr": 16.0,
+          "net_opening_cm_per_yr": -1.821303357478453
+        },
+        {
+          "plate_id": 1,
+          "reason": "net closing across the candidate cut",
+          "elapsed_myr": 17.0,
+          "net_opening_cm_per_yr": -1.8318490989224019
+        },
+        {
+          "plate_id": 1,
+          "reason": "net closing across the candidate cut",
+          "elapsed_myr": 18.0,
+          "net_opening_cm_per_yr": -3.5761269015598343
+        },
+        {
+          "plate_id": 1,
+          "reason": "net closing across the candidate cut",
+          "elapsed_myr": 19.0,
+          "net_opening_cm_per_yr": -1.816462881801933
+        },
+        {
+          "plate_id": 1,
+          "reason": "net closing across the candidate cut",
+          "elapsed_myr": 20.0,
+          "net_opening_cm_per_yr": -1.8354973028633061
+        }
+      ],
+      "probability_gate": 0.55,
+      "simulation_variant": "graph cut is used for topology; stochastic production split-success probability is retained; failed rifts do not thin an aulacogen band in this probe"
+    },
+    {
+      "seed": 1183015207,
+      "input_save": "seed1183015207-15myr-rift-plate8.mbworld",
+      "initial_myr": 15.0,
+      "final_myr": 35.0,
+      "steps": 20,
+      "graph_candidate_evaluations": 20,
+      "wall_s": 51.297023916005855,
+      "split": null,
+      "rejections": [
+        {
+          "plate_id": 8,
+          "reason": "daughter pole separation below production threshold",
+          "elapsed_myr": 16.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "daughter pole separation below production threshold",
+          "elapsed_myr": 17.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "daughter pole separation below production threshold",
+          "elapsed_myr": 18.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "daughter pole separation below production threshold",
+          "elapsed_myr": 19.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "daughter pole separation below production threshold",
+          "elapsed_myr": 20.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "daughter pole separation below production threshold",
+          "elapsed_myr": 21.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 22.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 23.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 24.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "daughter pole separation below production threshold",
+          "elapsed_myr": 25.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 26.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "daughter pole separation below production threshold",
+          "elapsed_myr": 27.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "daughter pole separation below production threshold",
+          "elapsed_myr": 28.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "daughter pole separation below production threshold",
+          "elapsed_myr": 29.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "daughter pole separation below production threshold",
+          "elapsed_myr": 30.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 31.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "daughter pole separation below production threshold",
+          "elapsed_myr": 32.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "daughter pole separation below production threshold",
+          "elapsed_myr": 33.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "daughter pole separation below production threshold",
+          "elapsed_myr": 34.0
+        },
+        {
+          "plate_id": 8,
+          "reason": "net closing across the candidate cut",
+          "elapsed_myr": 35.0,
+          "net_opening_cm_per_yr": -0.20105025115443426
+        }
+      ],
+      "probability_gate": 0.55,
+      "simulation_variant": "graph cut is used for topology; stochastic production split-success probability is retained; failed rifts do not thin an aulacogen band in this probe"
+    },
+    {
+      "seed": 1486436815,
+      "input_save": "seed1486436815-34myr-rift-plate4.mbworld",
+      "initial_myr": 34.0,
+      "final_myr": 54.0,
+      "steps": 20,
+      "graph_candidate_evaluations": 20,
+      "wall_s": 51.782911499991314,
+      "split": null,
+      "rejections": [
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 35.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 36.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 37.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 38.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 39.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 40.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 41.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 42.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 43.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 44.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 45.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 46.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 47.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 48.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 49.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 50.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 51.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 52.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 53.0
+        },
+        {
+          "plate_id": 4,
+          "reason": "daughter below production minimum node count",
+          "elapsed_myr": 54.0
+        }
+      ],
+      "probability_gate": 0.55,
+      "simulation_variant": "graph cut is used for topology; stochastic production split-success probability is retained; failed rifts do not thin an aulacogen band in this probe"
+    }
+  ],
+  "image": {
+    "filename": "seed1173383782-split-21.0myr.png",
+    "sha256": "83819484390cdf44ff7a01feca107995ceb8c71d743cae7a8bd29323e826d1f7"
+  }
+}
