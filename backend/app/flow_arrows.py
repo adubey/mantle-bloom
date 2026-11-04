@@ -24,8 +24,9 @@ The method follows the issue's sketch, made concrete as evenly-spaced streamline
 3. **Link.** Points every `control_spacing_deg` along the streamline become the control
    points of a B-spline that only approaches them, so the arrow is a smooth sweep like a
    hand-drawn diagram rather than a copy of every wobble in the trace. Where that would cut
-   a corner over land, the spacing tightens until it doesn't. Drawing (the tapered body and
-   the head) is `render_image._draw_flow_arrows`.
+   a corner over land, the spacing tightens until it doesn't, and if even the tightest
+   spacing does, the arrow is the traced path itself. Drawing (the tapered body and the head)
+   is `render_image._draw_flow_arrows`.
 
 **Coasts.** A current that meets land has to turn. The model turns it with
 `climate._deflect_into_coast`: the part of the flow aimed into land is cancelled and sent
@@ -99,6 +100,12 @@ class FlowArrowParams:
     coast_stop_fraction: float = 0.4  # `stop_deg` at the coast, as a fraction of the open-water one
     min_impact_fraction: float = 0.5  # an impact seed turns at least this share of the flow
 
+    def __post_init__(self) -> None:
+        # `_spline_off_land` tightens the spacing toward this floor and stops there; a floor of
+        # zero or less would never be reached.
+        if self.min_control_spacing_deg <= 0.0:
+            raise ValueError("min_control_spacing_deg must be positive")
+
 
 # Wind belts are broad and nearly zonal, so the same spacing as currents draws a dense comb of
 # parallel arrows; spacing them wider keeps a few arrows per belt, like the reference figure.
@@ -115,6 +122,7 @@ class FlowArrow:
 
 
 _OCCUPANCY_RES_DEG = 1.0
+_SAMPLE_DEG = 0.5  # arc between points of a drawn arrow
 
 
 def trace_flow_arrows(u: np.ndarray, v: np.ndarray, valid: np.ndarray, params: FlowArrowParams = FlowArrowParams()) -> list[FlowArrow]:
@@ -124,6 +132,10 @@ def trace_flow_arrows(u: np.ndarray, v: np.ndarray, valid: np.ndarray, params: F
     never cross an invalid cell. Non-finite cells count as invalid. Deterministic: the same
     field always gives the same arrows."""
     finite = np.isfinite(u) & np.isfinite(v)
+    # The coastal band comes from the caller's mask, not the finite one below: a non-finite
+    # cell is a hole arrows stop at, not a coast to turn along, and a wind field the caller
+    # says is all valid must never get the ocean's coastal rule around a hole.
+    coastal = valid
     valid = valid & finite
     u, v = np.where(finite, u, 0.0), np.where(finite, v, 0.0)
     u_s, v_s, coherence = _prevailing_field(u, v, valid, params.smoothing_deg)
@@ -138,8 +150,8 @@ def trace_flow_arrows(u: np.ndarray, v: np.ndarray, valid: np.ndarray, params: F
 
     # Near a coast, turn the flow along it the way the model does; see the module docstring's
     # "Coasts".
-    coast = _coast_weight(valid, params.coast_band_deg)
-    u_t, v_t, impact = _turn_along_coast(u_s, v_s, coast, valid, params)
+    coast = _coast_weight(coastal, params.coast_band_deg)
+    u_t, v_t, impact = _turn_along_coast(u_s, v_s, coast, coastal, params)
     fields = np.stack([u_t, v_t, valid.astype(np.float64), coast])
     occ_h, occ_w = int(round(180 / _OCCUPANCY_RES_DEG)), int(round(360 / _OCCUPANCY_RES_DEG))
     distance = np.full((occ_h, occ_w), np.inf)
@@ -169,7 +181,8 @@ def trace_flow_arrows(u: np.ndarray, v: np.ndarray, valid: np.ndarray, params: F
         path = np.concatenate([bwd[:n_bwd][::-1], fwd[1:n_fwd]])
         path_coast = np.concatenate([bwd_coast[:n_bwd][::-1], fwd_coast[1:n_fwd]])
         _stamp_distance(distance, path, np.radians(params.separation_deg))
-        arrows.append(FlowArrow(points_xyz=_spline_off_land(path, path_coast, valid, params), mean_speed=float(np.mean(_sample_speed(speed, path)))))
+        curve = _spline_off_land(path, path_coast, fields[2], params)
+        arrows.append(FlowArrow(points_xyz=curve, mean_speed=float(np.mean(_sample_speed(speed, path)))))
     return arrows
 
 
@@ -283,18 +296,29 @@ def _seed_candidates(speed: np.ndarray, coherence: np.ndarray, valid: np.ndarray
     return np.stack([np.cos(lat_r) * np.cos(lon_r), np.cos(lat_r) * np.sin(lon_r), np.sin(lat_r)], axis=-1)
 
 
-def _spline_off_land(path: np.ndarray, path_coast: np.ndarray, valid: np.ndarray, params: FlowArrowParams) -> np.ndarray:
-    """The smoothest spline through `path` that stays on valid cells: wide control spacing
-    first, tighter until no sample lands on an invalid cell (a smoothed arc can cut across a
-    headland the trace went around), down to `min_control_spacing_deg`."""
-    scale = 1.0
+def _spline_off_land(path: np.ndarray, path_coast: np.ndarray, mask: np.ndarray, params: FlowArrowParams) -> np.ndarray:
+    """A smooth spline along `path` that stays on water, as the tracer judges it (`mask`
+    interpolated bilinearly, at least 0.5). A smoothed arc can cut across a headland the trace
+    went around, so the control spacing starts wide and tightens by 0.6 each try until no
+    sample is off water, down to `min_control_spacing_deg`. If even that crosses land, the
+    traced path itself is returned, thinned to about `_SAMPLE_DEG` of arc between points: it
+    is on water by construction, but not smoothed."""
+    spacing, coast_spacing = params.control_spacing_deg, params.coast_control_spacing_deg
     while True:
-        spacing = max(params.control_spacing_deg * scale, params.min_control_spacing_deg)
-        coast_spacing = max(params.coast_control_spacing_deg * scale, params.min_control_spacing_deg)
         curve = _smooth_spline(path[_control_indices(path, path_coast, spacing, coast_spacing)])
-        if valid.all() or valid[_cells(valid.shape, curve)].all() or max(spacing, coast_spacing) <= params.min_control_spacing_deg:
+        if _off_water_count(mask, curve) == 0:
             return curve
-        scale *= 0.6
+        if max(spacing, coast_spacing) <= params.min_control_spacing_deg:
+            return _thin_path(path)
+        spacing = max(spacing * 0.6, params.min_control_spacing_deg)
+        coast_spacing = max(coast_spacing * 0.6, params.min_control_spacing_deg)
+
+
+def _thin_path(path: np.ndarray) -> np.ndarray:
+    """`path` thinned to about `_SAMPLE_DEG` of arc between points, both ends kept."""
+    arc = np.concatenate([[0.0], np.cumsum(np.degrees(np.arccos(np.clip(np.sum(path[1:] * path[:-1], axis=1), -1.0, 1.0))))])
+    keep = np.unique(np.concatenate([[0], np.searchsorted(arc, np.arange(_SAMPLE_DEG, arc[-1], _SAMPLE_DEG)), [len(path) - 1]]))
+    return path[keep]
 
 
 def _cells(shape: tuple[int, int], points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -328,7 +352,7 @@ def _control_indices(path: np.ndarray, coast: np.ndarray, spacing_deg: float, co
     return np.array(indices)
 
 
-def _smooth_spline(control: np.ndarray, sample_deg: float = 0.5) -> np.ndarray:
+def _smooth_spline(control: np.ndarray, sample_deg: float = _SAMPLE_DEG) -> np.ndarray:
     """Clamped cubic B-spline over `control` (K, 3), sampled about every `sample_deg` and
     re-projected onto the sphere. It starts and ends at the end control points but only
     approaches the others, so a wobble in the trace becomes a gentle bend rather than a kink,
@@ -389,6 +413,18 @@ def _bilinear(field: np.ndarray, lat: float, lon: float) -> float:
 @njit(cache=True)
 def _latlon(p: np.ndarray) -> tuple[float, float]:
     return np.arcsin(min(max(p[2], -1.0), 1.0)), np.arctan2(p[1], p[0])
+
+
+@njit(cache=True)
+def _off_water_count(mask: np.ndarray, points: np.ndarray) -> int:
+    """How many of `points` (N, 3) the tracer would call land: `mask` interpolated bilinearly
+    is below 0.5, the same test as `_is_valid`."""
+    count = 0
+    for k in range(points.shape[0]):
+        lat, lon = _latlon(points[k])
+        if _bilinear(mask, lat, lon) < 0.5:
+            count += 1
+    return count
 
 
 @njit(cache=True)

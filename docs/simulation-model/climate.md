@@ -365,7 +365,8 @@ along the prevailing flow, as atlas maps of trade winds or ocean gyres do, rathe
 short arrow per cell. `flow_arrows.trace_flow_arrows` finds them on climate's
 equirectangular grid; under the CFD wind model, the wind view first brings the HEALPix wind
 back to that grid with `healpix_grid.resample_to_equirect`. Non-finite cells count as
-invalid.
+invalid, so arrows stop at them. They are holes, not coasts: the coastal rule below uses the
+caller's own mask, so a wind field passed as all valid never gets it.
 
 The arrows are an interpretation of the computed field, not a plot of it. They are smoothed
 for legibility, and near coasts they draw the model's coastal rule over a wider band than the
@@ -394,10 +395,17 @@ The legend says so.
    spline starts and ends on the trace's ends but only approaches the points between, so a
    wobble in the trace becomes a gentle bend, like a hand-drawn flow diagram. Where that
    would cut a corner over land, the arrow is rebuilt with control points 0.6 times as far
-   apart, down to `min_control_spacing_deg`, until it stays on water. On present-day Earth
-   this cuts the current arrows' kinks (more than 30 degrees of turning within 2 degrees of
-   arc) from 48 to 7, against an interpolating spline through control points 4 degrees apart.
-   The median angle between an arrow and the computed current rises from 4.6 to 6.2 degrees.
+   apart, down to `min_control_spacing_deg`, until it stays on water. "On water" is the
+   tracer's own test, the cell mask interpolated bilinearly at least 0.5, not the containing
+   cell. If even the tightest spacing crosses land, the arrow is the traced path itself,
+   thinned to about half a degree between points: on water, but not smoothed. On present-day
+   Earth that happens to 1 of 80 current arrows.
+
+   On present-day Earth the current arrows' kinks (more than 30 degrees of turning within 2
+   degrees of arc) fall from 48, with an interpolating spline through control points 4
+   degrees apart, to 7. The B-spline alone, at that spacing, gives 26; the rest comes from
+   wider control spacing, the 200-degree unsigned turning cap and the wider coastal band. The
+   median angle between an arrow and the computed current rises from 4.6 to 6.4 degrees.
 
 **Coasts.** A current that meets land has to turn. The model does this in
 `_deflect_into_coast`: the part of the flow aimed into land is cancelled and sent along the

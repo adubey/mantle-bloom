@@ -1579,3 +1579,14 @@ def test_globe_hides_flow_arrows_on_the_far_side(monkeypatch):
     ys, xs = np.nonzero(bright)
     assert len(xs) > 0
     assert np.all((xs + 0.5 - offset_x) / scale > 0.85)
+
+
+def test_flow_arrow_head_is_capped_by_the_length_left_after_a_stub_is_dropped():
+    # A 30 px piece and a 15 px stub: sized from the 45 px total the head would be 15.75 px and
+    # drop the stub, leaving it more than half of the 30 px drawn. It must be re-capped to 35%.
+    long_piece = np.stack([np.linspace(0.0, 30.0, 20), np.full(20, 50.0)], axis=-1)
+    stub = np.array([[985.0, 50.0], [1000.0, 50.0]])
+    polygons = render_image._arrow_polygons([long_piece, stub], 40.0, 0.0, 7.0)
+    tip, base_a, base_b = polygons[-1]
+    head_px = float(np.hypot(*(tip - (base_a + base_b) / 2)))
+    assert head_px <= render_image.FLOW_ARROW_HEAD_MAX_FRACTION * 30.0 + 1e-9

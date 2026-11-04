@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from app import flow_arrows, geometry
 
 # A coarse 2-degree grid keeps each trace well under a second; the module itself is
@@ -133,11 +134,14 @@ def test_one_non_finite_cell_does_not_remove_the_arrows():
     assert len(flow_arrows.trace_flow_arrows(u, v, valid)) >= expected - 2
 
 
-def test_spacing_grid_marks_every_cell_within_the_radius_at_high_latitude():
-    # The longitude reach of a cap is widest equatorward of its centre; a short arrow near
-    # 80 N must still mark every one-degree cell within the radius.
+@pytest.mark.parametrize("lat_deg", [80.0, 60.0])
+def test_spacing_grid_marks_every_cell_within_the_radius_at_high_latitude(lat_deg):
+    # The cap around a path point reaches furthest in longitude poleward of its centre, at
+    # sin(lat) = sin(lat0) / cos(r), not on the point's own row, so the column range must come
+    # from the cap and not from each row's latitude. At 80 N the 18-degree cap covers the pole
+    # (the full-width branch); at 60 N it does not (the arcsin branch).
     radius = np.radians(18.0)
-    path = geometry.latlon_to_xyz(np.radians([80.0, 80.0]), np.radians([0.0, 2.0]))
+    path = geometry.latlon_to_xyz(np.radians([lat_deg, lat_deg]), np.radians([0.0, 2.0]))
     distance = np.full((180, 360), np.inf)
     flow_arrows._stamp_distance(distance, path, radius)
     cell_lat = np.radians(90.0 - (np.arange(180) + 0.5))
@@ -214,3 +218,76 @@ def test_arrows_turning_at_a_coast_stay_off_the_land():
     for arrow in flow_arrows.trace_flow_arrows(u, v, valid, flow_arrows.CURRENT_PARAMS):
         _, lon = geometry.xyz_to_latlon(arrow.points_xyz)
         assert not np.any((np.degrees(lon) > 20.5) & (np.degrees(lon) < 59.5))
+
+
+
+def test_a_non_finite_patch_in_an_all_valid_field_gets_no_coastal_turning():
+    # Wind is passed as all valid. A patch of NaN is a hole arrows stop at, not a coast: the
+    # ocean's coastal rule must not curve uniform eastward flow around it. Counting the NaN
+    # cells as land turned the flow into impact seeds that bent arrows south and north.
+    u, v, _ = _eastward_into_a_continent()
+    u = u.copy()
+    u[86:94, 20 + 180 : 28 + 180] = np.nan
+    arrows = flow_arrows.trace_flow_arrows(u, v, np.ones((H1, W1), dtype=bool), flow_arrows.CURRENT_PARAMS)
+    assert arrows
+    for arrow in arrows:
+        lat, _ = geometry.xyz_to_latlon(arrow.points_xyz)
+        assert np.ptp(lat) < np.radians(1.0), "an arrow bent around a NaN patch"
+
+
+def test_the_spline_falls_back_to_the_traced_path_when_every_spacing_crosses_land():
+    # Land fills lon > 0 and 0 < lat < 10. A trace runs north along its west side and east
+    # along its north side, 0.1 degrees off the shore, turning the corner at (0, 10). Any
+    # smoothing rounds that corner by a quarter of the control spacing, into the land, even at
+    # the tightest spacing: the arrow must come back as the traced path itself.
+    lat_c = 90.0 - (np.arange(180) + 0.5)
+    lon_c = -180.0 + (np.arange(360) + 0.5)
+    lat_g, lon_g = np.meshgrid(lat_c, lon_c, indexing="ij")
+    mask = np.where((lon_g > 0) & (lat_g > 0) & (lat_g < 10), 0.0, 1.0)
+    west = np.stack([np.full(50, -0.1), np.linspace(0.5, 10.1, 50)], axis=-1)  # (lon, lat)
+    north = np.stack([np.linspace(-0.1, 10.5, 53)[1:], np.full(52, 10.1)], axis=-1)
+    lonlat = np.concatenate([west, north])
+    path = geometry.latlon_to_xyz(np.radians(lonlat[:, 1]), np.radians(lonlat[:, 0]))
+    coast = np.ones(len(path))
+    params = flow_arrows.FlowArrowParams()
+
+    assert flow_arrows._off_water_count(mask, path) == 0
+    tightest = params.min_control_spacing_deg
+    smoothest = flow_arrows._smooth_spline(path[flow_arrows._control_indices(path, coast, tightest, tightest)])
+    assert flow_arrows._off_water_count(mask, smoothest) > 0, "the scenario must defeat the tightest smoothing"
+
+    curve = flow_arrows._spline_off_land(path, coast, mask, params)
+    assert flow_arrows._off_water_count(mask, curve) == 0
+    on_path = np.min(geometry.angular_distance(curve[:, None, :], path[None, :, :]), axis=1)
+    np.testing.assert_allclose(on_path, 0.0, atol=1e-6)  # arccos near 1 is only good to about 1e-8
+
+
+def test_spline_off_land_keeps_the_smoothest_arc_that_stays_on_water():
+    # Open water: the widest spacing already stays on water, so the arrow is the smooth
+    # spline at that spacing, not the traced path.
+    lat = np.radians(np.linspace(0.0, 4.0, 40))
+    lon = np.radians(np.linspace(0.0, 30.0, 40) + 0.8 * np.sin(np.linspace(0.0, 6.0, 40)))
+    path = geometry.latlon_to_xyz(lat, lon)
+    params = flow_arrows.FlowArrowParams()
+    curve = flow_arrows._spline_off_land(path, np.zeros(len(path)), np.ones((180, 360)), params)
+    expected = flow_arrows._smooth_spline(path[flow_arrows._control_indices(path, np.zeros(len(path)), params.control_spacing_deg, params.coast_control_spacing_deg)])
+    np.testing.assert_array_equal(curve, expected)
+
+
+def test_spline_off_land_uses_the_tracers_bilinear_land_test():
+    # `_is_valid` treats a point as water when the bilinear mask is at least 0.5. A point in a
+    # one-cell hole but near its corner is water by that test (the hole's weight there is only
+    # 0.36), though its containing cell is land; the check must agree with the tracer, not
+    # with the cell, or it tightens arrows for nothing.
+    mask = np.ones((180, 360))
+    mask[90, 180] = 0.0  # lat -1..0, lon 0..1
+    near_corner = geometry.latlon_to_xyz(np.radians([-0.9]), np.radians([0.1]))
+    assert flow_arrows._off_water_count(mask, near_corner) == 0
+    assert mask[flow_arrows._cells(mask.shape, near_corner)][0] == 0.0, "the point must be inside the hole cell"
+    centre = geometry.latlon_to_xyz(np.radians([-0.5]), np.radians([0.5]))
+    assert flow_arrows._off_water_count(mask, centre) == 1
+
+
+def test_min_control_spacing_must_be_positive():
+    with pytest.raises(ValueError):
+        flow_arrows.FlowArrowParams(min_control_spacing_deg=0.0)

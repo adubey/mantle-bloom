@@ -1547,9 +1547,9 @@ FLOW_ARROW_HALO_RGBA = (6, 10, 24, 170)
 # PIL draws polygons without anti-aliasing, so arrows go on a layer this many times larger
 # and are shrunk onto the map, which smooths their edges. Above
 # FLOW_ARROW_SUPERSAMPLE_MAX_PIXELS (a 1920x1080 frame, or a globe's wider Behrmann source)
-# the factor drops to FLOW_ARROW_SUPERSAMPLE_LARGE: at 3840x1920 a 3x layer costs about
-# 450 MB more peak memory, and MP4 export renders many such frames, while edges at that
-# size need less smoothing.
+# the factor drops to FLOW_ARROW_SUPERSAMPLE_LARGE: at 3840x1920 the layer adds about 630 MB
+# of peak memory at 3x against 320 MB at 2x, and MP4 export renders many such frames, while
+# edges at that size need less smoothing.
 FLOW_ARROW_SUPERSAMPLE = 3
 FLOW_ARROW_SUPERSAMPLE_LARGE = 2
 FLOW_ARROW_SUPERSAMPLE_MAX_PIXELS = 1920 * 1080
@@ -1598,6 +1598,12 @@ def _tapered_body(piece: np.ndarray, start_s: float, end_s: float, total_s: floa
     return np.concatenate([pts + normal * half[:, None], (pts - normal * half[:, None])[::-1]])
 
 
+def _head_length(body_px: float, min_head_px: float, drawn_px: float) -> float:
+    """An arrow head's length: a multiple of the body width, at least `min_head_px`, and at most
+    FLOW_ARROW_HEAD_MAX_FRACTION of the `drawn_px` arrow so a short arrow isn't all head."""
+    return min(max(FLOW_ARROW_HEAD_LENGTH_RATIO * body_px, min_head_px), FLOW_ARROW_HEAD_MAX_FRACTION * drawn_px)
+
+
 def _arrow_polygons(pieces: list[np.ndarray], body_px: float, pad_px: float, min_head_px: float) -> list[np.ndarray]:
     """Body and head polygons for one arrow drawn as on-screen `pieces` (tail first), each
     grown outward by `pad_px` (for the halo). A last piece too short to hold the head (an
@@ -1607,10 +1613,12 @@ def _arrow_polygons(pieces: list[np.ndarray], body_px: float, pad_px: float, min
     total = sum(lengths)
     if total <= 0:
         return []
-    head_len = min(max(FLOW_ARROW_HEAD_LENGTH_RATIO * body_px, min_head_px), FLOW_ARROW_HEAD_MAX_FRACTION * total)
+    head_len = _head_length(body_px, min_head_px, total)
     while len(pieces) > 1 and lengths[-1] < head_len:
         pieces, lengths = pieces[:-1], lengths[:-1]
+    # The head is capped by the length actually drawn, so size it again once the stub is gone.
     total = sum(lengths)
+    head_len = _head_length(body_px, min_head_px, total)
     # The body runs a little into the head so no gap shows at the joint.
     body_end = total - 0.7 * head_len
     polygons = []
