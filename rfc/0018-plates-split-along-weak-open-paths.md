@@ -92,8 +92,11 @@ For an eligible plate:
    motion-resistance value per cell for all cuts. Keep the candidate only if each side is
    connected and one dominant cut trace reaches the plate edge at two places. At least 90%
    of the cut length must belong to that trace; report the remaining fragments. Use a
-   separate, deterministic sample keyed by world seed, plate and edge so this choice does
-   not consume random numbers used by unrelated simulation processes.
+   separate, deterministic sample keyed by world seed, plate, elapsed simulation time and
+   edge identity, using a stable hash rather than a step number. The same seed, plate and
+   event time therefore select the same edges without consuming random numbers used by
+   unrelated simulation processes. Candidate opportunities can still occur at different
+   times under different step schedules; G3 measures that remaining timestep sensitivity.
 4. Measure signed opening along each candidate cut, using shared-edge length as the weight.
    Reject candidates whose net opening is closing, or whose opening is no larger than the
    fit's estimated uncertainty. Also report the share of cut length that opens.
@@ -102,13 +105,20 @@ For an eligible plate:
    not a claim that the simulation conserves or releases physical momentum at the cut.
 
 For each cell `n`, estimate its mass as cell area times the mass per area of its crust and
-mantle lithosphere: `m_n = A_n * (rho_c * Hc_n + rho_m * Hm_n)` (kg). Let `v_new(n)` and
-`v_old(n)` be its velocity under the fitted daughter and parent rotations (m/s). The
-potential momentum score before the balance factor is:
+mantle lithosphere: `m_n = A_n * (rho_c * Hc_n + rho_m * Hm_n)` (kg). The fitted rotations
+are angular rates in radians/year-equivalent, as in `mantle.flow_at`. For unit position
+vector `p_n` and planet radius `R`, convert them to surface velocities with
+`v(n) = R * (omega x p_n)` (m/year). The potential momentum score before the balance factor
+is:
 
 ```text
-P = sum over cells n of m_n * |v_new(n) - v_old(n)|   [kg m/s]
+P = sum over cells n of m_n * |v_new(n) - v_old(n)|   [kg m/year]
 ```
+
+This is a mass-weighted velocity-change ranking score, not physical momentum; it omits the
+time and force history needed to represent momentum transfer. The radius factor is constant
+across candidates and cancels in a within-plate ranking. Per-year units are retained, so no
+seconds conversion is applied.
 
 Let `f` be the smaller daughter's share of the parent mass. A soft balance factor is
 `B = 4 f (1 - f)`, which ranges from zero for an extremely small daughter to one for an
@@ -132,26 +142,55 @@ winning version is frozen for held-out runs.
 ### Starting values and limits
 
 The first tuning pass uses the prototype's 12 sampled cuts per eligible plate and its
-dimensionless resistance rules. They are starting points only:
+dimensionless resistance rules. The entries below define one resistance calculation; they
+are design choices, not measured strengths. For cell `n`, let `q_n` be its column areal mass
+divided by the plate median, and let `r_n` be its velocity residual from the fitted rotation
+of the candidate daughter that contains it. Let `r_med` be the median residual for that
+candidate. Define:
+
+```text
+M_n = 0.6 + 0.4 * clamp(q_n, 0, 4)
+C_n = 2.5 if cell n is craton, otherwise 1
+F_n = 1 / (1 + clamp(r_n / r_med, 0, 4))
+W_n = clamp(product of active weakening multipliers, 0.12, 1)
+R_n = max(0.02, M_n * C_n * F_n * W_n)
+edge_cost(j, k) = (edge_length / median_edge_length) * (R_j + R_k) / 2
+```
+
+An active weakening signal multiplies resistance by one minus its listed reduction. Apply
+the weakening multipliers first, clamp their product to `0.12–1.0`, multiply by `M`, `C`
+and `F`, then apply the `0.02` floor. For example, with median column mass, craton present,
+residual equal to `r_med`, and all weakening signals active, their product is
+`0.65 * 0.55 * 0.65 * 0.65 * 0.60 * 0.75 = 0.068`, clamped to `0.12`; thus
+`R = max(0.02, 1 * 2.5 * 0.5 * 0.12) = 0.15`. If both cells on a median-length edge have
+that resistance, its edge cost is `0.15`.
+
+If `r_med` is zero, use `F_n = 1` for every cell in that candidate. The resistance is
+candidate-specific because each cell's residual is measured against the daughter rotation
+of the side it would remain with. If G1 fails, the predeclared follow-up sensitivity check
+varies each factor one at a time on the development seeds. For `M`, `C` and `F`, use
+`X_lambda = 1 + lambda * (X - 1)` for `lambda = 0.5` and `1.5`. For each weakening
+reduction `delta`, test `lambda * delta` at those same two values of `lambda`, capped at
+`0.95`. Keep the `0.12` weakening clamp and `0.02` resistance floor fixed. Record all
+results; select any revised values before rerunning G1, and never use G2 seeds to tune them.
 
 | Signal | First trial | Meaning |
 |---|---:|---|
 | Column mass | `0.6 + 0.4 * clamp(mass / plate-median, 0, 4)` | A thicker or denser column costs more to cut |
-| Craton | Multiply resistance by `2.5` | A craton is harder to cut, not an absolute no-go zone |
-| Motion fit | Divide resistance by `1 + clamp(residual / median-residual, 0, 4)` | For each candidate, residual is measured against the fitted rotation of the daughter side containing the cell; a poor fit lowers resistance to breaking from that side |
-| Belt / suture | Reduce resistance by `0.35` / `0.45` | Inherited weak marks lower the cost |
-| Volcano / plume heat | Reduce resistance by `0.35` each | Existing volcanic or heated cells lower the cost |
-| Fault / thinning | Reduce resistance by `0.40` / `0.25` | Older faults count; thinner columns lower the cost |
-| Weakening limit | Combined reduction clamped to `0.12–1.0` | Avoid zero or negative resistance |
-| Resistance floor | `0.02` | Avoid zero edge cost |
+| Craton | `C = 2.5` when present, otherwise `1` | A craton is harder to cut, not an absolute no-go zone |
+| Motion fit | `F = 1 / (1 + clamp(residual / median-residual, 0, 4))` | Residual is to the fitted rotation of the candidate side containing the cell; a poor fit lowers resistance to breaking from that side |
+| Belt / suture | Multiply by `0.65` / `0.55` when present | These are reductions of `0.35` / `0.45` |
+| Volcano / plume heat | Multiply by `0.65` each when present | Each is a reduction of `0.35` |
+| Fault / thinning | Multiply by `0.60` / `0.75` when present | These are reductions of `0.40` / `0.25` |
+| Weakening limit | Clamp product of active multipliers to `0.12–1.0` | Applied before the other resistance factors |
+| Resistance floor | `max(0.02, ...)` | Applied after all other factors |
 | Candidate count | `12` | Number of sampled weak edges; tune only on development seeds |
 | Balance exponent | `mu = 1`; sweep `0, 0.5, 1, 2` | Design choice; not a measured physical value |
 
 The motion-residual reduction is candidate- and assignment-specific: the fit is measured
 against the daughter group a cell would remain with, never against whichever of the two
-groups happens to fit it better. The edge-cost floor from the prototype is retained for the
-first tuning pass. All score factors stay bounded. Area is used when converting column
-mass to a plate or daughter total; raw node count is not a substitute for mass.
+groups happens to fit it better. All score factors stay bounded. Area is used when converting
+column mass to a plate or daughter total; raw node count is not a substitute for mass.
 
 Keep the existing 0.55 split-success chance for the first paired comparison so this change
 isolates the cut choice. A failed split thins the existing failed-rift band along the chosen
@@ -184,8 +223,11 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
    #770 census practice. Use fit residuals to define and freeze an opening floor so that a
    tiny positive value like the pilot's +0.013 cm/yr does not pass merely because it is
    above zero. Compare the potential-momentum score with the prototype's reduced-mass-times-
-   opening score, and compare `mu = 1` with `mu = 0`; tune only on this set, then freeze the
-   winning score and weights.
+   opening score and compare `mu = 0, 0.5, 1, 2`; resistance values remain fixed at the
+   starting values in the table. Choose the score and `mu` only on this set, then freeze
+   them and the resistance values before G1. If G1 fails and resistance tuning is needed,
+   stop, revise this RFC with a predeclared resistance sweep and development plan, and rerun
+   the gates; do not change weights ad hoc or tune against G2 seeds.
 2. **G1 — Check that the candidate can make a usable split.** Require that, in the frozen
    development run, at least 10 plate opportunities are observed and at least two thirds
    of opportunities that pass the current split
@@ -205,7 +247,10 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
    from a reserve list frozen before the run. Report counts and per-seed results;
    do not infer success from a favorable image or from a routing-only proxy. Report the
    smaller daughter mass distribution too, but do not impose a hard 30% floor.
-4. **G3 — Check cratons, stability and cost.** Preserve the RFC 0010 limits unless the
+4. **G3 — Check cratons, stability and cost.** The existing production split-success gate
+   uses `round(elapsed_years)` in its random key. That is a known step-dependent carryover;
+   keep it for the first comparison and judge its effect with this timestep check rather
+   than changing it here. Preserve the RFC 0010 limits unless the
    owner changes them: rifting-related craton loss at or below 2% of live craton per Gyr,
    and 10–40 plates at every output. Repeat representative held-out runs at half the step
    size on three predeclared held-out seeds; plate counts, tiny-breakup share and craton loss
@@ -257,13 +302,20 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
 
 - `backend/app/merge_split.py`: replace great-circle cut selection inside
   `maybe_split_plate`; keep the existing trigger, cooldown and success chance initially.
-  Route failed-rift thinning through the selected cut rather than the old great circle.
-- `backend/app/plates.py`: use `adjacency()`, `surface_nodes().area_m2` and
-  `_plates_from_node_masks()` to score cell edges and build the two daughters.
-- `backend/app/sparse_quad_patch.py`: let failed-rift thinning follow the graph trace while
-  keeping the existing material accounting.
-- `backend/app/cratons.py`: keep the existing rift-loss diagnostic, but measure the graph
-  trace rather than a great-circle band.
+  Pass the selected daughter mask and crossed-edge trace through split, failed-rift and
+  diagnostic handling.
+- `backend/app/plates.py` and `backend/app/sparse_quad_patch.py`: add a mask-based split
+  helper that validates daughter sizes, calls `_plates_from_node_masks()` and resets both
+  daughter ages. `maybe_split_plate` uses this helper instead of `Plate.split(cut_normal, ...)`;
+  leave the existing great-circle `Plate.split` signature in place for any other callers.
+- Add one trace-distance helper that measures each cell's angular distance to the polyline
+  through crossed-edge midpoints and returns its distance and in-band mask. Keep the current
+  band width (`FAILED_RIFT_BAND_MULT * line_spacing_rad`). Change
+  `Plate.apply_failed_rift` to receive the distance array and band width so its thinning
+  taper follows the trace. Change `cratons.record_rift_cut` to receive the in-band mask.
+  The success-path belt call already accepts a mask, so pass it the same trace-derived mask;
+  no `cratons.mark_belt` signature change is needed. These operations share one trace-band
+  definition, avoiding any remaining great-circle band in this split path.
 - `backend/app/mantle.py`: reuse the existing flow sampling and Euler-fit functions; do not
   add shortest-path work.
 - `backend/unit_tests/test_merge_split.py`, `backend/unit_tests/test_sparse_quad_patch.py`,
