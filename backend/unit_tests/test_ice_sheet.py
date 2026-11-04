@@ -481,38 +481,63 @@ def test_glacier_water_account_releases_nothing_without_opening_ice():
     assert step.closing_m3 == 20.0
 
 
-def test_glacier_water_account_opens_a_save_from_its_model_ice():
+def test_glacier_water_account_opens_a_save_from_its_opening_ice_by_mass():
+    # Physical opening ice converts to water by mass (RFC 0015 D1, #789): opening at
+    # WATER_TO_ICE would book ~50,000x too much water (#806 review).
     step = ice_sheet.update_glacier_water_account(None, _ice_ledger(opening=2.0), _retained_only(0.0))
     assert step.initialized_from_ice
-    assert step.opening_m3 == pytest.approx(2.0 / hydrology.WATER_TO_ICE)
+    assert step.opening_m3 == pytest.approx(2.0 * lithosphere.RHO_ICE / lithosphere.RHO_WATER)
 
 
 def test_steady_ice_returns_retained_snow_at_the_opening_conversion():
-    # Model loss balancing model accumulation holds the account level: the scaled and physical
-    # budgets differ by exactly the conversion the opening balance uses.
+    # Physical loss balancing physical accumulation holds the account level: the ice and
+    # water budgets differ by exactly the by-mass conversion the opening balance uses.
     water = 3.0e6
-    ice = water * hydrology.WATER_TO_ICE
+    ice = water * lithosphere.RHO_WATER / lithosphere.RHO_ICE
     balance = 1.0e9
-    ledger = _ice_ledger(opening=balance * hydrology.WATER_TO_ICE, surface=ice)
+    ledger = _ice_ledger(opening=balance * lithosphere.RHO_WATER / lithosphere.RHO_ICE, surface=ice)
     step = ice_sheet.update_glacier_water_account(balance, ledger, _retained_only(water))
     assert step.closing_m3 == pytest.approx(balance, rel=1e-3)
 
 
-def test_frozen_precipitation_follows_the_ice_or_melts_on_bare_ground():
+def test_frozen_precipitation_follows_the_partition_snow_shares():
+    # The account books exactly the partition's dry-share snow, so rain plus frozen land
+    # sums to the dry precipitation -- not the binary freeze mask, which double-counts on
+    # seasonal cells and misses most snow near freezing (#806 review).
     points, r, elevation, area = _continent()
     n = len(points)
     cold = r < 500_000.0
+    snow = np.where(cold, 500.0, 250.0)
     climate = ice_sheet.SurfaceClimate(
         np.full(n, 500.0), np.where(cold, -30.0, -2.0), np.where(cold, 0.0, 15.0), np.ones(n, dtype=bool),
+        None, snow,
     )
     years = 100_000.0
     *_, ice = _step(points, area, elevation, np.zeros(n), climate, years)
     frozen = ice.frozen_precipitation
     land = elevation > 0.0
-    assert frozen.land_m3 == pytest.approx(float(np.dot(np.full(n, 0.5), area * land)) * years)
+    assert frozen.land_m3 == pytest.approx(float(np.dot(snow * land, area)) / 1000.0 * years)
     assert frozen.retained_m3 > 0.0
     assert frozen.bare_melted_m3 > 0.0
     assert frozen.land_m3 + frozen.ocean_retained_m3 == pytest.approx(frozen.retained_m3 + frozen.bare_melted_m3)
+
+
+def test_frozen_precipitation_falls_back_to_the_seasonal_share():
+    # Direct fixtures predate the partition shares: frozen falls back to the ground-phase
+    # seasonal share instead of the binary mask.
+    points, r, elevation, area = _continent()
+    n = len(points)
+    temperature = np.where(r < 500_000.0, -30.0, -2.0)
+    amplitude = np.where(r < 500_000.0, 0.0, 15.0)
+    climate = ice_sheet.SurfaceClimate(
+        np.full(n, 500.0), temperature, amplitude, np.ones(n, dtype=bool),
+    )
+    years = 100_000.0
+    *_, ice = _step(points, area, elevation, np.zeros(n), climate, years)
+    frozen = ice.frozen_precipitation
+    land = elevation > 0.0
+    expected = ice_sheet.snow_fraction(temperature, amplitude) * 500.0
+    assert frozen.land_m3 == pytest.approx(float(np.dot(expected * land, area)) / 1000.0 * years)
 
 
 def _assert_retained_snow_is_the_scaled_accumulation(ice):
@@ -612,6 +637,14 @@ def test_d1_snow_fraction_bounds_continuity_and_still_air_fallback():
         # The seasonal formula has a vertical tangent at its clip edges, so a fine grid
         # still steps ~0.05 there; a true jump would step ~1.
         assert np.max(np.abs(np.diff(share))) < 0.1
+    # A 0.01 C amplitude would switch over 0.02 C unclamped -- a near-step the fine grid
+    # would cross in one ~1.0 jump. The amplitude clamps to half the ramp width, so the
+    # switch spans the full ramp degree (#806 review): still steeper at the clip-edge
+    # tangents (~0.14) than the wide-amplitude case, but continuous.
+    clamped = ice_sheet.snow_fraction(grid, np.full_like(grid, 0.01))
+    assert np.max(np.abs(np.diff(clamped))) < 0.2
+    tiny = ice_sheet.snow_fraction(np.array([0.5, 1.0, 1.5]), np.full(3, 0.01))
+    assert tiny == pytest.approx([1.0, 0.5, 0.0])
     # Where the seasonal amplitude vanishes the sinusoid has no year to spread over, so
     # the share falls back to the continuous ramp around the threshold.
     ramp = np.clip(0.5 + (ice_sheet.RAIN_SNOW_THRESHOLD_C - grid) / ice_sheet.ICE_SNOW_RAMP_C, 0.0, 1.0)

@@ -1906,28 +1906,39 @@ def glacier_rain_partition_mm(
 
 def _opening_frictional_heat(
     world: "World",
+    points_xyz: np.ndarray,
     mobile_cover_m: np.ndarray,
-    temperature_c: np.ndarray,
-    seasonal_amplitude_c: np.ndarray,
 ) -> np.ndarray:
     """Last step's frictional heat (W/m^2) from the hydrology cache's IceStep, 0 where the
     cache has nothing to read (RFC 0015 D1, #789). The cache holds last step's yield stress
-    inputs (mobile cover, warm-based bed) and sliding speed; a shape mismatch (the node
-    cloud moved) reads as missing."""
+    inputs and sliding speed; they are resampled onto this step's nodes by nearest
+    neighbour -- the same `_nearest_hydro_node_idx` resample every other cache read uses
+    -- so a moved node cloud re-indexes instead of zeroing out (#806 review)."""
     from . import ice_sheet as _ice_sheet
 
-    n = len(np.asarray(temperature_c))
+    query = np.asarray(points_xyz).reshape(-1, 3)
+    n = query.shape[0]
     zeros = np.zeros(n)
     hydro = getattr(world, "hydrology_cache", None)
     ice = getattr(hydro, "ice", None) if hydro is not None else None
-    if ice is None:
+    if hydro is None or ice is None:
         return zeros
-    sliding = np.asarray(getattr(ice, "sliding_speed_m_per_yr", zeros), dtype=float)
-    warm = np.asarray(getattr(ice, "warm_based", np.zeros(n, dtype=bool)), dtype=bool)
-    if sliding.shape != (n,) or warm.shape != (n,):
+    sliding = getattr(ice, "sliding_speed_m_per_yr", None)
+    warm = getattr(ice, "warm_based", None)
+    if (
+        sliding is None
+        or warm is None
+        or len(getattr(hydro, "points", ())) != len(np.asarray(sliding))
+        or len(np.asarray(warm)) != len(np.asarray(sliding))
+    ):
         return zeros
-    tau_b = _ice_sheet.yield_stress_pa(np.asarray(mobile_cover_m, dtype=float), warm)
-    return _ice_sheet.frictional_heat_w_m2(tau_b, sliding)
+    idx = _nearest_hydro_node_idx(
+        hydro, query, getattr(world, "node_cloud_resample_mode", "kdtree")
+    )
+    tau_b = _ice_sheet.yield_stress_pa(
+        np.asarray(mobile_cover_m, dtype=float), np.asarray(warm, dtype=bool)[idx]
+    )
+    return _ice_sheet.frictional_heat_w_m2(tau_b, np.asarray(sliding, dtype=float)[idx])
 
 
 def _march_glacier(
@@ -1939,6 +1950,7 @@ def _march_glacier(
     deflection_m: np.ndarray,
     prev_glacier_depth: np.ndarray,
     dry_precip_mm: np.ndarray,
+    dry_snow_mm: np.ndarray,
     temperature_at_nodes: np.ndarray,
     seasonal_amplitude: np.ndarray,
     opening_heat_w_m2: np.ndarray,
@@ -1952,20 +1964,32 @@ def _march_glacier(
     Each substep is an ordinary `step_ice` solve from the current ice, so body membership
     and yield stress always read the current ice. Between substeps the fast inputs are
     recomputed from it: frictional heat (damped: the mean of the last two substeps' heat,
-    which cancels the residual two-substep alternation), the mass-balance surface (on the
-    load-equilibrium deflection of the current ice), and sea level (re-solved from the
-    current ice debit, with the ocean mask). The sea-level bracket, membership loop and
-    deflection loop of the old endpoint solve stay deleted: each substep reads the current
-    ice, debit, deflection and masks directly.
+    which cancels the residual two-substep alternation), the mass-balance lapse surface
+    (on the load-equilibrium deflection of the current ice), and sea level (re-solved from
+    the current ice debit, with the ocean mask). The sea-level bracket, membership loop and
+    deflection loop of the old endpoint solve stay deleted. Grounding and flotation keep
+    the opening bed (a one-step lag on the deflection); only the lapse correction sees
+    the equilibrium target each substep.
 
-    After each pair of substeps the march compares the means of the last two pairs; when
-    they differ by less than 0.1% three times in a row, the body of ice has settled and the
-    rest of the step is held: it keeps the mean rates (melt, calving, ledger flows) of its
-    last 6 substeps, and its ice doesn't change. The small net over the alternation shows
-    up as the ledger residual, not as ice. A body of ice that never settles marches the
-    whole step. Every step logs substeps, marched/held years, whether it settled, and the
-    volume path; a march that never settles logs its tipping growth (last pair-mean change
-    over the first), with no threshold asserted (G1's body-step is the reference).
+    Settle checks run on non-overlapping substep pairs ("after each pair"): when the last
+    two pair-means differ by less than 0.1% three checks in a row, the body of ice has
+    settled and the rest of the step is held: it keeps the mean rates (melt, calving,
+    ledger flows) of its last 6 substeps, and its ice doesn't change. The small net over
+    the alternation shows up as the ledger residual, not as ice. Held losses can never
+    exceed the available ice (opening plus the step's accumulation): the scaling factor is
+    clamped to fit, so a sheet that melts away holds ~zero loss instead of booking a
+    transient's mean melt over most of the step (#806 review). A body of ice that never
+    settles marches the whole step. Every step logs substeps, marched/held years, whether
+    it settled, and the volume path; a march that never settles logs its tipping growth
+    (last pair-mean change over the first), with no threshold asserted (G1's body-step is
+    the reference).
+
+    Cost: each substep is a full ice solve plus a sea-level re-solve, so a settled march
+    costs ~13-32 ice solves against the old endpoint solve's one (up to thousands when it
+    never settles), which is why steps run over the +15% budget on the diagnosis replays.
+    Skipping the sea-level re-solve when the debit barely moves would cut that, but any
+    materiality threshold changes settling and routed water, so the saving stays a
+    follow-up, not part of this change.
     """
     from .. import lithosphere
     from ..plates import collect_all_crustal_thickness, collect_all_mantle_lithosphere_thickness
@@ -2006,14 +2030,17 @@ def _march_glacier(
         climate = ice_sheet.SurfaceClimate(
             np.asarray(dry_precip_mm, dtype=float), temperature, np.asarray(seasonal_amplitude, dtype=float),
             frozen, np.asarray(ref_heat, dtype=float),
+            np.asarray(dry_snow_mm, dtype=float),
         )
         return ice_sheet.step_ice(
             points, neighbor_idx, areas, elevation, deflection_m, sea_level, depth,
             climate, np.asarray(mobile_cover_m, dtype=float), ocean_mask, no_ice_cap, sub_years,
+            warn=False,
         )
 
     if years <= 1e-6:
         new_depth, melt, ice = solve_once(0.0, depth, heat)
+        ice_sheet.warn_if_capped(ice.ledger)
         ice_sheet.MARCH_LOG.append({
             "substeps": 0, "marched_years": 0.0, "held_years": 0.0, "settled": True,
             "last_change": 0.0, "sea_level_m": sea_level,
@@ -2062,13 +2089,25 @@ def _march_glacier(
         )
         if has_ocean:
             debit = to_water * float(np.dot(areas, depth))
-            sea_level = eustasy._solve_sea_level_connected(world, elevations, hyps_areas, max(0.0, total_water - lakes_trapped - debit))
+            # The re-solve anchors on the march's own current-step ocean mask and graph, not
+            # last step's cache (which also degrades to the connectivity-blind mask on a
+            # changed node cloud), and the mask keeps Earth's forced straits connected, the
+            # way compute_hydrology does (#806 review).
+            sea_level = eustasy._solve_sea_level_connected(
+                world, elevations, hyps_areas, max(0.0, total_water - lakes_trapped - debit),
+                seed_is_ocean=ocean_mask, seed_neighbor_idx=neighbor_idx,
+            )
             ocean_mask = connected_ocean_mask(points, elevation, sea_level, neighbor_idx, areas_m2=areas, prior_ocean=ocean_mask)
+            if getattr(world, "premade_world_id", None) == "earth":
+                ocean_mask = force_earth_strait_connections(points, ocean_mask, elevation, sea_level, neighbor_idx)
         volumes.append(float(np.dot(depth, areas)))
         recent = (recent + [(dt, melt, ice.calved_m3, ice.ledger, ice.frozen_precipitation)])[
             -max(ice_sheet.MARCH_HOLD_WINDOW, 1):
         ]
-        if len(volumes) >= 5:
+        # Settle on non-overlapping pairs only ("after each pair", RFC 0015 D2): checking
+        # every substep tests overlapping windows, which settle on correlated pairs and can
+        # freeze a still-moving sheet for most of the step (#806 review).
+        if substeps % 2 == 0 and len(volumes) >= 5:
             pair_now = 0.5 * (volumes[-1] + volumes[-2])
             pair_before = 0.5 * (volumes[-3] + volumes[-4])
             last_change = abs(pair_now - pair_before) / max(pair_before, 1.0)
@@ -2080,15 +2119,37 @@ def _march_glacier(
     if remaining > 1e-6 and recent:
         span = sum(r[0] for r in recent)
         scale = remaining / span
+        hold_melt = np.zeros(n)
+        hold_calved = np.zeros(n)
+        hold_flows: dict[str, float] = {}
         for _, sub_melt, sub_calved, sub_ledger, sub_frozen in recent:
-            melt_total += sub_melt * scale
-            calved_total += np.asarray(sub_calved, dtype=float) * scale
+            hold_melt = hold_melt + np.asarray(sub_melt, dtype=float) * scale
+            hold_calved = hold_calved + np.asarray(sub_calved, dtype=float) * scale
             for key in ("accumulation_m3", "surface_melt_m3", "basal_melt_m3", "calved_m3", "overflow_m3", "snow_melted_m3", "capped_m3"):
-                setattr(ledger_total, key, getattr(ledger_total, key) + getattr(sub_ledger, key) * scale)
+                hold_flows[key] = hold_flows.get(key, 0.0) + getattr(sub_ledger, key) * scale
             frozen_land_total += sub_frozen.land_m3 * scale
             frozen_ocean_retained_total += sub_frozen.ocean_retained_m3 * scale
             frozen_retained_total += sub_frozen.retained_m3 * scale
             frozen_bare_melted_total += sub_frozen.bare_melted_m3 * scale
+        # Never book more ice loss than exists: scaling a transient's mean flows over most
+        # of the step otherwise books phantom melt from vanished ice, and the residual --
+        # not the ice -- absorbs it (#806 review: -78% on a fixture that melts away, then
+        # holds ~250 kyr of transient melt). The clamp binds only when the hold would drive
+        # the books negative; settled steps are untouched.
+        loss_keys = ("surface_melt_m3", "basal_melt_m3", "calved_m3", "overflow_m3", "capped_m3")
+        marched_loss = sum(getattr(ledger_total, key) for key in loss_keys)
+        hold_loss = sum(hold_flows.get(key, 0.0) for key in loss_keys)
+        available = ledger_total.opening_m3 + ledger_total.accumulation_m3 + hold_flows.get("accumulation_m3", 0.0)
+        if hold_loss > 0.0 and marched_loss + hold_loss > available:
+            factor = max(available - marched_loss, 0.0) / hold_loss
+            hold_melt = hold_melt * factor
+            hold_calved = hold_calved * factor
+            for key in loss_keys:
+                hold_flows[key] = hold_flows.get(key, 0.0) * factor
+        melt_total += hold_melt
+        calved_total += hold_calved
+        for key, value in hold_flows.items():
+            setattr(ledger_total, key, getattr(ledger_total, key) + value)
     ledger_total.closing_m3 = float(np.dot(depth, areas))
     # The interim glacier-water account (RFC 0016 G0, #732) reads one step's frozen
     # precipitation: the march sums every substep (plus the hold share) so it sees the
@@ -2116,6 +2177,8 @@ def _march_glacier(
     )
     ice.calved_m3 = calved_total
     ice.ledger = ledger_total
+    # One cap warning per step on the summed ledger, not one per substep (#806 review).
+    ice_sheet.warn_if_capped(ledger_total)
     ice.frozen_precipitation = frozen_precipitation
     return depth, melt_total, ice
 
@@ -2287,12 +2350,18 @@ def compute_hydrology(
     _lake_p, _ice_snow_p, _ice_rain_p, _bare_snow_p, _bare_rain_p = glacier_rain_partition_mm(
         precipitation_at_nodes, wet_fraction, _ice_cover_open, _snow_ground, _snow_ice,
     )
-    # Liquid water: the rain shares on the whole cell (the lake's rain joins it directly
-    # below through the wet supply; the dry part runs off). Snow never counts as liquid.
-    liquid_precip = (
-        _ice_rain_p + _bare_rain_p
-        + np.asarray(wet_fraction, dtype=float) * np.asarray(precipitation_at_nodes, dtype=float) * (1.0 - _snow_ground)
-    )
+    # Liquid water routing (RFC 0015 D1, #789; #806 review): the lake takes its FULL wet
+    # share as liquid supply -- including the snow share, which has no glacier to join on
+    # a lake and no D4 cap hand-off yet, so routing only the rain share deletes it. The
+    # dry rain runs off through Budyko at per-dry-area intensity. Both use whole-cell mm
+    # that already carry their wet/dry weights, so the wet/dry weighting below applies
+    # exactly once: the helper sees only dry rain at dry intensity (wet_fraction zeros make
+    # its direct-wet output trivially zero; the lake instead takes the full wet share
+    # computed here), and the breach gate gets the same pair. Snow never counts as runoff.
+    dry_rain_mm = _ice_rain_p + _bare_rain_p
+    wet_full_mm = np.asarray(wet_fraction, dtype=float) * np.asarray(precipitation_at_nodes, dtype=float)
+    dry_share = np.clip(1.0 - np.asarray(wet_fraction, dtype=float), 0.0, 1.0)
+    dry_rain_intensity_mm = np.where(dry_share > 0.0, dry_rain_mm / np.maximum(dry_share, 1e-12), 0.0)
     dry_precip_mm = (1.0 - wet_fraction) * np.asarray(precipitation_at_nodes, dtype=float)
     ice_free_fraction = seasonal_fraction_above(lake_temperature_c, seasonal_amplitude, FREEZE_POINT_C)
     open_season_temperature_c = seasonal_open_mean_c(lake_temperature_c, seasonal_amplitude, FREEZE_POINT_C)
@@ -2305,9 +2374,15 @@ def compute_hydrology(
     # water for `f_free` and ice for the rest, so neither counts the other's season.
     lake_sublimation_m_per_yr = LAKE_ICE_SUBLIMATION_M_PER_YR * (1.0 - ice_free_fraction)
     evaporation_mm = breaching.open_water_evaporation_mm(temperature_at_nodes)
-    wet_precip_m3, dry_runoff_m3, dry_et_m3 = _partition_precipitation_sources(
-        liquid_precip, evaporation_mm, areas, wet_fraction
+    _, dry_runoff_m3, dry_et_m3 = _partition_precipitation_sources(
+        dry_rain_intensity_mm, evaporation_mm, areas, np.zeros(n)
     )
+    # The helper budgets a whole cell; only the dry share carries dry rain, and the lake
+    # takes its full wet share (rain plus snow) directly instead of the helper's
+    # re-weighted direct-wet slice (#806 review items 5 and 8).
+    dry_runoff_m3 = dry_runoff_m3 * dry_share
+    dry_et_m3 = dry_et_m3 * dry_share
+    wet_precip_m3 = wet_full_mm / 1000.0 * areas
     breach = None
     interface_pass = None
     if BREACH_DEPRESSIONS_ENABLED:
@@ -2319,7 +2394,7 @@ def compute_hydrology(
             elevation, is_ocean, neighbor_idx, prev_channel_depth,
             breaching.bedrock_carve_rate_m_per_myr(craton_strength), fill_years,
             water=breaching.WaterBalance(
-                liquid_precip, temperature_at_nodes, areas,
+                dry_rain_intensity_mm, temperature_at_nodes, areas,
                 loss_fraction=dry_transit_loss, dry_fraction=dry_fraction,
                 direct_supply_m3_per_yr=wet_precip_m3,
                 lake_evaporation_m_per_yr=lake_open_evaporation_m_per_yr,
@@ -2360,10 +2435,11 @@ def compute_hydrology(
     # sea-ice cap is gone here (D6 removes it; physical accumulation would stack it to the
     # depth guard in one step): polar ocean ice returns as D6's derived sea-ice state.
     _mobile_cover = np.concatenate([p.collect("mobile_cover_m") for p in plates_in_order])
-    _opening_heat = _opening_frictional_heat(world, _mobile_cover, temperature_at_nodes, seasonal_amplitude)
+    _opening_heat = _opening_frictional_heat(world, points, _mobile_cover)
     new_glacier_depth, melt, ice = _march_glacier(
         world, points, neighbor_idx, areas, elevation, collect_all_ice_load_deflection(plates_in_order),
-        prev_glacier_depth, dry_precip_mm, temperature_at_nodes, seasonal_amplitude, _opening_heat,
+        prev_glacier_depth, dry_precip_mm, _ice_snow_p + _bare_snow_p,
+        temperature_at_nodes, seasonal_amplitude, _opening_heat,
         _mobile_cover, is_ocean, plates_in_order, years,
     )
     ice_flow_target = _ice_surface_flow_target(elevation + new_glacier_depth, neighbor_idx, new_glacier_depth, ice_flow_target)

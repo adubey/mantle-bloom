@@ -97,6 +97,30 @@ def test_compute_hydrology_exposes_wet_precipitation_once_in_external_supply():
     )
 
 
+def test_lake_takes_full_wet_share_including_snow():
+    # The lake's supply is its FULL wet share: wet snow has no glacier to join and no D4
+    # cap hand-off yet, so routing only the rain share deletes it; and the lake takes w*P
+    # exactly, not a re-weighted slice of dry rain (#806 review).
+    theta = 0.05 * np.arange(40)
+    elevation = np.full(40, 300.0)
+    elevation[0:15] = -100.0
+    elevation[28:31] = -60.0
+    prev_lake_depth = np.zeros(40)
+    prev_lake_depth[28:31] = 35.0
+    world = World(seed=0, plates=[_flow_line_plate_with_lake(0, theta, elevation, prev_lake_depth)])
+    precipitation = np.full(40, 800.0)
+    fields = hydrology.compute_hydrology(
+        world, precipitation, np.full(40, -3.0), years=100_000,
+        seasonal_amplitude_at_nodes=np.full(40, 10.0),
+    )
+    wet_fraction = hydrology._lagged_lake_wet_fraction(prev_lake_depth, fields.hypsometry)
+    wet_fraction[fields.is_ocean] = 0.0
+    areas = fields.hypsometry.area_m2
+    expected_direct = float((precipitation / 1000.0 * areas * wet_fraction).sum())
+    assert expected_direct > 0.0
+    assert fields.lake_external_wet_precip_m3_per_yr.sum() == pytest.approx(expected_direct)
+
+
 def test_seasonal_lake_inputs_leave_dry_land_budyko_pet_unchanged():
     # At 25 C every drop is rain at any seasonal swing (RFC 0015 D1's snow share is 0), so
     # the amplitude must not move dry-land runoff: Budyko PET reads the annual mean.
@@ -2421,6 +2445,28 @@ def test_d1_precipitation_partition_sums_to_p():
     assert ice_rain == pytest.approx(dry * cover * (1.0 - snow_ice))
     assert bare_snow == pytest.approx(dry * (1.0 - cover) * snow_ground)
     assert bare_rain == pytest.approx(dry * (1.0 - cover) * (1.0 - snow_ground))
+
+
+def test_d2_march_hold_never_books_more_loss_than_exists():
+    # A sheet that melts away early must not keep booking its transient melt over the
+    # held remainder: held losses are clamped to the available ice, so the residual
+    # stays ~zero instead of going deeply negative (#806 review).
+    ice_sheet.MARCH_LOG.clear()
+    theta = 0.002 * np.arange(12)
+    elevation = 500.0 - 30.0 * np.arange(12)
+    world = World(seed=0, plates=[_flow_line_plate_with_lake(
+        0, theta, elevation, np.zeros(12), glacier_depth=np.full(12, 5.0),
+    )])
+    fields = hydrology.compute_hydrology(world, np.full(12, 500.0), np.full(12, 20.0), years=250_000)
+    ledger = fields.ice.ledger
+    available = ledger.opening_m3 + ledger.accumulation_m3
+    assert available > 0.0
+    assert ledger.closing_m3 >= 0.0
+    assert ledger.closing_m3 < 0.01 * ledger.opening_m3
+    assert abs(ledger.residual_m3) <= 0.01 * available
+    entry = ice_sheet.MARCH_LOG[-1]
+    assert entry["settled"] is True
+    assert entry["held_years"] > 0.0
 
 
 def test_d2_march_settles_and_holds_on_an_ice_free_world():

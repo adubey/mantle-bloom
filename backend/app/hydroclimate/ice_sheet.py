@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import heapq
 import logging
+from collections import deque
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -98,10 +99,13 @@ def snow_fraction(temperature_c: np.ndarray, amplitude_c: np.ndarray, threshold_
 
     Assumes precipitation spreads evenly over the year. Where the amplitude vanishes (a
     zero-tilt world), falls back to the continuous ICE_SNOW_RAMP_C ramp around the
-    threshold, so the root find never meets a jump.
+    threshold, so the root find never meets a jump. Tiny nonzero amplitudes are clamped
+    to half the ramp width before the arcsin: at amplitude 0.01 C the unclamped form
+    switches over 0.02 C, a near-step the response curve should not see (#806 review).
     """
     amp = np.asarray(amplitude_c, dtype=float)
-    ratio = np.clip((threshold_c - np.asarray(temperature_c, dtype=float)) / np.maximum(amp, 1e-6), -1.0, 1.0)
+    eff = np.maximum(amp, ICE_SNOW_RAMP_C / 2.0)
+    ratio = np.clip((threshold_c - np.asarray(temperature_c, dtype=float)) / np.maximum(eff, 1e-6), -1.0, 1.0)
     seasonal = 0.5 + np.arcsin(ratio) / np.pi
     ramp = np.clip(0.5 + (threshold_c - np.asarray(temperature_c, dtype=float)) / ICE_SNOW_RAMP_C, 0.0, 1.0)
     return np.where(amp > 1e-3, seasonal, ramp)
@@ -148,7 +152,9 @@ _FLOTATION_RATIO = RHO_WATER / RHO_ICE
 
 # End-of-step march log (RFC 0015 D2, #789): one entry per marched step, with substeps,
 # marched/held years, whether the ice settled, the volume path, and any tipping-point growth.
-MARCH_LOG: list[dict] = []
+# Bounded: a long-running server would otherwise grow this list forever, and readers only
+# ever need the latest entry (#806 review).
+MARCH_LOG: deque[dict] = deque(maxlen=64)
 
 
 @dataclass
@@ -163,13 +169,20 @@ class SurfaceClimate:
     is_frozen: np.ndarray
     # Last step's frictional heat (W/m^2), tau_b * u_b / Y, aligned with these nodes; 0
     # where the hydrology cache has nothing to read (RFC 0015 D1, #789). `is_frozen` is kept
-    # so existing callers still construct: the snow switch no longer reads it.
+    # so existing callers still construct: neither the snow switch nor the frozen-precipitation
+    # account reads it anymore (both use snow shares).
     frictional_heat_w_m2: np.ndarray | None = None
+    # Dry-share snowfall in whole-cell mm (the partition's ice-snow plus bare-snow parts),
+    # so the frozen-precipitation account follows exactly the snow the partition booked
+    # (#806 review). None where the caller predates the partition (direct unit fixtures):
+    # the account then falls back to the ground-phase snow share.
+    dry_snow_mm: np.ndarray | None = None
 
     def subset(self, idx: np.ndarray) -> "SurfaceClimate":
         return SurfaceClimate(
             self.precipitation_mm[idx], self.temperature_c[idx], self.seasonal_amplitude_c[idx], self.is_frozen[idx],
             None if self.frictional_heat_w_m2 is None else self.frictional_heat_w_m2[idx],
+            None if self.dry_snow_mm is None else self.dry_snow_mm[idx],
         )
 
     def rates(self, thickness_m: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -552,13 +565,16 @@ class GlacierWaterLedger:
 def update_glacier_water_account(
     prior_balance_m3: float | None, ledger: IceLedger, frozen: FrozenPrecipitation
 ) -> GlacierWaterLedger:
-    """One step of the account. Physical snowfall is far larger than scaled melt, so the two
-    can't be subtracted: the account releases the fraction of opening model ice lost this step
-    and so follows the ice history (RFC 0016). A save without a balance opens from its model ice
-    at `WATER_TO_ICE`, a stated diagnostic conversion. With no opening ice there is nothing to
-    take a fraction of, so nothing is released."""
+    """One step of the account. The account releases the fraction of opening ice lost this
+    step and so follows the ice history (RFC 0016). A save without a balance opens from its
+    opening ice converted by mass (`RHO_ICE / RHO_WATER`), now that the ledger is physical
+    (RFC 0015 D1, #789): opening at `WATER_TO_ICE` would book ~50,000x too much water
+    (#806 review). With no opening ice there is nothing to take a fraction of, so nothing
+    is released."""
     initialized = prior_balance_m3 is None
-    opening = ledger.opening_m3 / hydrology.WATER_TO_ICE if initialized else prior_balance_m3
+    opening = (
+        ledger.opening_m3 * RHO_ICE / RHO_WATER if initialized else prior_balance_m3
+    )
     melt = ledger.surface_melt_m3 + ledger.basal_melt_m3
     lost = melt + ledger.calved_m3 + ledger.overflow_m3 + ledger.capped_m3
     fraction = min(lost / ledger.opening_m3, 1.0) if ledger.opening_m3 > 0.0 else 0.0
@@ -918,6 +934,7 @@ def step_ice(
     is_ocean: np.ndarray,
     allow_ocean_ice: np.ndarray,
     years: float,
+    warn: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, IceStep]:
     """One glacier step over the whole node cloud. See the module docstring for the method.
 
@@ -1043,7 +1060,10 @@ def step_ice(
     # Body nodes at the depth guard, whether shed there or flattened by the profile's cap.
     at_cap = ~cap & (out.depth > 0.0) & (out.thickness >= hydrology.GLACIER_MAX_DEPTH_M * (1.0 - 1e-9))
     ledger.capped_nodes += int(np.count_nonzero(at_cap))
-    warn_if_capped(ledger)
+    # The march drives up to thousands of substeps per step and reports the cap once on
+    # its summed ledger instead (#806 review); direct calls keep the per-call warning.
+    if warn:
+        warn_if_capped(ledger)
 
     thickness = out.thickness
     is_warm = warm_based(
@@ -1070,8 +1090,18 @@ def step_ice(
 def _frozen_precipitation(climate: SurfaceClimate, area, years: float, retained_snow, is_ocean) -> FrozenPrecipitation:
     """Split the step's physical frozen precipitation by the share of each cell's snow the ice
     kept (see `_Output.retained_snow`), so it follows the same fate as the scaled accumulation.
-    Scalars, not per-node arrays: the account is whole-world and adds nothing else to a save."""
-    _, frozen_m3 = hydrology.partition_precipitation_m3(climate.precipitation_mm, climate.is_frozen, area, years)
+    Scalars, not per-node arrays: the account is whole-world and adds nothing else to a save.
+    Frozen input is the partition's dry-share snow (`dry_snow_mm`), so rain plus frozen land
+    sums to the dry precipitation exactly; without it (direct unit fixtures) the ground-phase
+    seasonal share stands in. The binary freeze mask is never used (#806 review)."""
+    if climate.dry_snow_mm is not None:
+        snow_mm = np.asarray(climate.dry_snow_mm, dtype=float)
+    else:
+        snow_mm = snow_fraction(
+            np.asarray(climate.temperature_c, dtype=float),
+            np.asarray(climate.seasonal_amplitude_c, dtype=float),
+        ) * np.asarray(climate.precipitation_mm, dtype=float)
+    frozen_m3 = np.clip(snow_mm, 0.0, None) / 1000.0 * np.asarray(area, dtype=float) * years
     retained_m3 = frozen_m3 * retained_snow
     return FrozenPrecipitation(
         land_m3=float(frozen_m3[~is_ocean].sum()),

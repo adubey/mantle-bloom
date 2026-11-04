@@ -17,13 +17,14 @@ Replays `--myr` from the save in `--step-years` steps and records, at every chec
   worst residual, and the share of step time spent in `ice_sheet.step_ice`;
 - step runtime and peak RSS.
 
-Issue #368 adds the mass-balance scaling probe. `--accumulation-scale` multiplies snowfall
-accumulation and every rate derived from its model-unit exchange (geothermal basal melt and
-`WATER_TO_ICE`), `--melt-scale` multiplies surface melt, `--abrasion-coefficient` replaces
-GLACIER_ABRASION_COEFFICIENT, and `--meltwater-density` routes melted ice as water by mass
-(rho_ice / rho_water) instead of 1:1. The constants are patched in-process, so the defaults
-reproduce the backend unchanged. Each window also reports routed meltwater, mean discharge
-into the ocean, and how often (and on how many nodes) the GLACIER_MAX_DEPTH_M guard bit:
+Issue #368 adds the mass-balance scaling probe. `--accumulation-scale` multiplies input
+precipitation (the whole water cycle, not just snowfall), `--melt-scale` multiplies both
+degree-day factors, and
+`--abrasion-coefficient` replaces GLACIER_ABRASION_COEFFICIENT; `--meltwater-density` is
+kept for CLI compatibility but is a no-op now that meltwater always converts by mass
+(RFC 0015 D1). The knobs are patched in-process, so the defaults reproduce the backend
+unchanged. Each window also reports routed meltwater, mean discharge into the ocean, and
+how often (and on how many nodes) the GLACIER_MAX_DEPTH_M guard bit:
 
     .venv/bin/python ../bin/debug/measure_ice_sheet.py <save> --myr 10 --step-years 250000 \\
         --accumulation-scale 1000 --melt-scale 1000 --out <scratch>/k1000.json
@@ -53,29 +54,20 @@ def add_scaling_args(ap: argparse.ArgumentParser) -> None:
 
 
 def scale_mass_balance(args: argparse.Namespace, hydrology, ice_sheet, erosion) -> dict:
-    """Patch the glacier mass-balance constants for issue #368's probe; returns what was used.
-    Basal melt and WATER_TO_ICE are both defined through the accumulation rate's model-unit
-    exchange, so they follow `--accumulation-scale`."""
-    hydrology.GLACIER_ACCUMULATION_RATE *= args.accumulation_scale
-    hydrology.WATER_TO_ICE *= args.accumulation_scale
-    hydrology.GLACIER_MELT_RATE_M_PER_MYR *= args.melt_scale
-    ice_sheet.MODEL_UNIT_SCALE *= args.accumulation_scale
-    ice_sheet.GEOTHERMAL_BASAL_MELT_M_PER_MYR *= args.accumulation_scale
+    """Patch the glacier mass-balance knobs for issue #368's probe; returns what was used.
+    Post-D1 the knobs are physical: snowfall has no rate constant (it is input
+    precipitation, scaled at the tap below), and melt scales both degree-day factors.
+    `--meltwater-density` is no longer patched: meltwater always converts by mass now."""
+    ice_sheet.DDF_SNOW_MM_WATER_PER_DAY_K *= args.melt_scale
+    ice_sheet.DDF_ICE_MM_WATER_PER_DAY_K *= args.melt_scale
     if args.abrasion_coefficient is not None:
         erosion.GLACIER_ABRASION_COEFFICIENT = args.abrasion_coefficient
-    if args.meltwater_density:
-        from app.lithosphere import RHO_ICE, RHO_WATER  # noqa: E402
-
-        original_meltwater = hydrology.meltwater_m3_per_yr
-        hydrology.meltwater_m3_per_yr = lambda *a, **k: original_meltwater(*a, **k) * (RHO_ICE / RHO_WATER)
     return {
         "accumulation_scale": args.accumulation_scale,
         "melt_scale": args.melt_scale,
-        "meltwater_density": args.meltwater_density,
-        "glacier_accumulation_rate": hydrology.GLACIER_ACCUMULATION_RATE,
-        "glacier_melt_rate_m_per_myr": hydrology.GLACIER_MELT_RATE_M_PER_MYR,
-        "geothermal_basal_melt_m_per_myr": ice_sheet.GEOTHERMAL_BASAL_MELT_M_PER_MYR,
-        "water_to_ice": hydrology.WATER_TO_ICE,
+        "meltwater_density": "always-by-mass",
+        "ddf_snow_mm_water_per_day_k": ice_sheet.DDF_SNOW_MM_WATER_PER_DAY_K,
+        "ddf_ice_mm_water_per_day_k": ice_sheet.DDF_ICE_MM_WATER_PER_DAY_K,
         "glacier_abrasion_coefficient": erosion.GLACIER_ABRASION_COEFFICIENT,
     }
 
@@ -108,6 +100,9 @@ def main() -> None:
     original_hydrology = hydrology.compute_hydrology
 
     def tapped_hydrology(world_, precipitation, temperature, *a, **k):
+        # --accumulation-scale multiplies input precipitation (the whole water cycle, not
+        # just snowfall: post-D1 snowfall has no separate rate constant).
+        precipitation = np.asarray(precipitation, dtype=float) * args.accumulation_scale
         tap["prior_glacier"] = plates_mod.collect_all_glacier_depth(world_.plates)
         lake = plates_mod.collect_all_lake_depth(world_.plates)
         frozen = (temperature < hydrology.FREEZE_POINT_C) | (tap["prior_glacier"] >= hydrology.GLACIER_VISIBLE_DEPTH_M)

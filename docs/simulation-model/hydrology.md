@@ -241,8 +241,10 @@ discharge, channel-width growth, deposition, geology or lake silt.
 - **Prognostic lake storage** (`lakes.solve_lakes_prognostic`, issue #588): lakes use real
   water-balance units and integrate water volume, liquid and lake ice together, through the
   timestep over the hierarchy.
-  Inflow is direct precipitation on the lagged wet area plus settled dry-cell Budyko runoff
-  and glacier melt, routed as volume (m^3/yr). Dry runoff transit losses use a fixed per-node
+  Inflow is the full wet share of precipitation on the lagged wet area (rain plus snow;
+  wet snow has no glacier to join and no D4 cap hand-off yet, so it enters as liquid)
+  plus settled dry-cell Budyko runoff and glacier melt, routed as volume (m^3/yr). Dry
+  runoff transit losses use a fixed per-node
   fraction at a 100 kyr reference step (`hydrology.river_transit_loss_fraction`), scaled by each
   cell's dry fraction. Glacier melt keeps the existing full per-node transit loss. The breach
   gate applies the same source-specific losses. Wet-cell precipitation travels through lake
@@ -781,16 +783,22 @@ since climate.py runs *before* this module each step).
   marches the ice there in fixed 250 yr substeps (`hydrology._march_glacier`, each one an
   ordinary `step_ice` solve from the current ice). Between substeps the fast inputs are
   recomputed from it: frictional heat (damped: the mean of the last two substeps' heat),
-  the mass-balance surface (on the load-equilibrium deflection of the current ice), and
-  sea level (re-solved from the current ice debit, with the ocean mask). After each pair
-  of substeps the march compares the means of the last two pairs; when they differ by
-  less than 0.1% three times in a row the ice has settled and the rest of the step is
-  held, keeping the mean rates (melt, calving, ledger flows) of the last 6 substeps. A
-  body of ice that never settles marches the whole step. Every step logs substeps,
-  marched/held years, settlement, the volume path, and any tipping-point growth
-  (`ice_sheet.MARCH_LOG`). The old endpoint solve's sea-level bracket, membership loop
-  and deflection loop are gone: each substep reads the current ice, debit, deflection
-  and masks directly.
+  the mass-balance lapse surface (on the load-equilibrium deflection of the current ice),
+  and sea level (re-solved from the current ice debit, with the ocean mask, anchored on
+  the march's own current-step mask rather than last step's cache; Earth's forced straits
+  stay connected). Grounding and flotation keep the opening bed, a one-step lag on the
+  deflection; only the lapse correction sees the equilibrium target. Settle checks run on
+  non-overlapping substep pairs; when the last two pair-means differ by less than 0.1%
+  three checks in a row the ice has settled and the rest of the step is held, keeping the
+  mean rates (melt, calving, ledger flows) of the last 6 substeps. Held losses can never
+  exceed the available ice: the hold scaling clamps to fit, so a sheet that melts away
+  holds ~zero loss instead of booking a transient's mean melt. A body of ice that never
+  settles marches the whole step. Every step logs substeps, marched/held years,
+  settlement, the volume path, and any tipping-point growth (bounded
+  `ice_sheet.MARCH_LOG`, last 64 entries). Each marched step warns about the depth guard
+  at most once, on the summed ledger. A settled march costs ~13-32 ice solves against the
+  endpoint solve's one, which is why steps run over the +15% budget on the diagnosis
+  replays.
 - **Plastic geometry.** Within an extent, the ice takes Nye's (1952) perfectly plastic
   profile, `|grad s| = c / H` with `c = tau_b / (rho_i g)` (11.1 m at 100 kPa) -- a geometry
   approximation, as ICESHEET (Gowan et al. 2016) uses it for reconstruction, not a claim that
