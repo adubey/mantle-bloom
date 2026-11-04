@@ -66,8 +66,9 @@ function Swatch({ kind, color, outline }: { kind: SwatchKind; color: string; out
     case "arrow":
       return (
         <svg width={s} height={s} aria-hidden>
-          <line x1={1} y1={s / 2} x2={s - 4} y2={s / 2} stroke={color} strokeWidth={1.5} />
-          <polygon points={`${s - 1},${s / 2} ${s - 5},${s / 2 - 3} ${s - 5},${s / 2 + 3}`} fill={color} />
+          {/* The map's super arrows (#805): a body that swells from a thin tail, then a head. */}
+          <polygon points={`1,${s / 2 - 0.4} ${s - 6},${s / 2 - 1.3} ${s - 6},${s / 2 + 1.3} 1,${s / 2 + 0.4}`} fill={color} />
+          <polygon points={`${s - 1},${s / 2} ${s - 7},${s / 2 - 3.5} ${s - 7},${s / 2 + 3.5}`} fill={color} />
         </svg>
       );
     case "arc":
@@ -285,6 +286,7 @@ export default function Legend({
           );
         })}
       </div>
+      {spec.note && <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6, maxWidth: 560 }}>{spec.note}</div>}
       </div>
     </details>
   );

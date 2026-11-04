@@ -514,8 +514,10 @@ hemisphere facing the viewer as an orthographic disc (see
   `"temperature"`, `"humidity"`, and `"precipitation"` are heatmaps (each also drawing the
   current coastline -- see [simulation-model/hydrology.md#coastline](simulation-model/hydrology.md#coastline-coastlinepy) --
   since a color-scale view carries no land/ocean cue on its own); `"wind"` and
-  `"oceanCurrents"` draw subsampled direction/magnitude arrows, and `"oceanCurrents"`
-  additionally marks detected ocean swells with small circles. `"wind"` and the land side of
+  `"oceanCurrents"` draw a few long, curved arrows along the prevailing flow, wider where it
+  is faster (see [simulation-model/climate.md](simulation-model/climate.md#climate-climatepy));
+  current arrows are coloured warm (poleward), cold (equatorward) or neutral, and
+  `"oceanCurrents"` also marks detected ocean swells with small circles. `"wind"` and the land side of
   `"temperature"` draw off `World.atmosphere_cfd_state` (a real, continuously time-integrated
   shallow-water wind solve, see
   [simulation-model/climate.md#ocean-atmospheric-fluid-dynamics](simulation-model/climate.md#atmospheric-wind-solver-fluid_dynamicspy-atmosphere_cfdpy))

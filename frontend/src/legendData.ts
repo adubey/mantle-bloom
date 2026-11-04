@@ -50,6 +50,9 @@ export interface LegendSpec {
   // instead of) the single `gradient` above.
   gradients?: { label: string; gradient: LegendGradient }[];
   symbols: LegendSymbol[];
+  // A sentence on how to read the view, shown under the symbols (e.g. where the drawing is
+  // an interpretation rather than the computed field).
+  note?: string;
 }
 
 const rgb = (r: number, g: number, b: number) => `rgb(${r}, ${g}, ${b})`;
@@ -63,7 +66,10 @@ const GLACIER_COLOR = rgb(255, 255, 255);
 const COASTLINE_COLOR = rgb(235, 235, 235);
 const SYMBOL_COLOR = rgb(200, 205, 215);
 const WIND_ARROW_COLOR = rgb(230, 230, 255);
-const CURRENT_ARROW_COLOR = rgb(140, 210, 255);
+// Ocean currents are coloured by direction: warm runs poleward, cold equatorward (#805).
+const WARM_CURRENT_COLOR = rgb(255, 120, 95);
+const COLD_CURRENT_COLOR = rgb(105, 175, 255);
+const NEUTRAL_CURRENT_COLOR = rgb(215, 228, 240);
 const OCEAN_BACKDROP_COLOR = rgb(18, 28, 55);
 const LAND_BACKDROP_COLOR = rgb(40, 46, 34);
 // MOUNTAIN_OVERLAY_RGB / PLAINS_PLATEAU_OVERLAY_RGB -- the Elevation view's own
@@ -641,20 +647,27 @@ export function legendFor(view: MapView): LegendSpec | null {
       return {
         title: "Wind",
         symbols: [
-          { kind: "arrow", color: WIND_ARROW_COLOR, label: "Speed (arrow length)" },
+          { kind: "arrow", color: WIND_ARROW_COLOR, label: "Prevailing wind (wider is faster)" },
           { kind: "square", color: OCEAN_BACKDROP_COLOR, label: "Ocean" },
           { kind: "square", color: LAND_BACKDROP_COLOR, label: "Land" },
         ],
+        note: "Arrows are smoothed: they follow the prevailing wind, not every local turn.",
       };
     case "oceanCurrents":
       return {
         title: "Ocean currents",
         symbols: [
-          { kind: "arrow", color: CURRENT_ARROW_COLOR, label: "Speed (arrow length)" },
+          { kind: "arrow", color: WARM_CURRENT_COLOR, label: "Warm current (runs poleward)" },
+          { kind: "arrow", color: COLD_CURRENT_COLOR, label: "Cold current (runs equatorward)" },
+          { kind: "arrow", color: NEUTRAL_CURRENT_COLOR, label: "Other current (wider is faster)" },
           { kind: "square", color: OCEAN_BACKDROP_COLOR, label: "Ocean" },
           { kind: "square", color: LAND_BACKDROP_COLOR, label: "Land" },
           { kind: "ring", color: "#ffffff", label: "Ocean swell" },
         ],
+        // #805: near coasts the arrows draw the model's coastal turning rule across a band
+        // wider than the model applies it, so they can disagree with the computed current.
+        note:
+          "Arrows are smoothed: they follow the prevailing current, not every local turn. Within about 3° of a coast they show the model's rule that turns currents along the shore, drawn wider than the model applies it, so there they can differ from the computed current.",
       };
     case "biome":
       return {

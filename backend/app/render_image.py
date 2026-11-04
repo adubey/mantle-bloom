@@ -30,7 +30,7 @@ from numba import njit
 from PIL import Image, ImageDraw, ImageFilter
 from scipy.spatial import cKDTree
 
-from . import cratons, geometry, healpix_grid, lithosphere, mantle, plates, plumes, projections
+from . import cratons, flow_arrows, geometry, healpix_grid, lithosphere, mantle, plates, plumes, projections
 from .hydroclimate import biomes, climate, coastline, geology, hydrology, volcanism
 from .elevation_lines import DEFAULT_NODE_DENSITY, PLANET_RADIUS_KM, effective_is_continental_from_codes, line_spacing_rad
 from .world import PROGRESS_HEARTBEAT_INTERVAL_S, HeartbeatClock, World, step_world
@@ -1523,133 +1523,189 @@ def _draw_rotation_arc(
     _draw_arrow_head(draw, head_px, tangent_px, color, ARROWHEAD_LENGTH_PX * pixel_scale)
 
 
-# Arrows are drawn at a coarser subsample of climate.py's own computation grid (90x180 at the
-# default World.climate_density, finer if a world was generated at a higher one -- a fixed
-# stride, so a finer grid draws proportionally more arrows, not fewer/thinner ones) -- one
-# arrow per cell would be unreadable clutter at these sizes.
-ARROW_GRID_STRIDE = 6
-ARROW_MAX_LENGTH_PX = 14.0
-ARROW_LINE_WIDTH_PX = 1.3
+# Super arrows (#805): a few long arrows along the prevailing flow, found by
+# flow_arrows.trace_flow_arrows, in place of one short arrow per sampled cell. Body widths
+# are pixels at REFERENCE_WIDTH_PX, scaled by speed between the two bounds (square root, so
+# a slow arrow is still readable next to a jet).
+FLOW_ARROW_BODY_MIN_PX = 1.6
+FLOW_ARROW_BODY_MAX_PX = 4.6
+# The body tapers from this fraction of its full width at the tail to full width over the
+# first FLOW_ARROW_TAPER_FRACTION of its length, so a run reads as starting thin and
+# swelling toward the head.
+FLOW_ARROW_TAIL_WIDTH_FRACTION = 0.25
+FLOW_ARROW_TAPER_FRACTION = 0.6
+# The head is a triangle with its point at the tip and its flat base further out than the
+# body on both sides. Sizes are multiples of the body's full width, with a floor so a thin
+# arrow still gets a visible head.
+FLOW_ARROW_HEAD_LENGTH_RATIO = 3.0
+FLOW_ARROW_HEAD_HALF_WIDTH_RATIO = 1.5
+FLOW_ARROW_HEAD_MIN_LENGTH_PX = 7.0
+FLOW_ARROW_HEAD_MAX_FRACTION = 0.35  # of the arrow's on-screen length
+# A dark halo under each arrow keeps it legible where it crosses land or a light swell ring.
+FLOW_ARROW_HALO_PX = 1.2
+FLOW_ARROW_HALO_RGBA = (6, 10, 24, 170)
+# PIL draws polygons without anti-aliasing, so arrows go on a layer this many times larger
+# and are shrunk onto the map, which smooths their edges. Above
+# FLOW_ARROW_SUPERSAMPLE_MAX_PIXELS (a 1920x1080 frame, or a globe's wider Behrmann source)
+# the factor drops to FLOW_ARROW_SUPERSAMPLE_LARGE: at 3840x1920 the layer adds about 630 MB
+# of peak memory at 3x against 320 MB at 2x, and MP4 export renders many such frames, while
+# edges at that size need less smoothing.
+FLOW_ARROW_SUPERSAMPLE = 3
+FLOW_ARROW_SUPERSAMPLE_LARGE = 2
+FLOW_ARROW_SUPERSAMPLE_MAX_PIXELS = 1920 * 1080
 SWELL_MARKER_RADIUS_PX = 4.0
 WIND_ARROW_COLOR = (230, 230, 255)
-CURRENT_ARROW_COLOR = (140, 210, 255)
+# Currents are coloured as on atlas maps: warm where the arrow mostly runs poleward (it carries
+# low-latitude water into cooler seas), cold where it mostly runs equatorward, neutral where it
+# runs mostly east-west. "Mostly" means the poleward share of the arrow's length is beyond
+# CURRENT_MERIDIONAL_SHARE either way. Direction rather than the SST anomaly, because the
+# diagnostic SST has almost no zonal contrast: along present-day Earth's arrows it stays
+# within about 1 C of the latitude's mean, boundary currents included (#805).
+WARM_CURRENT_COLOR = (255, 120, 95)
+COLD_CURRENT_COLOR = (105, 175, 255)
+NEUTRAL_CURRENT_COLOR = (215, 228, 240)
+CURRENT_MERIDIONAL_SHARE = 0.4
 CLIMATE_OCEAN_BACKDROP_RGB = np.array([18, 28, 55], dtype=np.uint8)
 CLIMATE_LAND_BACKDROP_RGB = np.array([40, 46, 34], dtype=np.uint8)
 
 
-# HEALPix-equivalent of ARROW_GRID_STRIDE: a (H, W) grid subsamples every 6th row *and* 6th
-# column (a 36x areal thinning), so a flat (npix,) HEALPix grid uses one stride covering the
-# same areal thinning rather than two per-axis strides (there are no separate "rows"/"columns"
-# to stride over independently).
-HEALPIX_ARROW_STRIDE = ARROW_GRID_STRIDE**2
+def _split_at_seams(px: np.ndarray, width_px: float) -> list[np.ndarray]:
+    """Cut a projected polyline where one step jumps across the map, which happens where the
+    path crosses the projection's seam (the antimeridian of the current view)."""
+    if len(px) < 2:
+        return [px]
+    seg = np.hypot(*np.diff(px, axis=0).T)
+    threshold = max(20.0 * float(np.median(seg)), 0.1 * width_px)
+    cuts = np.flatnonzero(seg > threshold) + 1
+    return [piece for piece in np.split(px, cuts) if len(piece) >= 2]
 
 
-def _draw_vector_arrows(
-    draw: ImageDraw.ImageDraw,
-    base_xyz: np.ndarray,
-    u_pts: np.ndarray,
-    v_pts: np.ndarray,
-    east: np.ndarray,
-    north: np.ndarray,
+def _tapered_body(piece: np.ndarray, start_s: float, end_s: float, total_s: float, body_px: float, pad_px: float) -> np.ndarray | None:
+    """Polygon for the part of a polyline `piece` (whose first point is `start_s` pixels along
+    the whole arrow) that lies before `end_s`, with the half-width taper from the tail."""
+    seg = np.hypot(*np.diff(piece, axis=0).T)
+    s = start_s + np.concatenate([[0.0], np.cumsum(seg)])
+    keep = s <= end_s
+    if np.count_nonzero(keep) < 2:
+        return None
+    pts, s = piece[keep], s[keep]
+    tangent = np.gradient(pts, axis=0)
+    tangent /= np.maximum(np.hypot(tangent[:, 0], tangent[:, 1]), 1e-9)[:, None]
+    normal = np.stack([-tangent[:, 1], tangent[:, 0]], axis=-1)
+    ramp = np.clip(s / max(FLOW_ARROW_TAPER_FRACTION * total_s, 1e-9), 0.0, 1.0)
+    ramp = ramp * ramp * (3 - 2 * ramp)  # smoothstep, so the taper has no visible kink
+    half = 0.5 * body_px * (FLOW_ARROW_TAIL_WIDTH_FRACTION + (1 - FLOW_ARROW_TAIL_WIDTH_FRACTION) * ramp) + pad_px
+    return np.concatenate([pts + normal * half[:, None], (pts - normal * half[:, None])[::-1]])
+
+
+def _head_length(body_px: float, min_head_px: float, drawn_px: float) -> float:
+    """An arrow head's length: a multiple of the body width, at least `min_head_px`, and at most
+    FLOW_ARROW_HEAD_MAX_FRACTION of the `drawn_px` arrow so a short arrow isn't all head."""
+    return min(max(FLOW_ARROW_HEAD_LENGTH_RATIO * body_px, min_head_px), FLOW_ARROW_HEAD_MAX_FRACTION * drawn_px)
+
+
+def _arrow_polygons(pieces: list[np.ndarray], body_px: float, pad_px: float, min_head_px: float) -> list[np.ndarray]:
+    """Body and head polygons for one arrow drawn as on-screen `pieces` (tail first), each
+    grown outward by `pad_px` (for the halo). A last piece too short to hold the head (an
+    arrow ending just past the projection seam) is dropped, so the head goes at the end of
+    the piece before it and the arrow keeps its direction."""
+    lengths = [float(np.sum(np.hypot(*np.diff(p, axis=0).T))) for p in pieces]
+    total = sum(lengths)
+    if total <= 0:
+        return []
+    head_len = _head_length(body_px, min_head_px, total)
+    while len(pieces) > 1 and lengths[-1] < head_len:
+        pieces, lengths = pieces[:-1], lengths[:-1]
+    # The head is capped by the length actually drawn, so size it again once the stub is gone.
+    total = sum(lengths)
+    head_len = _head_length(body_px, min_head_px, total)
+    # The body runs a little into the head so no gap shows at the joint.
+    body_end = total - 0.7 * head_len
+    polygons = []
+    start = 0.0
+    for piece, length in zip(pieces, lengths):
+        body = _tapered_body(piece, start, body_end, total, body_px, pad_px)
+        if body is not None:
+            polygons.append(body)
+        start += length
+    last, last_len = pieces[-1], lengths[-1]
+    if last_len < head_len:
+        return polygons
+    tip = last[-1]
+    seg = np.hypot(*np.diff(last, axis=0).T)
+    from_tip = np.concatenate([[0.0], np.cumsum(seg[::-1])])[::-1]  # distance to the tip per point
+    base = np.array([np.interp(head_len, from_tip[::-1], last[::-1, k]) for k in range(2)])
+    direction = tip - base
+    direction /= max(float(np.hypot(*direction)), 1e-9)
+    normal = np.array([-direction[1], direction[0]])
+    half_w = FLOW_ARROW_HEAD_HALF_WIDTH_RATIO * max(body_px, head_len / FLOW_ARROW_HEAD_LENGTH_RATIO) + pad_px
+    tip = tip + direction * 2.0 * pad_px
+    base = base - direction * pad_px
+    polygons.append(np.array([tip, base + normal * half_w, base - normal * half_w]))
+    return polygons
+
+
+def _draw_flow_arrows(
+    image: Image.Image,
+    arrows: "list[flow_arrows.FlowArrow]",
+    colors: list[tuple[int, int, int]],
     projection: str,
     scale: float,
     offset_x: float,
     offset_y: float,
     pixel_scale: float,
-    color: tuple[int, int, int],
     view_rotation: np.ndarray,
-) -> None:
-    """Shared arrow-drawing core for `_draw_climate_vectors` (regular (H, W) grid) and
-    `_draw_climate_vectors_healpix` (HEALPix grid): given a set of sample points with their own
-    world-space position, local (east, north) tangent basis, and (u, v) vector components,
-    draws one direction-and-speed-scaled arrow per point (length scaled by speed relative to
-    the max speed present). Direction is found the same way as the plate rotation arc's
-    tangent: a small offset along the local (east, north) vector, projected, rather than
-    assuming the projection preserves on-screen angles."""
-    speed = np.hypot(u_pts, v_pts)
-    keep = speed > 1e-6
-    if not np.any(keep):
-        return
-    base_xyz, u_pts, v_pts, east, north, speed = base_xyz[keep], u_pts[keep], v_pts[keep], east[keep], north[keep], speed[keep]
-    max_speed = float(speed.max())
-
-    direction = geometry.normalize(u_pts[:, None] * east + v_pts[:, None] * north)
-    offset_xyz = geometry.normalize(base_xyz + 0.02 * direction)
-
-    base_px = _to_pixels(scale, offset_x, offset_y, _project_points(projection, _rotate(base_xyz, view_rotation)))
-    offset_px = _to_pixels(scale, offset_x, offset_y, _project_points(projection, _rotate(offset_xyz, view_rotation)))
-
-    arrow_vec = offset_px - base_px
-    arrow_len = np.hypot(arrow_vec[:, 0], arrow_vec[:, 1])
-    line_width = max(int(round(ARROW_LINE_WIDTH_PX * pixel_scale)), 1)
-    head_len = ARROWHEAD_LENGTH_PX * 0.6 * pixel_scale
-
-    for i in range(len(base_px)):
-        if arrow_len[i] < 1e-6:
+) -> Image.Image:
+    """Draw super arrows onto `image` (RGB) and return the result: each arrow is a tapered
+    body along its spline plus a triangular head, over a dark halo, drawn supersampled and
+    shrunk for smooth edges. Halos go down first so no arrow's halo cuts another's body,
+    and faster arrows are drawn last so they sit on top."""
+    if not arrows:
+        return image
+    ss = FLOW_ARROW_SUPERSAMPLE if image.width * image.height <= FLOW_ARROW_SUPERSAMPLE_MAX_PIXELS else FLOW_ARROW_SUPERSAMPLE_LARGE
+    layer = Image.new("RGBA", (image.width * ss, image.height * ss), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    max_speed = max(a.mean_speed for a in arrows)
+    order = np.argsort([a.mean_speed for a in arrows], kind="stable")
+    shapes = []
+    for i in order:
+        arrow = arrows[i]
+        px = _to_pixels(scale, offset_x, offset_y, _project_points(projection, _rotate(arrow.points_xyz, view_rotation))) * ss
+        pieces = _split_at_seams(px, image.width * ss)
+        if not pieces:
             continue
-        dir_i = arrow_vec[i] / arrow_len[i]
-        length_px = ARROW_MAX_LENGTH_PX * pixel_scale * (0.3 + 0.7 * speed[i] / max_speed)
-        tip = base_px[i] + dir_i * length_px
-        draw.line([tuple(base_px[i]), tuple(tip)], fill=color, width=line_width)
-        _draw_arrow_head(draw, tip, dir_i, color, head_len)
+        frac = np.sqrt(arrow.mean_speed / max_speed) if max_speed > 0 else 1.0
+        body_px = (FLOW_ARROW_BODY_MIN_PX + (FLOW_ARROW_BODY_MAX_PX - FLOW_ARROW_BODY_MIN_PX) * frac) * pixel_scale * ss
+        halo = FLOW_ARROW_HALO_PX * pixel_scale * ss
+        min_head = FLOW_ARROW_HEAD_MIN_LENGTH_PX * pixel_scale * ss
+        shapes.append((_arrow_polygons(pieces, body_px, halo, min_head), _arrow_polygons(pieces, body_px, 0.0, min_head), colors[i]))
+    for halo_polys, _, _ in shapes:
+        for poly in halo_polys:
+            draw.polygon([tuple(p) for p in poly], fill=FLOW_ARROW_HALO_RGBA)
+    for _, fill_polys, color in shapes:
+        for poly in fill_polys:
+            draw.polygon([tuple(p) for p in poly], fill=(*color, 255))
+    layer = layer.resize(image.size, Image.Resampling.LANCZOS)
+    return Image.alpha_composite(image.convert("RGBA"), layer).convert("RGB")
 
 
-def _draw_climate_vectors(
-    draw: ImageDraw.ImageDraw,
-    fields: "climate.ClimateFields",
-    u: np.ndarray,
-    v: np.ndarray,
-    projection: str,
-    scale: float,
-    offset_x: float,
-    offset_y: float,
-    pixel_scale: float,
-    color: tuple[int, int, int],
-    view_rotation: np.ndarray,
-) -> None:
-    """Draws one arrow per subsampled grid cell -- see `_draw_vector_arrows` for the shared
-    drawing core. Direction's local (east, north) basis is derived from each sampled point's
-    own longitude (matching how u/v were computed), since a regular (H, W) grid has no
-    precomputed tangent basis of its own the way a HEALPix grid does."""
-    grid_h, grid_w = u.shape
-    rows = np.arange(0, grid_h, ARROW_GRID_STRIDE)
-    cols = np.arange(0, grid_w, ARROW_GRID_STRIDE)
-    rr, cc = np.meshgrid(rows, cols, indexing="ij")
-    rr, cc = rr.reshape(-1), cc.reshape(-1)
-
-    base_xyz = fields.world_xyz[rr, cc]
-    u_pts, v_pts = u[rr, cc], v[rr, cc]
-
-    # Direction is computed from the *true* (un-rotated) local east/north basis, matching
-    # how u/v were computed -- both the base and offset point are rotated together right
-    # before projecting, same as everywhere else in this module.
-    lon = np.arctan2(base_xyz[:, 1], base_xyz[:, 0])
-    east = np.stack([-np.sin(lon), np.cos(lon), np.zeros_like(lon)], axis=-1)
-    north = np.cross(base_xyz, east)
-    _draw_vector_arrows(draw, base_xyz, u_pts, v_pts, east, north, projection, scale, offset_x, offset_y, pixel_scale, color, view_rotation)
-
-
-def _draw_climate_vectors_healpix(
-    draw: ImageDraw.ImageDraw,
-    grid: "healpix_grid.HealpixGrid",
-    u: np.ndarray,
-    v: np.ndarray,
-    projection: str,
-    scale: float,
-    offset_x: float,
-    offset_y: float,
-    pixel_scale: float,
-    color: tuple[int, int, int],
-    view_rotation: np.ndarray,
-) -> None:
-    """HEALPix analogue of `_draw_climate_vectors`: same subsample-and-draw approach, but reads
-    each sampled pixel's precomputed local (east, north) tangent basis straight off the grid
-    (v2/healpix_grid.py) instead of re-deriving it from longitude."""
-    idx = np.arange(0, grid.npix, HEALPIX_ARROW_STRIDE)
-    base_xyz = grid.world_xyz[idx]
-    u_pts, v_pts = u[idx], v[idx]
-    east, north = grid.east[idx], grid.north[idx]
-    _draw_vector_arrows(draw, base_xyz, u_pts, v_pts, east, north, projection, scale, offset_x, offset_y, pixel_scale, color, view_rotation)
+def _current_arrow_colors(arrows: "list[flow_arrows.FlowArrow]") -> list[tuple[int, int, int]]:
+    """Warm / cold / neutral colour per current arrow, from how much of its length runs
+    poleward (see WARM_CURRENT_COLOR)."""
+    colors = []
+    for arrow in arrows:
+        lat, _ = geometry.xyz_to_latlon(arrow.points_xyz)
+        steps = geometry.angular_distance(arrow.points_xyz[:-1], arrow.points_xyz[1:])
+        length = float(np.sum(steps))
+        poleward = float(np.sum(np.diff(np.abs(lat))))
+        share = poleward / length if length > 0 else 0.0
+        if share > CURRENT_MERIDIONAL_SHARE:
+            colors.append(WARM_CURRENT_COLOR)
+        elif share < -CURRENT_MERIDIONAL_SHARE:
+            colors.append(COLD_CURRENT_COLOR)
+        else:
+            colors.append(NEUTRAL_CURRENT_COLOR)
+    return colors
 
 
 def _draw_swell_markers(
@@ -1666,17 +1722,19 @@ def _draw_swell_markers(
 
 
 def _render_climate_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
-    """Renders one of CLIMATE_VIEWS. `temperature`/`wind` normally draw
-    `world.atmosphere_cfd_state`'s own native HEALPix `(npix,)` wind/air-temperature arrays
-    directly; under `World.wind_model == "diagnostic"` (see that field) the CFD state is
-    frozen and stale, so those two views fall back to `climate.compute_climate`'s own wind_u/
-    wind_v/air_temperature_c instead, resampled onto this grid like every other field. Every
-    other field -- the ocean side of `temperature`, `oceanCurrents`, `humidity`,
-    `precipitation` -- is always a diagnostic `climate.compute_climate` owns (not a
-    CFD state; see climate.py's module docstring), computed on climate's own equirectangular
-    grid and resampled nearest-cell onto this HEALPix grid's cells here. A separate path from
-    the plate-tectonics views below since both data sources cover the whole sphere per-cell,
-    structurally unlike the render grid's ragged lattice."""
+    """Renders one of CLIMATE_VIEWS on the HEALPix grid's cells. The land side of
+    `temperature` draws `world.atmosphere_cfd_state`'s native HEALPix air temperature; under
+    `World.wind_model == "diagnostic"` (see that field) the CFD state is frozen and stale, so
+    it falls back to `climate.compute_climate`'s air_temperature_c. Every other heatmap field
+    -- the ocean side of `temperature`, `humidity`, `precipitation` -- is a diagnostic
+    `climate.compute_climate` owns (see climate.py's module docstring), computed on climate's
+    equirectangular grid and resampled nearest-cell onto the HEALPix cells. `wind` and
+    `oceanCurrents` draw super arrows (`flow_arrows`, #805) traced on climate's grid: the
+    diagnostic wind or the CFD wind resampled back to it, and the diagnostic currents. A
+    separate path from the plate-tectonics views below since both data sources cover the
+    whole sphere per-cell, structurally unlike the render grid's ragged lattice. The globe
+    projection never reaches here: `_render_globe` renders this view in Behrmann and samples
+    only the facing hemisphere, which hides far-side arrows."""
     pixel_scale = _stroke_scale(width)
     padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
@@ -1692,16 +1750,15 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     def _to_healpix(field_hw: np.ndarray) -> np.ndarray:
         return healpix_grid.resample_from_equirect(grid, field_hw, cfields.lat_deg)
 
-    # Wind/air-temperature source for the "wind" and "temperature" views: the live CFD state,
-    # or -- when the diagnostic wind model is selected, leaving that state frozen -- the
-    # diagnostic fields climate.compute_climate rebuilt this call. is_ocean likewise: the CFD
-    # state's copy goes stale in diagnostic mode (refresh_forcing stops running).
+    # Air-temperature source for the "temperature" view: the live CFD state, or -- when the
+    # diagnostic wind model is selected, leaving that state frozen -- the diagnostic fields
+    # climate.compute_climate rebuilt this call. is_ocean likewise: the CFD state's copy goes
+    # stale in diagnostic mode (refresh_forcing stops running). The wind view picks its own
+    # source the same way, below.
     if climate.uses_diagnostic_wind(world):
-        wind_u_hp, wind_v_hp = _to_healpix(cfields.wind_u), _to_healpix(cfields.wind_v)
         land_air_temp_hp = _to_healpix(cfields.air_temperature_c)
         is_ocean_hp = _to_healpix(cfields.is_ocean.astype(np.float64)) > 0.5
     else:
-        wind_u_hp, wind_v_hp = atmosphere.u, atmosphere.v
         land_air_temp_hp = atmosphere.temperature_c
         is_ocean_hp = atmosphere.is_ocean
 
@@ -1726,11 +1783,22 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
         _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
 
     if view == "wind":
-        _draw_climate_vectors_healpix(draw, grid, wind_u_hp, wind_v_hp, projection, scale, offset_x, offset_y, pixel_scale, WIND_ARROW_COLOR, view_rotation)
+        # Arrows are traced on climate's equirectangular grid, so the CFD wind comes back to
+        # it; the diagnostic wind already lives there.
+        if climate.uses_diagnostic_wind(world):
+            wind_u, wind_v = cfields.wind_u, cfields.wind_v
+        else:
+            grid_h, grid_w = cfields.wind_u.shape
+            wind_u = healpix_grid.resample_to_equirect(grid, atmosphere.u, grid_h, grid_w)
+            wind_v = healpix_grid.resample_to_equirect(grid, atmosphere.v, grid_h, grid_w)
+        arrows = flow_arrows.trace_flow_arrows(wind_u, wind_v, np.ones(wind_u.shape, dtype=bool), flow_arrows.WIND_PARAMS)
+        colors = [WIND_ARROW_COLOR] * len(arrows)
+        image = _draw_flow_arrows(image, arrows, colors, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
     elif view == "oceanCurrents":
-        current_u = _to_healpix(cfields.current_u)
-        current_v = _to_healpix(cfields.current_v)
-        _draw_climate_vectors_healpix(draw, grid, current_u, current_v, projection, scale, offset_x, offset_y, pixel_scale, CURRENT_ARROW_COLOR, view_rotation)
+        arrows = flow_arrows.trace_flow_arrows(cfields.current_u, cfields.current_v, cfields.is_ocean, flow_arrows.CURRENT_PARAMS)
+        colors = _current_arrow_colors(arrows)
+        image = _draw_flow_arrows(image, arrows, colors, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+        draw = ImageDraw.Draw(image)
         swell_xyz = cfields.world_xyz[cfields.swell_rows, cfields.swell_cols]
         _draw_swell_markers(draw, swell_xyz, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
 

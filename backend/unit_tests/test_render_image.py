@@ -6,7 +6,7 @@ import av
 import numpy as np
 import pytest
 from PIL import Image
-from app import cratons, geometry, healpix_grid, projections, render_image
+from app import cratons, flow_arrows, geometry, healpix_grid, projections, render_image
 from app.hydroclimate import climate, hydrology
 from app.world import World, generate_world, step_world
 
@@ -1489,3 +1489,104 @@ def test_globe_draws_rivers(globe_world, monkeypatch):
     )
     image = Image.open(io.BytesIO(render_image.render_png(globe_world, "globe", "elevation", 220, 122)))
     assert image.size == (220, 122)
+
+
+def test_flow_arrow_paths_split_where_they_cross_the_projection_seam():
+    # An arrow crossing the view's antimeridian projects to two pieces at opposite map
+    # edges; joining them would draw a stroke straight across the map.
+    px = np.array([[990.0, 50.0], [995.0, 50.0], [1000.0, 50.0], [3.0, 50.0], [8.0, 50.0], [13.0, 50.0]])
+    pieces = render_image._split_at_seams(px, 1000.0)
+    assert [len(p) for p in pieces] == [3, 3]
+
+
+def test_current_arrows_are_warm_poleward_cold_equatorward_neutral_zonal():
+    def arrow(lat0, lat1, lon0, lon1):
+        t = np.linspace(0, 1, 30)
+        return flow_arrows.FlowArrow(geometry.latlon_to_xyz(np.radians(lat0 + (lat1 - lat0) * t), np.radians(lon0 + (lon1 - lon0) * t)), 1.0)
+
+    colors = render_image._current_arrow_colors([
+        arrow(20, 40, 0, 5),  # northern hemisphere, poleward
+        arrow(-20, -40, 0, 5),  # southern hemisphere, poleward
+        arrow(40, 20, 0, 5),  # equatorward
+        arrow(30, 31, 0, 30),  # zonal
+    ])
+    assert colors == [render_image.WARM_CURRENT_COLOR, render_image.WARM_CURRENT_COLOR, render_image.COLD_CURRENT_COLOR, render_image.NEUTRAL_CURRENT_COLOR]
+
+
+def test_flow_arrow_is_drawn_tapered_with_a_head_at_the_tip():
+    # One eastward arrow along the equator, from lon -40 to +40, drawn on a blank
+    # equirectangular-like Behrmann canvas: its colour must cover the path, the body must be
+    # thinner at the tail than near the head, and the head must be wider than the body.
+    width, height = 600, 300
+    lon = np.radians(np.linspace(-40.0, 40.0, 120))
+    arrow = flow_arrows.FlowArrow(geometry.latlon_to_xyz(np.zeros_like(lon), lon), 1.0)
+    image = Image.new("RGB", (width, height), (0, 0, 0))
+    scale, offset_x, offset_y = 150.0, width / 2, height / 2
+    color = (255, 255, 255)
+    out = render_image._draw_flow_arrows(image, [arrow], [color], "behrmann", scale, offset_x, offset_y, 1.0, np.eye(3))
+    bright = np.asarray(out.convert("L")) > 128
+
+    def column_thickness(lon_deg):
+        x = render_image._to_pixels(scale, offset_x, offset_y, render_image._project_points("behrmann", geometry.latlon_to_xyz(np.zeros(1), np.radians([lon_deg]))))[0, 0]
+        return int(np.count_nonzero(bright[:, int(round(x))]))
+
+    tail, body, head = column_thickness(-38.0), column_thickness(20.0), column_thickness(37.0)
+    assert 0 < tail < body < head
+    assert column_thickness(-45.0) == 0 and column_thickness(45.0) == 0
+
+
+def test_flow_arrows_leave_the_image_untouched_when_there_are_none():
+    image = Image.new("RGB", (40, 20), (10, 20, 30))
+    assert render_image._draw_flow_arrows(image, [], [], "behrmann", 10.0, 20.0, 10.0, 1.0, np.eye(3)) is image
+
+
+def test_flow_arrow_keeps_its_head_when_the_seam_leaves_a_short_stub():
+    # An arrow ending just past the seam leaves a stub at the far map edge, too short for a
+    # head; the head goes at the end of the long piece instead so the arrow keeps its direction.
+    long_piece = np.stack([np.linspace(0.0, 200.0, 50), np.full(50, 100.0)], axis=-1)
+    stub = np.array([[997.0, 100.0], [1000.0, 100.0]])
+    polygons = render_image._arrow_polygons([long_piece, stub], 4.0, 0.0, 7.0)
+    head = polygons[-1]
+    assert len(head) == 3
+    np.testing.assert_allclose(head[0], long_piece[-1])
+    assert all(np.max(poly[:, 0]) <= 200.0 + 1e-9 for poly in polygons)
+
+
+def test_globe_hides_flow_arrows_on_the_far_side(monkeypatch):
+    # The globe draws a climate view in Behrmann and samples only the facing hemisphere
+    # (_render_globe), so super arrows need no clipping of their own. A rotated view with one
+    # arrow crossing the limb and one wholly behind it: only the near part of the first may
+    # show, at the disc's edge. Drawn without it, the hidden parts would land well inside.
+    rotation = geometry.rotation_matrix(np.array([0.0, 0.0, 1.0]), np.radians(-40.0))
+    t = np.linspace(0.0, 1.0, 60)
+    crossing = flow_arrows.FlowArrow(geometry.latlon_to_xyz(np.zeros_like(t), np.radians(110.0 + 80.0 * t)), 1.0)
+    hidden = flow_arrows.FlowArrow(geometry.latlon_to_xyz(np.full_like(t, np.radians(30.0)), np.radians(160.0 + 60.0 * t)), 1.0)
+
+    def arrows_only(world, projection, view, width, height, view_rotation):
+        padding = render_image.PADDING_PX * width / render_image.REFERENCE_WIDTH_PX
+        scale, offset_x, offset_y = render_image._fit_view(render_image._sphere_extent(projection), width, height, padding)
+        image = Image.new("RGB", (width, height), (0, 0, 0))
+        out = render_image._draw_flow_arrows(
+            image, [crossing, hidden], [(255, 255, 255)] * 2, projection, scale, offset_x, offset_y, render_image._stroke_scale(width), view_rotation,
+        )
+        return render_image._encode_image(out)
+
+    monkeypatch.setattr(render_image, "_render_climate_view", arrows_only)
+    size = 300
+    png = render_image.render_png(None, projections.GLOBE, "wind", size, size, rotation)
+    bright = np.asarray(Image.open(io.BytesIO(png)).convert("L")) > 128
+    scale, offset_x, _ = render_image._globe_transform(size, size)
+    ys, xs = np.nonzero(bright)
+    assert len(xs) > 0
+    assert np.all((xs + 0.5 - offset_x) / scale > 0.85)
+
+
+def test_flow_arrow_head_is_capped_by_the_length_left_after_a_stub_is_dropped():
+    # A 30 px piece and a 15 px stub: sized from the 45 px total the head would be 15.75 px and
+    # drop the stub, leaving it more than half of the 30 px drawn. It must be re-capped to 35%.
+    long_piece = np.stack([np.linspace(0.0, 30.0, 20), np.full(20, 50.0)], axis=-1)
+    stub = np.array([[985.0, 50.0], [1000.0, 50.0]])
+    polygons = render_image._arrow_polygons([long_piece, stub], 40.0, 0.0, 7.0)
+    tip, base_a, base_b = polygons[-1]
+    head_px = float(np.hypot(*(tip - (base_a + base_b) / 2)))
+    assert head_px <= render_image.FLOW_ARROW_HEAD_MAX_FRACTION * 30.0 + 1e-9
