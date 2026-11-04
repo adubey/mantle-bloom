@@ -6,7 +6,7 @@ import av
 import numpy as np
 import pytest
 from PIL import Image
-from app import cratons, geometry, healpix_grid, projections, render_image
+from app import cratons, flow_arrows, geometry, healpix_grid, projections, render_image
 from app.hydroclimate import climate, hydrology
 from app.world import World, generate_world, step_world
 
@@ -1489,3 +1489,52 @@ def test_globe_draws_rivers(globe_world, monkeypatch):
     )
     image = Image.open(io.BytesIO(render_image.render_png(globe_world, "globe", "elevation", 220, 122)))
     assert image.size == (220, 122)
+
+
+def test_flow_arrow_paths_split_where_they_cross_the_projection_seam():
+    # An arrow crossing the view's antimeridian projects to two pieces at opposite map
+    # edges; joining them would draw a stroke straight across the map.
+    px = np.array([[990.0, 50.0], [995.0, 50.0], [1000.0, 50.0], [3.0, 50.0], [8.0, 50.0], [13.0, 50.0]])
+    pieces = render_image._split_at_seams(px, 1000.0)
+    assert [len(p) for p in pieces] == [3, 3]
+
+
+def test_current_arrows_are_warm_poleward_cold_equatorward_neutral_zonal():
+    def arrow(lat0, lat1, lon0, lon1):
+        t = np.linspace(0, 1, 30)
+        return flow_arrows.FlowArrow(geometry.latlon_to_xyz(np.radians(lat0 + (lat1 - lat0) * t), np.radians(lon0 + (lon1 - lon0) * t)), 1.0)
+
+    colors = render_image._current_arrow_colors([
+        arrow(20, 40, 0, 5),  # northern hemisphere, poleward
+        arrow(-20, -40, 0, 5),  # southern hemisphere, poleward
+        arrow(40, 20, 0, 5),  # equatorward
+        arrow(30, 31, 0, 30),  # zonal
+    ])
+    assert colors == [render_image.WARM_CURRENT_COLOR, render_image.WARM_CURRENT_COLOR, render_image.COLD_CURRENT_COLOR, render_image.NEUTRAL_CURRENT_COLOR]
+
+
+def test_flow_arrow_is_drawn_tapered_with_a_head_at_the_tip():
+    # One eastward arrow along the equator, from lon -40 to +40, drawn on a blank
+    # equirectangular-like Behrmann canvas: its colour must cover the path, the body must be
+    # thinner at the tail than near the head, and the head must be wider than the body.
+    width, height = 600, 300
+    lon = np.radians(np.linspace(-40.0, 40.0, 120))
+    arrow = flow_arrows.FlowArrow(geometry.latlon_to_xyz(np.zeros_like(lon), lon), 1.0)
+    image = Image.new("RGB", (width, height), (0, 0, 0))
+    scale, offset_x, offset_y = 150.0, width / 2, height / 2
+    color = (255, 255, 255)
+    out = render_image._draw_flow_arrows(image, [arrow], [color], "behrmann", scale, offset_x, offset_y, 1.0, np.eye(3))
+    bright = np.asarray(out.convert("L")) > 128
+
+    def column_thickness(lon_deg):
+        x = render_image._to_pixels(scale, offset_x, offset_y, render_image._project_points("behrmann", geometry.latlon_to_xyz(np.zeros(1), np.radians([lon_deg]))))[0, 0]
+        return int(np.count_nonzero(bright[:, int(round(x))]))
+
+    tail, body, head = column_thickness(-38.0), column_thickness(20.0), column_thickness(37.0)
+    assert 0 < tail < body < head
+    assert column_thickness(-45.0) == 0 and column_thickness(45.0) == 0
+
+
+def test_flow_arrows_leave_the_image_untouched_when_there_are_none():
+    image = Image.new("RGB", (40, 20), (10, 20, 30))
+    assert render_image._draw_flow_arrows(image, [], [], "behrmann", 10.0, 20.0, 10.0, 1.0, np.eye(3)) is image

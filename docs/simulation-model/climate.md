@@ -347,19 +347,60 @@ outflow feeding currents, the one river/lake/vegetation-climate coupling still n
 **Rendering.** `render_image.py`'s `CLIMATE_VIEWS` (`temperature`, `wind`, `oceanCurrents`,
 `humidity`, `precipitation`, `biome`) route to `_render_climate_view`, a separate path from
 the plate-tectonics views since the data source is structurally different from the render
-grid's ragged lattice. `temperature`/`wind`/`oceanCurrents` draw the native `(npix,)` CFD
-state arrays directly; `humidity`/`precipitation`/`biome` take `compute_climate_cached`'s
-diagnostic `(H, W)` fields and resample them nearest-cell onto the HEALPix cells.
+grid's ragged lattice. The land side of `temperature` draws the native `(npix,)` CFD state
+directly; the other fields are `compute_climate_cached`'s diagnostic `(H, W)` fields,
+resampled nearest-cell onto the HEALPix cells.
 Heatmap views (temperature/humidity/precipitation) reuse the elevation view's
-color-stop-interpolation technique with their own stop tables; wind/ocean-currents draw
-subsampled arrows (numpy-vectorized projection/direction math, looped only for the
-unavoidable per-arrow PIL draw calls), and ocean currents additionally marks each sampled
-swell point with a small circle. Temperature/humidity/precipitation additionally draw the
+color-stop-interpolation technique with their own stop tables. Wind and ocean currents draw
+super arrows, described below, and ocean currents also marks each sampled swell point with
+a small circle. Temperature/humidity/precipitation additionally draw the
 current coastline (see [Coastline](hydrology.md#coastline-coastlinepy)) -- a color-scale view carries no land/ocean
 information on its own, unlike elevation's own hypsometric coloring. `biome` is categorical,
 not a heatmap -- see [Biomes](#biomes-biomespy) below -- and (like wind/oceanCurrents) skips the
 separate coastline stroke, since its own flat Ocean color already reads as a land/ocean
 boundary on its own.
+
+**Super arrows (#805).** The wind and ocean-current views draw a few long, curved arrows
+along the prevailing flow, as atlas maps of trade winds or ocean gyres do, rather than one
+short arrow per cell. `flow_arrows.trace_flow_arrows` finds them on climate's
+equirectangular grid; under the CFD wind model, the wind view first brings the HEALPix wind
+back to that grid with `healpix_grid.resample_to_equirect`.
+
+1. **Cluster.** The field is smoothed with a Gaussian of `smoothing_deg` (3 degrees),
+   using only valid cells: every cell for wind, ocean cells for currents. Each place is
+   scored by its smoothed speed times the square of its *coherence*: the length of the mean
+   vector over the mean speed, 1 where the neighbourhood flows one way and 0 where it
+   cancels. Lattice points every `seed_spacing_deg` are tried in score order, so the first
+   seeds are the centres of the most coherent, fastest flow.
+2. **Grow.** A seed farther than `separation_deg` from every existing arrow grows into a
+   streamline, forward and then backward, in `step_deg` midpoint steps on the sphere. It
+   stops within `stop_deg` of another arrow, where the valid fraction drops below one half
+   (a current reaching land), where the speed falls below `min_speed_fraction` of the 90th
+   percentile, after turning through `max_turn_deg` in total, or at `max_length_deg`. The
+   turn limit cuts a gyre into a few arcs. Traces shorter than `min_length_deg` are
+   dropped.
+3. **Link.** Points every `control_spacing_deg` along the streamline become the control
+   points of a Catmull-Rom spline, which is the arrow's path.
+
+`WIND_PARAMS` spaces wind arrows 18 degrees apart and `CURRENT_PARAMS` spaces currents 10
+degrees apart. The broad, nearly zonal wind belts otherwise fill with a dense comb of
+parallel arrows. Accepted arrows stamp a one-degree distance grid, so the spacing checks
+take constant time.
+
+`render_image._draw_flow_arrows` draws each arrow as a tapered body, from
+`FLOW_ARROW_TAIL_WIDTH_FRACTION` of its width at the tail, with a triangular head whose base
+is wider than the body. The body width grows with the square root of the arrow's mean speed,
+between `FLOW_ARROW_BODY_MIN_PX` and `FLOW_ARROW_BODY_MAX_PX`. A dark halo goes under every
+arrow. Arrows are drawn at `FLOW_ARROW_SUPERSAMPLE` times the image size and shrunk, so their
+edges are smooth. A path that crosses the view's seam is cut there. Wind arrows are
+`WIND_ARROW_COLOR`. A current arrow is warm (`WARM_CURRENT_COLOR`) when more than
+`CURRENT_MERIDIONAL_SHARE` of its length runs poleward and cold when as much runs
+equatorward; otherwise it is neutral. The colour follows direction, not the SST anomaly,
+because the diagnostic SST has almost no zonal contrast: along present-day Earth's arrows it
+stays within about 1 °C of each latitude's mean.
+
+The arrows only summarise the solved field, so they don't change the climate solve or its
+cost. Tracing takes 40 to 60 ms per view on the default 0.5-degree grid (present-day Earth).
 
 ### Noise drift
 
@@ -772,9 +813,10 @@ unrelated and has no bearing on either FD mode.
 
 ### Rendering
 
-`_render_climate_view` draws `"wind"` and the land side of `"temperature"` straight off
-`World.atmosphere_cfd_state`'s own HEALPix `u`/`v`/`temperature_c`. Every other field -- the
-ocean side of `"temperature"`, `"oceanCurrents"` (arrows + swell markers), `"humidity"`,
+`_render_climate_view` draws the land side of `"temperature"` straight off
+`World.atmosphere_cfd_state`'s own HEALPix `temperature_c`, and traces `"wind"`'s super arrows
+(see [Rendering](#climate-climatepy)) from its `u`/`v`, resampled to climate's grid. Every other
+field -- the ocean side of `"temperature"`, `"oceanCurrents"` (super arrows + swell markers), `"humidity"`,
 `"precipitation"`, `"biome"` -- is a `climate.compute_climate_cached` diagnostic (see
 [Climate](#climate-climatepy)) resampled nearest-cell onto the HEALPix cells. `render_image.render_png`
 degrades to a plain background-only image if the state is somehow `None`, the same "always

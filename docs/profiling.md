@@ -621,7 +621,7 @@ proposed:  ang2pix(node_xyz)  -> scatter onto HealpixGrid(npix ~ N)   -- O(N)
 
 This is a materially smaller and safer change than "migrate the render pipeline to HEALPix"
 (the more invasive alternative -- painting HEALPix pixels directly via `_fill_rects`, the way
-`_draw_climate_vectors_healpix` already does for the wind-vector overlay -- was considered and
+the climate views already do for their backdrops -- was considered and
 set aside for this scope: it would remove the final `O(M)` hop too, but at the cost of porting
 `smooth_biome_field`'s neighbour-vote, `_bilinear_resample`, and the legend/blur/encode chain to
 an irregular flat pixel list, none of which have a HEALPix equivalent today). Worth revisiting

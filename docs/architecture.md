@@ -626,6 +626,8 @@ render_image.py      renders /worlds/{world_id}/render's requested view/resoluti
                      (see simulation-model/rendering-and-inspectors.md#render-image and simulation-model/climate.md#climate),
                      plus /worlds/{world_id}/animate's streamed H.264/MP4 rendering (stream_animation_mp4)
                      and the "speckle" coastal-dither debug overlay (see debugging/map-views.md)
+flow_arrows.py       traces the wind and ocean-current views' super arrows: a few long
+                     streamlines along the prevailing flow (see simulation-model/climate.md#climate)
 persistence.py       whole-World save/load to a single versioned envelope: v5 is a zip of
                      `.npy` arrays plus a JSON manifest (see npz_save.py); v1-v4 pickle saves
                      still load (File > Save/Load World -- see api-reference.md's

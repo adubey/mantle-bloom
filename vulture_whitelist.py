@@ -74,7 +74,6 @@ noise_amplitude  # unused function (backend/app/plates.py:1013)  # noqa: F821
 weighted_mean  # unused function (backend/app/quad_merge.py:193)  # noqa: F821
 src_lat_deg  # unused variable (backend/app/render_image.py:1066)  # noqa: F821
 src_lon_deg  # unused variable (backend/app/render_image.py:1066)  # noqa: F821
-_draw_climate_vectors  # unused function (backend/app/render_image.py:1561)  # noqa: F821
 _.pix_fmt  # unused attribute (backend/app/render_image.py:2952)  # noqa: F821
 _.options  # unused attribute (backend/app/render_image.py:2955)  # noqa: F821
 Accommodation  # unused variable (backend/app/shortening.py:103)  # noqa: F821
