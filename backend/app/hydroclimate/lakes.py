@@ -1064,7 +1064,18 @@ def _deliver_surplus_to_owner(
     _export_at_node(accounting, trace_source or source, sink, volume, is_ocean, depth)
 
 
-def _reroute_final_surplus(accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth, routed_sources):
+def _owner_is_full(accounting, source, leaf_of_node, parent_by_id, current_owners):
+    """Whether the lake body owning `source`'s parent outlet is itself spilling."""
+    target = _parent_outlet_target(source, parent_by_id)
+    if current_owners is None or not 0 <= target < len(leaf_of_node) or leaf_of_node[target] < 0:
+        return True
+    owner = current_owners.get(int(leaf_of_node[target]))
+    return owner is None or id(owner) in accounting.final_spilling_ids
+
+
+def _reroute_final_surplus(
+    accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth, routed_sources, current_owners=None,
+):
     """Send held surplus to the lake body owning its parent outlet before it reaches rivers.
 
     A capped sibling cycle has no room in either child, but its common parent still has an
@@ -1077,10 +1088,17 @@ def _reroute_final_surplus(accounting, leaves, leaf_of_node, parent_by_id, is_oc
     for leaf_id, held in held_surplus:
         source = _lowest_common_ancestor(held.sender, held.receiver, parent_by_id)
         # A returning capped cycle has already tried this owner's outlet. Escalate to
-        # its next ancestor instead of repeating the same transfer (#731).
-        while id(source) in previously_routed and id(source) in parent_by_id:
+        # its next ancestor instead of repeating the same transfer (#731). An owner that
+        # absorbed an earlier, smaller handoff and still has room is untried for this volume
+        # (#794): under large throughflow a later pair can share the same parent outlet.
+        def tried(node):
+            return id(node) in previously_routed and _owner_is_full(
+                accounting, node, leaf_of_node, parent_by_id, current_owners
+            )
+
+        while tried(source) and id(source) in parent_by_id:
             source = parent_by_id[id(source)]
-        if id(source) in previously_routed:
+        if tried(source):
             accounting.cycle_surplus[leaf_id] = held
             continue
         routed_sources.add(id(source))
@@ -1175,8 +1193,10 @@ def _settle_prognostic_slice(
         _release_broken_cycles(accounting, next_bodies)
         changed = {id(body) for body in next_bodies} != set(body_by_id)
         if not changed and not accounting.deferred and accounting.cycle_surplus:
+            owners, _ = _body_leaf_mapping(next_bodies, leaf_of_node)
             _reroute_final_surplus(
-                accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth, routed_surplus_sources
+                accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth, routed_surplus_sources,
+                current_owners=owners,
             )
         if not changed and not accounting.deferred:
             owners, _ = _body_leaf_mapping(next_bodies, leaf_of_node)

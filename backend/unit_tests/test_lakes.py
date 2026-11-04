@@ -1657,3 +1657,32 @@ def test_final_cycle_export_requires_this_sources_completed_handoff_to_a_full_ow
                 current_owners={owner_leaf: owner},
             )
         assert accounting.overflow_out_total == 0.0
+
+
+@pytest.mark.parametrize('owner_full', [False, True])
+def test_reroute_reuses_a_parent_owner_with_room_but_not_a_full_one(owner_full):
+    # Under large throughflow a second cycle can surface under a parent outlet that already
+    # took a smaller handoff. A roomy owner must receive it; a full one is escalated (#794, #731).
+    forest, elevation, previous, _, _ = _capped_pair_fixture(2, 0.0)
+    parent = forest[0]
+    parent.outlet_target_idx = 4
+    left, right = parent.children
+    leaves = [lake for lake in lakes.iter_all_lakes(forest) if not lake.children]
+    ownership = np.full(len(elevation), -1, dtype=np.int64)
+    for leaf_id, leaf in enumerate(leaves):
+        ownership[leaf.members] = leaf_id
+    owner_leaf = int(ownership[4])
+    owner = leaves[owner_leaf]
+    accounting = lakes._new_prognostic_accounting(len(leaves), len(elevation), True)
+    accounting.cycle_surplus[int(ownership[2])] = lakes._CycleSurplus(500., left, right)
+    if owner_full:
+        accounting.final_spilling_ids.add(id(owner))
+    lakes._reroute_final_surplus(
+        accounting, leaves, ownership, {id(left): parent, id(right): parent}, None,
+        previous.copy(), {id(parent)}, current_owners={owner_leaf: owner},
+    )
+    if owner_full:
+        assert accounting.cycle_surplus and not accounting.deferred
+    else:
+        assert accounting.deferred == {owner_leaf: 500.}
+        assert not accounting.cycle_surplus
