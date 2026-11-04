@@ -227,8 +227,15 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
    opening score and compare `mu = 0, 0.5, 1, 2`; resistance values remain fixed at the
    starting values in the table. Choose the score and `mu` only on this set, then freeze
    them and the resistance values before G1. If G1 fails and resistance tuning is needed,
-   stop, revise this RFC with a predeclared resistance sweep and development plan, and rerun
-   the gates; do not change weights ad hoc or tune against G2 seeds.
+   first check the uncertainty in the usable-opportunity fraction. If fewer than 10
+   opportunities were observed or its seed-bootstrap 95% interval (resampling worlds, not
+   individual opportunities) overlaps the two-thirds threshold, treat the result as
+   inconclusive: expand the development set to 50 worlds total
+   with 30 additional predeclared seeds, keep the score and all weights frozen, and rerun
+   G0/G1. If G1 still fails, or if the original interval lay wholly below the threshold,
+   stop and revise this RFC before changing weights; use the predeclared one-at-a-time
+   resistance sweep above, then rerun the gates. Do not change weights ad hoc or tune against
+   G2 seeds.
 2. **G1 — Check that the candidate can make a usable split.** Require that, in the frozen
    development run, at least 10 plate opportunities are observed and at least two thirds
    of opportunities that pass the current split
