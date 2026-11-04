@@ -242,8 +242,8 @@ discharge, channel-width growth, deposition, geology or lake silt.
   water-balance units and integrate water volume, liquid and lake ice together, through the
   timestep over the hierarchy.
   Inflow is the full wet share of precipitation on the lagged wet area (rain plus snow;
-  wet snow has no glacier to join and no D4 cap hand-off yet, so it enters as liquid)
-  plus settled dry-cell Budyko runoff and glacier melt, routed as volume (m^3/yr). Dry
+  wet snow has no glacier to join and no D4 cap hand-off yet, so it enters as liquid
+  and is booked as in-step snowmelt in the ice ledger). Dry
   runoff transit losses use a fixed per-node
   fraction at a 100 kyr reference step (`hydrology.river_transit_loss_fraction`), scaled by each
   cell's dry fraction. Glacier melt keeps the existing full per-node transit loss. The breach
@@ -707,7 +707,8 @@ every day of the year.
 `A` covers the threshold, clipped to all-snow/all-rain outside it, with a continuous ramp
 around the threshold where the amplitude vanishes (a zero-tilt world). Each cell's
 precipitation splits once, into parts that sum to it (`hydrology.glacier_rain_partition_mm`):
-the lake takes the wet share, and on the dry share the ice-covered part's snow is glacier
+the lake takes the wet share (rain plus snow, booked as in-step snowmelt), and on the
+dry share the ice-covered part's snow is glacier
 accumulation (by mass) while its rain runs off the ice, and the bare part's snow melts where
 it falls within the step while its rain runs off. The split reads the opening ice cover (a
 one-step lag on the cover only). It doesn't freeze liquid water: rivers, lakes and the water

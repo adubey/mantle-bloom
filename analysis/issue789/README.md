@@ -127,3 +127,47 @@ branch with it merged in (verified post-merge).
 - Fault test: green since #794/#800 (was the only red test in the suite).
 - F0D replay cannot run (held-out, absent locally and in B2); acceptance item open
   pending the owner's call.
+
+## Rerun after PR #806 review fixes (preregistration)
+
+Written before the rerun arms start; committed with the fix commit below, before any
+rerun output exists. The review found the D1 physical-units carry-through incomplete
+in the ice consumers (PR #806, 15 items); the branch now rescales abrasion, clamps
+settle-hold losses to available ice, opens the glacier water account by mass,
+partitions frozen precipitation by snow share, routes lakes the full wet share with a
+snowmelt ledger entry, evaluates dry runoff at dry intensity with single wet/dry
+weighting, anchors the march sea-level re-solve on the march mask, keeps Earth
+straits forced, resamples frictional heat by nearest node, settles on non-overlapping
+pairs, bounds MARCH_LOG, fixes the debug-script knobs, clamps the snow amplitude,
+and warns per step. It also fixes a D1-base-exposed test bug the rerun hunt found:
+`test_erosion`'s isostasy check compared loaded elevation against the unloaded Airy
+column, invisible while ice was model-unit; it now unloads first (passes on branch
+and on contemporary `origin/main`).
+
+### Tree, baseline and saves
+
+- Branch at the review-fixes commit (this commit), plus a fresh task-specific
+  detached `origin/main` worktree (`mantle-bloom-issue-789-main`, at `5da20be8`).
+  The old baseline worktree (`9e2ae610`) predates #781 (world reorientation),
+  #790/#794 (lake fixes), #758 (ocean hysteresis) and RFC-0017 (moisture), all of
+  which move stepped worlds, so it is retired for code comparison; the recorded
+  `9e2ae6` arms stay as the pre-fix reference. Same three saves (SHAs as recorded
+  above), ten 0.25 Myr steps each, arms one after the other per `compute-budget`.
+- Replay script unchanged (`bin/debug/replay_789_march.py`).
+
+### Expected direction and size
+
+- **Land ledger:** still closes to round-off on both arms (paths untouched).
+- **Ice closure (branch):** IMPROVES on the recorded 0.4-2%: the hold clamp removes
+  the phantom-melt fabrication the reviewer reproduced (-78% on a melting fixture),
+  and non-overlapping settle pairs stop freezing still-moving sheets. Expected ice
+  residuals well under the old maxima; the per-step 0.1% criterion is re-measured,
+  not assumed.
+- **Settlement:** similar or slightly later settling than recorded (pairs need more
+  substeps to confirm); no new never-settles expected on these saves.
+- **Step time:** still OVER budget (march cost structure unchanged); re-reported for
+  the record, no new decision asked.
+- **Baselines shift:** the contemporary-main arm picks up the lake/hysteresis/
+  moisture changes, so its land/ice/sea-level numbers will move from the recorded
+  `9e2ae6` arms; the comparison that matters is branch vs contemporary main.
+- **Variability:** same caveat as before; near-threshold gaps get replicates.

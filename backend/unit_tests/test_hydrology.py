@@ -98,9 +98,12 @@ def test_compute_hydrology_exposes_wet_precipitation_once_in_external_supply():
 
 
 def test_lake_takes_full_wet_share_including_snow():
-    # The lake's supply is its FULL wet share: wet snow has no glacier to join and no D4
-    # cap hand-off yet, so routing only the rain share deletes it; and the lake takes w*P
-    # exactly, not a re-weighted slice of dry rain (#806 review).
+    # The lake's direct supply is its FULL wet share -- rain plus snow -- exactly, not a
+    # re-weighted slice of dry rain (#806 review). Wet snow has no glacier to join and
+    # no D4 cap hand-off yet, so routing only the rain share deletes it; and it cannot
+    # go through the meltwater stream instead, which drops source-pass sink settlement
+    # -- exactly where lake snow starts. The snow share is still booked, as in-step
+    # snowmelt in the ice ledger, so the conservation checks count it.
     theta = 0.05 * np.arange(40)
     elevation = np.full(40, 300.0)
     elevation[0:15] = -100.0
@@ -109,16 +112,24 @@ def test_lake_takes_full_wet_share_including_snow():
     prev_lake_depth[28:31] = 35.0
     world = World(seed=0, plates=[_flow_line_plate_with_lake(0, theta, elevation, prev_lake_depth)])
     precipitation = np.full(40, 800.0)
+    years = 100_000.0
     fields = hydrology.compute_hydrology(
-        world, precipitation, np.full(40, -3.0), years=100_000,
+        world, precipitation, np.full(40, -3.0), years=years,
         seasonal_amplitude_at_nodes=np.full(40, 10.0),
     )
     wet_fraction = hydrology._lagged_lake_wet_fraction(prev_lake_depth, fields.hypsometry)
     wet_fraction[fields.is_ocean] = 0.0
     areas = fields.hypsometry.area_m2
+    snow = ice_sheet.snow_fraction(np.full(40, -3.0), np.full(40, 10.0))
+    assert float(snow.sum()) > 0.0  # the fixture must actually have snow to split
     expected_direct = float((precipitation / 1000.0 * areas * wet_fraction).sum())
     assert expected_direct > 0.0
     assert fields.lake_external_wet_precip_m3_per_yr.sum() == pytest.approx(expected_direct)
+    # The snow part of that direct supply is booked as in-step snowmelt (ice m^3), on
+    # top of whatever bare-ground snow the march itself melted.
+    expected_snow_ice_m3 = float((snow * precipitation / 1000.0 * areas * wet_fraction).sum()) * years
+    expected_snow_ice_m3 *= ice_sheet.RHO_WATER / ice_sheet.RHO_ICE
+    assert fields.ice.ledger.snow_melted_m3 >= expected_snow_ice_m3
 
 
 def test_seasonal_lake_inputs_leave_dry_land_budyko_pet_unchanged():

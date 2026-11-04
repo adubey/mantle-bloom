@@ -140,15 +140,23 @@ def test_apply_erosion_thins_crust_where_it_erodes_and_isostasy_compensates():
     # The crustal column fell by more than the surface did (the rest is isostatic rebound).
     assert np.all((hc_before - hc_after)[eroded] > (elev_before - elev_after)[eroded])
 
-    # elevation still tracks the Airy readout, using each node's crust density.
+    # The unloaded surface still tracks the Airy readout, using each node's crust
+    # density. The comparison must unload the ice first: `elevation` carries the ice-load
+    # depression explicitly (issue #275 phase 3), so under physical ice (RFC 0015 D1,
+    # #789) the loaded surface sits hundreds of metres below the unloaded Airy column.
+    # Model-unit ice depressed it by sub-metre amounts, which is why the loaded read
+    # passed here before.
     resid = []
+    offset = 0
     for plate in plates_after:
+        count = plate.node_count()
         z = lithosphere.isostatic_elevation(
             plate.collect("crustal_thickness_m"),
             plate.collect("mantle_lithosphere_thickness_m"),
             lithosphere.node_crust_density(plate.collect("crust_type_code"), plate.crust_type),
         )
-        resid.append(np.abs(z - plate.collect("elevation")))
+        resid.append(np.abs(z - elev_after[offset:offset + count]))
+        offset += count
     resid = np.concatenate(resid)
     assert np.median(resid) < 1.0
     assert np.percentile(resid, 99) < 25.0

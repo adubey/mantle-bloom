@@ -2351,15 +2351,21 @@ def compute_hydrology(
         precipitation_at_nodes, wet_fraction, _ice_cover_open, _snow_ground, _snow_ice,
     )
     # Liquid water routing (RFC 0015 D1, #789; #806 review): the lake takes its FULL wet
-    # share as liquid supply -- including the snow share, which has no glacier to join on
-    # a lake and no D4 cap hand-off yet, so routing only the rain share deletes it. The
-    # dry rain runs off through Budyko at per-dry-area intensity. Both use whole-cell mm
-    # that already carry their wet/dry weights, so the wet/dry weighting below applies
-    # exactly once: the helper sees only dry rain at dry intensity (wet_fraction zeros make
-    # its direct-wet output trivially zero; the lake instead takes the full wet share
-    # computed here), and the breach gate gets the same pair. Snow never counts as runoff.
+    # share as direct liquid supply -- including the snow share, which melts within the
+    # step. Routing it through the meltwater stream instead would drop it: meltwater
+    # starting on a lake (a routing sink) settles in the source pass, which the lake
+    # budget does not read -- only the river pass feeds meltwater to lakes. The snow
+    # share is still booked, as in-step snowmelt in the ice ledger below, so the
+    # conservation checks count it; without D4's cap hand-off it cannot pile as
+    # snow-ice on lakes. Routing only the rain share and deleting the snow loses it
+    # with no ledger entry (#806 review item 5). The dry rain runs off through Budyko
+    # at per-dry-area intensity. All three use whole-cell mm that already carry their
+    # wet/dry weights, so the wet/dry weighting below applies exactly once: the helper
+    # sees only dry rain at dry intensity, and the breach gate gets the same pair.
+    # Snow never counts as runoff.
     dry_rain_mm = _ice_rain_p + _bare_rain_p
     wet_full_mm = np.asarray(wet_fraction, dtype=float) * np.asarray(precipitation_at_nodes, dtype=float)
+    wet_snow_mm = wet_full_mm * np.asarray(_snow_ground, dtype=float)
     dry_share = np.clip(1.0 - np.asarray(wet_fraction, dtype=float), 0.0, 1.0)
     dry_rain_intensity_mm = np.where(dry_share > 0.0, dry_rain_mm / np.maximum(dry_share, 1e-12), 0.0)
     dry_precip_mm = (1.0 - wet_fraction) * np.asarray(precipitation_at_nodes, dtype=float)
@@ -2379,7 +2385,10 @@ def compute_hydrology(
     )
     # The helper budgets a whole cell; only the dry share carries dry rain, and the lake
     # takes its full wet share (rain plus snow) directly instead of the helper's
-    # re-weighted direct-wet slice (#806 review items 5 and 8).
+    # re-weighted direct-wet slice (#806 review items 5 and 8). The snow share is booked
+    # in the ice ledger below so no drop goes uncounted; it is not routed as meltwater
+    # because the melt stream drops source-pass sink settlement, which is exactly where
+    # lake snow starts.
     dry_runoff_m3 = dry_runoff_m3 * dry_share
     dry_et_m3 = dry_et_m3 * dry_share
     wet_precip_m3 = wet_full_mm / 1000.0 * areas
@@ -2442,6 +2451,14 @@ def compute_hydrology(
         temperature_at_nodes, seasonal_amplitude, _opening_heat,
         _mobile_cover, is_ocean, plates_in_order, years,
     )
+    # The wet snow share melts within the step and never joins the ice, so it books as
+    # snowmelt alongside the march's bare-ground snowmelt. The ledger is m^3 of ice, so
+    # the water volume converts by mass -- the same factor the conservation tests divide
+    # back out of `meltwater_m3` (see `IceLedger`) -- matching the fate the dry snow's
+    # frozen account gives its melted share (#806 review item 5).
+    ice.ledger.snow_melted_m3 += float(
+        np.dot(np.asarray(wet_snow_mm, dtype=float) / 1000.0, areas) * years
+    ) * ice_sheet.RHO_WATER / ice_sheet.RHO_ICE
     ice_flow_target = _ice_surface_flow_target(elevation + new_glacier_depth, neighbor_idx, new_glacier_depth, ice_flow_target)
 
     # Physical water (issue #355 "Water units"). Lakes use the prognostic real-unit balance
