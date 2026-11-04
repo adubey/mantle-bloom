@@ -1,6 +1,6 @@
 # RFC 0018: Plates split along weak paths that are pulling apart
 
-- **Status:** Draft
+- **Status:** Accepted (owner confirmed 2026-11-03)
 - **Date:** 2026-11-03
 - **Related:** #770; RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (current accepted rift proposal; proposed replacement)
 
@@ -34,8 +34,10 @@ requires multiple seeds, measured limits and visible results (principle 9).
 
 The current accepted RFC 0010 proposal detects four kinds of rift setting and routes a growing
 rift around cratons. The new proposal is narrower: keep the current split trigger and replace
-only how it chooses the dividing line. This RFC is intended to supersede RFC 0010 if its
-gates pass and the owner accepts it. Until then, RFC 0010 remains the accepted proposal.
+only how it chooses the dividing line. The project owner accepted this RFC on 2026-11-03,
+authorizing the diagnosis gates. If its gates pass, RFC 0010 will be withdrawn after its open
+gates, issues and dependent references are settled. Until that follow-up is complete, RFC 0010
+remains the active accepted proposal.
 
 ## Proposed solutions
 
