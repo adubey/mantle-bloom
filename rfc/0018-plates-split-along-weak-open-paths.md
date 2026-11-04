@@ -107,9 +107,10 @@ For an eligible plate:
 For each cell `n`, estimate its mass as cell area times the mass per area of its crust and
 mantle lithosphere: `m_n = A_n * (rho_c * Hc_n + rho_m * Hm_n)` (kg). The fitted rotations
 are angular rates in radians/year-equivalent, as in `mantle.flow_at`. For unit position
-vector `p_n` and planet radius `R`, convert them to surface velocities with
-`v(n) = R * (omega x p_n)` (m/year). The potential momentum score before the balance factor
-is:
+vector `p_n` and planet radius `R`, convert the fitted daughter and parent rotations
+`omega_new` and `omega_old` to surface velocities with `v_new(n) = R * (omega_new x p_n)`
+and `v_old(n) = R * (omega_old x p_n)` (m/year). The potential momentum score before the
+balance factor is:
 
 ```text
 P = sum over cells n of m_n * |v_new(n) - v_old(n)|   [kg m/year]
