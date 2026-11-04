@@ -286,6 +286,7 @@ export default function Legend({
           );
         })}
       </div>
+      {spec.note && <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6, maxWidth: 560 }}>{spec.note}</div>}
       </div>
     </details>
   );

@@ -3,8 +3,10 @@
 The views used to draw one short arrow per sampled cell, which shows the local field but not
 its large-scale pattern: a trade-wind belt or a gyre reads as a field of ticks. Atlas maps
 instead draw a few long, curved arrows that follow the prevailing flow. This module finds
-those arrows in a vector field on the climate module's equirectangular grid. It only
-summarises a field the climate model has already solved, so it changes no model state.
+those arrows in a vector field on the climate module's equirectangular grid. It changes no
+model state. The arrows are an interpretation, not a plot: smoothed for legibility, and near
+coasts drawing the model's coastal rule wider than the model applies it, so there they can
+disagree with the computed field (see docs/simulation-model/climate.md).
 
 The method follows the issue's sketch, made concrete as evenly-spaced streamline placement
 (Jobard & Lefer 1997):
@@ -16,12 +18,14 @@ The method follows the issue's sketch, made concrete as evenly-spaced streamline
 2. **Grow.** Each seed grows into a streamline, forward and then backward, one small step at
    a time, until it comes within `stop_deg` of an existing arrow, runs off the valid region
    (land, for currents), slows below the speed floor, has turned `max_turn_deg` net (signed,
-   so a loop is cut but an S-bend is not) or `max_total_turn_deg` in all (so a squiggle
-   along a convoluted coast is cut), or
-   reaches `max_length_deg`. The turn limit splits a gyre into a few arcs, as atlas maps do.
+   so a loop is cut but an S-bend is not) or `max_total_turn_deg` in all (so a squiggle is
+   cut), or reaches `max_length_deg`. The turn limit splits a gyre into a few arcs, as atlas
+   maps do.
 3. **Link.** Points every `control_spacing_deg` along the streamline become the control
-   points of a Catmull-Rom spline, and the spline is the final arrow's path. Drawing (the
-   tapered body and the head) is `render_image._draw_flow_arrows`.
+   points of a B-spline that only approaches them, so the arrow is a smooth sweep like a
+   hand-drawn diagram rather than a copy of every wobble in the trace. Where that would cut
+   a corner over land, the spacing tightens until it doesn't. Drawing (the tapered body and
+   the head) is `render_image._draw_flow_arrows`.
 
 **Coasts.** A current that meets land has to turn. The model turns it with
 `climate._deflect_into_coast`: the part of the flow aimed into land is cancelled and sent
@@ -35,8 +39,8 @@ edge to the full rule `coast_hold_off_deg` from land, so arrows curve before the
 coast and then run parallel to it. The coast normal is the gradient of a smoothed proximity
 to land, steady where the cell outline steps.
 
-In the band the trace steps at most `coast_step_deg` and places spline control points every
-`coast_control_spacing_deg`, so the turn survives the spline. The turned flow is slow more
+In the band the trace steps at most `coast_step_deg`, and control points are
+`coast_control_spacing_deg` apart. The turned flow is slow more
 often near land (on present-day Earth, 14% of cells within a degree of land fall below the
 open-water speed floor, against 3% in open water), mostly where the redirected flow meets
 flow already running the other way along the coast, so the floor falls toward
@@ -49,7 +53,8 @@ spacing rule then keeps other arrows from starting there, so no arrow would show
 Seeding therefore starts at *impact points*, where the coastal rule turns at least
 `min_impact_fraction` of the flow, strongest first. Traced backward, such an arrow runs out
 to sea along the incoming current; traced forward, it follows the turned flow along the
-coast.
+coast. Those coastal stretches show where and which way the model's rule turns flow, not the
+computed current there, which only turns in the cells touching land.
 
 Accepted arrows stamp a distance field on a one-degree grid, so later seeds and traces see
 them in constant time.
@@ -61,7 +66,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from numba import njit
-from scipy import ndimage
+from scipy import interpolate, ndimage
 from scipy.spatial import cKDTree
 
 from .hydroclimate import climate
@@ -77,17 +82,18 @@ class FlowArrowParams:
     min_length_deg: float = 10.0  # shorter traces are dropped, not drawn
     max_length_deg: float = 42.0
     max_turn_deg: float = 130.0  # net turning along one arrow, either way
-    max_total_turn_deg: float = 260.0  # turning summed without sign: caps wiggles
+    max_total_turn_deg: float = 200.0  # turning summed without sign: caps wiggles
     smoothing_deg: float = 3.0  # Gaussian sigma for the prevailing field
     min_speed_fraction: float = 0.2  # speed floor, as a fraction of the 90th-percentile speed
     min_coherence: float = 0.6  # seeds need at least this neighbourhood coherence
     seed_spacing_deg: float = 3.0  # candidate seed lattice
-    control_spacing_deg: float = 4.0  # spline control point spacing
+    control_spacing_deg: float = 6.0  # spline control point spacing
     max_abs_lat_deg: float = 82.0  # east/north degenerate at the poles; stay clear of them
-    coast_band_deg: float = 2.0  # how far from an invalid cell coastal tracing applies
+    coast_band_deg: float = 3.0  # how far from an invalid cell coastal tracing applies
     coast_step_deg: float = 0.2  # step at the coast, capped at 0.4 grid cells
-    coast_control_spacing_deg: float = 2.0  # control point spacing at the coast
-    coast_hold_off_deg: float = 1.0  # arrows run along the coast this far out
+    coast_control_spacing_deg: float = 5.0  # control point spacing at the coast
+    min_control_spacing_deg: float = 1.5  # the tightest spacing tried to keep a spline off land
+    coast_hold_off_deg: float = 1.5  # arrows run along the coast this far out
     coast_normal_smoothing_deg: float = 1.5  # Gaussian sigma for the coast normal
     coast_speed_floor_fraction: float = 0.25  # the speed floor at the coast, as a fraction of the open-water one
     coast_stop_fraction: float = 0.4  # `stop_deg` at the coast, as a fraction of the open-water one
@@ -115,7 +121,11 @@ def trace_flow_arrows(u: np.ndarray, v: np.ndarray, valid: np.ndarray, params: F
     """Super arrows for an eastward `u` / northward `v` field on an `(H, W)` equirectangular
     grid (row 0 at the north pole, column 0 at longitude -180, the climate module's layout).
     `valid` is where the field is defined (all True for wind, ocean for currents); arrows
-    never cross an invalid cell. Deterministic: the same field always gives the same arrows."""
+    never cross an invalid cell. Non-finite cells count as invalid. Deterministic: the same
+    field always gives the same arrows."""
+    finite = np.isfinite(u) & np.isfinite(v)
+    valid = valid & finite
+    u, v = np.where(finite, u, 0.0), np.where(finite, v, 0.0)
     u_s, v_s, coherence = _prevailing_field(u, v, valid, params.smoothing_deg)
     speed = np.hypot(u_s, v_s)
     if not np.any(valid):
@@ -147,6 +157,10 @@ def trace_flow_arrows(u: np.ndarray, v: np.ndarray, valid: np.ndarray, params: F
         fwd, fwd_coast = np.empty((max_points, 3)), np.empty(max_points)
         bwd, bwd_coast = np.empty((max_points, 3)), np.empty(max_points)
         n_fwd, length, net, total = _trace(seed, 1.0, fields, distance, steps, max_length, turn_limits, limits, speed_floors, fwd, fwd_coast)
+        # The backward half gets what the forward half left of each budget. That is exact for
+        # a bend that carries on through the seed. An S-bend's two halves turn opposite ways
+        # and would partly cancel, but each is charged in full: conservative, so it can end
+        # an S-bend early but never exceeds a limit.
         n_bwd, length_b, _, _ = _trace(
             seed, -1.0, fields, distance, steps, max_length - length, turn_limits - np.array([net, total]), limits, speed_floors, bwd, bwd_coast,
         )
@@ -155,8 +169,7 @@ def trace_flow_arrows(u: np.ndarray, v: np.ndarray, valid: np.ndarray, params: F
         path = np.concatenate([bwd[:n_bwd][::-1], fwd[1:n_fwd]])
         path_coast = np.concatenate([bwd_coast[:n_bwd][::-1], fwd_coast[1:n_fwd]])
         _stamp_distance(distance, path, np.radians(params.separation_deg))
-        control = path[_control_indices(path, path_coast, params.control_spacing_deg, params.coast_control_spacing_deg)]
-        arrows.append(FlowArrow(points_xyz=_catmull_rom(control), mean_speed=float(np.mean(_sample_speed(speed, path)))))
+        arrows.append(FlowArrow(points_xyz=_spline_off_land(path, path_coast, valid, params), mean_speed=float(np.mean(_sample_speed(speed, path)))))
     return arrows
 
 
@@ -195,22 +208,26 @@ def _coast_weight(valid: np.ndarray, band_deg: float) -> np.ndarray:
     weight = np.zeros((height, width))
     if valid.all() or not valid.any():
         return weight
-    # Only cells within the band can get a weight; find them cheaply on the grid first. The
-    # column reach is widened for latitude, up to the polar rows where a cell is narrowest.
-    reach_rows = int(np.ceil(band_deg / (180.0 / height))) + 1
+    # Distance is measured cell centre to cell centre, and half a cell is the gap from a
+    # centre to the shore, so the search reaches that much past the band.
+    half_cell_deg = 0.5 * 180.0 / height
+    reach_deg = band_deg + half_cell_deg
+    # Only cells within reach can get a weight; find them cheaply on the grid first. The
+    # column reach is widened for latitude, but only up to 85 degrees: closer to the poles a
+    # cell may get too little weight, which is harmless because arrows stop at
+    # `max_abs_lat_deg` (82 degrees).
+    reach_rows = int(np.ceil(reach_deg / (180.0 / height))) + 1
     lat = np.radians(90.0 - (np.arange(height) + 0.5) * (180.0 / height))
     lon = np.radians(-180.0 + (np.arange(width) + 0.5) * (360.0 / width))
-    cos_floor = max(np.cos(np.radians(90.0 - band_deg - 180.0 / height)), np.cos(np.radians(85.0)))
-    reach_cols = min(int(np.ceil(band_deg / (360.0 / width) / cos_floor)) + 1, width // 2)
+    cos_floor = max(np.cos(np.radians(90.0 - reach_deg - 180.0 / height)), np.cos(np.radians(85.0)))
+    reach_cols = min(int(np.ceil(reach_deg / (360.0 / width) / cos_floor)) + 1, width // 2)
     near = ndimage.maximum_filter(~valid, size=(2 * reach_rows + 1, 2 * reach_cols + 1), mode=("nearest", "wrap")) & valid
     xyz = np.stack(np.broadcast_arrays(np.cos(lat)[:, None] * np.cos(lon)[None, :], np.cos(lat)[:, None] * np.sin(lon)[None, :], np.sin(lat)[:, None]), axis=-1)
     tree = cKDTree(xyz[~valid])
-    chord_band = 2.0 * np.sin(np.radians(band_deg) / 2.0)
-    chord, _ = tree.query(xyz[near], distance_upper_bound=chord_band)
-    # Past the bound the query returns inf: those cells keep weight 0. Distance is measured
-    # cell centre to cell centre; half a cell is the gap to the coast.
+    chord, _ = tree.query(xyz[near], distance_upper_bound=2.0 * np.sin(np.radians(reach_deg) / 2.0))
+    # Past the bound the query returns inf: those cells keep weight 0.
     angle_deg = np.degrees(2.0 * np.arcsin(np.clip(np.where(np.isfinite(chord), chord, 2.0) / 2.0, 0.0, 1.0)))
-    edge_deg = np.maximum(angle_deg - 0.5 * 180.0 / height, 0.0)
+    edge_deg = np.maximum(angle_deg - half_cell_deg, 0.0)
     weight[near] = np.clip(1.0 - edge_deg / band_deg, 0.0, 1.0)
     return weight
 
@@ -266,6 +283,30 @@ def _seed_candidates(speed: np.ndarray, coherence: np.ndarray, valid: np.ndarray
     return np.stack([np.cos(lat_r) * np.cos(lon_r), np.cos(lat_r) * np.sin(lon_r), np.sin(lat_r)], axis=-1)
 
 
+def _spline_off_land(path: np.ndarray, path_coast: np.ndarray, valid: np.ndarray, params: FlowArrowParams) -> np.ndarray:
+    """The smoothest spline through `path` that stays on valid cells: wide control spacing
+    first, tighter until no sample lands on an invalid cell (a smoothed arc can cut across a
+    headland the trace went around), down to `min_control_spacing_deg`."""
+    scale = 1.0
+    while True:
+        spacing = max(params.control_spacing_deg * scale, params.min_control_spacing_deg)
+        coast_spacing = max(params.coast_control_spacing_deg * scale, params.min_control_spacing_deg)
+        curve = _smooth_spline(path[_control_indices(path, path_coast, spacing, coast_spacing)])
+        if valid.all() or valid[_cells(valid.shape, curve)].all() or max(spacing, coast_spacing) <= params.min_control_spacing_deg:
+            return curve
+        scale *= 0.6
+
+
+def _cells(shape: tuple[int, int], points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """(rows, cols) of the grid cells holding `points` (N, 3) on an equirectangular grid."""
+    height, width = shape
+    lat = np.degrees(np.arcsin(np.clip(points[:, 2], -1.0, 1.0)))
+    lon = np.degrees(np.arctan2(points[:, 1], points[:, 0]))
+    rows = np.clip(((90.0 - lat) / 180.0 * height).astype(int), 0, height - 1)
+    cols = np.clip(((lon + 180.0) / 360.0 * width).astype(int), 0, width - 1)
+    return rows, cols
+
+
 def _control_indices(path: np.ndarray, coast: np.ndarray, spacing_deg: float, coast_spacing_deg: float) -> np.ndarray:
     """Indices of spline control points along `path`: one every `spacing_deg` of arc in open
     water, closing to `coast_spacing_deg` by coastal weight, so a turn at a coast survives the
@@ -287,39 +328,32 @@ def _control_indices(path: np.ndarray, coast: np.ndarray, spacing_deg: float, co
     return np.array(indices)
 
 
-def _catmull_rom(control: np.ndarray, sample_deg: float = 0.5) -> np.ndarray:
-    """Centripetal Catmull-Rom spline through `control` (K, 3), sampled about every
-    `sample_deg` and re-projected onto the sphere. Centripetal knots (square root of chord
-    length) keep the curve from looping or overshooting where control points are unevenly
-    spaced, as they are at a coast. The ends repeat their neighbours' step outward."""
-    if len(control) < 3:
+def _smooth_spline(control: np.ndarray, sample_deg: float = 0.5) -> np.ndarray:
+    """Clamped cubic B-spline over `control` (K, 3), sampled about every `sample_deg` and
+    re-projected onto the sphere. It starts and ends at the end control points but only
+    approaches the others, so a wobble in the trace becomes a gentle bend rather than a kink,
+    as in hand-drawn flow diagrams (#805). The cost is that the drawn path can cut inside a
+    tight bend of the traced flow."""
+    count = len(control)
+    if count < 3:
         return control.copy()
-    padded = np.concatenate([control[:1] * 2 - control[1:2], control, control[-1:] * 2 - control[-2:-1]])
-    knots = np.concatenate([[0.0], np.cumsum(np.maximum(np.linalg.norm(np.diff(padded, axis=0), axis=1), 1e-12) ** 0.5)])
-    pieces = []
-    for i in range(1, len(padded) - 2):
-        p0, p1, p2, p3 = padded[i - 1 : i + 3]
-        t0, t1, t2, t3 = knots[i - 1 : i + 3]
-        count = max(int(np.ceil(np.degrees(np.linalg.norm(p2 - p1)) / sample_deg)), 2)
-        t = np.linspace(t1, t2, count, endpoint=False)[:, None]
-        a1 = ((t1 - t) * p0 + (t - t0) * p1) / (t1 - t0)
-        a2 = ((t2 - t) * p1 + (t - t1) * p2) / (t2 - t1)
-        a3 = ((t3 - t) * p2 + (t - t2) * p3) / (t3 - t2)
-        b1 = ((t2 - t) * a1 + (t - t0) * a2) / (t2 - t0)
-        b2 = ((t3 - t) * a2 + (t - t1) * a3) / (t3 - t1)
-        pieces.append(((t2 - t) * b1 + (t - t1) * b2) / (t2 - t1))
-    pieces.append(control[-1:])
-    curve = np.concatenate(pieces)
+    degree = min(3, count - 1)
+    interior = np.arange(1, count - degree, dtype=float)
+    knots = np.concatenate([np.zeros(degree + 1), interior, np.full(degree + 1, count - degree)])
+    spline = interpolate.BSpline(knots, control, degree)
+    # Evaluate densely, then resample evenly by arc length: the spline's parameter runs
+    # unevenly along the curve, fastest near the clamped ends.
+    polygon_deg = np.degrees(np.sum(np.arccos(np.clip(np.sum(control[1:] * control[:-1], axis=1), -1.0, 1.0))))
+    dense = spline(np.linspace(0.0, count - degree, 8 * max(int(np.ceil(polygon_deg / sample_deg)), 2) + 1))
+    dense /= np.linalg.norm(dense, axis=1, keepdims=True)
+    arc = np.concatenate([[0.0], np.cumsum(np.arccos(np.clip(np.sum(dense[1:] * dense[:-1], axis=1), -1.0, 1.0)))])
+    targets = np.linspace(0.0, arc[-1], max(int(np.ceil(np.degrees(arc[-1]) / sample_deg)), 1) + 1)
+    curve = np.stack([np.interp(targets, arc, dense[:, k]) for k in range(3)], axis=-1)
     return curve / np.linalg.norm(curve, axis=1, keepdims=True)
 
 
 def _sample_speed(speed: np.ndarray, points: np.ndarray) -> np.ndarray:
-    height, width = speed.shape
-    lat = np.degrees(np.arcsin(np.clip(points[:, 2], -1.0, 1.0)))
-    lon = np.degrees(np.arctan2(points[:, 1], points[:, 0]))
-    rows = np.clip(((90.0 - lat) / 180.0 * height).astype(int), 0, height - 1)
-    cols = np.clip(((lon + 180.0) / 360.0 * width).astype(int), 0, width - 1)
-    return speed[rows, cols]
+    return speed[_cells(speed.shape, points)]
 
 
 @njit(cache=True)
@@ -452,15 +486,20 @@ def _stamp_distance(distance: np.ndarray, path: np.ndarray, radius: float) -> No
         lon = np.arctan2(p[1], p[0])
         row_lo = max(int((np.pi / 2 - lat - radius) / d_lat), 0)
         row_hi = min(int((np.pi / 2 - lat + radius) / d_lat), occ_h - 1)
+        # The widest the cap around p reaches in longitude, on any row: arcsin(sin r / cos lat),
+        # or all the way round once the cap covers a pole.
+        if abs(lat) + radius >= np.pi / 2:
+            half = np.pi
+        else:
+            half = np.arcsin(min(np.sin(radius) / np.cos(lat), 1.0))
+        if half >= np.pi:
+            col_lo, col_hi = 0, occ_w - 1
+        else:
+            col_lo = int(np.floor((lon - half + np.pi) / d_lon))
+            col_hi = int(np.floor((lon + half + np.pi) / d_lon))
         for row in range(row_lo, row_hi + 1):
             cell_lat = np.pi / 2 - (row + 0.5) * d_lat
             cos_cell_lat = np.cos(cell_lat)
-            if cos_cell_lat * np.pi < radius:
-                col_lo, col_hi = 0, occ_w - 1
-            else:
-                half = min(radius / cos_cell_lat, np.pi)
-                col_lo = int(np.floor((lon - half + np.pi) / d_lon))
-                col_hi = int(np.floor((lon + half + np.pi) / d_lon))
             for c in range(col_lo, col_hi + 1):
                 col = c % occ_w
                 cell_lon = -np.pi + (col + 0.5) * d_lon

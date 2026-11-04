@@ -1538,3 +1538,44 @@ def test_flow_arrow_is_drawn_tapered_with_a_head_at_the_tip():
 def test_flow_arrows_leave_the_image_untouched_when_there_are_none():
     image = Image.new("RGB", (40, 20), (10, 20, 30))
     assert render_image._draw_flow_arrows(image, [], [], "behrmann", 10.0, 20.0, 10.0, 1.0, np.eye(3)) is image
+
+
+def test_flow_arrow_keeps_its_head_when_the_seam_leaves_a_short_stub():
+    # An arrow ending just past the seam leaves a stub at the far map edge, too short for a
+    # head; the head goes at the end of the long piece instead so the arrow keeps its direction.
+    long_piece = np.stack([np.linspace(0.0, 200.0, 50), np.full(50, 100.0)], axis=-1)
+    stub = np.array([[997.0, 100.0], [1000.0, 100.0]])
+    polygons = render_image._arrow_polygons([long_piece, stub], 4.0, 0.0, 7.0)
+    head = polygons[-1]
+    assert len(head) == 3
+    np.testing.assert_allclose(head[0], long_piece[-1])
+    assert all(np.max(poly[:, 0]) <= 200.0 + 1e-9 for poly in polygons)
+
+
+def test_globe_hides_flow_arrows_on_the_far_side(monkeypatch):
+    # The globe draws a climate view in Behrmann and samples only the facing hemisphere
+    # (_render_globe), so super arrows need no clipping of their own. A rotated view with one
+    # arrow crossing the limb and one wholly behind it: only the near part of the first may
+    # show, at the disc's edge. Drawn without it, the hidden parts would land well inside.
+    rotation = geometry.rotation_matrix(np.array([0.0, 0.0, 1.0]), np.radians(-40.0))
+    t = np.linspace(0.0, 1.0, 60)
+    crossing = flow_arrows.FlowArrow(geometry.latlon_to_xyz(np.zeros_like(t), np.radians(110.0 + 80.0 * t)), 1.0)
+    hidden = flow_arrows.FlowArrow(geometry.latlon_to_xyz(np.full_like(t, np.radians(30.0)), np.radians(160.0 + 60.0 * t)), 1.0)
+
+    def arrows_only(world, projection, view, width, height, view_rotation):
+        padding = render_image.PADDING_PX * width / render_image.REFERENCE_WIDTH_PX
+        scale, offset_x, offset_y = render_image._fit_view(render_image._sphere_extent(projection), width, height, padding)
+        image = Image.new("RGB", (width, height), (0, 0, 0))
+        out = render_image._draw_flow_arrows(
+            image, [crossing, hidden], [(255, 255, 255)] * 2, projection, scale, offset_x, offset_y, render_image._stroke_scale(width), view_rotation,
+        )
+        return render_image._encode_image(out)
+
+    monkeypatch.setattr(render_image, "_render_climate_view", arrows_only)
+    size = 300
+    png = render_image.render_png(None, projections.GLOBE, "wind", size, size, rotation)
+    bright = np.asarray(Image.open(io.BytesIO(png)).convert("L")) > 128
+    scale, offset_x, _ = render_image._globe_transform(size, size)
+    ys, xs = np.nonzero(bright)
+    assert len(xs) > 0
+    assert np.all((xs + 0.5 - offset_x) / scale > 0.85)

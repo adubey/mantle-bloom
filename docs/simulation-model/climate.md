@@ -360,11 +360,18 @@ not a heatmap -- see [Biomes](#biomes-biomespy) below -- and (like wind/oceanCur
 separate coastline stroke, since its own flat Ocean color already reads as a land/ocean
 boundary on its own.
 
-**Super arrows (#805).** The wind and ocean-current views draw a few long, curved arrows
+**Super arrows (#805).** The wind and ocean-current views draw a few long, smooth arrows
 along the prevailing flow, as atlas maps of trade winds or ocean gyres do, rather than one
 short arrow per cell. `flow_arrows.trace_flow_arrows` finds them on climate's
 equirectangular grid; under the CFD wind model, the wind view first brings the HEALPix wind
-back to that grid with `healpix_grid.resample_to_equirect`.
+back to that grid with `healpix_grid.resample_to_equirect`. Non-finite cells count as
+invalid.
+
+The arrows are an interpretation of the computed field, not a plot of it. They are smoothed
+for legibility, and near coasts they draw the model's coastal rule over a wider band than the
+model applies it (see **Coasts**). On present-day Earth, 97% of current-arrow length in open
+water lies within 45 degrees of the computed current, but only 48% inside the coastal band.
+The legend says so.
 
 1. **Cluster.** The field is smoothed with a Gaussian of `smoothing_deg` (3 degrees),
    using only valid cells: every cell for wind, ocean cells for currents. Each place is
@@ -377,14 +384,20 @@ back to that grid with `healpix_grid.resample_to_equirect`.
    streamline, forward and then backward, in `step_deg` midpoint steps on the sphere. It
    stops within `stop_deg` of another arrow, where the valid fraction drops below one half
    (a current reaching land), where the speed falls below `min_speed_fraction` of the 90th
-   percentile, after turning `max_turn_deg` net or `max_total_turn_deg` summed without
-   sign, or at `max_length_deg`. Net turning is signed about the local vertical, so a loop
-   is cut while an S-bend is not; the unsigned sum cuts squiggles along a convoluted coast.
+   percentile, after turning `max_turn_deg` (130 degrees) net or `max_total_turn_deg` (200
+   degrees) summed without sign, or at `max_length_deg`. Net turning is signed about the
+   local vertical, so a loop is cut while an S-bend is not; the unsigned sum cuts squiggles.
    The turn limit cuts a gyre into a few arcs. Traces shorter than `min_length_deg` are
    dropped.
-3. **Link.** Points every `control_spacing_deg` of arc along the streamline become the
-   control points of a centripetal Catmull-Rom spline, which is the arrow's path. Centripetal
-   knots keep the curve from overshooting where control points are unevenly spaced.
+3. **Link.** Points every `control_spacing_deg` (6 degrees) of arc along the streamline
+   become the control points of a clamped cubic B-spline, which is the arrow's path. The
+   spline starts and ends on the trace's ends but only approaches the points between, so a
+   wobble in the trace becomes a gentle bend, like a hand-drawn flow diagram. Where that
+   would cut a corner over land, the arrow is rebuilt with control points 0.6 times as far
+   apart, down to `min_control_spacing_deg`, until it stays on water. On present-day Earth
+   this cuts the current arrows' kinks (more than 30 degrees of turning within 2 degrees of
+   arc) from 48 to 7, against an interpolating spline through control points 4 degrees apart.
+   The median angle between an arrow and the computed current rises from 4.6 to 6.2 degrees.
 
 **Coasts.** A current that meets land has to turn. The model does this in
 `_deflect_into_coast`: the part of the flow aimed into land is cancelled and sent along the
@@ -392,14 +405,14 @@ coast at `DEFLECTION_SPEEDUP_FACTOR` times its speed, clockwise around land in t
 hemisphere and anticlockwise in the southern. That happens only in ocean cells touching
 land. On present-day Earth the flow one cell further out still points into the coast, and
 the turn reaches less than 1 degree offshore, so an arrow traced on the smoothed field
-would run into the coast and stop. Within `coast_band_deg` (2 degrees) of land, the tracer
-applies the same rule to its own field. The rule's share grows from nothing at the band's
-edge to all of it `coast_hold_off_deg` (1 degree) from land, so arrows curve before the
-coast and then run parallel to it. The coast normal comes from a smoothed proximity to land,
-so the grid's stepped shoreline doesn't make arrows wiggle. In the band, the trace also
-steps at most `coast_step_deg` and places control points every `coast_control_spacing_deg`,
-so the turn survives the spline. The speed floor and stop distance shrink across the band,
-to `coast_speed_floor_fraction` and `coast_stop_fraction` of their open-water values. Turned
+would run into the coast and stop. Within `coast_band_deg` (3 degrees) of land, the tracer
+applies the same rule to its own smoothed field. The rule's share grows from nothing at the
+band's edge to all of it `coast_hold_off_deg` (1.5 degrees) from land, so arrows curve
+before the coast and then run parallel to it. The coast normal comes from a smoothed
+proximity to land, so the grid's stepped shoreline doesn't make arrows wiggle. In the band,
+the trace steps at most `coast_step_deg`, and control points are `coast_control_spacing_deg`
+apart. The speed floor and stop distance shrink across the band, to
+`coast_speed_floor_fraction` and `coast_stop_fraction` of their open-water values. Turned
 flow is slow more often near land (14% of cells within a degree of land on present-day
 Earth, against 3% in open water), and arrows from both sides reach the same stretch of coast.
 
@@ -407,10 +420,12 @@ Arrows seeded in open water usually run out of length before reaching a coast, s
 starts at *impact points*: cells where the rule turns at least `min_impact_fraction` of the
 flow, strongest first. Traced backward, an impact arrow runs out to sea along the incoming
 current; traced forward, it runs along the coast. On present-day Earth this draws the
-Brazil, Canary, California and Humboldt-like boundary currents, coloured warm or cold as
-expected. The share of current-arrow length within about a degree of land rises from 3.9%
-to 6.9%, and arrow points over land fall from 29 to 6. The arrows show the model's coastal
-rule at a scale a reader can see. The model's own deflection stays a cell or two wide, and
+Brazil, Canary, California, Humboldt and Kuroshio-like boundary currents.
+
+These coastal arrows show where, and which way, the model's rule turns flow. They don't show
+the computed current there. Off Brazil (6 to 16 S), 76% of the band's cells flow north in the
+computed field; only those within about half a degree of land run south. Yet the arrow there
+runs south and is coloured warm. The model's own deflection stays a cell or two wide, and
 that width is set in grid cells, so a finer climate grid narrows it.
 
 `WIND_PARAMS` spaces wind arrows 18 degrees apart and `CURRENT_PARAMS` spaces currents 10
@@ -422,17 +437,21 @@ take constant time.
 `FLOW_ARROW_TAIL_WIDTH_FRACTION` of its width at the tail, with a triangular head whose base
 is wider than the body. The body width grows with the square root of the arrow's mean speed,
 between `FLOW_ARROW_BODY_MIN_PX` and `FLOW_ARROW_BODY_MAX_PX`. A dark halo goes under every
-arrow. Arrows are drawn at `FLOW_ARROW_SUPERSAMPLE` times the image size and shrunk, so their
-edges are smooth. A path that crosses the view's seam is cut there. Wind arrows are
-`WIND_ARROW_COLOR`. A current arrow is warm (`WARM_CURRENT_COLOR`) when more than
-`CURRENT_MERIDIONAL_SHARE` of its length runs poleward and cold when as much runs
-equatorward; otherwise it is neutral. The colour follows direction, not the SST anomaly,
-because the diagnostic SST has almost no zonal contrast: along present-day Earth's arrows it
-stays within about 1 °C of each latitude's mean.
+arrow. Arrows are drawn at `FLOW_ARROW_SUPERSAMPLE` times the image size, or
+`FLOW_ARROW_SUPERSAMPLE_LARGE` above a 1920x1080 frame, and shrunk, so their edges are
+smooth. A path that crosses the view's seam is cut there. If the last piece is too short
+for a head, it is dropped, so the head goes on the piece before it. The globe projection
+renders the view in Behrmann and samples only the facing hemisphere (`_render_globe`), which
+hides far-side arrows and clips one crossing the limb. Wind arrows are `WIND_ARROW_COLOR`. A
+current arrow is warm (`WARM_CURRENT_COLOR`) when more than `CURRENT_MERIDIONAL_SHARE` of
+its length runs poleward and cold when as much runs equatorward; otherwise it is neutral.
+The colour follows direction, not the SST anomaly, because the diagnostic SST has almost no
+zonal contrast: along present-day Earth's arrows it stays within about 1 °C of each
+latitude's mean.
 
-The arrows only summarise the solved field, so they don't change the climate solve or its
-cost. On the default 0.5-degree grid, tracing takes about 70 ms for wind and 120 ms for
-currents on present-day Earth.
+The arrows are drawn from the solved field after the fact, so they don't change the climate
+solve or its cost. On the default 0.5-degree grid, tracing takes about 70 ms for wind and
+130 ms for currents on present-day Earth.
 
 ### Noise drift
 

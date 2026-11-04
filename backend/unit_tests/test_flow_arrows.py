@@ -108,16 +108,45 @@ def test_faster_flow_reports_a_higher_mean_speed():
     assert min(north) > max(south)
 
 
-def test_catmull_rom_passes_through_its_control_points():
-    lat = np.radians([0.0, 5.0, 8.0, 6.0, 10.0])
-    lon = np.radians([0.0, 4.0, 10.0, 16.0, 20.0])
+def test_smooth_spline_keeps_its_ends_and_rounds_corners():
+    # A zigzag control polygon: the spline must start and end on the end points, stay on the
+    # sphere, be sampled about every half degree, and round each 60-degree corner into a bend
+    # with no sharp turn between neighbouring samples.
+    lat = np.radians([0.0, 3.0, 0.0, 3.0, 0.0, 3.0])
+    lon = np.radians([0.0, 3.0, 6.0, 9.0, 12.0, 15.0])
     control = geometry.latlon_to_xyz(lat, lon)
-    curve = flow_arrows._catmull_rom(control)
-    closest = np.min(geometry.angular_distance(control[:, None, :], curve[None, :, :]), axis=1)
-    np.testing.assert_allclose(closest, 0.0, atol=1e-9)
+    curve = flow_arrows._smooth_spline(control)
+    np.testing.assert_allclose(curve[[0, -1]], control[[0, -1]], atol=1e-12)
     np.testing.assert_allclose(np.linalg.norm(curve, axis=1), 1.0)
-    # Sampled about every half degree, with no step much longer than that.
     assert np.degrees(geometry.angular_distance(curve[:-1], curve[1:])).max() < 0.6
+    _, total = _turning_deg(curve)
+    _, polygon_total = _turning_deg(control)
+    assert total < 0.6 * polygon_total
+
+
+def test_one_non_finite_cell_does_not_remove_the_arrows():
+    u, v = _eastward()
+    valid = np.ones((H, W), dtype=bool)
+    expected = len(flow_arrows.trace_flow_arrows(u, v, valid))
+    u = u.copy()
+    u[H // 2, W // 2] = np.nan
+    assert len(flow_arrows.trace_flow_arrows(u, v, valid)) >= expected - 2
+
+
+def test_spacing_grid_marks_every_cell_within_the_radius_at_high_latitude():
+    # The longitude reach of a cap is widest equatorward of its centre; a short arrow near
+    # 80 N must still mark every one-degree cell within the radius.
+    radius = np.radians(18.0)
+    path = geometry.latlon_to_xyz(np.radians([80.0, 80.0]), np.radians([0.0, 2.0]))
+    distance = np.full((180, 360), np.inf)
+    flow_arrows._stamp_distance(distance, path, radius)
+    cell_lat = np.radians(90.0 - (np.arange(180) + 0.5))
+    cell_lon = np.radians(-180.0 + (np.arange(360) + 0.5))
+    cells = geometry.latlon_to_xyz(*np.meshgrid(cell_lat, cell_lon, indexing="ij"))
+    true = np.min(geometry.angular_distance(cells[:, :, None, :], path[None, None, :, :]), axis=-1)
+    inside = true < radius
+    assert np.all(np.isfinite(distance[inside]))
+    np.testing.assert_allclose(distance[inside], true[inside], atol=1e-9)
 
 
 # A 1-degree grid for the coast tests: the coastal band is 2 degrees, one cell on the coarse
@@ -144,6 +173,21 @@ def test_coast_weight_is_one_at_the_coast_and_zero_beyond_the_band():
     assert np.all(weight[row, (lon_deg < 17.0) & (lon_deg > -170.0)] == 0.0)
     assert np.all(weight[~valid] == 0.0)
     assert not flow_arrows._coast_weight(np.ones((H1, W1), dtype=bool), 2.0).any()
+
+
+def test_coast_weight_reaches_cells_next_to_land_on_a_coarse_grid():
+    # On a 2-degree grid (climate density 1.0) cell centres sit a degree from the shore. At
+    # 29 N the second cell out is about 3.5 degrees from the nearest land centre, 2.5 from the
+    # shore, so a 3-degree band must still reach it; measuring the band between centres cut
+    # it off.
+    lon = np.radians(-180.0 + (np.arange(180) + 0.5) * 2.0)
+    valid = np.broadcast_to(~((lon > np.radians(20.0)) & (lon < np.radians(60.0))), (90, 180))
+    weight = flow_arrows._coast_weight(valid, 3.0)
+    lon_deg = np.degrees(lon)
+    row = 30  # 29 N
+    assert weight[row, np.argmin(np.abs(lon_deg - 19.0))] > 0.5
+    assert weight[row, np.argmin(np.abs(lon_deg - 17.0))] > 0.05
+    assert weight[row, np.argmin(np.abs(lon_deg - 13.0))] == 0.0
 
 
 def test_currents_turn_along_a_coast_in_the_models_hemisphere_sense():

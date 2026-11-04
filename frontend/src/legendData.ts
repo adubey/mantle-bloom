@@ -50,6 +50,9 @@ export interface LegendSpec {
   // instead of) the single `gradient` above.
   gradients?: { label: string; gradient: LegendGradient }[];
   symbols: LegendSymbol[];
+  // A sentence on how to read the view, shown under the symbols (e.g. where the drawing is
+  // an interpretation rather than the computed field).
+  note?: string;
 }
 
 const rgb = (r: number, g: number, b: number) => `rgb(${r}, ${g}, ${b})`;
@@ -648,6 +651,7 @@ export function legendFor(view: MapView): LegendSpec | null {
           { kind: "square", color: OCEAN_BACKDROP_COLOR, label: "Ocean" },
           { kind: "square", color: LAND_BACKDROP_COLOR, label: "Land" },
         ],
+        note: "Arrows are smoothed: they follow the prevailing wind, not every local turn.",
       };
     case "oceanCurrents":
       return {
@@ -660,6 +664,10 @@ export function legendFor(view: MapView): LegendSpec | null {
           { kind: "square", color: LAND_BACKDROP_COLOR, label: "Land" },
           { kind: "ring", color: "#ffffff", label: "Ocean swell" },
         ],
+        // #805: near coasts the arrows draw the model's coastal turning rule across a band
+        // wider than the model applies it, so they can disagree with the computed current.
+        note:
+          "Arrows are smoothed: they follow the prevailing current, not every local turn. Within about 3° of a coast they show the model's rule that turns currents along the shore, drawn wider than the model applies it, so there they can differ from the computed current.",
       };
     case "biome":
       return {

@@ -1545,8 +1545,14 @@ FLOW_ARROW_HEAD_MAX_FRACTION = 0.35  # of the arrow's on-screen length
 FLOW_ARROW_HALO_PX = 1.2
 FLOW_ARROW_HALO_RGBA = (6, 10, 24, 170)
 # PIL draws polygons without anti-aliasing, so arrows go on a layer this many times larger
-# and are shrunk onto the map, which smooths their edges.
+# and are shrunk onto the map, which smooths their edges. Above
+# FLOW_ARROW_SUPERSAMPLE_MAX_PIXELS (a 1920x1080 frame, or a globe's wider Behrmann source)
+# the factor drops to FLOW_ARROW_SUPERSAMPLE_LARGE: at 3840x1920 a 3x layer costs about
+# 450 MB more peak memory, and MP4 export renders many such frames, while edges at that
+# size need less smoothing.
 FLOW_ARROW_SUPERSAMPLE = 3
+FLOW_ARROW_SUPERSAMPLE_LARGE = 2
+FLOW_ARROW_SUPERSAMPLE_MAX_PIXELS = 1920 * 1080
 SWELL_MARKER_RADIUS_PX = 4.0
 WIND_ARROW_COLOR = (230, 230, 255)
 # Currents are coloured as on atlas maps: warm where the arrow mostly runs poleward (it carries
@@ -1594,12 +1600,17 @@ def _tapered_body(piece: np.ndarray, start_s: float, end_s: float, total_s: floa
 
 def _arrow_polygons(pieces: list[np.ndarray], body_px: float, pad_px: float, min_head_px: float) -> list[np.ndarray]:
     """Body and head polygons for one arrow drawn as on-screen `pieces` (tail first), each
-    grown outward by `pad_px` (for the halo)."""
+    grown outward by `pad_px` (for the halo). A last piece too short to hold the head (an
+    arrow ending just past the projection seam) is dropped, so the head goes at the end of
+    the piece before it and the arrow keeps its direction."""
     lengths = [float(np.sum(np.hypot(*np.diff(p, axis=0).T))) for p in pieces]
     total = sum(lengths)
     if total <= 0:
         return []
     head_len = min(max(FLOW_ARROW_HEAD_LENGTH_RATIO * body_px, min_head_px), FLOW_ARROW_HEAD_MAX_FRACTION * total)
+    while len(pieces) > 1 and lengths[-1] < head_len:
+        pieces, lengths = pieces[:-1], lengths[:-1]
+    total = sum(lengths)
     # The body runs a little into the head so no gap shows at the joint.
     body_end = total - 0.7 * head_len
     polygons = []
@@ -1643,7 +1654,7 @@ def _draw_flow_arrows(
     and faster arrows are drawn last so they sit on top."""
     if not arrows:
         return image
-    ss = FLOW_ARROW_SUPERSAMPLE
+    ss = FLOW_ARROW_SUPERSAMPLE if image.width * image.height <= FLOW_ARROW_SUPERSAMPLE_MAX_PIXELS else FLOW_ARROW_SUPERSAMPLE_LARGE
     layer = Image.new("RGBA", (image.width * ss, image.height * ss), (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer)
     max_speed = max(a.mean_speed for a in arrows)
@@ -1703,17 +1714,19 @@ def _draw_swell_markers(
 
 
 def _render_climate_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
-    """Renders one of CLIMATE_VIEWS. `temperature`/`wind` normally draw
-    `world.atmosphere_cfd_state`'s own native HEALPix `(npix,)` wind/air-temperature arrays
-    directly; under `World.wind_model == "diagnostic"` (see that field) the CFD state is
-    frozen and stale, so those two views fall back to `climate.compute_climate`'s own wind_u/
-    wind_v/air_temperature_c instead, resampled onto this grid like every other field. Every
-    other field -- the ocean side of `temperature`, `oceanCurrents`, `humidity`,
-    `precipitation` -- is always a diagnostic `climate.compute_climate` owns (not a
-    CFD state; see climate.py's module docstring), computed on climate's own equirectangular
-    grid and resampled nearest-cell onto this HEALPix grid's cells here. A separate path from
-    the plate-tectonics views below since both data sources cover the whole sphere per-cell,
-    structurally unlike the render grid's ragged lattice."""
+    """Renders one of CLIMATE_VIEWS on the HEALPix grid's cells. The land side of
+    `temperature` draws `world.atmosphere_cfd_state`'s native HEALPix air temperature; under
+    `World.wind_model == "diagnostic"` (see that field) the CFD state is frozen and stale, so
+    it falls back to `climate.compute_climate`'s air_temperature_c. Every other heatmap field
+    -- the ocean side of `temperature`, `humidity`, `precipitation` -- is a diagnostic
+    `climate.compute_climate` owns (see climate.py's module docstring), computed on climate's
+    equirectangular grid and resampled nearest-cell onto the HEALPix cells. `wind` and
+    `oceanCurrents` draw super arrows (`flow_arrows`, #805) traced on climate's grid: the
+    diagnostic wind or the CFD wind resampled back to it, and the diagnostic currents. A
+    separate path from the plate-tectonics views below since both data sources cover the
+    whole sphere per-cell, structurally unlike the render grid's ragged lattice. The globe
+    projection never reaches here: `_render_globe` renders this view in Behrmann and samples
+    only the facing hemisphere, which hides far-side arrows."""
     pixel_scale = _stroke_scale(width)
     padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
