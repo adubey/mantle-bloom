@@ -18,7 +18,7 @@ Nothing records unless a `Recorder` is active in the current context (`recording
 inactive cost is one `ContextVar.get()` per span, so the always-on `@traced` decorators on
 coarse functions are safe on the step path. A span entered under the same label as its parent
 merges into the parent (recursion, or a function reached through two wrappers) instead of
-nesting.
+nesting, except that a user-visible span is never merged into a profiling-only one.
 
 `run_traced` runs a progress generator on a worker thread with a recorder whose sink feeds the
 same queue as the generator's own messages. The step and generate endpoints use it so a label
@@ -78,18 +78,44 @@ HYDRO = "Stepping/Hydrometeorology (climate, water & ice)"
 SURFACE = "Stepping/Reshaping the surface"
 
 
-def step_weights(wind_model: str) -> dict[str, float]:
-    """`STEP_WEIGHTS` for a world: the CFD solver's label only counts when it will run."""
-    if wind_model == "cfd":
-        return dict(STEP_WEIGHTS)
-    return {label: weight for label, weight in STEP_WEIGHTS.items() if label != "Solving wind and ocean currents"}
+# Labels whose spans only run with a given setting, so the weights drop them when it is off.
+_PLATE_MOVEMENT_LABELS = frozenset({
+    "Solving mantle flow and plate motion", "Detecting collisions", "Reshaping plates", "Updating faults",
+    "Merging and splitting plates", "Filling seafloor gaps", "Moving magma", "Raising mantle plumes",
+    "Raising volcanoes",
+})
+_CLIMATE_LABELS = frozenset({
+    "Solving wind and ocean currents", "Resolving climate", "Resolving rivers and lakes", "Marching glaciers",
+    "Eroding and depositing sediment", "Forming natural resources",
+})
 
 
-def generate_weights(synthetic_relief: bool) -> dict[str, float]:
-    """`GENERATE_WEIGHTS` for a generation: pseudo-history only runs with synthetic relief."""
-    if synthetic_relief:
-        return dict(GENERATE_WEIGHTS)
-    return {label: weight for label, weight in GENERATE_WEIGHTS.items() if label != "Building pseudo-history"}
+def step_weights(wind_model: str, plate_movement: bool = True, climate_biomes: bool = True) -> dict[str, float]:
+    """`STEP_WEIGHTS` for a world: only the phases that will run count, or the bar would top
+    out early. The CFD solver's label needs `wind_model == "cfd"`, the plate phases
+    `simulate_plate_movement`, and the climate, water and erosion phases `simulate_climate_biomes`."""
+    skipped: set[str] = set()
+    if wind_model != "cfd":
+        skipped.add("Solving wind and ocean currents")
+    if not plate_movement:
+        skipped |= _PLATE_MOVEMENT_LABELS
+    if not climate_biomes:
+        skipped |= _CLIMATE_LABELS
+    return {label: weight for label, weight in STEP_WEIGHTS.items() if label not in skipped}
+
+
+def generate_weights(synthetic_relief: bool, cratons_layout: bool = True, seeds_rivers: bool = True) -> dict[str, float]:
+    """`GENERATE_WEIGHTS` for a generation. The layout phases only run for a random world laid out
+    cratons first (not a sketch or premade world), pseudo-history only with synthetic relief on top
+    of that, and river seeding only when `cratons_first` is set."""
+    skipped: set[str] = set()
+    if not cratons_layout:
+        skipped |= {"Laying out continents and mountain belts", "Dividing the sphere into plates"}
+    if not (synthetic_relief and cratons_layout):
+        skipped.add("Building pseudo-history")
+    if not seeds_rivers:
+        skipped.add("Seeding rivers and glaciers")
+    return {label: weight for label, weight in GENERATE_WEIGHTS.items() if label not in skipped}
 
 
 class _Frame:
@@ -140,8 +166,11 @@ class Recorder:
         self.fired.add(label)
         if group is not None:
             self.groups[label] = group
-        if self.stack and self.stack[-1].label == label:
-            return None  # re-entry under the same label: merged into the open span
+        top = self.stack[-1] if self.stack else None
+        if top is not None and top.label == label and (top.user or not user):
+            # Re-entry under the same label merges into the open span, unless that span is
+            # profiling-only and this one is user-visible: merging would swallow its announcement.
+            return None
         frame = _Frame(label, group, user, time.perf_counter())
         self.stack.append(frame)
         if user:
@@ -232,6 +261,11 @@ class PhaseTracker:
         self.finished: set[str] = set()
         self.fraction = 0.0
 
+    def advance(self, fraction: float) -> float:
+        """Raise the fraction to a progress line's own, so span fractions never fall behind it."""
+        self.fraction = max(self.fraction, min(fraction, 0.99))
+        return self.fraction
+
     def finish(self, label: str) -> None:
         if label in self.weights:
             self.finished.add(label)
@@ -252,8 +286,9 @@ def run_traced(progress: Iterator, weights: dict[str, float]) -> Iterator[tuple]
     pass through, so a run with no spans (a scripted debug world) keeps its old progress. The fraction is the share of `weights` already
     finished, never decreasing, and below 1 until the stream ends. `("heartbeat", f)` and
     `("done", ...)` messages pass through, a heartbeat carrying the latest fraction. An
-    exception in the worker is re-raised here. Abandoning the iterator before it ends leaves the
-    worker running to completion, like the endpoints' `_drain_progress` expects."""
+    exception in the worker is re-raised here. Closing the iterator before it ends (or an error on
+    the consumer's side) blocks until the worker has finished, so a caller that releases a lock
+    after closing it never races the work."""
     events: queue.Queue = queue.Queue()
     tracker = PhaseTracker(weights)
     spans_seen = False
@@ -274,24 +309,31 @@ def run_traced(progress: Iterator, weights: dict[str, float]) -> Iterator[tuple]
 
     thread = threading.Thread(target=work, name="traced-progress", daemon=True)
     thread.start()
-    while True:
-        event = events.get()
-        if event is _DONE:
-            break
-        kind = event[0]
-        if kind == "error":
-            thread.join()
-            raise event[1]
-        if kind == "finished":
-            tracker.finish(event[1])
-        elif kind == "phase":
-            spans_seen = True
-            yield ("phase", tracker.fraction, event[1], event[2])
-        else:
-            message = event[1]
-            if message[0] == "progress" and spans_seen:
-                continue
-            if message[0] == "heartbeat":
-                message = ("heartbeat", tracker.fraction)
-            yield message
-    thread.join()
+    try:
+        while True:
+            event = events.get()
+            if event is _DONE:
+                break
+            kind = event[0]
+            if kind == "error":
+                raise event[1]
+            if kind == "finished":
+                tracker.finish(event[1])
+            elif kind == "phase":
+                spans_seen = True
+                yield ("phase", tracker.fraction, event[1], event[2])
+            else:
+                message = event[1]
+                if message[0] == "progress":
+                    if spans_seen:
+                        continue
+                    # Before any span has spoken: pass the generator's line through, but never
+                    # below it later (the first phase message would otherwise drop the bar to 0).
+                    message = ("progress", tracker.advance(message[1]), *message[2:])
+                elif message[0] == "heartbeat":
+                    message = ("heartbeat", tracker.fraction)
+                yield message
+    finally:
+        # Closed early or failed on the consumer's side: the work must not outlive whoever holds
+        # the session lock and compute gate, so wait for it before they are released.
+        thread.join()

@@ -26,6 +26,7 @@ from . import (
     plumes,
     terranes,
     torque,
+    trace,
     worldsketch,
 )
 from .hydroclimate import (
@@ -1191,11 +1192,14 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
         # some writer left thinner than its craton is clipped to audit_clipped, not to a
         # guessed mechanism (#340); any cratonic volume still vanishing lands in unattributed.
         audit = cratons.PhaseAudit(world)
-        for plate in order:
-            others = [p for p in world.plates if p.plate_id != plate.plate_id]
-            plate.deform(world, others, years, distances.get(plate.plate_id, 0.0))
-            done_units += 1
-            yield ("progress", done_units / total_units, "Reshaping plates")
+        # One span around the whole pass, not one per deform(): a per-plate span would finish (and
+        # credit its share of the overlay's bar) after the first plate (#801).
+        with trace.span("Reshaping plates", trace.PLATES, user=True):
+            for plate in order:
+                others = [p for p in world.plates if p.plate_id != plate.plate_id]
+                plate.deform(world, others, years, distances.get(plate.plate_id, 0.0))
+                done_units += 1
+                yield ("progress", done_units / total_units, "Reshaping plates")
         collision_polarity.finish_deform_pass(world)
         world.suture_root_capacity = None
         audit.settle("audit_clipped_m3")

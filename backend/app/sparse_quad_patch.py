@@ -35,7 +35,7 @@ from typing import Callable, Iterator, Mapping, Sequence
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import geometry, trace
+from . import geometry
 from .elevation_lines import (
     CRUST_TYPE_CONTINENTAL,
     CRUST_TYPE_INHERIT,
@@ -1010,7 +1010,6 @@ class PlateWithSparseQuadPatch(Plate):
         keep = ~mask
         self._replace_topology(self._keys[keep], {name: values[keep] for name, values in self._fields.items()})
 
-    @trace.traced("Reshaping plates", trace.PLATES, user=True)
     def deform(self, world, other_plates: list, years: float, max_distance: float) -> None:
         """Per-step boundary deformation -- see quad_tectonics.py."""
         from . import quad_tectonics

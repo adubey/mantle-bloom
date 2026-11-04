@@ -24,12 +24,14 @@ from scipy.spatial import cKDTree
 from . import (
     auth,
     checkpoint,
+    continent_layout,
     cross_section as cross_section_view,
     debug_worlds,
     faults,
     geodesic,
     geometry,
     healpix_grid,
+    lithosphere_plate,
     mantle,
     persistence,
     plates,
@@ -1147,12 +1149,31 @@ def delete_world(world_id: str) -> dict:
     return {"deleted": world_id}
 
 
+def _step_weights(world: World) -> dict[str, float]:
+    """The overlay-bar weights for the phases this world's next step will run (#801)."""
+    return trace.step_weights(
+        world.wind_model,
+        plate_movement=world.simulate_plate_movement,
+        climate_biomes=world.simulate_climate_biomes,
+    )
+
+
 def _phase_line(message) -> str:
     """The NDJSON progress line for a `trace.run_traced` ("phase", fraction, label, group)
     message (#801): the same shape as a generator progress line plus the label's group
     ("<bar>/<group>"), which the run overlay shows above the label."""
     _, fraction, phase, group = message
     return json.dumps({"type": "progress", "fraction": fraction, "phase": phase, "group": group}) + "\n"
+
+
+def _generate_weights(req, sketch_masks) -> dict[str, float]:
+    """The overlay-bar weights for the phases this generate request will actually run (#801):
+    the layout and pseudo-history phases only for a random cratons-first world, river seeding
+    whenever `cratons_first` is set."""
+    cratons_first = continent_layout.CRATONS_FIRST_DEFAULT if req.cratons_first is None else req.cratons_first
+    synthetic = synthetic_relief.SYNTHETIC_RELIEF_DEFAULT if req.synthetic_relief is None else req.synthetic_relief
+    layout = lithosphere_plate.uses_cratons_first_layout(cratons_first, sketch_masks, req.premade_world_id)
+    return trace.generate_weights(bool(synthetic), cratons_layout=layout, seeds_rivers=bool(cratons_first))
 
 
 def _generate_message_line(message):
@@ -1239,6 +1260,7 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
         # at the gate FIFO instead of 503ing. Guard the release: a generator
         # closed before its first step holds nothing yet.
         acquired = False
+        progress = None
         _compute_gate.acquire()
         try:
             session.lock.acquire()
@@ -1277,8 +1299,7 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
             )
             # Labels come from the spans inside the work (trace.py), merged with the
             # generator's messages on a worker thread so they arrive as the work starts.
-            use_synthetic = synthetic_relief.SYNTHETIC_RELIEF_DEFAULT if req.synthetic_relief is None else req.synthetic_relief
-            progress = trace.run_traced(progress, trace.generate_weights(use_synthetic))
+            progress = trace.run_traced(progress, _generate_weights(req, sketch_masks))
             world = None
             try:
                 for message in progress:
@@ -1312,6 +1333,10 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
                 session.feed.set_name(session.name)
                 yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
         finally:
+            if progress is not None:
+                # Wait for the generation's worker thread before the lock and gate go (#801),
+                # as in step(). A no-op once it has finished.
+                progress.close()
             if acquired:
                 session.lock.release()
                 _compute_gate.release()
@@ -1423,6 +1448,7 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
 
     def _stream():
         acquired = False
+        progress = None
         _compute_gate.acquire()
         try:
             session.lock.acquire()
@@ -1444,7 +1470,7 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
                 return
             # Labels come from the spans inside the work (trace.py), merged with the
             # generator's messages on a worker thread so they arrive as the work starts.
-            progress = trace.run_traced(_step_progress(session, world, req.years), trace.step_weights(world.wind_model))
+            progress = trace.run_traced(_step_progress(session, world, req.years), _step_weights(world))
             try:
                 for message in progress:
                     if not isinstance(message, tuple):
@@ -1483,6 +1509,11 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
             except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
                 yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
         finally:
+            if progress is not None:
+                # Wait for the step's worker thread before the lock and gate go (#801): an
+                # error on this side (a bad message, a failed write) must not leave it stepping
+                # the world under whoever takes the lock next. A no-op once it has finished.
+                progress.close()
             if acquired:
                 # Even a failed step has changed the world partway.
                 _world_changed(session, completed)
@@ -3165,7 +3196,7 @@ def _run_step_once(session: WorldSession, step_years: float, should_step) -> boo
             return True
         completed = False
         runner = session.runner
-        tracker = trace.PhaseTracker(trace.step_weights(world.wind_model))
+        tracker = trace.PhaseTracker(_step_weights(world))
         recorder = trace.Recorder(
             sink=lambda label, group: runner.set_phase(label, group, tracker.fraction),
             on_finish=tracker.finish,

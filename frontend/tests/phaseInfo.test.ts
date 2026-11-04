@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { groupName, phaseLinks } from "../src/phaseInfo.js";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { groupName, PLAYING_FALLBACK_PHASE, phaseLinks, playingPhaseView } from "../src/phaseInfo.js";
 
 // Every phase label the backend streams (backend app/world.py #629) must resolve to at
 // least one working learn link, all of them https. Unknown phases get no box rather
@@ -59,5 +62,54 @@ describe("groupName", () => {
   it("drops the bar from a span group and leaves a bare group alone", () => {
     assert.equal(groupName("Stepping/Hydrometeorology (climate, water & ice)"), "Hydrometeorology (climate, water & ice)");
     assert.equal(groupName("Moving plates"), "Moving plates");
+  });
+});
+
+describe("playingPhaseView", () => {
+  it("shows the runner's phase while a step is under way", () => {
+    assert.deepEqual(playingPhaseView({ label: "Updating faults", group: "Stepping/Moving plates", fraction: 0.22 }), {
+      phase: "Updating faults",
+      group: "Stepping/Moving plates",
+      fraction: 0.22,
+    });
+  });
+
+  it("falls back to the generic line between steps, not the last phase", () => {
+    // Regression for #809 review: a null phase used to keep "Balancing sea level" at ~97%.
+    assert.deepEqual(playingPhaseView(null), { phase: PLAYING_FALLBACK_PHASE, group: null, fraction: undefined });
+  });
+});
+
+// GitHub's heading anchor: lowercase, drop everything but letters, digits, spaces, hyphens and
+// underscores, then spaces become hyphens.
+function githubAnchor(heading: string): string {
+  return heading
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9 _-]/g, "")
+    .replace(/ /g, "-");
+}
+
+describe("docs links", () => {
+  // phaseInfo.ts links into docs/simulation-model on GitHub; check each file and anchor against the
+  // local docs, so a renamed heading fails here instead of showing a dead link in the overlay.
+  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+  const prefix = "https://github.com/adubey/mantle-bloom/blob/main/";
+
+  it("points every docs link at a file and heading that exist", () => {
+    const urls = new Set<string>();
+    for (const phase of BACKEND_PHASES) for (const link of phaseLinks(phase)) if (link.url.startsWith(prefix)) urls.add(link.url);
+    assert.ok(urls.size > 10, "found no docs links to check");
+    for (const url of urls) {
+      const [path, anchor] = url.slice(prefix.length).split("#");
+      const file = join(repoRoot, path);
+      assert.ok(existsSync(file), `${url}: ${path} does not exist`);
+      if (anchor === undefined) continue;
+      const anchors = readFileSync(file, "utf8")
+        .split("\n")
+        .filter((line) => /^#{1,6} /.test(line))
+        .map((line) => githubAnchor(line.replace(/^#{1,6} /, "")));
+      assert.ok(anchors.includes(anchor), `${url}: no heading with anchor #${anchor}`);
+    }
   });
 });

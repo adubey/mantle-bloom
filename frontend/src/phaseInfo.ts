@@ -1,9 +1,8 @@
 // Learn-more links for the run overlay's phase text (#629): one entry per phase label
 // the backend streams can send (see backend app/world.py's generate_world_progress and
-// step_world_progress, and the user-visible spans in app/trace.py). Every URL here was verified
-// to resolve when added (the Wikipedia pages for "Erosion" and "Ocean current" were only
-// rate-limited, not confirmed, when #801 added them); unknown phases get no box rather than a
-// wrong link.
+// step_world_progress, and the user-visible spans in app/trace.py). Wikipedia pages were checked
+// to return 200 when added (all 23, 2026-11-04); tests/phaseInfo.test.ts checks every docs link's
+// file and heading offline. Unknown phases get no box rather than a wrong link.
 
 export interface PhaseLink {
   label: string;
@@ -129,6 +128,22 @@ const PHASE_LINKS: Record<string, PhaseLink[]> = {
 export function groupName(group: string): string {
   const slash = group.indexOf("/");
   return slash === -1 ? group : group.slice(slash + 1);
+}
+
+// What the overlay shows for a playing world, from the runner's published phase (#801). Between
+// steps the phase is null; showing the last one would leave the overlay naming finished work near
+// 100%, so fall back to the generic line with no group and an indeterminate bar.
+export const PLAYING_FALLBACK_PHASE = "Advancing the world";
+
+export interface PlayingPhaseView {
+  phase: string;
+  group: string | null;
+  fraction: number | undefined;
+}
+
+export function playingPhaseView(phase: { label: string; group: string | null; fraction: number } | null): PlayingPhaseView {
+  if (!phase) return { phase: PLAYING_FALLBACK_PHASE, group: null, fraction: undefined };
+  return { phase: phase.label, group: phase.group, fraction: phase.fraction };
 }
 
 export function phaseLinks(phase: string | null | undefined): PhaseLink[] {

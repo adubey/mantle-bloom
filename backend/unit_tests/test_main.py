@@ -2384,6 +2384,63 @@ def test_run_step_publishes_the_step_s_phases_on_the_runner(client, monkeypatch)
     assert client.get("/world/run").json()["phase"] is None
 
 
+def test_a_step_stream_that_fails_on_this_side_waits_for_the_worker_before_unlocking(client, monkeypatch):
+    # Regression (#809 review): the step runs on a worker thread, so an error while writing the
+    # stream (here a failing phase line) must not release the session lock and compute gate while
+    # the worker is still stepping the world.
+    import time as _time
+
+    from app import trace
+
+    @trace.traced("Updating faults", trace.PLATES, user=True)
+    def faults():
+        pass
+
+    finished = []
+
+    def fake_progress(session, world, years):
+        faults()  # announces a phase, which the consumer then fails to write
+        _time.sleep(0.2)  # the work is still running when the consumer fails
+        finished.append(True)
+        yield ("progress", 1.0, "Balancing sea level")
+
+    def failing_line(message):
+        raise ValueError("cannot write the line")
+
+    _post_generate(client, json={"seed": 5, "num_plates": 2, "node_density": 0.5})
+    monkeypatch.setattr(main, "_step_progress", fake_progress)
+    monkeypatch.setattr(main, "_phase_line", failing_line)
+    unlocked_with = []
+    monkeypatch.setattr(main, "_world_changed", lambda session, completed: unlocked_with.append(list(finished)))
+
+    lines = [json.loads(line) for line in _post_step(client, json={"years": 1_000.0}).text.splitlines() if line.strip()]
+
+    assert lines[-1]["type"] == "error"
+    assert unlocked_with == [[True]]  # the worker had finished by the time the lock was released
+
+
+def test_generate_weights_follow_the_request(client, monkeypatch):
+    # A sketch or premade world skips the cratons-first layout phases, so the bar must not wait for them.
+    from app import trace
+
+    captured = {}
+
+    def fake_run_traced(progress, weights):
+        captured["weights"] = weights
+        return progress
+
+    monkeypatch.setattr(trace, "run_traced", fake_run_traced)
+    monkeypatch.setattr(main, "generate_world_progress", lambda seed, **kwargs: iter([("done", object())]))
+    monkeypatch.setattr(main, "_set_world", lambda session, world: None)
+    monkeypatch.setattr(main, "_summary", lambda session, world: {"seed": 7})
+
+    _post_generate(client, json={"seed": 7, "cratons_first": True})
+    assert "Dividing the sphere into plates" in captured["weights"]
+    _post_generate(client, json={"seed": 7, "cratons_first": False})
+    assert "Dividing the sphere into plates" not in captured["weights"]
+    assert "Seeding rivers and glaciers" not in captured["weights"]
+
+
 @pytest.fixture
 def mounted_frontend(tmp_path):
     """A stand-in `vite build` output mounted on the real app, as the Railway image does

@@ -32,6 +32,7 @@ import Legend from "./Legend";
 import MeasureOverlay from "./MeasureOverlay";
 import ProgressBar from "./ProgressBar";
 import RunOverlay from "./RunOverlay";
+import { PLAYING_FALLBACK_PHASE, playingPhaseView } from "./phaseInfo";
 import ModalShell from "./ModalShell";
 import AdminSession from "./AdminSession";
 import ProbePopup from "./ProbePopup";
@@ -934,6 +935,9 @@ export default function App() {
     if (s.world_id !== worldIdRef.current) return;
     setBusyKind("load");
     setBusy(true);
+    setGenProgress(undefined);
+    setRunPhase(null);
+    setRunGroup(null);
     setError(null);
     try {
       setSummary(s);
@@ -1507,7 +1511,9 @@ export default function App() {
     // Stepping starts on the progress line, not the pop-out overlay (#653): the toolbar's
     // Stop button stays clickable either way, and the line's pop-out icon re-opens it.
     setOverlayCollapsed(true);
-    setRunPhase("Advancing the world");
+    setRunPhase(PLAYING_FALLBACK_PHASE);
+    setRunGroup(null);
+    setGenProgress(undefined);
     try {
       setPlaying((await setRunState(worldIdRef.current!, true, stepYears)).running);
     } catch (e) {
@@ -1553,19 +1559,21 @@ export default function App() {
     const timer = window.setInterval(() => {
       fetchRunState(worldId)
         .then((run) => {
-          if (cancelled || worldIdRef.current !== worldId || !run.phase) return;
-          setRunPhase(run.phase.label);
-          setRunGroup(run.phase.group);
-          setGenProgress(run.phase.fraction);
+          if (cancelled || worldIdRef.current !== worldId) return;
+          const view = playingPhaseView(run.phase);
+          setRunPhase(view.phase);
+          setRunGroup(view.group);
+          setGenProgress(view.fraction);
         })
         .catch(() => {
           // best-effort: the follow loop below reports a refused or failed poll
         });
     }, RUN_PHASE_POLL_MS);
+    // Not resetting genProgress here: this cleanup also runs when the selection moves on, and
+    // that must not wipe a Generate or load that is mid-run. The follow loop's finish() does.
     return () => {
       cancelled = true;
       window.clearInterval(timer);
-      setGenProgress(undefined);
     };
   }, [playing, worldId]);
 
@@ -1580,6 +1588,7 @@ export default function App() {
       setPlaying(false);
       setStopping(false);
       setRunPhase(null);
+      setGenProgress(undefined);
     };
     (async () => {
       let runVersion: number | undefined;
@@ -1625,7 +1634,7 @@ export default function App() {
         setPlaying(true);
         // Same collapsed default as a fresh Play press above (#653).
         setOverlayCollapsed(true);
-        setRunPhase("Advancing the world");
+        setRunPhase(PLAYING_FALLBACK_PHASE);
       })
       .catch(() => {
         // best-effort: without it, Play still shows the run's state once pressed

@@ -316,19 +316,21 @@ mechanism (#801). A *span* names a stretch of work and the user-visible group it
 `user=True` span is a label the overlay shows, a plain span is profiling detail. Spans nest by
 call stack, but the group is stated at the span, because climate, rivers, lakes and glaciers run
 inside `erosion.apply_erosion` and belong to "Hydrometeorology (climate, water & ice)" while
-erosion belongs to "Reshaping the surface". The user-visible spans are `@trace.traced(label,
-group, user=True)` decorators on about 22 coarse functions (plate motion, faults, gap filling,
-climate, hydrology, erosion, ...). Nothing records unless a `Recorder` is active in the current
+erosion belongs to "Reshaping the surface". The 22 user-visible spans are `@trace.traced(label,
+group, user=True)` decorators on 21 coarse functions (plate motion, faults, gap filling,
+climate, hydrology, erosion, ...) and one `trace.span` around the plate-deform loop. Nothing records unless a `Recorder` is active in the current
 context, so an unrecorded span costs one `ContextVar` lookup.
 
 Two consumers install a recorder. The `/worlds/{world_id}/step` and `/generate` endpoints run
 the progress generator on a worker thread through `trace.run_traced`, which merges span events
 with the generator's messages so a label reaches the client when the work *starts*; a generator
-can only yield between its own statements, and erosion is one statement. A running world
+can only yield between its own statements, and erosion is one statement. The endpoints close the
+stream before releasing the session lock and compute gate, which joins the worker, so an error on
+the request side never leaves it stepping the world unlocked. A running world
 (`_run_step_once`) publishes the same events on its `WorldRunner`, and `GET /worlds/{world_id}/run`
 returns them as `phase`. The bar's fraction is the share of each phase's typical time
-(`trace.STEP_WEIGHTS`, `GENERATE_WEIGHTS`, measured on a young world) already finished, held
-below 1. A mature world spends its time differently, so the fraction is a guide, not a clock.
+(`trace.STEP_WEIGHTS`, `GENERATE_WEIGHTS`, measured on a young world, minus the phases the
+world's settings skip) already finished, held below 1. A mature world spends its time differently, so the fraction is a guide, not a clock.
 
 `bin/debug/profile_phases.py` is the other consumer: it wraps about 50 more functions in plain
 spans at runtime and prints the tree. Adding a user-visible label means decorating the function,

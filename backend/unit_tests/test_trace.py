@@ -7,6 +7,10 @@ import pytest
 from app import trace
 
 
+# A user-visible span in the app: a decorator or a `with trace.span(...)`.
+_USER_SPAN = re.compile(r'(?:@trace\.traced|trace\.span)\("([^"]+)",[^\n]*user=True')
+
+
 def test_span_is_a_no_op_without_a_recorder():
     calls = []
 
@@ -130,7 +134,7 @@ def test_every_user_visible_span_label_has_learn_links_in_the_frontend():
     app_dir = Path(trace.__file__).parent
     labels = set()
     for source in app_dir.rglob("*.py"):
-        labels.update(re.findall(r'@trace\.traced\("([^"]+)",[^\n]*user=True', source.read_text()))
+        labels.update(_USER_SPAN.findall(source.read_text()))
     assert labels, "found no user-visible spans to check"
     phase_info = (app_dir.parents[1] / "frontend" / "src" / "phaseInfo.ts").read_text()
     missing = sorted(label for label in labels if f'"{label}": [' not in phase_info)
@@ -141,6 +145,75 @@ def test_every_weighted_label_is_a_real_user_visible_span():
     app_dir = Path(trace.__file__).parent
     labels = set()
     for source in app_dir.rglob("*.py"):
-        labels.update(re.findall(r'@trace\.traced\("([^"]+)",[^\n]*user=True', source.read_text()))
+        labels.update(_USER_SPAN.findall(source.read_text()))
     stale = sorted((set(trace.STEP_WEIGHTS) | set(trace.GENERATE_WEIGHTS)) - labels)
     assert not stale, f"weights for labels that no span emits: {stale}"
+
+
+def test_a_user_span_inside_a_profiling_span_of_the_same_label_is_still_announced():
+    # Regression (#809 review): merging a user span into an open profiling-only one of the same
+    # label swallowed its announcement and its finish.
+    announced, finished = [], []
+    with trace.recording(trace.Recorder(sink=lambda label, group: announced.append(label), on_finish=finished.append)):
+        with trace.span("Resolving climate"):  # profiling-only wrapper
+            with trace.span("Resolving climate", trace.HYDRO, user=True):
+                pass
+    assert announced == ["Resolving climate"]
+    assert finished == ["Resolving climate"]
+
+
+def test_run_traced_waits_for_the_worker_when_it_is_closed_early():
+    # Regression (#809 review): a consumer-side failure used to leave the worker stepping the
+    # world after the endpoint released the session lock and compute gate.
+    done = []
+
+    @trace.traced("Updating faults", trace.PLATES, user=True)
+    def faults():
+        pass
+
+    def slow():
+        faults()
+        yield ("heartbeat", 0.1)
+        time.sleep(0.1)
+        done.append("finished")
+        yield ("done", "world")
+
+    stream = trace.run_traced(slow(), {"Updating faults": 1.0})
+    assert next(stream)[0] == "phase"
+    stream.close()
+    assert done == ["finished"]
+
+
+def test_run_traced_never_lets_the_bar_fall_below_a_passed_through_progress_line():
+    # Regression (#809 review): a generator line at 33% before any span used to be followed by a
+    # phase message at 0%.
+    def lines():
+        yield ("progress", 0.33, "Creating continents")
+        with trace.span("Updating faults", trace.PLATES, user=True):
+            yield ("heartbeat", 0.0)
+        yield ("done", "world")
+
+    weights = {"Updating faults": 1.0, "Resolving climate": 1.0}
+    fractions = [m[1] for m in trace.run_traced(lines(), weights) if m[0] in ("progress", "phase", "heartbeat")]
+    assert fractions[0] == pytest.approx(0.33)
+    assert all(b >= a for a, b in zip(fractions, fractions[1:]))
+
+
+def test_step_weights_drop_the_phases_a_world_will_not_run():
+    full = trace.step_weights("cfd")
+    no_plates = trace.step_weights("cfd", plate_movement=False)
+    no_climate = trace.step_weights("cfd", climate_biomes=False)
+    assert "Updating faults" in full and "Updating faults" not in no_plates
+    assert "Raising volcanoes" not in no_plates and "Balancing sea level" in no_plates
+    assert "Resolving rivers and lakes" in full and "Resolving rivers and lakes" not in no_climate
+    assert "Solving wind and ocean currents" not in no_climate
+    assert "Updating faults" in no_climate
+
+
+def test_generate_weights_drop_the_phases_a_world_will_not_run():
+    assert "Dividing the sphere into plates" in trace.generate_weights(False)
+    sketch = trace.generate_weights(True, cratons_layout=False)
+    assert "Dividing the sphere into plates" not in sketch
+    assert "Laying out continents and mountain belts" not in sketch
+    assert "Building pseudo-history" not in sketch  # synthetic relief needs the cratons-first layout
+    assert "Seeding rivers and glaciers" not in trace.generate_weights(False, seeds_rivers=False)

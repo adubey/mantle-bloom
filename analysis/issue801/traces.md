@@ -138,8 +138,9 @@ resample 0.49 s (absent warm), biome classification 1.55 s own on every render.
 
 Built in `backend/app/trace.py` (see [architecture.md](../../docs/architecture.md#trace-spans)).
 
-- **Spans.** `@trace.traced(label, group, user=True)` on 22 coarse functions gives the
-  user-visible labels, with the group stated at the span so Hydrometeorology is not inferred from
+- **Spans.** `@trace.traced(label, group, user=True)` on 21 coarse functions, plus one
+  `trace.span` around the plate-deform loop (a per-plate span would credit its share of the bar
+  after the first plate), gives the 22 user-visible labels, with the group stated at the span so Hydrometeorology is not inferred from
   call order. A span is a no-op unless a `Recorder` is active.
 - **Delivery.** The step and generate endpoints run the progress generator on a worker thread
   (`trace.run_traced`) so a label from inside erosion reaches the client when its work starts. A

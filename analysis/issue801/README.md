@@ -131,3 +131,26 @@ mature world's unexplained plate costs to one function. Plate outlines
 (`PlateWithSparseQuadPatch.outline_world`) take 2.92 s of a 14.9 s step (19.6%), shared across
 gap fill, collision polarity, deformation and the plate-motion solve. After this, no hook sits on
 more than 12% of a step on that world (lakes, 11.4%, is next). See [traces.md](traces.md).
+
+## Reproducing
+
+Run from the repository root with this worktree's `backend/.venv`, one heavy run at a time
+(compute-budget skill).
+
+| Files | Command |
+|---|---|
+| `hooks-v2-seed0-synthetic.json` | `bin/debug/profile_phases.py --synthetic-relief --generate-runs 1 --steps 3 --min-pct 0.7 --json <out>` (young world generated from seed 0 at the UI defaults; the group shares are regenerable to within timing noise) |
+| `hooks-v2-seed0-cfd-step.json` | `bin/debug/profile_phases.py --wind-model cfd --scenarios step --steps 3 --min-pct 1.5 --json <out>` |
+| `hooks-v2-seed443034896-67.4Myr.json`, `hooks-v3-...json` | `bin/debug/profile_phases.py --load <save> --scenarios step --steps 3 --warmup 1 --min-pct 1.5 --json <out>` |
+| `default-seed0*.json`, `synthetic-seed0.json`, `seed443034896-67.4Myr.json` | the same script with the coarse hook table it had at the time (it has since gained hooks), so use the `hooks-v*` files for current numbers |
+
+The mature runs load `mantle-bloom-seed443034896-67400000y.mbworld` (79 MB, SHA-256
+`3d3000d872e68fee55645361b2686028c3faccd6edf03ce9d27e26ce7f286942`). It is a local save of a
+user-run world and has not been uploaded to B2, so the mature numbers cannot be regenerated from
+the repository alone; treat them as indicative, not as a baseline (3 steps per run, 12.2-19.0 s
+between steps). Any save past ~60 Myr will show the same shape: lakes and glacier shaping grow
+the most with age.
+
+Step times quoted elsewhere come from different runs and so differ slightly: 6.06 s is the young
+world with synthetic history (`hooks-v2-seed0-synthetic.json`), 6.3 s the earlier run with the
+coarse table (`default-seed0.json`), 8.6 s with CFD wind, and 14.9 s the 67 Myr save.
