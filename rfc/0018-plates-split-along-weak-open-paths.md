@@ -2,7 +2,7 @@
 
 - **Status:** Accepted (owner confirmed 2026-11-03)
 - **Date:** 2026-11-03
-- **Related:** #770; RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (current accepted rift proposal; proposed replacement)
+- **Related:** #770, #797; RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (accepted predecessor; withdrawal follows gates)
 
 ## Problem
 
