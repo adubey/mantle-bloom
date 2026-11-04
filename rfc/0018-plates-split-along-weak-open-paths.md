@@ -1,8 +1,26 @@
 # RFC 0018: Plates split along weak paths that are pulling apart
 
-- **Status:** Accepted (owner confirmed 2026-11-03)
+- **Status:** Accepted (revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
 - **Date:** 2026-11-03
-- **Related:** #770, #797; RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (accepted predecessor; withdrawal follows gates)
+- **Related:** #770, #797, #802; RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (accepted predecessor; withdrawal follows gates)
+
+## Revision note
+
+This revision proposes [PR #810](https://github.com/adubey/mantle-bloom/pull/810). The previous G1 required at least 10 observed opportunities
+and a usable candidate in at least two thirds of trigger-positive opportunities. The 2/3 rate
+was a project-selected usability cutoff, not a geological estimate. Geological rift systems
+are not independent draws from the simulation's per-trigger opportunities, and observations
+show both successful and failed systems whose outcomes depend on evolving force balance,
+weakening and competition. The literature does not establish a universal success fraction for
+this denominator; the mechanisms separating successful and failed rifts remain debated
+[[Brune et al., 2023]](#ref-brune2023), and mapped failed systems illustrate the variety of
+incomplete rift histories [[Elling et al., 2022]](#ref-elling2022).
+
+The old G1 rate criterion is removed. G1 now checks structural invariants and the stated
+probability model's behavior on controlled cases, while development-world outcome counts are
+reported descriptively with uncertainty. No aggregate per-opportunity fraction is called a
+geological pass threshold. G1 does not claim geological rate calibration; that would need a
+separate mapping between simulated opportunity exposure and geological rift episodes.
 
 ## Problem
 
@@ -33,19 +51,25 @@ follow its own physics). This proposal uses cell area and mass (principles 4 and
 requires multiple seeds, measured limits and visible results (principle 9).
 
 The current accepted RFC 0010 proposal detects four kinds of rift setting and routes a growing
-rift around cratons. The new proposal is narrower: keep the current split trigger and replace
-only how it chooses the dividing line. The project owner accepted this RFC on 2026-11-03,
-authorizing the diagnosis gates. If its gates pass, RFC 0010 will be withdrawn after its open
-gates, issues and dependent references are settled. Until that follow-up is complete, RFC 0010
-remains the active accepted proposal.
+rift around cratons. This proposal replaces the great-circle split choice and the independent
+split-success roll with a graph-cut method whose candidate availability, opening and
+resistance contribute to one stochastic decision. It retains minimum plate age and cooldown.
+The project owner accepted this RFC on 2026-11-03, authorizing the diagnosis gates. If its
+gates pass, RFC 0010 will be withdrawn after its open gates, issues and dependent references
+are settled. Until that follow-up is complete, RFC 0010 remains the active accepted proposal.
 
 ## Proposed solutions
 
 **What nature tells us.** Rifts can reuse old weak zones, but their paths and growth depend on
 the direction and amount of extension; some stop before the continent breaks apart
-[[Vauchez et al., 1997]](#ref-vauchez1997) [[Brune et al., 2023]](#ref-brune2023). This
-supports considering both weak rock and how the two sides would move. It does not support a
-particular graph-cut method or a mass exponent.
+[[Vauchez et al., 1997]](#ref-vauchez1997) [[Brune et al., 2023]](#ref-brune2023). Geological
+inventories document failed systems alongside rifts that reached seafloor spreading
+[[Elling et al., 2022]](#ref-elling2022). The outcomes depend on changing force balance,
+weakening, strengthening and competition between branches; no universal success fraction
+follows from these observations, and the transition mechanisms remain debated. This supports
+representing breakup as conditional and probabilistic, with weakness and extension coupled. It
+does not support a fixed 2/3 success target per simulation trigger, a particular graph-cut
+method or a mass exponent.
 
 1. **Keep the great-circle cut.** It is simple and makes two clean sides, but ignores weak
    paths and the motion that would follow a split.
@@ -64,12 +88,13 @@ particular graph-cut method or a mass exponent.
 
 ### One split decision
 
-The production split trigger, minimum plate age, cooldown and existing daughter motion checks
-stay in place for the first implementation. The initial cratons-first world, including land,
-water, plate ownership, crust and mantle thickness, is not changed. The algorithm reads the
-existing Hc and Hm fields to estimate column mass; it does not change Hm. The successful
-split, failed-rift thinning and craton-loss diagnostics must all follow the same graph path,
-so no part of the event keeps using a different great-circle line.
+The minimum plate age and cooldown remain hard gates. Motion separation and candidate
+availability contribute to a stochastic breakup decision rather than acting as independent
+deterministic pass/fail checks. The initial cratons-first world, including land, water, plate
+ownership, crust and mantle thickness, is not changed. The algorithm reads the existing Hc
+and Hm fields to estimate column mass; it does not change Hm. The successful split,
+failed-rift thinning and craton-loss diagnostics must all follow the same graph path, so no
+part of the event keeps using a different great-circle line.
 
 This model divides the whole plate at the split event. It does not grow a crack over time or
 join separate crack segments. Those questions were central to the earlier RFC 0010 design
@@ -85,26 +110,27 @@ For an eligible plate:
    Motion fit is evaluated separately for each candidate cut, because it depends on which
    daughter group the cell would stay with. These are bounded relative scores, not measured
    rock strengths; no cell has zero or negative resistance.
-3. Sample weak edges that connect different motion groups. For each sampled edge, find a
-   low-cost cut that crosses it. The cut cost combines structural resistance with a
-   candidate-specific motion-fit term: compare each cell's velocity with the fitted rotation
-   of the daughter side that contains it. A good fit means the cell resists breaking away
-   from that group; a poor fit means it offers less resistance. Since the term depends on
-   the proposed cut, evaluate it for each candidate partition rather than storing one
-   motion-resistance value per cell for all cuts. Keep the candidate only if each side is
-   connected and one dominant cut trace reaches the plate edge at two places. At least 90%
-   of the cut length must belong to that trace; report the remaining fragments. Use a
-   separate, deterministic sample keyed by world seed, plate, elapsed simulation time and
-   edge identity, using a stable hash rather than a step number. The same seed, plate and
-   event time therefore select the same edges without consuming random numbers used by
-   unrelated simulation processes. Candidate opportunities can still occur at different
-   times under different step schedules; G3 measures that remaining timestep sensitivity.
-4. Measure signed opening along each candidate cut, using shared-edge length as the weight.
-   Reject candidates whose net opening is closing, or whose opening is no larger than the
-   fit's estimated uncertainty. Also report the share of cut length that opens.
-5. Rank the remaining candidates by their potential momentum score, then split on the best
-   candidate if it passes the existing production checks. The score ranks options; it is
-   not a claim that the simulation conserves or releases physical momentum at the cut.
+3. Propose candidate cuts from sampled weak edges that connect different motion groups.
+   Candidate proposals have a documented probability distribution; the probability of
+   proposing no structurally valid cut is part of breakup availability. For each proposed
+   cut, keep connected daughters with one dominant edge-to-edge trace as hard topology
+   requirements. At least 90% of the cut length must belong to that trace; report the
+   remaining fragments. Key the candidate stream to world seed, plate and event index so
+   replay and timestep behavior can be checked without coupling it to unrelated random
+   processes.
+4. Measure signed, shared-edge-length-weighted opening `O` and candidate resistance `R` for
+   each valid candidate. Use them to define a prior over that candidate's breakup
+   probability. A weaker candidate must require less outward opening to reach the same
+   breakup probability. This is a physical decision model, not a 95% confidence interval on
+   a mean opening: do not use the old `1.96 * RMS residual` rule as its probability mapping.
+   The exact prior and its numerical scale are not selected by current evidence; freeze them
+   before G1 and test the declared behavior on controlled cases.
+5. Use the proposal distribution and candidate probabilities to determine an event-level
+   breakup probability. Draw once for breakup; if breakup is selected, draw the cut from
+   the candidates conditional on their proposal and breakup probabilities. Do not apply
+   the legacy independent 0.55 success chance. The potential-momentum score may rank or
+   weight candidate proposals, but it is not physical momentum and must not override the
+   coupled breakup probability.
 
 For each cell `n`, estimate its mass as cell area times the mass per area of its crust and
 mantle lithosphere: `m_n = A_n * (rho_c * Hc_n + rho_m * Hm_n)` (kg). The fitted rotations
@@ -138,9 +164,9 @@ It is an explicit model choice, and only helps if it improves held-out simulatio
 
 The offline prototype instead ranked cuts by reduced-mass-weighted net opening. The new score
 follows the owner's stated idea of weighting each side's change from its old motion by its
-mass, while keeping outward opening as a separate required check. The held-out gate compares
-both scores on tuning seeds, so the additional balance factor must earn its place before the
-winning version is frozen for held-out runs.
+mass, while outward opening and resistance feed the coupled breakup probability. The
+development gate compares both scores on tuning seeds, so the additional balance factor must
+earn its place before the winning version is frozen for held-out runs.
 
 ### Starting values and limits
 
@@ -195,10 +221,8 @@ against the daughter group a cell would remain with, never against whichever of 
 groups happens to fit it better. All score factors stay bounded. Area is used when converting
 column mass to a plate or daughter total; raw node count is not a substitute for mass.
 
-Keep the existing 0.55 split-success chance for the first paired comparison so this change
-isolates the cut choice. A failed split thins the existing failed-rift band along the chosen
-graph path. A separate revision would be needed to remove that chance or change the failed
-rift response.
+A failed breakup attempt thins the existing failed-rift band along its proposed graph path.
+The removed 0.55 production chance is not multiplied into the new event probability.
 
 ### What earlier work contributes
 
@@ -220,33 +244,37 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
 
 1. **G0 — Make the geometry and score measurable.** On 20 predeclared development seeds,
    record every eligible split attempt, sampled edge, candidate rejection, daughter mass
-   share, cut length, trace continuity, net opening, opening uncertainty, score and runtime.
-   Use area-derived column mass. Keep every failed world-generation seed in the report; add
-   only predeclared replacements to reach 20 constructible baseline worlds, following the
-   #770 census practice. Use fit residuals to define and freeze an opening floor so that a
-   tiny positive value like the pilot's +0.013 cm/yr does not pass merely because it is
-   above zero. Compare the potential-momentum score with the prototype's reduced-mass-times-
-   opening score and compare `mu = 0, 0.5, 1, 2`; resistance values remain fixed at the
-   starting values in the table. Choose the score and `mu` only on this set, then freeze
-   them and the resistance values before G1. If G1 fails and resistance tuning is needed,
-   first check the uncertainty in the usable-opportunity fraction. If fewer than 10
-   opportunities were observed or its seed-bootstrap 95% interval (resampling worlds, not
-   individual opportunities) overlaps the two-thirds threshold, treat the result as
-   inconclusive: expand the development set to 50 worlds total
-   with 30 additional predeclared seeds, keep the score and all weights frozen, and rerun
-   G0/G1. If G1 still fails, or if the original interval lay wholly below the threshold,
-   stop and revise this RFC before changing weights; use the predeclared one-at-a-time
-   resistance sweep above, then rerun the gates. Do not change weights ad hoc or tune against
-   G2 seeds.
-2. **G1 — Check that the candidate can make a usable split.** Require that, in the frozen
-   development run, at least 10 plate opportunities are observed and at least two thirds
-   of opportunities that pass the current split
-   trigger produce at least one candidate that is connected on both sides, has a dominant
-   edge-to-edge trace, passes existing daughter checks and has outward opening above its
-   uncertainty. If not, stop and revise the graph construction or opening measure before a
-   long replay. Report separately the failures from minimum daughter size, pole separation,
-   trace breaks, closing motion and the stochastic success chance. The three-world pilot
-   passed this only once in three worlds and therefore does not pass G1.
+   share, cut length, trace continuity, signed opening `O`, candidate resistance `R`,
+   proposal outcomes, score and runtime. Use area-derived column mass. Keep every failed
+   world-generation seed in the report; add only predeclared replacements to reach 20
+   constructible baseline worlds, following the #770 census practice. Record fitted-motion
+   residual structure as diagnostic information, not as a confidence interval on mean
+   opening. Do not impose an opening floor derived from `1.96 * RMS residual`; instead,
+   define and freeze the `O,R`-to-breakup-probability mapping before G1. The pilot's tiny
+   `+0.013 cm/yr` opening remains a descriptive calibration case, not a binary pass.
+   Compare the potential-momentum score with the prototype's reduced-mass-times-opening
+   score and compare `mu = 0, 0.5, 1, 2`; resistance values remain fixed at the starting
+   values in the table. Freeze the score, `mu`, candidate proposal rule and the `O,R`-to-prior
+   mapping before G1. If G1 reveals a failed monotonic response or structurally invalid
+   applied split, diagnose the mechanism before changing weights; use the predeclared
+   one-at-a-time resistance sweep only on development seeds, then rerun G0/G1. Report
+   uncertainty by resampling worlds, not individual opportunities. Do not tune against G2
+   seeds.
+2. **G1 — Check the coupled breakup model.** Before the gate, freeze the event-level
+   `P_break` mapping and candidate proposal rule. A single uniform draw decides breakup from
+   that probability; do not apply the legacy independent 55% success roll. The model must
+   include candidate availability and couple outward motion to resistance so that, with
+   other inputs held fixed, more opening cannot lower breakup probability and weaker
+   resistance cannot raise the opening required for the same probability. Validate the
+   probability-to-draw implementation on controlled cases with known probabilities. Every
+   applied split must produce two connected daughters, a dominant edge-to-edge trace, and
+   pass the existing hard daughter-size and ownership checks. Treat pole separation and the
+   motion difference as probabilistic inputs to `P_break`, not independent hard pass/fail
+   filters. On the 20 development seeds, report every eligible opportunity, candidate
+   proposal, rejection reason, `P_break`, random draw, outcome, and per-world outcome rates
+   with uncertainty. There is no fixed usable-opportunity percentage for passing G1: the
+   geological record does not define one for this denominator. This gate tests internal
+   probability behavior and structural safety, not Earth's breakup frequency.
 3. **G2 — Compare actual breakups on held-out worlds.** Freeze a new 20-seed list before
    running. Compare the production great-circle method and graph-cut method from identical
    generated worlds, settings, step schedule and random streams for 200 Myr. Use the same
@@ -270,8 +298,11 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
 
 ### Acceptance criteria
 
-- [ ] G0 and G1 pass on the 20 development seeds, with all seed failures and rejection
-      reasons kept in the report.
+- [ ] G0 passes on the 20 development seeds, with all seed failures and rejection reasons
+      kept in the report.
+- [ ] G1 validates candidate availability and the coupled breakup probability on controlled
+      cases, including the required monotonic responses; report development-world event rates
+      with uncertainty but apply no fixed per-opportunity success fraction.
 - [ ] G2 passes on 20 separate, predeclared held-out seeds: at least one-third fewer
       breakups with a smaller daughter under 7% of parent area overall, with improvement on
       at least two seeds.
@@ -282,9 +313,9 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
       timestep metrics within 20%, and median runtime within 2% of baseline.
 - [ ] Old saves load and can continue stepping. The method adds no saved fields unless a
       later revision explains why they are needed and how old saves initialize them.
-- [ ] Unit tests cover connected daughters, boundary-to-boundary traces, positive opening,
-      balanced-score ordering, area-weighted mass, failed-rift thinning along the graph path,
-      exact ownership and old-save loading.
+- [ ] Unit tests cover connected daughters, boundary-to-boundary traces, probability bounds
+      and monotonic responses to opening and weakness, balanced-score ordering, area-weighted
+      mass, failed-rift thinning along the graph path, exact ownership and old-save loading.
 - [ ] Show five predeclared held-out world snapshots at the first split, or show the
       no-split result for any seed with no split in 200 Myr. Use a shared projection and
       legend. Show land, water, cratons, belts, sutures, the graph-cut trace and both daughter
@@ -302,6 +333,10 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
 - **The split score rewards closing or broken cuts.** If high-scoring cuts often close, break
   into disconnected traces, fail daughter checks or create extra fragments, the score is
   incomplete. Revise it before a production proposal.
+- **The breakup probability ignores the coupled controls.** If controlled cases show that
+  increasing outward opening lowers `P_break`, or weakening resistance raises the required
+  opening at a fixed probability, the proposed probability model is internally inconsistent;
+  revise it before G2.
 - **The result depends strongly on step size.** If G3's 20% limit fails, make the candidate
   sampling and event timing stable across timestep changes or reject the design.
 - **Craton safety or bookkeeping fails.** If the 2% craton-loss bound, connected ownership,
@@ -311,7 +346,8 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
 ## Detailed design (provisional touchpoints)
 
 - `backend/app/merge_split.py`: replace great-circle cut selection inside
-  `maybe_split_plate`; keep the existing trigger, cooldown and success chance initially.
+  `maybe_split_plate`; retain minimum age and cooldown, replace deterministic motion and the
+  independent success roll with one coupled event probability and keyed stochastic draw.
   Pass the selected daughter mask and crossed-edge trace through split, failed-rift and
   diagnostic handling.
 - `backend/app/plates.py` and `backend/app/sparse_quad_patch.py`: add a mask-based split
@@ -347,14 +383,18 @@ the actual end-to-end cost at production resolution; do not assume sparse graph 
 - Generated pseudo-sutures are not in the `origin/main` base used for this draft; their
   marker is still part of #770 work. Use that distinct signal only after it lands or is
   added through an accepted implementation plan. This RFC does not change world generation.
-- Fitted daughter rotations approximate the motion after separation well enough to screen
-  outward opening. This needs held-out replay evidence.
+- Fitted daughter rotations approximate the motion after separation well enough to estimate
+  outward opening as an input to the breakup prior. This needs held-out replay evidence.
 - A mass-weighted velocity change can rank split options. It is a heuristic score, not
   angular momentum, a force law or a conservation ledger.
 - A balance exponent may reduce very small daughters, but no evidence establishes its value.
   Its value is chosen on development seeds and judged only on separate held-out seeds.
 - The #770 routing results establish that lowering suture route cost alone did not reduce
   tiny breakups in that router. They do not test this graph-cut selection method.
+- Earth's catalog of successful and failed rifts does not yet provide a calibrated rate per
+  simulation trigger. Geological systems, model opportunities and their exposure times are
+  not equivalent units; development-world split fractions are descriptive until that mapping
+  is made.
 - The three applied graph-cut splits are an exploratory demonstration, not a success-rate
   estimate. One had only +0.013 cm/yr net opening and two made no valid split.
 
@@ -366,3 +406,6 @@ the actual end-to-end cost at production resolution; do not assume sparse graph 
 - <a id="ref-brune2023"></a>Brune, S., Kolawole, F., Olive, J.-A., et al. (2023).
   Geodynamics of continental rift initiation and evolution. *Nature Reviews Earth & Environment*,
   4, 235–253. [doi:10.1038/s43017-023-00391-3](https://doi.org/10.1038/s43017-023-00391-3)
+- <a id="ref-elling2022"></a>Elling, R., Stein, S., Stein, C. A., & Gefeke, K. (2022).
+  Three major failed rifts in central North America: Similarities and differences. *GSA Today*,
+  32(6), 4–11. [doi:10.1130/GSATG518A.1](https://doi.org/10.1130/GSATG518A.1)
