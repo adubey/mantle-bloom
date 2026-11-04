@@ -107,23 +107,23 @@ fluvial-deposition contract the test pins is intact. Fix: mask `glacier_depth > 
 nodes out of `quiet` (glacial carving has its own test). Now passes.
 
 **Fault: branch-only lake-flush crash, root-caused to a lake cap-cycle limit under
-physical melt throughflow; fix is lake-side and out of D1-D2 scope.** At the trip
-step (seed 7, 9th 1 Myr step) the lake solver gets melt 2.49e13 m3/yr on the branch
-vs 4.4e8 on baseline (57,000x = the removed `MODEL_UNIT_SCALE`); dry runoff is
-unchanged (2.65e13 vs 2.80e13). The raise is `Lake flush left an unconsumed cycle
-owner at node 769`: a capped 23-node/6-node sibling pair sloshes the throughflow,
-`held.volume += overflow` laps it ~200 times to a phantom 2.25e17 m3, and the LCA
-parent-outlet owner (which has room, completed handoff) never absorbs it. The melt
-itself is legitimate equilibrium throughflow (surface PDD + basal + bare-ground
-snow; guard-shed overflow/capped are zero on the probed analog), so this is the
-legacy lake routing meeting D1's regime, not a D1 accounting bug. Lake hardening
-(tier-cap cycles under large throughflow, #696/#731 territory) belongs in a lake
-issue with those owners, ahead of D8's meltwater routing. This test stays red on the
-branch pending that call.
+physical melt throughflow; fixed lake-side in #794 (PR #800), now green.** At the
+trip step (seed 7, 9th 1 Myr step) the lake solver gets melt 2.49e13 m3/yr on the
+branch vs 4.4e8 on baseline (57,000x = the removed `MODEL_UNIT_SCALE`); dry runoff
+is unchanged (2.65e13 vs 2.80e13). The raise was `Lake flush left an unconsumed
+cycle owner at node 769`: a capped 23-node/6-node sibling pair sloshed the
+throughflow, `held.volume += overflow` lapping it ~200 times to a phantom 2.25e17
+m3, while the LCA parent-outlet owner (which had room, completed handoff) never
+absorbed it. The melt itself is legitimate equilibrium throughflow (surface PDD +
+basal + bare-ground snow; guard-shed overflow/capped are zero on the probed
+analog), so this was the legacy lake routing meeting D1's regime, not a D1
+accounting bug. The lake-side fix (reuse a parent-outlet owner with room when
+re-routing held cycle surplus) landed via #800; the fault test passes on the
+branch with it merged in (verified post-merge).
 
 ### Open items
 
 - Step-time budget: OVER (+76-213%); owner decision with the numbers above.
-- Fault test red pending lake-side fix (new issue proposed).
+- Fault test: green since #794/#800 (was the only red test in the suite).
 - F0D replay cannot run (held-out, absent locally and in B2); acceptance item open
   pending the owner's call.
