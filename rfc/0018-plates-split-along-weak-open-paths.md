@@ -118,8 +118,8 @@ even split. Rank candidates by:
 score = P * B^mu
 ```
 
-There is no fixed 30% daughter rule. `mu` only changes how strongly the score prefers a more
-balanced split. The first trial value is `mu = 1`; compare `mu = 0, 0.5, 1, 2` during tuning.
+`mu` only changes how strongly the score prefers a more balanced split. The first trial value
+is `mu = 1`; compare `mu = 0, 0.5, 1, 2` during tuning.
 No rock-fracture experiment or geology result justifies `mu > 0` or any particular value.
 It is an explicit model choice, and only helps if it improves held-out simulation outcomes.
 
