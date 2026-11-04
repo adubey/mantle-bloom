@@ -1,12 +1,14 @@
 import ProgressBar from "./ProgressBar";
-import { phaseLinks } from "./phaseInfo";
+import { groupName, phaseLinks } from "./phaseInfo";
 
 interface Props {
-  // What kind of run this is: "Generating world", "Advancing world", "Recording animation".
+  // What kind of run this is: "Generating world", "Loading, rebuilding render cache & resolving climate" (loading a world), "Advancing world", "Recording animation".
   headline: string;
   // The backend's current phase label (or, for recordings, "Frame i of N"); null before
   // the run's first checkpoint arrives.
   phase: string | null;
+  // The phase's "<bar>/<group>" (#801), shown above the phase text; null when the run reports none.
+  group?: string | null;
   // Real percent-complete when the run reports one; undefined for indeterminate runs
   // (recordings with no fixed frame count, the debug-generate path).
   fraction?: number;
@@ -17,7 +19,7 @@ interface Props {
 // phase, and learn links for it (#629). Non-modal on purpose -- it never takes a scrim,
 // so Play's Stop button stays clickable underneath. The X drops back to just the
 // sidebar's pulsing line, whose pop-out icon re-opens this.
-export default function RunOverlay({ headline, phase, fraction, onCollapse }: Props) {
+export default function RunOverlay({ headline, phase, group, fraction, onCollapse }: Props) {
   const links = phaseLinks(phase);
   return (
     <div
@@ -55,7 +57,10 @@ export default function RunOverlay({ headline, phase, fraction, onCollapse }: Pr
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
         <span className="run-spinner" aria-hidden="true" />
-        <span>{phase ?? "Working…"}</span>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {group && <span style={{ fontSize: 11, opacity: 0.65 }}>{groupName(group)}</span>}
+          <span>{phase ?? "Working…"}</span>
+        </div>
       </div>
       {fraction !== undefined && (
         <div style={{ marginBottom: links.length > 0 ? 10 : 0 }}>

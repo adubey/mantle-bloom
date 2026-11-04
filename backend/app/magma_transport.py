@@ -67,7 +67,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import continental_ledger, lithosphere, rheology
+from . import continental_ledger, lithosphere, rheology, trace
 from .elevation_lines import (
     ELEV_CHANGE_LATERAL_MAGMA,
     ELEV_CHANGE_MIN_DELTA_M,
@@ -206,6 +206,7 @@ def _weighted_destination_pairs(
     return np.concatenate(parcel_idx_chunks), np.concatenate(dest_idx_chunks), np.concatenate(weight_chunks)
 
 
+@trace.traced("Moving magma", trace.PLATES, user=True)
 def run_magma_transport(world: "World", banked_myr: float) -> list[str]:
     """Resolve every banked `world.pending_magma_parcels` entry against the current whole-sphere
     continental-node set, apply one global per-destination-node rate cap, scatter-write the

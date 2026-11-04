@@ -73,7 +73,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from .. import continental_ledger, cratons, faults, geometry, lithosphere
+from .. import continental_ledger, cratons, faults, geometry, lithosphere, trace
 from . import biomes, climate, hydrology, mobile_cover
 from ..elevation_lines import (
     ELEV_CHANGE_COASTAL_LEVELING,
@@ -1848,6 +1848,7 @@ def _spread_coastal_leveling(
     return result, tagged_result
 
 
+@trace.traced("Eroding and depositing sediment", trace.SURFACE, user=True)
 def apply_erosion(
     world: "World",
     years: float,

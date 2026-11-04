@@ -24,7 +24,7 @@ from numba import njit
 
 from . import climate, fluid_dynamics
 from . import fluid_dynamics_healpix as fdh
-from .. import healpix_grid
+from .. import healpix_grid, trace
 from ..healpix_grid import ang2pix_nest_scalar
 
 if TYPE_CHECKING:
@@ -510,6 +510,7 @@ def _atmosphere_substep_loop_kernel(  # noqa: C901
     return u, v, eta, temperature_c
 
 
+@trace.traced("Solving wind and ocean currents", trace.HYDRO, user=True)
 def step_atmosphere_cfd(world: "World", state: AtmosphereCFDState, seconds: float) -> None:
     del world
     grid = state.grid

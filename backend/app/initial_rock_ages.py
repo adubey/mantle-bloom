@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import elevation_lines, torque
+from . import elevation_lines, torque, trace
 from .elevation_lines import line_spacing_rad
 from .surface_fields import SURFACE_FIELDS
 
@@ -24,6 +24,7 @@ CONTINENTAL_AREA_FRACTIONS = (0.0, 0.24, 0.67, 1.0)
 CONTINENTAL_AGES_YEARS = (0.0, 541e6, 2.5e9, 4.0e9)
 
 
+@trace.traced("Dating the initial rocks", trace.SEEDING, user=True)
 def assign_initial_rock_ages(
     world: World, omegas: dict[int, np.ndarray], *, undated_only: bool = False
 ) -> dict[int, dict[str, float | str]]:

@@ -360,11 +360,16 @@ def test_real_step_progress_lines_all_carry_phase_labels(client):
     _post_generate(client, json={"seed": 9, "num_plates": 6})
     lines = [json.loads(line) for line in _post_step(client, json={"years": 1_000_000}).text.splitlines() if line.strip()]
     progress = [m for m in lines if m["type"] == "progress"]
-    assert len(progress) > 2  # per-plate passes, not just the tail boundaries
+    # One line per user-visible span (#801), each with its label and group; the bar's
+    # fraction never decreases and only the final "done" line completes it.
+    assert len(progress) > 5
     assert all(isinstance(m["phase"], str) and m["phase"] for m in progress)
+    assert all(isinstance(m["group"], str) and "/" in m["group"] for m in progress)
     fractions = [m["fraction"] for m in progress]
     assert all(b >= a for a, b in zip(fractions, fractions[1:]))
-    assert fractions[-1] == 1.0
+    assert fractions[-1] < 1.0
+    assert lines[-1]["type"] == "done"
+    assert {"Updating faults", "Resolving rivers and lakes", "Balancing sea level"} <= {m["phase"] for m in progress}
 
 
 def test_animate_rejects_invalid_step_years(client):
@@ -1562,29 +1567,17 @@ def test_step_forwards_heartbeats_from_its_slow_tail(client, monkeypatch):
     assert resp.status_code == 200
 
     messages = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
-    tail = 12 / 13
-    assert [(m["type"], m.get("fraction")) for m in messages] == (
-        [("progress", f / 13) for f in range(1, 13)]
-        + [
-            ("progress", tail),  # Merging and splitting plates
-            ("progress", tail),  # Filling seafloor gaps
-            ("progress", tail),  # Raising mantle plumes
-            ("heartbeat", tail),
-            ("progress", tail),  # Resolving glaciers
-            ("heartbeat", tail),
-            ("progress", tail),  # Raising volcanoes
-            ("progress", tail),  # Forming natural resources
-            ("heartbeat", tail),
-            ("progress", tail),  # Balancing sea level (boundary)
-            ("heartbeat", tail),
-            ("progress", 1.0),  # Balancing sea level (completion)
-            ("done", None),
-        ]
-    )
+    # The generator's heartbeats still reach the client (they carry the span-driven fraction
+    # now that labels come from spans, #801), between the phase lines and before "done".
+    heartbeats = [m for m in messages if m["type"] == "heartbeat"]
+    assert len(heartbeats) == 4  # one per slow boundary of the tail, as before
+    assert all(set(m) == {"type", "fraction"} for m in heartbeats)
+    fractions = [m["fraction"] for m in messages if m["type"] in ("progress", "heartbeat")]
+    assert all(0.0 <= f < 1.0 for f in fractions)
+    assert all(b >= a for a, b in zip(fractions, fractions[1:]))
     progress = [m for m in messages if m["type"] == "progress"]
     assert all(isinstance(m.get("phase"), str) and m["phase"] for m in progress)
-    heartbeats = [m for m in messages if m["type"] == "heartbeat"]
-    assert all(set(m) == {"type", "fraction"} for m in heartbeats)
+    assert messages[-1]["type"] == "done"
 
 
 def test_generate_forwards_heartbeats_from_its_slow_tail(client, monkeypatch):
@@ -1603,14 +1596,15 @@ def test_generate_forwards_heartbeats_from_its_slow_tail(client, monkeypatch):
     assert resp.status_code == 200
 
     messages = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
-    assert [(m["type"], m.get("fraction")) for m in messages if m["type"] != "done"] == [
-        ("progress", 1 / 3),
-        ("progress", 2 / 3),
-        ("heartbeat", 3 / 4),
-        ("heartbeat", 5 / 6),
-        ("heartbeat", 11 / 12),
-        ("progress", 1.0),
-    ]
+    # The final third's overdue ticks still reach the client (#611), now carrying the
+    # span-driven fraction; labels come from the spans inside the work (#801).
+    heartbeats = [m for m in messages if m["type"] == "heartbeat"]
+    assert len(heartbeats) == 3
+    assert all(set(m) == {"type", "fraction"} for m in heartbeats)
+    fractions = [m["fraction"] for m in messages if m["type"] in ("progress", "heartbeat")]
+    assert all(0.0 <= f < 1.0 for f in fractions)
+    assert all(b >= a for a, b in zip(fractions, fractions[1:]))
+    assert {"Dividing the sphere into plates"} <= {m["phase"] for m in messages if m["type"] == "progress"}
     assert messages[-1]["type"] == "done"
 
 
@@ -2363,6 +2357,31 @@ def test_run_loop_and_animation_steps_are_logged(client, replay_logged):
     main._step_world(_default_session, _default_session.world, 1_000.0)
     replay_logged.flush()
     assert len(client.get("/world/replay-logs").json()["records"]) == 2
+
+
+def test_run_step_publishes_the_step_s_phases_on_the_runner(client, monkeypatch):
+    # The run overlay's text for Play comes from the step's own spans (#801), published on the
+    # runner for the UI's short poll of /run, and cleared once the step ends.
+    from app import trace
+
+    @trace.traced("Updating faults", trace.PLATES, user=True)
+    def faults():
+        pass
+
+    def fake_progress(session, world, years):
+        faults()
+        yield ("progress", 1.0, "Balancing sea level")
+
+    _post_generate(client, json={"seed": 5, "num_plates": 2, "node_density": 0.5})
+    published = []
+    runner = _default_session.runner
+    monkeypatch.setattr(runner, "set_phase", lambda label, group=None, fraction=0.0: published.append((label, group)))
+    monkeypatch.setattr(main, "_step_progress", fake_progress)
+    monkeypatch.setattr(main, "_world_changed", lambda session, completed: None)
+
+    assert main._run_step_once(_default_session, 1_000.0, lambda: True)
+    assert published == [("Updating faults", trace.PLATES), (None, None)]
+    assert client.get("/world/run").json()["phase"] is None
 
 
 @pytest.fixture

@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 from typing import TYPE_CHECKING
 
-from . import geometry, lithosphere, noise, torque
+from . import geometry, lithosphere, noise, torque, trace
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from .hydroclimate import biomes, climate, hydrology
 from .plates import PLANET_RADIUS_KM, collect_all_elevation, gather_node_positions
@@ -304,6 +304,7 @@ def _reject_long_straight_channel_nodes(fields: hydrology.HydrologyFields) -> np
     return rejected
 
 
+@trace.traced("Seeding rivers and glaciers", trace.SEEDING, user=True)
 def initialize_river_channels(world: "World") -> None:
     """Run one zero-duration routing bootstrap, then seed only curved river channels."""
     node_cloud = gather_node_positions(world.plates)

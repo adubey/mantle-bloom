@@ -48,7 +48,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from . import cratons, lithosphere, orogeny, rheology, torque
+from . import cratons, lithosphere, orogeny, rheology, torque, trace
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from .hydroclimate.hydrology import FLOW_NEIGHBOR_COUNT, connected_ocean_mask
 from .noise import IsotropicSphereNoise
@@ -645,6 +645,7 @@ def back_columns(
     return hc, lag
 
 
+@trace.traced("Building pseudo-history", trace.LAYOUT, user=True)
 def apply_synthetic_relief(world: "World", layout: "ContinentLayout") -> None:
     """Replace continental relief on a freshly generated cratons-first world with relief from
     a synthetic tectonic history, backed by Hc (see the module docstring). Keeps the land

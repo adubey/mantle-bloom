@@ -39,7 +39,7 @@ from numba import njit
 from scipy.sparse import coo_matrix, csr_matrix
 from scipy.sparse.csgraph import connected_components, dijkstra
 
-from .. import geometry
+from .. import geometry, trace
 from ..elevation_lines import PLANET_RADIUS_KM
 from ..lithosphere import GRAVITY_M_S2, RHO_ICE, RHO_WATER
 from . import hydrology
@@ -841,6 +841,7 @@ def _signed_distance(graph, eligible_graph, positive: np.ndarray):
     return 0.5 * (d_out - d_in), sources
 
 
+@trace.traced("Marching glaciers", trace.HYDRO, user=True)
 def step_ice(
     points: np.ndarray,
     neighbor_idx: np.ndarray,

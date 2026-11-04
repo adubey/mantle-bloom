@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from .. import continental_ledger, lithosphere
+from .. import continental_ledger, lithosphere, trace
 from . import mobile_cover
 from ..elevation_lines import (
     ELEV_CHANGE_MIN_DELTA_M,
@@ -59,6 +59,7 @@ MINERAL_DEPOSIT_PER_ERUPTION_M = 0.5
 MAX_MINERAL_DEPOSIT_M = 20.0
 
 
+@trace.traced("Raising volcanoes", trace.SURFACE, user=True)
 def apply_volcanic_activity(world: "World", years: float) -> None:
     """Every step: rolls each individual active volcano's own eruption chance, adding
     ERUPTION_ELEVATION_M wherever it erupts, then spreads a broader, weaker volcanic-plain

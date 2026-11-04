@@ -42,6 +42,7 @@ from . import (
     mantle,
     phase_budget,
     plates as plates_mod,
+    trace,
 )
 from .hydroclimate import mobile_cover
 from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
@@ -972,6 +973,7 @@ def _merge_plates_with_craton_audit(world: "World", id_keep: int, id_absorb: int
     audit.settle("merge_capped_m3", residual_account="merge_capped_m3")
 
 
+@trace.traced("Merging and splitting plates", trace.PLATES, user=True)
 def apply_topology_changes(world: "World", years: float) -> list[str]:
     """Consumption, then at most one collision merge, then splits. Returns human-readable
     event messages for anything that happened, for the UI's event console -- a plate

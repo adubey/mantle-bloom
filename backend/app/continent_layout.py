@@ -44,6 +44,7 @@ from dataclasses import dataclass, fields
 import numpy as np
 from scipy.spatial import cKDTree
 
+from . import trace
 from .elevation_lines import PLANET_RADIUS_KM
 from .layout_lattice import Lattice, arc_km, cap_area_km2, lattice, poisson_disc
 from .noise import SphereNoise
@@ -528,6 +529,7 @@ def _lens(lat: Lattice, core: np.ndarray, cratons: np.ndarray, points: np.ndarra
     return d1 + d2 <= lens_km
 
 
+@trace.traced("Laying out continents and mountain belts", trace.LAYOUT, user=True)
 def build_geography(rng: np.random.Generator, spacing_rad: float, continental_fraction: float) -> ContinentGeography:
     """Continents, cores, belts and margins (see the module docstring), deterministic in `rng`."""
     lat = lattice(spacing_rad)

@@ -38,6 +38,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
+from . import trace
 from .layout_lattice import Lattice
 
 # Boundary-link costs: an ocean link is free; a belt link costs 1; a continental margin or
@@ -344,6 +345,7 @@ def partition_plates(
     return PlatePartition(plate=labels, initial_plate=initial, sites=sites, refine_costs=history, attempts=attempts)
 
 
+@trace.traced("Dividing the sphere into plates", trace.LAYOUT, user=True)
 def partition_plates_with_fallback(
     rng: np.random.Generator,
     lat: Lattice,

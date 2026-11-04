@@ -54,6 +54,10 @@ class WorldRunner:
         self._status = RunStatus()
         self._error: str | None = None
         self._stepping = False
+        # The user-visible phase of the step under way (label, group, fraction), for the run
+        # overlay. Deliberately not part of `_version`: a phase change must not wake every
+        # viewer's long poll, so the UI reads it with a short poll of its own.
+        self._phase: dict | None = None
         self._unsaved = False
         # Bumped on every change to the status or error, and when a step finishes after Stop,
         # so a long poll can tell that something other than the world changed (Stop pressed in
@@ -65,6 +69,15 @@ class WorldRunner:
         # fresh loop rather than a runner that's closed for good.
         self._generation = 0
         self._thread: threading.Thread | None = None
+
+    def phase(self) -> dict | None:
+        with self._cond:
+            return None if self._phase is None else dict(self._phase)
+
+    def set_phase(self, label: str | None, group: str | None = None, fraction: float = 0.0) -> None:
+        """Record the phase the current step is in (`None` once it ends)."""
+        with self._cond:
+            self._phase = None if label is None else {"label": label, "group": group, "fraction": fraction}
 
     def status(self) -> RunStatus:
         with self._cond:
@@ -159,6 +172,7 @@ class WorldRunner:
             finally:
                 with self._cond:
                     self._stepping = False
+                    self._phase = None
                     stopped = not self._status.running
                     if stopped:
                         self._bump()

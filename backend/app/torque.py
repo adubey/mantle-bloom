@@ -24,7 +24,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from . import cratons, geometry, mantle, plates as plate_geometry
+from . import cratons, geometry, mantle, plates as plate_geometry, trace
 from .boundary import TRANSFORM_RATE_THRESHOLD
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from . import lithosphere
@@ -1284,6 +1284,7 @@ def solve_plates_quasistatic(world, *, diagnostics: dict | None = None) -> dict[
     return omega_by_id
 
 
+@trace.traced("Solving mantle flow and plate motion", trace.PLATES, user=True)
 def shift_plates_quasistatic(world, years: float, *, diagnostics: dict | None = None) -> dict[int, float]:
     """Solve all live plates from one frozen snapshot, then rotate the batch together.
 

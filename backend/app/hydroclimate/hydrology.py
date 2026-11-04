@@ -93,7 +93,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from .. import cratons, geometry, healpix_grid
+from .. import cratons, geometry, healpix_grid, trace
 from . import breaching, lakes
 from ..elevation_lines import DEFAULT_NODE_DENSITY, PLANET_RADIUS_KM, line_spacing_rad
 from ..plates import (
@@ -1870,6 +1870,7 @@ def _ice_surface_flow_target(
     return np.where(on_ice & has_lower, neighbor_idx[rows, col], ground_target).astype(np.int64)
 
 
+@trace.traced("Resolving rivers and lakes", trace.HYDRO, user=True)
 def compute_hydrology(
     world: "World",
     precipitation_at_nodes: np.ndarray,

@@ -122,6 +122,26 @@ profiling in general.
 PYTHONPATH=backend backend/.venv/bin/python bin/debug/profile_animation_60m.py
 ```
 
+### `profile_phases.py`
+
+Where the time goes, in the phase names a progress bar would use (#801). It wraps the
+functions listed in the script's `PHASES` table with `trace.wrap` spans (the same module the run
+overlay's labels come from, see [architecture.md](../architecture.md#trace-spans); the app's own
+user-visible spans are recorded too, so they are not in the table) and runs up to three scenarios: `generate` (world generation, repeated so a cold first run shows
+numba compilation), `render` (the first `combined` map render after a step, then a warm one)
+and `step` (a mean over `--steps` steps). Each prints a tree where every row has an
+inclusive and an *exclusive* time, so a parent's children add up to it and the leftover shows
+as `(untraced)`, unlike cProfile's overlapping cumulative times. Hooks that never fire, or
+that no longer resolve after a rename, are listed rather than reading as zero. `--load` uses a
+save, `--wind-model cfd` turns on the CFD wind solver (the UI default, `diagnostic`, skips it),
+`--json` writes the trees, and `--cprofile` dumps function-level stats of the step scenario to
+drill into an untraced share. To add a phase, add a row to `PHASES`.
+
+```bash
+backend/.venv/bin/python bin/debug/profile_phases.py --seed 0 --steps 3
+backend/.venv/bin/python bin/debug/profile_phases.py --load <save>.mbworld --scenarios render,step
+```
+
 ## Shared libraries
 
 These modules have no command line of their own; scripts import them.

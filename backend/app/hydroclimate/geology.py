@@ -57,6 +57,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from .. import trace
 from . import biomes, hydrology
 from .bathymetry import SHELF_RANGE_RAD
 from ..noise import SphereNoise
@@ -145,6 +146,7 @@ INITIAL_SOIL_MAX_DEPTH_M = 8.0
 INITIAL_SOIL_NOISE_AMPLITUDE = 0.3
 
 
+@trace.traced("Forming natural resources", trace.SURFACE, user=True)
 def apply_resource_formation(world: "World", years: float, erosion_result: "ErosionResult") -> None:
     """Grows/relaxes soil_depth/soil_mineral_content/soil_organic_content and accumulates
     coal_deposit_m/oil_gas_deposit_m for every plate's elevation nodes, from this step's already

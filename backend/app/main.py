@@ -39,6 +39,8 @@ from . import (
     replay_log,
     run_control,
     stats,
+    synthetic_relief,
+    trace,
     users,
     world_names,
     worldsketch,
@@ -1145,6 +1147,14 @@ def delete_world(world_id: str) -> dict:
     return {"deleted": world_id}
 
 
+def _phase_line(message) -> str:
+    """The NDJSON progress line for a `trace.run_traced` ("phase", fraction, label, group)
+    message (#801): the same shape as a generator progress line plus the label's group
+    ("<bar>/<group>"), which the run overlay shows above the label."""
+    _, fraction, phase, group = message
+    return json.dumps({"type": "progress", "fraction": fraction, "phase": phase, "group": group}) + "\n"
+
+
 def _generate_message_line(message):
     """Formats one generate_world_progress message as its NDJSON line.
 
@@ -1156,6 +1166,8 @@ def _generate_message_line(message):
     if message[0] == "progress":
         _, fraction, phase = message
         return json.dumps({"type": "progress", "fraction": fraction, "phase": phase}) + "\n", None
+    if message[0] == "phase":
+        return _phase_line(message), None
     if message[0] == "heartbeat":
         # Slow sub-phase with no other output (#611): the frontend routes these
         # to its progress bar like any progress line.
@@ -1263,6 +1275,10 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
                 sketch=sketch_masks,
                 premade_world_id=req.premade_world_id,
             )
+            # Labels come from the spans inside the work (trace.py), merged with the
+            # generator's messages on a worker thread so they arrive as the work starts.
+            use_synthetic = synthetic_relief.SYNTHETIC_RELIEF_DEFAULT if req.synthetic_relief is None else req.synthetic_relief
+            progress = trace.run_traced(progress, trace.generate_weights(use_synthetic))
             world = None
             try:
                 for message in progress:
@@ -1426,13 +1442,18 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
             completed = False
             if session.deleted:
                 return
-            progress = _step_progress(session, world, req.years)
+            # Labels come from the spans inside the work (trace.py), merged with the
+            # generator's messages on a worker thread so they arrive as the work starts.
+            progress = trace.run_traced(_step_progress(session, world, req.years), trace.step_weights(world.wind_model))
             try:
                 for message in progress:
                     if not isinstance(message, tuple):
                         # Anything but a tagged tuple is a protocol violation --
                         # fail loudly rather than serializing it as a progress fraction.
                         raise ValueError(f"unexpected step progress message: {message!r}")
+                    if message[0] == "phase":
+                        yield _phase_line(message)
+                        continue
                     if message[0] == "heartbeat":
                         # Still inside the step's slow tail (#611): same fraction the
                         # progress line would carry, no progress implied. The frontend
@@ -3143,11 +3164,21 @@ def _run_step_once(session: WorldSession, step_years: float, should_step) -> boo
         if not should_step():
             return True
         completed = False
+        runner = session.runner
+        tracker = trace.PhaseTracker(trace.step_weights(world.wind_model))
+        recorder = trace.Recorder(
+            sink=lambda label, group: runner.set_phase(label, group, tracker.fraction),
+            on_finish=tracker.finish,
+        )
         try:
-            for _ in _step_progress(session, world, step_years):
-                pass
+            # The overlay's phase text for a run comes from the step's own spans (trace.py),
+            # published on the runner for the UI's short poll of /run.
+            with trace.recording(recorder):
+                for _ in _step_progress(session, world, step_years):
+                    pass
             completed = True
         finally:
+            runner.set_phase(None)
             _world_changed(session, completed)
     return True
 
@@ -3370,6 +3401,7 @@ def _run_summary(session: WorldSession) -> dict:
         "stepping": runner.stepping(),
         "error": runner.error(),
         "run_version": run_version,
+        "phase": runner.phase(),
         "world": session.feed.summary(),
     }
 

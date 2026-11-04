@@ -18,6 +18,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from . import trace
+
 KM3_TO_M3 = 1e9
 KM2_TO_M2 = 1e6
 
@@ -516,6 +518,7 @@ def _stage_kernel(plume: MantlePlume, stage: str, oceanic_host: bool) -> tuple[f
     return PLUME_TAIL_RADIUS_KM * 1000.0 / 2.0, False, 2.0
 
 
+@trace.traced("Raising mantle plumes", trace.PLATES, user=True)
 def apply(world, years: float) -> dict:
     """Emplace one step of plume head/tail/heat; returns step diagnostics (#579).
 

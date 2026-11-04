@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from .. import lithosphere
+from .. import lithosphere, trace
 from ..elevation_lines import PLANET_RADIUS_KM
 
 if TYPE_CHECKING:
@@ -101,6 +101,7 @@ def _arc_km(chord: np.ndarray) -> np.ndarray:
     return 2.0 * np.arcsin(np.clip(chord / 2.0, 0.0, 1.0)) * PLANET_RADIUS_KM
 
 
+@trace.traced("Shaping initial bathymetry", trace.SEEDING, user=True)
 def shape_initial_bathymetry(plates: list["Plate"]) -> None:
     """The full generation-time sea-floor fix-up, in order: first drown the interiors of
     submerged continental crust toward basin depth by distance from land, then grade the

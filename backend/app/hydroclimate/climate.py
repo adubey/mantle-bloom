@@ -111,7 +111,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 from scipy.special import ndtr
 
-from .. import geometry, plates
+from .. import geometry, plates, trace
 from . import biomes, hydrology
 
 if TYPE_CHECKING:
@@ -1772,6 +1772,7 @@ def surface_wind(
     return wind_u, wind_v, elevation_factor
 
 
+@trace.traced("Resolving climate", trace.HYDRO, user=True)
 def compute_climate(
     world: World,
     height: int = GRID_HEIGHT,

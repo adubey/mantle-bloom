@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { phaseLinks } from "../src/phaseInfo.js";
+import { groupName, phaseLinks } from "../src/phaseInfo.js";
 
 // Every phase label the backend streams (backend app/world.py #629) must resolve to at
 // least one working learn link, all of them https. Unknown phases get no box rather
@@ -20,6 +20,21 @@ const BACKEND_PHASES = [
   "Raising volcanoes",
   "Forming natural resources",
   "Balancing sea level",
+  // The user-visible spans (backend app/trace.py, #801).
+  "Laying out continents and mountain belts",
+  "Dividing the sphere into plates",
+  "Building pseudo-history",
+  "Shaping initial bathymetry",
+  "Dating the initial rocks",
+  "Seeding rivers and glaciers",
+  "Solving mantle flow and plate motion",
+  "Detecting collisions",
+  "Updating faults",
+  "Solving wind and ocean currents",
+  "Resolving climate",
+  "Resolving rivers and lakes",
+  "Marching glaciers",
+  "Eroding and depositing sediment",
 ];
 
 describe("phaseLinks", () => {
@@ -37,5 +52,12 @@ describe("phaseLinks", () => {
     assert.deepEqual(phaseLinks("Reticulating splines"), []);
     assert.deepEqual(phaseLinks(null), []);
     assert.deepEqual(phaseLinks(undefined), []);
+  });
+});
+
+describe("groupName", () => {
+  it("drops the bar from a span group and leaves a bare group alone", () => {
+    assert.equal(groupName("Stepping/Hydrometeorology (climate, water & ice)"), "Hydrometeorology (climate, water & ice)");
+    assert.equal(groupName("Moving plates"), "Moving plates");
   });
 });
