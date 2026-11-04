@@ -58,8 +58,9 @@ CONTINENT_COUNT_RANGE = (4, 7)
 CONTINENT_SPACING_KM = 4000.0
 # Dirichlet concentration. Earth's continents are unequal but all substantial: Eurasia
 # about a third of the land, Australia about 6%. At 2 a 4-7 way split left the smallest
-# continent down to 1% and the largest up to 49% on 20 of 30 seeds (#793); at 32 over seeds
-# 0-29 the smallest is at least 8% and the largest at most 32% of continental area.
+# continent down to 0.5% and the largest up to 60% of continental area, and 25 of 40 seeds
+# fall outside 5-40%; at 32 over seeds 1-40 the smallest is at least 9% and the largest at
+# most 32% (#793, bin/debug/continent_layout_measures.py).
 CONTINENT_SIZE_CONCENTRATION = 32.0
 # Continental area share of the sphere is clamped here so there is always some of each.
 CONTINENTAL_FRACTION_BOUNDS = (0.05, 0.9)
@@ -75,8 +76,9 @@ CONTINENT_OUTLINE_NOISE_KM = 400.0
 CONTINENT_GROWTH_SPEED_SIGMA = 1.0
 # Weight of a point's distance to its continent's centre in the growth order, beside its
 # distance to the cores: the outer side of a craton far from the centre is reached late, so
-# its margin is thin. With the speed field, a median 35% (11-49%) of cratons come within
-# CRATON_EDGE_NEAR_KM of the continental edge over 40 seeds, against 0% with neither (#470).
+# its margin is thin. With the speed field, a median 41% (11-65%) of cratons come within
+# CRATON_EDGE_NEAR_KM of the continental edge over 40 seeds (#793), against 0% with neither
+# (#470).
 CONTINENT_CENTRE_PULL = 1.0
 CONTINENT_GROWTH_NOISE_BASE_FREQ = 3.0
 
@@ -95,7 +97,8 @@ CRATON_CORE_RADIUS_KM = 1000.0
 # Orogens welded onto shields are a few hundred km wide (Cawood et al., 2009). 400 km, in
 # the RFC's 200-600 km sweep, rather than its starting 300: with composite cratons (#470)
 # there are fewer, larger cores and so less gap between them, and at 300-350 km belts fell
-# to 9-10% of continental area on some seeds, under the RFC's 10-30%; at 400 km, 11-20%.
+# to 9-10% of continental area on some seeds, under the RFC's 10-30%; at 400 km they are
+# 12.3-21.5% over 40 seeds (#793).
 CRATON_BELT_WIDTH_KM = 400.0
 # Noise amplitude on a point's distance to its nucleus, for irregular core outlines.
 CRATON_CORE_OUTLINE_NOISE_KM = 250.0
@@ -108,9 +111,10 @@ NUCLEUS_MAX_TRIES = 1000
 # with probability alpha / (alpha + n), n the continent's nuclei so far, and otherwise joins
 # an existing craton chosen in proportion to its nuclei (a Chinese restaurant process).
 # Design choice; tuned to the craton count and size spread over the layout seeds.
-# At 8, with the size scales below, a median 2 cratons per world reach 10 M km^2 (0 at 20,
-# #470's first value) and 20-55 cratons form over 40 seeds; at 5-6, belts fell to 5-7% of
-# continental area on some seeds. At 2 with every scale 1, 89% of nuclei joined.
+# At 8, with the size scales below, 30-62 cratons form over 40 seeds, a median 0 per world
+# reach 10 M km^2 (the largest is 18.2 M km^2) and 69% of nuclei join an existing craton
+# (#793); at 5-6, belts fell to 5-7% of continental area on some seeds. At 2 with every scale
+# 1, 89% of nuclei joined (#470).
 CRATON_CLUSTER_CONCENTRATION = 8.0
 # A joining nucleus is placed this far (in multiples of its craton's reach, the size scale
 # times the core radius) from a nucleus of its craton, so the two disks overlap and merge into
@@ -125,7 +129,7 @@ NUCLEUS_JOIN_STEP_RANGE = (0.8, 1.3)
 CRATON_SIZE_SCALE_RANGE = (0.5, 1.0)
 # No nucleus joins a craton that already covers this much, so composites stop growing at
 # about the largest of #470's first layouts (20-23 M km^2 over 40 seeds); the trim to the
-# craton share can leave one a little larger (22 M km^2).
+# craton share can leave one a little larger (18.2 M km^2 at most over 40 seeds, #793).
 CRATON_MAX_AREA_KM2 = 18e6
 # Closing radius for the core-and-belt interior: bridges gaps between cores up to twice
 # this wide, more than the widest gap the nucleus step and a trimmed core radius leave. At

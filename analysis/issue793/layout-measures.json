@@ -1,0 +1,70 @@
+{
+ "concentration_2": {
+  "seeds": 40,
+  "cratons_min_max": [
+   27,
+   58
+  ],
+  "near_edge_median_min_max": [
+   0.377,
+   0.15,
+   0.552
+  ],
+  "belt_share_min_max": [
+   0.11,
+   0.204
+  ],
+  "core_share_mean_min_max": [
+   0.397,
+   0.377,
+   0.4
+  ],
+  "joined_nucleus_share_mean": 0.82,
+  "cratons_of_10m_km2_median_per_world": 1.0,
+  "craton_area_p5_m_km2": 0.51,
+  "craton_share_under_1m_km2": 0.308,
+  "craton_area_max_m_km2": 20.9,
+  "smallest_continent_share_min": 0.005,
+  "largest_continent_share_max": 0.595,
+  "seeds_outside_5pct_40pct": 25,
+  "core_share_on_calibration_seeds": {
+   "7": 0.4,
+   "11": 0.377,
+   "2024": 0.396
+  }
+ },
+ "concentration_32": {
+  "seeds": 40,
+  "cratons_min_max": [
+   30,
+   62
+  ],
+  "near_edge_median_min_max": [
+   0.414,
+   0.108,
+   0.646
+  ],
+  "belt_share_min_max": [
+   0.123,
+   0.215
+  ],
+  "core_share_mean_min_max": [
+   0.398,
+   0.385,
+   0.4
+  ],
+  "joined_nucleus_share_mean": 0.693,
+  "cratons_of_10m_km2_median_per_world": 0.0,
+  "craton_area_p5_m_km2": 0.51,
+  "craton_share_under_1m_km2": 0.303,
+  "craton_area_max_m_km2": 18.2,
+  "smallest_continent_share_min": 0.093,
+  "largest_continent_share_max": 0.322,
+  "seeds_outside_5pct_40pct": 0,
+  "core_share_on_calibration_seeds": {
+   "7": 0.4,
+   "11": 0.385,
+   "2024": 0.398
+  }
+ }
+}

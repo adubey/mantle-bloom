@@ -251,7 +251,7 @@ mask (continental crust whose relief sample clears the land threshold); steps 4-
    `CONTINENT_SPACING_KM = 4000` apart. `continental_fraction` is a share of the surface here,
    clamped to 0.05-0.9 and defaulting to `plates.CONTINENTAL_AREA_FRACTION = 0.5`; a
    Dirichlet draw (`CONTINENT_SIZE_CONCENTRATION = 32`) splits that area between continents: unequal, but over
-   seeds 0-29 the smallest holds at least 8% and the largest at most 32% of it (#793).
+   seeds 1-40 the smallest holds at least 9% and the largest at most 32% of it (#793).
 2. **Cratons.** Nuclei chain out from each continent's centre. Each new nucleus starts a new
    craton with probability `CRATON_CLUSTER_CONCENTRATION / (that + n)` (8, n the continent's
    nuclei so far); otherwise it joins an existing craton below `CRATON_MAX_AREA_KM2` (18 M km²),
