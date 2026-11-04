@@ -187,15 +187,16 @@ def _stepped_crust_and_relief(seed: int, steps: int, **knobs) -> tuple[float, fl
 
 def test_collision_uplift_amount_scales_crustal_thickening():
     # A colliding-plate seed, few enough steps that no peak has railed at MAX_ELEVATION_M.
-    strong_hc, _ = _stepped_crust_and_relief(559394024, 6, collision_uplift_multiplier=3.0)
-    weak_hc, _ = _stepped_crust_and_relief(559394024, 6, collision_uplift_multiplier=0.2)
+    # Seed 2 collides on the old and the even continent layouts alike (#793); 559394024 stopped.
+    strong_hc, _ = _stepped_crust_and_relief(2, 6, collision_uplift_multiplier=3.0)
+    weak_hc, _ = _stepped_crust_and_relief(2, 6, collision_uplift_multiplier=0.2)
     assert strong_hc > weak_hc
 
 
 def test_collision_uplift_amount_at_one_is_untuned():
-    tuned_hc, _ = _stepped_crust_and_relief(559394024, 6, collision_uplift_multiplier=1.0,
+    tuned_hc, _ = _stepped_crust_and_relief(2, 6, collision_uplift_multiplier=1.0,
                                             collision_uplift_reach_multiplier=1.0)
-    untuned_hc, _ = _stepped_crust_and_relief(559394024, 6)
+    untuned_hc, _ = _stepped_crust_and_relief(2, 6)
     assert tuned_hc == untuned_hc
 
 
@@ -205,6 +206,6 @@ def test_collision_uplift_reach_at_zero_thickens_less_than_its_own_default():
     # (`orogen_contested_strength = orogen_amount * min(orogen_reach, 1.0)`), so this isn't a
     # surgical isolation of either -- just confirms the knob's default does more than an
     # explicit "off".
-    default_hc, _ = _stepped_crust_and_relief(559394024, 6, collision_uplift_reach_multiplier=1.0)
-    zero_reach_hc, _ = _stepped_crust_and_relief(559394024, 6, collision_uplift_reach_multiplier=0.0)
+    default_hc, _ = _stepped_crust_and_relief(2, 6, collision_uplift_reach_multiplier=1.0)
+    zero_reach_hc, _ = _stepped_crust_and_relief(2, 6, collision_uplift_reach_multiplier=0.0)
     assert default_hc > zero_reach_hc

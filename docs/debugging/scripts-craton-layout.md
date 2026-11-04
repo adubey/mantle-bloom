@@ -40,6 +40,22 @@ PYTHONPATH=backend backend/.venv/bin/python bin/debug/measure_plate_layout.py \
     --seeds "" --load seed7-500myr.mbworld --out /tmp/layout-500.json
 ```
 
+### `continent_layout_measures.py`
+
+Measures the cratons-first layout's own figures over seeds 1..N (default 40) at land fraction
+0.29, for one or more values of `CONTINENT_SIZE_CONCENTRATION`: craton count, the share of
+cratons within `CRATON_EDGE_NEAR_KM` of the continental edge, belt and core share of
+continental area (and the core share on seeds 7, 11 and 2024), the share of nuclei that
+joined a craton, craton areas (5th percentile, share under 1 M km², largest, cratons of 10 M km²
+or more per world), and the smallest and largest continent's share of continental area with the
+number of seeds outside 5–40%. These are the figures the constants in `continent_layout.py`
+cite in their comments. A layout takes about 1 s at node density 1.
+
+```bash
+PYTHONPATH=backend backend/.venv/bin/python bin/debug/continent_layout_measures.py \
+    --seeds 40 --concentration 2 32 --out analysis/issue793/layout-measures.json
+```
+
 ### `probe_mixed_plates.py`
 
 RFC 0009 gate G2 (#438): do mixed plates (continental and oceanic crust on one plate) behave
