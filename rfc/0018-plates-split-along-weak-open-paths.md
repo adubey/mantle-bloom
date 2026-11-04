@@ -6,7 +6,7 @@
 
 ## Revision note
 
-This revision proposes PR #TBD. The previous G1 required at least 10 observed opportunities
+This revision proposes [PR #810](https://github.com/adubey/mantle-bloom/pull/810). The previous G1 required at least 10 observed opportunities
 and a usable candidate in at least two thirds of trigger-positive opportunities. The 2/3 rate
 was a project-selected usability cutoff, not a geological estimate. Geological rift systems
 are not independent draws from the simulation's per-trigger opportunities, and observations
