@@ -78,21 +78,25 @@ For an eligible plate:
 1. Cluster its cell velocities into the two motion groups already used by the split logic.
    Fit a likely rotation for each group. No shortest-path search is needed: only the split
    path is found, and that path is undirected.
-2. Give each cell a relative resistance to breaking. More massive columns and cratons
-   resist more. Cells that do not fit either group's motion, or that are thinned, faulted,
-   volcanic, plume-heated, in a belt or in a suture, resist less. Values are bounded so no
-   cell has zero or negative resistance. These are relative scores, not measured rock
-   strengths.
+2. Give each cell a structural resistance to breaking. More massive columns and cratons
+   resist more; thinning, faults, volcanoes, plume heat, belts and sutures lower resistance.
+   Motion fit is evaluated separately for each candidate cut, because it depends on which
+   daughter group the cell would stay with. These are bounded relative scores, not measured
+   rock strengths; no cell has zero or negative resistance.
 3. Sample weak edges that connect different motion groups. For each sampled edge, find a
-   low-cost cut that crosses that edge. Keep the candidate only if each side is connected
-   and one dominant cut trace reaches the plate edge at two places. At least 90% of the cut
-   length must belong to that trace; report the remaining fragments. Use a separate,
-   deterministic sample keyed by world seed, plate and edge so this choice does not consume
-   random numbers used by unrelated simulation processes.
-4. Fit a rotation to each candidate daughter. Measure signed opening along the cut, using
-   shared-edge length as the weight. Reject candidates whose net opening is closing, or
-   whose opening is no larger than the fit's estimated uncertainty. Also report the share
-   of cut length that opens.
+   low-cost cut that crosses it. The cut cost combines structural resistance with a
+   candidate-specific motion-fit term: compare each cell's velocity with the fitted rotation
+   of the daughter side that contains it. A good fit means the cell resists breaking away
+   from that group; a poor fit means it offers less resistance. Since the term depends on
+   the proposed cut, evaluate it for each candidate partition rather than storing one
+   motion-resistance value per cell for all cuts. Keep the candidate only if each side is
+   connected and one dominant cut trace reaches the plate edge at two places. At least 90%
+   of the cut length must belong to that trace; report the remaining fragments. Use a
+   separate, deterministic sample keyed by world seed, plate and edge so this choice does
+   not consume random numbers used by unrelated simulation processes.
+4. Measure signed opening along each candidate cut, using shared-edge length as the weight.
+   Reject candidates whose net opening is closing, or whose opening is no larger than the
+   fit's estimated uncertainty. Also report the share of cut length that opens.
 5. Rank the remaining candidates by their potential momentum score, then split on the best
    candidate if it passes the existing production checks. The score ranks options; it is
    not a claim that the simulation conserves or releases physical momentum at the cut.
@@ -134,7 +138,7 @@ dimensionless resistance rules. They are starting points only:
 |---|---:|---|
 | Column mass | `0.6 + 0.4 * clamp(mass / plate-median, 0, 4)` | A thicker or denser column costs more to cut |
 | Craton | Multiply resistance by `2.5` | A craton is harder to cut, not an absolute no-go zone |
-| Motion fit | Divide resistance by `1 + clamp(residual / median-residual, 0, 4)` | Cells poorly fit by either motion group cost less |
+| Motion fit | Divide resistance by `1 + clamp(residual / median-residual, 0, 4)` | For each candidate, residual is measured against the fitted rotation of the daughter side containing the cell; a poor fit lowers resistance to breaking from that side |
 | Belt / suture | Reduce resistance by `0.35` / `0.45` | Inherited weak marks lower the cost |
 | Volcano / plume heat | Reduce resistance by `0.35` each | Existing volcanic or heated cells lower the cost |
 | Fault / thinning | Reduce resistance by `0.40` / `0.25` | Older faults count; thinner columns lower the cost |
@@ -143,8 +147,10 @@ dimensionless resistance rules. They are starting points only:
 | Candidate count | `12` | Number of sampled weak edges; tune only on development seeds |
 | Balance exponent | `mu = 1`; sweep `0, 0.5, 1, 2` | Design choice; not a measured physical value |
 
-The motion-residual reduction and edge-cost floor from the prototype are also retained for
-the first tuning pass. All score factors stay bounded. Area is used when converting column
+The motion-residual reduction is candidate- and assignment-specific: the fit is measured
+against the daughter group a cell would remain with, never against whichever of the two
+groups happens to fit it better. The edge-cost floor from the prototype is retained for the
+first tuning pass. All score factors stay bounded. Area is used when converting column
 mass to a plate or daughter total; raw node count is not a substitute for mass.
 
 Keep the existing 0.55 split-success chance for the first paired comparison so this change
