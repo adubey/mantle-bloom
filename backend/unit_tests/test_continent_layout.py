@@ -75,7 +75,9 @@ def test_same_seed_gives_the_same_layout(layout):
     assert not np.array_equal(cratons_first_layout(8, land_fraction=0.29).layout.plate, layout.plate)
 
 
-def test_a_continent_too_small_for_a_core_gets_none():
+def test_a_continent_too_small_for_a_core_gets_none(monkeypatch):
+    # Even continent sizes (#793) rarely leave one under a disk, so force an uneven split.
+    monkeypatch.setattr(cl, "CONTINENT_SIZE_CONCENTRATION", 2.0)
     small = cratons_first_layout(4, continental_fraction=0.05).layout
     disk = cap_area_km2(cl.CRATON_CORE_RADIUS_KM)
     too_small = np.flatnonzero(small.continent_area_km2 < disk)
@@ -125,3 +127,15 @@ def test_craton_sizes_spread_below_one_disk_and_stop_near_the_cap(layout):
     disk = cap_area_km2(cl.CRATON_CORE_RADIUS_KM)
     assert sizes.min() < 0.5 * disk
     assert sizes.max() < 1.5 * cl.CRATON_MAX_AREA_KM2
+
+
+def test_continents_are_unequal_but_all_substantial():
+    # #793: a 4-7 way Dirichlet(2) split left slivers of 1-3% beside a 45% continent on 20 of
+    # 30 seeds; Earth's continents run from about 6% to 36% of the land.
+    for seed in range(30):
+        geography = cl.build_geography(np.random.default_rng(seed), 0.1, 0.5)
+        shares = np.bincount(geography.continent[geography.continent >= 0])
+        shares = shares[shares > 0] / shares.sum()
+        assert cl.CONTINENT_COUNT_RANGE[0] <= len(shares) <= cl.CONTINENT_COUNT_RANGE[1]
+        assert shares.min() >= 0.05, seed
+        assert shares.max() <= 0.40, seed

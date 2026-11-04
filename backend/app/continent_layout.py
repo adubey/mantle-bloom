@@ -56,8 +56,11 @@ CRATONS_FIRST_DEFAULT = True
 # Design choices (RFC 0009 knobs), tuned to the layout measures over 20 seeds.
 CONTINENT_COUNT_RANGE = (4, 7)
 CONTINENT_SPACING_KM = 4000.0
-# Dirichlet concentration: 2 gives clearly unequal continents without slivers.
-CONTINENT_SIZE_CONCENTRATION = 2.0
+# Dirichlet concentration. Earth's continents are unequal but all substantial: Eurasia
+# about a third of the land, Australia about 6%. At 2 a 4-7 way split left the smallest
+# continent down to 1% and the largest up to 49% on 20 of 30 seeds (#793); at 32 over seeds
+# 0-29 the smallest is at least 8% and the largest at most 32% of continental area.
+CONTINENT_SIZE_CONCENTRATION = 32.0
 # Continental area share of the sphere is clamped here so there is always some of each.
 CONTINENTAL_FRACTION_BOUNDS = (0.05, 0.9)
 # Amplitude of the noise on the distance a continent grows outward from its cores, so

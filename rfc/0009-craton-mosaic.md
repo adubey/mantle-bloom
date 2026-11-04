@@ -435,9 +435,9 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
 | Knob | Start | Source | Tuning |
 |---|---|---|---|
 | `continental_fraction` (existing, now an area share) | 0.5 (random worlds), 0.7 (UI) | Today's mean starting area, 51% on seeds 7, 11 and 2024 (40–63%); the UI default kept as a share | UI copy says "of the surface" |
-| `CONTINENT_COUNT_RANGE` | 2–6 | Design choice | Layout measures over 20 seeds |
+| `CONTINENT_COUNT_RANGE` | 4–7 (2–6 in the original draft) | Design choice | Layout measures over 20 seeds; smallest and largest continent share over 30 seeds (#793) |
 | `CONTINENT_SPACING_KM` | 4,000 km | Design choice | Same |
-| `CONTINENT_SIZE_CONCENTRATION` | 2 | Design choice: unequal continents | Same |
+| `CONTINENT_SIZE_CONCENTRATION` | 32 (2 until #793) | Design choice: unequal but all substantial continents, as on Earth; 2 left slivers of 1–3% on 20 of 30 seeds | Same |
 | `CRATON_SHARE_OF_CONTINENT` | 0.4 | Today's 37.6–50.7% at t = 0 (#403) | Fixed to today's mean, so craton calibrations carry over |
 | `CRATON_CORE_SPACING_KM` | 1,500 km | Design choice: minimum separation; not a direct count of geological cratons | G3; sweep 1,000–2,500 km |
 | `CRATON_CORE_RADIUS_KM` | 1,000 km | Design choice: about 3.1 M km² per full disk; roughly 33 disks at the 102 M km² starting target, before clipping and overlap | G3; sweep with spacing |

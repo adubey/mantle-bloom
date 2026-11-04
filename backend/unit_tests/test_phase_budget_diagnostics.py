@@ -106,11 +106,14 @@ def test_main_errors_on_a_missing_file(tmp_path):
         main([str(tmp_path / "nope.mbworld"), "--years", "100000"])
 
 
-def test_shortening_ledger_is_reported_apart_from_the_phases(fresh_world):
+def test_shortening_ledger_is_reported_apart_from_the_phases():
     # Issue #314: the collisional-shortening entry has no Hc/Hm scopes of its own.
     from app.phase_budget import SHORTENING_PHASE
 
-    report = build_report(fresh_world, CONVENTIONAL_YEARS_PER_STEP)
+    # Only about 9 in 16 seeds have a collision in their first step, so this needs one that
+    # does; seed 11, the fixture's, stopped having one when continent sizes evened out (#793).
+    world = generate_world(seed=2, num_plates=6, node_density=1.0)
+    report = build_report(world, CONVENTIONAL_YEARS_PER_STEP)
     assert all(row["phase"] != SHORTENING_PHASE for row in report["phases"])
     book = report["shortening"]
     assert book["demand_m2"] > 0.0
