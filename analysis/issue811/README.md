@@ -40,17 +40,45 @@ The model has no real seasonal cycle (`climate.py`), so sub-year steps all see t
    predate #758 (enclosed ocean-floor basins as ocean), so this is probably the new rule acting on
    an old save. That is a hypothesis: the newly-ocean nodes held none of step 1's lake water, and
    the probe's transfer counters are cumulative, so the cause of the dump is not identified.
-3. **No lake period-2 alternation in any mode once the start-up is excluded.** From step 11,
-   lag-1 autocorrelation of the step change in world lake volume is -0.01 (day), 0.11 (1 yr)
-   and -0.04 (100 kyr). The values over all 200 steps (-0.62 at 100 kyr) were the start-up
-   transient. This does not rule out single-body flicker (#754's definition), which the driver
-   does not yet compute.
+3. **No strict lake period-2 alternation once the start-up is excluded, but lag-1 is
+   inconclusive at 100 kyr.** From step 11 of the no-warm-up runs, lag-1 autocorrelation of the
+   step change in world lake volume is -0.01 (day), 0.11 (1 yr) and -0.04 (100 kyr); the value
+   over all 200 steps (-0.62 at 100 kyr) was the start-up transient. The warm-up rerun gives -0.41
+   at 100 kyr (see below), so this statistic depends on the trajectory. Single-body flicker
+   (#754's definition) is not yet computed by the driver.
 4. **Lake refill follows physical time.** After the collapse lakes do not refill in 200 days,
    refill from 101k to 266k km3 over 200 yr, and are back to 278k km3 within one 100 kyr step.
 5. **Ledgers close in every mode** (worst normalized lake and land residual 2e-7 or smaller).
 6. **Not comparable across modes:** drift of ice and sea level. The spans differ (200 days, 200
    yr, 20 Myr). The 100 kyr run's 20% ice growth and ~125 m sea-level fall are evolution, not a
    step-size effect.
+
+## Warm-up rerun (same save, 10 day-steps first, then 200 measured steps)
+
+Compact summary: [`seed997271774-modes-warm.json`](seed997271774-modes-warm.json).
+
+- **The step-2 transient is out of the measured series.** Lake volume starts at 95.6k (day),
+  98.4k (1 yr) and 253k km3 (100 kyr).
+- **The day run is deterministic.** Its measured steps match the no-warm-up run from step 11
+  on, so replays are reproducible.
+- **Day mode:** discharge spikes persist (largest 3.15 M m3/s, 133x between consecutive steps),
+  one with a 6.3k km3 lake drop in the same step and the others with smaller lake changes. Only one
+  step drops lake volume by more than 1,000 km3.
+- **1 yr mode:** lakes rise smoothly from 98k to 266k km3 and discharge from 24k to 49k m3/s
+  (largest consecutive ratio 1.26). No spikes. The high lag-1 (0.85) is the trend.
+- **100 kyr mode:** lake volume moves 253k to 587k km3 with large step changes (74 of 199
+  steps drop by more than 1,000 km3; largest drop 145k, largest rise 124k). Discharge
+  stays between 33k and 147k m3/s. Plates move 100 kyr per step here, so some of this is
+  real geology; I have not separated it from solver behaviour.
+- **Lag-1 is not a reliable flicker statistic at 100 kyr.** It is -0.41 with warm-up and -0.04
+  without (from step 11), because the warm-up changes the trajectory. The rate at which the step
+  change flips sign is 0.44 and 0.49, close to the 0.48 of a random walk. Treat the earlier
+  "no alternation in any mode" as "no strict alternation, lag-1 inconclusive at 100 kyr", and use
+  #754's body-level definition for flicker.
+- **What the three modes support:** discharge peaks scale with 1/dt (day spikes of millions of
+  m3/s, none at 1 yr and 100 kyr), and the lake series behave differently by step size (a drift
+  with few events, a smooth rise, large per-step swings). Which of these differences is a
+  numerical artefact and which is physical time is not yet separated.
 
 ## Method change: warm up first
 
