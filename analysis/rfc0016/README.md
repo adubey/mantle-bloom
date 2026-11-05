@@ -828,9 +828,10 @@ pin, before G1b.
 commit. If `main` moves before the scan ends, the scan stays on `3854792f`; the final pin for G0
 and G1b is chosen later and needs its own G0 rerun if it differs.
 
-**Worlds.** The two #680 event worlds, by SHA-256: seed 910211954 at 220.4 Myr (`bd487409…`) and
-seed 317739385 at 200.8 Myr (`6c806f91…`), plus window A's checkpoint (`9882568e…`) replayed for
-0.8 Myr. Neither seed is in RFC 0015's held-out set (447276134, 628977350, 295569319), and RFC 0016
+**Worlds.** The two #680 event worlds, by SHA-256: seed 910211954 at 220.4 Myr (`bd4874092efc805e8b174e115fe567c82d35fc2ee606686938b5b6eb96b060d2`) and
+seed 317739385 at 200.8 Myr (`6c806f913e4c79bb351b5eb5a143abcfc273df39b3bdf4ce9823fec7d27fb0cd`), plus window A's
+221.6 Myr checkpoint (`9882568e681a0f9f207e3302453b3a92f18865d5640d7baa8d9d8eb09ab4633e`) replayed
+for 0.8 Myr. Neither seed is in RFC 0015's held-out set (447276134, 628977350, 295569319), and RFC 0016
 hasn't named one. Adding a world is an owner decision, taken before the scan.
 
 **Scan.** `bin/debug/measure_lake_step_budget.py`, 100 kyr steps, ice-age cycle off, 5 Myr per
