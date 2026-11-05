@@ -266,23 +266,6 @@ GLACIER_VISIBLE_DEPTH_M = 10.0
 # sheet on real Earth.
 GLACIER_MAX_DEPTH_M = 5000.0
 
-# During a deep enough ice age -- climate.ice_age_glacial_intensity at or above
-# ICE_AGE_SEA_ICE_MIN_INTENSITY -- ice is allowed to pile up on, and persist over, genuinely
-# freezing polar *ocean* nodes (surface temperature below SEA_ICE_FORMATION_TEMP_C) rather
-# than being discarded at the coastline the way it is the rest of the time (see
-# ice_sheet.step_ice's calving of floating ice, gated by an `allow_ocean_ice` mask). This is the "ice
-# caps can grow over polar water in an ice age" behaviour: land glaciers calving toward the
-# coast, plus frozen precipitation landing on the sea itself, build a floating ice cap over
-# the pole. Outside an ice age -- or during its interglacial phase, intensity near 0 -- the
-# gate stays shut and the old calve-at-the-coast rule holds exactly (bit-identical). The sea
-# ice still melts back through the ordinary melt_factor term, and once the glacial phase
-# passes the gate closes and that step discards whatever had accumulated (shed to meltwater,
-# mass-conserving into the river/ocean system). SEA_ICE_FORMATION_TEMP_C matches biomes.py's
-# own `sst < -1.0` sea-ice cutoff; the intensity floor is half the raised-cosine amplitude,
-# i.e. "past the midpoint of a glacial build".
-SEA_ICE_FORMATION_TEMP_C = -1.0
-ICE_AGE_SEA_ICE_MIN_INTENSITY = 0.5
-
 # River evaporation: a fraction of a river's own downstream flux evaporates at every node it
 # passes through this step -- warmer nodes lose a bigger fraction, up to
 # RIVER_EVAPORATION_MAX_FRACTION (capped well short of 1.0 so a single very large step can't
