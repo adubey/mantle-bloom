@@ -94,9 +94,14 @@ def _steps():
 def test_run_traced_passes_generator_progress_through_until_a_span_has_spoken():
     def no_spans():
         yield ("progress", 0.5, "Creating continents")
+        yield ("progress", 1.0, "Seeding climate and oceans")  # a generator's own final line stays 1.0
         yield ("done", "world")
 
-    assert list(trace.run_traced(no_spans(), {})) == [("progress", 0.5, "Creating continents"), ("done", "world")]
+    assert list(trace.run_traced(no_spans(), {})) == [
+        ("progress", 0.5, "Creating continents"),
+        ("progress", 1.0, "Seeding climate and oceans"),
+        ("done", "world"),
+    ]
 
 
 def test_run_traced_replaces_progress_with_phase_messages_and_weighted_fractions():

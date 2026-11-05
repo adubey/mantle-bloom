@@ -1333,14 +1333,18 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
                 session.feed.set_name(session.name)
                 yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
         finally:
-            if progress is not None:
-                # Wait for the generation's worker thread before the lock and gate go (#801),
-                # as in step(). A no-op once it has finished.
-                progress.close()
-            if acquired:
-                session.lock.release()
-                _compute_gate.release()
-            session.end_operation()
+            try:
+                if progress is not None:
+                    # Wait for the generation's worker thread before the lock and gate go (#801),
+                    # as in step(). A no-op once it has finished.
+                    progress.close()
+            finally:
+                # Nested so a close() that raises can never leak the lock and gate: a leak
+                # blocks every later request on this world, or on any world for the gate.
+                if acquired:
+                    session.lock.release()
+                    _compute_gate.release()
+                session.end_operation()
 
     return StreamingResponse(_stream(), media_type="application/x-ndjson")
 
@@ -1509,17 +1513,20 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
             except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
                 yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
         finally:
-            if progress is not None:
-                # Wait for the step's worker thread before the lock and gate go (#801): an
-                # error on this side (a bad message, a failed write) must not leave it stepping
-                # the world under whoever takes the lock next. A no-op once it has finished.
-                progress.close()
-            if acquired:
-                # Even a failed step has changed the world partway.
-                _world_changed(session, completed)
-                session.lock.release()
-                _compute_gate.release()
-            session.end_operation()
+            try:
+                if progress is not None:
+                    # Wait for the step's worker thread before the lock and gate go (#801): an
+                    # error on this side (a bad message, a failed write) must not leave it stepping
+                    # the world under whoever takes the lock next. A no-op once it has finished.
+                    progress.close()
+            finally:
+                # Nested so a close() that raises can never leak the lock and gate (see generate()).
+                if acquired:
+                    # Even a failed step has changed the world partway.
+                    _world_changed(session, completed)
+                    session.lock.release()
+                    _compute_gate.release()
+                session.end_operation()
 
     return StreamingResponse(_stream(), media_type="application/x-ndjson")
 

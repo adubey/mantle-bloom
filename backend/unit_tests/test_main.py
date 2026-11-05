@@ -2419,6 +2419,34 @@ def test_a_step_stream_that_fails_on_this_side_waits_for_the_worker_before_unloc
     assert unlocked_with == [[True]]  # the worker had finished by the time the lock was released
 
 
+def test_a_stream_whose_close_raises_still_releases_the_lock_and_compute_gate(client, monkeypatch):
+    # Regression (#809 CI): closing the traced stream before unlocking made a close() that raised
+    # skip the release, and every later request then blocked forever on the leaked lock/gate.
+    from app import trace
+
+    class Unclosable:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def __iter__(self):
+            return self._inner
+
+        def close(self):
+            raise RuntimeError("close failed")
+
+    monkeypatch.setattr(trace, "run_traced", lambda progress, weights: Unclosable(progress))
+    monkeypatch.setattr(main, "generate_world_progress", lambda seed, **kwargs: iter([("done", object())]))
+    monkeypatch.setattr(main, "_set_world", lambda session, world: None)
+    monkeypatch.setattr(main, "_summary", lambda session, world: {"seed": 7})
+
+    with pytest.raises(RuntimeError, match="close failed"):
+        _post_generate(client, json={"seed": 7})
+
+    assert not _default_session.lock.locked()
+    assert main._compute_gate.acquire(timeout=1.0), "the compute gate was leaked"
+    main._compute_gate.release()
+
+
 def test_generate_weights_follow_the_request(client, monkeypatch):
     # A sketch or premade world skips the cratons-first layout phases, so the bar must not wait for them.
     from app import trace
@@ -2427,7 +2455,7 @@ def test_generate_weights_follow_the_request(client, monkeypatch):
 
     def fake_run_traced(progress, weights):
         captured["weights"] = weights
-        return progress
+        yield from progress  # a generator, as the real one is: the endpoint closes it
 
     monkeypatch.setattr(trace, "run_traced", fake_run_traced)
     monkeypatch.setattr(main, "generate_world_progress", lambda seed, **kwargs: iter([("done", object())]))

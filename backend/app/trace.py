@@ -329,7 +329,9 @@ def run_traced(progress: Iterator, weights: dict[str, float]) -> Iterator[tuple]
                         continue
                     # Before any span has spoken: pass the generator's line through, but never
                     # below it later (the first phase message would otherwise drop the bar to 0).
-                    message = ("progress", tracker.advance(message[1]), *message[2:])
+                    # The tracker keeps the span-driven cap below 1; the generator's own line,
+                    # including a final 1.0, goes out unchanged.
+                    message = ("progress", max(message[1], tracker.advance(message[1])), *message[2:])
                 elif message[0] == "heartbeat":
                     message = ("heartbeat", tracker.fraction)
                 yield message
