@@ -1,0 +1,164 @@
+{
+ "main": {
+  "commit": "d02484e6f48c736e3c39a677eb0a3aa341c383c1",
+  "save_sha256": "08ad9461d9585e92be93a58d81e326c7e4b685ae7d462135d01b0e9931ed762b",
+  "checkpoints": [
+   {
+    "elapsed_myr": 87.4,
+    "sea_level_m": -408.1539494189735,
+    "ice_volume_m3": null
+   },
+   {
+    "elapsed_myr": 87.9,
+    "sea_level_m": -411.0856056713636,
+    "ice_volume_m3": 5661750400323321.0,
+    "calved_m3": 20702861444.361244,
+    "calved_off_ocean_m3": 391063505.3694082,
+    "calved_off_ocean_share": 0.01888934563081475,
+    "max_off_ocean_nodes": 2,
+    "max_abs_ice_residual_m3": 2.0
+   },
+   {
+    "elapsed_myr": 88.4,
+    "sea_level_m": -418.6784496240574,
+    "ice_volume_m3": 5698382380071738.0,
+    "calved_m3": 223487683473.3562,
+    "calved_off_ocean_m3": 0.0,
+    "calved_off_ocean_share": 0.0,
+    "max_off_ocean_nodes": 0,
+    "max_abs_ice_residual_m3": 1.0
+   },
+   {
+    "elapsed_myr": 88.9,
+    "sea_level_m": -427.16586723703523,
+    "ice_volume_m3": 5712231695328412.0,
+    "calved_m3": 632828738233.2484,
+    "calved_off_ocean_m3": 0.0,
+    "calved_off_ocean_share": 0.0,
+    "max_off_ocean_nodes": 0,
+    "max_abs_ice_residual_m3": 1.0
+   },
+   {
+    "elapsed_myr": 89.4,
+    "sea_level_m": -434.97648433622305,
+    "ice_volume_m3": 5739596497099870.0,
+    "calved_m3": 112805157447.57916,
+    "calved_off_ocean_m3": 0.0,
+    "calved_off_ocean_share": 0.0,
+    "max_off_ocean_nodes": 0,
+    "max_abs_ice_residual_m3": 2.0
+   }
+  ],
+  "per_step_off_ocean_m3": [
+   [
+    391063505.3694082,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  ]
+ },
+ "branch": {
+  "commit": "14c2b9166624c8b39b76d0f6dbaf163b4badeef8",
+  "save_sha256": "08ad9461d9585e92be93a58d81e326c7e4b685ae7d462135d01b0e9931ed762b",
+  "checkpoints": [
+   {
+    "elapsed_myr": 87.4,
+    "sea_level_m": -408.1539494189735,
+    "ice_volume_m3": null
+   },
+   {
+    "elapsed_myr": 87.9,
+    "sea_level_m": -411.0761636796843,
+    "ice_volume_m3": 5662068956477682.0,
+    "calved_m3": 20311797938.991837,
+    "calved_off_ocean_m3": 0.0,
+    "calved_off_ocean_share": 0.0,
+    "max_off_ocean_nodes": 0,
+    "max_abs_ice_residual_m3": 1.0
+   },
+   {
+    "elapsed_myr": 88.4,
+    "sea_level_m": -418.7225731251015,
+    "ice_volume_m3": 5698055040498477.0,
+    "calved_m3": 0.0,
+    "calved_off_ocean_m3": 0.0,
+    "calved_off_ocean_share": 0.0,
+    "max_off_ocean_nodes": 0,
+    "max_abs_ice_residual_m3": 1.0
+   },
+   {
+    "elapsed_myr": 88.9,
+    "sea_level_m": -427.3605566050954,
+    "ice_volume_m3": 5712324287447188.0,
+    "calved_m3": 19970475978.162983,
+    "calved_off_ocean_m3": 0.0,
+    "calved_off_ocean_share": 0.0,
+    "max_off_ocean_nodes": 0,
+    "max_abs_ice_residual_m3": 2.0
+   },
+   {
+    "elapsed_myr": 89.4,
+    "sea_level_m": -434.9330734205978,
+    "ice_volume_m3": 5739488997782622.0,
+    "calved_m3": 210354660755.04376,
+    "calved_off_ocean_m3": 0.0,
+    "calved_off_ocean_share": 0.0,
+    "max_off_ocean_nodes": 0,
+    "max_abs_ice_residual_m3": 1.0
+   }
+  ],
+  "per_step_off_ocean_m3": [
+   [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  ]
+ }
+}

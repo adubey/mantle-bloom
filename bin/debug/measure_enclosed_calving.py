@@ -25,9 +25,10 @@ def main() -> None:
     window: list[dict] = []
 
     def snapshot() -> dict:
-        hydro = world.hydrology_cache
+        # A freshly loaded world has no ice step yet, so its ice volume is unknown until step 1.
+        ice = world.hydrology_cache.ice if world.hydrology_cache is not None else None
         return {"elapsed_myr": world.elapsed_years / 1e6, "sea_level_m": float(world.sea_level_m),
-                "ice_volume_m3": float(hydro.ice.ledger.closing_m3) if hydro is not None else None}
+                "ice_volume_m3": float(ice.ledger.closing_m3) if ice is not None else None}
 
     def after_step(_seconds: float) -> None:
         hydro = world.hydrology_cache
