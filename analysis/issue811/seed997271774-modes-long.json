@@ -1,0 +1,142 @@
+{
+ "save": "mantle-bloom-seed997271774-87400000y.mbworld",
+ "wind": "diagnostic",
+ "modes": {
+  "century": {
+   "step_years": 100,
+   "steps": 200,
+   "warmup_days": 10,
+   "commit": "126222a9",
+   "mean_runtime_s": 5.14,
+   "lake_km3_first_last": [
+    246324,
+    351061
+   ],
+   "lake_km3_range": [
+    246324,
+    372527
+   ],
+   "lake_lag1": -0.303,
+   "lake_sign_reversal_rate": 0.58,
+   "lake_largest_drop_km3": -35931,
+   "lake_largest_rise_km3": 30394,
+   "steps_with_lake_drop_over_1000_km3": 67,
+   "max_discharge_m3_s_range": [
+    32888,
+    99254
+   ],
+   "discharge_max_consecutive_ratio": 1.63,
+   "glacier_ice_km3_first_last": [
+    5653437,
+    5650617
+   ],
+   "sea_level_m_first_last": [
+    -403.0,
+    -402.8
+   ],
+   "worst_lake_residual": 3.758360969325405e-11
+  },
+  "250yr": {
+   "step_years": 250,
+   "steps": 200,
+   "warmup_days": 10,
+   "commit": "126222a9",
+   "mean_runtime_s": 5.15,
+   "lake_km3_first_last": [
+    261034,
+    346637
+   ],
+   "lake_km3_range": [
+    261034,
+    416963
+   ],
+   "lake_lag1": -0.152,
+   "lake_sign_reversal_rate": 0.5,
+   "lake_largest_drop_km3": -70326,
+   "lake_largest_rise_km3": 46811,
+   "steps_with_lake_drop_over_1000_km3": 63,
+   "max_discharge_m3_s_range": [
+    33122,
+    103069
+   ],
+   "discharge_max_consecutive_ratio": 1.91,
+   "glacier_ice_km3_first_last": [
+    5653450,
+    5654113
+   ],
+   "sea_level_m_first_last": [
+    -403.0,
+    -403.0
+   ],
+   "worst_lake_residual": 2.668876700681084e-10
+  },
+  "bridge250k": {
+   "step_years": 250000,
+   "steps": 80,
+   "warmup_days": 10,
+   "commit": "126222a9",
+   "mean_runtime_s": 5.63,
+   "lake_km3_first_last": [
+    229672,
+    539926
+   ],
+   "lake_km3_range": [
+    203623,
+    539926
+   ],
+   "lake_lag1": -0.36,
+   "lake_sign_reversal_rate": 0.62,
+   "lake_largest_drop_km3": -65029,
+   "lake_largest_rise_km3": 74698,
+   "steps_with_lake_drop_over_1000_km3": 36,
+   "max_discharge_m3_s_range": [
+    34508,
+    122188
+   ],
+   "discharge_max_consecutive_ratio": 2.0,
+   "glacier_ice_km3_first_last": [
+    5664466,
+    6857004
+   ],
+   "sea_level_m_first_last": [
+    -406.4,
+    -535.8
+   ],
+   "worst_lake_residual": 8.738705906080516e-12
+  },
+  "bridge1m": {
+   "step_years": 1000000,
+   "steps": 20,
+   "warmup_days": 10,
+   "commit": "126222a9",
+   "mean_runtime_s": 6.01,
+   "lake_km3_first_last": [
+    204464,
+    315332
+   ],
+   "lake_km3_range": [
+    204464,
+    410562
+   ],
+   "lake_lag1": -0.5,
+   "lake_sign_reversal_rate": 0.5,
+   "lake_largest_drop_km3": -146256,
+   "lake_largest_rise_km3": 126344,
+   "steps_with_lake_drop_over_1000_km3": 7,
+   "max_discharge_m3_s_range": [
+    33918,
+    109646
+   ],
+   "discharge_max_consecutive_ratio": 1.81,
+   "glacier_ice_km3_first_last": [
+    5714687,
+    6865175
+   ],
+   "sea_level_m_first_last": [
+    -418.5,
+    -545.7
+   ],
+   "worst_lake_residual": 2.429428914585797e-12
+  }
+ }
+}
