@@ -1,0 +1,94 @@
+{
+ "save": "mantle-bloom-seed997271774-87400000y.mbworld",
+ "wind": "diagnostic",
+ "warmup_days": 0,
+ "modes": {
+  "day": {
+   "step_years": 0.0027379,
+   "steps": 200,
+   "commit": "d02484e6",
+   "mean_runtime_s": 5.15,
+   "lake_km3_steps_1_to_3": [
+    319931,
+    97542,
+    97535
+   ],
+   "max_discharge_m3_s_steps_1_to_3": [
+    1058782,
+    25631156,
+    701664
+   ],
+   "from_step_11": {
+    "lake_lag1": -0.006,
+    "lake_max_consecutive_ratio": 1.07,
+    "discharge_max_consecutive_ratio": 133.11,
+    "discharge_range": [
+     23546,
+     3154719
+    ]
+   },
+   "max_ledger_residual": [
+    2.2501766927389777e-07,
+    1.9492188418444477e-08
+   ]
+  },
+  "year": {
+   "step_years": 1.0,
+   "steps": 200,
+   "commit": "d02484e6",
+   "mean_runtime_s": 6.45,
+   "lake_km3_steps_1_to_3": [
+    320751,
+    100773,
+    104457
+   ],
+   "max_discharge_m3_s_steps_1_to_3": [
+    28009,
+    73169,
+    32400
+   ],
+   "from_step_11": {
+    "lake_lag1": 0.109,
+    "lake_max_consecutive_ratio": 1.1,
+    "discharge_max_consecutive_ratio": 1.16,
+    "discharge_range": [
+     48920,
+     57098
+    ]
+   },
+   "max_ledger_residual": [
+    1.2776457871093666e-08,
+    1.4588891568578882e-09
+   ]
+  },
+  "100kyr": {
+   "step_years": 100000.0,
+   "steps": 200,
+   "commit": "d02484e6",
+   "mean_runtime_s": 6.63,
+   "lake_km3_steps_1_to_3": [
+    712144,
+    118166,
+    278446
+   ],
+   "max_discharge_m3_s_steps_1_to_3": [
+    45831,
+    35994,
+    34898
+   ],
+   "from_step_11": {
+    "lake_lag1": -0.042,
+    "lake_max_consecutive_ratio": 1.17,
+    "discharge_max_consecutive_ratio": 2.48,
+    "discharge_range": [
+     47437,
+     201967
+    ]
+   },
+   "max_ledger_residual": [
+    2.3475361786253288e-12,
+    1.696829430649581e-13
+   ]
+  }
+ }
+}
