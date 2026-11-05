@@ -161,13 +161,25 @@ def isostatic_elevation(
     return np.clip(z, MIN_ELEVATION_M, MAX_ELEVATION_M)
 
 
-def grounded_ice_load_kg_m2(glacier_depth_m: np.ndarray, bed_elevation_m: np.ndarray, sea_level_m: float) -> np.ndarray:
-    """Mass per unit area an ice cover adds to its column (issue #275, phase 3). On land it's
-    the whole ice column. Below sea level the ice displaces water that was already loading the
-    bed, so only the excess over that water counts, and floating ice (sea ice, an ice shelf)
-    adds nothing. `glacier_depth_m` is ice thickness; `bed_elevation_m` should be the bed
-    *without* any ice depression, so the result doesn't feed back on its own deflection."""
-    water_depth = np.clip(sea_level_m - bed_elevation_m, 0.0, None)
+def floating_water_depth_m(bed_elevation_m: np.ndarray, sea_level_m: float, is_ocean: np.ndarray) -> np.ndarray:
+    """Depth of the water ice displaces: `sea_level - bed` where seawater connected to the ocean
+    stands, 0 elsewhere (#552). A pit below sea level that no ocean reaches holds no seawater
+    -- hydrology treats it as an endorheic basin -- so ice in it rests on the bed instead of
+    floating. This is the one flotation depth the ice solver, its calving test and the
+    lithosphere's ice load all share, so they can't disagree about which ice is grounded."""
+    return np.where(is_ocean, np.clip(sea_level_m - np.asarray(bed_elevation_m, dtype=float), 0.0, None), 0.0)
+
+
+def grounded_ice_load_kg_m2(
+    glacier_depth_m: np.ndarray, bed_elevation_m: np.ndarray, sea_level_m: float, is_ocean: np.ndarray
+) -> np.ndarray:
+    """Mass per unit area an ice cover adds to its column (issue #275, phase 3). On land, or in
+    a basin the ocean doesn't reach (#552), it's the whole ice column. On ocean below sea level
+    the ice displaces water that was already loading the bed, so only the excess over that
+    water counts, and floating ice (sea ice, an ice shelf) adds nothing. `glacier_depth_m` is
+    ice thickness; `bed_elevation_m` should be the bed *without* any ice depression, so the
+    result doesn't feed back on its own deflection."""
+    water_depth = floating_water_depth_m(bed_elevation_m, sea_level_m, is_ocean)
     return np.clip(RHO_ICE * np.clip(glacier_depth_m, 0.0, None) - RHO_WATER * water_depth, 0.0, None)
 
 

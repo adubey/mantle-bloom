@@ -118,9 +118,10 @@ def _continent(spacing_km=125.0, land_radius_km=900.0, half_km=1300.0, ocean_flo
     return points, r, elevation, np.full(len(points), cell)
 
 
-def _step(points, area, elevation, depth, climate, years, sea_level=0.0, allow_ocean_ice=None):
+def _step(points, area, elevation, depth, climate, years, sea_level=0.0, allow_ocean_ice=None, is_ocean=None):
     n = len(points)
-    is_ocean = elevation <= sea_level
+    if is_ocean is None:
+        is_ocean = elevation <= sea_level
     return ice_sheet.step_ice(
         points, _neighbors(points), area, elevation, np.zeros(n), sea_level, depth, climate, np.zeros(n), is_ocean,
         np.zeros(n, dtype=bool) if allow_ocean_ice is None else allow_ocean_ice, years,
@@ -229,7 +230,7 @@ def test_grounded_ice_matches_the_ice_load_classification_and_flows_below_sea_le
     elevation = np.where((elevation < 0.0) & (r < 800e3), -150.0, elevation)
     start = np.where(r < 500e3, 2500.0, 0.0)
     depth, _, ice = _step(points, area, elevation, start, _cold(len(points)), 1e6)
-    loaded = lithosphere.grounded_ice_load_kg_m2(depth, elevation, 0.0) > 0.0
+    loaded = lithosphere.grounded_ice_load_kg_m2(depth, elevation, 0.0, elevation <= 0.0) > 0.0
     assert np.array_equal(depth > 0.0, loaded)
     shelf = (elevation < 0.0) & (depth > 0.0)
     assert np.any(shelf)
@@ -255,6 +256,46 @@ def test_a_saturated_marine_body_calves_rather_than_melting():
     assert routed_melt_m3 == pytest.approx(ledger.meltwater_m3)
     assert routed_melt_m3 < ledger.meltwater_m3 + ledger.calved_m3
     assert ice.bodies[0].saturated
+
+
+def test_snow_in_an_enclosed_pit_below_sea_level_stays_as_ice():
+    # #552: a pit below sea level that no seawater reaches is dry land to the ice. Thin ice
+    # in it used to count as afloat and calve to an ocean it never crossed the land to reach.
+    # It stays, as grounded ice, and the ledger closes without calving.
+    points, r, elevation, area = _continent(land_radius_km=900.0)
+    pit = r < 250e3
+    elevation = np.where(pit, -60.0, elevation)
+    is_ocean = (elevation <= 0.0) & ~pit
+    depth, _, ice = _step(points, area, elevation, np.zeros(len(points)), _cold(len(points)), 1e4, is_ocean=is_ocean)
+    ledger = ice.ledger
+    assert ledger.calved_m3 == 0.0
+    assert float(np.dot(depth[pit], area[pit])) > 0.0
+    assert ledger.closing_m3 == pytest.approx(ledger.accumulation_m3 - ledger.meltwater_m3)
+    assert ledger.residual_m3 == pytest.approx(0.0, abs=1e-6 * ledger.accumulation_m3)
+
+
+def test_a_body_beside_an_enclosed_deep_basin_spreads_over_it_instead_of_calving():
+    # #552: the island of the marine case above, but its surrounding 5 km deep water is an
+    # enclosed basin the ocean doesn't reach. The ice grounds on that floor and spreads over
+    # it rather than saturating and calving, and the ledger closes.
+    points, r, elevation, area = _continent(land_radius_km=200.0, half_km=600.0, ocean_floor=-5000.0)
+    start = np.where(r <= 200e3, 4000.0, 0.0)
+    depth, _, ice = _step(points, area, elevation, start, _cold(len(points)), 1e6, is_ocean=np.zeros(len(points), dtype=bool))
+    ledger = ice.ledger
+    assert ledger.calved_m3 == 0.0
+    assert not ice.bodies[0].saturated
+    assert np.count_nonzero(depth[r > 200e3]) > 0
+    assert ledger.residual_m3 == pytest.approx(0.0, abs=1e-6 * ledger.opening_m3)
+
+
+def test_only_connected_ocean_water_floats_ice():
+    bed = np.array([-100.0, -100.0, 100.0])
+    ocean = np.array([True, False, False])
+    thin = np.array([20.0, 20.0, 20.0])
+    assert list(ice_sheet.is_grounded(thin, bed, 0.0, ocean)) == [False, True, True]
+    assert list(ice_sheet.flotation_thickness_m(bed, 0.0, ocean) > 0.0) == [True, False, False]
+    # lithosphere loads exactly what is_grounded keeps
+    assert list(lithosphere.grounded_ice_load_kg_m2(thin, bed, 0.0, ocean) > 0.0) == [False, True, True]
 
 
 def test_uniform_slab_velocity_matches_balance_velocity():

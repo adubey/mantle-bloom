@@ -156,16 +156,19 @@ def sea_level_measures(world) -> dict:
     from app import plates as plates_mod
     from app.elevation_lines import line_spacing_rad
     from app.hydroclimate import ice_sheet
-    from app.lithosphere import RHO_ICE, RHO_WATER
+    from app.lithosphere import RHO_ICE, RHO_WATER, floating_water_depth_m
 
     area = plates_mod.collect_all_accounting_areas_m2(world.plates, line_spacing_rad(world.node_density))
     depth = np.clip(plates_mod.collect_all_glacier_depth(world.plates), 0.0, None)
     bed = plates_mod.collect_all_elevation(world.plates) - plates_mod.collect_all_ice_load_deflection(world.plates)
     sea = float(world.sea_level_m)
-    water_depth = np.clip(sea - bed, 0.0, None)
-    grounded = ice_sheet.is_grounded(depth, bed, sea)
+    cache = world.hydrology_cache
+    # Connected-ocean mask (#552); a saved world without hydrology falls back to "below sea level".
+    connected_ocean = cache.is_ocean if cache is not None else bed < sea
+    water_depth = floating_water_depth_m(bed, sea, connected_ocean)
+    grounded = ice_sheet.is_grounded(depth, bed, sea, connected_ocean)
     marine = water_depth > 0.0
-    above_flotation = np.where(grounded, depth - ice_sheet.flotation_thickness_m(bed, sea), 0.0)
+    above_flotation = np.where(grounded, depth - ice_sheet.flotation_thickness_m(bed, sea, connected_ocean), 0.0)
     ratio = RHO_ICE / RHO_WATER
 
     def km3_we(mask: np.ndarray, column: np.ndarray = depth) -> float:

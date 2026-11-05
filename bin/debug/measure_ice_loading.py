@@ -54,7 +54,7 @@ def snapshot(world, modules) -> dict[str, float]:
     rho = np.concatenate([lithosphere.node_crust_density(p.collect("crust_type_code"), p.crust_type) for p in current])
     cur_areas = plates_mod.collect_all_accounting_areas_m2(current, line_spacing_rad(world.node_density))
     cur_land = elevation > world.sea_level_m
-    load = lithosphere.grounded_ice_load_kg_m2(glacier, elevation - w, world.sea_level_m)
+    load = lithosphere.grounded_ice_load_kg_m2(glacier, elevation - w, world.sea_level_m, hydro.is_ocean)
     implied = lithosphere.ice_load_deflection(hc, hm, rho, load)
     glaciated_land = cur_land & (glacier >= hydrology.GLACIER_VISIBLE_DEPTH_M)
     out.update(

@@ -41,9 +41,9 @@ def main() -> None:
         original_shed(out, body, excess, margin, marine, area)
         branch["saturated_excess_m3"] += body.calved_m3 - before
 
-    def guard(out, body, bed, area, sea_level_m):
+    def guard(out, body, bed, area, sea_level_m, is_ocean):
         before = body.calved_m3
-        original_guard(out, body, bed, area, sea_level_m)
+        original_guard(out, body, bed, area, sea_level_m, is_ocean)
         branch["final_afloat_m3"] += body.calved_m3 - before
 
     ice_sheet._shed_excess, ice_sheet._guard_body = shed, guard
@@ -53,7 +53,7 @@ def main() -> None:
     def step_ice(points, neighbor_idx, area, bed, deflection, sea_level_m, prev_depth, climate, cover, is_ocean, *rest, **kw):
         h0 = np.clip(prev_depth, 0.0, None)
         real_bed = bed - deflection
-        ice_free = (h0 > 0.0) & ~ice_sheet.is_grounded(h0, real_bed, sea_level_m)
+        ice_free = (h0 > 0.0) & ~ice_sheet.is_grounded(h0, real_bed, sea_level_m, is_ocean)
         volume = h0 * area
         stray_anatomy.update(
             ungrounded_nodes=int(ice_free.sum()),

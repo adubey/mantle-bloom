@@ -41,7 +41,7 @@ from scipy.sparse.csgraph import connected_components, dijkstra
 
 from .. import geometry, trace
 from ..elevation_lines import PLANET_RADIUS_KM
-from ..lithosphere import GRAVITY_M_S2, RHO_ICE, RHO_WATER
+from ..lithosphere import GRAVITY_M_S2, RHO_ICE, RHO_WATER, floating_water_depth_m
 from . import hydrology
 from .climate import LAPSE_RATE_C_PER_KM
 
@@ -163,15 +163,17 @@ def yield_stress_pa(mobile_cover_m: np.ndarray, is_warm: np.ndarray) -> np.ndarr
     return ICE_YIELD_STRESS_HARD_PA + (ICE_YIELD_STRESS_SOFT_PA - ICE_YIELD_STRESS_HARD_PA) * softness
 
 
-def flotation_thickness_m(bed_m: np.ndarray, sea_level_m: float) -> np.ndarray:
-    """Ice thickness at which a column on `bed_m` just floats."""
-    return _FLOTATION_RATIO * np.clip(sea_level_m - np.asarray(bed_m, dtype=float), 0.0, None)
+def flotation_thickness_m(bed_m: np.ndarray, sea_level_m: float, is_ocean: np.ndarray) -> np.ndarray:
+    """Ice thickness at which a column on `bed_m` just floats: 0 off the connected ocean, where
+    there is no seawater to float it (#552)."""
+    return _FLOTATION_RATIO * floating_water_depth_m(bed_m, sea_level_m, is_ocean)
 
 
-def is_grounded(depth_m: np.ndarray, unloaded_bed_m: np.ndarray, sea_level_m: float) -> np.ndarray:
+def is_grounded(depth_m: np.ndarray, unloaded_bed_m: np.ndarray, sea_level_m: float, is_ocean: np.ndarray) -> np.ndarray:
     """Grounded ice, by exactly the test `lithosphere.grounded_ice_load_kg_m2` loads with: the
-    ice outweighs the water it displaces on the unloaded bed."""
-    water_depth = np.clip(sea_level_m - unloaded_bed_m, 0.0, None)
+    ice outweighs the water it displaces on the unloaded bed, and ice off the connected ocean
+    displaces none (#552)."""
+    water_depth = floating_water_depth_m(unloaded_bed_m, sea_level_m, is_ocean)
     return RHO_ICE * np.clip(depth_m, 0.0, None) - RHO_WATER * water_depth > 0.0
 
 
@@ -216,13 +218,14 @@ def _upwind(s_up: float, b_up: float, b_i: float, c_i: float, step_m: float) -> 
 
 
 @njit(cache=True)
-def _margin_point(i, e, j, phi, nbr_phi, nbr_bed, nbr_cap, bed, sea_level, d):
+def _margin_point(i, e, j, phi, nbr_phi, nbr_bed, nbr_cap, nbr_ocean, ocean, bed, sea_level, d):
     """Where frontier edge e (active i, inactive j) puts the margin: fraction t of the edge
     from i, found by interpolating phi linearly to `d`, so the margin moves continuously with
     d. An edge toward a node the body can never occupy (a wall, or a domain node dropped as
     floating, marked by phi = -inf) stops at mid-edge. Returns (t, bed there, thickness
-    there): zero, or the flotation thickness where the bed is below sea level (a grounding
-    line)."""
+    there): zero, or the flotation thickness where the bed is below sea level and the edge
+    ends at connected ocean (a grounding line; #552 -- an enclosed pit has no water to float
+    ice, so its margin is a plain ice edge)."""
     if j >= 0 and phi[j] <= d:
         t = 0.5
     elif nbr_phi[e] > phi[i]:
@@ -231,7 +234,8 @@ def _margin_point(i, e, j, phi, nbr_phi, nbr_bed, nbr_cap, bed, sea_level, d):
         t = 1.0
     t = min(max(t, 0.0), nbr_cap[e])
     b_m = bed[i] + t * (nbr_bed[e] - bed[i])
-    return t, b_m, _FLOTATION_RATIO * max(0.0, sea_level - b_m)
+    wet = nbr_ocean[e] or ocean[i]
+    return t, b_m, (_FLOTATION_RATIO * max(0.0, sea_level - b_m) if wet else 0.0)
 
 
 @njit(cache=True)
@@ -246,7 +250,9 @@ def _segment_mean(h0, h1):
 
 
 @njit(cache=True)
-def _plastic_sweep(indptr, nbr, length, nbr_phi, nbr_bed, nbr_cap, phi, bed, c, sea_level, d, active, max_thickness):
+def _plastic_sweep(
+    indptr, nbr, length, nbr_phi, nbr_bed, nbr_cap, nbr_ocean, ocean, phi, bed, c, sea_level, d, active, max_thickness
+):
     """Ordered upwind sweep for the plastic surface over the `active` nodes of one domain.
 
     Frontier edges seed virtual margin points (`_margin_point`); nodes are then accepted in
@@ -280,7 +286,7 @@ def _plastic_sweep(indptr, nbr, length, nbr_phi, nbr_bed, nbr_cap, phi, bed, c, 
             j = nbr[e]
             if j >= 0 and active[j]:
                 continue
-            t, b_m, h_m = _margin_point(i, e, j, phi, nbr_phi, nbr_bed, nbr_cap, bed, sea_level, d)
+            t, b_m, h_m = _margin_point(i, e, j, phi, nbr_phi, nbr_bed, nbr_cap, nbr_ocean, ocean, bed, sea_level, d)
             best = min(best, _upwind(b_m + h_m, b_m, bed[i], c[i], t * length[e]))
         if best < np.inf:
             tentative[i] = best
@@ -322,7 +328,7 @@ def _plastic_sweep(indptr, nbr, length, nbr_phi, nbr_bed, nbr_cap, phi, bed, c, 
                 depth[i] += _segment_mean(h_i, np.sqrt(0.5 * (h_i * h_i + h_j * h_j))) / degree
                 cover[i] += 1.0 / degree
                 continue
-            t, _, h_m = _margin_point(i, e, j, phi, nbr_phi, nbr_bed, nbr_cap, bed, sea_level, d)
+            t, _, h_m = _margin_point(i, e, j, phi, nbr_phi, nbr_bed, nbr_cap, nbr_ocean, ocean, bed, sea_level, d)
             if t <= 0.5:
                 depth[i] += 2.0 * t * _segment_mean(h_i, h_m) / degree
                 cover[i] += 2.0 * t / degree
@@ -569,6 +575,7 @@ class _Domain:
     c: np.ndarray
     area: np.ndarray
     water_depth: np.ndarray
+    ocean: np.ndarray
     climate: SurfaceClimate
     bare_rates: tuple[np.ndarray, np.ndarray, np.ndarray]
 
@@ -597,7 +604,8 @@ def _build_domain(graph, nodes, phi, bed, c, area, sea_level_m, is_ocean, climat
         bed=bed[nodes],
         c=c[nodes],
         area=area[nodes],
-        water_depth=np.clip(sea_level_m - bed[nodes], 0.0, None),
+        water_depth=floating_water_depth_m(bed[nodes], sea_level_m, is_ocean[nodes]),
+        ocean=is_ocean[nodes],
         climate=sub_climate,
         bare_rates=sub_climate.rates(np.zeros(len(nodes))),
     )
@@ -645,12 +653,13 @@ def _shape(dom: _Domain, d: float, sea_level_m: float) -> _Shape:
     phi = dom.phi.copy()
     for attempt in range(ICE_FLOTATION_PASSES + 1):
         surface, depth, cover = _plastic_sweep(
-            dom.indptr, dom.nbr, dom.length, dom.nbr_phi, dom.nbr_bed, dom.nbr_cap, phi, dom.bed, dom.c, sea_level_m, d, active,
+            dom.indptr, dom.nbr, dom.length, dom.nbr_phi, dom.nbr_bed, dom.nbr_cap, dom.nbr_ocean, dom.ocean, phi, dom.bed, dom.c,
+            sea_level_m, d, active,
             hydrology.GLACIER_MAX_DEPTH_M,
         )
         # Any cell holding ice it can't ground -- in the extent, or outside it under the margin
         # past mid-edge -- is dropped: it becomes a wall the ice stops half-way to.
-        floating = (depth > 0.0) & (dom.water_depth > 0.0) & ~is_grounded(depth, dom.bed, sea_level_m)
+        floating = (depth > 0.0) & (dom.water_depth > 0.0) & ~is_grounded(depth, dom.bed, sea_level_m, dom.ocean)
         if not np.any(floating):
             break
         active = active & ~floating
@@ -901,8 +910,8 @@ def step_ice(
 
     # Nodes a body may occupy: never the sea-ice cap, never ocean too deep to ground the
     # thickest ice allowed. Ice already afloat anywhere else calves.
-    eligible = ~cap & (flotation_thickness_m(bed, sea_level_m) <= hydrology.GLACIER_MAX_DEPTH_M)
-    stray = ~cap & (h0 > 0.0) & (~eligible | ~is_grounded(h0, bed, sea_level_m))
+    eligible = ~cap & (flotation_thickness_m(bed, sea_level_m, is_ocean) <= hydrology.GLACIER_MAX_DEPTH_M)
+    stray = ~cap & (h0 > 0.0) & (~eligible | ~is_grounded(h0, bed, sea_level_m, is_ocean))
     out.calved[stray] = h0[stray] * area[stray]
     h0 = np.where(stray, 0.0, h0)
 
@@ -958,7 +967,7 @@ def step_ice(
             else:
                 dom = _build_domain(graph, dom_nodes, phi, bed, c, area, sea_level_m, is_ocean, climate)
                 body = _plastic_body(out, dom, body_nodes, opening, area, dt_myr, sea_level_m, step_m, ledger)
-            _guard_body(out, body, bed, area, sea_level_m)
+            _guard_body(out, body, bed, area, sea_level_m, is_ocean)
             bodies.append(body)
 
     # Snow on frozen ground no body claims melts in place (it can't be positive balance there,
@@ -1085,7 +1094,7 @@ def _shed_excess(out: _Output, body: BodyBalance, excess: float, margin, marine:
         body.overflow_m3 += excess
 
 
-def _guard_body(out: _Output, body: BodyBalance, bed, area, sea_level_m) -> None:
+def _guard_body(out: _Output, body: BodyBalance, bed, area, sea_level_m, is_ocean) -> None:
     """Per-node guards on a solved body, booked in its own budget: ice over
     GLACIER_MAX_DEPTH_M is shed as meltwater (`capped_m3`), and any marine cell the final (scaled) ice
     no longer grounds calves -- so stored ice is grounded exactly where
@@ -1098,7 +1107,7 @@ def _guard_body(out: _Output, body: BodyBalance, bed, area, sea_level_m) -> None
         out.depth[nodes] = kept
         out.melt_m3[nodes] += over * area[nodes]
         body.capped_m3 += float(np.dot(over, area[nodes]))
-    afloat = (out.depth[nodes] > 0.0) & ~is_grounded(out.depth[nodes], bed[nodes], sea_level_m)
+    afloat = (out.depth[nodes] > 0.0) & ~is_grounded(out.depth[nodes], bed[nodes], sea_level_m, is_ocean[nodes])
     if np.any(afloat):
         idx = nodes[afloat]
         out.calved[idx] += out.depth[idx] * area[idx]
