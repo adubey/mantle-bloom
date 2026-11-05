@@ -139,7 +139,7 @@ def test_grounded_ice_load_counts_only_ice_the_water_column_cannot_float():
     sea = 0.0
     depth = np.array([1000.0, 1000.0, 1000.0, 1000.0, 0.0])
     bed = np.array([500.0, -500.0, -917.0, -2000.0, 500.0])
-    load = lithosphere.grounded_ice_load_kg_m2(depth, bed, sea)
+    load = lithosphere.grounded_ice_load_kg_m2(depth, bed, sea, np.ones(len(bed), dtype=bool))
     assert load[0] == lithosphere.RHO_ICE * 1000.0  # on land: the whole ice column
     assert np.isclose(load[1], lithosphere.RHO_ICE * 1000.0 - lithosphere.RHO_WATER * 500.0)
     assert np.isclose(load[2], 0.0)  # exactly at flotation

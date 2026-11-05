@@ -377,8 +377,8 @@ the reclassification step's climate still treats it as a lake; the following ste
 picks it up.) Climate gives it ocean currents, advected ocean temperature and
 ocean evaporation (see [climate](climate.md)). Rivers end at its coast, and the coastline
 and map views draw it as ocean. Glacier flotation (`ice_sheet.is_grounded`) takes water
-depth as sea level minus bed, which is now right for such a basin. Smaller enclosed basins
-below sea level still have the mismatch described in #552.
+depth as sea level minus bed only where `is_ocean`, so ice in a smaller enclosed basin below
+sea level rests on its bed instead of calving (#552).
 
 ### Lakes are an explicit tree
 
@@ -800,9 +800,11 @@ since climate.py runs *before* this module each step).
 - **Bed and flotation.** The thickness solve and the flotation test use the unloaded bed,
   `elevation - ice_load_deflection_m`, which is the bed `lithosphere.grounded_ice_load_kg_m2` loads. A
   cell keeps ice only where that function would give it a load, so stored ice is grounded
-  exactly where it loads its column. Margin points with a bed below sea level carry the
-  flotation thickness (a grounding line), so grounded marine ice keeps a real surface
-  gradient. The mass-balance surface is the current, already-depressed elevation plus the
+  exactly where it loads its column. Water that floats ice is `sea level - bed` on
+  connected ocean (`is_ocean`) and 0 elsewhere (`lithosphere.floating_water_depth_m`, #552):
+  an enclosed pit below sea level holds no seawater, so ice in it grounds. Margin points with
+  a bed below sea level on connected ocean carry the flotation thickness (a grounding line),
+  so grounded marine ice keeps a real surface gradient. The mass-balance surface is the current, already-depressed elevation plus the
   ice, a one-step lag on the deflection.
 - **Sinks.** Surface and basal melt, and snow that melts on bare ground, go into that step's
   `water_source` at the node where they melt, so rivers route them and lakes can trap them.
@@ -811,7 +813,8 @@ since climate.py runs *before* this module each step).
   straight to the ocean), or leaves its margin as meltwater otherwise. Calving from a partly
   marine margin that isn't saturated is not modelled (a body keeps growing inland until it
   balances), so this under-states calving from Greenland-like sheets. Ice afloat on the
-  ocean outside the ice-age sea-ice cap calves. Eustasy reads only `glacier_depth` and lake
+  ocean outside the ice-age sea-ice cap calves; ice in an enclosed basin the ocean doesn't
+  reach does not (#552), and eustasy still counts it. Eustasy reads only `glacier_depth` and lake
   depth, so every sink returns its water to the ocean's budget.
 - **Liquid water doesn't freeze on the annual mean.** Rivers flow on through nodes below
   `FREEZE_POINT_C`, water reaching a cold sink pools there as a lake, and a cold lake balances
@@ -860,7 +863,7 @@ since climate.py runs *before* this module each step).
   its volume conserved, on its first step, so replay comparisons show a one-off jump there.
 - **Ice loading** (issue #275 phase 3; `erosion.apply_erosion`,
   `lithosphere.ice_load_deflection`): grounded ice sinks its column. The load is the ice's
-  mass per area (`RHO_ICE` = 917 kg/m³) less the water it displaces below sea level
+  mass per area (`RHO_ICE` = 917 kg/m³) less the water it displaces on connected ocean below sea level
   (`lithosphere.grounded_ice_load_kg_m2`), so floating sea ice and ice shelves load nothing.
   The deflection is the loaded column's `isostatic_elevation` minus the unloaded one's, about
   0.28 m per metre of ice on land and deeper once the depression is submerged. Glacial

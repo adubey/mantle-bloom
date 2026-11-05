@@ -899,6 +899,7 @@ def _apply_ice_load(
     hm: np.ndarray,
     rho_c: np.ndarray,
     sea_level_m: float,
+    is_ocean: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Move `elevation` (which carries `prior_deflection` of ice depression) to the
     depression this step's `glacier_depth` implies. Returns (new elevation, new deflection,
@@ -910,7 +911,7 @@ def _apply_ice_load(
     stored deflection is what the elevation bounds actually let through, not the raw Airy
     response: storing more than was applied would rebuild too high an unloaded bed on melt."""
     unloaded_bed = elevation - prior_deflection
-    load = lithosphere.grounded_ice_load_kg_m2(glacier_depth, unloaded_bed, sea_level_m)
+    load = lithosphere.grounded_ice_load_kg_m2(glacier_depth, unloaded_bed, sea_level_m, is_ocean)
     target = lithosphere.ice_load_deflection(hc, hm, rho_c, load)
     new_elevation = np.clip(unloaded_bed + target, MIN_ELEVATION_M, MAX_ELEVATION_M)
     return new_elevation, new_elevation - unloaded_bed, load
@@ -2449,9 +2450,12 @@ def apply_erosion(
 
     # Ice loading (issue #275, phase 3) -- see `_apply_ice_load`.
     prior_deflection = collect_all_ice_load_deflection(plates_in_order)
-    prior_load = lithosphere.grounded_ice_load_kg_m2(prior_glacier_depth, elevation - prior_deflection, world.sea_level_m)
+    prior_load = lithosphere.grounded_ice_load_kg_m2(
+        prior_glacier_depth, elevation - prior_deflection, world.sea_level_m, is_ocean_node
+    )
     new_elevation, new_deflection, ice_load = _apply_ice_load(
-        eroded_elevation, prior_deflection, hydro.glacier_depth, new_crustal_thickness, prior_hm, rho_c_per_node, world.sea_level_m
+        eroded_elevation, prior_deflection, hydro.glacier_depth, new_crustal_thickness, prior_hm, rho_c_per_node, world.sea_level_m,
+        is_ocean_node,
     )
     # Glaciers carve channels too: abrasion and the overflow-laden ice's scour both deepen the
     # trough they cut, which rivers inherit (channel_boost, hydrology's channel-aware routing)

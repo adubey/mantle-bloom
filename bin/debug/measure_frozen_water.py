@@ -163,9 +163,12 @@ def sea_level_measures(world) -> dict:
     bed = plates_mod.collect_all_elevation(world.plates) - plates_mod.collect_all_ice_load_deflection(world.plates)
     sea = float(world.sea_level_m)
     water_depth = np.clip(sea - bed, 0.0, None)
-    grounded = ice_sheet.is_grounded(depth, bed, sea)
+    cache = world.hydrology_cache
+    # Connected-ocean mask (#552); a saved world without hydrology falls back to "below sea level".
+    connected_ocean = cache.is_ocean if cache is not None else bed < sea
+    grounded = ice_sheet.is_grounded(depth, bed, sea, connected_ocean)
     marine = water_depth > 0.0
-    above_flotation = np.where(grounded, depth - ice_sheet.flotation_thickness_m(bed, sea), 0.0)
+    above_flotation = np.where(grounded, depth - ice_sheet.flotation_thickness_m(bed, sea, connected_ocean), 0.0)
     ratio = RHO_ICE / RHO_WATER
 
     def km3_we(mask: np.ndarray, column: np.ndarray = depth) -> float:
