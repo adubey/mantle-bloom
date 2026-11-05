@@ -283,7 +283,8 @@ def _stitch_xyz_loops(loops: list[np.ndarray]) -> np.ndarray:
     tree over the whole outline per loop, which took ~0.5 s per call on a mature plate (#808).
     The seams are spliced in by linked insertion for the same reason."""
     if len(loops) == 1:
-        return loops[0]
+        # A copy: the result is cached, and must not alias the cached boundary loops.
+        return loops[0].copy()
     base = np.concatenate([[0], np.cumsum([len(loop) for loop in loops])])
     all_points = np.concatenate(loops)
     groups: list[tuple[cKDTree, np.ndarray]] = []  # (tree, vertex ids), newest last

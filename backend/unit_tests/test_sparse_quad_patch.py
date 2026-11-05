@@ -682,11 +682,21 @@ def test_stitch_joins_many_loops_into_one_keyholed_outline():
         ring = centre + 0.05 * (np.cos(angles)[:, None] * u + np.sin(angles)[:, None] * v)
         loops.append(ring / np.linalg.norm(ring, axis=1, keepdims=True))
     stitched = _stitch_xyz_loops(loops)
+    # Oracle: the original quadratic search (a k-d tree over the whole outline per loop). The
+    # rings here have no equidistant vertices, so the seams must match exactly.
+    combined = loops[0]
+    for extra in loops[1:]:
+        dist, idx = cKDTree(combined).query(extra)
+        j, i = int(np.argmin(dist)), int(idx[int(np.argmin(dist))])
+        rotated = np.concatenate([extra[j:], extra[:j]])
+        combined = np.concatenate([combined[: i + 1], rotated, extra[j : j + 1], combined[i : i + 1], combined[i + 1 :]])
+    assert sorted(map(tuple, stitched.tolist())) == sorted(map(tuple, combined.tolist()))
     assert len(stitched) == sum(len(loop) for loop in loops) + 2 * (len(loops) - 1)
-    assert np.array_equal(stitched[: len(loops[0])][:1], loops[0][:1])
+    assert np.array_equal(stitched[0], loops[0][0])
     for loop in loops:
         assert cKDTree(stitched).query(loop)[0].max() == 0.0
-    assert len(_stitch_xyz_loops(loops[:1])) == len(loops[0])
+    single = _stitch_xyz_loops(loops[:1])
+    assert np.array_equal(single, loops[0]) and single is not loops[0]
 
 
 def test_outline_is_stitched_once_per_topology_and_follows_rotation():

@@ -34,8 +34,9 @@ only shows on this save.
 | 8 | 24,848 | 296 | 179 | 70 | 143 | 0.03 |
 
 `get_neighbours` is identical for every plate on the save (exact equality). The outline's seam
-positions can differ (the keyhole may join a different equidistant vertex), so the outline
-digest changed; the enclosed territory did not.
+positions can differ (a keyhole may join a different equidistant vertex), so the outline
+digest changed. That the enclosed territory is unchanged is not separately checked; only the
+neighbour sets, which are computed from the outline, are.
 
 ## Not done
 

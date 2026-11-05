@@ -2,8 +2,9 @@
 
 For the largest plates, times a cold `outline_world` (every cache dropped via `_reset_caches`,
 as after `_replace_topology`) and a warm `outline_world` (loops cached, only the frame
-rotation), and prints a digest of every plate's outline so a change can be shown to leave the
-geometry bit-identical. Also prints the `get_neighbours` result for every plate.
+rotation), and prints a digest of every plate's outline (it changes whenever a keyhole seam moves, even if
+the territory does not) and the `get_neighbours` result for every plate, which `--json` saves
+so two runs can be compared for exact neighbour equality.
 
 Usage (from the repository root, with this worktree's own venv):
 
