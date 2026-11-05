@@ -1,0 +1,234 @@
+{
+ "save": "mantle-bloom-seed997271774-87400000y.mbworld",
+ "wind": "diagnostic",
+ "baseline_commit": "dc855ca3",
+ "modes": {
+  "day": {
+   "steps": 200,
+   "lake_km3_first_last": [
+    99610,
+    94034
+   ],
+   "steps_with_lake_drop_over_1000_km3": 1,
+   "lake_largest_drop_km3": 5112,
+   "lake_lag1": 0.06,
+   "max_discharge_m3_s_range": [
+    23546,
+    591423
+   ],
+   "body_reversals": 6,
+   "comparable_body_steps": 3859,
+   "body_reversal_rate": 0.0016,
+   "body_reversals_over_100000_km2": 0,
+   "reversal_events": []
+  },
+  "year": {
+   "steps": 200,
+   "lake_km3_first_last": [
+    102452,
+    280195
+   ],
+   "steps_with_lake_drop_over_1000_km3": 7,
+   "lake_largest_drop_km3": 24439,
+   "lake_lag1": 0.1,
+   "max_discharge_m3_s_range": [
+    23656,
+    55633
+   ],
+   "body_reversals": 1,
+   "comparable_body_steps": 4597,
+   "body_reversal_rate": 0.0002,
+   "body_reversals_over_100000_km2": 0,
+   "reversal_events": [
+    {
+     "step": 117,
+     "volume_before_km3": 2113,
+     "prior_delta_km3": 1465,
+     "delta_km3": -1744,
+     "area_before_km2": 67288
+    }
+   ]
+  },
+  "century": {
+   "steps": 200,
+   "lake_km3_first_last": [
+    252046,
+    313796
+   ],
+   "steps_with_lake_drop_over_1000_km3": 64,
+   "lake_largest_drop_km3": 71794,
+   "lake_lag1": -0.24,
+   "max_discharge_m3_s_range": [
+    33059,
+    100316
+   ],
+   "body_reversals": 29,
+   "comparable_body_steps": 4634,
+   "body_reversal_rate": 0.0063,
+   "body_reversals_over_100000_km2": 8,
+   "reversal_events": []
+  },
+  "250yr": {
+   "steps": 200,
+   "lake_km3_first_last": [
+    261088,
+    348332
+   ],
+   "steps_with_lake_drop_over_1000_km3": 67,
+   "lake_largest_drop_km3": 32218,
+   "lake_lag1": -0.19,
+   "max_discharge_m3_s_range": [
+    33293,
+    90521
+   ],
+   "body_reversals": 102,
+   "comparable_body_steps": 4710,
+   "body_reversal_rate": 0.0217,
+   "body_reversals_over_100000_km2": 8,
+   "reversal_events": []
+  },
+  "100kyr": {
+   "steps": 200,
+   "lake_km3_first_last": [
+    253444,
+    547020
+   ],
+   "steps_with_lake_drop_over_1000_km3": 85,
+   "lake_largest_drop_km3": 86913,
+   "lake_lag1": -0.41,
+   "max_discharge_m3_s_range": [
+    29325,
+    129559
+   ],
+   "body_reversals": 8,
+   "comparable_body_steps": 727,
+   "body_reversal_rate": 0.011,
+   "body_reversals_over_100000_km2": 5,
+   "reversal_events": [
+    {
+     "step": 6,
+     "volume_before_km3": 167,
+     "prior_delta_km3": -221,
+     "delta_km3": 182,
+     "area_before_km2": 59417
+    },
+    {
+     "step": 73,
+     "volume_before_km3": 35,
+     "prior_delta_km3": -70474,
+     "delta_km3": 61674,
+     "area_before_km2": 12203
+    },
+    {
+     "step": 74,
+     "volume_before_km3": 45635,
+     "prior_delta_km3": 31840,
+     "delta_km3": -25585,
+     "area_before_km2": 651188
+    },
+    {
+     "step": 87,
+     "volume_before_km3": 19487,
+     "prior_delta_km3": -18133,
+     "delta_km3": 15784,
+     "area_before_km2": 443674
+    },
+    {
+     "step": 90,
+     "volume_before_km3": 19218,
+     "prior_delta_km3": -205401,
+     "delta_km3": 12102,
+     "area_before_km2": 447134
+    },
+    {
+     "step": 103,
+     "volume_before_km3": 164017,
+     "prior_delta_km3": -108481,
+     "delta_km3": 122242,
+     "area_before_km2": 822001
+    },
+    {
+     "step": 159,
+     "volume_before_km3": 348,
+     "prior_delta_km3": -47209,
+     "delta_km3": 46345,
+     "area_before_km2": 12303
+    },
+    {
+     "step": 176,
+     "volume_before_km3": 175,
+     "prior_delta_km3": -92,
+     "delta_km3": 228,
+     "area_before_km2": 114619
+    }
+   ]
+  },
+  "bridge250k": {
+   "steps": 80,
+   "lake_km3_first_last": [
+    229665,
+    354095
+   ],
+   "steps_with_lake_drop_over_1000_km3": 32,
+   "lake_largest_drop_km3": 100966,
+   "lake_lag1": -0.2,
+   "max_discharge_m3_s_range": [
+    34691,
+    121580
+   ],
+   "body_reversals": 4,
+   "comparable_body_steps": 195,
+   "body_reversal_rate": 0.0205,
+   "body_reversals_over_100000_km2": 2,
+   "reversal_events": [
+    {
+     "step": 3,
+     "volume_before_km3": 5917,
+     "prior_delta_km3": -9206,
+     "delta_km3": 4725,
+     "area_before_km2": 11471
+    },
+    {
+     "step": 67,
+     "volume_before_km3": 171870,
+     "prior_delta_km3": -122560,
+     "delta_km3": 104062,
+     "area_before_km2": 852635
+    },
+    {
+     "step": 79,
+     "volume_before_km3": 1301,
+     "prior_delta_km3": -14457,
+     "delta_km3": 9533,
+     "area_before_km2": 46786
+    },
+    {
+     "step": 80,
+     "volume_before_km3": 10834,
+     "prior_delta_km3": 9533,
+     "delta_km3": -10549,
+     "area_before_km2": 382616
+    }
+   ]
+  },
+  "bridge1m": {
+   "steps": 20,
+   "lake_km3_first_last": [
+    204451,
+    244593
+   ],
+   "steps_with_lake_drop_over_1000_km3": 10,
+   "lake_largest_drop_km3": 56253,
+   "lake_lag1": -0.47,
+   "max_discharge_m3_s_range": [
+    34105,
+    138009
+   ],
+   "body_reversals": 0,
+   "comparable_body_steps": 15,
+   "body_reversal_rate": 0.0,
+   "body_reversals_over_100000_km2": 0,
+   "reversal_events": []
+  }
+ }
+}

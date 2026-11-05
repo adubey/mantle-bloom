@@ -114,6 +114,46 @@ warm-up, diagnostic wind. Century and 250 yr cover 20 and 50 kyr; the bridge cov
 - **Lake volume at the first measured step** is 98k (1 yr) against 246k to 261k (century, 250 yr):
   the lakes refill after the warm-up on physical time (finding 4), not a step-size effect.
 
+## Single-body flicker (#754's definition) and a new baseline
+
+Compact summary: [`seed997271774-body-flicker.json`](seed997271774-body-flicker.json) (event lists for
+1 yr, 100 kyr and the bridges). Driver: `replay_timescale_sweep.py` now counts large-body reversals
+through [`lake_body_tracking.py`](../../bin/debug/lake_body_tracking.py), shared with
+`measure_lake_step_budget.py`. A reversal is a matched body over 10,000 km2 whose two consecutive
+volume changes have opposite signs and each exceeds half its earlier volume.
+
+**These seven runs are on `origin/main` dc855ca3, not d02484e6.** #812 (only connected-ocean water
+floats ice, #552) merged in between and moved the lake and ice numbers, so the earlier tables are
+not reproduced. Pattern and conclusions below use the new runs only. Same save, warm-up and wind.
+
+| Mode | World-lake drops >1,000 km3 | Largest drop km3 | Max land discharge m3/s | Lag-1 | Body reversals | Comparable body-steps | Rate | Reversals of bodies >100,000 km2 |
+|---|---|---|---|---|---|---|---|---|
+| Day | 1 | 5.1k | 23.5k to 591k | 0.06 | 6 | 3,859 | 0.16% | 0 |
+| 1 yr | 7 | 24k | 24k to 56k | 0.10 | 1 | 4,597 | 0.02% | 0 |
+| Century | 64 | 72k | 33k to 100k | -0.24 | 29 | 4,634 | 0.63% | 8 |
+| 250 yr | 67 | 32k | 33k to 91k | -0.19 | 102 | 4,710 | 2.2% | 8 |
+| 100 kyr | 85 | 87k | 29k to 130k | -0.41 | 8 | 727 | 1.1% | 5 |
+| 250 kyr (20 Myr) | 32 | 101k | 35k to 122k | -0.20 | 4 | 195 | 2.1% | 2 |
+| 1 Myr (20 Myr) | 10 | 56k | 34k to 138k | -0.47 | 0 | 15 | 0 | 0 |
+
+- **Most reversals are small bodies at the 10,000 km2 threshold.** Day events are 20 to 30 km3
+  bodies; century and 250 yr are mostly hundreds of km3. They are not the RFC 0016 flicker.
+- **Reversals of bodies over 100,000 km2 exist at every step from 100 yr up:** 8 (century), 8
+  (250 yr), 5 (100 kyr), 2 (250 kyr), none at day or 1 yr. At 100 kyr the largest is a 164k km3,
+  0.82 M km2 body that dropped 108k then rose 122k (step 103); at 250 kyr a 172k km3, 0.85 M km2
+  body dropped 123k then rose 104k (step 67). They are a handful per 200 steps.
+- **Whole-world swings are mostly not single-lake reversals.** 85 big-drop steps against 8
+  reversals at 100 kyr, 64 against 29 at century. The remaining change is lakes growing, merging,
+  splitting or draining and not refilling.
+- **Comparison across modes is weak.** At 1 Myr only 15 body-steps are comparable, so zero
+  reversals is not evidence of absence. Large-body counts are single digits.
+- **Day-mode peak discharge fell from 3.15 M to 591k m3/s** on the new baseline; the spikes remain.
+- Ledgers close to 3e-8 or better in every mode.
+
+What this supports: large-lake reversals occur from 100 yr steps upward and not at day or 1 yr
+steps, and they are rare. It does not show that RFC 0016's flicker is a step-size effect; that
+needs the RFC's own windows replayed at several step sizes.
+
 ## Method change: warm up first
 
 Because of finding 2, every mode now runs the same `--warmup-days` day-length steps (default 10)
@@ -124,7 +164,7 @@ taken without warm-up and is kept for the record.
 
 - Identify the step-2 body and why it disappears (cap level, tier, rim, `#758` hysteresis).
 - Hour and `cfd` modes.
-- Second save at every mode; body-level flicker counts.
+- Second save at every mode.
 - Rerun the ice metrics once RFC 0015 D2 merges.
 - The #553 depth-cap warning on seed 910211954 at step 1 (6.7e4 km3 gross overflow on lake-tier
   bodies, 3.5e4 on sea-tier bodies) is another large-overflow route.

@@ -16,9 +16,11 @@ Steps a saved world with the ice-age cycle off (as #754's windows do) at `--step
 
 The summary gives, per series, the lag-1 autocorrelation of the step change (about -1 is
 period-2 alternation), the mean absolute step change from step 3, the largest ratio between
-consecutive steps, and the relative drift first-to-last. Body-level flicker counts (#754's
-definition) are not computed here; the per-step largest-lake records are left to a later
-pass.
+consecutive steps, and the relative drift first-to-last.
+
+It also counts #754's large-body flicker reversals per step (`body_reversals`, over
+`body_comparable` matched bodies above 10,000 km^2; see `lake_body_tracking.py`), and the summary
+gives their total and the rate per comparable body-step.
 
 Nothing here changes the model. Compare modes with a fixed step count (the issue uses 200).
 
@@ -32,6 +34,7 @@ Example (day mode, 200 steps):
 from __future__ import annotations
 
 import numpy as np
+from lake_body_tracking import components, count_reversals
 from replay_lib import load_replay, parse_replay_args, run_replay
 
 M3_PER_KM3 = 1e9
@@ -87,8 +90,13 @@ def main() -> None:
             "mean_air_temperature_c": float(np.average(fields.air_temperature_c, weights=weight)),
         }
 
+    tracked = {"bodies": None}
+
     def after_step(seconds: float) -> None:
         hydro = world.hydrology_cache
+        bodies = components(hydro)
+        reversals, comparable, events = count_reversals(tracked["bodies"], bodies)
+        tracked["bodies"] = bodies
         areas = plates_mod.collect_all_accounting_areas_m2(hydro.plates_in_order, line_spacing_rad(world.node_density))
         depth, lake_ice = np.asarray(hydro.lake_depth), np.asarray(hydro.lake_ice_m)
         ice = np.clip(np.asarray(hydro.glacier_depth), 0.0, None)
@@ -111,6 +119,9 @@ def main() -> None:
             "normalized_land_residual": (
                 abs(land.residual_m3) / (land.rain_m3 + land.meltwater_m3) if land and (land.rain_m3 + land.meltwater_m3) > 0 else None
             ),
+            "body_reversals": reversals,
+            "body_comparable": comparable,
+            "body_reversal_events": events,
             "cfd_simulated_seconds": float(state.elapsed_seconds) if state is not None else None,
             "world_elapsed_seconds": world.elapsed_years * SECONDS_PER_YEAR,
         }
@@ -126,6 +137,12 @@ def main() -> None:
         result["summary"] = {
             key: series_summary([s[key] for s in result["steps"] if s.get(key) is not None]) for key in keys
         }
+        reversals = sum(s["body_reversals"] for s in result["steps"])
+        comparable = sum(s["body_comparable"] for s in result["steps"])
+        result["summary"]["body_flicker"] = {
+            "reversals": reversals, "comparable_body_steps": comparable,
+            "reversal_rate": reversals / comparable if comparable else None,
+        }
         result["summary"]["mean_runtime_s"] = float(np.mean([s["runtime_s"] for s in result["steps"]]))
         return {"completed_steps": len(result["steps"])}
 
@@ -134,6 +151,7 @@ def main() -> None:
     for _ in range(args.warmup_days):
         world_mod.step_world(world, DAY_YEARS)
     result["warmup_days"] = args.warmup_days
+    tracked["bodies"] = components(world.hydrology_cache)
     run_replay(world, args, result, snapshot, after_step, close_window)
 
 
