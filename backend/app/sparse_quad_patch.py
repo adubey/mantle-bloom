@@ -275,15 +275,62 @@ def _intervals(face: np.ndarray, line: np.ndarray, position: np.ndarray, level: 
 def _stitch_xyz_loops(loops: list[np.ndarray]) -> np.ndarray:
     """`plates._stitch_loops`' zero-width keyhole seams, over xyz loops and with a k-d tree
     nearest-pair search instead of an all-pairs scan (quad loops carry every boundary cell
-    corner, so the quadratic scan would dominate outline construction on big plates)."""
-    combined = loops[0]
-    for extra in loops[1:]:
-        dist, idx = cKDTree(combined).query(extra)
-        j = int(np.argmin(dist))
-        i = int(idx[j])
-        rotated = np.concatenate([extra[j:], extra[:j]])
-        combined = np.concatenate([combined[: i + 1], rotated, extra[j : j + 1], combined[i : i + 1], combined[i + 1 :]])
-    return combined
+    corner, so the quadratic scan would dominate outline construction on big plates).
+
+    Each extra loop is joined to the nearest vertex of the loops stitched before it. The
+    search keeps k-d trees over geometrically growing groups of already-joined vertices, so a
+    plate with hundreds of island and hole loops costs O(V log V) rather than rebuilding one
+    tree over the whole outline per loop, which took ~0.5 s per call on a mature plate (#808).
+    The seams are spliced in by linked insertion for the same reason."""
+    if len(loops) == 1:
+        # A copy: the result is cached, and must not alias the cached boundary loops.
+        return loops[0].copy()
+    base = np.concatenate([[0], np.cumsum([len(loop) for loop in loops])])
+    all_points = np.concatenate(loops)
+    groups: list[tuple[cKDTree, np.ndarray]] = []  # (tree, vertex ids), newest last
+    attached: dict[int, list[tuple[int, int]]] = {}  # vertex id -> [(loop, start vertex), ...]
+
+    def add_group(k: int) -> None:
+        ids = np.arange(base[k], base[k + 1])
+        while groups and len(groups[-1][1]) <= len(ids):
+            ids = np.concatenate([groups.pop()[1], ids])
+        groups.append((cKDTree(all_points[ids]), ids))
+
+    add_group(0)
+    for k in range(1, len(loops)):
+        best_dist, best_id = np.inf, -1
+        extra_j = 0
+        extra = loops[k]
+        for tree, ids in groups:
+            dist, idx = tree.query(extra)
+            j = int(np.argmin(dist))
+            if dist[j] < best_dist or (dist[j] == best_dist and ids[idx[j]] < best_id):
+                best_dist, best_id, extra_j = float(dist[j]), int(ids[idx[j]]), j
+        attached.setdefault(best_id, []).append((k, extra_j))
+        add_group(k)
+
+    # Walk loop 0, splicing each attached loop in right after the vertex it joins: the
+    # attached loop starting at its seam vertex, back to that vertex, then the joined vertex
+    # again. Explicit stack: nesting can be hundreds of loops deep.
+    out: list[np.ndarray] = []
+    stack: list[tuple[str, object]] = [("loop", (0, 0))]
+    while stack:
+        kind, payload = stack.pop()
+        if kind == "point":
+            out.append(payload)  # type: ignore[arg-type]
+            continue
+        k, j = payload  # type: ignore[misc]
+        loop, n = loops[k], len(loops[k])
+        tasks: list[tuple[str, object]] = []
+        for t in range(n):
+            vertex = (j + t) % n
+            tasks.append(("point", loop[vertex]))
+            for child, child_j in reversed(attached.get(int(base[k]) + vertex, ())):
+                tasks.append(("loop", (child, child_j)))
+                tasks.append(("point", loops[child][child_j]))
+                tasks.append(("point", loop[vertex]))
+        stack.extend(reversed(tasks))
+    return np.array(out)
 
 
 @install_point_field_accessors
@@ -319,6 +366,7 @@ class PlateWithSparseQuadPatch(Plate):
         "_area_cache",
         "_adjacency_cache",
         "_local_loops_cache",
+        "_local_outline_cache",
         "_row_intervals_cache",
         "_column_intervals_cache",
         "_probe_neighbours_cache",
@@ -695,10 +743,15 @@ class PlateWithSparseQuadPatch(Plate):
     def outline_world(self) -> np.ndarray:
         """Every boundary loop joined into one keyholed vertex loop, the single-array form
         `get_bounding_polygon()` consumers expect (see `plates._stitch_loops`)."""
-        loops = self._local_boundary_loops()
-        if not loops:
-            return np.zeros((0, 3))
-        return geometry.to_world(self._frame, _stitch_xyz_loops(loops))
+        return geometry.to_world(self._frame, self._local_outline())
+
+    def _local_outline(self) -> np.ndarray:
+        """The stitched single-loop outline in the plate's local frame. It depends only on the
+        cell topology, so a rotation re-poses it without re-stitching (#808)."""
+        if self._local_outline_cache is None:
+            loops = self._local_boundary_loops()
+            self._local_outline_cache = _stitch_xyz_loops(loops) if loops else np.zeros((0, 3))
+        return self._local_outline_cache
 
     def contains_batch(self, points_xyz: np.ndarray) -> np.ndarray:
         """Exact: a point is inside iff the lattice cell containing it is active. No
