@@ -188,3 +188,24 @@ def test_stepping_outlasts_stop_and_the_last_step_moves_the_version():
 
     assert not runner.stepping()
     assert woken == sorted(woken) and woken[-1] == runner.version()
+
+
+def test_the_phase_is_stored_without_moving_the_run_version():
+    runner = WorldRunner(lambda years, should_step: True, interval_s=0.001)
+    assert runner.phase() is None
+    version = runner.version()
+    runner.set_phase("Updating faults", "Stepping/Moving plates", 0.25)
+    assert runner.phase() == {"label": "Updating faults", "group": "Stepping/Moving plates", "fraction": 0.25}
+    # A phase change must not wake every viewer's long poll.
+    assert runner.version() == version
+    runner.set_phase(None)
+    assert runner.phase() is None
+
+
+def test_a_finished_step_clears_its_phase(harness):
+    harness.runner.set_phase("Updating faults", "Stepping/Moving plates", 0.25)
+    harness.runner.set_status(RunStatus(running=True, step_years=1.0))
+    assert harness.stepped.wait(5)
+    harness.runner.set_status(RunStatus(running=False, step_years=1.0))
+    harness.runner.close()
+    assert harness.runner.phase() is None

@@ -46,7 +46,7 @@ Run from the repo root (or worktree root).
   out the copy. Remove an entry when its code goes. Editing inside a baselined clone counts
   as a new clone; refresh with `cd frontend && npm run dupes:baseline` only after deciding
   the copy should stay.
-- The frontend has no unit tests. `npm run build` runs `tsc`.
+- The frontend has a few `node --test` files in `frontend/tests` (`cd frontend && npm test`, run in CI); it has no component tests. `npm run build` runs `tsc`.
 - Backend deps are pinned in `backend/constraints.txt`. Change versions only with
   `./bin/pin_deps.sh`, never by hand. Upgrades can move simulation results.
 

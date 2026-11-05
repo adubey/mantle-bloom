@@ -65,7 +65,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from . import geometry, lithosphere, torque
+from . import geometry, lithosphere, torque, trace
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from .lithosphere_plate import CONTINENTAL_CONTESTED_RETREAT_MIN_RUN, continental_arc_band
 
@@ -410,6 +410,7 @@ def _stats(world: "World") -> dict:
     return stats
 
 
+@trace.traced("Detecting collisions", trace.PLATES, user=True)
 def observe_contacts(world: "World", years: float) -> PolarityFrame:
     """The prepass: observe every plate's contacts, update evidence and front records, and
     freeze this step's polarity and masks onto `world.collision_polarity_frame`. Run after

@@ -236,11 +236,16 @@ Response: a summary --
 save with no plates reports `"empty"`.
 
 The summary arrives as the final line of a newline-delimited JSON stream
-(`application/x-ndjson`): `{"type": "progress", "fraction": f, "phase": label}` at the three phase
-boundaries (`label` is a human-readable phase name -- "Creating cratons",
-"Starting mantle convection", ... -- shown in the app's run overlay, #629),
-an overdue-gated `{"type": "heartbeat", "fraction": f}` tick wherever a slow
-sub-phase runs with no other output (#611), then the summary above as `{"type": "done", ...}`.
+(`application/x-ndjson`): `{"type": "progress", "fraction": f, "phase": label, "group": g}` each
+time the work enters a new user-visible phase ("Laying out continents and mountain belts",
+"Dividing the sphere into plates", ... -- shown in the app's run overlay, #629, #801).
+`group` is `"<bar>/<group>"`, e.g. `"Building world/Laying out the planet"`, and `fraction` is the
+share of the typical run's time already finished (never decreasing, below 1 until the end).
+Labels come from the spans inside the work (see [architecture.md#trace-spans](architecture.md#trace-spans)),
+so they appear when the work starts. A run with no spans keeps the generator's own
+`{"type": "progress", "fraction": f, "phase": label}` lines without `group`. An overdue-gated
+`{"type": "heartbeat", "fraction": f}` tick fires wherever a slow sub-phase runs with no other
+output (#611), then the summary above as `{"type": "done", ...}`.
 
 `events` is the *entire* current event log (capped at `world.MAX_EVENT_LOG_LENGTH = 200`
 entries, oldest dropped first), not just what changed this call -- simplest for the frontend,
@@ -274,10 +279,10 @@ shape as `/worlds/{world_id}/generate`, with `events` reflecting anything logged
 (100 Myr, #557), `404` if no world has been generated yet.
 
 Like generate, the response streams newline-delimited JSON: `{"type": "progress",
-"fraction": f, "phase": label}` after each per-plate shift/deform unit and at each
-phase boundary of the tail ("Moving plates", "Resolving glaciers", ... -- shown in the
-app's run overlay, #629), an overdue-gated
-`{"type": "heartbeat", "fraction": f}` tick at the slow tail's sub-boundaries (#611),
+"fraction": f, "phase": label, "group": g}` each time the step enters a new user-visible phase
+("Solving mantle flow and plate motion", "Updating faults", "Resolving rivers and lakes", ... --
+shown in the app's run overlay, #629, #801), with `group` such as `"Stepping/Moving plates"`; an
+overdue-gated `{"type": "heartbeat", "fraction": f}` tick at the slow tail's sub-boundaries (#611),
 then the summary as `{"type": "done", ...}`.
 
 ## `POST /worlds/{world_id}/run`, `GET /worlds/{world_id}/run`
@@ -302,8 +307,13 @@ Both return:
 
 ```json
 { "running": true, "step_years": 100000.0, "stepping": false, "error": null, "run_version": 14,
+  "phase": { "label": "Updating faults", "group": "Stepping/Moving plates", "fraction": 0.22 },
   "world": { "revision": "3f9a1c2e-12", "seed": 0, "elapsed_years": 1200000.0 } }
 ```
+
+`phase` is the user-visible phase of the step under way, or `null` between steps (#801). It does
+not move `run_version`: a phase change must not wake every viewer's long poll, so the app reads
+it with a plain `GET` about every 1.5 s while a world is playing.
 
 `stepping` is true while the loop is taking a step; it can stay true just after Stop, until
 the step under way lands. `error` says why the run last stopped on its own (a step raised, or

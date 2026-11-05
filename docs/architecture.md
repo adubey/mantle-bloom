@@ -308,6 +308,36 @@ volume at `/data` and `GET /healthz` as the deploy health check. See
 [hosting.md](hosting.md).
 
 <a id="replay-log"></a>
+<a id="trace-spans"></a>
+## Trace spans (`backend/app/trace.py`)
+
+The run overlay's phase text, group and bar fraction, and the profiler's timings, come from one
+mechanism (#801). A *span* names a stretch of work and the user-visible group it belongs to; a
+`user=True` span is a label the overlay shows, a plain span is profiling detail. Spans nest by
+call stack, but the group is stated at the span, because climate, rivers, lakes and glaciers run
+inside `erosion.apply_erosion` and belong to "Hydrometeorology (climate, water & ice)" while
+erosion belongs to "Reshaping the surface". The 22 user-visible spans are `@trace.traced(label,
+group, user=True)` decorators on 21 coarse functions (plate motion, faults, gap filling,
+climate, hydrology, erosion, ...) and one `trace.span` around the plate-deform loop. Nothing records unless a `Recorder` is active in the current
+context, so an unrecorded span costs one `ContextVar` lookup.
+
+Two consumers install a recorder. The `/worlds/{world_id}/step` and `/generate` endpoints run
+the progress generator on a worker thread through `trace.run_traced`, which merges span events
+with the generator's messages so a label reaches the client when the work *starts*; a generator
+can only yield between its own statements, and erosion is one statement. The endpoints close the
+stream before releasing the session lock and compute gate, which joins the worker, so an error on
+the request side never leaves it stepping the world unlocked. A running world
+(`_run_step_once`) publishes the same events on its `WorldRunner`, and `GET /worlds/{world_id}/run`
+returns them as `phase`. The bar's fraction is the share of each phase's typical time
+(`trace.STEP_WEIGHTS`, `GENERATE_WEIGHTS`, measured on a young world, minus the phases the
+world's settings skip) already finished, held below 1. A mature world spends its time differently, so the fraction is a guide, not a clock.
+
+`bin/debug/profile_phases.py` is the other consumer: it wraps about 50 more functions in plain
+spans at runtime and prints the tree. Adding a user-visible label means decorating the function,
+adding its learn links to `frontend/src/phaseInfo.ts` (a unit test checks both), and a weight if
+it should move the bar. See [profiling.md](profiling.md) and
+[debugging/scripts-infrastructure.md](debugging/scripts-infrastructure.md#profile_phasespy).
+
 ## Replay log (`backend/app/replay_log.py`)
 
 When `MANTLE_BLOOM_REPLAY_LOG_DIR` names a directory (`bin/restart.sh --replay-log` sets it
@@ -614,6 +644,8 @@ users.py             per-user store behind the paid tier (#620): users, linked i
                      free/paid/admin
 run_control.py       the run/stopped status and the background thread that steps a running
                      world (see #run-and-checkpoint above)
+trace.py             nested wall-clock spans: the run overlay's phase labels, groups and
+                     fractions, and the profiler's timings (see #trace-spans below)
 checkpoint.py        atomic world and run-status checkpoints on persistent storage, and
                      restoring them at startup (see #run-and-checkpoint above)
 replay_log.py        saves the world before any step whose health metrics go askew, with

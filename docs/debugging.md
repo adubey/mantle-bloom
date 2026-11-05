@@ -178,6 +178,7 @@ Gate 2 load, mesh and capacity diagnostics.
 | [`run_sweep.py`](debugging/scripts-infrastructure.md#run_sweeppy) | the multi-parameter sensitivity sweep |
 | [`aggregate_sweep.py`](debugging/scripts-infrastructure.md#aggregate_sweeppy) | sweep rows summarised per parameter and checkpoint |
 | [`profile_animation_60m.py`](debugging/scripts-infrastructure.md#profile_animation_60mpy) | per-frame timings of a 60 Myr animation |
+| [`profile_phases.py`](debugging/scripts-infrastructure.md#profile_phasespy) | wall-clock time per user-facing phase of world generation, first render and a step (#801) |
 | [`seed_run_lib.py`](debugging/scripts-infrastructure.md#seed_run_libpy) | library: generate-and-step runs with `--backend` |
 | [`replay_lib.py`](debugging/scripts-infrastructure.md#replay_libpy) | library: save replays with `--backend` |
 | [`sweep_lib.py`](debugging/scripts-infrastructure.md#sweep_libpy) | library: sweep parameters, seeds and job runner |

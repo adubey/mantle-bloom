@@ -59,6 +59,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from numba import njit
 
+from .. import trace
 from . import hydrology
 from ..elevation_lines import line_spacing_rad
 
@@ -341,6 +342,7 @@ def initialize_water_budget(world: "World") -> None:
     world.ocean_water_volume_m3 = water_volume_for_sea_level(world, world.sea_level_m) + trapped_water_volume_m3(world)
 
 
+@trace.traced("Balancing sea level", trace.SURFACE, user=True)
 def update_sea_level(world: "World") -> None:
     """Re-solve `world.sea_level_m` against this step's hypsometry, holding the *total*
     surface-water budget (`world.ocean_water_volume_m3`) fixed and subtracting the part

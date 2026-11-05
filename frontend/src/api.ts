@@ -574,6 +574,9 @@ function worldSummaryFrom(msg: Record<string, unknown>): WorldSummary {
 export interface RunProgress {
   fraction: number;
   phase?: string;
+  // "<bar>/<group>" of the phase (#801), e.g. "Stepping/Moving plates"; absent from older
+  // servers and from progress lines that predate the span-driven labels.
+  group?: string;
 }
 
 // Used by generateWorld below, which streams newline-delimited JSON progress the
@@ -595,7 +598,7 @@ async function readProgressStream(resp: Response, onProgress?: (progress: RunPro
 
   const progressOf = (msg: Record<string, unknown>): void => {
     if (typeof msg.fraction !== "number") return;
-    onProgress?.({ fraction: msg.fraction, phase: msg.phase as string | undefined });
+    onProgress?.({ fraction: msg.fraction, phase: msg.phase as string | undefined, group: msg.group as string | undefined });
   };
   const done = await readStreamMessages(resp.body.getReader(), progressOf, undefined, progressOf);
   if (!done) throw new Error("stream ended without a result");
@@ -815,6 +818,9 @@ export interface RunState {
   stepping: boolean;
   error: string | null;
   run_version: number;
+  // The phase of the step under way (#801); polled separately from the long poll because a
+  // phase change must not wake every viewer. Null between steps.
+  phase: { label: string; group: string | null; fraction: number } | null;
   world: { revision: string; seed: number; elapsed_years: number } | null;
 }
 

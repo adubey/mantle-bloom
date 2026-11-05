@@ -80,6 +80,9 @@ jobs:
       - run: npm run deadcode
       - run: npm run dupes
       - run: npm run build
+      # tsc -p tsconfig.test.json, then node --test over frontend/tests (#801 review: the
+      # phase-link and docs-anchor tests only ran locally before).
+      - run: npm test
       # Railway applies .railway/railway.ts only at `railway config apply`, so check it here
       # against the SDK version it pins (#376).
       - name: Typecheck the Railway config

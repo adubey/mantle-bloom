@@ -1,4 +1,5 @@
 import numpy as np
+from app import trace
 from app.hydroclimate import climate
 from app.torque import shift_plates_quasistatic
 from app.world import PROGRESS_HEARTBEAT_INTERVAL_S, generate_world, generate_world_progress, step_world, step_world_progress
@@ -200,6 +201,18 @@ def test_quad_world_keeps_its_represented_area_between_gap_fill_intervals():
         step_world(world, years=1_000_000)
         represented = sum(float(np.sum(p.surface_nodes().area_m2)) for p in world.plates if p.node_count())
         assert represented / sphere_m2 > 0.995
+
+
+def test_a_step_reports_reshaping_plates_as_one_span_not_one_per_plate():
+    """Regression (#809 review): the overlay credits a phase's share of the bar when its span
+    finishes, so a span per plate would add the whole share after the first plate and then stall."""
+    world = generate_world(seed=3, node_density=0.5, cratons_first=False)
+    with trace.recording() as recorder:
+        step_world(world, years=1_000_000)
+
+    assert len(world.plates) > 1
+    assert recorder.stats[("Reshaping plates",)][2] == 1
+    assert recorder.groups["Reshaping plates"] == trace.PLATES
 
 
 def test_record_removed_points_is_a_noop_for_an_empty_array():

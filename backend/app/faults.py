@@ -61,7 +61,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import boundary, geometry, lithosphere
+from . import boundary, geometry, lithosphere, trace
 from .hydroclimate import mobile_cover
 from .elevation_lines import (
     ELEV_CHANGE_FAULT_NORMAL,
@@ -690,6 +690,7 @@ def generate_boundary_faults(world: "World") -> None:
 # --------------------------------------------------------------------------- step entry point
 
 
+@trace.traced("Updating faults", trace.PLATES, user=True)
 def update_faults(world: "World", years: float) -> None:
     """Age / spawn / retire faults, apply their relief, and roll each active fault's
     earthquakes. Called once per step from world.step_world, inside the

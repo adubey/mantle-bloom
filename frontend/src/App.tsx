@@ -32,6 +32,7 @@ import Legend from "./Legend";
 import MeasureOverlay from "./MeasureOverlay";
 import ProgressBar from "./ProgressBar";
 import RunOverlay from "./RunOverlay";
+import { PLAYING_FALLBACK_PHASE, playingPhaseView } from "./phaseInfo";
 import ModalShell from "./ModalShell";
 import AdminSession from "./AdminSession";
 import ProbePopup from "./ProbePopup";
@@ -59,6 +60,8 @@ const DEBUG_UI = new URLSearchParams(window.location.search).has("deb");
 // renamed, published, or newly running worlds show up without a reload (#597).
 // Infrequent on purpose -- selection changes stream through their own effects.
 const WORLDS_POLL_MS = 15000;
+// How often a playing tab asks the server which phase its step is in (#801).
+const RUN_PHASE_POLL_MS = 1500;
 
 // Current page URL with the `deb` flag added (bare `deb`, no value) -- target of the
 // sidebar's "Debug..." link. Preserves any existing query params and the hash;
@@ -628,6 +631,10 @@ export default function App() {
   // Stop was pressed, and the server's last step may still be landing (see handleStopRun).
   const [stopping, setStopping] = useState(false);
   const [busy, setBusy] = useState(false);
+  // What the `busy` run is, for the overlay headline: loading or switching to a saved world
+  // re-solves its climate rather than generating anything, and the hosted server is slow
+  // enough for people to read the headline.
+  const [busyKind, setBusyKind] = useState<"generate" | "load">("generate");
   // Real percent-complete for the `busy` progress bar below, fed by
   // generateWorld's `onProgress` (see api.ts and issue #195) -- `undefined`
   // until that run's first NDJSON progress line arrives (ProgressBar falls back to its old
@@ -638,6 +645,9 @@ export default function App() {
   // "Frame i of N" for recordings, a generic line for Play's run loop (which streams no
   // phases), and null before a run's first checkpoint arrives.
   const [runPhase, setRunPhase] = useState<string | null>(null);
+  // The phase's "<bar>/<group>" from the backend's spans (#801), shown above the phase text.
+  // Cleared with the phase, whichever of the many places clears that.
+  const [runGroup, setRunGroup] = useState<string | null>(null);
   // The overlay's X collapses to just the pulsing progress line; its pop-out icon
   // re-opens the overlay. Generate and Record start expanded; Play (stepping) starts
   // collapsed on the progress line (#653).
@@ -923,7 +933,11 @@ export default function App() {
     // The summary names its own world: when the selection moved on mid-flight, drop
     // the stale commit instead of painting the old world over the new one (#563 S7).
     if (s.world_id !== worldIdRef.current) return;
+    setBusyKind("load");
     setBusy(true);
+    setGenProgress(undefined);
+    setRunPhase(null);
+    setRunGroup(null);
     setError(null);
     try {
       setSummary(s);
@@ -1368,6 +1382,7 @@ export default function App() {
     // commit and the error line below bail when it no longer matches instead of
     // painting the old world over the new one.
     let id: WorldId | null = null;
+    setBusyKind("generate");
     setBusy(true);
     setGenProgress(undefined);
     setRunPhase(null);
@@ -1417,7 +1432,10 @@ export default function App() {
                   setGenProgress(p.fraction);
                   // Heartbeat ticks carry a fraction but no phase (#611): they move
                   // the bar without clearing the current phase text.
-                  if (p.phase !== undefined) setRunPhase(p.phase);
+                  if (p.phase !== undefined) {
+                    setRunPhase(p.phase);
+                    setRunGroup(p.group ?? null);
+                  }
                 }
               },
             });
@@ -1493,7 +1511,9 @@ export default function App() {
     // Stepping starts on the progress line, not the pop-out overlay (#653): the toolbar's
     // Stop button stays clickable either way, and the line's pop-out icon re-opens it.
     setOverlayCollapsed(true);
-    setRunPhase("Advancing the world");
+    setRunPhase(PLAYING_FALLBACK_PHASE);
+    setRunGroup(null);
+    setGenProgress(undefined);
     try {
       setPlaying((await setRunState(worldIdRef.current!, true, stepYears)).running);
     } catch (e) {
@@ -1524,8 +1544,38 @@ export default function App() {
 
   // The world revision this tab last showed while following a run.
   const shownRevisionRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (runPhase === null) setRunGroup(null);
+  }, [runPhase]);
   const worldAdvancedRef = useRef(handleWorldAdvanced);
   worldAdvancedRef.current = handleWorldAdvanced;
+
+  // While the server runs the world, shows which phase its current step is in (#801). The follow
+  // loop below long-polls, which only wakes when the world moves on, so the phase text gets a
+  // short poll of its own; the runner publishes it without touching the run version.
+  useEffect(() => {
+    if (!playing || !worldId) return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      fetchRunState(worldId)
+        .then((run) => {
+          if (cancelled || worldIdRef.current !== worldId) return;
+          const view = playingPhaseView(run.phase);
+          setRunPhase(view.phase);
+          setRunGroup(view.group);
+          setGenProgress(view.fraction);
+        })
+        .catch(() => {
+          // best-effort: the follow loop below reports a refused or failed poll
+        });
+    }, RUN_PHASE_POLL_MS);
+    // Not resetting genProgress here: this cleanup also runs when the selection moves on, and
+    // that must not wipe a Generate or load that is mid-run. The follow loop's finish() does.
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [playing, worldId]);
 
   // Polls the run state until the server is idle (stopped, with no step under way), showing
   // each new revision. `shownRevisionRef` carries the revision on screen from one run to the
@@ -1538,6 +1588,7 @@ export default function App() {
       setPlaying(false);
       setStopping(false);
       setRunPhase(null);
+      setGenProgress(undefined);
     };
     (async () => {
       let runVersion: number | undefined;
@@ -1583,7 +1634,7 @@ export default function App() {
         setPlaying(true);
         // Same collapsed default as a fresh Play press above (#653).
         setOverlayCollapsed(true);
-        setRunPhase("Advancing the world");
+        setRunPhase(PLAYING_FALLBACK_PHASE);
       })
       .catch(() => {
         // best-effort: without it, Play still shows the run's state once pressed
@@ -1608,11 +1659,11 @@ export default function App() {
   // and fraction when the run reports one. Play's run loop streams no checkpoints, so
   // it gets the generic phase and no fraction.
   const runActive = busy || playing || animation !== null;
-  const overlayHeadline = animation ? "Recording animation" : busy ? "Generating world" : "Run in progress";
+  const overlayHeadline = animation ? "Recording animation" : busy ? (busyKind === "load" ? "Loading, rebuilding render cache & resolving climate" : "Generating world") : "Run in progress";
   const overlayFraction =
     animation && !animation.unbounded && animation.total > 0
       ? animation.frame / animation.total
-      : busy
+      : busy || playing
         ? genProgress
         : undefined;
 
@@ -1654,6 +1705,7 @@ export default function App() {
             <RunOverlay
               headline={overlayHeadline}
               phase={runPhase}
+              group={runGroup}
               fraction={overlayFraction}
               onCollapse={() => setOverlayCollapsed(true)}
             />

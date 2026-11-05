@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import geometry, mantle, quad_tectonics
+from . import geometry, mantle, quad_tectonics, trace
 from .elevation_lines import (
     COVERAGE_RADIUS_MULT as _SHARED_COVERAGE_RADIUS_MULT,
     effective_is_continental_from_codes,
@@ -221,6 +221,7 @@ def _adjacent_plates_to_cluster(world: "World", cluster_points: np.ndarray, spac
     return adjacent
 
 
+@trace.traced("Filling seafloor gaps", trace.PLATES, user=True)
 def fill_gaps_by_growing_neighbours(world: "World", years: float = 0.0) -> list[str]:
     """Find every sphere region no live plate currently covers (`_find_gap_points`) and grow
     the plates adjacent to it into it (`_adjacent_plates_to_cluster`,
