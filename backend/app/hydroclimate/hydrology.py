@@ -2006,7 +2006,7 @@ def _march_glacier(
     total_water = float(total_water)
 
     def solve_once(sub_years: float, ref_depth: np.ndarray, ref_heat: np.ndarray):
-        load = lithosphere.grounded_ice_load_kg_m2(ref_depth, unloaded_bed, sea_level)
+        load = lithosphere.grounded_ice_load_kg_m2(ref_depth, unloaded_bed, sea_level, ocean_mask)
         target = lithosphere.ice_load_deflection(crust_h_m, mantle_h_m, rho_crust, load)
         temperature = np.asarray(temperature_at_nodes, dtype=float) - ice_sheet.LAPSE_RATE_C_PER_KM * (target - deflection_m) / 1000.0
         frozen = (temperature < FREEZE_POINT_C) | (ref_depth >= GLACIER_VISIBLE_DEPTH_M)
