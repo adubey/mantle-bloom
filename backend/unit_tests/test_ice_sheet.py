@@ -274,6 +274,20 @@ def test_snow_in_an_enclosed_pit_below_sea_level_stays_as_ice():
     assert ledger.residual_m3 == pytest.approx(0.0, abs=1e-6 * ledger.accumulation_m3)
 
 
+def test_a_body_beside_an_enclosed_deep_basin_spreads_over_it_instead_of_calving():
+    # #552: the island of the marine case above, but its surrounding 5 km deep water is an
+    # enclosed basin the ocean doesn't reach. The ice grounds on that floor and spreads over
+    # it rather than saturating and calving, and the ledger closes.
+    points, r, elevation, area = _continent(land_radius_km=200.0, half_km=600.0, ocean_floor=-5000.0)
+    start = np.where(r <= 200e3, 4000.0, 0.0)
+    depth, _, ice = _step(points, area, elevation, start, _cold(len(points)), 1e6, is_ocean=np.zeros(len(points), dtype=bool))
+    ledger = ice.ledger
+    assert ledger.calved_m3 == 0.0
+    assert not ice.bodies[0].saturated
+    assert np.count_nonzero(depth[r > 200e3]) > 0
+    assert ledger.residual_m3 == pytest.approx(0.0, abs=1e-6 * ledger.opening_m3)
+
+
 def test_only_connected_ocean_water_floats_ice():
     bed = np.array([-100.0, -100.0, 100.0])
     ocean = np.array([True, False, False])

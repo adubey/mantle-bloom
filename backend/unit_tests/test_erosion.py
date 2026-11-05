@@ -829,6 +829,21 @@ def test_ice_load_near_the_elevation_floor_stores_only_the_applied_deflection():
     assert np.allclose(melted, bed)
 
 
+def test_ice_in_an_enclosed_pit_loads_the_lithosphere_but_floating_ice_does_not():
+    # #552: 20 m of ice over 60 m of water floats on the ocean and loads nothing; in a pit the
+    # ocean doesn't reach it rests on the bed and loads its whole column.
+    from app import lithosphere
+
+    bed = np.full(2, -60.0)
+    zeros = np.zeros(2)
+    rho = np.full(2, lithosphere.RHO_CONTINENTAL_CRUST)
+    _, deflection, load = erosion._apply_ice_load(
+        bed, zeros, np.full(2, 20.0), zeros, zeros, rho, 0.0, np.array([True, False])
+    )
+    assert load[0] == 0.0 and deflection[0] == 0.0
+    assert load[1] == lithosphere.RHO_ICE * 20.0 and deflection[1] < 0.0
+
+
 # --- Issue #288: depositional Hc-cap overflow is carried on, not clipped ----------------------
 
 
