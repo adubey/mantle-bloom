@@ -17,6 +17,7 @@ from app.sparse_quad_patch import (
     PLANET_RADIUS_M,
     QUAD_SURFACE_FORMAT_VERSION,
     PlateWithSparseQuadPatch,
+    _stitch_xyz_loops,
     cell_areas_sr,
     cells_per_face_edge,
     lattice_points,
@@ -663,3 +664,41 @@ def test_a_failed_rift_marks_exactly_its_thinned_band_as_belt():
     np.testing.assert_array_equal(cratons.belt_mask(plate, 6.0e8), thinned)
     plate, _ = rift(None)
     assert not np.any(cratons.belt_mask(plate, 6.0e8))
+
+
+def test_stitch_joins_many_loops_into_one_keyholed_outline():
+    """#808: stitching hundreds of island/hole loops must keep every vertex, add exactly one
+    seam (seam vertex + joined vertex) per extra loop, and join each loop at its nearest
+    already-stitched vertex."""
+    rng = np.random.default_rng(0)
+    centres = rng.normal(size=(40, 3))
+    centres /= np.linalg.norm(centres, axis=1, keepdims=True)
+    angles = np.linspace(0, 2 * np.pi, 8, endpoint=False)
+    loops = []
+    for centre in centres:
+        u = np.cross(centre, [0.3, 0.5, 0.8])
+        u /= np.linalg.norm(u)
+        v = np.cross(centre, u)
+        ring = centre + 0.05 * (np.cos(angles)[:, None] * u + np.sin(angles)[:, None] * v)
+        loops.append(ring / np.linalg.norm(ring, axis=1, keepdims=True))
+    stitched = _stitch_xyz_loops(loops)
+    assert len(stitched) == sum(len(loop) for loop in loops) + 2 * (len(loops) - 1)
+    assert np.array_equal(stitched[: len(loops[0])][:1], loops[0][:1])
+    for loop in loops:
+        assert cKDTree(stitched).query(loop)[0].max() == 0.0
+    assert len(_stitch_xyz_loops(loops[:1])) == len(loops[0])
+
+
+def test_outline_is_stitched_once_per_topology_and_follows_rotation():
+    """#808: the keyholed local outline depends on cell topology alone, so a rotation re-poses
+    it rather than re-stitching, and a topology change drops it."""
+    plate = _plate(np.array([pack_cell_keys(0, 0, i, 0) for i in range(3)], dtype=np.int64))
+    local = plate._local_outline()
+    assert plate._local_outline() is local
+    before = plate.outline_world()
+    c, sn = np.cos(0.3), np.sin(0.3)
+    plate.rotate(np.array([[c, -sn, 0.0], [sn, c, 0.0], [0.0, 0.0, 1.0]]))
+    assert plate._local_outline() is local
+    assert not np.allclose(plate.outline_world(), before)
+    plate._reset_caches()
+    assert plate._local_outline() is not local
