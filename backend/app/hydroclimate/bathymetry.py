@@ -307,4 +307,12 @@ def _smooth_continental_margins(plates: list["Plate"]) -> None:
     new_hc = np.clip(_relax(hc), lithosphere.MIN_CRUSTAL_THICKNESS_M, None)
     new_hm = np.clip(_relax(hm), lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M, None)
 
+    # Grading is for sea floor: a submerged node the relaxation would lift to or above sea level
+    # (oceanic crust pulled up toward a neighbouring continent's thick crust) keeps its generated
+    # column instead, so smoothing never creates land, and never land on oceanic crust.
+    rho = np.concatenate([lithosphere.node_crust_density(p.collect("crust_type_code"), p.crust_type) for p in plates_in_order])
+    surfaced = (elevation < 0.0) & (lithosphere.isostatic_elevation(new_hc, new_hm, rho) >= 0.0)
+    new_hc = np.where(surfaced, hc, new_hc)
+    new_hm = np.where(surfaced, hm, new_hm)
+
     _write_back(plates_in_order, counts, active, new_hc, new_hm)
