@@ -879,3 +879,53 @@ scans, knockout runs and checkpoints stay in the private captures with a `SHA256
 **What this can't show.** Selection ranks by `|ΔV|`, so the windows favour the largest swings, as
 before. Two worlds supply the candidates. Passing the artifact screen shows the event survives
 removing sublimation, not that supply or storage drives it.
+
+### Re-baseline results
+
+Scans and candidate reloads used pinned source `3854792fad7c54fe97078ee490625f488273bd00`.
+The seed 910 save is named `...-220200000y.mbworld`, but its embedded age is 220.4 Myr; its
+SHA-256 matches the preregistered input. The first four scan outputs were excluded.
+
+| World | Reversals | Comparable-body observations | Event ages (Myr) |
+|---|---:|---:|---|
+| Seed 910211954 | 14 | 469 | 221.1, 221.3 (2), 221.7, 221.8, 221.9, 222.6, 222.7 (2), 222.8, 223.9, 224.0, 224.8, 224.9 |
+| Seed 317739385 | 5 | 178 | 202.1, 204.4, 205.4 (2), 205.5 |
+
+The separate 221.6 Myr A checkpoint replay had no qualifying reversals in its eight outputs.
+The former A event is absent at its registered anchor. The nearest current-source reversals are
+4,970 km away at 221.7 Myr and 9,953 km away at 221.8 Myr. D's event is absent around its former
+225.3 Myr timing. E's nearest reversal around its former 224.2 Myr timing is 8,514 km from E's
+registered anchor. Thus A, D and E do not supply the former target events on this pin.
+
+All eight nonoverlapping ranked candidates reloaded with exact before, after and `ΔV` values.
+Candidate ranks below are global, by descending `|ΔV|`. Frozen share is weighted by precipitation
+volume over the outputs where the detector-matched component exists; `n/4` shows how many of the
+four outputs had a matched target. A missing target fails the every-step routed-supply rule.
+Every candidate's whole-lake liquid-ledger residual passed the 0.1% limit.
+
+| Rank | Seed, checkpoint (Myr) | `|ΔV|` (km³) | Frozen share | Routed supply | Result |
+|---:|---|---:|---:|---|---|
+| 1 | 910211954, 221.1 | 488,100 | 29.59% (4/4) | Every step | Fails frozen screen |
+| 2 | 910211954, 222.5 | 460,794 | 5.55% (3/4) | Missing target at step 4 | Fails routed-supply screen |
+| 3 | 910211954, 221.5 | 390,911 | 11.55% (3/4) | Missing target at step 3 | Fails frozen and routed-supply screens |
+| 4 | 317739385, 201.9 | 44,350 | 0.00% (2/4) | Missing target at steps 3–4 | Fails routed-supply screen |
+| 5 | 910211954, 224.6 | 7,644 | 2.48% (4/4) | Every step | Passes individual screens, including K-sub |
+| 6 | 317739385, 205.2 | 5,960 | 40.20% (3/4) | Missing target at step 4 | Fails frozen and routed-supply screens |
+| 7 | 317739385, 204.2 | 5,310 | 42.93% (2/4) | Missing target at steps 3–4 | Fails frozen and routed-supply screens |
+| 8 | 910211954, 223.8 | 2,782 | 86.03% (2/4) | Missing target at steps 3–4 | Fails frozen and routed-supply screens |
+
+**The sole individual passer is not enough to select G1 windows.** Candidate 5 in the global ranking
+(seed 910211954, checkpoint 224.6 Myr) has checkpoint SHA-256
+`0b0470a7f08ce0cf1a5d06ae172686b2f7d5f0039bd19fd430abed547ee45c19`, target volumes
+3,456.502, 11,100.869, 559,447.829 and 1,468.931 km³, and a 2.48% frozen share. Its anchor is
+[`target-anchor-window-rescan-2-single-pass.json`](target-anchor-window-rescan-2-single-pass.json).
+The maximum normalized liquid-ledger residual is `3.44e-13`. With lake-ice sublimation disabled,
+the matched target-body change is 5,076.636 km³, 66.41% of the control `|ΔV|` of 7,644.367 km³,
+above the preregistered 50% cutoff.
+
+Only one candidate passes all individual screens, so the three-window basin-independence screen
+cannot be satisfied. As preregistered, selection stops here: no G0 river arms or G1 treatment arms
+were run, and no threshold was relaxed. The compact values, all anchors, full checkpoint hashes
+and per-step screens are in [`window-rescan-2-summary.json`](window-rescan-2-summary.json).
+Raw scans, replay outputs and checkpoints remain in the private capture under `rfc0016/window-rescan-2/`
+and are covered by its `SHA256SUMS` file.
