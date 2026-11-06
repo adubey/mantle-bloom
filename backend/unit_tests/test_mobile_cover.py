@@ -6,12 +6,21 @@ import numpy as np
 import pytest
 
 from app import continental_ledger, lithosphere, orogeny, persistence, quad_tectonics
-from app.hydroclimate import erosion, mobile_cover, volcanism
+from app.hydroclimate import erosion, hydrology, mobile_cover, volcanism
 from app.elevation_lines import line_spacing_rad
 from app.sparse_quad_patch import PlateWithSparseQuadPatch, cells_per_face_edge, pack_cell_keys
 from app.world import World, generate_world
 
 K = erosion.MOBILE_COVER_ERODIBILITY_FACTOR
+
+
+@pytest.fixture(autouse=True)
+def _no_glacier_march(monkeypatch):
+    # No test in this module asserts on marched ice (cover/silt inventory closure and
+    # the erosion budget): the multi-Myr steps move sediment, and marching glaciers
+    # over them stalls the suite (#806, #822). Production and ice-asserting tests
+    # march on.
+    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
 COVER_FIELDS = ("mobile_cover_m", "mobile_cover_continental_m")
 
 

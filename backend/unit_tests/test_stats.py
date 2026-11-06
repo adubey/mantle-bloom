@@ -2,13 +2,21 @@ import numpy as np
 import pytest
 
 from app import geometry, lithosphere, stats
-from app.hydroclimate import climate
+from app.hydroclimate import climate, hydrology
 from app.elevation_lines import line_spacing_rad
 from app.world import World, generate_world
 
 from .quad_fixtures import globe_plate, quad_plate
 
 _GLOBE_DENSITY = 0.5
+
+
+@pytest.fixture(autouse=True)
+def _no_glacier_march(monkeypatch):
+    # No test in this module asserts on marched ice (summary statistics over stepped
+    # worlds): the Myr steps evolve the surface, and marching glaciers over them
+    # stalls the suite (#806, #822). Production and ice-asserting tests march on.
+    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
 
 
 def _globe_world(crust_type: str, **fields_at) -> World:
