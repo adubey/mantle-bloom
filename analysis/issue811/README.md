@@ -21,7 +21,7 @@ ages off, 200 steps per mode. Raw outputs and probe scripts' data are in
 | Rain, humidity | none; diagnostic climate snapshot (RFC 0019 plans transport) | `climate.py` |
 | Rivers | steady-state routing of an annual-mean climate; river-water reservoirs use `years` | `hydrology.py` |
 | Lakes | volume integrated over `years` from that climate; overflow booked as a step volume | `lakes.py` |
-| Glaciers | one-shot solve over `years` today; RFC 0015 D2 would march 250 yr substeps | `ice_sheet.py` |
+| Glaciers | one-shot solve over `years` today; RFC 0015 D2 (PR #806, not merged) marches in substeps of `min(250 yr, years)`, so steps under 250 yr stay a single solve and only 100 kyr and longer steps march (see the RFC 0015 note below) | `ice_sheet.py` |
 
 The model has no real seasonal cycle (`climate.py`), so sub-year steps all see the same climate.
 
@@ -114,6 +114,128 @@ warm-up, diagnostic wind. Century and 250 yr cover 20 and 50 kyr; the bridge cov
 - **Lake volume at the first measured step** is 98k (1 yr) against 246k to 261k (century, 250 yr):
   the lakes refill after the warm-up on physical time (finding 4), not a step-size effect.
 
+## Single-body flicker (#754's definition) and a new baseline
+
+Compact summary: [`seed997271774-body-flicker.json`](seed997271774-body-flicker.json) (event lists for
+1 yr, 100 kyr and the bridges). Driver: `replay_timescale_sweep.py` now counts large-body reversals
+through [`lake_body_tracking.py`](../../bin/debug/lake_body_tracking.py), shared with
+`measure_lake_step_budget.py`. A reversal is a matched body over 10,000 km2 whose two consecutive
+volume changes have opposite signs and each exceeds half its earlier volume.
+
+**These seven runs are on `origin/main` dc855ca3, not d02484e6.** #812 (only connected-ocean water
+floats ice, #552) merged in between and moved the lake and ice numbers, so the earlier tables are
+not reproduced. Pattern and conclusions below use the new runs only. Same save, warm-up and wind.
+
+| Mode | World-lake drops >1,000 km3 | Largest drop km3 | Max land discharge m3/s | Lag-1 | Body reversals | Comparable body-steps | Rate | Reversals of bodies >100,000 km2 |
+|---|---|---|---|---|---|---|---|---|
+| Day | 1 | 5.1k | 23.5k to 591k | 0.06 | 6 | 3,859 | 0.16% | 0 |
+| 1 yr | 7 | 24k | 24k to 56k | 0.10 | 1 | 4,597 | 0.02% | 0 |
+| Century | 64 | 72k | 33k to 100k | -0.24 | 29 | 4,634 | 0.63% | 8 |
+| 250 yr | 67 | 32k | 33k to 91k | -0.19 | 102 | 4,710 | 2.2% | 8 |
+| 100 kyr | 85 | 87k | 29k to 130k | -0.41 | 8 | 727 | 1.1% | 5 |
+| 250 kyr (20 Myr) | 32 | 101k | 35k to 122k | -0.20 | 4 | 195 | 2.1% | 2 |
+| 1 Myr (20 Myr) | 10 | 56k | 34k to 138k | -0.47 | 0 | 15 | 0 | 0 |
+
+- **Most reversals are small bodies at the 10,000 km2 threshold.** Day events are 20 to 30 km3
+  bodies; century and 250 yr are mostly hundreds of km3. They are not the RFC 0016 flicker.
+- **Reversals of bodies over 100,000 km2 exist at every step from 100 yr up:** 8 (century), 8
+  (250 yr), 5 (100 kyr), 2 (250 kyr), none at day or 1 yr. At 100 kyr the largest is a 164k km3,
+  0.82 M km2 body that dropped 108k then rose 122k (step 103); at 250 kyr a 172k km3, 0.85 M km2
+  body dropped 123k then rose 104k (step 67). They are a handful per 200 steps.
+- **Whole-world swings are mostly not single-lake reversals.** 85 big-drop steps against 8
+  reversals at 100 kyr, 64 against 29 at century. The remaining change is lakes growing, merging,
+  splitting or draining and not refilling.
+- **Comparison across modes is weak.** At 1 Myr only 15 body-steps are comparable, so zero
+  reversals is not evidence of absence. Large-body counts are single digits.
+- **Day-mode peak discharge fell from 3.15 M to 591k m3/s** on the new baseline; the spikes remain.
+- Ledgers close to 3e-8 or better in every mode.
+
+What this supports: large-lake reversals occur from 100 yr steps upward and not at day or 1 yr
+steps, and they are rare. It does not show that RFC 0016's flicker is a step-size effect; that
+needs the RFC's own windows replayed at several step sizes.
+
+## RFC 0015 note: the glacier march is a timescale problem of its own
+
+Source: the RFC 0015 agent's comment on #811, measured on the D2 branch (PR #806, issue #822) with
+`generate_world(5, node_density=0.25)` and a single 250 kyr step. I have not reproduced these
+numbers.
+
+- **The march changes regime at 250 yr.** Substeps are fixed at `min(250 yr, years)`. Hour, day, 1 yr
+  and century steps do one ice solve per step (endpoint-like, no march loop), a 250 yr step does
+  exactly one substep, and only steps of 100 kyr and longer march (400 substeps at 100 kyr). Ice
+  metrics compared across that boundary mix the solver regime with the step size, so the ice
+  comparison needs a dedicated century / 250 yr / 100 kyr arm after D2 lands, not a read of the
+  200-step table.
+- **The settle test fails on generated worlds (#822).** Pair-volume change is about 5.65e-4 against
+  a 1e-3 tolerance, but the three-consecutive-pairs counter never fills, so a 1 Myr step runs all
+  4,000 substeps (about 2 min) and a 5 Myr step all 20,000 (about 10 min). The residual
+  oscillation is the same two-substep alternation the damping was built to cancel. For the
+  interface table: once D2 lands, the ice handoff averages over an unsettled alternation on these
+  worlds, so "does the handoff conserve" has to be answered for the averaged output, not the last
+  substep.
+- **Cost per marched step, unsettled worst case:** about 30 ms per substep, so about 12 s at 100 kyr,
+  2 min at 1 Myr and 10 min at 5 Myr. A 200-step 100 kyr arm pays about 40 min of march alone, which
+  matters for the compute budget of the post-D2 rerun.
+- **Correction to my earlier reading.** The comment says my century and 250 yr observation (ice and
+  sea level do not move) predates the march merge at `dc855ca3`. `dc855ca3` is the merge of my own
+  PR #815; D2 (PR #806) is still open and is not in `origin/main`. So every run here used the
+  one-shot ice solve, and the observation is a statement about that solver. It is still true that
+  the post-D2 rerun may differ: the march re-solves sea level from the current ice debit at every
+  substep, which could move sea level in exactly those modes.
+
+Plan: the ice metrics in every table here are labelled pre-march. After D2 merges, rerun the day,
+1 yr, century, 250 yr, 100 kyr and bridge modes, with the century / 250 yr / 100 kyr ice comparison
+reported separately, and size the run against the compute budget first.
+
+## RFC 0016 windows D and E at four step sizes
+
+Data: [`rfc0016-window-de-reversals.json`](rfc0016-window-de-reversals.json) (target volumes per step,
+reversal counts, and the current-`main` result). Driver: `replay_rfc0016_river_water.py`, control arm,
+ice-age cycle off, 0.4 Myr from each window's registered checkpoint (D: seed 910211954 at 225.1 Myr,
+SHA-256 `6a8d6f90...`; E: 224 Myr, `4045b915...`), with the registered anchor files. Raw runs are in
+`~/mantle-bloom-captures/issue811/rfc0016-windows-pin/`.
+
+**Source.** RFC 0016's pinned source `0bda513d`, in my own detached worktree. At 100 kyr it
+reproduces the registered traces exactly (D: 2,293,616 / 2,768 / 268,996 / 788,971 km3; E: 106,435 /
+2,268,652 / 6,422 / 2,271,028). On current `origin/main` (`dc855ca3`) the same checkpoints at 100 kyr
+do not: the anchor is dry at all four steps in both windows, and the nearest lake holds 341k to 551k
+km3 (D) and 603k to 949k km3 (E). So the registered events do not occur on current code.
+
+Reversal count: #754's rule on the anchor's body (over 10,000 km2, consecutive volume changes of
+opposite sign, each over half the earlier volume). The body is the lake at the anchor point per step,
+not overlap-matched across steps as #754 does it.
+
+| Window | Step | Steps | Anchor dry | Reversals / comparable | Dry counted as zero |
+|---|---|---|---|---|---|
+| D | 100 kyr | 4 | 0 | 1/2 | 1/2 |
+| D | 25 kyr | 16 | 0 | 14/14 | 14/14 |
+| D | 10 kyr | 40 | 13 | 9/9 | 37/38 |
+| D | 1 kyr | 400 | 0 | 0/398 | 0/398 |
+| E | 100 kyr | 4 | 0 | 2/2 | 2/2 |
+| E | 25 kyr | 16 | 5 | 3/4 | 12/14 |
+| E | 10 kyr | 40 | 12 | 6/12 | 28/38 |
+| E | 1 kyr | 400 | 0 | 0/398 | 0/398 |
+
+- **The flicker persists at 25 kyr and 10 kyr, in a different pattern from 100 kyr.** D at 25 kyr
+  alternates between about 2.3M and 10 to 20k km3 on every step; at 10 kyr the anchor is also dry in
+  13 of 40 steps (D) and 12 of 40 (E), so the lake appears and disappears as well.
+- **At 1 kyr it is gone in both windows.** The target lake stays between 330k and 532k km3 (D) and
+  206k and 338k km3 (E), with the anchor wet throughout and no reversals in 398 steps. Step changes
+  are 10 to 40% of volume (up to 89k and 128k km3); lag-1 is -0.26 (D) and -0.69 (E), which is noisy
+  but below the rule's 50% bar.
+- **Attribution (c), for the stuck window E trace and D:** the failure is the same at 100 kyr,
+  25 kyr and 10 kyr, and absent at 1 kyr in both windows. That is a step-size dependence, but it
+  does not say the cause is a timescale mismatch between processes.
+- **#754 already identified a cause for D and E on this source:** lake-ice sublimation charged after
+  the lake solver, outside its water balance, with an integrator that switches branch on a lagged
+  surface temperature (#757 moves it into the solver; #758 reclassifies the basin). The step-size
+  result is consistent with that artifact depending on step length. I have not tested it; the
+  absence of the events on current `main` is consistent with #757 and #758 having removed it.
+- **Limits.** One trajectory per step size, 0.4 Myr, ice-age cycle off, no 100 yr or 1 yr run. The
+  1 kyr lake is smaller and not comparable in size to the 100 kyr event body (sea level also differs),
+  so "gone at 1 kyr" does not show finer steps remove the flicker for the same reason on a
+  comparable state. A 2.5 kyr or 5 kyr run would show where it stops.
+
 ## Method change: warm up first
 
 Because of finding 2, every mode now runs the same `--warmup-days` day-length steps (default 10)
@@ -123,8 +245,8 @@ taken without warm-up and is kept for the record.
 ## Open
 
 - Identify the step-2 body and why it disappears (cap level, tier, rim, `#758` hysteresis).
-- Hour and `cfd` modes.
-- Second save at every mode; body-level flicker counts.
-- Rerun the ice metrics once RFC 0015 D2 merges.
+- Hour and `cfd` modes. RFC 0016 windows D and E at 2.5 kyr and 5 kyr, and window A.
+- Second save at every mode.
+- Rerun the ice metrics once RFC 0015 D2 merges (PR #806; march cost and regime boundary in the RFC 0015 note).
 - The #553 depth-cap warning on seed 910211954 at step 1 (6.7e4 km3 gross overflow on lake-tier
   bodies, 3.5e4 on sea-tier bodies) is another large-overflow route.

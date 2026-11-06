@@ -23,6 +23,7 @@ import sys
 import time
 
 import numpy as np
+from lake_body_tracking import components, count_reversals
 from replay_lib import load_replay, parse_replay_args
 
 args = parse_replay_args(__doc__)
@@ -79,45 +80,6 @@ def legacy_surplus(fields):
     return unbooked, capped
 
 
-def components(fields):
-    wet = fields.lake_depth > visible_depth
-    members = hydrology.lake_components(wet, fields.neighbor_idx)
-    hypsometry = getattr(fields, "hypsometry", None) or lakes.CellHypsometry.whole_cells(fields.elevation)
-    area = hypsometry.area_m2
-    records = []
-    for nodes in members:
-        node_points = np.asarray(fields.points)[nodes]
-        centre = node_points.mean(axis=0)
-        records.append({
-            "nodes": nodes,
-            # The wet node nearest the normalized centroid, #680's anchor rule.
-            "anchor": node_points[int(np.argmax(node_points @ (centre / np.linalg.norm(centre))))].tolist(),
-            "area_km2": float(area[nodes].sum() / 1e6),
-            "volume_m3": float(np.dot(fields.lake_depth[nodes], area[nodes])),
-        })
-    return records
-
-
-def match_bodies(previous, current):
-    candidates = []
-    for old_i, old in enumerate(previous):
-        for new_i, new in enumerate(current):
-            overlap = np.intersect1d(old["nodes"], new["nodes"], assume_unique=True).size
-            if overlap:
-                candidates.append((overlap, old_i, new_i))
-    candidates.sort(reverse=True)
-    old_for_new = {}
-    used_old = set()
-    for overlap, old_i, new_i in candidates:
-        if old_i in used_old or new_i in old_for_new:
-            continue
-        smaller = min(len(previous[old_i]["nodes"]), len(current[new_i]["nodes"]))
-        if overlap >= max(1, smaller // 2):
-            old_for_new[new_i] = old_i
-            used_old.add(old_i)
-    return old_for_new
-
-
 def lake_volume(fields):
     hypsometry = getattr(fields, "hypsometry", None) or lakes.CellHypsometry.whole_cells(fields.elevation)
     return float(np.dot(fields.lake_depth, hypsometry.area_m2))
@@ -125,32 +87,7 @@ def lake_volume(fields):
 
 def step_record(fields, step, runtime_s, previous_bodies):
     bodies = components(fields)
-    old_for_new = match_bodies(previous_bodies, bodies)
-    reversals = 0
-    eligible = 0
-    events = []
-    for new_i, old_i in old_for_new.items():
-        old, new = previous_bodies[old_i], bodies[new_i]
-        if old["area_km2"] <= 10_000.0 or new["area_km2"] <= 10_000.0:
-            continue
-        eligible += 1
-        prior_delta = old.get("delta_m3")
-        delta = new["volume_m3"] - old["volume_m3"]
-        if prior_delta is not None and prior_delta * delta < 0.0:
-            baseline = max(old["volume_m3"], 1.0)
-            if abs(prior_delta) > 0.5 * baseline and abs(delta) > 0.5 * baseline:
-                reversals += 1
-                # RFC 0016's window scan needs to know which lake reversed, not just how many.
-                events.append({
-                    "prior_delta_km3": prior_delta / 1e9,
-                    "delta_km3": delta / 1e9,
-                    "volume_before_km3": old["volume_m3"] / 1e9,
-                    "volume_after_km3": new["volume_m3"] / 1e9,
-                    "area_before_km2": old["area_km2"],
-                    "area_after_km2": new["area_km2"],
-                    "anchor": new["anchor"],
-                })
-        new["delta_m3"] = delta
+    reversals, eligible, events = count_reversals(previous_bodies, bodies)
 
     hypsometry = getattr(fields, "hypsometry", None) or lakes.CellHypsometry.whole_cells(fields.elevation)
     area = hypsometry.area_m2
