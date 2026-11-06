@@ -254,6 +254,10 @@ class GenerateRequest(BaseModel):
     # this is omitted). Same bounds as PATCH /worlds/{world_id}'s renames.
     name: str | None = Field(default=None, min_length=1, max_length=100)
     is_public: bool | None = None
+    # The UI's glacier-march toggle default (see App.tsx's DEFAULT_SIMULATE_GLACIER_MARCH):
+    # the frontend sends its own default on every generate so UI worlds start with the
+    # march off; None keeps the model default (march on, see World.simulate_glacier_march).
+    simulate_glacier_march: bool | None = None
 
 
 class StepRequest(BaseModel):
@@ -300,6 +304,7 @@ class ControlsRequest(BaseModel):
     ice_age_period_years: float | None = None
     simulate_plate_movement: bool | None = None
     simulate_climate_biomes: bool | None = None
+    simulate_glacier_march: bool | None = None
     wind_model: str | None = None
     fault_deformation_mode: str | None = None
     # Issue #133 phase-1 proving-out flag -- see World.node_cloud_resample_mode. "kdtree"
@@ -368,6 +373,13 @@ def _session_running(session: WorldSession) -> bool:
     """Whether this world's run loop is on: what /view calls live (#597)."""
     runner = session.runner
     return runner is not None and runner.status().running
+
+
+def _apply_generate_march_flag(world, req: GenerateRequest) -> None:
+    """The UI's march default rides the generate request (see GenerateRequest.
+    simulate_glacier_march): None keeps the model default (march on)."""
+    if req.simulate_glacier_march is not None:
+        world.simulate_glacier_march = req.simulate_glacier_march
 
 
 def _apply_generate_identity(session: WorldSession, name: str | None, is_public: bool | None) -> None:
@@ -1308,6 +1320,7 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
                         yield line
                     else:
                         world = done_world
+                _apply_generate_march_flag(world, req)
                 _set_world(session, world)
                 yield json.dumps({"type": "done", **_summary(session, world)}) + "\n"
             except GeneratorExit:
@@ -1326,6 +1339,7 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
                 # to send progress/done lines to.
                 world = _drain_progress(progress) or world
                 if world is not None:
+                    _apply_generate_march_flag(world, req)
                     _set_world(session, world)
                 raise
             except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
@@ -2218,6 +2232,8 @@ def set_controls(world_id: str, req: ControlsRequest) -> dict:
             world.simulate_plate_movement = req.simulate_plate_movement
         if req.simulate_climate_biomes is not None:
             world.simulate_climate_biomes = req.simulate_climate_biomes
+        if req.simulate_glacier_march is not None:
+            world.simulate_glacier_march = req.simulate_glacier_march
         if req.wind_model is not None:
             world.wind_model = req.wind_model
         if req.fault_deformation_mode is not None:
@@ -2237,6 +2253,7 @@ def set_controls(world_id: str, req: ControlsRequest) -> dict:
         "ice_age_period_years": world.ice_age_period_years,
         "simulate_plate_movement": world.simulate_plate_movement,
         "simulate_climate_biomes": world.simulate_climate_biomes,
+        "simulate_glacier_march": world.simulate_glacier_march,
         "wind_model": world.wind_model,
         "fault_deformation_mode": world.fault_deformation_mode,
         "node_cloud_resample_mode": world.node_cloud_resample_mode,

@@ -799,7 +799,12 @@ since climate.py runs *before* this module each step).
   `ice_sheet.MARCH_LOG`, last 64 entries). Each marched step warns about the depth guard
   at most once, on the summed ledger. A settled march costs ~13-32 ice solves against the
   endpoint solve's one, which is why steps run over the +15% budget on the diagnosis
-  replays.
+  replays. `World.simulate_glacier_march` (`false` in the UI's Controls, off by default
+  for UI-created worlds) skips the march: the ice is solved once per step and frozen
+  there, the same zero-length path the `MARCH_GLACIERS` test knob takes. Under a
+  profiler, steps of `MARCH_PROFILE_MIN_YEARS` (5 kyr) or more record the march's
+  discrete phases -- graph build, ice solves, sea-level re-solves -- as spans;
+  shorter marches record none.
 - **Plastic geometry.** Within an extent, the ice takes Nye's (1952) perfectly plastic
   profile, `|grad s| = c / H` with `c = tau_b / (rho_i g)` (11.1 m at 100 kPa) -- a geometry
   approximation, as ICESHEET (Gowan et al. 2016) uses it for reconstruction, not a claim that

@@ -8,10 +8,19 @@ existing), and turning a knob up/down actually moves the corresponding process.
 import numpy as np
 import pytest
 
-from app.hydroclimate import erosion, volcanism
+from app.hydroclimate import erosion, hydrology, volcanism
 from app.world import TUNING_MULTIPLIER_FIELDS, World, generate_world, step_world
 
 from .quad_fixtures import quad_plate
+
+
+@pytest.fixture(autouse=True)
+def _no_glacier_march(monkeypatch):
+    # No test in this module asserts on marched ice (knob-vs-untuned erosion,
+    # volcanism land built, collision thickening): the multi-Myr steps evolve the
+    # surface, and marching glaciers over them stalls the suite (#806, #822).
+    # Production and ice-asserting tests march on.
+    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
 
 
 def _elevation_snapshot(world: World) -> np.ndarray:
@@ -36,6 +45,19 @@ def test_old_pickle_without_the_fields_reads_one():
     loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
     for name in TUNING_MULTIPLIER_FIELDS:
         assert getattr(loaded, name) == 1.0
+
+
+def test_old_pickle_without_glacier_march_flag_marches():
+    # Same plain-default fall-through as the knobs above: a save written before the
+    # flag existed keeps the model default (march on), so loading never silently
+    # changes a world's ice physics (#806).
+    from app import persistence
+
+    world = generate_world(seed=5, num_plates=8)
+    assert world.simulate_glacier_march is True
+    world.__dict__.pop("simulate_glacier_march", None)
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert loaded.simulate_glacier_march is True
 
 
 def test_brake_multipliers_reach_the_quasistatic_solve(monkeypatch):

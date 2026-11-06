@@ -80,6 +80,7 @@ not just the trickle of ordinary flow passing through that one point (see
 
 from __future__ import annotations
 
+import contextlib
 import heapq
 import logging
 import os
@@ -1987,9 +1988,20 @@ def _march_glacier(
 
     n = len(points)
     areas = np.asarray(areas_m2, dtype=float)
+    # Profiling detail for slow marches only (#801, #822): per-phase spans split the
+    # recorded tree into graph build vs ice solves vs sea-level re-solves, which otherwise
+    # all hide inside "Resolving rivers and lakes". Gated on the step's expected cost
+    # (MARCH_PROFILE_MIN_YEARS), not on a recorder: trace.span is already free without
+    # one, and the gate keeps short marches out of recorded trees.
+    profile_march = float(years) >= ice_sheet.MARCH_PROFILE_MIN_YEARS
+
+    def _phase(label: str):
+        return trace.span(label, trace.HYDRO) if profile_march else contextlib.nullcontext()
+
     # The node cloud never moves mid-march, so one graph serves every substep's
     # step_ice (which otherwise rebuilds it twice per call, ~19% of a long march).
-    march_graph = ice_sheet.symmetric_graph(np.asarray(points), np.asarray(neighbor_idx))
+    with _phase("Building the glacier-march graph"):
+        march_graph = ice_sheet.symmetric_graph(np.asarray(points), np.asarray(neighbor_idx))
     depth = np.clip(np.asarray(prev_glacier_depth, dtype=float), 0.0, None).copy()
     heat = np.asarray(opening_heat_w_m2, dtype=float)
     if heat.shape != (n,):
@@ -2062,7 +2074,8 @@ def _march_glacier(
         dt = min(sub, years - elapsed)
         ref_depth = 0.5 * (depth + prev_depth)
         ref_heat = 0.5 * (heat + prev_heat)
-        new_depth, melt, ice = solve_once(dt, ref_depth, ref_heat)
+        with _phase("Solving march ice"):
+            new_depth, melt, ice = solve_once(dt, ref_depth, ref_heat)
         substeps += 1
         elapsed += dt
         melt_total += melt
@@ -2081,18 +2094,19 @@ def _march_glacier(
             ice.sliding_speed_m_per_yr,
         )
         if has_ocean:
-            debit = to_water * float(np.dot(areas, depth))
-            # The re-solve anchors on the march's own current-step ocean mask and graph, not
-            # last step's cache (which also degrades to the connectivity-blind mask on a
-            # changed node cloud), and the mask keeps Earth's forced straits connected, the
-            # way compute_hydrology does (#806 review).
-            sea_level = eustasy._solve_sea_level_connected(
-                world, elevations, hyps_areas, max(0.0, total_water - lakes_trapped - debit),
-                seed_is_ocean=ocean_mask, seed_neighbor_idx=neighbor_idx,
-            )
-            ocean_mask = connected_ocean_mask(points, elevation, sea_level, neighbor_idx, areas_m2=areas, prior_ocean=ocean_mask)
-            if getattr(world, "premade_world_id", None) == "earth":
-                ocean_mask = force_earth_strait_connections(points, ocean_mask, elevation, sea_level, neighbor_idx)
+            with _phase("Re-solving march sea level"):
+                debit = to_water * float(np.dot(areas, depth))
+                # The re-solve anchors on the march's own current-step ocean mask and graph, not
+                # last step's cache (which also degrades to the connectivity-blind mask on a
+                # changed node cloud), and the mask keeps Earth's forced straits connected, the
+                # way compute_hydrology does (#806 review).
+                sea_level = eustasy._solve_sea_level_connected(
+                    world, elevations, hyps_areas, max(0.0, total_water - lakes_trapped - debit),
+                    seed_is_ocean=ocean_mask, seed_neighbor_idx=neighbor_idx,
+                )
+                ocean_mask = connected_ocean_mask(points, elevation, sea_level, neighbor_idx, areas_m2=areas, prior_ocean=ocean_mask)
+                if getattr(world, "premade_world_id", None) == "earth":
+                    ocean_mask = force_earth_strait_connections(points, ocean_mask, elevation, sea_level, neighbor_idx)
         volumes.append(float(np.dot(depth, areas)))
         recent = (recent + [(dt, melt, ice.calved_m3, ice.ledger, ice.frozen_precipitation)])[
             -max(ice_sheet.MARCH_HOLD_WINDOW, 1):
@@ -2442,7 +2456,11 @@ def compute_hydrology(
         world, points, neighbor_idx, areas, elevation, collect_all_ice_load_deflection(plates_in_order),
         prev_glacier_depth, dry_precip_mm, _ice_snow_p + _bare_snow_p,
         temperature_at_nodes, seasonal_amplitude, _opening_heat,
-        _mobile_cover, is_ocean, plates_in_order, years if MARCH_GLACIERS else 0.0,
+        _mobile_cover, is_ocean, plates_in_order,
+        # The test knob forces the march off for ice-independent tests; the world flag lets
+        # users do the same (World.simulate_glacier_march, off by default for UI worlds).
+        # Both take the zero-length path: one opening-state solve, ice frozen for the step.
+        years if (MARCH_GLACIERS and world.simulate_glacier_march) else 0.0,
     )
     # The wet snow share melts within the step and never joins the ice, so it books as
     # snowmelt alongside the march's bare-ground snowmelt. The ledger is m^3 of ice, so

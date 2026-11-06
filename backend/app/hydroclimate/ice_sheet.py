@@ -87,6 +87,9 @@ MARCH_SUBSTEP_YEARS = 250.0
 MARCH_SETTLE_TOLERANCE = 1.0e-3
 MARCH_SETTLE_PATIENCE = 3
 MARCH_HOLD_WINDOW = 6
+# Below this step length the march is too quick to profile: at ~30ms a substep (#822),
+# 5 kyr (~20 substeps, ~600ms) is where its phases earn spans in a recorded tree (#801).
+MARCH_PROFILE_MIN_YEARS = 5_000.0
 
 # The snowfall ramp (C) keeps the mass balance continuous where the seasonal amplitude
 # vanishes, so the backward-Euler root find never lands on a jump (a jump in B is multiplied

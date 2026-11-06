@@ -2,7 +2,7 @@ import pickle
 
 import numpy as np
 import pytest
-from app import geometry, lithosphere
+from app import geometry, lithosphere, trace
 from app.elevation_lines import line_spacing_rad
 from app.hydroclimate import breaching, erosion, eustasy, hydrology, ice_sheet, lakes
 from app.plates import collect_all_accounting_areas_m2
@@ -2522,3 +2522,38 @@ def test_d2_march_ledger_closes_on_growing_ice():
     assert len(entry["volume_path_km3"]) > 0
     assert "tipping_growth" in entry
     assert float(np.dot(fields.glacier_depth, _node_areas(world))) == pytest.approx(ledger.closing_m3)
+
+
+def _flow_line_march_world():
+    theta = 0.002 * np.arange(12)
+    elevation = 500.0 - 60.0 * np.arange(12)
+    return World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+
+
+def test_world_flag_off_takes_the_same_path_as_the_test_knob_off(monkeypatch):
+    # World.simulate_glacier_march=False gates the same zero-length path as the
+    # MARCH_GLACIERS test knob off (#806): one opening-state solve, ice frozen.
+    precip, temp, years = np.full(12, 800.0), np.full(12, -3.0), 10_000
+    flagged = _flow_line_march_world()
+    flagged.simulate_glacier_march = False
+    off_by_flag = hydrology.compute_hydrology(flagged, precip, temp, years=years)
+    knobbed = _flow_line_march_world()
+    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
+    off_by_knob = hydrology.compute_hydrology(knobbed, precip, temp, years=years)
+    np.testing.assert_array_equal(off_by_flag.glacier_depth, off_by_knob.glacier_depth)
+
+
+def test_march_profiler_spans_fire_only_above_the_cost_gate():
+    # The march's discrete phases (graph build, ice solves, sea-level re-solves) earn
+    # profiler spans only when the step may cost 500ms+ (MARCH_PROFILE_MIN_YEARS, #801);
+    # short marches stay out of recorded trees.
+    with trace.recording() as rec:
+        hydrology.compute_hydrology(_flow_line_march_world(), np.full(12, 800.0), np.full(12, -3.0), years=5_000)
+    labels = [" > ".join(path) for path in rec.snapshot()]
+    assert any("Building the glacier-march graph" in p for p in labels)
+    assert any("Solving march ice" in p for p in labels)
+
+    with trace.recording() as rec:
+        hydrology.compute_hydrology(_flow_line_march_world(), np.full(12, 800.0), np.full(12, -3.0), years=100)
+    labels = [" > ".join(path) for path in rec.snapshot()]
+    assert not any("glacier-march" in p or "march ice" in p or "march sea level" in p for p in labels)

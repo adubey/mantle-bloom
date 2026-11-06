@@ -1998,6 +1998,26 @@ def test_controls_ice_age_frequency_round_trip(client):
     assert world.ice_age_period_years == 0.0
 
 
+def test_controls_glacier_march_round_trip(client):
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    world = _default_session.world
+    # The model default marches; the UI sends its own (off) default on generate.
+    assert world.simulate_glacier_march is True
+    assert client.post("/world/controls", json={}).json()["simulate_glacier_march"] is True
+
+    resp = client.post("/world/controls", json={"simulate_glacier_march": False})
+    assert resp.status_code == 200
+    assert resp.json()["simulate_glacier_march"] is False
+    assert world.simulate_glacier_march is False
+
+    resp = client.post("/world/controls", json={"simulate_glacier_march": True})
+    assert resp.json()["simulate_glacier_march"] is True
+    assert world.simulate_glacier_march is True
+
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "simulate_glacier_march": False})
+    assert _default_session.world.simulate_glacier_march is False
+
+
 def test_controls_debug_diagnostics_round_trip(client):
 
     _post_generate(client, json={"seed": 12, "num_plates": 6})
