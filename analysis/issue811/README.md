@@ -21,7 +21,7 @@ ages off, 200 steps per mode. Raw outputs and probe scripts' data are in
 | Rain, humidity | none; diagnostic climate snapshot (RFC 0019 plans transport) | `climate.py` |
 | Rivers | steady-state routing of an annual-mean climate; river-water reservoirs use `years` | `hydrology.py` |
 | Lakes | volume integrated over `years` from that climate; overflow booked as a step volume | `lakes.py` |
-| Glaciers | one-shot solve over `years` today; RFC 0015 D2 would march 250 yr substeps | `ice_sheet.py` |
+| Glaciers | one-shot solve over `years` today; RFC 0015 D2 (PR #806, not merged) marches in substeps of `min(250 yr, years)`, so steps under 250 yr stay a single solve and only 100 kyr and longer steps march (see the RFC 0015 note below) | `ice_sheet.py` |
 
 The model has no real seasonal cycle (`climate.py`), so sub-year steps all see the same climate.
 
@@ -154,6 +154,39 @@ What this supports: large-lake reversals occur from 100 yr steps upward and not 
 steps, and they are rare. It does not show that RFC 0016's flicker is a step-size effect; that
 needs the RFC's own windows replayed at several step sizes.
 
+## RFC 0015 note: the glacier march is a timescale problem of its own
+
+Source: the RFC 0015 agent's comment on #811, measured on the D2 branch (PR #806, issue #822) with
+`generate_world(5, node_density=0.25)` and a single 250 kyr step. I have not reproduced these
+numbers.
+
+- **The march changes regime at 250 yr.** Substeps are fixed at `min(250 yr, years)`. Hour, day, 1 yr
+  and century steps do one ice solve per step (endpoint-like, no march loop), a 250 yr step does
+  exactly one substep, and only steps of 100 kyr and longer march (400 substeps at 100 kyr). Ice
+  metrics compared across that boundary mix the solver regime with the step size, so the ice
+  comparison needs a dedicated century / 250 yr / 100 kyr arm after D2 lands, not a read of the
+  200-step table.
+- **The settle test fails on generated worlds (#822).** Pair-volume change is about 5.65e-4 against
+  a 1e-3 tolerance, but the three-consecutive-pairs counter never fills, so a 1 Myr step runs all
+  4,000 substeps (about 2 min) and a 5 Myr step all 20,000 (about 10 min). The residual
+  oscillation is the same two-substep alternation the damping was built to cancel. For the
+  interface table: once D2 lands, the ice handoff averages over an unsettled alternation on these
+  worlds, so "does the handoff conserve" has to be answered for the averaged output, not the last
+  substep.
+- **Cost per marched step, unsettled worst case:** about 30 ms per substep, so about 12 s at 100 kyr,
+  2 min at 1 Myr and 10 min at 5 Myr. A 200-step 100 kyr arm pays about 40 min of march alone, which
+  matters for the compute budget of the post-D2 rerun.
+- **Correction to my earlier reading.** The comment says my century and 250 yr observation (ice and
+  sea level do not move) predates the march merge at `dc855ca3`. `dc855ca3` is the merge of my own
+  PR #815; D2 (PR #806) is still open and is not in `origin/main`. So every run here used the
+  one-shot ice solve, and the observation is a statement about that solver. It is still true that
+  the post-D2 rerun may differ: the march re-solves sea level from the current ice debit at every
+  substep, which could move sea level in exactly those modes.
+
+Plan: the ice metrics in every table here are labelled pre-march. After D2 merges, rerun the day,
+1 yr, century, 250 yr, 100 kyr and bridge modes, with the century / 250 yr / 100 kyr ice comparison
+reported separately, and size the run against the compute budget first.
+
 ## Method change: warm up first
 
 Because of finding 2, every mode now runs the same `--warmup-days` day-length steps (default 10)
@@ -165,6 +198,6 @@ taken without warm-up and is kept for the record.
 - Identify the step-2 body and why it disappears (cap level, tier, rim, `#758` hysteresis).
 - Hour and `cfd` modes.
 - Second save at every mode.
-- Rerun the ice metrics once RFC 0015 D2 merges.
+- Rerun the ice metrics once RFC 0015 D2 merges (PR #806; march cost and regime boundary in the RFC 0015 note).
 - The #553 depth-cap warning on seed 910211954 at step 1 (6.7e4 km3 gross overflow on lake-tier
   bodies, 3.5e4 on sea-tier bodies) is another large-overflow route.
