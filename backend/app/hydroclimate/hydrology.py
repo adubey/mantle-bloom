@@ -295,6 +295,13 @@ RIVER_SPEED_DISCHARGE_EXPONENT = 0.2
 # and are filled by lakes.py as before.
 BREACH_DEPRESSIONS_ENABLED = True
 
+# March the glaciers to their end-of-step state (RFC 0015 D2, #789). Tests whose
+# setup needs long tectonic steps but assert nothing about ice set this False, so a
+# 1 Myr step doesn't pay a full 4000-substep march (#806: a single such test cost
+# ~20 min); production and every other test run with the march on. Off takes the
+# same zero-length path as years ~= 0: one opening-state solve, ice frozen for the step.
+MARCH_GLACIERS = True
+
 
 _RIVER_REACH_READOUTS = (
     "river_water_inflow_m3", "river_water_outflow_m3", "river_water_routed_m3",
@@ -2435,7 +2442,7 @@ def compute_hydrology(
         world, points, neighbor_idx, areas, elevation, collect_all_ice_load_deflection(plates_in_order),
         prev_glacier_depth, dry_precip_mm, _ice_snow_p + _bare_snow_p,
         temperature_at_nodes, seasonal_amplitude, _opening_heat,
-        _mobile_cover, is_ocean, plates_in_order, years,
+        _mobile_cover, is_ocean, plates_in_order, years if MARCH_GLACIERS else 0.0,
     )
     # The wet snow share melts within the step and never joins the ice, so it books as
     # snowmelt alongside the march's bare-ground snowmelt. The ledger is m^3 of ice, so
