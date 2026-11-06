@@ -1,12 +1,38 @@
 # RFC 0018: Plates split along weak paths that are pulling apart
 
-- **Status:** Accepted (revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
+- **Status:** Accepted (revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
 - **Date:** 2026-11-03
 - **Related:** #770, #797, #802; RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (accepted predecessor; withdrawal follows gates)
 
 ## Revision note
 
-This revision proposes [PR #810](https://github.com/adubey/mantle-bloom/pull/810). The previous G1 required at least 10 observed opportunities
+**2026-11-06 — G2 tiny-breakup endpoint amendment.** This revision is proposed in
+[PR #823](https://github.com/adubey/mantle-bloom/pull/823). The owner approved this change after
+the first two held-out seed pairs exposed a zero-baseline failure: both methods had zero tiny
+breakups, so the relative reduction divided by a zero baseline share and was undefined. The
+relative share also conditions on the number of splits, which can differ between methods
+under the same 200 Myr exposure. The two pairs had 42 baseline splits and 19 graph splits,
+with zero tiny breakups in either arm (`S_baseline = 0`, `S_graph = 0`, so the share
+difference is 0 percentage points); their paired tiny-count differences are both zero.
+These are preliminary outcomes from the G2 diagnostic run associated with [#797](https://github.com/adubey/mantle-bloom/issues/797). The seed
+list and simulation protocol remain fixed. Because the endpoint changed after two pairs were
+observed, report the revised result as an amended G2 analysis, retain the originally
+preregistered share-based result as a secondary analysis, and do not describe the revised
+endpoint as preregistered. Keep both completed pairs in all summaries and uncertainty
+calculations.
+
+| Gate | Earlier criterion | Revised criterion | Reason |
+|---|---|---|---|
+| G2 primary outcome | At least one-third relative reduction in the share of actual splits with a smaller daughter under 7% of parent area, and improvement on at least two seeds | For each seed, `D_s = T_baseline,s - T_graph,s`, the difference in tiny-breakup counts over 200 Myr. Pass when the mean paired difference is positive, its two-sided 95% paired seed-bootstrap interval excludes zero in the beneficial direction, and `D_s > 0` for at least two seeds. Use 10,000 resamples of whole seed pairs. | Relative reduction is undefined at a zero baseline share. Paired count differences are defined even when an arm has no splits or no tiny splits, and measure event burden at the fixed world exposure. |
+| G2 supporting measures | Tiny-breakup share and daughter mass distribution | Report the original relative share reduction, percentage-point difference `S_baseline - S_graph`, and smaller-daughter area and mass distributions as secondary measures. | Preserve comparison with #770 while showing conditional split quality and daughter sizes. |
+| G3 timestep comparison | Tiny-breakup share within 20% of the normal-step result | Keep the 20% relative comparison when the normal-step share is nonzero; if it is zero, require zero tiny breakups at half step. Report paired counts and shares. | Avoid dividing by a zero normal-step share. |
+
+The G2 endpoint is an amended analysis because it was selected after two seed-pair outcomes
+were observed. The original relative-share result remains reported for transparency. The
+seed list and the minimum of 50 actual split events across the seed set, with its frozen
+reserve rule, remain unchanged.
+
+**2026-11-04 — G1 gate review.** This revision proposed [PR #810](https://github.com/adubey/mantle-bloom/pull/810). The previous G1 required at least 10 observed opportunities
 and a usable candidate in at least two thirds of trigger-positive opportunities. The 2/3 rate
 was a project-selected usability cutoff, not a geological estimate. Geological rift systems
 are not independent draws from the simulation's per-trigger opportunities, and observations
@@ -278,21 +304,34 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
 3. **G2 — Compare actual breakups on held-out worlds.** Freeze a new 20-seed list before
    running. Compare the production great-circle method and graph-cut method from identical
    generated worlds, settings, step schedule and random streams for 200 Myr. Use the same
-   tiny-breakup measure agreed in #770: the share of actual breakups whose smaller daughter
-   has less than 7% of the parent plate's area. The graph method must reduce that share by at
-   least one third overall and improve at least two seeds. The comparison must include at
-   least 50 actual split events across the seed set; if it does not, continue only with seeds
-   from a reserve list frozen before the run. Report counts and per-seed results;
-   do not infer success from a favorable image or from a routing-only proxy. Report the
-   smaller daughter mass distribution too, but do not impose a hard 30% floor.
+   A tiny breakup is an actual split whose smaller daughter has less than 7% of the parent
+   plate's area, preserving the event definition used in #770. For each seed `s`, let
+   `T_baseline,s` and `T_graph,s` be the tiny-breakup counts over the fixed 200 Myr horizon,
+   and define `D_s = T_baseline,s - T_graph,s`. The graph method passes only if the mean of
+   `D_s` across the 20 paired seeds is positive, its two-sided 95% paired bootstrap interval
+   excludes zero in the beneficial direction, and at least two seeds have `D_s > 0`. Resample
+   whole seed pairs 10,000 times; never resample individual split events as independent
+   observations. For method `m`, calculate its overall tiny-breakup share as
+   `S_m = sum_s(T_m,s) / sum_s(B_m,s)`, where `B_m,s` is its actual split count. Report the
+   original relative share reduction only when `S_baseline > 0` and both shares are defined;
+   report the percentage-point difference `S_baseline - S_graph` when both shares are
+   defined. If a method makes no actual splits, report its share as undefined; the primary
+   count difference remains defined. Also report per-seed counts and
+   smaller-daughter area and mass distributions. The comparison must include at least 50
+   actual split events across the seed set; if it does not, continue only with seeds from a
+   reserve list frozen before the run. A zero baseline tiny-breakup count is no evidence of
+   reduction. Do not infer success from a favorable image or routing-only proxy, and do not
+   impose a hard 30% daughter-mass floor.
 4. **G3 — Check cratons, stability and cost.** The existing production split-success gate
    uses `round(elapsed_years)` in its random key. That is a known step-dependent carryover;
    keep it for the first comparison and judge its effect with this timestep check rather
    than changing it here. Preserve the RFC 0010 limits unless the
    owner changes them: rifting-related craton loss at or below 2% of live craton per Gyr,
    and 10–40 plates at every output. Repeat representative held-out runs at half the step
-   size on three predeclared held-out seeds; plate counts, tiny-breakup share and craton loss
-   must stay within 20% of the normal step results. Median full-simulation runtime must remain within 2% of the paired current
+   size on three predeclared held-out seeds; plate counts and craton loss must stay within 20%
+   of normal-step results. Compare tiny-breakup shares within 20% when the normal-step share
+   is nonzero; when it is zero, the half-step run must also have zero tiny breakups. Report
+   the paired tiny-breakup counts and shares. Median full-simulation runtime must remain within 2% of the paired current
    production baseline. Record any seed where the model cannot finish or maintain its
    ledgers.
 
@@ -303,9 +342,12 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
 - [ ] G1 validates candidate availability and the coupled breakup probability on controlled
       cases, including the required monotonic responses; report development-world event rates
       with uncertainty but apply no fixed per-opportunity success fraction.
-- [ ] G2 passes on 20 separate, predeclared held-out seeds: at least one-third fewer
-      breakups with a smaller daughter under 7% of parent area overall, with improvement on
-      at least two seeds.
+- [ ] G2 passes on 20 separate, predeclared held-out seeds: the mean paired difference in
+      tiny-breakup counts per 200 Myr seed is positive, the 95% paired seed-bootstrap interval
+      excludes zero in the beneficial direction, at least two seeds improve, and the event
+      count requirement is met. Report `S_baseline - S_graph` in percentage points and the
+      original relative share reduction as secondary measures when defined. The amended
+      endpoint is reported transparently because it was adopted after two pairs were observed.
 - [ ] Every applied split makes exactly two connected plates, assigns each parent cell to
       one daughter, and preserves crust and mantle ledgers. Report daughter mass shares and
       cut trace fragments; no fixed 30% mass minimum is added.
@@ -328,8 +370,9 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
 - **Weakness does not guide real splits.** If the chosen cuts do not follow the weak marks
   more often than matched control cuts, the edge-cost hypothesis is unsupported. Revisit the
   cost signals; do not claim pseudo-sutures helped solely because they appear under a cut.
-- **Mass weighting does not reduce tiny breakups.** If G2 fails after the weights and `mu`
-  have been frozen on development seeds, reject this score. Do not tune on the held-out seeds.
+- **Mass weighting does not reduce tiny-breakup burden.** If G2 shows no positive paired
+  difference in tiny-breakup counts after the weights and `mu` have been frozen on development
+  seeds, reject this score. Do not tune on the held-out seeds.
 - **The split score rewards closing or broken cuts.** If high-scoring cuts often close, break
   into disconnected traces, fail daughter checks or create extra fragments, the score is
   incomplete. Revise it before a production proposal.
