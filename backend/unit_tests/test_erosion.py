@@ -1157,8 +1157,9 @@ def test_uplift_only_fades_channels_where_it_rises_across_them(monkeypatch):
 
 
 def test_deposition_fills_channels_back_in(monkeypatch):
-    # A fresh world has no ice, so wherever no river erodes nothing carves the channel. There
-    # the channel loses exactly what settled into it: deposited sediment plus lake silt.
+    # Wherever no river erodes and no ice scours, nothing carves the channel. There the channel
+    # loses exactly what settled into it: deposited sediment plus lake silt. (A fresh world can
+    # still ice its highest peaks, and glaciers carve channels, so those nodes are left out.)
     # Breaching is off so no new notch takes part of the fill.
     from app.hydroclimate import hydrology
 
@@ -1169,7 +1170,7 @@ def test_deposition_fills_channels_back_in(monkeypatch):
 
     depth = plates.collect_all_channel_depth(world.plates)
     filled = np.clip(result.sediment_deposited, 0.0, None) + world.hydrology_cache.silt_deposited
-    quiet = ~world.hydrology_cache.is_ocean & (result.river == 0.0) & (filled > 0.0)
+    quiet = ~world.hydrology_cache.is_ocean & (result.river == 0.0) & (filled > 0.0) & (world.hydrology_cache.glacier_depth <= 0.0)
     assert quiet.any()
     np.testing.assert_allclose(depth[quiet], np.clip(500.0 - filled[quiet], 0.0, None))
 
