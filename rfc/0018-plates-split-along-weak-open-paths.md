@@ -6,7 +6,8 @@
 
 ## Revision note
 
-**2026-11-06 — G2 tiny-breakup endpoint amendment.** The owner approved this change after
+**2026-11-06 — G2 tiny-breakup endpoint amendment.** This revision is proposed in
+[PR #823](https://github.com/adubey/mantle-bloom/pull/823). The owner approved this change after
 the first two held-out seed pairs exposed a zero-baseline failure: both methods had zero tiny
 breakups, so the relative reduction divided by a zero baseline share and was undefined. The
 relative share also conditions on the number of splits, which can differ between methods
