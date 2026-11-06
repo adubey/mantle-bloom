@@ -187,6 +187,55 @@ Plan: the ice metrics in every table here are labelled pre-march. After D2 merge
 1 yr, century, 250 yr, 100 kyr and bridge modes, with the century / 250 yr / 100 kyr ice comparison
 reported separately, and size the run against the compute budget first.
 
+## RFC 0016 windows D and E at four step sizes
+
+Data: [`rfc0016-window-de-reversals.json`](rfc0016-window-de-reversals.json) (target volumes per step,
+reversal counts, and the current-`main` result). Driver: `replay_rfc0016_river_water.py`, control arm,
+ice-age cycle off, 0.4 Myr from each window's registered checkpoint (D: seed 910211954 at 225.1 Myr,
+SHA-256 `6a8d6f90...`; E: 224 Myr, `4045b915...`), with the registered anchor files. Raw runs are in
+`~/mantle-bloom-captures/issue811/rfc0016-windows-pin/`.
+
+**Source.** RFC 0016's pinned source `0bda513d`, in my own detached worktree. At 100 kyr it
+reproduces the registered traces exactly (D: 2,293,616 / 2,768 / 268,996 / 788,971 km3; E: 106,435 /
+2,268,652 / 6,422 / 2,271,028). On current `origin/main` (`dc855ca3`) the same checkpoints at 100 kyr
+do not: the anchor is dry at all four steps in both windows, and the nearest lake holds 341k to 551k
+km3 (D) and 603k to 949k km3 (E). So the registered events do not occur on current code.
+
+Reversal count: #754's rule on the anchor's body (over 10,000 km2, consecutive volume changes of
+opposite sign, each over half the earlier volume). The body is the lake at the anchor point per step,
+not overlap-matched across steps as #754 does it.
+
+| Window | Step | Steps | Anchor dry | Reversals / comparable | Dry counted as zero |
+|---|---|---|---|---|---|
+| D | 100 kyr | 4 | 0 | 1/2 | 1/2 |
+| D | 25 kyr | 16 | 0 | 14/14 | 14/14 |
+| D | 10 kyr | 40 | 13 | 9/9 | 37/38 |
+| D | 1 kyr | 400 | 0 | 0/398 | 0/398 |
+| E | 100 kyr | 4 | 0 | 2/2 | 2/2 |
+| E | 25 kyr | 16 | 5 | 3/4 | 12/14 |
+| E | 10 kyr | 40 | 12 | 6/12 | 28/38 |
+| E | 1 kyr | 400 | 0 | 0/398 | 0/398 |
+
+- **The flicker persists at 25 kyr and 10 kyr, in a different pattern from 100 kyr.** D at 25 kyr
+  alternates between about 2.3M and 10 to 20k km3 on every step; at 10 kyr the anchor is also dry in
+  13 of 40 steps (D) and 12 of 40 (E), so the lake appears and disappears as well.
+- **At 1 kyr it is gone in both windows.** The target lake stays between 330k and 532k km3 (D) and
+  206k and 338k km3 (E), with the anchor wet throughout and no reversals in 398 steps. Step changes
+  are 10 to 40% of volume (up to 89k and 128k km3); lag-1 is -0.26 (D) and -0.69 (E), which is noisy
+  but below the rule's 50% bar.
+- **Attribution (c), for the stuck window E trace and D:** the failure is the same at 100 kyr,
+  25 kyr and 10 kyr, and absent at 1 kyr in both windows. That is a step-size dependence, but it
+  does not say the cause is a timescale mismatch between processes.
+- **#754 already identified a cause for D and E on this source:** lake-ice sublimation charged after
+  the lake solver, outside its water balance, with an integrator that switches branch on a lagged
+  surface temperature (#757 moves it into the solver; #758 reclassifies the basin). The step-size
+  result is consistent with that artifact depending on step length. I have not tested it; the
+  absence of the events on current `main` is consistent with #757 and #758 having removed it.
+- **Limits.** One trajectory per step size, 0.4 Myr, ice-age cycle off, no 100 yr or 1 yr run. The
+  1 kyr lake is smaller and not comparable in size to the 100 kyr event body (sea level also differs),
+  so "gone at 1 kyr" does not show finer steps remove the flicker for the same reason on a
+  comparable state. A 2.5 kyr or 5 kyr run would show where it stops.
+
 ## Method change: warm up first
 
 Because of finding 2, every mode now runs the same `--warmup-days` day-length steps (default 10)
@@ -196,7 +245,7 @@ taken without warm-up and is kept for the record.
 ## Open
 
 - Identify the step-2 body and why it disappears (cap level, tier, rim, `#758` hysteresis).
-- Hour and `cfd` modes.
+- Hour and `cfd` modes. RFC 0016 windows D and E at 2.5 kyr and 5 kyr, and window A.
 - Second save at every mode.
 - Rerun the ice metrics once RFC 0015 D2 merges (PR #806; march cost and regime boundary in the RFC 0015 note).
 - The #553 depth-cap warning on seed 910211954 at step 1 (6.7e4 km3 gross overflow on lake-tier
