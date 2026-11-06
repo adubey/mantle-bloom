@@ -327,6 +327,9 @@ export default function ControlsModal({
             </div>
 
             <div style={{ borderTop: "1px solid #333", paddingTop: 14, marginTop: 14, opacity: simulateClimateBiomes ? 1 : 0.5 }}>
+              {/* Disabled without climate & biomes: the march runs inside that step
+                  block, so the flag only takes effect while it is on. The flag itself
+                  is still stored, and re-enabling climate restores the march. */}
               <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
                 <input
                   type="checkbox"

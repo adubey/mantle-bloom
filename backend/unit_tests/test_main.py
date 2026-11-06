@@ -730,6 +730,14 @@ def test_generate_debug_unknown_scenario_returns_400(client):
     assert resp.status_code == 400
 
 
+def test_generate_debug_applies_glacier_march_flag(client):
+    # Without the flag a debug world marches while the fresh-world checkbox shows
+    # off (#806 review): the debug request carries the same UI default.
+    resp = client.post("/world/generate_debug", json={"scenario": "two_plate_divergent", "seed": 3, "simulate_glacier_march": False})
+    assert resp.status_code == 200
+    assert _default_session.world.simulate_glacier_march is False
+
+
 def test_generate_debug_replaces_previous_world(client):
     _post_generate(client, json={"seed": 1, "num_plates": 6})
     resp = client.post("/world/generate_debug", json={"scenario": "four_plate_grid"})

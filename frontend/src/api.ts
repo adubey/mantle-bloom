@@ -732,12 +732,12 @@ export function generateDebugWorld(
   worldId: WorldId,
   scenario: string,
   seed: number,
-  options?: { name?: string | null; isPublic?: boolean | null },
+  options?: { name?: string | null; isPublic?: boolean | null; simulateGlacierMarch?: boolean | null },
 ): Promise<WorldSummary> {
   return fetch(`${worldBase(API_BASE, worldId)}/generate_debug`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ scenario, seed, name: options?.name ?? null, is_public: options?.isPublic ?? null }),
+    body: JSON.stringify({ scenario, seed, name: options?.name ?? null, is_public: options?.isPublic ?? null, simulate_glacier_march: options?.simulateGlacierMarch ?? null }),
   }).then(asJson<WorldSummary>);
 }
 

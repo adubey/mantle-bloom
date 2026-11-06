@@ -2534,13 +2534,33 @@ def test_world_flag_off_takes_the_same_path_as_the_test_knob_off(monkeypatch):
     # World.simulate_glacier_march=False gates the same zero-length path as the
     # MARCH_GLACIERS test knob off (#806): one opening-state solve, ice frozen.
     precip, temp, years = np.full(12, 800.0), np.full(12, -3.0), 10_000
+    ice_sheet.MARCH_LOG.clear()
+    hydrology.compute_hydrology(_flow_line_march_world(), precip, temp, years=years)
+    # Positive control: the default world really marches, so the equality below
+    # proves the flag gates the path rather than both arms being dead code.
+    assert ice_sheet.MARCH_LOG[-1]["substeps"] >= 1
     flagged = _flow_line_march_world()
     flagged.simulate_glacier_march = False
     off_by_flag = hydrology.compute_hydrology(flagged, precip, temp, years=years)
+    assert ice_sheet.MARCH_LOG[-1]["substeps"] == 0
     knobbed = _flow_line_march_world()
     monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
     off_by_knob = hydrology.compute_hydrology(knobbed, precip, temp, years=years)
+    assert ice_sheet.MARCH_LOG[-1]["substeps"] == 0
     np.testing.assert_array_equal(off_by_flag.glacier_depth, off_by_knob.glacier_depth)
+
+
+def test_step_world_honors_the_march_flag():
+    # The flag reaches the march through a real step, not just compute_hydrology.
+    kw = dict(seed=42, num_plates=2, node_density=0.25, climate_density=0.25, fluid_density=0.25)
+    ice_sheet.MARCH_LOG.clear()
+    step_world(generate_world(**kw), 10_000)
+    assert ice_sheet.MARCH_LOG[-1]["substeps"] >= 1
+    ice_sheet.MARCH_LOG.clear()
+    world = generate_world(**kw)
+    world.simulate_glacier_march = False
+    step_world(world, 10_000)
+    assert ice_sheet.MARCH_LOG[-1]["substeps"] == 0
 
 
 def test_march_profiler_spans_fire_only_above_the_cost_gate():
@@ -2552,6 +2572,13 @@ def test_march_profiler_spans_fire_only_above_the_cost_gate():
     labels = [" > ".join(path) for path in rec.snapshot()]
     assert any("Building the glacier-march graph" in p for p in labels)
     assert any("Solving march ice" in p for p in labels)
+    assert any("Re-solving march sea level" in p for p in labels)
+
+    # Just under the gate: a full march runs but records no phase spans.
+    with trace.recording() as rec:
+        hydrology.compute_hydrology(_flow_line_march_world(), np.full(12, 800.0), np.full(12, -3.0), years=4_999)
+    labels = [" > ".join(path) for path in rec.snapshot()]
+    assert not any("glacier-march" in p or "march ice" in p or "march sea level" in p for p in labels)
 
     with trace.recording() as rec:
         hydrology.compute_hydrology(_flow_line_march_world(), np.full(12, 800.0), np.full(12, -3.0), years=100)

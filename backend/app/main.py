@@ -375,7 +375,7 @@ def _session_running(session: WorldSession) -> bool:
     return runner is not None and runner.status().running
 
 
-def _apply_generate_march_flag(world, req: GenerateRequest) -> None:
+def _apply_generate_march_flag(world, req: GenerateRequest | GenerateDebugRequest) -> None:
     """The UI's march default rides the generate request (see GenerateRequest.
     simulate_glacier_march): None keeps the model default (march on)."""
     if req.simulate_glacier_march is not None:
@@ -1369,6 +1369,9 @@ class GenerateDebugRequest(BaseModel):
     # Same dialog name/public choice as GenerateRequest above.
     name: str | None = Field(default=None, min_length=1, max_length=100)
     is_public: bool | None = None
+    # Same UI march default as GenerateRequest above: without it a debug world would
+    # march while the fresh-world checkbox shows off (#806 review).
+    simulate_glacier_march: bool | None = None
 
 
 @app.post("/worlds/{world_id}/generate_debug")
@@ -1401,6 +1404,7 @@ def generate_debug(world_id: str, req: GenerateDebugRequest) -> dict:
             if session.deleted:
                 raise HTTPException(status_code=404, detail="no such world")
             world = debug_worlds.generate_debug_world(req.scenario, req.seed)
+            _apply_generate_march_flag(world, req)
             _set_world(session, world)
             # Summarized under the lock: the arrays a concurrent step mutates in
             # place must not be read mid-step.

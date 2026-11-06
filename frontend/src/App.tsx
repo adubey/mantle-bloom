@@ -1419,7 +1419,9 @@ export default function App() {
       // The "Debugging Worlds" tab's generateDebugWorld has no progress stream to report --
       // its scripted scenarios are tiny and generate near-instantly (see debug_worlds.py) --
       // so genProgress just stays undefined (indeterminate) for that path.
-      const generateIdentity = { name: generateName.trim() || null, isPublic: generatePublic };
+      // Fresh worlds always start with the UI march default (off), matching the
+      // reset below -- not the previous world's toggle, which stays behind.
+      const generateIdentity = { name: generateName.trim() || null, isPublic: generatePublic, simulateGlacierMarch: DEFAULT_SIMULATE_GLACIER_MARCH };
       const s =
         generateMode === "debug"
           ? await generateDebugWorld(id!, debugScenario, seed, generateIdentity)
@@ -1440,9 +1442,6 @@ export default function App() {
               voronoiPoints,
               sketchImageBase64: sketchBase64,
               premadeWorldId: generateMode === "premade" ? premadeWorldId : null,
-              // Fresh worlds always start with the UI default (off), matching the
-              // reset below -- not the previous world's toggle, which stays behind.
-              simulateGlacierMarch: DEFAULT_SIMULATE_GLACIER_MARCH,
               onProgress: (p) => {
                 if (worldIdRef.current === id) {
                   setGenProgress(p.fraction);
