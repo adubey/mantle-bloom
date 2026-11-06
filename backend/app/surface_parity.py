@@ -410,6 +410,7 @@ _QUAD_CACHE_BUILDERS = {
     "_area_cache": "node_areas_m2",
     "_adjacency_cache": "_neighbour_indices",
     "_local_loops_cache": "_local_boundary_loops",
+    "_local_outline_cache": "_local_outline",
     "_row_intervals_cache": "row_intervals",
     "_column_intervals_cache": "column_intervals",
     "_probe_neighbours_cache": "_probe_neighbour_indices",

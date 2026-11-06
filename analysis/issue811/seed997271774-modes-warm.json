@@ -1,0 +1,93 @@
+{
+ "save": "mantle-bloom-seed997271774-87400000y.mbworld",
+ "wind": "diagnostic",
+ "modes": {
+  "day": {
+   "step_years": 0.0027379,
+   "steps": 200,
+   "warmup_days": 10,
+   "commit": "61c215ad",
+   "mean_runtime_s": 5.14,
+   "lake_km3_first_last": [
+    95551,
+    89980
+   ],
+   "lake_km3_range": [
+    88707,
+    95584
+   ],
+   "lake_lag1": -0.006,
+   "lake_sign_reversal_rate": 0.08,
+   "lake_largest_drop_km3": -6274,
+   "lake_largest_rise_km3": 12,
+   "steps_with_lake_drop_over_1000_km3": 1,
+   "max_discharge_m3_s_range": [
+    23546,
+    3154719
+   ],
+   "discharge_max_consecutive_ratio": 133.11,
+   "max_ledger_residual": [
+    2.7147778495195827e-08,
+    2.4430818840813926e-09
+   ]
+  },
+  "year": {
+   "step_years": 1.0,
+   "steps": 200,
+   "warmup_days": 10,
+   "commit": "61c215ad",
+   "mean_runtime_s": 5.19,
+   "lake_km3_first_last": [
+    98383,
+    264429
+   ],
+   "lake_km3_range": [
+    98383,
+    266476
+   ],
+   "lake_lag1": 0.846,
+   "lake_sign_reversal_rate": 0.34,
+   "lake_largest_drop_km3": -2186,
+   "lake_largest_rise_km3": 3882,
+   "steps_with_lake_drop_over_1000_km3": 2,
+   "max_discharge_m3_s_range": [
+    23656,
+    55505
+   ],
+   "discharge_max_consecutive_ratio": 1.26,
+   "max_ledger_residual": [
+    9.501154297290993e-09,
+    1.0532661454693922e-09
+   ]
+  },
+  "100kyr": {
+   "step_years": 100000.0,
+   "steps": 200,
+   "warmup_days": 10,
+   "commit": "61c215ad",
+   "mean_runtime_s": 5.58,
+   "lake_km3_first_last": [
+    253428,
+    539490
+   ],
+   "lake_km3_range": [
+    253428,
+    587174
+   ],
+   "lake_lag1": -0.406,
+   "lake_sign_reversal_rate": 0.44,
+   "lake_largest_drop_km3": -144882,
+   "lake_largest_rise_km3": 123541,
+   "steps_with_lake_drop_over_1000_km3": 74,
+   "max_discharge_m3_s_range": [
+    32772,
+    147166
+   ],
+   "discharge_max_consecutive_ratio": 2.22,
+   "max_ledger_residual": [
+    6.701393924144945e-12,
+    4.588398765783838e-13
+   ]
+  }
+ }
+}

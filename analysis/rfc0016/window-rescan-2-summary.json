@@ -1,0 +1,464 @@
+{
+  "issue": 791,
+  "protocol": "analysis/rfc0016/README.md#window-re-baseline-791",
+  "source_commit": "3854792fad7c54fe97078ee490625f488273bd00",
+  "source_includes_issues": [
+    757,
+    758
+  ],
+  "world_scans": {
+    "910211954": {
+      "input_save": "mantle-bloom-seed910211954-220200000y.mbworld",
+      "input_sha256": "bd4874092efc805e8b174e115fe567c82d35fc2ee606686938b5b6eb96b060d2",
+      "source_commit": "3854792fad7c54fe97078ee490625f488273bd00",
+      "step_years": 100000.0,
+      "steps_total": 50,
+      "reportable_steps_after_startup_exclusion": 46,
+      "reversals": 14,
+      "comparable_body_observations": 469,
+      "qualifying_event_ages_myr": [
+        221.1,
+        221.3,
+        221.7,
+        221.8,
+        221.9,
+        222.6,
+        222.7,
+        222.8,
+        223.9,
+        224.0,
+        224.8,
+        224.9
+      ],
+      "peak_rss_mb": 5617.890625,
+      "scan_json_sha256": "8b27164c09a88411be82fd679766007619e8e234ac524e34b3a8c2e1138faed9"
+    },
+    "317739385": {
+      "input_save": "mantle-bloom-seed317739385-200800000y.mbworld",
+      "input_sha256": "6c806f913e4c79bb351b5eb5a143abcfc273df39b3bdf4ce9823fec7d27fb0cd",
+      "source_commit": "3854792fad7c54fe97078ee490625f488273bd00",
+      "step_years": 100000.0,
+      "steps_total": 50,
+      "reportable_steps_after_startup_exclusion": 46,
+      "reversals": 5,
+      "comparable_body_observations": 178,
+      "qualifying_event_ages_myr": [
+        202.1,
+        204.4,
+        205.4,
+        205.5
+      ],
+      "peak_rss_mb": 7214.21875,
+      "scan_json_sha256": "20a881dedd09404c200e567dedf1d4086892815c9cfb8b1a44b576a954da8b1a"
+    }
+  },
+  "window_a_checkpoint_recheck": {
+    "input_sha256": "9882568e681a0f9f207e3302453b3a92f18865d5640d7baa8d9d8eb09ab4633e",
+    "source_commit": "3854792fad7c54fe97078ee490625f488273bd00",
+    "elapsed_years": 221600000.0,
+    "step_years": 100000.0,
+    "steps": 8,
+    "reversals": 0,
+    "peak_rss_mb": 6927.046875
+  },
+  "prior_target_survival": {
+    "A": {
+      "anchor": [
+        -0.23691224445279244,
+        0.8458957304130985,
+        0.4778420258801283
+      ],
+      "expected_event_age_myr": 221.8,
+      "events_within_0_2_myr": [
+        {
+          "age_myr": 221.7,
+          "distance_km": 4970.058962783619,
+          "delta_km3": -390911.3012189112
+        },
+        {
+          "age_myr": 221.8,
+          "distance_km": 9952.725686592903,
+          "delta_km3": 6929.526136337961
+        },
+        {
+          "age_myr": 221.9,
+          "distance_km": 9786.963035287148,
+          "delta_km3": -8501.233249924395
+        }
+      ],
+      "nearest_event_distance_km": 4970.058962783619,
+      "event_at_registered_anchor": false
+    },
+    "D": {
+      "anchor": [
+        -0.24252642380567238,
+        0.703627104992703,
+        0.6678995664586261
+      ],
+      "expected_event_age_myr": 225.3,
+      "events_within_0_2_myr": [],
+      "nearest_event_distance_km": null,
+      "event_at_registered_anchor": false
+    },
+    "E": {
+      "anchor": [
+        -0.26378928752344094,
+        0.7260064311589618,
+        0.6350825723507965
+      ],
+      "expected_event_age_myr": 224.2,
+      "events_within_0_2_myr": [
+        {
+          "age_myr": 224.0,
+          "distance_km": 8514.042588129936,
+          "delta_km3": -2782.241407978618
+        }
+      ],
+      "nearest_event_distance_km": 8514.042588129936,
+      "event_at_registered_anchor": false
+    }
+  },
+  "candidate_ranking": [
+    {
+      "global_rank": 1,
+      "world_seed": 910211954,
+      "within_world_rank": 1,
+      "checkpoint_myr": 221.1,
+      "checkpoint_sha256": "91c7049d01072514c74db64f17d6db8f9102ab444b6cc02363185fa04f259670",
+      "event_age_myr": 221.3,
+      "event_volume_before_km3": 1348.245983560038,
+      "event_volume_after_km3": 489447.7769538163,
+      "event_delta_km3": 488099.53097025625,
+      "anchor": [
+        -0.714139897177292,
+        0.12362119265708472,
+        0.6890007314841158
+      ],
+      "reload_reproduces_before_after_and_delta_exactly": true,
+      "target_volumes_km3": [
+        1348.245983560038,
+        489447.7769538163,
+        712706.7844459899,
+        735406.9346027618
+      ],
+      "matched_target_outputs": 4,
+      "frozen_share_over_matched_outputs": 0.2958571702943049,
+      "routed_supply_m3_per_yr": [
+        947488068.6528014,
+        76570569613.06647,
+        133464207885.13385,
+        108210558318.68576
+      ],
+      "routed_supply_nonzero_every_output": true,
+      "max_normalized_liquid_ledger_residual": 5.378527467341877e-13,
+      "liquid_ledger_passes_each_output": true,
+      "failures_before_knockout": [
+        "frozen_precipitation"
+      ],
+      "passed_individual_screens_through_sublimation_knockout": false,
+      "frozen_share_status": "fails"
+    },
+    {
+      "global_rank": 2,
+      "world_seed": 910211954,
+      "within_world_rank": 2,
+      "checkpoint_myr": 222.5,
+      "checkpoint_sha256": "cefd993141a51df168a7f2eaa357fb55b8cba5ca8fd4a69f5fe6e7c4afb88a6a",
+      "event_age_myr": 222.7,
+      "event_volume_before_km3": 15289.590234541356,
+      "event_volume_after_km3": 476083.4581067425,
+      "event_delta_km3": 460793.86787220114,
+      "anchor": [
+        -0.78580636336456,
+        0.6004717348160182,
+        0.14812850833923216
+      ],
+      "reload_reproduces_before_after_and_delta_exactly": true,
+      "target_volumes_km3": [
+        15289.590234541356,
+        476083.4581067425,
+        15403.146621102469,
+        null
+      ],
+      "matched_target_outputs": 3,
+      "frozen_share_over_matched_outputs": 0.055471606572146566,
+      "routed_supply_m3_per_yr": [
+        3016220988.075237,
+        182096490623.37094,
+        3137580561.658464,
+        null
+      ],
+      "routed_supply_nonzero_every_output": false,
+      "max_normalized_liquid_ledger_residual": 1.0397277659582443e-11,
+      "liquid_ledger_passes_each_output": true,
+      "failures_before_knockout": [
+        "target_component_missing_within_four_step_window",
+        "routed_supply_every_step"
+      ],
+      "passed_individual_screens_through_sublimation_knockout": false,
+      "frozen_share_status": "not_full_window"
+    },
+    {
+      "global_rank": 3,
+      "world_seed": 910211954,
+      "within_world_rank": 3,
+      "checkpoint_myr": 221.5,
+      "checkpoint_sha256": "d1045edededd7ca60b4beb9b8af4c9389ec36fb86660fd719373bbef8ab98125",
+      "event_age_myr": 221.7,
+      "event_volume_before_km3": 395165.7231626084,
+      "event_volume_after_km3": 4254.421943697196,
+      "event_delta_km3": -390911.3012189112,
+      "anchor": [
+        -0.8329474194194739,
+        0.5407679716756935,
+        0.117339666320453
+      ],
+      "reload_reproduces_before_after_and_delta_exactly": true,
+      "target_volumes_km3": [
+        395165.7231626084,
+        4254.421943697196,
+        null,
+        416417.6250700948
+      ],
+      "matched_target_outputs": 3,
+      "frozen_share_over_matched_outputs": 0.11551719492629156,
+      "routed_supply_m3_per_yr": [
+        188939117420.7403,
+        5420548288.484599,
+        null,
+        174631418671.60092
+      ],
+      "routed_supply_nonzero_every_output": false,
+      "max_normalized_liquid_ledger_residual": 2.6696702344145436e-12,
+      "liquid_ledger_passes_each_output": true,
+      "failures_before_knockout": [
+        "frozen_precipitation",
+        "target_component_missing_within_four_step_window",
+        "routed_supply_every_step"
+      ],
+      "passed_individual_screens_through_sublimation_knockout": false,
+      "frozen_share_status": "fails"
+    },
+    {
+      "global_rank": 4,
+      "world_seed": 317739385,
+      "within_world_rank": 1,
+      "checkpoint_myr": 201.9,
+      "checkpoint_sha256": "95dfc07638392dbc96cdc76497ed9b95d0f77f9929e39ca9f4f81b9425409026",
+      "event_age_myr": 202.1,
+      "event_volume_before_km3": 49218.60206853187,
+      "event_volume_after_km3": 4868.548098678023,
+      "event_delta_km3": -44350.05396985385,
+      "anchor": [
+        0.9898882957020879,
+        -0.13337001556056868,
+        -0.048307359494911294
+      ],
+      "reload_reproduces_before_after_and_delta_exactly": true,
+      "target_volumes_km3": [
+        49218.60206853187,
+        4868.548098678023,
+        null,
+        null
+      ],
+      "matched_target_outputs": 2,
+      "frozen_share_over_matched_outputs": 0.0,
+      "routed_supply_m3_per_yr": [
+        600068461910.4789,
+        346305463447.2663,
+        null,
+        null
+      ],
+      "routed_supply_nonzero_every_output": false,
+      "max_normalized_liquid_ledger_residual": 3.6519848403843615e-14,
+      "liquid_ledger_passes_each_output": true,
+      "failures_before_knockout": [
+        "target_component_missing_within_four_step_window",
+        "routed_supply_every_step"
+      ],
+      "passed_individual_screens_through_sublimation_knockout": false,
+      "frozen_share_status": "not_full_window"
+    },
+    {
+      "global_rank": 5,
+      "world_seed": 910211954,
+      "within_world_rank": 4,
+      "checkpoint_myr": 224.6,
+      "checkpoint_sha256": "0b0470a7f08ce0cf1a5d06ae172686b2f7d5f0039bd19fd430abed547ee45c19",
+      "event_age_myr": 224.8,
+      "event_volume_before_km3": 3456.502076792718,
+      "event_volume_after_km3": 11100.869495118239,
+      "event_delta_km3": 7644.36741832552,
+      "anchor": [
+        -0.8332557877531903,
+        0.5392062311950712,
+        0.12223515212988752
+      ],
+      "reload_reproduces_before_after_and_delta_exactly": true,
+      "target_volumes_km3": [
+        3456.502076792718,
+        11100.869495118239,
+        559447.8288429084,
+        1468.9305831589613
+      ],
+      "matched_target_outputs": 4,
+      "frozen_share_over_matched_outputs": 0.02478151210950376,
+      "routed_supply_m3_per_yr": [
+        2107238612.9158227,
+        2536883416.7241044,
+        196316712030.21347,
+        2586003855.118323
+      ],
+      "routed_supply_nonzero_every_output": true,
+      "max_normalized_liquid_ledger_residual": 3.4429382358468027e-13,
+      "liquid_ledger_passes_each_output": true,
+      "failures_before_knockout": [],
+      "passed_individual_screens_through_sublimation_knockout": true,
+      "sublimation_knockout": {
+        "matched_target_volume_before_km3": 6135.409465770734,
+        "matched_target_volume_after_km3": 11212.04562961746,
+        "delta_km3": 5076.636163846726,
+        "retained_fraction_of_control_abs_delta": 0.664101538562461,
+        "passes_50_percent_cutoff": true
+      },
+      "anchor_file": "analysis/rfc0016/target-anchor-window-rescan-2-single-pass.json",
+      "frozen_share_status": "passes"
+    },
+    {
+      "global_rank": 6,
+      "world_seed": 317739385,
+      "within_world_rank": 2,
+      "checkpoint_myr": 205.2,
+      "checkpoint_sha256": "7608d40cd7b24ff299290b2e2447bfb8e477dd8d7294be86b570c011c8ebd17e",
+      "event_age_myr": 205.4,
+      "event_volume_before_km3": 969.0869586229911,
+      "event_volume_after_km3": 6928.61544530776,
+      "event_delta_km3": 5959.528486684769,
+      "anchor": [
+        -0.5756661854058606,
+        -0.81448457095316,
+        -0.07227258580871608
+      ],
+      "reload_reproduces_before_after_and_delta_exactly": true,
+      "target_volumes_km3": [
+        969.0869586229911,
+        6928.61544530776,
+        1336.1914796791523,
+        null
+      ],
+      "matched_target_outputs": 3,
+      "frozen_share_over_matched_outputs": 0.4019817672016918,
+      "routed_supply_m3_per_yr": [
+        6010549705.182432,
+        107778374469.44543,
+        7718725214.814154,
+        null
+      ],
+      "routed_supply_nonzero_every_output": false,
+      "max_normalized_liquid_ledger_residual": 1.4527426887362252e-13,
+      "liquid_ledger_passes_each_output": true,
+      "failures_before_knockout": [
+        "frozen_precipitation",
+        "target_component_missing_within_four_step_window",
+        "routed_supply_every_step"
+      ],
+      "passed_individual_screens_through_sublimation_knockout": false,
+      "frozen_share_status": "fails"
+    },
+    {
+      "global_rank": 7,
+      "world_seed": 317739385,
+      "within_world_rank": 3,
+      "checkpoint_myr": 204.2,
+      "checkpoint_sha256": "7ba52f13a2e21ad16d69820a978df7299a1ad9857029b8840ad7e3d8605d17c8",
+      "event_age_myr": 204.4,
+      "event_volume_before_km3": 6040.306785186143,
+      "event_volume_after_km3": 730.0570698500231,
+      "event_delta_km3": -5310.24971533612,
+      "anchor": [
+        -0.615331051443605,
+        -0.7833445804798177,
+        -0.08797138945232633
+      ],
+      "reload_reproduces_before_after_and_delta_exactly": true,
+      "target_volumes_km3": [
+        6040.306785186143,
+        730.0570698500231,
+        null,
+        null
+      ],
+      "matched_target_outputs": 2,
+      "frozen_share_over_matched_outputs": 0.4292769868571127,
+      "routed_supply_m3_per_yr": [
+        125010443333.356,
+        5146023504.048402,
+        null,
+        null
+      ],
+      "routed_supply_nonzero_every_output": false,
+      "max_normalized_liquid_ledger_residual": 8.967942435705084e-13,
+      "liquid_ledger_passes_each_output": true,
+      "failures_before_knockout": [
+        "frozen_precipitation",
+        "target_component_missing_within_four_step_window",
+        "routed_supply_every_step"
+      ],
+      "passed_individual_screens_through_sublimation_knockout": false,
+      "frozen_share_status": "fails"
+    },
+    {
+      "global_rank": 8,
+      "world_seed": 910211954,
+      "within_world_rank": 5,
+      "checkpoint_myr": 223.8,
+      "checkpoint_sha256": "051fff6dcca51f9e02e75e211fd9009475cecab0a8bfb1261272ba6b2b6a6ea0",
+      "event_age_myr": 224.0,
+      "event_volume_before_km3": 3692.8113724843447,
+      "event_volume_after_km3": 910.5699645057268,
+      "event_delta_km3": -2782.241407978618,
+      "anchor": [
+        0.35512059951938085,
+        -0.31952126153963245,
+        0.878518937315022
+      ],
+      "reload_reproduces_before_after_and_delta_exactly": true,
+      "target_volumes_km3": [
+        3692.8113724843447,
+        910.5699645057268,
+        null,
+        null
+      ],
+      "matched_target_outputs": 2,
+      "frozen_share_over_matched_outputs": 0.8602933088693981,
+      "routed_supply_m3_per_yr": [
+        29174420024.48877,
+        28791912500.20181,
+        null,
+        null
+      ],
+      "routed_supply_nonzero_every_output": false,
+      "max_normalized_liquid_ledger_residual": 1.1095967866451105e-12,
+      "liquid_ledger_passes_each_output": true,
+      "failures_before_knockout": [
+        "frozen_precipitation",
+        "target_component_missing_within_four_step_window",
+        "routed_supply_every_step"
+      ],
+      "passed_individual_screens_through_sublimation_knockout": false,
+      "frozen_share_status": "fails"
+    }
+  ],
+  "selection": {
+    "individual_candidates_passing_all_screens": 1,
+    "required_candidates": 3,
+    "selected_windows": [],
+    "basin_independence_screen": "Not evaluated as a three-window set; only one candidate passed individual screens.",
+    "g0_and_treatment_runs_started": false,
+    "stop_reason": "Fewer than three candidates passed. Thresholds were not relaxed."
+  },
+  "private_capture_label": "rfc0016/window-rescan-2",
+  "raw_data_kept_out_of_repository": true,
+  "held_out_saves_used": false,
+  "g0_and_treatment_arms_run": false,
+  "private_capture_sha256sums_sha256": "28e9957d63cc4fe5bc3397f413216a66f35fc1f27266775c7583c162dc1b837f"
+}

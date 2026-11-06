@@ -814,3 +814,118 @@ recycled water that is redistributed rather than multiplied, so G1b can't evalua
 - Each node's opening year starts in month 0, and pelagic cells take `f` 0.55.
 - The D and E trace arms were rerun after a script error ran them without their flags, as
   controls. Their first outputs are kept apart from the results.
+
+## Window re-baseline (#791)
+
+Preregistered before any scan run. [G1b](#g1b-result) ran on windows A, D and E at `0bda513d`.
+[#754](https://github.com/adubey/mantle-bloom/issues/754) traced D's and E's events to lake-ice
+sublimation charged outside the lake solver, and #757 and #758 have since merged. This rescan
+asks which target events exist on current source and are clean enough to test a land-water store.
+It selects windows only: no treatment arm runs, and G0's 12 river arms rerun once, at the final
+pin, before G1b.
+
+**Source.** `origin/main` at `3854792f`, which includes #757 and #758. Every scan runs on this
+commit. If `main` moves before the scan ends, the scan stays on `3854792f`; the final pin for G0
+and G1b is chosen later and needs its own G0 rerun if it differs.
+
+**Worlds.** The two #680 event worlds, by SHA-256: seed 910211954 at 220.4 Myr (`bd4874092efc805e8b174e115fe567c82d35fc2ee606686938b5b6eb96b060d2`) and
+seed 317739385 at 200.8 Myr (`6c806f913e4c79bb351b5eb5a143abcfc273df39b3bdf4ce9823fec7d27fb0cd`), plus window A's
+221.6 Myr checkpoint (`9882568e681a0f9f207e3302453b3a92f18865d5640d7baa8d9d8eb09ab4633e`) replayed
+for 0.8 Myr. Neither seed is in RFC 0015's held-out set (447276134, 628977350, 295569319), and RFC 0016
+hasn't named one. Adding a world is an owner decision, taken before the scan.
+
+**Scan.** `bin/debug/measure_lake_step_budget.py`, 100 kyr steps, ice-age cycle off, 5 Myr per
+world. The detector is #680's unchanged #588 rule: a matched component over 10,000 km² whose
+successive volume changes reverse sign, both above 50% of the prior volume. Results from the first
+0.4 Myr after load are excluded.
+
+**Candidates and ranking.** Qualifying reversals, each a four-step window from a checkpoint two
+steps before the reversal, as in the [earlier rescan](#window-rescan). Windows don't overlap. Rank by
+largest `|ΔV|`; the matched component is the target and its anchor is the wet node nearest its
+centroid.
+
+**Screens, applied in order to ranked candidates.** A candidate that fails one is recorded with the
+reason and the next is taken.
+
+1. **Reload.** A checkpoint saved from the source world reproduces the event's volumes exactly.
+2. **Frozen precipitation.** At most 10% across the window, over the catchment of every land node
+   whose `flow_target` path reaches the target. Same rule as RFC 0016's G0.
+3. **Routed supply.** Nonzero routed supply to the target in every step of the window. A
+   selection rule, approved by the owner in the earlier rescan.
+4. **Artifact screen (new).** The event must not be one the lake solver's accounting produces.
+   - The normalized liquid-ledger residual is at most 0.1% in every step.
+   - A knockout of lake-ice sublimation, as in #754's K-sub arm, rerun over the window, leaves the
+     event at no less than 50% of its `|ΔV|`. This is a driver patch on the replay, not a model
+     change. An event that disappears or shrinks below half without sublimation is recorded as a
+     sublimation artifact and excluded. The 50% limit is a design choice set before measurement,
+     not a literature value.
+5. **Basin independence (new).** The three windows' targets share no node set in any step of
+   their windows, and no two anchors are within 1,000 km. Both limits are design choices.
+
+**Selection.** The three highest-ranked candidates that pass every screen. Window A competes under
+the same screens and keeps no priority; if it passes, it is ranked with the rest. The owner
+approved A in the earlier rescan, and this sets that approval aside for the new pin, so the
+owner's review applies.
+
+**If fewer than three pass, report which failed which screen and stop.** No threshold is relaxed
+after measurement.
+
+**Report.** Reversal counts and comparable-body counts per world on current source, with the
+qualifying step ages (descriptive only: two worlds and one noise history can't separate a real
+change from chance); whether D's, E's and A's events survive #757 and #758; each selected window's
+checkpoint SHA-256, anchor file, target volumes and frozen share. Compact JSON is checked in. Raw
+scans, knockout runs and checkpoints stay in the private captures with a `SHA256SUMS` file.
+
+**What this can't show.** Selection ranks by `|ΔV|`, so the windows favour the largest swings, as
+before. Two worlds supply the candidates. Passing the artifact screen shows the event survives
+removing sublimation, not that supply or storage drives it.
+
+### Re-baseline results
+
+Scans and candidate reloads used pinned source `3854792fad7c54fe97078ee490625f488273bd00`.
+The seed 910 save is named `...-220200000y.mbworld`, but its embedded age is 220.4 Myr; its
+SHA-256 matches the preregistered input. The first four scan outputs were excluded.
+
+| World | Reversals | Comparable-body observations | Event ages (Myr) |
+|---|---:|---:|---|
+| Seed 910211954 | 14 | 469 | 221.1, 221.3 (2), 221.7, 221.8, 221.9, 222.6, 222.7 (2), 222.8, 223.9, 224.0, 224.8, 224.9 |
+| Seed 317739385 | 5 | 178 | 202.1, 204.4, 205.4 (2), 205.5 |
+
+The separate 221.6 Myr A checkpoint replay had no qualifying reversals in its eight outputs.
+The former A event is absent at its registered anchor. The nearest current-source reversals are
+4,970 km away at 221.7 Myr and 9,953 km away at 221.8 Myr. D's event is absent around its former
+225.3 Myr timing. E's nearest reversal around its former 224.2 Myr timing is 8,514 km from E's
+registered anchor. Thus A, D and E do not supply the former target events on this pin.
+
+All eight nonoverlapping ranked candidates reloaded with exact before, after and `ΔV` values.
+Candidate ranks below are global, by descending `|ΔV|`. Frozen share is weighted by precipitation
+volume over the outputs where the detector-matched component exists; `n/4` shows how many of the
+four outputs had a matched target. A missing target fails the every-step routed-supply rule.
+Every candidate's whole-lake liquid-ledger residual passed the 0.1% limit.
+
+| Rank | Seed, checkpoint (Myr) | `|ΔV|` (km³) | Frozen share | Routed supply | Result |
+|---:|---|---:|---:|---|---|
+| 1 | 910211954, 221.1 | 488,100 | 29.59% (4/4) | Every step | Fails frozen screen |
+| 2 | 910211954, 222.5 | 460,794 | 5.55% (3/4) | Missing target at step 4 | Fails routed-supply screen |
+| 3 | 910211954, 221.5 | 390,911 | 11.55% (3/4) | Missing target at step 3 | Fails frozen and routed-supply screens |
+| 4 | 317739385, 201.9 | 44,350 | 0.00% (2/4) | Missing target at steps 3–4 | Fails routed-supply screen |
+| 5 | 910211954, 224.6 | 7,644 | 2.48% (4/4) | Every step | Passes individual screens, including K-sub |
+| 6 | 317739385, 205.2 | 5,960 | 40.20% (3/4) | Missing target at step 4 | Fails frozen and routed-supply screens |
+| 7 | 317739385, 204.2 | 5,310 | 42.93% (2/4) | Missing target at steps 3–4 | Fails frozen and routed-supply screens |
+| 8 | 910211954, 223.8 | 2,782 | 86.03% (2/4) | Missing target at steps 3–4 | Fails frozen and routed-supply screens |
+
+**The sole individual passer is not enough to select G1 windows.** Candidate 5 in the global ranking
+(seed 910211954, checkpoint 224.6 Myr) has checkpoint SHA-256
+`0b0470a7f08ce0cf1a5d06ae172686b2f7d5f0039bd19fd430abed547ee45c19`, target volumes
+3,456.502, 11,100.869, 559,447.829 and 1,468.931 km³, and a 2.48% frozen share. Its anchor is
+[`target-anchor-window-rescan-2-single-pass.json`](target-anchor-window-rescan-2-single-pass.json).
+The maximum normalized liquid-ledger residual is `3.44e-13`. With lake-ice sublimation disabled,
+the matched target-body change is 5,076.636 km³, 66.41% of the control `|ΔV|` of 7,644.367 km³,
+above the preregistered 50% cutoff.
+
+Only one candidate passes all individual screens, so the three-window basin-independence screen
+cannot be satisfied. As preregistered, selection stops here: no G0 river arms or G1 treatment arms
+were run, and no threshold was relaxed. The compact values, all anchors, full checkpoint hashes
+and per-step screens are in [`window-rescan-2-summary.json`](window-rescan-2-summary.json).
+Raw scans, replay outputs and checkpoints remain in the private capture under `rfc0016/window-rescan-2/`
+and are covered by its `SHA256SUMS` file.
