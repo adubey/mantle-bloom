@@ -1760,7 +1760,10 @@ def _grid_xyz(height, width):
 
 def test_sample_is_ocean_and_is_sea_healpix_mode_agree_closely_with_kdtree():
     world = generate_world(30, num_plates=8)
-    step_world(world, 1_000_000)  # populates world.hydrology_cache
+    # A short step: the assertions only need a populated hydrology cache and compare the
+    # two modes against the same world, so a full 1 Myr march (thousands of substeps)
+    # buys nothing (#806: this test alone cost ~20 min).
+    step_world(world, 10_000)  # populates world.hydrology_cache
     world_xyz = _grid_xyz(31, 61)
     fallback = np.zeros((31, 61), dtype=bool)
 
@@ -1781,7 +1784,8 @@ def test_nearest_hydro_node_idx_cache_does_not_cross_contaminate_between_modes()
     otherwise a "kdtree" call followed immediately by a "healpix" call against the identical
     `(hydro, query_xyz)` would incorrectly serve the first mode's stale result."""
     world = generate_world(31, num_plates=8)
-    step_world(world, 1_000_000)
+    # A short step: only a populated cache is needed, not a marched world (#806).
+    step_world(world, 10_000)
     hydro = world.hydrology_cache
     world_xyz = _grid_xyz(21, 41)
 

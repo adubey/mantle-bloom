@@ -1980,6 +1980,9 @@ def _march_glacier(
 
     n = len(points)
     areas = np.asarray(areas_m2, dtype=float)
+    # The node cloud never moves mid-march, so one graph serves every substep's
+    # step_ice (which otherwise rebuilds it twice per call, ~19% of a long march).
+    march_graph = ice_sheet.symmetric_graph(np.asarray(points), np.asarray(neighbor_idx))
     depth = np.clip(np.asarray(prev_glacier_depth, dtype=float), 0.0, None).copy()
     heat = np.asarray(opening_heat_w_m2, dtype=float)
     if heat.shape != (n,):
@@ -2018,7 +2021,7 @@ def _march_glacier(
         return ice_sheet.step_ice(
             points, neighbor_idx, areas, elevation, deflection_m, sea_level, depth,
             climate, np.asarray(mobile_cover_m, dtype=float), ocean_mask, no_ice_cap, sub_years,
-            warn=False,
+            warn=False, graph=march_graph,
         )
 
     if years <= 1e-6:

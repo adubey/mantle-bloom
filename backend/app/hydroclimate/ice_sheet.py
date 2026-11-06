@@ -935,6 +935,8 @@ def step_ice(
     allow_ocean_ice: np.ndarray,
     years: float,
     warn: bool = True,
+    *,
+    graph: csr_matrix | None = None,
 ) -> tuple[np.ndarray, np.ndarray, IceStep]:
     """One glacier step over the whole node cloud. See the module docstring for the method.
 
@@ -995,7 +997,9 @@ def step_ice(
     bodies: list[BodyBalance] = []
     in_domain = np.zeros(n, dtype=bool)
     if np.any(members):
-        graph = symmetric_graph(points, neighbor_idx)
+        # The march calls this thousands of times on a fixed node cloud; it passes its
+        # own prebuilt graph (same function of the same inputs, so bit-identical).
+        graph = symmetric_graph(points, neighbor_idx) if graph is None else graph
         _, comp = connected_components(_restrict(graph, members), directed=False)
         comp = np.where(members, comp, -1)
         body_ids = np.unique(comp[members])
@@ -1071,6 +1075,7 @@ def step_ice(
     )
     flux, _, sliding = _diagnose_flow(
         points, neighbor_idx, area, out.surface, out.depth, opening_depth, thickness, out.covered, climate, is_warm, years,
+        graph=graph,
     )
     melt_m = out.melt_m3 / np.where(area > 0.0, area, 1.0)
     frozen_precipitation = _frozen_precipitation(climate, area, years, out.retained_snow, is_ocean)
@@ -1223,7 +1228,7 @@ def _touches_ocean(dom: _Domain, active: np.ndarray) -> bool:
     return False
 
 
-def _diagnose_flow(points, neighbor_idx, area, surface, depth, prev_depth, thickness, covered, climate, is_warm, years):
+def _diagnose_flow(points, neighbor_idx, area, surface, depth, prev_depth, thickness, covered, climate, is_warm, years, *, graph=None):
     """Balance flux, depth-averaged velocity and basal sliding speed (issue #353 section 6).
 
     The source per node is (b - d(depth)/dt) * area in m^3/yr: what the ice gains there and
@@ -1240,7 +1245,7 @@ def _diagnose_flow(points, neighbor_idx, area, surface, depth, prev_depth, thick
     acc, sm, bm = climate.rates(thickness)
     balance_m_per_yr = covered * (acc - sm - bm) / 1.0e6
     source = np.where(is_ice, (balance_m_per_yr - (depth - prev_depth) / years) * area, 0.0)
-    graph = symmetric_graph(points, neighbor_idx)
+    graph = symmetric_graph(points, neighbor_idx) if graph is None else graph
     ice_idx = np.flatnonzero(is_ice)
     order = ice_idx[np.argsort(-surface[ice_idx], kind="stable")]
     flux = _balance_flux(
