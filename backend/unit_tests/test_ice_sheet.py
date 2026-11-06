@@ -275,7 +275,10 @@ def test_snow_in_an_enclosed_pit_below_sea_level_stays_as_ice():
     pit = r < 250e3
     elevation = np.where(pit, -60.0, elevation)
     is_ocean = (elevation <= 0.0) & ~pit
-    depth, _, ice = _step(points, area, elevation, np.zeros(len(points)), _cold(len(points)), 1e4, is_ocean=is_ocean)
+    # Physical snowfall (RFC 0015 D1, #789) buries this fixture in ~4 km over 10 kyr,
+    # past any holdable extent; 1 kyr keeps the pit ice thin, which is all the
+    # enclosed-grounds-and-stays mechanism needs.
+    depth, _, ice = _step(points, area, elevation, np.zeros(len(points)), _cold(len(points)), 1e3, is_ocean=is_ocean)
     ledger = ice.ledger
     assert ledger.calved_m3 == 0.0
     assert float(np.dot(depth[pit], area[pit])) > 0.0
@@ -288,8 +291,11 @@ def test_a_body_beside_an_enclosed_deep_basin_spreads_over_it_instead_of_calving
     # enclosed basin the ocean doesn't reach. The ice grounds on that floor and spreads over
     # it rather than saturating and calving, and the ledger closes.
     points, r, elevation, area = _continent(land_radius_km=200.0, half_km=600.0, ocean_floor=-5000.0)
-    start = np.where(r <= 200e3, 4000.0, 0.0)
-    depth, _, ice = _step(points, area, elevation, start, _cold(len(points)), 1e6, is_ocean=np.zeros(len(points), dtype=bool))
+    # Physical ice (RFC 0015 D1, #789): 4000 m plus 1 Myr of snowfall saturates any
+    # holdable extent; 500 m over 1 kyr keeps the same spread-over-the-enclosed-
+    # basin mechanism within bounds.
+    start = np.where(r <= 200e3, 500.0, 0.0)
+    depth, _, ice = _step(points, area, elevation, start, _cold(len(points)), 1e3, is_ocean=np.zeros(len(points), dtype=bool))
     ledger = ice.ledger
     assert ledger.calved_m3 == 0.0
     assert not ice.bodies[0].saturated
