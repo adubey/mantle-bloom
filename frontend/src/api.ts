@@ -653,6 +653,8 @@ export interface GenerateWorldOptions {
   // automatic exoplanet pick for a fresh world) and Public checkbox.
   name?: string | null;
   isPublic?: boolean | null;
+  // The UI's march default (App DEFAULT_SIMULATE_GLACIER_MARCH); null keeps the model default.
+  simulateGlacierMarch?: boolean | null;
   // Random-tab terrain layout; omitted follows the backend default. Sketches/premades ignore it.
   cratonsFirst?: boolean;
   // With cratonsFirst, relief from a synthetic tectonic history (#218); omitted follows the backend default.
@@ -677,7 +679,8 @@ export function generateWorld(worldId: WorldId, options: GenerateWorldOptions): 
   const {
     seed, cratonsFirst, syntheticRelief, keepLandOffPoles = false, continentalFraction, landFraction, axialTiltDeg, nodeDensity,
     initialSoilMaturity, climateDensity, fluidDensity, numPlates, voronoiPoints,
-    sketchImageBase64 = null, premadeWorldId = null, name = null, isPublic = null, onProgress,
+    sketchImageBase64 = null, premadeWorldId = null, name = null, isPublic = null,
+    simulateGlacierMarch = null, onProgress,
   } = options;
   return fetch(`${worldBase(API_BASE, worldId)}/generate`, {
     method: "POST",
@@ -700,6 +703,7 @@ export function generateWorld(worldId: WorldId, options: GenerateWorldOptions): 
       premade_world_id: premadeWorldId,
       name,
       is_public: isPublic,
+      simulate_glacier_march: simulateGlacierMarch,
     }),
   }).then((resp) => readProgressStream(resp, onProgress));
 }
@@ -774,6 +778,7 @@ export type ControlsState = {
   ice_age_period_years: number;
   simulate_plate_movement: boolean;
   simulate_climate_biomes: boolean;
+  simulate_glacier_march: boolean;
   wind_model: string;
   fault_deformation_mode: string;
   // Gate for the debug-only diagnostics (see backend World.debug_diagnostics) -- on by
@@ -787,6 +792,7 @@ export function updateControls(worldId: WorldId, controls: {
   iceAgePeriodYears?: number;
   simulatePlateMovement?: boolean;
   simulateClimateBiomes?: boolean;
+  simulateGlacierMarch?: boolean;
   windModel?: string;
   faultDeformationMode?: string;
   debugDiagnostics?: boolean;
@@ -801,6 +807,7 @@ export function updateControls(worldId: WorldId, controls: {
       ice_age_period_years: controls.iceAgePeriodYears,
       simulate_plate_movement: controls.simulatePlateMovement,
       simulate_climate_biomes: controls.simulateClimateBiomes,
+      simulate_glacier_march: controls.simulateGlacierMarch,
       wind_model: controls.windModel,
       fault_deformation_mode: controls.faultDeformationMode,
       debug_diagnostics: controls.debugDiagnostics,

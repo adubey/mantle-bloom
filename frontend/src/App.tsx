@@ -170,6 +170,11 @@ const DEFAULT_TUNING: TuningMultipliers = Object.fromEntries(
 // defaults -- both on, i.e. a normal full simulation.
 const DEFAULT_SIMULATE_PLATE_MOVEMENT = true;
 const DEFAULT_SIMULATE_CLIMATE_BIOMES = true;
+// Unlike the two above, the glacier march is OFF for a fresh UI world: at ~30ms a
+// 250 yr substep (backend #822) a marched Myr-step costs minutes, so interactive
+// stepping stays fast unless the user opts into the march in Controls. The model
+// default (backend World.simulate_glacier_march) stays on for API/replay worlds.
+const DEFAULT_SIMULATE_GLACIER_MARCH = false;
 // Matching backend app/world.py's World.wind_model default -- the fast closed-form diagnostic
 // (ABL) wind: it approximates the CFD climate for a fraction of the per-step cost (how closely:
 // docs/simulation-model/climate.md#wind-model, #529), so it's the better starting point; switch
@@ -604,6 +609,7 @@ export default function App() {
   // backend app/world.py's World.simulate_plate_movement/World.simulate_climate_biomes.
   const [simulatePlateMovement, setSimulatePlateMovement] = useState(DEFAULT_SIMULATE_PLATE_MOVEMENT);
   const [simulateClimateBiomes, setSimulateClimateBiomes] = useState(DEFAULT_SIMULATE_CLIMATE_BIOMES);
+  const [simulateGlacierMarch, setSimulateGlacierMarch] = useState(DEFAULT_SIMULATE_GLACIER_MARCH);
   // "cfd" (shallow-water solve) or "diagnostic" (fast closed-form ABL wind) -- see backend
   // app/world.py's World.wind_model. Live-adjustable via Controls like the toggles above.
   const [windModel, setWindModel] = useState(DEFAULT_WIND_MODEL);
@@ -846,6 +852,7 @@ export default function App() {
     iceAgePeriodYears?: number;
     simulatePlateMovement?: boolean;
     simulateClimateBiomes?: boolean;
+    simulateGlacierMarch?: boolean;
     windModel?: string;
     faultDeformationMode?: string;
     debugDiagnostics?: boolean;
@@ -893,6 +900,11 @@ export default function App() {
   const handleSimulateClimateBiomesChange = useCallback((v: boolean) => {
     setSimulateClimateBiomes(v);
     pushControls({ simulateClimateBiomes: v });
+  }, [pushControls]);
+
+  const handleSimulateGlacierMarchChange = useCallback((v: boolean) => {
+    setSimulateGlacierMarch(v);
+    pushControls({ simulateGlacierMarch: v });
   }, [pushControls]);
 
   const handleSolarMultiplierChange = useCallback((v: number) => {
@@ -964,6 +976,7 @@ export default function App() {
       setIceAgePeriodYears(controls.ice_age_period_years);
       setSimulatePlateMovement(controls.simulate_plate_movement);
       setSimulateClimateBiomes(controls.simulate_climate_biomes);
+      setSimulateGlacierMarch(controls.simulate_glacier_march);
       setWindModel(controls.wind_model);
       setFaultDeformationMode(controls.fault_deformation_mode);
       setDebugDiagnostics(controls.debug_diagnostics);
@@ -1427,6 +1440,9 @@ export default function App() {
               voronoiPoints,
               sketchImageBase64: sketchBase64,
               premadeWorldId: generateMode === "premade" ? premadeWorldId : null,
+              // Fresh worlds always start with the UI default (off), matching the
+              // reset below -- not the previous world's toggle, which stays behind.
+              simulateGlacierMarch: DEFAULT_SIMULATE_GLACIER_MARCH,
               onProgress: (p) => {
                 if (worldIdRef.current === id) {
                   setGenProgress(p.fraction);
@@ -1452,6 +1468,7 @@ export default function App() {
       setIceAgePeriodYears(DEFAULT_ICE_AGE_PERIOD_YEARS);
       setSimulatePlateMovement(DEFAULT_SIMULATE_PLATE_MOVEMENT);
       setSimulateClimateBiomes(DEFAULT_SIMULATE_CLIMATE_BIOMES);
+      setSimulateGlacierMarch(DEFAULT_SIMULATE_GLACIER_MARCH);
       setWindModel(DEFAULT_WIND_MODEL);
       setFaultDeformationMode(DEFAULT_FAULT_DEFORMATION_MODE);
       // A debug world starts with diagnostics already on server-side (see debug_worlds.py) --
@@ -2831,6 +2848,7 @@ export default function App() {
           iceAgePeriodYears={iceAgePeriodYears}
           simulatePlateMovement={simulatePlateMovement}
           simulateClimateBiomes={simulateClimateBiomes}
+          simulateGlacierMarch={simulateGlacierMarch}
           windModel={windModel}
           faultDeformationMode={faultDeformationMode}
           debugDiagnostics={debugDiagnostics}
@@ -2840,6 +2858,7 @@ export default function App() {
           onIceAgePeriodChange={handleIceAgePeriodChange}
           onSimulatePlateMovementChange={handleSimulatePlateMovementChange}
           onSimulateClimateBiomesChange={handleSimulateClimateBiomesChange}
+          onSimulateGlacierMarchChange={handleSimulateGlacierMarchChange}
           onWindModelChange={handleWindModelChange}
           onFaultDeformationModeChange={handleFaultDeformationModeChange}
           onDebugDiagnosticsChange={handleDebugDiagnosticsChange}
