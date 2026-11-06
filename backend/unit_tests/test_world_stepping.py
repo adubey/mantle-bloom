@@ -1,8 +1,18 @@
 import numpy as np
+import pytest
 from app import trace
 from app.hydroclimate import climate
+from app.hydroclimate import hydrology
 from app.torque import shift_plates_quasistatic
 from app.world import PROGRESS_HEARTBEAT_INTERVAL_S, generate_world, generate_world_progress, step_world, step_world_progress
+
+
+@pytest.fixture(autouse=True)
+def _no_glacier_march(monkeypatch):
+    # No test in this module asserts on marched ice (the glacier phase label is
+    # structural): the 1-Myr steps exercise stepping mechanics, and marching
+    # glaciers over them stalls the suite (#806).
+    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
 
 
 def test_generate_world_starts_plates_at_rest():

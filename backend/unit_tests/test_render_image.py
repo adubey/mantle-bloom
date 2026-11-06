@@ -14,6 +14,14 @@ from .quad_fixtures import quad_plate
 from .river_fixtures import spill_hop_fields
 
 
+@pytest.fixture(autouse=True)
+def _no_glacier_march(monkeypatch):
+    # No test in this module asserts on marched ice (glacier-overlay tests set depth
+    # directly): the multi-Myr steps evolve views/erosion state, and marching
+    # glaciers over them stalls the suite (#806).
+    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
+
+
 def _world(seed=1, num_plates=10, continental_fraction=0.4):
     return generate_world(seed, num_plates=num_plates, continental_fraction=continental_fraction, cratons_first=False)
 

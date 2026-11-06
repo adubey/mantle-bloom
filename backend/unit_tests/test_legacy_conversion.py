@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 from app import geometry, legacy_conversion, persistence, surface_parity
 from app.elevation_lines import line_spacing_rad
+from app.hydroclimate import hydrology
 from app.sparse_quad_patch import PlateWithSparseQuadPatch
 from app.surface_fields import SURFACE_FIELDS, RemapClass
 from app.world import World, generate_world, step_world
@@ -19,6 +20,13 @@ from .legacy_lines import legacy_line_plate, line_world_like, retired_class_name
 
 DENSITY = 1.0
 SPACING = line_spacing_rad(DENSITY)
+
+
+@pytest.fixture(autouse=True)
+def _no_glacier_march(monkeypatch):
+    # No test in this module asserts on ice: the 1-Myr steps convert and evolve
+    # legacy worlds, and marching glaciers over them stalls the suite (#806).
+    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
 
 
 def _xyz(lat_deg: float, lon_deg: float) -> np.ndarray:

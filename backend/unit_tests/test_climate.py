@@ -2,6 +2,15 @@ import numpy as np
 import pytest
 from app import plates
 from app.hydroclimate import biomes, climate
+from app.hydroclimate import hydrology
+
+
+@pytest.fixture(autouse=True)
+def _no_glacier_march(monkeypatch):
+    # No test in this module asserts on marched ice (climate fields only): the
+    # multi-Myr setup steps evolve atmospheres, and marching glaciers over them
+    # stalls the suite (#806).
+    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
 from app.world import World, generate_world, step_world
 from scipy.special import ndtr
 

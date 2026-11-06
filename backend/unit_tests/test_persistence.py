@@ -8,8 +8,17 @@ import pytest
 from app import legacy_conversion, persistence, sparse_quad_patch
 from app.collision_polarity import PlateCollisionMasks, PolarityFrame
 from app.hydroclimate import climate
+from app.hydroclimate import hydrology
 from app.elevation_lines import line_spacing_rad
 from app.world import generate_world, step_world
+
+
+@pytest.fixture(autouse=True)
+def _no_glacier_march(monkeypatch):
+    # No test in this module asserts on marched ice (the glacier-account test sets
+    # the account directly): the multi-Myr steps check save/load round-trips, and
+    # marching glaciers over them stalls the suite (#806).
+    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
 
 from .legacy_lines import LegacyRowLookup, line_world_like, retired_class_names
 
