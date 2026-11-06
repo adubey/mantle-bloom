@@ -2484,18 +2484,21 @@ def test_d2_march_hold_never_books_more_loss_than_exists():
     assert entry["held_years"] > 0.0
 
 
-def test_d2_march_settles_and_holds_on_an_ice_free_world():
-    # With no ice and no snowfall the march settles within a few substeps and holds the
-    # rest of the step at zero rates; the ledger closes exactly (RFC 0015 D2, #789).
+def test_d2_march_fast_path_on_an_ice_free_world():
+    # With no ice and no snowfall the march takes the fast path -- one endpoint solve
+    # over the whole step instead of settling a few substeps in and holding the rest
+    # (review of #806: same answer, what main ran). The ledger still closes exactly
+    # (RFC 0015 D2, #789).
     ice_sheet.MARCH_LOG.clear()
     theta = 0.05 * np.arange(40)
     elevation = np.linspace(100.0, -100.0, 40)
     world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
     fields = hydrology.compute_hydrology(world, np.full(40, 800.0), np.full(40, 25.0), years=100_000)
     entry = ice_sheet.MARCH_LOG[-1]
+    assert entry["substeps"] == 0
     assert entry["settled"] is True
-    assert entry["marched_years"] < 100_000.0
-    assert entry["held_years"] == pytest.approx(100_000.0 - entry["marched_years"])
+    assert entry["marched_years"] == pytest.approx(100_000.0)
+    assert entry["held_years"] == 0.0
     assert entry["tipping_growth"] is None
     assert len(entry["volume_path_km3"]) > 0
     assert fields.ice.ledger.opening_m3 == 0.0
@@ -2548,6 +2551,62 @@ def test_world_flag_off_takes_the_same_path_as_the_test_knob_off(monkeypatch):
     off_by_knob = hydrology.compute_hydrology(knobbed, precip, temp, years=years)
     assert ice_sheet.MARCH_LOG[-1]["substeps"] == 0
     np.testing.assert_array_equal(off_by_flag.glacier_depth, off_by_knob.glacier_depth)
+
+
+def test_march_takes_the_fast_path_with_no_ice_and_no_snow():
+    # Review of #806: with no ice and nothing that could start any, the march would run
+    # its minimum 8 substeps to settle on an unchanged volume; one endpoint solve is
+    # the same answer. Both a dry world and warm rain (far above freezing, so no
+    # snowfall whatever the seasonal amplitude) must take it.
+    for precip, temp in ((np.zeros(12), 15.0), (np.full(12, 800.0), 50.0)):
+        ice_sheet.MARCH_LOG.clear()
+        fields = hydrology.compute_hydrology(
+            _flow_line_march_world(), precip, np.full(12, temp), years=10_000
+        )
+        entry = ice_sheet.MARCH_LOG[-1]
+        assert entry["substeps"] == 0
+        assert entry["marched_years"] == pytest.approx(10_000.0)
+        assert entry["settled"] is True
+        assert np.all(fields.glacier_depth == 0.0)
+        assert fields.ice.ledger.accumulation_m3 == 0.0
+
+
+def test_march_sea_level_resolve_uses_the_seeded_mask(monkeypatch):
+    # Review of #806 item 6a: the march's per-substep re-solve must take the seeded
+    # path (march's own current-step mask, #806 review), never silently fall through
+    # to the cache path on a misaligned node cloud. Needs a world with a real ocean
+    # budget: on the 12-node flow-line fixture the ice debit exceeds its puddle
+    # ocean, the budget clamps to 0, and the bisection early-returns before any mask
+    # call at all.
+    calls = []
+    real = eustasy._seeded_connected_mask
+
+    def spy(elevations, sea_level_m, neighbor_idx, seed):
+        calls.append((len(elevations), len(seed)))
+        return real(elevations, sea_level_m, neighbor_idx, seed)
+
+    monkeypatch.setattr(eustasy, "_seeded_connected_mask", spy)
+    world = generate_world(seed=42, num_plates=2, node_density=0.25, climate_density=0.25, fluid_density=0.25)
+    step_world(world, 5_000)
+    assert calls, "no re-solve reached the seeded mask"
+    assert all(n == s for n, s in calls)
+
+
+def test_march_skips_the_final_sea_level_resolve(monkeypatch):
+    # Review of #806: the last substep's re-solve feeds no further solve (each solve
+    # reads the previous level) and nothing downstream reads the march's own level,
+    # so a two-substep march re-solves exactly once.
+    calls = []
+    real = eustasy._solve_sea_level_connected
+
+    def spy(world, elevations, areas, budget, **kwargs):
+        if kwargs.get("seed_is_ocean") is not None:
+            calls.append(1)
+        return real(world, elevations, areas, budget, **kwargs)
+
+    monkeypatch.setattr(eustasy, "_solve_sea_level_connected", spy)
+    hydrology.compute_hydrology(_flow_line_march_world(), np.full(12, 800.0), np.full(12, -3.0), years=500)
+    assert len(calls) == 1
 
 
 def test_step_world_honors_the_march_flag():

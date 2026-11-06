@@ -1932,6 +1932,68 @@ def _opening_frictional_heat(
     return _ice_sheet.frictional_heat_w_m2(tau_b, np.asarray(sliding, dtype=float)[idx])
 
 
+def _snow_can_start_ice(
+    depth: np.ndarray,
+    dry_precip_mm: np.ndarray,
+    dry_snow_mm: np.ndarray,
+    temperature_at_nodes: np.ndarray,
+    seasonal_amplitude: np.ndarray,
+) -> bool:
+    """Whether any snowfall could start ice from the opening state: the march fast
+    path's guard (review of #806). True with ice on the ground, with a snowfall share
+    on bare ground, or with dry precipitation where the opening snowfall rate is
+    positive. The opening rate is the conservative side: the solve runs at the lapse
+    target, which with no ice load can only be warmer than the opening deflection, so
+    zero opening snowfall stays zero all step."""
+    from . import ice_sheet
+
+    if depth.any():
+        return True
+    snow_open = ice_sheet.snow_fraction(
+        np.asarray(temperature_at_nodes, dtype=float), np.asarray(seasonal_amplitude, dtype=float)
+    )
+    return bool(
+        np.any((np.asarray(dry_precip_mm, dtype=float) > 0.0) & (snow_open > 0.0))
+        or np.any(np.asarray(dry_snow_mm, dtype=float) > 0.0)
+    )
+
+
+def _march_sea_level(
+    world: "World",
+    elevations: np.ndarray,
+    hyps_areas: np.ndarray,
+    total_water: float,
+    lakes_trapped: float,
+    to_water: float,
+    areas: np.ndarray,
+    depth: np.ndarray,
+    sea_level: float,
+    ocean_mask: np.ndarray,
+    neighbor_idx: np.ndarray,
+    points: np.ndarray,
+    elevation: np.ndarray,
+    warm_half_width_m: float,
+) -> tuple[float, np.ndarray]:
+    """One march substep's sea-level re-solve from the current ice debit, with the
+    ocean mask (review of #806): the re-solve anchors on the march's own current-step
+    mask and graph, not last step's cache (which also degrades to the
+    connectivity-blind mask on a changed node cloud), and the mask keeps Earth's
+    forced straits connected. The bisection warm-starts around the last level
+    (validated, same converged value). Returns the new (sea level, ocean mask)."""
+    from . import eustasy
+
+    debit = to_water * float(np.dot(areas, depth))
+    sea_level = eustasy._solve_sea_level_connected(
+        world, elevations, hyps_areas, max(0.0, total_water - lakes_trapped - debit),
+        seed_is_ocean=ocean_mask, seed_neighbor_idx=neighbor_idx,
+        bracket=(sea_level - warm_half_width_m, sea_level + warm_half_width_m),
+    )
+    ocean_mask = connected_ocean_mask(points, elevation, sea_level, neighbor_idx, areas_m2=areas, prior_ocean=ocean_mask)
+    if getattr(world, "premade_world_id", None) == "earth":
+        ocean_mask = force_earth_strait_connections(points, ocean_mask, elevation, sea_level, neighbor_idx)
+    return sea_level, ocean_mask
+
+
 def _march_glacier(
     world: "World",
     points: np.ndarray,
@@ -1978,8 +2040,12 @@ def _march_glacier(
     Cost: each substep is a full ice solve plus a sea-level re-solve, so a settled march
     costs ~13-32 ice solves against the old endpoint solve's one (up to thousands when it
     never settles), which is why steps run over the +15% budget on the diagnosis replays.
-    Skipping the sea-level re-solve when the debit barely moves would cut that, but any
-    materiality threshold changes settling and routed water, so the saving stays a
+    Three mitigations (#806 review): a world with no ice and no snowfall takes a fast
+    path (one endpoint solve, the old behaviour); each re-solve warm-starts its
+    bisection around the last level (validated, same converged value); and the last
+    substep skips its re-solve (nothing downstream reads it -- eustasy re-solves after
+    the step). Skipping the re-solve while the debit barely moves would cut more, but
+    any materiality threshold changes settling and routed water, so that saving stays a
     follow-up, not part of this change.
     """
     from .. import lithosphere
@@ -1988,6 +2054,12 @@ def _march_glacier(
 
     n = len(points)
     areas = np.asarray(areas_m2, dtype=float)
+    # Half-width of the warm bracket the march hands each substep's sea-level re-solve
+    # (#806 review): the level moves centimetres over 250 yr, so a +/-25 m window
+    # around the last level brackets the root, validated, and cuts ~50 bisection
+    # iterations to ~8. A miss falls back to the full range, same converged value
+    # either way.
+    warm_half_width_m = 25.0
     # Profiling detail for slow marches only (#801, #822): per-phase spans split the
     # recorded tree into graph build vs ice solves vs sea-level re-solves, which otherwise
     # all hide inside "Resolving rivers and lakes". Gated on the step's expected cost
@@ -2053,6 +2125,21 @@ def _march_glacier(
         })
         return new_depth, melt, ice
 
+    # Fast path (review of #806): with no ice on the ground and no snowfall that could
+    # start any, the march would run its minimum 8 substeps only to settle on an
+    # exactly-unchanged volume. One endpoint solve over the whole step is the same
+    # answer (what main ran): at fixed zero ice every melt/ledger term is linear in
+    # dt. Most suite fixtures are iceless, which is most of the suite slowdown.
+    if not _snow_can_start_ice(depth, dry_precip_mm, dry_snow_mm, temperature_at_nodes, seasonal_amplitude):
+        new_depth, melt, ice = solve_once(float(years), depth, heat)
+        ice_sheet.warn_if_capped(ice.ledger)
+        ice_sheet.MARCH_LOG.append({
+            "substeps": 0, "marched_years": float(years), "held_years": 0.0, "settled": True,
+            "last_change": 0.0, "sea_level_m": sea_level,
+            "volume_path_km3": [round(float(np.dot(depth, areas)) / 1e9, 6)], "tipping_growth": None,
+        })
+        return new_depth, melt, ice
+
     melt_total = np.zeros(n)
     calved_total = np.zeros(n)
     ledger_total = ice_sheet.IceLedger(opening_m3=float(np.dot(depth, areas)))
@@ -2093,20 +2180,19 @@ def _march_glacier(
             ice_sheet.yield_stress_pa(np.asarray(mobile_cover_m, dtype=float), ice.warm_based),
             ice.sliding_speed_m_per_yr,
         )
-        if has_ocean:
+        # The last substep's re-solve feeds no further solve (each solve reads the
+        # previous substep's level) and nothing downstream reads the march's own
+        # level or mask -- eustasy re-solves after the step -- so it is pure
+        # overhead, likewise the diagnostic log entry it would refresh (#806 review).
+        # `elapsed` already includes this substep's `dt`, so this is true exactly
+        # when years remain after it.
+        if has_ocean and elapsed < years - 1e-6:
             with _phase("Re-solving march sea level"):
-                debit = to_water * float(np.dot(areas, depth))
-                # The re-solve anchors on the march's own current-step ocean mask and graph, not
-                # last step's cache (which also degrades to the connectivity-blind mask on a
-                # changed node cloud), and the mask keeps Earth's forced straits connected, the
-                # way compute_hydrology does (#806 review).
-                sea_level = eustasy._solve_sea_level_connected(
-                    world, elevations, hyps_areas, max(0.0, total_water - lakes_trapped - debit),
-                    seed_is_ocean=ocean_mask, seed_neighbor_idx=neighbor_idx,
+                sea_level, ocean_mask = _march_sea_level(
+                    world, elevations, hyps_areas, total_water, lakes_trapped, to_water,
+                    areas, depth, sea_level, ocean_mask, neighbor_idx, points, elevation,
+                    warm_half_width_m,
                 )
-                ocean_mask = connected_ocean_mask(points, elevation, sea_level, neighbor_idx, areas_m2=areas, prior_ocean=ocean_mask)
-                if getattr(world, "premade_world_id", None) == "earth":
-                    ocean_mask = force_earth_strait_connections(points, ocean_mask, elevation, sea_level, neighbor_idx)
         volumes.append(float(np.dot(depth, areas)))
         recent = (recent + [(dt, melt, ice.calved_m3, ice.ledger, ice.frozen_precipitation)])[
             -max(ice_sheet.MARCH_HOLD_WINDOW, 1):

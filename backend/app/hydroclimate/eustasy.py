@@ -268,9 +268,17 @@ def ocean_water_volume_m3(
     return total_water_volume_m3(elevations[mask], areas_m2[mask], sea_level_m)
 
 
-def _bisect_sea_level(elevations: np.ndarray, areas_m2: np.ndarray, water_volume_m3: float, volume_at) -> float:
+def _bisect_sea_level(
+    elevations: np.ndarray, areas_m2: np.ndarray, water_volume_m3: float, volume_at,
+    bracket: tuple[float, float] | None = None,
+) -> float:
     """The `h` with `volume_at(h) == water_volume_m3`, for a `volume_at` that is 0 at `min z`
-    and strictly increasing above it. Bisection on `[min z, max z + headroom]`."""
+    and strictly increasing above it. Bisection on `[min z, max z + headroom]`, or on
+    `bracket` when given *and* it actually brackets the root (checked, not trusted: a
+    stale bracket silently solving the wrong level would be worse than the slow path).
+    A missed bracket falls back to the full range, so the answer is the same converged
+    value either way -- the warm path only saves iterations (glacier-march substeps,
+    #806 review)."""
     if len(elevations) == 0:
         return 0.0
     lo = float(np.min(elevations))
@@ -279,8 +287,14 @@ def _bisect_sea_level(elevations: np.ndarray, areas_m2: np.ndarray, water_volume
     total_area = float(np.sum(areas_m2))
     if total_area <= 0.0:
         return lo
-    # Upper bracket: enough headroom that every node is submerged and then some.
-    hi = float(np.max(elevations)) + water_volume_m3 / total_area + 1.0
+    hi: float | None = None
+    if bracket is not None:
+        blo, bhi = float(bracket[0]), float(bracket[1])
+        if blo < bhi and volume_at(blo) <= water_volume_m3 <= volume_at(bhi):
+            lo, hi = blo, bhi
+    if hi is None:
+        # Upper bracket: enough headroom that every node is submerged and then some.
+        hi = float(np.max(elevations)) + water_volume_m3 / total_area + 1.0
     tolerance_m3 = _SOLVE_TOLERANCE_M * total_area / len(elevations)
     for _ in range(_SOLVE_MAX_ITERS):
         mid = 0.5 * (lo + hi)
@@ -297,6 +311,7 @@ def _bisect_sea_level(elevations: np.ndarray, areas_m2: np.ndarray, water_volume
 def _solve_sea_level_connected(
     world: "World", elevations: np.ndarray, areas_m2: np.ndarray, water_volume_m3: float,
     *, seed_is_ocean: np.ndarray | None = None, seed_neighbor_idx: np.ndarray | None = None,
+    bracket: tuple[float, float] | None = None,
 ) -> float:
     """`solve_sea_level`, but bisecting against `ocean_water_volume_m3` (connectivity-restricted)
     rather than the bare `total_water_volume_m3` -- see this module's own docstring for why a
@@ -311,6 +326,7 @@ def _solve_sea_level_connected(
             world, elevations, areas_m2, h,
             seed_is_ocean=seed_is_ocean, seed_neighbor_idx=seed_neighbor_idx,
         ),
+        bracket=bracket,
     )
 
 

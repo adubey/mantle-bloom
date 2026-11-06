@@ -801,7 +801,11 @@ since climate.py runs *before* this module each step).
   endpoint solve's one, which is why steps run over the +15% budget on the diagnosis
   replays. `World.simulate_glacier_march` (`false` in the UI's Controls, off by default
   for UI-created worlds) skips the march: the ice is solved once per step and frozen
-  there, the same zero-length path the `MARCH_GLACIERS` test knob takes. Under a
+  there, the same zero-length path the `MARCH_GLACIERS` test knob takes. A world with
+  no ice and no snowfall takes the same one-solve fast path automatically (an
+  endpoint solve is the identical answer there). Each substep's sea-level re-solve
+  warm-starts its bisection around the last level (validated, same converged value),
+  and the last substep skips its re-solve (nothing downstream reads it). Under a
   profiler, steps of `MARCH_PROFILE_MIN_YEARS` (5 kyr) or more record the march's
   discrete phases -- graph build, ice solves, sea-level re-solves -- as spans;
   shorter marches record none.
