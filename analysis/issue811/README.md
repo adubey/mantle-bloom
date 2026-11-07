@@ -330,8 +330,60 @@ check: the CFD atmosphere advances 86,400 s per step.
   8/727; 9/251 against 4/195; 6/38 against 0/15), fewer at century and 250 yr. Samples are small.
 - **Ledgers close to 3e-7 or better in every CFD mode** (day mode loosest, 2.8e-7).
 - **What this does not show.** Whether CFD wind's larger rivers are more or less right, or whether the
-  step-size sensitivity differs between wind models in any way beyond the day spike. One save. No
-  hour mode yet. The post-RFC 0019 rain arm is not run.
+  step-size sensitivity differs between wind models in any way beyond the day spike. One save. The post-RFC 0019 rain arm is not run.
+
+## Hour mode (1 hour steps, both wind models)
+
+Compact data: [`seed997271774-hour.json`](seed997271774-hour.json). Same save, same `dc855ca3`
+baseline worktree, same 10 day-step warm-up, 200 measured steps of 1.1408e-4 yr (8.3 days in
+all). Compared with day mode from [`seed997271774-cfd.json`](seed997271774-cfd.json).
+
+| | Diagnostic hour | Diagnostic day | `cfd` hour | `cfd` day |
+|---|---|---|---|---|
+| Lake km3, first to last | 99.6k to 92.5k | 99.6k to 94.0k | 288k to 272k | 288k to 272k |
+| Steps dropping lake >1,000 km3 | 1 | 1 | 3 | 3 |
+| Largest one-step lake drop, km3 | 5,136 | 5,112 | 11,052 | 11,060 |
+| Max land discharge, m3/s (median / peak) | 48k / 3.5M | 26k / 591k | 138k / 2.30G | 103k / 124M |
+| Mean precipitation, mm | 1199.8 | 1200.8 | 1196.7 | 1197.7 |
+| Mean air temperature, C | 16.72 | 16.72 | 16.71 | 16.71 |
+| Large-body reversals | 0 of 4,019 | 6 of 3,859 | 0 of 4,000 | 0 of 4,286 |
+| Worst lake residual | 4e-8 | 3e-8 | 5e-6 | 3e-7 |
+| CFD atmosphere days, first to last | | | 11 to 210 | 11 to 210 |
+
+- **Hour mode behaves like day mode.** The lake, precipitation and temperature numbers match
+  day mode to within a few percent, and the same lake drops occur at the same size: 5.1k km3 in
+  diagnostic and 11k km3 in `cfd`. A 24x shorter step does not make the lake solver unstable or
+  change the climate.
+- **The `cfd` clock is 24x too fast here.** Each hourly step advances the atmosphere one
+  simulated day, so 200 steps cover 8.3 days of world time but 200 atmosphere days. This is the
+  mismatch the handoff table predicted.
+- **The 1/dt mechanism scales with the step.** In `cfd` the early lake release (step 8, with a
+  follow-on at step 9) shows up as a largest land discharge of 2.30 G m3/s at step 8 and 0.44 G
+  at step 9. Times the 3,600 s step that is about 8,270 km3 and 1,580 km3, together about 9,850
+  km3, against lake drops of 11,052 and 2,819 km3 (13,871 km3) in those steps. So the
+  discharge spike accounts for about 70% of the drop; the rest is outside the single largest
+  cell. In day mode the same release gave 124 M m3/s, which is 97% of the drop. The peak grows
+  with 1/dt (2.3 G at one hour against 0.12 G at one day, 19x for a 24x shorter step), as
+  `overflow / max(years, 1e-30)` predicts. It is a bookkeeping rate, not a river.
+- **The diagnostic hour run has two features that are not lake dumps.** Its 3.5 M m3/s peak is
+  at step 110, with a lake change of only 12 km3 (times 3,600 s that is 12.7 km3 of flow), so it
+  is not a release. Its one 5,136 km3 lake drop is at step 13, where the largest discharge is
+  1.6 M m3/s (5.9 km3), so the water did not leave through the largest river either. A drop of
+  the same size (5,112 km3) appears in diagnostic day mode, so it does not scale with the step.
+  I have not traced either feature; the step-13 drop is not the step-2 transient in the
+  warm-up section.
+- **No large-lake reversals at all** in either hour run. Ice moves under 0.1% and sea level
+  0.5 m (diagnostic) or 0.03 m (`cfd`) over the run.
+  The sampled lake window is 8.3 days, so this says little about flicker, which needs
+  decades.
+- **Ledgers:** diagnostic closes to 4e-8. `cfd` hour closes to 5e-6, worst at step 1 and about
+  1e-6 afterward, looser than day mode (3e-7). I have not looked into why.
+- **Runtime:** 6.1 s per step diagnostic and 8.7 s `cfd`, 200 steps in 22 and 30 minutes.
+  Peak memory 1.7 GB.
+- **What this does not show.** It is one save. Hour steps do not reach the timescales where
+  the problems showed up (century and longer for lakes, 250 yr and longer for the glacier
+  march), so it clears the short-step end of the range and nothing more. Ice is the old
+  one-shot solver at every step size.
 
 ## Method change: warm up first
 
@@ -342,7 +394,7 @@ taken without warm-up and is kept for the record.
 ## Open
 
 - Identify the step-2 body and why it disappears (cap level, tier, rim, `#758` hysteresis).
-- Hour mode (diagnostic and `cfd`). Why the D/E lake peaks at 5 kyr, and the anchor's dry steps in A.
+- Why the D/E lake peaks at 5 kyr, and the anchor's dry steps in A.
 - Second save at every mode.
 - Rerun the ice metrics once RFC 0015 D2 merges (PR #806, merged 2026-11-07; march cost and regime boundary in the RFC 0015 note).
 - The #553 depth-cap warning on seed 910211954 at step 1 (6.7e4 km3 gross overflow on lake-tier
