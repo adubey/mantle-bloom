@@ -154,6 +154,27 @@ def test_solve_sea_level_connected_ignores_the_pits_volume():
     assert naive < solved - 1.0
 
 
+def test_warm_bracket_matches_the_cold_solve():
+    # The march's warm-started bisection converges to the same level (and mask) as the
+    # full-range solve, and a stale bracket falls back instead of solving wrong (#806).
+    world, elevations, areas = _make_fake_world_with_two_below_sea_level_rings()
+    target_level = -20.0
+    ocean_only_budget = 10 * (target_level - (-100.0))
+    cold = eustasy._solve_sea_level_connected(world, elevations, areas, ocean_only_budget)
+    warm = eustasy._solve_sea_level_connected(
+        world, elevations, areas, ocean_only_budget, bracket=(target_level - 25.0, target_level + 25.0)
+    )
+    assert warm == pytest.approx(cold, abs=2.0)
+    assert np.array_equal(
+        eustasy._ocean_connected_mask(world, elevations, warm, areas),
+        eustasy._ocean_connected_mask(world, elevations, cold, areas),
+    )
+    stale = eustasy._solve_sea_level_connected(
+        world, elevations, areas, ocean_only_budget, bracket=(1000.0, 2000.0)
+    )
+    assert stale == pytest.approx(cold, abs=2.0)
+
+
 def _pile_ice_everywhere(world, depth_m):
     for plate in world.plates:
         plate.set_fields_on_plate(glacier_depth=np.full(plate.node_count(), depth_m))

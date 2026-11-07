@@ -2,6 +2,8 @@ import numpy as np
 import pytest
 from app import plates
 from app.hydroclimate import biomes, climate
+
+
 from app.world import World, generate_world, step_world
 from scipy.special import ndtr
 

@@ -38,6 +38,19 @@ def test_old_pickle_without_the_fields_reads_one():
         assert getattr(loaded, name) == 1.0
 
 
+def test_old_pickle_without_glacier_march_flag_marches():
+    # Same plain-default fall-through as the knobs above: a save written before the
+    # flag existed keeps the model default (march on), so loading never silently
+    # changes a world's ice physics (#806).
+    from app import persistence
+
+    world = generate_world(seed=5, num_plates=8)
+    assert world.simulate_glacier_march is True
+    world.__dict__.pop("simulate_glacier_march", None)
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert loaded.simulate_glacier_march is True
+
+
 def test_brake_multipliers_reach_the_quasistatic_solve(monkeypatch):
     # #760 review: solve_plates_quasistatic passes the world's own multipliers
     # into every assembled pair drag, so a live Controls change reaches the

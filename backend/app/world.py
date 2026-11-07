@@ -546,6 +546,14 @@ class World:
     # documents) rather than None, so a render/stats call right after toggling this off still
     # shows the last real climate snapshot instead of going blank.
     simulate_climate_biomes: bool = True
+    # Companion to the two flags above, same live-adjustable pattern. When False,
+    # compute_hydrology takes the same zero-length path as the MARCH_GLACIERS test knob
+    # off (see hydrology.MARCH_GLACIERS): one opening-state ice solve, ice frozen for the
+    # step -- minutes per Myr-step cheaper on generated worlds (issues #822, #811). Model
+    # default True (RFC 0015 D2 marches); the UI creates worlds with it off (see App.tsx's
+    # DEFAULT_SIMULATE_GLACIER_MARCH) and Controls toggles it back on, so interactive
+    # stepping stays fast unless the user asks for the march.
+    simulate_glacier_march: bool = True
     # Which wind field feeds climate.py (live-adjustable via POST /world/controls, the
     # "Controls" window). "cfd": the genuine time-integrated shallow-water solve in
     # atmosphere_cfd.py, advanced once per step by _advance_fluid_dynamics -- the most

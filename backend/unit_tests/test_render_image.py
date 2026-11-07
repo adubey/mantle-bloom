@@ -1363,7 +1363,6 @@ def test_step_world_rebuilds_healpix_index_cache_but_keeps_the_grid_cache():
     assert world.node_healpix_index_cache is not None
 
 
-
 @pytest.fixture(scope="module")
 def globe_world():
     return _world()

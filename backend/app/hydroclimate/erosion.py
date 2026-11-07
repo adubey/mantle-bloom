@@ -214,19 +214,22 @@ DEPOSITION_FRACTION = 0.15
 
 # Glacier erosion (issue #353): abrasion scales with basal sliding speed,
 # GLACIER_ABRASION_COEFFICIENT * u_b ** GLACIER_ABRASION_EXPONENT (Hallet 1979). u_b is
-# ice_sheet.py's sliding speed, a share of the balance velocity on a warm (thawed) bed and zero
-# on a frozen one, so ice frozen to its bed no longer erodes the way sliding ice does. Herman
-# et al. (2015) fit an exponent near 2 on one Alpine glacier; Cook et al. (2020) find
-# sub-linear scaling across a global compilation. 1 sits between them, and keeps the
-# calibration linear while u_b is a model-unit proxy.
+# ice_sheet.py's sliding speed in physical m/yr, a share of the balance velocity on a warm
+# (thawed) bed and zero on a frozen one, so ice frozen to its bed no longer erodes the way
+# sliding ice does. Herman et al. (2015) fit an exponent near 2 on one Alpine glacier; Cook
+# et al. (2020) find sub-linear scaling across a global compilation. 1 sits between them, and
+# keeps the calibration linear; RFC D3 (G3) fits the physical law (K_G = 1e-4, l = 0.65).
 #
-# The balance velocity is ~50,000x slower than real ice while glacier mass balance stays in
-# model units (issue #353's open decision), so the coefficient is calibrated, not physical: set
-# so total glacial erosion on the reference replay matches the old depth * slope law it
-# replaced (see analysis/issue353/README.md). That old law's own calibration -- equal to
-# RAIN_EROSION_COEFFICIENT at 100 m of ice, against the global compilation of glacial erosion
-# rates in issue #145 -- is what this inherits.
-GLACIER_ABRASION_COEFFICIENT = 430.0
+# The coefficient is calibrated, not physical: set so total glacial erosion on the reference
+# replay matches the old depth * slope law it replaced (see analysis/issue353/README.md).
+# That old law's own calibration -- equal to RAIN_EROSION_COEFFICIENT at 100 m of ice,
+# against the global compilation of glacial erosion rates in issue #145 -- is what this
+# inherits. The old calibration ran on model-unit sliding (~54,500x slower than real ice);
+# physical sliding (RFC 0015 D1, #789) divides that scale back out -- 430.0 * MODEL_UNIT_SCALE
+# written with the surviving constants -- or abrasion runs ~54,500x too fast (#806 review).
+GLACIER_ABRASION_COEFFICIENT = (
+    430.0 * hydrology.GLACIER_ACCUMULATION_RATE / (1000.0 / lithosphere.RHO_ICE * 1.0e-3 * 1.0e6)
+)
 GLACIER_ABRASION_EXPONENT = 1.0
 
 # Ice-thickness scale for the glacial flattening blur below: the blur rate grows linearly with

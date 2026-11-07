@@ -8,6 +8,7 @@ from app.lithosphere_plate import growth_seed_thickness
 from app.plates import compute_node_overlap
 from app.world import World, generate_world, step_world
 
+
 from .quad_fixtures import block_keys, quad_plate
 
 

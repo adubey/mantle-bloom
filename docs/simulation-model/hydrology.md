@@ -128,11 +128,9 @@ Three kinds of water/forcing move along `flow_target`:
   so it can drift from model ice, and a balance left when model ice reaches zero can't release.
 - **Glacier meltwater** is the ice ledger's per-step volume (`IceLedger.meltwater_m3`: surface
   and basal melt, overflow, ice shed at the depth guard, and snow melting on bare ground)
-  divided by the step length (`hydrology.meltwater_m3_per_yr`). Melted ice is booked as
-  water 1:1. Calved ice goes to the ocean unrouted, and accumulation stays ice, so neither is
-  discharge. The ledger is still in the
-  glacier model's own units (see [Glaciation](#glaciation-hydrologypy)), so meltwater is small next to
-  runoff.
+  divided by the step length (`hydrology.meltwater_m3_per_yr`). Melted ice converts by mass
+  (`RHO_ICE / RHO_WATER`). Calved ice goes to the ocean unrouted, and accumulation stays ice,
+  so neither is discharge.
 - **No liquid water becomes ice.** Water reaching a sink below 0 C on the annual mean pools as
   a lake there like any other, and a cold lake keeps its water (RFC 0014 D2(b), #539). See
   [Glaciation](#glaciation-hydrologypy), *Liquid water doesn't freeze on the annual mean*.
@@ -243,8 +241,10 @@ discharge, channel-width growth, deposition, geology or lake silt.
 - **Prognostic lake storage** (`lakes.solve_lakes_prognostic`, issue #588): lakes use real
   water-balance units and integrate water volume, liquid and lake ice together, through the
   timestep over the hierarchy.
-  Inflow is direct precipitation on the lagged wet area plus settled dry-cell Budyko runoff
-  and glacier melt, routed as volume (m^3/yr). Dry runoff transit losses use a fixed per-node
+  Inflow is the full wet share of precipitation on the lagged wet area (rain plus snow;
+  wet snow has no glacier to join and no D4 cap hand-off yet, so it enters as liquid
+  and is booked as in-step snowmelt in the ice ledger). Dry
+  runoff transit losses use a fixed per-node
   fraction at a 100 kyr reference step (`hydrology.river_transit_loss_fraction`), scaled by each
   cell's dry fraction. Glacier melt keeps the existing full per-node transit loss. The breach
   gate applies the same source-specific losses. Wet-cell precipitation travels through lake
@@ -701,13 +701,19 @@ Glaciation tracks where snow and ice build up, how ice melts, and how thick ice 
 The model uses long simulation steps, so it estimates seasonal melting rather than calculating
 every day of the year.
 
-**Snowfall uses the annual mean; melt uses an imputed seasonal cycle.** `FREEZE_POINT_C` (0C,
-the real phase-change point) governs whether precipitation falls as snow rather than rain: on
-a node whose annual mean is below it, or under visible ice, all precipitation is snow (no
-partial liquid/frozen split, matching `erosion.py`'s existing "use precipitation is enough"
-simplification). It doesn't freeze liquid water: rivers, lakes and the water settling at a
-sink stay liquid at any temperature (see *Liquid water doesn't freeze on the annual mean*
-below).
+**Snowfall uses the seasonal snow share; melt uses an imputed seasonal cycle.**
+`ice_sheet.snow_fraction` is the share of a sinusoidal year below the rain-snow threshold
+`RAIN_SNOW_THRESHOLD_C` (1.0C): `1/2 + arcsin((T_rs - T) / A) / pi` where the half-amplitude
+`A` covers the threshold, clipped to all-snow/all-rain outside it, with a continuous ramp
+around the threshold where the amplitude vanishes (a zero-tilt world). Each cell's
+precipitation splits once, into parts that sum to it (`hydrology.glacier_rain_partition_mm`):
+the lake takes the wet share (rain plus snow, booked as in-step snowmelt), and on the
+dry share the ice-covered part's snow is glacier
+accumulation (by mass) while its rain runs off the ice, and the bare part's snow melts where
+it falls within the step while its rain runs off. The split reads the opening ice cover (a
+one-step lag on the cover only). It doesn't freeze liquid water: rivers, lakes and the water
+settling at a sink stay liquid at any temperature (see *Liquid water doesn't freeze on the
+annual mean* below).
 
 A step spans thousands of years or more, so seasons are never stepped through, but their
 effect on glacier melt is imputed (issue #275 phase 2). Each node gets a seasonal
@@ -746,11 +752,14 @@ section for the other half -- that lost moisture actually reappearing as atmosph
 which for architectural reasons can't be the literal same-step amount this module evaporates,
 since climate.py runs *before* this module each step).
 
-- **Accumulation and melt rates**: `GLACIER_ACCUMULATION_RATE` converts frozen
-  precipitation into metres of ice per Myr.
-  `GLACIER_MELT_RATE_M_PER_MYR`, scaled by the seasonal positive degrees over
-  `GLACIER_MELT_REFERENCE_DEGREES_C` (capped at `GLACIER_MELT_MAX_FACTOR`; see above), is the
-  surface melt. Where these rates apply, and to how much ice, is the ice-body solve below.
+- **Accumulation and melt rates** (physical units, RFC 0015 D1): `SurfaceClimate.rates`
+  returns metres of ice per Myr at a trial thickness, from m/yr physical rates times 10^6
+  at that one interface. Snowfall is the year's snow share of precipitation, on the
+  lapse-corrected surface, by mass (`RHO_WATER / RHO_ICE`). Surface melt ablates that snow
+  first at `DDF_SNOW_MM_WATER_PER_DAY_K` (4), then bare ice at `DDF_ICE_MM_WATER_PER_DAY_K`
+  (8) with the degree-days left over. Basal melt is the net basal energy balance
+  (`ice_sheet.basal_heat_w_m2`) converted by `W_M2_TO_M_ICE_PER_YR` (Y / (rho_i L_f)).
+  Where these rates apply, and to how much ice, is the ice-body solve below.
 - **Ice bodies and the volume contract** (`ice_sheet.py`, issue #353). Ice no longer flows one
   hop down the bed each step. Each step `ice_sheet.step_ice` groups ice into **bodies**:
   connected components, over the symmetrised k-NN graph, of nodes that hold ice or have positive
@@ -762,20 +771,44 @@ since climate.py runs *before* this module each step).
 - **Backward-Euler extent.** Each body's candidate extents form a nested family: `phi` is the
   signed graph distance from the edge of its positive-balance area S (negative inside, two
   scipy Dijkstra passes), and the extent at margin position `d` is every node with
-  `phi <= d`. The step solves `V(d) = V_open + dt * B(d)` for `d`, with B summed on the
-  solved surface: accumulation where it snows (`GLACIER_ACCUMULATION_RATE` per mm/yr), minus
-  the positive-degree surface melt on the imputed seasonal cycle (see above), minus
-  geothermal basal melt on a thawed bed, with the surface `LAPSE_RATE_C_PER_KM` colder per km
-  of ice. Positive-balance bare ground also feeds the body its snow. So accumulation
+  `phi <= d`. A substep solves `V(d) = V_open + dt * B(d)` for `d`, with B summed on the
+  solved surface: snowfall accumulation where it snows, minus degree-day surface melt on
+  the imputed seasonal cycle (see above), minus basal melt from the bed's energy balance
+  at the trial thickness, with the surface `LAPSE_RATE_C_PER_KM` colder per km of ice.
+  Positive-balance bare ground also feeds the body its snow. So accumulation
   *magnitude* matters, not just its sign. The root is bracketed by walking outward one edge
   at a time from last step's extent, and the one nearest it is kept: a higher sheet is
   colder, so B can change sign more than once, and the nearest root preserves Weertman
-  (1961) hysteresis (a plateau that is bare stays bare; a covered one keeps its sheet). For
-  a step much longer than the ice's response time the root is the steady state B = 0; for a
-  short one it is the explicit `dV = dt * B`. Mass balance is still in model units
-  (`GLACIER_ACCUMULATION_RATE` is ~50,000x slower than real snowfall; converting it as #297
-  did for lakes is issue #353's open decision), so the ice is *not* assumed to be in balance
-  within a step.
+  (1961) hysteresis (a plateau that is bare stays bare; a covered one keeps its sheet).
+- **End-of-step march** (RFC 0015 D2). Fast ice reaches balance within a step, so each step
+  marches the ice there in fixed 250 yr substeps (`hydrology._march_glacier`, each one an
+  ordinary `step_ice` solve from the current ice). Between substeps the fast inputs are
+  recomputed from it: frictional heat (damped: the mean of the last two substeps' heat),
+  the mass-balance lapse surface (on the load-equilibrium deflection of the current ice),
+  and sea level (re-solved from the current ice debit, with the ocean mask, anchored on
+  the march's own current-step mask rather than last step's cache; Earth's forced straits
+  stay connected). Grounding and flotation keep the opening bed, a one-step lag on the
+  deflection; only the lapse correction sees the equilibrium target. Settle checks run on
+  non-overlapping substep pairs; when the last two pair-means differ by less than 0.1%
+  three checks in a row the ice has settled and the rest of the step is held, keeping the
+  mean rates (melt, calving, ledger flows) of the last 6 substeps. Held losses can never
+  exceed the available ice: the hold scaling clamps to fit, so a sheet that melts away
+  holds ~zero loss instead of booking a transient's mean melt. A body of ice that never
+  settles marches the whole step. Every step logs substeps, marched/held years,
+  settlement, the volume path, and any tipping-point growth (bounded
+  `ice_sheet.MARCH_LOG`, last 64 entries). Each marched step warns about the depth guard
+  at most once, on the summed ledger. A settled march costs ~13-32 ice solves against the
+  endpoint solve's one, which is why steps run over the +15% budget on the diagnosis
+  replays. `World.simulate_glacier_march` (`false` in the UI's Controls, off by default
+  for UI-created worlds) skips the march: the ice is solved once per step and frozen
+  there, the same zero-length path the `MARCH_GLACIERS` test knob takes. A world with
+  no ice and no snowfall takes the same one-solve fast path automatically (an
+  endpoint solve is the identical answer there). Each substep's sea-level re-solve
+  warm-starts its bisection around the last level (validated, same converged value),
+  and the last substep skips its re-solve (nothing downstream reads it). Under a
+  profiler, steps of `MARCH_PROFILE_MIN_YEARS` (5 kyr) or more record the march's
+  discrete phases -- graph build, ice solves, sea-level re-solves -- as spans;
+  shorter marches record none.
 - **Plastic geometry.** Within an extent, the ice takes Nye's (1952) perfectly plastic
   profile, `|grad s| = c / H` with `c = tau_b / (rho_i g)` (11.1 m at 100 kPa) -- a geometry
   approximation, as ICESHEET (Gowan et al. 2016) uses it for reconstruction, not a claim that
@@ -789,14 +822,16 @@ since climate.py runs *before* this module each step).
   volume at 60-180 km spacing. On a flat bed the divide thickness and volume match Nye's
   analytic dome within 1% and 4% at node densities 0.5-4, on square and hexagonal lattices.
   A bed bump above the surface pokes through as a nunatak.
-- **Yield stress and thermal state.** A bed is warm-based once steady conduction brings it to
-  the pressure-melting point, `T_s + G H / k >= -8.7e-4 H` (G = 60 mW/m^2 for now, k = 2.1;
-  about 700 m of ice at -20 C). `tau_b` is 100 kPa on a frozen bed or bare rock, falling to
-  30 kPa on a thawed bed with `ICE_SOFT_BED_COVER_M` of mobile cover. The yield stress uses
-  last step's thermal state (a one-step lag). Basal melt is `G / (rho_i L_f)` (~6 mm/yr of
-  real ice) scaled into the same model units as accumulation; it replaced the old
-  depth-squared basal melt, whose only job was to stop ice piling up on flat beds where
-  bed-slope flow left it.
+- **Yield stress and thermal state.** There is one thermal state: the bed is thawed
+  where the net basal heat is >= 0 (`ice_sheet.basal_heat_w_m2`): geothermal heat `G`
+  (60 mW/m^2) plus last step's frictional heat `tau_b u_b / Y` (lagged as a whole, damped
+  across march substeps, from the hydrology cache's `IceStep`, 0 where it is missing),
+  less the heat conducted up into colder ice, `k max(T_pmp - T_s, 0) / H`. `tau_b` is
+  100 kPa on a frozen bed or bare rock, falling to 30 kPa on a thawed bed with
+  `ICE_SOFT_BED_COVER_M` of mobile cover. Every reader uses its own thickness: melt at
+  the trial thickness inside `rates()` (so it is zero exactly at the thaw boundary and
+  continuous across it), membership at the opening thickness, the diagnostic at the
+  closing one. Basal melt is that energy balance converted by `W_M2_TO_M_ICE_PER_YR`.
 - **Bed and flotation.** The thickness solve and the flotation test use the unloaded bed,
   `elevation - ice_load_deflection_m`, which is the bed `lithosphere.grounded_ice_load_kg_m2` loads. A
   cell keeps ice only where that function would give it a load, so stored ice is grounded
@@ -804,10 +839,10 @@ since climate.py runs *before* this module each step).
   connected ocean (`is_ocean`) and 0 elsewhere (`lithosphere.floating_water_depth_m`, #552):
   an enclosed pit below sea level holds no seawater, so ice in it grounds. Margin points with
   a bed below sea level on connected ocean carry the flotation thickness (a grounding line),
-  so grounded marine ice keeps a real surface gradient. The mass-balance surface is the current, already-depressed elevation plus the
-  ice, a one-step lag on the deflection.
+  so grounded marine ice keeps a real surface gradient. The mass-balance surface is the load-equilibrium deflection of the current
+  ice plus the ice, recomputed every march substep.
 - **Sinks.** Surface and basal melt, and snow that melts on bare ground, go into that step's
-  `water_source` at the node where they melt, so rivers route them and lakes can trap them.
+  `water_source` at the node where they melt and are routed as that step's meltwater, so rivers route them and lakes can trap them.
   A body that can't hold its volume even at its largest grounded extent is *saturated*: the
   excess calves if it has a marine margin (booked as `calved_m3`, never routed: it goes
   straight to the ocean), or leaves its margin as meltwater otherwise. Calving from a partly
@@ -818,8 +853,9 @@ since climate.py runs *before* this module each step).
   depth, so every sink returns its water to the ocean's budget.
 - **Liquid water doesn't freeze on the annual mean.** Rivers flow on through nodes below
   `FREEZE_POINT_C`, water reaching a cold sink pools there as a lake, and a cold lake balances
-  like any other (RFC 0014 D2(b), #539). Snowfall over an ice cap on warm ground still falls as
-  snow (the `is_frozen` rule above), and meltwater on the ice drains along the ground.
+  like any other (RFC 0014 D2(b), #539). Snowfall follows the seasonal snow share on the
+  ground and on the opening ice surface (see above), and rain on the ice drains as runoff
+  until D8 routes it on the ice.
   Liquid water used to freeze where the annual mean was below 0 C: a river reaching a cold
   sink became river ice at `WATER_TO_ICE` (`GLACIER_ACCUMULATION_RATE / 1000`, 1/50,000 of its
   volume, a step late), and a lake on a cold node was emptied into the ice at the same rate. So
@@ -832,8 +868,9 @@ since climate.py runs *before* this module each step).
 - **Thickness guard.** `GLACIER_MAX_DEPTH_M` (5 km) caps the plastic profile itself, so a
   sheet too big for it gets a flat top and its volume spreads outward through the root find
   instead of being shed. A plastic divide is `sqrt(2 c L)` thick for a margin L from the
-  divide: 3.3 km at 500 km and 4.7 km at 1000 km under 100 kPa. The same guard holds the
-  ice-age sea-ice cap. Ice shed there is booked (`capped_m3`), and the cap is never treated as
+  divide: 3.3 km at 500 km and 4.7 km at 1000 km under 100 kPa. The floating sea-ice cap
+  is gone (D6 removes it; physical accumulation would stack it to the guard in one step),
+  so the step passes no ocean-ice cover. Ice shed there is booked (`capped_m3`), and the cap is never treated as
   physics: real ice spreads and melts at its base long before 5 km, so any step where ice
   reaches it logs a warning (`ice_sheet.warn_if_capped`).
 - **Small bodies.** A plastic profile on one or two cells is meaningless, so a body with room
@@ -848,19 +885,22 @@ since climate.py runs *before* this module each step).
   surface slope (Le Brocq et al. 2006: single-direction routing streaks balance flux into
   lines), clipped at zero. The depth-averaged velocity is `Q / (sqrt(area) * max(H, 10 m))`;
   on a uniform slab it matches the analytic balance velocity `b x / H`. Basal sliding is
-  `ICE_SLIDING_FRACTION` (0.7) of it on a warm bed and zero on a frozen one. While mass
-  balance stays in model units these are a calibrated proxy, ~50,000x slower than real ice.
+  `ICE_SLIDING_FRACTION` (0.7) of it on a warm bed and zero on a frozen one. Mass balance
+  is in physical units, so these are m/yr of real ice.
   Material riding the ice (`HydrologyFields.ice_flow_target`: glacial till, landslide debris
   on the ice) moves down the ice surface on visible ice and down the ground off it.
 - **Erosion and flattening**: see [Erosion](surface-processes.md#erosion-erosionpy). Glacial abrasion now scales with this
   step's sliding speed, so ice frozen to its bed doesn't erode the way sliding ice does;
   flattening is still driven by the *previous* step's `glacier_depth`.
 - **Cost.** Two Dijkstra passes per step, then per body a few numba sweeps per root-find
-  evaluation and one flux sweep. On the seed 997271774 save it is about 5% of step time
-  (see `analysis/issue353/README.md`).
-- **Saves.** Nothing new is persisted: the opening volume comes from `glacier_depth`, and the
-  previous extent from where that ice sits. An old save's ice is reshaped, body by body with
-  its volume conserved, on its first step, so replay comparisons show a one-off jump there.
+  evaluation and one flux sweep, times the march's substeps (about 13-16 on a settled
+  step, the whole step when it never settles). The median step-time cost is measured on
+  the diagnosis replay for each implementation issue (see below).
+- **Saves.** Nothing new is persisted: the opening volume comes from `glacier_depth`, the
+  previous extent from where that ice sits, and last step's frictional heat from the
+  hydrology cache's `IceStep` (0 where it is missing, e.g. on the first step after a
+  load). An old save's ice is reshaped, body by body with its volume conserved, on its
+  first step, so replay comparisons show a one-off jump there.
 - **Ice loading** (issue #275 phase 3; `erosion.apply_erosion`,
   `lithosphere.ice_load_deflection`): grounded ice sinks its column. The load is the ice's
   mass per area (`RHO_ICE` = 917 kg/m³) less the water it displaces on connected ocean below sea level

@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from app import faults, geometry, plates
 from app.hydroclimate import erosion
@@ -140,15 +141,23 @@ def test_apply_erosion_thins_crust_where_it_erodes_and_isostasy_compensates():
     # The crustal column fell by more than the surface did (the rest is isostatic rebound).
     assert np.all((hc_before - hc_after)[eroded] > (elev_before - elev_after)[eroded])
 
-    # elevation still tracks the Airy readout, using each node's crust density.
+    # The unloaded surface still tracks the Airy readout, using each node's crust
+    # density. The comparison must unload the ice first: `elevation` carries the ice-load
+    # depression explicitly (issue #275 phase 3), so under physical ice (RFC 0015 D1,
+    # #789) the loaded surface sits hundreds of metres below the unloaded Airy column.
+    # Model-unit ice depressed it by sub-metre amounts, which is why the loaded read
+    # passed here before.
     resid = []
+    offset = 0
     for plate in plates_after:
+        count = plate.node_count()
         z = lithosphere.isostatic_elevation(
             plate.collect("crustal_thickness_m"),
             plate.collect("mantle_lithosphere_thickness_m"),
             lithosphere.node_crust_density(plate.collect("crust_type_code"), plate.crust_type),
         )
-        resid.append(np.abs(z - plate.collect("elevation")))
+        resid.append(np.abs(z - elev_after[offset:offset + count]))
+        offset += count
     resid = np.concatenate(resid)
     assert np.median(resid) < 1.0
     assert np.percentile(resid, 99) < 25.0
@@ -1086,18 +1095,21 @@ def test_apply_erosion_books_unplaceable_overflow_as_overloaded_root_delaminatio
     assert np.isclose(_tracked_continental_m3(world), tracked_before, rtol=1e-12)
 
 
+@pytest.mark.usefixtures("march_glaciers")
 def test_glacial_erosion_carves_channels_rivers_can_inherit():
-    world = generate_world(seed=3, num_plates=8)
+    # Bounded unit case (review of #806): a tiny world and 3 marched substeps, with
+    # the abrasion knob turned up so 750 yr of sliding does measurable work. The
+    # realistic 5 Myr default-density run lives in stress_tests/test_erosion.py.
+    world = generate_world(seed=3, num_plates=2, node_density=0.25, climate_density=0.25, fluid_density=0.25)
     world.rain_erosion_multiplier = 0.0
     world.river_erosion_multiplier = 0.0
+    world.glacier_erosion_multiplier = 100.0
     for plate in world.plates:
         plate.set_fields_on_plate(glacier_depth=np.where(plate.collect("elevation") > world.sea_level_m, 500.0, 0.0))
     _, _, before, _, _, _ = erosion._gather_nodes(world)
-    erosion.apply_erosion(world, years=5_000_000)
+    erosion.apply_erosion(world, years=750)
     _, _, after, _, _, _ = erosion._gather_nodes(world)
-    # No river erosion at all, so all new channel is a glacial trough. Abrasion follows the
-    # basal sliding speed (issue #353), slow for a uniform blanket out of balance with its
-    # climate, so the troughs here are tens of centimetres, not metres.
+    # No river erosion at all, so all new channel is a glacial trough.
     assert np.max(after - before) > 0.1
 
 

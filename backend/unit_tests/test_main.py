@@ -730,6 +730,14 @@ def test_generate_debug_unknown_scenario_returns_400(client):
     assert resp.status_code == 400
 
 
+def test_generate_debug_applies_glacier_march_flag(client):
+    # Without the flag a debug world marches while the fresh-world checkbox shows
+    # off (#806 review): the debug request carries the same UI default.
+    resp = client.post("/world/generate_debug", json={"scenario": "two_plate_divergent", "seed": 3, "simulate_glacier_march": False})
+    assert resp.status_code == 200
+    assert _default_session.world.simulate_glacier_march is False
+
+
 def test_generate_debug_replaces_previous_world(client):
     _post_generate(client, json={"seed": 1, "num_plates": 6})
     resp = client.post("/world/generate_debug", json={"scenario": "four_plate_grid"})
@@ -919,7 +927,6 @@ def test_plates_endpoint_reports_motion_shape_and_overlap_diagnostics(client):
         for over in entry["overlaps"]:
             assert over["plate_id"] != entry["plate_id"]
             assert 0.0 < over["fraction"] <= 1.0
-
 
 
 def test_plate_at_returns_the_owning_plate_id(client):
@@ -1998,6 +2005,26 @@ def test_controls_ice_age_frequency_round_trip(client):
     assert world.ice_age_period_years == 0.0
 
 
+def test_controls_glacier_march_round_trip(client):
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    world = _default_session.world
+    # The model default marches; the UI sends its own (off) default on generate.
+    assert world.simulate_glacier_march is True
+    assert client.post("/world/controls", json={}).json()["simulate_glacier_march"] is True
+
+    resp = client.post("/world/controls", json={"simulate_glacier_march": False})
+    assert resp.status_code == 200
+    assert resp.json()["simulate_glacier_march"] is False
+    assert world.simulate_glacier_march is False
+
+    resp = client.post("/world/controls", json={"simulate_glacier_march": True})
+    assert resp.json()["simulate_glacier_march"] is True
+    assert world.simulate_glacier_march is True
+
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "simulate_glacier_march": False})
+    assert _default_session.world.simulate_glacier_march is False
+
+
 def test_controls_debug_diagnostics_round_trip(client):
 
     _post_generate(client, json={"seed": 12, "num_plates": 6})
@@ -2051,7 +2078,6 @@ def test_controls_fault_deformation_mode_toggle_and_validation(client):
         assert world.fault_deformation_mode == mode
 
     assert client.post("/world/controls", json={"fault_deformation_mode": "nonsense"}).status_code == 400
-
 
 
 def test_controls_node_cloud_resample_mode_toggle_and_validation(client):

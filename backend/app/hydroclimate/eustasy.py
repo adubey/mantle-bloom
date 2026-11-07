@@ -202,7 +202,10 @@ def _seeded_connected_mask(
 
 
 def _ocean_connected_mask(
-    world: "World", elevations: np.ndarray, sea_level_m: float, areas_m2: np.ndarray | None = None
+    world: "World", elevations: np.ndarray, sea_level_m: float, areas_m2: np.ndarray | None = None,
+    *,
+    seed_is_ocean: np.ndarray | None = None,
+    seed_neighbor_idx: np.ndarray | None = None,
 ) -> np.ndarray:
     """Per-node bool: is this node actually part of the connected world ocean at
     `sea_level_m` -- not merely sitting below it (see this module's own docstring for why
@@ -220,7 +223,17 @@ def _ocean_connected_mask(
     cache has no usable `is_ocean` of its own -- e.g. a world with no ocean at all -- and to
     the bare below-`sea_level_m` mask, the old connectivity-oblivious behaviour, whenever
     there's no usable cache at all: world generation (no step has run), or a save from before
-    `hydrology_cache` existed."""
+    `hydrology_cache` existed. An explicit `(seed_is_ocean, seed_neighbor_idx)` pair -- the
+    march's own current-step ocean mask and graph -- bypasses the cache entirely, so a
+    mid-step re-solve never reads last step's ocean or degrades to the blind mask on a
+    changed node cloud (#806 review)."""
+    if (
+        seed_is_ocean is not None and seed_neighbor_idx is not None
+        and len(seed_is_ocean) == len(elevations) and len(seed_neighbor_idx) == len(elevations)
+    ):
+        return _seeded_connected_mask(
+            elevations, sea_level_m, np.asarray(seed_neighbor_idx), np.asarray(seed_is_ocean, dtype=bool)
+        )
     hydro = getattr(world, "hydrology_cache", None)
     if hydro is None or len(hydro.points) != len(elevations):
         return elevations <= sea_level_m
@@ -238,20 +251,34 @@ def _ocean_connected_mask(
     return _seeded_connected_mask(elevations, sea_level_m, hydro.neighbor_idx, seed)
 
 
-def ocean_water_volume_m3(world: "World", elevations: np.ndarray, areas_m2: np.ndarray, sea_level_m: float) -> float:
+def ocean_water_volume_m3(
+    world: "World", elevations: np.ndarray, areas_m2: np.ndarray, sea_level_m: float,
+    *, seed_is_ocean: np.ndarray | None = None, seed_neighbor_idx: np.ndarray | None = None,
+) -> float:
     """`total_water_volume_m3`, restricted to nodes that are actually the connected ocean at
     `sea_level_m` (see `_ocean_connected_mask`) -- the quantity the eustasy solve actually
     means by "the ocean's own volume." A closed basin's own below-`sea_level_m` footprint
     contributes nothing here even when its floor plunges far deeper than `sea_level_m` itself:
     it either holds no water at all (a dry catchment, however deep), or holds real, measured
     water already accounted for by `trapped_water_volume_m3`."""
-    mask = _ocean_connected_mask(world, elevations, sea_level_m, areas_m2=areas_m2)
+    mask = _ocean_connected_mask(
+        world, elevations, sea_level_m, areas_m2=areas_m2,
+        seed_is_ocean=seed_is_ocean, seed_neighbor_idx=seed_neighbor_idx,
+    )
     return total_water_volume_m3(elevations[mask], areas_m2[mask], sea_level_m)
 
 
-def _bisect_sea_level(elevations: np.ndarray, areas_m2: np.ndarray, water_volume_m3: float, volume_at) -> float:
+def _bisect_sea_level(
+    elevations: np.ndarray, areas_m2: np.ndarray, water_volume_m3: float, volume_at,
+    bracket: tuple[float, float] | None = None,
+) -> float:
     """The `h` with `volume_at(h) == water_volume_m3`, for a `volume_at` that is 0 at `min z`
-    and strictly increasing above it. Bisection on `[min z, max z + headroom]`."""
+    and strictly increasing above it. Bisection on `[min z, max z + headroom]`, or on
+    `bracket` when given *and* it actually brackets the root (checked, not trusted: a
+    stale bracket silently solving the wrong level would be worse than the slow path).
+    A missed bracket falls back to the full range, so the answer is the same converged
+    value either way -- the warm path only saves iterations (glacier-march substeps,
+    #806 review)."""
     if len(elevations) == 0:
         return 0.0
     lo = float(np.min(elevations))
@@ -260,8 +287,14 @@ def _bisect_sea_level(elevations: np.ndarray, areas_m2: np.ndarray, water_volume
     total_area = float(np.sum(areas_m2))
     if total_area <= 0.0:
         return lo
-    # Upper bracket: enough headroom that every node is submerged and then some.
-    hi = float(np.max(elevations)) + water_volume_m3 / total_area + 1.0
+    hi: float | None = None
+    if bracket is not None:
+        blo, bhi = float(bracket[0]), float(bracket[1])
+        if blo < bhi and volume_at(blo) <= water_volume_m3 <= volume_at(bhi):
+            lo, hi = blo, bhi
+    if hi is None:
+        # Upper bracket: enough headroom that every node is submerged and then some.
+        hi = float(np.max(elevations)) + water_volume_m3 / total_area + 1.0
     tolerance_m3 = _SOLVE_TOLERANCE_M * total_area / len(elevations)
     for _ in range(_SOLVE_MAX_ITERS):
         mid = 0.5 * (lo + hi)
@@ -275,7 +308,11 @@ def _bisect_sea_level(elevations: np.ndarray, areas_m2: np.ndarray, water_volume
     return 0.5 * (lo + hi)
 
 
-def _solve_sea_level_connected(world: "World", elevations: np.ndarray, areas_m2: np.ndarray, water_volume_m3: float) -> float:
+def _solve_sea_level_connected(
+    world: "World", elevations: np.ndarray, areas_m2: np.ndarray, water_volume_m3: float,
+    *, seed_is_ocean: np.ndarray | None = None, seed_neighbor_idx: np.ndarray | None = None,
+    bracket: tuple[float, float] | None = None,
+) -> float:
     """`solve_sea_level`, but bisecting against `ocean_water_volume_m3` (connectivity-restricted)
     rather than the bare `total_water_volume_m3` -- see this module's own docstring for why a
     candidate level can't be allowed to "flood" a disconnected closed basin for free. Recomputes
@@ -284,7 +321,12 @@ def _solve_sea_level_connected(world: "World", elevations: np.ndarray, areas_m2:
     own docstring -- so `ocean_water_volume_m3(h)` stays strictly increasing and bisection stays
     valid), which is why this isn't simply `total_water_volume_m3` over one fixed mask."""
     return _bisect_sea_level(
-        elevations, areas_m2, water_volume_m3, lambda h: ocean_water_volume_m3(world, elevations, areas_m2, h)
+        elevations, areas_m2, water_volume_m3,
+        lambda h: ocean_water_volume_m3(
+            world, elevations, areas_m2, h,
+            seed_is_ocean=seed_is_ocean, seed_neighbor_idx=seed_neighbor_idx,
+        ),
+        bracket=bracket,
     )
 
 

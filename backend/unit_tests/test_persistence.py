@@ -11,6 +11,7 @@ from app.hydroclimate import climate
 from app.elevation_lines import line_spacing_rad
 from app.world import generate_world, step_world
 
+
 from .legacy_lines import LegacyRowLookup, line_world_like, retired_class_names
 
 
