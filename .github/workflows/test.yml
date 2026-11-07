@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     # Core-module PRs map to most of the suite (72/95 files for 4 hydro modules on
     # #806) plus ~10 min of setup; 60 min cancels those runs mid-suite.
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
         with:
