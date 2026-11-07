@@ -4,15 +4,7 @@ pinned-omega motion mechanism."""
 import numpy as np
 import pytest
 from app import debug_worlds, persistence
-from app.hydroclimate import hydrology
 from app.world import step_world
-
-
-@pytest.fixture(autouse=True)
-def _no_glacier_march(monkeypatch):
-    # No test in this module asserts on ice: the multi-Myr steps evolve pinned-omega
-    # scenarios, and marching glaciers over them stalls the suite (#806).
-    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
 
 
 def test_generate_debug_world_unknown_scenario_raises():

@@ -2,20 +2,12 @@
 `overlap_onset_years` field."""
 
 import numpy as np
-import pytest
 
 from app import geometry, lithosphere, merge_split
-from app.hydroclimate import hydrology
 from app.lithosphere_plate import growth_seed_thickness
 from app.plates import compute_node_overlap
 from app.world import World, generate_world, step_world
 
-
-@pytest.fixture(autouse=True)
-def _no_glacier_march(monkeypatch):
-    # No test in this module asserts on ice: the multi-Myr steps evolve overlap
-    # envelopes, and marching glaciers over them stalls the suite (#806).
-    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
 
 from .quad_fixtures import block_keys, quad_plate
 

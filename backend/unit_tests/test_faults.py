@@ -20,7 +20,6 @@ from app.faults import (
     update_faults,
 )
 from app.world import World, generate_world, step_world
-from app.hydroclimate import hydrology
 
 from .quad_fixtures import quad_plate
 
@@ -28,14 +27,6 @@ from .quad_fixtures import quad_plate
 # low while still exercising spawn/age/retire/reconcile -- the default rate is tuned for
 # plausibility over a long run, not for a 15-step test.
 pytestmark = pytest.mark.usefixtures("_fast_faults")
-
-
-@pytest.fixture(autouse=True)
-def _no_glacier_march(monkeypatch):
-    # No test in this module asserts on ice: the Myr steps grow tectonic setup
-    # (fault mesh, shortening), and marching glaciers over them costs ~20 min per
-    # test (#806). Production and ice-asserting tests march on.
-    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
 
 
 @pytest.fixture

@@ -8,19 +8,10 @@ existing), and turning a knob up/down actually moves the corresponding process.
 import numpy as np
 import pytest
 
-from app.hydroclimate import erosion, hydrology, volcanism
+from app.hydroclimate import erosion, volcanism
 from app.world import TUNING_MULTIPLIER_FIELDS, World, generate_world, step_world
 
 from .quad_fixtures import quad_plate
-
-
-@pytest.fixture(autouse=True)
-def _no_glacier_march(monkeypatch):
-    # No test in this module asserts on marched ice (knob-vs-untuned erosion,
-    # volcanism land built, collision thickening): the multi-Myr steps evolve the
-    # surface, and marching glaciers over them stalls the suite (#806, #822).
-    # Production and ice-asserting tests march on.
-    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
 
 
 def _elevation_snapshot(world: World) -> np.ndarray:

@@ -97,7 +97,7 @@ def test_compute_hydrology_exposes_wet_precipitation_once_in_external_supply():
     )
 
 
-def test_lake_takes_full_wet_share_including_snow():
+def test_lake_takes_full_wet_share_including_snow(march_glaciers):
     # The lake's direct supply is its FULL wet share -- rain plus snow -- exactly, not a
     # re-weighted slice of dry rain (#806 review). Wet snow has no glacier to join and
     # no D4 cap hand-off yet, so routing only the rain share deletes it; and it cannot
@@ -693,7 +693,7 @@ def test_compute_hydrology_history_years_does_not_advance_lake_storage(monkeypat
     assert history.discharge_m3_s[29] == 0.0
 
 
-def test_compute_hydrology_history_years_leaves_ice_on_the_zero_length_step(monkeypatch):
+def test_compute_hydrology_history_years_leaves_ice_on_the_zero_length_step(march_glaciers, monkeypatch):
     # Cold and snowy: snow makes ice over the step's own `years` only, so a
     # zero-duration pass grows none, whatever span basins get to fill.
     monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", True)
@@ -957,7 +957,7 @@ def test_rivers_flow_on_through_a_cold_band_to_the_sea():
     assert float(fields.discharge_m3_s[fields.is_ocean].sum()) >= upland_m3_s * keep * (1.0 - 1e-9)
 
 
-def test_discharge_carries_the_ice_ledgers_meltwater_exactly_once_at_any_step_length():
+def test_discharge_carries_the_ice_ledgers_meltwater_exactly_once_at_any_step_length(march_glaciers):
     # An all-land chain under 200 m of melting ice, draining to its lowest node. The discharge
     # arriving at that sink is the ledger's meltwater (surface and basal melt, overflow, capped ice, bare-ground snow; not
     # calving) spread over the step, in m^3/s (issue #355).
@@ -1133,7 +1133,7 @@ def test_seasonal_lake_ice_helpers_match_analytic_cycle_and_are_continuous():
     assert near[2] == pytest.approx(0.0, abs=1e-5)
 
 
-def test_compute_hydrology_threads_seasonal_amplitude_into_glacier_melt():
+def test_compute_hydrology_threads_seasonal_amplitude_into_glacier_melt(march_glaciers):
     d = 0.002
     theta = d * np.arange(12)
     elevation = 500.0 - 60.0 * np.arange(12)
@@ -1461,7 +1461,7 @@ def test_compute_hydrology_delivers_every_drop_of_liquid_water_past_cold_nodes(c
     assert abs(ledger.residual_m3) <= 1e-9 * ledger.external_supply_m3
 
 
-def test_compute_hydrology_banks_a_cold_chains_snow_as_ice():
+def test_compute_hydrology_banks_a_cold_chains_snow_as_ice(march_glaciers):
     # Same 12-node monotonic-descent chain as the end-to-end test, just below freezing (-3C)
     # with no seasonal swing: every drop falls as snow and none melts, so no liquid water
     # reaches the ocean and the snow stays on the ground as ice (issue #353: gathered into its
@@ -1481,7 +1481,7 @@ def test_compute_hydrology_banks_a_cold_chains_snow_as_ice():
     assert float(np.dot(fields.glacier_depth, _node_areas(world))) == pytest.approx(ledger.closing_m3)
 
 
-def test_compute_hydrology_snows_on_an_ice_cap_above_freezing_but_lets_its_water_drain():
+def test_compute_hydrology_snows_on_an_ice_cap_above_freezing_but_lets_its_water_drain(march_glaciers):
     # Same 12-node descending chain as the cold-chain test, at a sampled temperature of
     # +2C -- above freezing. A bare chain routes rain to the sea. An otherwise-identical chain
     # that already carries a real ice cap (200 m of glacier) still takes its precipitation as
@@ -1925,7 +1925,7 @@ def test_physical_water_accounts_for_transit_loss_lake_retention_and_ocean_arriv
     assert source_m3_per_yr.sum() == pytest.approx(evaporated + settled.sum())
 
 
-def test_ice_ledger_closes_across_steps_and_meltwater_never_refreezes_as_river_ice():
+def test_ice_ledger_closes_across_steps_and_meltwater_never_refreezes_as_river_ice(march_glaciers):
     # Cold, snowy uplands above a band whose summers melt snow. That meltwater used to settle on
     # the band and refreeze as river ice, added after the solve; now it flows on as water (RFC
     # 0014 D2(b), #539), and each step's closing ice is the next step's opening.
@@ -2232,7 +2232,7 @@ def _glacier_ledger_run(precipitation, temperature, amplitude, steps=3, glacier_
     return world, runs
 
 
-def test_glacier_account_chains_steps_and_closes_the_full_precipitation_ledger():
+def test_glacier_account_chains_steps_and_closes_the_full_precipitation_ledger(march_glaciers):
     temperature = np.where(np.arange(12) < 4, -20.0, -3.0)
     amplitude = np.where(np.arange(12) < 4, 0.0, 10.0)
     world, runs = _glacier_ledger_run(np.full(12, 800.0), temperature, amplitude)
@@ -2283,7 +2283,7 @@ def test_glacier_account_chains_steps_and_closes_the_full_precipitation_ledger()
         opening = fields.glacier_depth
 
 
-def test_melting_ice_releases_its_account_outward_and_leaves_control_ice_to_the_solve():
+def test_melting_ice_releases_its_account_outward_and_leaves_control_ice_to_the_solve(march_glaciers):
     temperature = np.full(12, 8.0)
     amplitude = np.full(12, 15.0)
     _, runs = _glacier_ledger_run(np.full(12, 800.0), temperature, amplitude, steps=1, glacier_depth=np.full(12, 40.0))
@@ -2298,7 +2298,7 @@ def test_melting_ice_releases_its_account_outward_and_leaves_control_ice_to_the_
     )
 
 
-def test_bare_ground_snow_melts_within_the_step_and_never_enters_the_account():
+def test_bare_ground_snow_melts_within_the_step_and_never_enters_the_account(march_glaciers):
     # Frozen mask, summers warm enough to clear it: the snow passes straight through.
     world, runs = _glacier_ledger_run(np.full(12, 800.0), np.full(12, -1.0), np.full(12, 15.0), steps=1)
     glacier = runs[0].glacier_water_ledger
@@ -2462,7 +2462,7 @@ def test_d1_precipitation_partition_sums_to_p():
     assert bare_rain == pytest.approx(dry * (1.0 - cover) * (1.0 - snow_ground))
 
 
-def test_d2_march_hold_never_books_more_loss_than_exists():
+def test_d2_march_hold_never_books_more_loss_than_exists(march_glaciers):
     # A sheet that melts away early must not keep booking its transient melt over the
     # held remainder: held losses are clamped to the available ice, so the residual
     # stays ~zero instead of going deeply negative (#806 review).
@@ -2484,7 +2484,7 @@ def test_d2_march_hold_never_books_more_loss_than_exists():
     assert entry["held_years"] > 0.0
 
 
-def test_d2_march_fast_path_on_an_ice_free_world():
+def test_d2_march_fast_path_on_an_ice_free_world(march_glaciers):
     # With no ice and no snowfall the march takes the fast path -- one endpoint solve
     # over the whole step instead of settling a few substeps in and holding the rest
     # (review of #806: same answer, what main ran). The ledger still closes exactly
@@ -2507,7 +2507,7 @@ def test_d2_march_fast_path_on_an_ice_free_world():
     assert np.all(fields.glacier_depth == 0.0)
 
 
-def test_d2_march_ledger_closes_on_growing_ice():
+def test_d2_march_ledger_closes_on_growing_ice(march_glaciers):
     # The march's summed substep ledgers close against the closing ice to 0.1% of the
     # step's accumulation, and every step logs its substeps, held years, settlement and
     # volume path (RFC 0015 D2, #789).
@@ -2533,7 +2533,30 @@ def _flow_line_march_world():
     return World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
 
 
-def test_world_flag_off_takes_the_same_path_as_the_test_knob_off(monkeypatch):
+def test_march_carries_state_across_three_substeps(march_glaciers):
+    # Review of #806: the bounded march integration case -- exactly three 250 yr
+    # substeps (750 yr). Each substep opens with the previous one's closing ice, and
+    # the summed ledger and meltwater stay consistent. Full-length marches belong in
+    # stress_tests; this is the unit gate's march coverage.
+    ice_sheet.MARCH_LOG.clear()
+    world = _flow_line_march_world()
+    fields = hydrology.compute_hydrology(world, np.full(12, 800.0), np.full(12, -3.0), years=750)
+    entry = ice_sheet.MARCH_LOG[-1]
+    assert entry["substeps"] == 3
+    assert entry["marched_years"] == pytest.approx(750.0)
+    assert entry["held_years"] == 0.0
+    assert entry["settled"] is False
+    assert len(entry["volume_path_km3"]) == 4
+    volumes = entry["volume_path_km3"]
+    assert volumes[0] == 0.0
+    assert volumes[-1] > 0.0
+    ledger = fields.ice.ledger
+    assert ledger.accumulation_m3 > 0.0
+    assert abs(ledger.residual_m3) <= 1e-3 * ledger.accumulation_m3
+    assert float(np.dot(fields.glacier_depth, _node_areas(world))) == pytest.approx(ledger.closing_m3)
+
+
+def test_world_flag_off_takes_the_same_path_as_the_test_knob_off(march_glaciers, monkeypatch):
     # World.simulate_glacier_march=False gates the same zero-length path as the
     # MARCH_GLACIERS test knob off (#806): one opening-state solve, ice frozen.
     precip, temp, years = np.full(12, 800.0), np.full(12, -3.0), 10_000
@@ -2553,7 +2576,7 @@ def test_world_flag_off_takes_the_same_path_as_the_test_knob_off(monkeypatch):
     np.testing.assert_array_equal(off_by_flag.glacier_depth, off_by_knob.glacier_depth)
 
 
-def test_march_takes_the_fast_path_with_no_ice_and_no_snow():
+def test_march_takes_the_fast_path_with_no_ice_and_no_snow(march_glaciers):
     # Review of #806: with no ice and nothing that could start any, the march would run
     # its minimum 8 substeps to settle on an unchanged volume; one endpoint solve is
     # the same answer. Both a dry world and warm rain (far above freezing, so no
@@ -2592,7 +2615,7 @@ def test_march_sea_level_resolve_uses_the_seeded_mask(monkeypatch):
     assert all(n == s for n, s in calls)
 
 
-def test_march_skips_the_final_sea_level_resolve(monkeypatch):
+def test_march_skips_the_final_sea_level_resolve(march_glaciers, monkeypatch):
     # Review of #806: the last substep's re-solve feeds no further solve (each solve
     # reads the previous level) and nothing downstream reads the march's own level,
     # so a two-substep march re-solves exactly once.
@@ -2609,7 +2632,7 @@ def test_march_skips_the_final_sea_level_resolve(monkeypatch):
     assert len(calls) == 1
 
 
-def test_step_world_honors_the_march_flag():
+def test_step_world_honors_the_march_flag(march_glaciers):
     # The flag reaches the march through a real step, not just compute_hydrology.
     kw = dict(seed=42, num_plates=2, node_density=0.25, climate_density=0.25, fluid_density=0.25)
     ice_sheet.MARCH_LOG.clear()
@@ -2622,7 +2645,7 @@ def test_step_world_honors_the_march_flag():
     assert ice_sheet.MARCH_LOG[-1]["substeps"] == 0
 
 
-def test_march_profiler_spans_fire_only_above_the_cost_gate():
+def test_march_profiler_spans_fire_only_above_the_cost_gate(march_glaciers):
     # The march's discrete phases (graph build, ice solves, sea-level re-solves) earn
     # profiler spans only when the step may cost 500ms+ (MARCH_PROFILE_MIN_YEARS, #801);
     # short marches stay out of recorded trees.

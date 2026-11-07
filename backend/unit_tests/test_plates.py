@@ -1,9 +1,7 @@
 import functools
 
 import numpy as np
-import pytest
 from app import cratons, geometry, lithosphere
-from app.hydroclimate import hydrology
 from app.elevation_lines import (
     CRUST_TYPE_CONTINENTAL,
     CRUST_TYPE_INHERIT,
@@ -33,14 +31,6 @@ from app.world import generate_world, step_world
 from app.worldsketch import SKETCH_GRID_H, SKETCH_GRID_W, SketchMasks
 
 from .quad_fixtures import lobed_plate
-
-
-@pytest.fixture(autouse=True)
-def _no_glacier_march(monkeypatch):
-    # No test in this module asserts on marched ice (land-fraction and tiling
-    # mechanics): the multi-Myr steps evolve plates, and marching glaciers over
-    # them stalls the suite (#806).
-    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
 
 
 def _measured_land_fraction(plates_list) -> float:

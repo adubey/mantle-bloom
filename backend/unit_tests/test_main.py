@@ -23,14 +23,6 @@ from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES
 from .river_fixtures import spill_hop_fields
 
 
-@pytest.fixture(autouse=True)
-def _no_glacier_march(monkeypatch):
-    # No test in this module asserts on marched ice (routes, labels, views, controls):
-    # the API steps evolve the world, and marching glaciers over them stalls the suite
-    # (#806, #822). Production and ice-asserting tests march on.
-    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
-
-
 _default_session = None
 
 
@@ -935,7 +927,6 @@ def test_plates_endpoint_reports_motion_shape_and_overlap_diagnostics(client):
         for over in entry["overlaps"]:
             assert over["plate_id"] != entry["plate_id"]
             assert 0.0 < over["fraction"] <= 1.0
-
 
 
 def test_plate_at_returns_the_owning_plate_id(client):
@@ -2087,7 +2078,6 @@ def test_controls_fault_deformation_mode_toggle_and_validation(client):
         assert world.fault_deformation_mode == mode
 
     assert client.post("/world/controls", json={"fault_deformation_mode": "nonsense"}).status_code == 400
-
 
 
 def test_controls_node_cloud_resample_mode_toggle_and_validation(client):

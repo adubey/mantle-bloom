@@ -1,20 +1,9 @@
 import numpy as np
-import pytest
 
 from app import faults, geometry, plates
-from app.hydroclimate import erosion, hydrology
+from app.hydroclimate import erosion
 from app.elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M
 from app.world import World, generate_world
-
-
-@pytest.fixture(autouse=True)
-def _no_glacier_march(monkeypatch):
-    # All tests in this module assert non-ice erosion outcomes (relief, budgets,
-    # routing) except test_glacial_erosion_carves_channels_rivers_can_inherit, which
-    # opts back in: the multi-Myr steps evolve the surface, and marching glaciers
-    # over them stalls the suite (#806, #822). Production and ice-asserting tests
-    # march on.
-    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
 
 
 def _unloaded_elevation(world) -> np.ndarray:
@@ -1105,20 +1094,20 @@ def test_apply_erosion_books_unplaceable_overflow_as_overloaded_root_delaminatio
     assert np.isclose(_tracked_continental_m3(world), tracked_before, rtol=1e-12)
 
 
-def test_glacial_erosion_carves_channels_rivers_can_inherit(monkeypatch):
-    # The one test here that asserts marched ice: seeded glaciers must carve.
-    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", True)
-    world = generate_world(seed=3, num_plates=8)
+def test_glacial_erosion_carves_channels_rivers_can_inherit(march_glaciers):
+    # Bounded unit case (review of #806): a tiny world and 3 marched substeps, with
+    # the abrasion knob turned up so 750 yr of sliding does measurable work. The
+    # realistic 5 Myr default-density run lives in stress_tests/test_erosion.py.
+    world = generate_world(seed=3, num_plates=2, node_density=0.25, climate_density=0.25, fluid_density=0.25)
     world.rain_erosion_multiplier = 0.0
     world.river_erosion_multiplier = 0.0
+    world.glacier_erosion_multiplier = 100.0
     for plate in world.plates:
         plate.set_fields_on_plate(glacier_depth=np.where(plate.collect("elevation") > world.sea_level_m, 500.0, 0.0))
     _, _, before, _, _, _ = erosion._gather_nodes(world)
-    erosion.apply_erosion(world, years=5_000_000)
+    erosion.apply_erosion(world, years=750)
     _, _, after, _, _, _ = erosion._gather_nodes(world)
-    # No river erosion at all, so all new channel is a glacial trough. Abrasion follows the
-    # basal sliding speed (issue #353), slow for a uniform blanket out of balance with its
-    # climate, so the troughs here are tens of centimetres, not metres.
+    # No river erosion at all, so all new channel is a glacial trough.
     assert np.max(after - before) > 0.1
 
 

@@ -3,7 +3,7 @@ import json
 import numpy as np
 import pytest
 from app import persistence
-from app.hydroclimate import hydrology, lakes, stranded_basins
+from app.hydroclimate import lakes, stranded_basins
 from app.hydroclimate.stranded_basins import (
     StrandedBasinTrack,
     build_report,
@@ -14,14 +14,6 @@ from app.hydroclimate.stranded_basins import (
     reconcile_world_tracks,
 )
 from app.world import generate_world, step_world
-
-
-@pytest.fixture(autouse=True)
-def _no_glacier_march(monkeypatch):
-    # No test in this module asserts on marched ice (basin detection and track
-    # persistence): the multi-Myr steps move basins, and marching glaciers over them
-    # stalls the suite (#806, #822). Production and ice-asserting tests march on.
-    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
 
 
 def _unit_points(n: int) -> np.ndarray:
