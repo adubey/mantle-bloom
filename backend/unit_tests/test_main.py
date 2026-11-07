@@ -23,6 +23,14 @@ from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES
 from .river_fixtures import spill_hop_fields
 
 
+@pytest.fixture(autouse=True)
+def _no_glacier_march(monkeypatch):
+    # No test in this module asserts on marched ice (routes, labels, views, controls):
+    # the API steps evolve the world, and marching glaciers over them stalls the suite
+    # (#806, #822). Production and ice-asserting tests march on.
+    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
+
+
 _default_session = None
 
 

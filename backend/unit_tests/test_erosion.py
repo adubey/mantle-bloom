@@ -1,9 +1,20 @@
 import numpy as np
+import pytest
 
 from app import faults, geometry, plates
-from app.hydroclimate import erosion
+from app.hydroclimate import erosion, hydrology
 from app.elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M
 from app.world import World, generate_world
+
+
+@pytest.fixture(autouse=True)
+def _no_glacier_march(monkeypatch):
+    # All tests in this module assert non-ice erosion outcomes (relief, budgets,
+    # routing) except test_glacial_erosion_carves_channels_rivers_can_inherit, which
+    # opts back in: the multi-Myr steps evolve the surface, and marching glaciers
+    # over them stalls the suite (#806, #822). Production and ice-asserting tests
+    # march on.
+    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
 
 
 def _unloaded_elevation(world) -> np.ndarray:
@@ -1094,7 +1105,9 @@ def test_apply_erosion_books_unplaceable_overflow_as_overloaded_root_delaminatio
     assert np.isclose(_tracked_continental_m3(world), tracked_before, rtol=1e-12)
 
 
-def test_glacial_erosion_carves_channels_rivers_can_inherit():
+def test_glacial_erosion_carves_channels_rivers_can_inherit(monkeypatch):
+    # The one test here that asserts marched ice: seeded glaciers must carve.
+    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", True)
     world = generate_world(seed=3, num_plates=8)
     world.rain_erosion_multiplier = 0.0
     world.river_erosion_multiplier = 0.0

@@ -721,7 +721,13 @@ def test_record_rejects_negative_or_unknown_entries():
     cratons.record(world, "unattributed_m3", -1.0)
 
 
-def test_stepping_a_world_keeps_the_craton_ledger_closed():
+def test_stepping_a_world_keeps_the_craton_ledger_closed(monkeypatch):
+    from app.hydroclimate import hydrology
+
+    # Ledger closure is ice-trajectory-independent (trial-verified: closes to the same
+    # 1e-9/1e-6 tolerances frozen), and 3x 5 Myr marched steps cost ~30 min (#806,
+    # #822). March coverage lives in the ice-sheet/hydrology suites and replay A/B.
+    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
     world = world_mod.generate_world(5, node_density=0.25)
     assert world.craton_ledger["initial_m3"] > 0.0
 
