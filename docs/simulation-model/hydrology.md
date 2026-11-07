@@ -135,8 +135,9 @@ Three kinds of water/forcing move along `flow_target`:
   a lake there like any other, and a cold lake keeps its water (RFC 0014 D2(b), #539). See
   [Glaciation](#glaciation-hydrologypy), *Liquid water doesn't freeze on the annual mean*.
 - **The breach surge** (`HydrologyFields.breach_surge`) is a spilling lake's erosive forcing,
-  sized by node count (`LAKE_BREACH_EROSION_COEFFICIENT`). It is never part of the discharge.
-  Its separately-routed accumulation (`breach_surge_accum`) contributes to river erosion only.
+  sized by the solved lake component's node count (`LAKE_BREACH_EROSION_COEFFICIENT`). It is never
+  part of the discharge. Its separately-routed accumulation (`breach_surge_accum`) contributes to
+  river erosion only and is cleared on flow cycles.
 
 `route_downstream` reports water's destinations by name: retention, terminal sink settlement,
 ocean export, cycle settlement, and transit evaporation. A flow-cycle remainder is still held at
@@ -575,9 +576,9 @@ with it. A network's
 
 **A spilling lake erodes its own outlet hard**, proportional to the lake's own surface area,
 not just the ordinary precipitation-driven flow passing through that one channel node. Once a
-sink's `should_spill` fires (see `_compute_flow_direction`), `compute_hydrology` adds an extra
+sink's `should_spill` fires in `lakes.solve_lakes_prognostic`, `compute_hydrology` adds an extra
 term into `water_source` right there -- `LAKE_BREACH_EROSION_COEFFICIENT` times the node count
-of that lake's own connected component (`_lake_component_sizes`, a union-find grouping over
+of that solved lake's connected component (`_lake_component_sizes`, a union-find grouping over
 the same k-NN graph flow routing uses; no separate "physical area" concept exists elsewhere in
 this codebase, so node count is the same implicit area proxy `flow_accum` itself already
 relies on). That extra term then rides `route_downstream` downstream through the whole outflow
