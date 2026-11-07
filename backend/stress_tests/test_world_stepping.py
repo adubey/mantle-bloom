@@ -373,9 +373,14 @@ def test_mobile_cover_ledger_closes_over_full_quad_steps():
         assert ledger[account] > 0.0, account
 
 
-def test_stepping_a_world_keeps_land_bounded_over_30_myr_at_density_1():
+def test_stepping_a_world_keeps_land_bounded_over_30_myr_at_density_1(monkeypatch):
     # Moved from unit_tests/test_overlap_tracking.py (#826): the pre-fix engine ran land
     # fraction up ~0.07 in 30 Myr at this density; it must not run away upward any more.
+    # The glacier march is off, as it was under the unit suite's conftest: it is irrelevant
+    # to plate overlap and costs minutes per long step.
+    from app.hydroclimate import hydrology
+
+    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
     world = generate_world(7, node_density=1.0, cratons_first=False)
 
     def land_fraction(w):
