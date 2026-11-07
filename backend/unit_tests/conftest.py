@@ -12,9 +12,13 @@ import pytest
 from app.hydroclimate import hydrology
 
 
-@pytest.fixture(autouse=True)
-def _unit_tests_do_not_march_glaciers(monkeypatch):
-    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
+@pytest.fixture(autouse=True, scope="session")
+def _unit_tests_do_not_march_glaciers():
+    # Session scope: module-scoped world fixtures (test_world_smoke's stepped_world) are set up
+    # before any function-scoped autouse fixture, so a function-scoped patch left them marching.
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(hydrology, "MARCH_GLACIERS", False)
+        yield
 
 
 @pytest.fixture
