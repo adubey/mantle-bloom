@@ -1,8 +1,8 @@
 # Issue #811: time-scale interfaces and a step-size sweep
 
-Status: first pass in progress. Day, 1 yr, century, 250 yr and 100 kyr modes, plus a 20 Myr bridge
-at 250 kyr and 1 Myr steps, on seed 997271774 only, diagnostic wind. Everything below is one save and one wind mode; none of it is yet an
-attribution for RFC 0015 or RFC 0016.
+Status: first pass in progress. One save (seed 997271774) in diagnostic and `cfd` wind, from day to
+1 Myr steps, plus the three RFC 0016 windows at six step sizes. None of it is yet a full attribution for RFC 0015
+or RFC 0016, and it predates the RFC 0015 D2 glacier march (merged 2026-11-07).
 
 ## Summary in plain terms
 
@@ -24,8 +24,8 @@ Everything below is a measurement on those, with the numbers in the sections tha
   that mostly stops, and at 1 kyr it is gone. That is a step-size effect, but #754 had already traced
   these events to a lake-ice sublimation bug, so it does not show a general clock mismatch. Window A, the third gate window, shows no such swings at any step size. On the
   current code the D and E events no longer occur at all, so those windows need replacing regardless.
-- **Ice (RFC 0015) is not measured yet.** The ice march (RFC 0015 D2) is not merged, so every ice
-  number here is from the old one-shot solve. The RFC 0015 agent reports that the march has its own
+- **Ice (RFC 0015) is not measured yet.** The ice march (RFC 0015 D2) merged on 2026-11-07 (PR #806),
+  after every run here, so every ice number is from the old one-shot solve. The RFC 0015 agent reports that the march has its own
   timescale problems (a regime change at 250 yr and a settle test that fails, #822).
 - **So, are RFC 0015 and 0016 slow because of timescale mismatch?** Not established. For RFC 0016
   the evidence points at a specific bug that is already fixed, not at the clocks in general. For RFC
@@ -205,7 +205,7 @@ numbers.
   matters for the compute budget of the post-D2 rerun.
 - **Correction to my earlier reading.** The comment says my century and 250 yr observation (ice and
   sea level do not move) predates the march merge at `dc855ca3`. `dc855ca3` is the merge of my own
-  PR #815; D2 (PR #806) is still open and is not in `origin/main`. So every run here used the
+  PR #815; D2 (PR #806) was still open then. It merged on 2026-11-07, after every run here. So every run here used the
   one-shot ice solve, and the observation is a statement about that solver. It is still true that
   the post-D2 rerun may differ: the march re-solves sea level from the current ice debit at every
   substep, which could move sea level in exactly those modes.
@@ -296,6 +296,43 @@ as the registered account says. I did not recompute the +495,624 km3 event chang
 - **The three windows differ.** D and E show large 2.3M to near-zero swings through 10 kyr; A shows
   none. That fits per-basin causes such as #754's better than one general clock mismatch.
 
+## CFD wind against diagnostic wind
+
+Compact data: [`seed997271774-cfd.json`](seed997271774-cfd.json). The same seven modes as the
+diagnostic set, with `--wind cfd`, on `dc855ca3` in a detached baseline worktree (the diagnostic
+runs' commit, because #819 has since changed bathymetry on `main`), same 10 day-step warm-up. Smoke
+check: the CFD atmosphere advances 86,400 s per step.
+
+| Mode | Lake km3 first to last (CFD / diag) | Median max land discharge m3/s (CFD / diag) | Steps dropping lake >1,000 km3 (CFD / diag) | Body reversals (CFD / diag) |
+|---|---|---|---|---|
+| Day | 288k to 272k / 100k to 94k | 103k / spiky | 3 / 1 | 0 / 6 |
+| 1 yr | 289k to 443k / 102k to 280k | 103k / 49k | 0 / 7 | 0 / 1 |
+| Century | 369k to 916k / 252k to 314k | 168k / 72k | 23 / 64 | 13 / 29 |
+| 250 yr | 387k to 884k / 261k to 348k | see json | 52 / 67 | 21 / 102 |
+| 100 kyr | 386k to 582k / 253k to 547k | 184k / 87k | 99 / 85 | 32 / 8 |
+| 250 kyr (20 Myr) | 383k to 327k / 230k to 354k | see json | 40 / 32 | 9 / 4 |
+| 1 Myr (20 Myr) | 353k to 365k / 204k to 245k | see json | 7 / 10 | 6 / 0 |
+
+- **The CFD clock does not follow the step.** It advances one simulated day per step in every mode,
+  so each 200-step run sees 200 atmosphere days; the 250 kyr and 1 Myr bridges see 80 and 20. It is
+  real time only in the day mode.
+- **Global means agree, the hydrology does not.** Mean precipitation is within about 0.3% of
+  diagnostic (1198 against 1201 mm in day mode) and mean temperature within 0.1 C. But CFD starts
+  wetter (lake volume 289k to 387k against 100k to 261k km3) and its median largest river is about
+  twice diagnostic's (103k to 184k against 49k to 87k m3/s). So the difference is in where rain
+  falls, not how much.
+- **The 1/dt mechanism, quantified.** In CFD day mode, step 8 has a largest land discharge of 124 M
+  m3/s, far beyond any real river. Times the 86,400 s step that is about 10,720 km3, and the world
+  lake volume drops 11,060 km3 in the same step: a one-step lake release booked as a one-day flow.
+  This is the clearest case so far of the overflow-as-rate behaviour in finding 1, 200 times the
+  diagnostic day peak.
+- **Large-lake reversals are mixed:** more with CFD at 100 kyr and the bridges (32/931 against
+  8/727; 9/251 against 4/195; 6/38 against 0/15), fewer at century and 250 yr. Samples are small.
+- **Ledgers close to 3e-7 or better in every CFD mode** (day mode loosest, 2.8e-7).
+- **What this does not show.** Whether CFD wind's larger rivers are more or less right, or whether the
+  step-size sensitivity differs between wind models in any way beyond the day spike. One save. No
+  hour mode yet. The post-RFC 0019 rain arm is not run.
+
 ## Method change: warm up first
 
 Because of finding 2, every mode now runs the same `--warmup-days` day-length steps (default 10)
@@ -305,8 +342,8 @@ taken without warm-up and is kept for the record.
 ## Open
 
 - Identify the step-2 body and why it disappears (cap level, tier, rim, `#758` hysteresis).
-- Hour and `cfd` modes. Why the D/E lake peaks at 5 kyr, and the anchor's dry steps in A.
+- Hour mode (diagnostic and `cfd`). Why the D/E lake peaks at 5 kyr, and the anchor's dry steps in A.
 - Second save at every mode.
-- Rerun the ice metrics once RFC 0015 D2 merges (PR #806; march cost and regime boundary in the RFC 0015 note).
+- Rerun the ice metrics once RFC 0015 D2 merges (PR #806, merged 2026-11-07; march cost and regime boundary in the RFC 0015 note).
 - The #553 depth-cap warning on seed 910211954 at step 1 (6.7e4 km3 gross overflow on lake-tier
   bodies, 3.5e4 on sea-tier bodies) is another large-overflow route.
