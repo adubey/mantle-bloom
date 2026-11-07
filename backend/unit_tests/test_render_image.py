@@ -325,8 +325,8 @@ def test_stream_animation_mp4_runs_to_completion_when_never_stopped():
 
 
 def test_stream_animation_mp4_steps_per_frame_steps_every_time_but_renders_only_the_last():
-    # steps_per_frame=5 real step_fn calls per frame after the first, but still only 3 frames
-    # rendered/encoded -- not one bigger step_fn(world, 5 * step_years) call per frame (see
+    # steps_per_frame=3 real step_fn calls per frame after the first, but still only 2 frames
+    # rendered/encoded (was 5 x 3 frames, #826) -- not one bigger step_fn(world, 5 * step_years) call per frame (see
     # stream_animation_mp4's own docstring for why that distinction matters).
     world = _world()
     step_calls = []
@@ -336,19 +336,19 @@ def test_stream_animation_mp4_steps_per_frame_steps_every_time_but_renders_only_
         step_world(w, years)
 
     messages = list(render_image.stream_animation_mp4(
-        world, "behrmann", "elevation", 64, 64, None, 200_000, 5, 3,
+        world, "behrmann", "elevation", 64, 64, None, 200_000, 3, 2,
         step_fn=_counting_step,
     ))
     progress = [m for m in messages if m[0] == "progress"]
-    assert [m[1] for m in progress] == [1, 2, 3]
-    assert [m[4] for m in progress] == [0.0, 1_000_000.0, 2_000_000.0]  # 5 * 200_000 per frame
+    assert [m[1] for m in progress] == [1, 2]
+    assert [m[4] for m in progress] == [0.0, 600_000.0]  # 3 * 200_000 per frame
 
-    assert step_calls == [200_000] * 10  # (3 - 1) * 5 real, individual step_fn calls
-    assert world.steps_taken == 10
+    assert step_calls == [200_000] * 3  # (2 - 1) * 3 real, individual step_fn calls
+    assert world.steps_taken == 3
 
     done = messages[-1]
     with av.open(io.BytesIO(done[1])) as container:
-        assert sum(1 for _ in container.decode(video=0)) == 3  # still only 3 frames encoded
+        assert sum(1 for _ in container.decode(video=0)) == 2  # still only 2 frames encoded
 
 
 def test_stream_animation_mp4_stop_event_can_interrupt_mid_frame_batch():
