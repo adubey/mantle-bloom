@@ -365,13 +365,11 @@ all). Compared with day mode from [`seed997271774-cfd.json`](seed997271774-cfd.j
   cell. In day mode the same release gave 124 M m3/s, which is 97% of the drop. The peak grows
   with 1/dt (2.3 G at one hour against 0.12 G at one day, 19x for a 24x shorter step), as
   `overflow / max(years, 1e-30)` predicts. It is a bookkeeping rate, not a river.
-- **The diagnostic hour run has two features that are not lake dumps.** Its 3.5 M m3/s peak is
-  at step 110, with a lake change of only 12 km3 (times 3,600 s that is 12.7 km3 of flow), so it
-  is not a release. Its one 5,136 km3 lake drop is at step 13, where the largest discharge is
-  1.6 M m3/s (5.9 km3), so the water did not leave through the largest river either. A drop of
-  the same size (5,112 km3) appears in diagnostic day mode, so it does not scale with the step.
-  I have not traced either feature; the step-13 drop is not the step-2 transient in the
-  warm-up section.
+- **The two diagnostic-run features are explained in the next section.** The 3.5 M m3/s peak at
+  step 110 is a 12.7 km3 lake release booked as a one-hour flow (an earlier version of this
+  note said it was not a release; that was wrong), and the 5,136 km3 drop at step 13 is a lake
+  that reached the ocean.
+
 - **No large-lake reversals at all** in either hour run. Ice moves under 0.1% and sea level
   0.5 m (diagnostic) or 0.03 m (`cfd`) over the run.
   The sampled lake window is 8.3 days, so this says little about flicker, which needs
@@ -476,6 +474,45 @@ reversals. Two things I noticed and did not chase: the body's volume alternates 
 (0.953 and 0.887M km3 from step 28 to 34, a period-2 swing of about 7%), and the 5.5 m level
 step at step 36. One window, one step size.
 
+## The hour run's two odd features, and a start-up transient keyed to the call count
+
+Compact data: [`seed997271774-hour-features.json`](seed997271774-hour-features.json). New probe:
+`bin/debug/probe_hour_features.py`. Diagnostic wind, the hour-mode setup, `dc855ca3`.
+
+- **Step 110, the 3.5 M m3/s peak, is a lake release.** The lake ledger shows 12.73 km3 overflowing
+  out of lakes and 11.78 km3 leaving storage, in a 3,896 km2 lake of 12.0 km3 that empties. The
+  largest river carries 12.7 km3 over the 3,600 s step, so it is the overflow-as-rate behaviour
+  (finding 1) at a small scale.
+- **Step 13, the 5,136 km3 drop, is a lake reaching the ocean.** Two bodies vanish: one of
+  5,024 km3 over 100,902 km2 (mean depth 50 m) and one of 106 km3, and 97% and 100% of their former
+  nodes are ocean afterwards. The ledger books 5,151 km3 of overflow to the ocean and a
+  storage change of -5,136 km3. The largest river carries only 5.9 km3 that step, so the water did
+  not travel by a river. The sea level rises 14.3 mm, which over a 3.6e8 km2 ocean (my figure, not
+  read from the world) is 5,150 km3. The step before (step 12) has a 373.6 km3 overflow to the
+  ocean and 2,193 km3 of lake-to-lake transfer, with a 1,041 km3 body falling to 106 km3.
+- **Both land on the same call number whatever the step length.** In diagnostic wind the first big drop
+  is at measured step 13 for hour steps (5,136 km3), day steps (5,112 km3) and 1 yr steps (3,085
+  km3). In `cfd` wind the drops are at steps 8, 9 and 10 for both hour and day: 11,052, 2,819 and
+  2,394 km3 against 11,060, 2,821 and 2,394 km3. A 24x change in step length does not move them.
+  The sea level series agrees to within 2 mm step by step between hour and day over the first
+  16 steps (-402.570, -402.525, -402.502, -402.554 for steps 1 to 4 in both).
+- **It is the call count since the save was loaded, not the warm-up.** I changed the warm-up
+  from 10 to 0, 5 and 20 day steps (diagnostic, hour steps). The 5,151 km3 overflow to the ocean
+  happens at call 23 after load in every case (measured step 13, 23, 18 and 3), the 374 km3
+  overflow at call 22, and a smaller 784 km3 one at call 20 in the 5-step case. So it is a
+  deterministic start-up sequence, measured in calls, that does not scale with the step.
+- **What I did not establish.** What carries the sequence from call to call. A hypothesis that fits:
+  a spill chain between lakes that moves one link per call, so that it takes about 23 calls to
+  reach the ocean. I did not test it, and I found no call counter in `world.py`, `hydrology.py` or
+  `lakes.py` (grep for step counts and modulo cadences). I also did not run it on a save made
+  after #758, so it may be specific to this older save.
+- **Why it matters for #811.** The earlier modes' first 10 to 30 measured steps are partly this
+  transient, in every step size. At 100 kyr, 23 calls is 2.3 Myr of simulated time; at one hour
+  it is 23 hours. If it is a spill chain moving one link per call, it is a real
+  time-scale mismatch (water crossing a chain of lakes at a rate set by the step count, not by
+  the step length), and it would act in the long-step modes as well as the short ones. That
+  is a hypothesis, not a result.
+
 ## Method change: warm up first
 
 Because of finding 2, every mode now runs the same `--warmup-days` day-length steps (default 10)
@@ -486,6 +523,7 @@ taken without warm-up and is kept for the record.
 
 - Identify the step-2 body and why it disappears (cap level, tier, rim, `#758` hysteresis).
 - Why the merged D/E lake state is entered at 2.5 and 5 kyr but not at 10 kyr, and whether the slice length or the climate refresh interval drives it; the period-2 volume swing and the 5.5 m level step in A.
+- Test whether a spill chain moving one link per call explains the call-23 start-up transient, and rerun on a post-#758 save.
 - Second save at every mode.
 - Rerun the ice metrics once RFC 0015 D2 merges (PR #806, merged 2026-11-07; march cost and regime boundary in the RFC 0015 note).
 - The #553 depth-cap warning on seed 910211954 at step 1 (6.7e4 km3 gross overflow on lake-tier
