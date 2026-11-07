@@ -6,7 +6,8 @@
 
 ## Revision note
 
-**2026-11-06 — G2 non-worsening criterion amendment.** The owner approved replacing the
+**2026-11-06 — G2 non-worsening criterion amendment.** This revision is proposed in
+[PR #824](https://github.com/adubey/mantle-bloom/pull/824). The owner approved replacing the
 positive-effect requirements after the first four held-out pairs had `D_s = 0` in every pair:
 neither method produced a tiny breakup (66 baseline splits and 38 graph splits, zero tiny
 events in either arm). The previous amendment required a positive mean
