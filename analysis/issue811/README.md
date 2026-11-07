@@ -22,8 +22,8 @@ Everything below is a measurement on those, with the numbers in the sections tha
 - **RFC 0016's stuck test events (windows D and E) depend on step size.** At the default 100 kyr
   down to 10 kyr the lake alternates between about 2.3M km3 and nearly empty. At 5 kyr and 2.5 kyr
   that mostly stops, and at 1 kyr it is gone. That is a step-size effect, but #754 had already traced
-  these events to a lake-ice sublimation bug, so it does not show a general clock mismatch. On the
-  current code the events no longer occur at all, so the windows need replacing regardless.
+  these events to a lake-ice sublimation bug, so it does not show a general clock mismatch. Window A, the third gate window, shows no such swings at any step size. On the
+  current code the D and E events no longer occur at all, so those windows need replacing regardless.
 - **Ice (RFC 0015) is not measured yet.** The ice march (RFC 0015 D2) is not merged, so every ice
   number here is from the old one-shot solve. The RFC 0015 agent reports that the march has its own
   timescale problems (a regime change at 250 yr and a settle test that fails, #822).
@@ -268,7 +268,33 @@ not overlap-matched across steps as #754 does it.
   absence of the events on current `main` is consistent with #757 and #758 having removed it.
 - **Limits.** One trajectory per step size, 0.4 Myr, ice-age cycle off, no 100 yr or 1 yr run. The
   states differ across step sizes, so "gone at 1 kyr" does not show finer steps remove the flicker
-  for the same reason on a comparable state. Window A is not run.
+  for the same reason on a comparable state. Window A is covered separately below.
+
+### Window A (seed 910211954, 221.6 Myr, checkpoint `9882568e...`)
+
+Same source, driver and rule. At 100 kyr the step-2 target volume is 863,388.83 km3, matching the
+registered G0 value in `analysis/rfc0016/g0-liquid-summary.json`, and the anchor is dry at step 1
+as the registered account says. I did not recompute the +495,624 km3 event change itself.
+
+| Step | Steps | Anchor dry | Reversals / comparable | Dry counted as zero | Lake volume range km3 |
+|---|---|---|---|---|---|
+| 100 kyr | 4 | 1 | 0/1 | 0/2 | 783k to 863k |
+| 25 kyr | 16 | 3 | 0/8 | 3/14 | 750k to 894k |
+| 10 kyr | 40 | 9 | 0/17 | 12/38 | 761k to 899k |
+| 5 kyr | 80 | 42 | 0/36 | 0/78 | 863k to 957k |
+| 2.5 kyr | 160 | 91 | 0/67 | 0/158 | 921k to 985k |
+| 1 kyr | 400 | 219 | 0/179 | 0/398 | 965k to 1.01M |
+
+- **A has no strict reversals at any step size.** Its lake stays between about 750k and 1.0M km3, with
+  no 2.3M to near-zero swings. This matches the RFC's own note that A's registered event survives
+  once and is not a repeating flicker.
+- **A mild alternation at 25 kyr and 10 kyr** shows only when dry steps count as zero (3/14, 12/38):
+  the 25 kyr trace alternates between about 750k and 890k km3. It is gone at 5 kyr and below.
+- **The anchor is dry in many fine-step outputs** (42/80, 91/160, 219/400) while the lake holds
+  nearly 1M km3, so this is probably the anchor point sitting at the lake's edge, not the lake
+  disappearing. I have not checked.
+- **The three windows differ.** D and E show large 2.3M to near-zero swings through 10 kyr; A shows
+  none. That fits per-basin causes such as #754's better than one general clock mismatch.
 
 ## Method change: warm up first
 
@@ -279,7 +305,7 @@ taken without warm-up and is kept for the record.
 ## Open
 
 - Identify the step-2 body and why it disappears (cap level, tier, rim, `#758` hysteresis).
-- Hour and `cfd` modes. RFC 0016 window A, and why the lake peaks at 5 kyr.
+- Hour and `cfd` modes. Why the D/E lake peaks at 5 kyr, and the anchor's dry steps in A.
 - Second save at every mode.
 - Rerun the ice metrics once RFC 0015 D2 merges (PR #806; march cost and regime boundary in the RFC 0015 note).
 - The #553 depth-cap warning on seed 910211954 at step 1 (6.7e4 km3 gross overflow on lake-tier
