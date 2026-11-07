@@ -43,7 +43,9 @@ as the canonical source for acceptance, diagnosis gates and implementation-issue
   ```
 
   `<agent>` is the short identifier for the agent/tool doing the work (for example,
-  `claude`, `codex`, or `muse`). Use your own identifier. Keep the proposal tree for RFC
+  `claude`, `codex`, `gemini`, or `muse`). Use your own identifier. Agents scoped to the
+  primary checkout root (such as `gemini`) may use `worktrees/rfc-<NNNN>` instead of
+  `../mantle-bloom-rfc-<NNNN>`. Keep the proposal tree for RFC
   work. Each
   implementation sub-issue gets its own isolated worktree and branch from `origin/main`
   through [`start-issue`](../start-issue/SKILL.md); never switch the proposal worktree to

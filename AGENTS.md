@@ -54,8 +54,11 @@ Run from the repo root (or worktree root).
 
 - **One issue branch and worktree per issue, branched off `origin/main`.** Name the branch
   `<agent>/issue-<N>-<slug>`, where `<agent>` is the short identifier of the agent/tool
-  doing the work (for example, `claude`, `codex`, or `muse`). Use your own identifier; don't
-  present yourself as another agent. RFCs are large
+  doing the work (for example, `claude`, `codex`, `gemini`, or `muse`). Use your own identifier; don't
+  present yourself as another agent. Agents whose sandbox and file tools are scoped to the
+  workspace root (such as `gemini`) may place worktrees under `worktrees/<name>` inside the
+  primary checkout (gitignored via `/worktrees/`) instead of `../mantle-bloom-<name>` to
+  avoid out-of-workspace approval prompts. RFCs are large
   decisions tracked by a parent issue with sub-issues; each sub-issue gets its own isolated
   issue worktree. Never switch the RFC proposal worktree to an issue branch. Use
   `start-rfc` to begin or advance an RFC workstream, `continue-rfc` to reconstruct an RFC

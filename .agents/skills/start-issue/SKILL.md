@@ -33,8 +33,11 @@ description: Set up an isolated branch, worktree, venv and ports for a Mantle-Bl
    ```
 
    `<agent>` is the short identifier for the agent/tool doing the work (for example,
-   `claude`, `codex`, or `muse`); use your own identifier. `<slug>` is two to four words,
-   e.g. `muse/issue-320-crust-transfer`. For an RFC-linked issue, use an RFC-specific path
+   `claude`, `codex`, `gemini`, or `muse`); use your own identifier. `<slug>` is two to four words,
+   e.g. `muse/issue-320-crust-transfer`. Agents whose sandbox and file tools are scoped to
+   the primary checkout root (such as `gemini`) may use `worktrees/issue-<N>` (and
+   `worktrees/rfc-<NNNN>-issue-<N>` or `worktrees/issue-<N>-baseline`) inside the primary
+   checkout instead of `../mantle-bloom-*`. For an RFC-linked issue, use an RFC-specific path
    while creating the issue branch directly from `origin/main`:
 
    ```bash
