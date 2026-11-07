@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from app import faults, geometry, plates
 from app.hydroclimate import erosion
@@ -1094,7 +1095,8 @@ def test_apply_erosion_books_unplaceable_overflow_as_overloaded_root_delaminatio
     assert np.isclose(_tracked_continental_m3(world), tracked_before, rtol=1e-12)
 
 
-def test_glacial_erosion_carves_channels_rivers_can_inherit(march_glaciers):
+@pytest.mark.usefixtures("march_glaciers")
+def test_glacial_erosion_carves_channels_rivers_can_inherit():
     # Bounded unit case (review of #806): a tiny world and 3 marched substeps, with
     # the abrasion knob turned up so 750 yr of sliding does measurable work. The
     # realistic 5 Myr default-density run lives in stress_tests/test_erosion.py.
