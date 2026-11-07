@@ -1,0 +1,335 @@
+{
+ "save": "mantle-bloom-seed997271774-87400000y.mbworld",
+ "baseline_commit": "dc855ca3",
+ "note": "cfd and diagnostic wind on the same commit, same 10 day-step warm-up, 200 measured steps (bridges: 80 and 20)",
+ "modes": {
+  "day": {
+   "cfd": {
+    "steps": 200,
+    "lake_km3_first_last": [
+     288080,
+     272416
+    ],
+    "steps_with_lake_drop_over_1000_km3": 3,
+    "lake_largest_drop_km3": 11060,
+    "max_discharge_m3_s_range": [
+     67479,
+     124078195
+    ],
+    "median_max_discharge_m3_s": 102503,
+    "mean_precipitation_mm": 1197.7,
+    "mean_air_temperature_c": 16.71,
+    "body_reversals": 0,
+    "comparable_body_steps": 4286,
+    "worst_lake_residual": 2.82681146831686e-07,
+    "mean_runtime_s": 7.2
+   },
+   "diagnostic": {
+    "steps": 200,
+    "lake_km3_first_last": [
+     99610,
+     94034
+    ],
+    "steps_with_lake_drop_over_1000_km3": 1,
+    "lake_largest_drop_km3": 5112,
+    "max_discharge_m3_s_range": [
+     23546,
+     591423
+    ],
+    "median_max_discharge_m3_s": 26174,
+    "mean_precipitation_mm": 1200.8,
+    "mean_air_temperature_c": 16.72,
+    "body_reversals": 6,
+    "comparable_body_steps": 3859,
+    "worst_lake_residual": 2.736874742745313e-08,
+    "mean_runtime_s": 5.2
+   },
+   "cfd_simulated_days_first_last": [
+    11.0,
+    210.0
+   ]
+  },
+  "year": {
+   "cfd": {
+    "steps": 200,
+    "lake_km3_first_last": [
+     289342,
+     442661
+    ],
+    "steps_with_lake_drop_over_1000_km3": 0,
+    "lake_largest_drop_km3": 8,
+    "max_discharge_m3_s_range": [
+     92498,
+     158474
+    ],
+    "median_max_discharge_m3_s": 103306,
+    "mean_precipitation_mm": 1207.9,
+    "mean_air_temperature_c": 16.7,
+    "body_reversals": 0,
+    "comparable_body_steps": 5681,
+    "worst_lake_residual": 5.233704256286699e-08,
+    "mean_runtime_s": 7.4
+   },
+   "diagnostic": {
+    "steps": 200,
+    "lake_km3_first_last": [
+     102452,
+     280195
+    ],
+    "steps_with_lake_drop_over_1000_km3": 7,
+    "lake_largest_drop_km3": 24439,
+    "max_discharge_m3_s_range": [
+     23656,
+     55633
+    ],
+    "median_max_discharge_m3_s": 48998,
+    "mean_precipitation_mm": 1205.0,
+    "mean_air_temperature_c": 16.72,
+    "body_reversals": 1,
+    "comparable_body_steps": 4597,
+    "worst_lake_residual": 1.5615432526882495e-08,
+    "mean_runtime_s": 5.2
+   },
+   "cfd_simulated_days_first_last": [
+    11.0,
+    210.0
+   ]
+  },
+  "century": {
+   "cfd": {
+    "steps": 200,
+    "lake_km3_first_last": [
+     368721,
+     916005
+    ],
+    "steps_with_lake_drop_over_1000_km3": 23,
+    "lake_largest_drop_km3": 117498,
+    "max_discharge_m3_s_range": [
+     93012,
+     178946
+    ],
+    "median_max_discharge_m3_s": 167675,
+    "mean_precipitation_mm": 1214.9,
+    "mean_air_temperature_c": 16.7,
+    "body_reversals": 13,
+    "comparable_body_steps": 5197,
+    "worst_lake_residual": 6.114950648532154e-10,
+    "mean_runtime_s": 7.2
+   },
+   "diagnostic": {
+    "steps": 200,
+    "lake_km3_first_last": [
+     252046,
+     313796
+    ],
+    "steps_with_lake_drop_over_1000_km3": 64,
+    "lake_largest_drop_km3": 71794,
+    "max_discharge_m3_s_range": [
+     33059,
+     100316
+    ],
+    "median_max_discharge_m3_s": 72186,
+    "mean_precipitation_mm": 1218.6,
+    "mean_air_temperature_c": 16.71,
+    "body_reversals": 29,
+    "comparable_body_steps": 4634,
+    "worst_lake_residual": 3.601503244098216e-11,
+    "mean_runtime_s": 5.2
+   },
+   "cfd_simulated_days_first_last": [
+    11.0,
+    210.0
+   ]
+  },
+  "250yr": {
+   "cfd": {
+    "steps": 200,
+    "lake_km3_first_last": [
+     386739,
+     883772
+    ],
+    "steps_with_lake_drop_over_1000_km3": 52,
+    "lake_largest_drop_km3": 203699,
+    "max_discharge_m3_s_range": [
+     87899,
+     201740
+    ],
+    "median_max_discharge_m3_s": 167150,
+    "mean_precipitation_mm": 1215.2,
+    "mean_air_temperature_c": 16.69,
+    "body_reversals": 21,
+    "comparable_body_steps": 5221,
+    "worst_lake_residual": 1.1997486586460875e-09,
+    "mean_runtime_s": 7.3
+   },
+   "diagnostic": {
+    "steps": 200,
+    "lake_km3_first_last": [
+     261088,
+     348332
+    ],
+    "steps_with_lake_drop_over_1000_km3": 67,
+    "lake_largest_drop_km3": 32218,
+    "max_discharge_m3_s_range": [
+     33293,
+     90521
+    ],
+    "median_max_discharge_m3_s": 72373,
+    "mean_precipitation_mm": 1219.3,
+    "mean_air_temperature_c": 16.71,
+    "body_reversals": 102,
+    "comparable_body_steps": 4710,
+    "worst_lake_residual": 2.6743706169466885e-10,
+    "mean_runtime_s": 5.2
+   },
+   "cfd_simulated_days_first_last": [
+    11.0,
+    210.0
+   ]
+  },
+  "100kyr": {
+   "cfd": {
+    "steps": 200,
+    "lake_km3_first_last": [
+     386046,
+     581545
+    ],
+    "steps_with_lake_drop_over_1000_km3": 99,
+    "lake_largest_drop_km3": 117501,
+    "max_discharge_m3_s_range": [
+     90584,
+     274477
+    ],
+    "median_max_discharge_m3_s": 184136,
+    "mean_precipitation_mm": 1188.5,
+    "mean_air_temperature_c": 16.55,
+    "body_reversals": 32,
+    "comparable_body_steps": 931,
+    "worst_lake_residual": 6.430188700345736e-12,
+    "mean_runtime_s": 7.6
+   },
+   "diagnostic": {
+    "steps": 200,
+    "lake_km3_first_last": [
+     253444,
+     547020
+    ],
+    "steps_with_lake_drop_over_1000_km3": 85,
+    "lake_largest_drop_km3": 86913,
+    "max_discharge_m3_s_range": [
+     29325,
+     129559
+    ],
+    "median_max_discharge_m3_s": 87000,
+    "mean_precipitation_mm": 1197.1,
+    "mean_air_temperature_c": 16.56,
+    "body_reversals": 8,
+    "comparable_body_steps": 727,
+    "worst_lake_residual": 3.5711794057201155e-11,
+    "mean_runtime_s": 5.6
+   },
+   "cfd_simulated_days_first_last": [
+    11.0,
+    210.0
+   ]
+  },
+  "bridge250k": {
+   "cfd": {
+    "steps": 80,
+    "lake_km3_first_last": [
+     382571,
+     327219
+    ],
+    "steps_with_lake_drop_over_1000_km3": 40,
+    "lake_largest_drop_km3": 169736,
+    "max_discharge_m3_s_range": [
+     86898,
+     278178
+    ],
+    "median_max_discharge_m3_s": 151368,
+    "mean_precipitation_mm": 1186.5,
+    "mean_air_temperature_c": 16.55,
+    "body_reversals": 9,
+    "comparable_body_steps": 251,
+    "worst_lake_residual": 2.3151138740547454e-11,
+    "mean_runtime_s": 7.7
+   },
+   "diagnostic": {
+    "steps": 80,
+    "lake_km3_first_last": [
+     229665,
+     354095
+    ],
+    "steps_with_lake_drop_over_1000_km3": 32,
+    "lake_largest_drop_km3": 100966,
+    "max_discharge_m3_s_range": [
+     34691,
+     121580
+    ],
+    "median_max_discharge_m3_s": 72141,
+    "mean_precipitation_mm": 1194.9,
+    "mean_air_temperature_c": 16.55,
+    "body_reversals": 4,
+    "comparable_body_steps": 195,
+    "worst_lake_residual": 4.6748528193187645e-12,
+    "mean_runtime_s": 5.7
+   },
+   "cfd_simulated_days_first_last": [
+    11.0,
+    90.0
+   ]
+  },
+  "bridge1m": {
+   "cfd": {
+    "steps": 20,
+    "lake_km3_first_last": [
+     353327,
+     365294
+    ],
+    "steps_with_lake_drop_over_1000_km3": 7,
+    "lake_largest_drop_km3": 176897,
+    "max_discharge_m3_s_range": [
+     87444,
+     189634
+    ],
+    "median_max_discharge_m3_s": 150389,
+    "mean_precipitation_mm": 1184.6,
+    "mean_air_temperature_c": 16.6,
+    "body_reversals": 6,
+    "comparable_body_steps": 38,
+    "worst_lake_residual": 1.3231301957731805e-12,
+    "mean_runtime_s": 8.1
+   },
+   "diagnostic": {
+    "steps": 20,
+    "lake_km3_first_last": [
+     204451,
+     244593
+    ],
+    "steps_with_lake_drop_over_1000_km3": 10,
+    "lake_largest_drop_km3": 56253,
+    "max_discharge_m3_s_range": [
+     34105,
+     138009
+    ],
+    "median_max_discharge_m3_s": 65448,
+    "mean_precipitation_mm": 1193.2,
+    "mean_air_temperature_c": 16.55,
+    "body_reversals": 0,
+    "comparable_body_steps": 15,
+    "worst_lake_residual": 1.9687066528067653e-12,
+    "mean_runtime_s": 6.1
+   },
+   "cfd_simulated_days_first_last": [
+    11.0,
+    30.0
+   ]
+  }
+ },
+ "day_cfd_spike": {
+  "step": 8,
+  "max_discharge_m3_s": 124078195.30936565,
+  "discharge_times_86400s_km3": 10720,
+  "world_lake_drop_km3": 11060
+ }
+}
