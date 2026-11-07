@@ -643,8 +643,8 @@ def _pinned_branches(seed, step_years, total_years):
 def test_pinned_branch_agrees_across_partitions():
     """RFC 0007 (#624): on pinned motion, the oceanic/continental branch agrees
     on over 95% of events between 1 Myr and 10 Myr partitions."""
-    # 10 Myr horizon with 1 vs 5 Myr partitions (was 20 Myr, 1 vs 10; #826, the full-length
-    # comparison is stress_tests/test_plume_timestep.py's remit).
+    # 10 Myr horizon with 1 vs 5 Myr partitions (was 20 Myr, 1 vs 10; #826). The original
+    # comparison is stress_tests/test_plume_timestep.py::test_pinned_branch_agrees_across_partitions_over_20_myr.
     fine = _pinned_branches(7, 1e6, 10e6)
     coarse = _pinned_branches(7, 5e6, 10e6)
     # Drops are partition-independent (same schedule, same drop rule), so the

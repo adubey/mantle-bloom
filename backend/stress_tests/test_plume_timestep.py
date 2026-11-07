@@ -131,3 +131,32 @@ def test_hotspot_track_aligns_with_plate_motion(monkeypatch):
         assert count >= 20
         assert angle < 20.0, f"seed {seed}: track {angle:.1f} deg off motion"
         assert age_corr > 0.9, f"seed {seed}: age correlation {age_corr:.3f}"
+
+
+def _pinned_branches(seed, step_years, total_years):
+    """plume_id -> oceanic_host per head on a pinned-motion convergent world."""
+    world = debug_worlds.scenario_two_plate_convergent(seed)
+    t = 0.0
+    while t < total_years - 1e-9:
+        world_mod.step_world(world, min(step_years, total_years - t))
+        t += step_years
+    return {p.plume_id: p.oceanic_host for p in world.mantle_plumes if not p.is_tail_only}
+
+
+def test_pinned_branch_agrees_across_partitions_over_20_myr(monkeypatch):
+    """RFC 0007 (#624): on pinned motion, the oceanic/continental branch agrees on over 95% of
+    events between 1 Myr and 10 Myr partitions over 20 Myr. Moved from
+    unit_tests/test_plumes.py (#826), where a 10 Myr / 1-vs-5 Myr version remains.
+
+    The glacier march is off, as under the unit suite's conftest it was measured with: it is
+    irrelevant to plume branching and costs minutes per long step."""
+    from app.hydroclimate import hydrology
+
+    monkeypatch.setattr(hydrology, "MARCH_GLACIERS", False)
+    fine = _pinned_branches(7, 1e6, 20e6)
+    coarse = _pinned_branches(7, 10e6, 20e6)
+    assert set(fine) == set(coarse), f"only in fine: {set(fine) - set(coarse)}, only in coarse: {set(coarse) - set(fine)}"
+    assert len(fine) > 0
+    assert all(host is not None for host in fine.values())
+    disagree = [pid for pid in fine if fine[pid] != coarse[pid]]
+    assert 1.0 - len(disagree) / len(fine) > 0.95, f"flipped branches: {disagree}"
