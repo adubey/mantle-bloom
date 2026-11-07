@@ -2,7 +2,8 @@
  "source": "0bda513d (RFC 0016 G1 pinned source), ice-age cycle off, control arm, 0.4 Myr from each registered checkpoint",
  "checkpoints": {
   "D": "seed910211954-225.1myr, sha256 6a8d6f90...",
-  "E": "seed910211954-224myr, sha256 4045b915..."
+  "E": "seed910211954-224myr, sha256 4045b915...",
+  "A": "seed910211954-221.6myr (recreated-at-5d666), sha256 9882568e..."
  },
  "reversal_rule": "#754: body over 10,000 km2; consecutive volume changes of opposite sign, each over half the earlier volume. The body is the anchor's wet component per step, not overlap-matched.",
  "runs": {
@@ -234,6 +235,78 @@
    "volume_range_km3": [
     206434,
     337757
+   ]
+  },
+  "a-100000": {
+   "steps": 4,
+   "anchor_dry_steps": 1,
+   "strict_reversals": 0,
+   "strict_comparable": 1,
+   "lenient_reversals": 0,
+   "lenient_comparable": 2,
+   "volume_range_km3": [
+    783205,
+    863389
+   ]
+  },
+  "a-25000": {
+   "steps": 16,
+   "anchor_dry_steps": 3,
+   "strict_reversals": 0,
+   "strict_comparable": 8,
+   "lenient_reversals": 3,
+   "lenient_comparable": 14,
+   "volume_range_km3": [
+    749634,
+    893812
+   ]
+  },
+  "a-10000": {
+   "steps": 40,
+   "anchor_dry_steps": 9,
+   "strict_reversals": 0,
+   "strict_comparable": 17,
+   "lenient_reversals": 12,
+   "lenient_comparable": 38,
+   "volume_range_km3": [
+    761345,
+    898906
+   ]
+  },
+  "a-5000": {
+   "steps": 80,
+   "anchor_dry_steps": 42,
+   "strict_reversals": 0,
+   "strict_comparable": 36,
+   "lenient_reversals": 0,
+   "lenient_comparable": 78,
+   "volume_range_km3": [
+    862530,
+    957039
+   ]
+  },
+  "a-2500": {
+   "steps": 160,
+   "anchor_dry_steps": 91,
+   "strict_reversals": 0,
+   "strict_comparable": 67,
+   "lenient_reversals": 0,
+   "lenient_comparable": 158,
+   "volume_range_km3": [
+    920571,
+    984635
+   ]
+  },
+  "a-1000": {
+   "steps": 400,
+   "anchor_dry_steps": 219,
+   "strict_reversals": 0,
+   "strict_comparable": 179,
+   "lenient_reversals": 0,
+   "lenient_comparable": 398,
+   "volume_range_km3": [
+    964995,
+    1005487
    ]
   }
  },
@@ -477,6 +550,126 @@
     290237,
     216721
    ]
+  },
+  "a-100000": [
+   null,
+   863389,
+   783205,
+   856022
+  ],
+  "a-25000": [
+   null,
+   877915,
+   null,
+   891870,
+   749634,
+   893812,
+   786296,
+   880324,
+   760840,
+   883684,
+   752975,
+   876177,
+   null,
+   889031,
+   766944,
+   889811
+  ],
+  "a-10000": [
+   null,
+   897409,
+   null,
+   897848,
+   null,
+   898906,
+   null,
+   890925,
+   761345,
+   891731,
+   null,
+   892604,
+   773487,
+   893114,
+   null,
+   894233,
+   null,
+   880542,
+   772189,
+   881470,
+   null,
+   881482,
+   773109,
+   882027,
+   null,
+   882644,
+   762826,
+   883534,
+   764340,
+   874716,
+   765059,
+   875819,
+   766146,
+   876002,
+   766551,
+   877042,
+   767555,
+   877520,
+   768162,
+   878283
+  ],
+  "a-5000": {
+   "first8": [
+    null,
+    940636,
+    878450,
+    953510,
+    880002,
+    947643,
+    880887,
+    949464
+   ],
+   "last4": [
+    null,
+    null,
+    null,
+    null
+   ]
+  },
+  "a-2500": {
+   "first8": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ],
+   "last4": [
+    null,
+    null,
+    null,
+    null
+   ]
+  },
+  "a-1000": {
+   "first8": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ],
+   "last4": [
+    null,
+    null,
+    null,
+    null
+   ]
   }
  },
  "current_main_dc855ca3_100kyr": {
@@ -508,5 +701,6 @@
     624011
    ]
   }
- }
+ },
+ "window_a_note": "100 kyr step-2 target volume 863,388.83 km3 matches analysis/rfc0016/g0-liquid-summary.json; anchor dry at step 1."
 }
