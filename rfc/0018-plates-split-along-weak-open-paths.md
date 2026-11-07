@@ -1,12 +1,30 @@
 # RFC 0018: Plates split along weak paths that are pulling apart
 
-- **Status:** Accepted (revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
+- **Status:** Accepted (revised 2026-11-06 after G2 non-worsening criterion review; revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
 - **Date:** 2026-11-03
 - **Related:** #770, #797, #802; RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (accepted predecessor; withdrawal follows gates)
 
 ## Revision note
 
-**2026-11-06 — G2 tiny-breakup endpoint amendment.** This revision is proposed in
+**2026-11-06 — G2 non-worsening criterion amendment.** The owner approved replacing the
+positive-effect requirements after the first four held-out pairs had `D_s = 0` in every pair:
+neither method produced a tiny breakup (66 baseline splits and 38 graph splits, zero tiny
+events in either arm). The previous amendment required a positive mean
+`D_s`, a paired bootstrap interval wholly above zero, and improvement on at least two seeds.
+The revised criterion passes when no more than two of the 20 held-out seeds have `D_s < 0`;
+`D_s = 0` counts as non-worsening. This permits a result with no improvement if the graph
+method also avoids adding tiny breakups. This is an owner-selected tolerance, not a geological
+rate threshold. The seed list and simulation settings remain fixed; all four observed pairs
+remain in the analysis. Because the criterion changed after four outcomes were observed,
+label the result as a second amended G2 analysis, not as preregistered. Continue to report the
+mean `D_s`, its 95% paired seed-bootstrap interval, and the number of seeds with `D_s > 0` as
+descriptive evidence, but they are no longer pass conditions.
+
+| Gate | Previous criterion | Revised criterion | Reason |
+|---|---|---|---|
+| G2 outcome threshold | Mean `D_s > 0`, two-sided 95% paired seed-bootstrap interval above zero, and `D_s > 0` on at least two seeds | No more than two of the 20 held-out seeds have `D_s < 0`; `D_s = 0` is non-worsening. Complete all 20 pairs and meet the existing 50-event requirement. | The first four pairs showed zero tiny events in both methods. Requiring positive improvement and a positive interval would reject ties even though the owner's goal is to avoid making tiny breakups worse. |
+
+**2026-11-06 — G2 tiny-breakup endpoint amendment.** This revision merged in
 [PR #823](https://github.com/adubey/mantle-bloom/pull/823). The owner approved this change after
 the first two held-out seed pairs exposed a zero-baseline failure: both methods had zero tiny
 breakups, so the relative reduction divided by a zero baseline share and was undefined. The
@@ -26,6 +44,10 @@ calculations.
 | G2 primary outcome | At least one-third relative reduction in the share of actual splits with a smaller daughter under 7% of parent area, and improvement on at least two seeds | For each seed, `D_s = T_baseline,s - T_graph,s`, the difference in tiny-breakup counts over 200 Myr. Pass when the mean paired difference is positive, its two-sided 95% paired seed-bootstrap interval excludes zero in the beneficial direction, and `D_s > 0` for at least two seeds. Use 10,000 resamples of whole seed pairs. | Relative reduction is undefined at a zero baseline share. Paired count differences are defined even when an arm has no splits or no tiny splits, and measure event burden at the fixed world exposure. |
 | G2 supporting measures | Tiny-breakup share and daughter mass distribution | Report the original relative share reduction, percentage-point difference `S_baseline - S_graph`, and smaller-daughter area and mass distributions as secondary measures. | Preserve comparison with #770 while showing conditional split quality and daughter sizes. |
 | G3 timestep comparison | Tiny-breakup share within 20% of the normal-step result | Keep the 20% relative comparison when the normal-step share is nonzero; if it is zero, require zero tiny breakups at half step. Report paired counts and shares. | Avoid dividing by a zero normal-step share. |
+
+The current outcome threshold in the later 2026-11-06 amendment supersedes the intermediate
+positive-effect criterion in this table. The intermediate endpoint and criterion were both
+changed transparently after held-out outcomes had been observed.
 
 The G2 endpoint is an amended analysis because it was selected after two seed-pair outcomes
 were observed. The original relative-share result remains reported for transparency. The
@@ -307,20 +329,24 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
    A tiny breakup is an actual split whose smaller daughter has less than 7% of the parent
    plate's area, preserving the event definition used in #770. For each seed `s`, let
    `T_baseline,s` and `T_graph,s` be the tiny-breakup counts over the fixed 200 Myr horizon,
-   and define `D_s = T_baseline,s - T_graph,s`. The graph method passes only if the mean of
-   `D_s` across the 20 paired seeds is positive, its two-sided 95% paired bootstrap interval
-   excludes zero in the beneficial direction, and at least two seeds have `D_s > 0`. Resample
-   whole seed pairs 10,000 times; never resample individual split events as independent
-   observations. For method `m`, calculate its overall tiny-breakup share as
+   and define `D_s = T_baseline,s - T_graph,s`. The graph method passes only if all 20
+   preregistered held-out pairs are complete, no more than two seeds have `D_s < 0`, and the
+   existing combined 50-actual-split event threshold is met. A tie (`D_s = 0`) counts as
+   non-worsening. Report the mean `D_s`, its two-sided 95% paired seed-bootstrap interval, and
+   the number of seeds with `D_s > 0` descriptively; resample whole seed pairs 10,000 times
+   and never resample individual split events as independent observations. For method `m`,
+   calculate its overall tiny-breakup share as
    `S_m = sum_s(T_m,s) / sum_s(B_m,s)`, where `B_m,s` is its actual split count. Report the
    original relative share reduction only when `S_baseline > 0` and both shares are defined;
    report the percentage-point difference `S_baseline - S_graph` when both shares are
    defined. If a method makes no actual splits, report its share as undefined; the primary
-   count difference remains defined. Also report per-seed counts and
+   count difference remains defined. A zero baseline tiny-breakup count provides no positive
+   reduction to estimate; evaluate non-worsening with the held-out seed sign criterion above.
+   Also report per-seed counts and
    smaller-daughter area and mass distributions. The comparison must include at least 50
    actual split events across the seed set; if it does not, continue only with seeds from a
-   reserve list frozen before the run. A zero baseline tiny-breakup count is no evidence of
-   reduction. Do not infer success from a favorable image or routing-only proxy, and do not
+   reserve list frozen before the run. Do not infer success from a favorable image or
+   routing-only proxy, and do not
    impose a hard 30% daughter-mass floor.
 4. **G3 — Check cratons, stability and cost.** The existing production split-success gate
    uses `round(elapsed_years)` in its random key. That is a known step-dependent carryover;
@@ -342,12 +368,12 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
 - [ ] G1 validates candidate availability and the coupled breakup probability on controlled
       cases, including the required monotonic responses; report development-world event rates
       with uncertainty but apply no fixed per-opportunity success fraction.
-- [ ] G2 passes on 20 separate, predeclared held-out seeds: the mean paired difference in
-      tiny-breakup counts per 200 Myr seed is positive, the 95% paired seed-bootstrap interval
-      excludes zero in the beneficial direction, at least two seeds improve, and the event
-      count requirement is met. Report `S_baseline - S_graph` in percentage points and the
-      original relative share reduction as secondary measures when defined. The amended
-      endpoint is reported transparently because it was adopted after two pairs were observed.
+- [ ] G2 passes on 20 separate, predeclared held-out seeds: no more than two seeds have
+      `D_s < 0`, ties count as non-worsening, and the event-count requirement is met. Report
+      the mean paired difference, its 95% seed-bootstrap interval, improved-seed count,
+      `S_baseline - S_graph` in percentage points and the original relative share reduction
+      when defined. Report both G2 amendments transparently; each was adopted after outcomes
+      were observed.
 - [ ] Every applied split makes exactly two connected plates, assigns each parent cell to
       one daughter, and preserves crust and mantle ledgers. Report daughter mass shares and
       cut trace fragments; no fixed 30% mass minimum is added.
@@ -370,9 +396,10 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
 - **Weakness does not guide real splits.** If the chosen cuts do not follow the weak marks
   more often than matched control cuts, the edge-cost hypothesis is unsupported. Revisit the
   cost signals; do not claim pseudo-sutures helped solely because they appear under a cut.
-- **Mass weighting does not reduce tiny-breakup burden.** If G2 shows no positive paired
-  difference in tiny-breakup counts after the weights and `mu` have been frozen on development
-  seeds, reject this score. Do not tune on the held-out seeds.
+- **Mass weighting worsens tiny-breakup burden.** If more than two held-out seeds have
+  `D_s < 0` after the weights and `mu` have been frozen on development seeds, the method
+  exceeds the owner's non-worsening tolerance; reject or revise the score. Do not tune on the
+  held-out seeds.
 - **The split score rewards closing or broken cuts.** If high-scoring cuts often close, break
   into disconnected traces, fail daughter checks or create extra fragments, the score is
   incomplete. Revise it before a production proposal.
