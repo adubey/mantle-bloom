@@ -371,3 +371,22 @@ def test_mobile_cover_ledger_closes_over_full_quad_steps():
     ledger = world.mobile_cover_ledger
     for account in ("deposited_m3", "entrained_m3", "subducted_m3", "volcanic_buried_m3"):
         assert ledger[account] > 0.0, account
+
+
+def test_stepping_a_world_keeps_land_bounded_over_30_myr_at_density_1():
+    # Moved from unit_tests/test_overlap_tracking.py (#826): the pre-fix engine ran land
+    # fraction up ~0.07 in 30 Myr at this density; it must not run away upward any more.
+    world = generate_world(7, node_density=1.0, cratons_first=False)
+
+    def land_fraction(w):
+        elev = np.concatenate([p.all_points_and_elevation()[1] for p in w.plates])
+        return float(np.mean(elev > w.sea_level_m))
+
+    start = land_fraction(world)
+    for _ in range(30):
+        step_world(world, 1_000_000.0)
+    assert land_fraction(world) < start + 0.04
+
+    onset = np.concatenate([p.collect("overlap_onset_years") for p in world.plates])
+    assert np.any(onset > 0.0)
+    assert np.all(onset[onset > 0.0] <= world.elapsed_years)
