@@ -326,7 +326,7 @@ def test_stream_animation_mp4_runs_to_completion_when_never_stopped():
 
 def test_stream_animation_mp4_steps_per_frame_steps_every_time_but_renders_only_the_last():
     # steps_per_frame=3 real step_fn calls per frame after the first, but still only 2 frames
-    # rendered/encoded (was 5 x 3 frames, #826) -- not one bigger step_fn(world, 5 * step_years) call per frame (see
+    # rendered/encoded (was 5 x 3 frames, #826) -- not one bigger step_fn(world, 3 * step_years) call per frame (see
     # stream_animation_mp4's own docstring for why that distinction matters).
     world = _world()
     step_calls = []

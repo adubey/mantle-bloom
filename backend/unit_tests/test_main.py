@@ -1233,7 +1233,7 @@ def test_volcanoes_returns_well_formed_entries(client):
     for _ in range(12):
         _post_step(client, json={"years": 12_000_000})
     body = client.get("/world/volcanoes").json()
-    assert body["volcanoes"], "expected some volcano nodes after 150 Myr of subduction"
+    assert body["volcanoes"], "expected some volcano nodes after 144 Myr of subduction"
     for v in body["volcanoes"]:
         assert len(v["position"]) == 3 and all(isinstance(c, float) for c in v["position"])
         assert isinstance(v["active"], bool)
