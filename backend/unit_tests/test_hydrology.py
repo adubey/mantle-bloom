@@ -2685,3 +2685,92 @@ def test_march_profiler_spans_fire_only_above_the_cost_gate():
         hydrology.compute_hydrology(_flow_line_march_world(), np.full(12, 800.0), np.full(12, -3.0), years=100)
     labels = [" > ".join(path) for path in rec.snapshot()]
     assert not any("glacier-march" in p or "march ice" in p or "march sea level" in p for p in labels)
+
+
+def _march_with(monkeypatch, cost, years, world=None):
+    """One march of the flow-line fixture under a #822 cost option; returns
+    (fields, march log entry)."""
+    monkeypatch.setattr(ice_sheet, "MARCH_COST", cost)
+    ice_sheet.MARCH_LOG.clear()
+    fields = hydrology.compute_hydrology(
+        world or _flow_line_march_world(), np.full(12, 800.0), np.full(12, -3.0), years=years
+    )
+    return fields, ice_sheet.MARCH_LOG[-1]
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_march_substep_cap_holds_the_remainder(monkeypatch):
+    # #822 option 1: an unsettled march stops at the cap and holds the rest of the step
+    # on its window's mean flows, like a settled hold.
+    fields, entry = _march_with(monkeypatch, ice_sheet.MarchCost(max_substeps=6), 10_000)
+    assert entry["capped"] is True
+    assert entry["settled"] is False
+    assert entry["substeps"] == 6
+    assert entry["marched_years"] == pytest.approx(1_500.0)
+    assert entry["held_years"] == pytest.approx(8_500.0)
+    # Held ice doesn't move: the closing ice is the capped substep's.
+    assert float(np.dot(fields.glacier_depth, _node_areas(_flow_line_march_world()))) == pytest.approx(
+        fields.ice.ledger.closing_m3
+    )
+    assert entry["volume_path_km3"][-1] == pytest.approx(fields.ice.ledger.closing_m3 / 1e9, rel=1e-5)
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_march_substep_cap_endpoint_closes_its_ledger(monkeypatch):
+    # #822 option 1, endpoint fill: one backward-Euler substep over the remainder after
+    # the cap, so the step is fully marched and the ice ledger closes like D2's.
+    fields, entry = _march_with(monkeypatch, ice_sheet.MarchCost(max_substeps=6, cap_fill="endpoint"), 10_000)
+    assert entry["capped"] is True
+    assert entry["substeps"] == 7
+    assert entry["marched_years"] == pytest.approx(10_000.0)
+    assert entry["held_years"] == 0.0
+    assert entry["max_substep_years"] == pytest.approx(8_500.0)
+    ledger = fields.ice.ledger
+    assert ledger.accumulation_m3 > 0.0
+    assert abs(ledger.residual_m3) <= 1e-3 * ledger.accumulation_m3
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_adaptive_march_grows_substeps_in_pairs(monkeypatch):
+    # #822 option 2: with growth forced on every pair, substeps double per pair up to
+    # the cap, the step still sums to its length, and the ledger closes.
+    cost = ice_sheet.MarchCost(adaptive=True, adaptive_grow_below=10.0, adaptive_shrink_above=20.0,
+                               adaptive_max_substep_years=1_000.0)
+    fields, entry = _march_with(monkeypatch, cost, 10_000)
+    # The first settle check needs five volumes: four 250 yr substeps, a 500 yr pair,
+    # then 1000 yr substeps for the last 8000 yr.
+    assert entry["substeps"] == 14
+    assert entry["max_substep_years"] == pytest.approx(1_000.0)
+    assert entry["marched_years"] + entry["held_years"] == pytest.approx(10_000.0)
+    ledger = fields.ice.ledger
+    assert abs(ledger.residual_m3) <= 1e-3 * ledger.accumulation_m3
+
+
+def test_adaptive_substep_shrinks_back_on_a_jump():
+    cost = ice_sheet.MarchCost(adaptive=True)
+    assert hydrology._adapt_substep_years(cost, 250.0, 250.0, None) == 250.0
+    assert hydrology._adapt_substep_years(cost, 250.0, 250.0, 1e-3) == 500.0
+    assert hydrology._adapt_substep_years(cost, 4_000.0, 250.0, 1e-3) == 4_000.0
+    assert hydrology._adapt_substep_years(cost, 2_000.0, 250.0, 2e-2) == 2_000.0
+    assert hydrology._adapt_substep_years(cost, 2_000.0, 250.0, 0.1) == 250.0
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_march_sea_level_skip_counts_resolves(monkeypatch):
+    # #822 option 3: the D2 march re-solves after every substep but the last; a skip
+    # threshold no debit can reach re-solves none, and the substeps are unchanged.
+    _, d2 = _march_with(monkeypatch, ice_sheet.MarchCost(), 1_000)
+    assert d2["substeps"] == 4
+    assert (d2["sea_level_resolves"], d2["sea_level_skipped"]) == (3, 0)
+    _, skip = _march_with(monkeypatch, ice_sheet.MarchCost(sea_level_skip_m=1e12), 1_000)
+    assert (skip["sea_level_resolves"], skip["sea_level_skipped"]) == (0, 3)
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_local_dijkstra_march_is_bit_identical_to_d2(monkeypatch):
+    # #822 option 3: the local inside-distance search is exact, so a march with it is
+    # the D2 march bit for bit.
+    d2, _ = _march_with(monkeypatch, ice_sheet.MarchCost(), 2_000)
+    local, _ = _march_with(monkeypatch, ice_sheet.MarchCost(local_dijkstra=True), 2_000)
+    np.testing.assert_array_equal(local.glacier_depth, d2.glacier_depth)
+    assert local.ice.ledger.closing_m3 == d2.ice.ledger.closing_m3

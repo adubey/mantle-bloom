@@ -706,3 +706,61 @@ def test_d1_frictional_melt_reads_last_step_heat_inside_the_root():
     melts = warm.rates(near)[2]
     assert np.all(np.diff(melts) >= 0.0)
     assert melts[1] - melts[0] >= melts[2] - melts[1] - 1e-9
+
+
+def test_march_cost_default_is_the_d2_march():
+    # #822: the production default changes nothing; every cost option is opt-in.
+    d2 = ice_sheet.MarchCost()
+    assert ice_sheet.MARCH_COST == d2
+    assert ice_sheet.march_cost("d2") == d2
+    assert d2.max_substeps is None and not d2.adaptive
+    assert d2.sea_level_skip_m == 0.0 and not d2.local_dijkstra and d2.dijkstra_limit_m is None
+    with pytest.raises(KeyError, match="cap-hold"):
+        ice_sheet.march_cost("no-such-preset")
+    with pytest.raises(ValueError):
+        ice_sheet.MarchCost(cap_fill="extrapolate")
+    with pytest.raises(ValueError):
+        ice_sheet.MarchCost(max_substeps=1)
+
+
+def _patchy_positive(points, seed=822):
+    """A positive set of a few disjoint discs on a lattice, for the distance searches."""
+    rng = np.random.default_rng(seed)
+    centres = points[rng.choice(len(points), size=4, replace=False)]
+    return (points @ centres.T > np.cos(250e3 / _R_M)).any(axis=1)
+
+
+def test_local_inside_distance_matches_the_full_search_exactly():
+    # #822 option 3: the inside distance searched on S plus its boundary is the full
+    # search exactly (a shortest path into S can be cut at its last outside node), so
+    # phi and the nearest-source labels are bit-identical.
+    points, _, _, _ = _lattice(50.0, 1000.0, kind="hex")
+    graph = ice_sheet.symmetric_graph(points, _neighbors(points))
+    positive = _patchy_positive(points)
+    eligible = ice_sheet._restrict(graph, np.ones(len(points), dtype=bool))
+    phi_full, src_full = ice_sheet._signed_distance(graph, eligible, positive)
+    local = ice_sheet.MarchCost(local_dijkstra=True)
+    phi_local, src_local = ice_sheet._signed_distance(graph, eligible, positive, cost=local)
+    assert 0 < positive.sum() < len(points)
+    np.testing.assert_array_equal(phi_local, phi_full)
+    np.testing.assert_array_equal(src_local, src_full)
+
+
+def test_limited_outside_distance_falls_back_when_it_cuts_off_a_member():
+    # #822 option 3: the limited outside search is exact within the limit, and a member
+    # past half the limit makes it rerun unlimited, so no body loses a node.
+    points, _, _, _ = _lattice(50.0, 1000.0, kind="hex")
+    graph = ice_sheet.symmetric_graph(points, _neighbors(points))
+    positive = _patchy_positive(points)
+    eligible = ice_sheet._restrict(graph, np.ones(len(points), dtype=bool))
+    phi_full, src_full = ice_sheet._signed_distance(graph, eligible, positive)
+    limited = ice_sheet.MarchCost(dijkstra_limit_m=400e3)
+    near = positive.copy()
+    phi_near, _ = ice_sheet._signed_distance(graph, eligible, positive, cost=limited, members=near)
+    inside = np.isfinite(phi_near)
+    assert np.any(~inside)
+    np.testing.assert_array_equal(phi_near[inside], phi_full[inside])
+    far = positive | (phi_full > 300e3)
+    phi_far, src_far = ice_sheet._signed_distance(graph, eligible, positive, cost=limited, members=far)
+    np.testing.assert_array_equal(phi_far, phi_full)
+    np.testing.assert_array_equal(src_far, src_full)

@@ -91,6 +91,76 @@ MARCH_HOLD_WINDOW = 6
 # 5 kyr (~20 substeps, ~600ms) is where its phases earn spans in a recorded tree (#801).
 MARCH_PROFILE_MIN_YEARS = 5_000.0
 
+
+@dataclass(frozen=True)
+class MarchCost:
+    """Selectable cost reductions for the end-of-step march (#822).
+
+    The defaults are the fixed-250-yr D2 march exactly (RFC 0015, #789). Every other value
+    changes results or the cost structure and is an owner decision, so the production
+    default stays D2 and the alternatives are selected by preset (`MARCH_COST_PRESETS`)
+    or by replacing `MARCH_COST`. They compose: a preset is just one combination.
+
+    1. Substep cap with hold-extrapolation (#806 review item 12): after `max_substeps`
+       unsettled substeps, the rest of the step is filled from the last
+       MARCH_HOLD_WINDOW substeps, exactly like a settled hold: `cap_fill="hold"` keeps
+       the ice where it is (an unsettled sheet's net drift over the remainder lands in
+       the ledger residual). `"endpoint"` instead runs one last backward-Euler substep
+       over the whole remainder from the capped state, which closes its own ledger and
+       lets the margin move. A per-node linear extrapolation was tried first and
+       dropped: on a growing sheet it stacks ice in place instead of advancing the
+       margin, and the depth cap then breaks the ledger (78-95% residual, #822).
+    2. Adaptive substeps (#806 latency review item 3): after each settle pair whose
+       pair-mean change is below `adaptive_grow_below`, the substep grows by
+       `adaptive_growth`, up to `adaptive_max_substep_years`; a pair change above
+       `adaptive_shrink_above` drops it back to MARCH_SUBSTEP_YEARS. Both substeps of a
+       pair always share one length, so the pair-mean still cancels the alternation.
+    3. Cheaper substeps: `sea_level_skip_m` skips the sea-level re-solve while the ice
+       debit has moved less than that many metres of sea level over the ocean since the
+       last re-solve (0 re-solves every substep). `local_dijkstra` computes the inside
+       distance on the positive set and its boundary only, which is exact (any shortest
+       path from outside S into S can be cut at its last outside node).
+       `dijkstra_limit_m` caps the outside distance's reach; a member it would cut off,
+       or one past half the limit, falls back to the unlimited search.
+    """
+
+    max_substeps: int | None = None
+    cap_fill: str = "hold"
+    adaptive: bool = False
+    adaptive_max_substep_years: float = 4_000.0
+    adaptive_growth: float = 2.0
+    adaptive_grow_below: float = 1.0e-2
+    adaptive_shrink_above: float = 5.0e-2
+    sea_level_skip_m: float = 0.0
+    local_dijkstra: bool = False
+    dijkstra_limit_m: float | None = None
+
+    def __post_init__(self):
+        if self.cap_fill not in ("hold", "endpoint"):
+            raise ValueError(f"cap_fill must be 'hold' or 'endpoint', not {self.cap_fill!r}")
+        if self.max_substeps is not None and self.max_substeps < 2:
+            raise ValueError("max_substeps must leave room for at least one settle pair")
+
+
+# Named combinations for probes and A/B runs (#822). "d2" is the production default.
+MARCH_COST_PRESETS: dict[str, MarchCost] = {
+    "d2": MarchCost(),
+    "cap-hold": MarchCost(max_substeps=200),
+    "cap-endpoint": MarchCost(max_substeps=200, cap_fill="endpoint"),
+    "adaptive": MarchCost(adaptive=True),
+    "cheap-substep": MarchCost(sea_level_skip_m=0.01, local_dijkstra=True),
+    "cheap-substep-limited": MarchCost(sea_level_skip_m=0.01, local_dijkstra=True, dijkstra_limit_m=1_000_000.0),
+}
+MARCH_COST = MARCH_COST_PRESETS["d2"]
+
+
+def march_cost(preset: str) -> MarchCost:
+    """The named march cost preset (#822); raises KeyError naming the known ones."""
+    try:
+        return MARCH_COST_PRESETS[preset]
+    except KeyError:
+        raise KeyError(f"unknown march cost preset {preset!r}; known: {sorted(MARCH_COST_PRESETS)}") from None
+
 # The snowfall ramp (C) keeps the mass balance continuous where the seasonal amplitude
 # vanishes, so the backward-Euler root find never lands on a jump (a jump in B is multiplied
 # by dt, and a long step turns a small one into a large volume error).
@@ -905,19 +975,58 @@ def _solve_uniform_body(nodes, opening_m3, area, climate: SurfaceClimate, dt_myr
     return target / total_area, acc, sm, bm, 0.0
 
 
-def _signed_distance(graph, eligible_graph, positive: np.ndarray):
+def _inside_distance_local(graph: csr_matrix, positive: np.ndarray) -> np.ndarray:
+    """Distance from not-S to each S node, searched on S plus its outer boundary only
+    (#822). Exact: a shortest path into S can be cut at its last node outside S, which is
+    a boundary node, and the cut path is no longer. Nodes outside that set get inf (the
+    caller zeroes everything outside S)."""
+    n = graph.shape[0]
+    boundary = ~positive & (graph @ positive.astype(float) > 0.0)
+    keep = np.flatnonzero(positive | boundary)
+    d_in = np.full(n, np.inf)
+    if not boundary.any():
+        return d_in
+    sub = graph[keep][:, keep]
+    local_sources = np.flatnonzero(boundary[keep])
+    d_in[keep] = dijkstra(sub, indices=local_sources, min_only=True)
+    return d_in
+
+
+def _outside_distance(eligible_graph, s_idx: np.ndarray, members: np.ndarray | None, limit_m: float | None):
+    """Distance over the eligible graph from S, and each node's nearest S node. With a
+    limit (#822), the search stops at `limit_m`; if that leaves any body member
+    unreached or past half the limit (so the margin could want ground past the cut),
+    it reruns unlimited."""
+    if limit_m is not None:
+        d_out, _, sources = dijkstra(
+            eligible_graph, indices=s_idx, min_only=True, return_predecessors=True, limit=limit_m
+        )
+        reach = d_out[members] if members is not None else d_out
+        if reach.size == 0 or float(np.max(reach)) <= 0.5 * limit_m:
+            return d_out, sources
+    d_out, _, sources = dijkstra(eligible_graph, indices=s_idx, min_only=True, return_predecessors=True)
+    return d_out, sources
+
+
+def _signed_distance(
+    graph, eligible_graph, positive: np.ndarray, *, cost: MarchCost | None = None, members: np.ndarray | None = None,
+):
     """phi = (distance to S - distance to not-S) / 2 over graph edges: negative inside the
     positive-balance set S, positive outside, zero half-way across each boundary edge. The
     outside distance runs over the eligible graph only. Also returns, per node, the S node
-    nearest to it there (-1 if unreachable)."""
+    nearest to it there (-1 if unreachable). `cost` selects the #822 search
+    restrictions (see MarchCost); None is the full-graph search."""
     n = graph.shape[0]
     s_idx = np.flatnonzero(positive)
-    d_out, _, sources = dijkstra(eligible_graph, indices=s_idx, min_only=True, return_predecessors=True)
+    limit = cost.dijkstra_limit_m if cost is not None else None
+    d_out, sources = _outside_distance(eligible_graph, s_idx, members, limit)
     not_s = np.flatnonzero(~positive)
-    if len(not_s):
-        d_in = dijkstra(graph, indices=not_s, min_only=True)
-    else:
+    if not len(not_s):
         d_in = np.full(n, np.inf)
+    elif cost is not None and cost.local_dijkstra:
+        d_in = _inside_distance_local(graph, positive)
+    else:
+        d_in = dijkstra(graph, indices=not_s, min_only=True)
     d_in = np.where(positive, d_in, 0.0)
     d_out = np.where(positive, 0.0, d_out)
     return 0.5 * (d_out - d_in), sources
@@ -940,6 +1049,7 @@ def step_ice(
     warn: bool = True,
     *,
     graph: csr_matrix | None = None,
+    cost: MarchCost | None = None,
 ) -> tuple[np.ndarray, np.ndarray, IceStep]:
     """One glacier step over the whole node cloud. See the module docstring for the method.
 
@@ -956,7 +1066,10 @@ def step_ice(
 
     The ice-age polar sea-ice cap (`allow_ocean_ice`) keeps its own per-node rule (accumulate,
     melt, never flow) and sits outside the bodies. Other ice on the ocean that isn't grounded
-    calves."""
+    calves.
+
+    `cost` selects the march's #822 distance-search restrictions (MarchCost); None, as
+    every non-march caller passes, is the full search."""
     n = len(points)
     area = np.asarray(area_m2, dtype=float)
     dt_myr = years / 1_000_000.0
@@ -1018,7 +1131,7 @@ def step_ice(
                 seeds[idx[np.argmax(reference_balance[idx])]] = True
             elif np.all(positive[idx]) and not np.any(touches_outside[idx]):
                 seeds[idx[np.lexsort((bed[idx], reference_balance[idx]))[0]]] = False
-        phi, sources = _signed_distance(graph, _restrict(graph, eligible), seeds)
+        phi, sources = _signed_distance(graph, _restrict(graph, eligible), seeds, cost=cost, members=members)
         # Each eligible node belongs to the body whose positive-balance area is nearest; a
         # body's own nodes always belong to it.
         label = np.where(eligible & (sources >= 0), comp[np.clip(sources, 0, None)], -1)

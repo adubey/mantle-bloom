@@ -1994,6 +1994,70 @@ def _march_sea_level(
     return sea_level, ocean_mask
 
 
+def _adapt_substep_years(cost, sub: float, base: float, last_change: float | None) -> float:
+    """The next settle pair's substep length under the adaptive march (#822): grow while
+    the pair-mean change is small, drop back to the D2 substep on a jump, else keep."""
+    if last_change is None:
+        return sub
+    if last_change > cost.adaptive_shrink_above:
+        return base
+    if last_change < cost.adaptive_grow_below:
+        return min(sub * cost.adaptive_growth, max(cost.adaptive_max_substep_years, base))
+    return sub
+
+
+def _sea_level_debit_moved(cost, debit_m3: float, resolved_debit_m3: float, areas: np.ndarray, ocean_mask: np.ndarray) -> bool:
+    """Whether the ice debit has moved enough since the last re-solve to re-solve sea
+    level again (#822): at least `sea_level_skip_m` of sea level spread over the current
+    ocean. A zero threshold always re-solves (the D2 march)."""
+    if cost.sea_level_skip_m <= 0.0:
+        return True
+    ocean_area = float(np.dot(areas, ocean_mask))
+    if ocean_area <= 0.0:
+        return True
+    return abs(debit_m3 - resolved_debit_m3) / ocean_area >= cost.sea_level_skip_m
+
+
+def _hold_remainder(recent: list[tuple], remaining: float, ledger_total, n: int, frozen: list[float]):
+    """The held share of a settled (or capped, #822) march (RFC 0015 D2, #789): the
+    window's flows scaled over the remaining years, added to `ledger_total`, and the
+    frozen-precipitation running totals (land, ocean retained, retained, bare melted)
+    in `frozen`, in place and in the original summation order. Returns the held
+    meltwater and calved ice."""
+    span = sum(r[0] for r in recent)
+    scale = remaining / span
+    hold_melt = np.zeros(n)
+    hold_calved = np.zeros(n)
+    hold_flows: dict[str, float] = {}
+    for _, sub_melt, sub_calved, sub_ledger, sub_frozen in recent:
+        hold_melt = hold_melt + np.asarray(sub_melt, dtype=float) * scale
+        hold_calved = hold_calved + np.asarray(sub_calved, dtype=float) * scale
+        for key in ("accumulation_m3", "surface_melt_m3", "basal_melt_m3", "calved_m3", "overflow_m3", "snow_melted_m3", "capped_m3"):
+            hold_flows[key] = hold_flows.get(key, 0.0) + getattr(sub_ledger, key) * scale
+        frozen[0] += sub_frozen.land_m3 * scale
+        frozen[1] += sub_frozen.ocean_retained_m3 * scale
+        frozen[2] += sub_frozen.retained_m3 * scale
+        frozen[3] += sub_frozen.bare_melted_m3 * scale
+    # Never book more ice loss than exists: scaling a transient's mean flows over most
+    # of the step otherwise books phantom melt from vanished ice, and the residual --
+    # not the ice -- absorbs it (#806 review: -78% on a fixture that melts away, then
+    # holds ~250 kyr of transient melt). The clamp binds only when the hold would drive
+    # the books negative; settled steps are untouched.
+    loss_keys = ("surface_melt_m3", "basal_melt_m3", "calved_m3", "overflow_m3", "capped_m3")
+    marched_loss = sum(getattr(ledger_total, key) for key in loss_keys)
+    hold_loss = sum(hold_flows.get(key, 0.0) for key in loss_keys)
+    available = ledger_total.opening_m3 + ledger_total.accumulation_m3 + hold_flows.get("accumulation_m3", 0.0)
+    if hold_loss > 0.0 and marched_loss + hold_loss > available:
+        factor = max(available - marched_loss, 0.0) / hold_loss
+        hold_melt = hold_melt * factor
+        hold_calved = hold_calved * factor
+        for key in loss_keys:
+            hold_flows[key] = hold_flows.get(key, 0.0) * factor
+    for key, value in hold_flows.items():
+        setattr(ledger_total, key, getattr(ledger_total, key) + value)
+    return hold_melt, hold_calved
+
+
 def _march_glacier(
     world: "World",
     points: np.ndarray,
@@ -2023,6 +2087,11 @@ def _march_glacier(
     deflection loop of the old endpoint solve stay deleted. Grounding and flotation keep
     the opening bed (a one-step lag on the deflection); only the lapse correction sees
     the equilibrium target each substep.
+
+    `ice_sheet.MARCH_COST` selects the #822 cost options (substep cap, adaptive
+    substeps, sea-level skip, restricted distance search); its default is this D2
+    march exactly. A capped march with cap_fill="endpoint" runs one last substep over
+    the whole remainder instead of holding it.
 
     Settle checks run on non-overlapping substep pairs ("after each pair"): when the last
     two pair-means differ by less than 0.1% three checks in a row, the body of ice has
@@ -2152,7 +2221,13 @@ def _march_glacier(
     recent: list[tuple] = []
     last_change: float | None = None
     ice = None
-    sub = min(ice_sheet.MARCH_SUBSTEP_YEARS, years)
+    cost = ice_sheet.MARCH_COST
+    base_sub = min(ice_sheet.MARCH_SUBSTEP_YEARS, years)
+    sub = base_sub
+    capped = False
+    resolves = skipped_resolves = 0
+    resolved_debit = to_water * float(np.dot(areas, depth))
+    max_dt = 0.0
     frozen_land_total = 0.0
     frozen_ocean_retained_total = 0.0
     frozen_retained_total = 0.0
@@ -2161,6 +2236,7 @@ def _march_glacier(
         dt = min(sub, years - elapsed)
         ref_depth = 0.5 * (depth + prev_depth)
         ref_heat = 0.5 * (heat + prev_heat)
+        max_dt = max(max_dt, dt)
         with _phase("Solving march ice"):
             new_depth, melt, ice = solve_once(dt, ref_depth, ref_heat)
         substeps += 1
@@ -2187,12 +2263,18 @@ def _march_glacier(
         # `elapsed` already includes this substep's `dt`, so this is true exactly
         # when years remain after it.
         if has_ocean and elapsed < years - 1e-6:
-            with _phase("Re-solving march sea level"):
-                sea_level, ocean_mask = _march_sea_level(
-                    world, elevations, hyps_areas, total_water, lakes_trapped, to_water,
-                    areas, depth, sea_level, ocean_mask, neighbor_idx, points, elevation,
-                    warm_half_width_m,
-                )
+            debit = to_water * float(np.dot(areas, depth))
+            if _sea_level_debit_moved(cost, debit, resolved_debit, areas, ocean_mask):
+                with _phase("Re-solving march sea level"):
+                    sea_level, ocean_mask = _march_sea_level(
+                        world, elevations, hyps_areas, total_water, lakes_trapped, to_water,
+                        areas, depth, sea_level, ocean_mask, neighbor_idx, points, elevation,
+                        warm_half_width_m,
+                    )
+                resolved_debit = debit
+                resolves += 1
+            else:
+                skipped_resolves += 1
         volumes.append(float(np.dot(depth, areas)))
         recent = (recent + [(dt, melt, ice.calved_m3, ice.ledger, ice.frozen_precipitation)])[
             -max(ice_sheet.MARCH_HOLD_WINDOW, 1):
@@ -2208,41 +2290,23 @@ def _march_glacier(
             settled = settled + 1 if last_change < ice_sheet.MARCH_SETTLE_TOLERANCE else 0
             if settled >= ice_sheet.MARCH_SETTLE_PATIENCE:
                 break
+            # Pair boundaries only, so both substeps of a pair share one length (#822).
+            if cost.adaptive:
+                sub = _adapt_substep_years(cost, sub, base_sub, last_change)
+        if not capped and cost.max_substeps is not None and substeps >= cost.max_substeps and elapsed < years - 1e-6:
+            capped = True
+            if cost.cap_fill != "endpoint":
+                break
+            # One backward-Euler substep over the whole remainder (#822): the same solve,
+            # so it closes its own ledger and reshapes the ice, at one more solve's cost.
+            sub = years - elapsed
     remaining = years - elapsed
     if remaining > 1e-6 and recent:
-        span = sum(r[0] for r in recent)
-        scale = remaining / span
-        hold_melt = np.zeros(n)
-        hold_calved = np.zeros(n)
-        hold_flows: dict[str, float] = {}
-        for _, sub_melt, sub_calved, sub_ledger, sub_frozen in recent:
-            hold_melt = hold_melt + np.asarray(sub_melt, dtype=float) * scale
-            hold_calved = hold_calved + np.asarray(sub_calved, dtype=float) * scale
-            for key in ("accumulation_m3", "surface_melt_m3", "basal_melt_m3", "calved_m3", "overflow_m3", "snow_melted_m3", "capped_m3"):
-                hold_flows[key] = hold_flows.get(key, 0.0) + getattr(sub_ledger, key) * scale
-            frozen_land_total += sub_frozen.land_m3 * scale
-            frozen_ocean_retained_total += sub_frozen.ocean_retained_m3 * scale
-            frozen_retained_total += sub_frozen.retained_m3 * scale
-            frozen_bare_melted_total += sub_frozen.bare_melted_m3 * scale
-        # Never book more ice loss than exists: scaling a transient's mean flows over most
-        # of the step otherwise books phantom melt from vanished ice, and the residual --
-        # not the ice -- absorbs it (#806 review: -78% on a fixture that melts away, then
-        # holds ~250 kyr of transient melt). The clamp binds only when the hold would drive
-        # the books negative; settled steps are untouched.
-        loss_keys = ("surface_melt_m3", "basal_melt_m3", "calved_m3", "overflow_m3", "capped_m3")
-        marched_loss = sum(getattr(ledger_total, key) for key in loss_keys)
-        hold_loss = sum(hold_flows.get(key, 0.0) for key in loss_keys)
-        available = ledger_total.opening_m3 + ledger_total.accumulation_m3 + hold_flows.get("accumulation_m3", 0.0)
-        if hold_loss > 0.0 and marched_loss + hold_loss > available:
-            factor = max(available - marched_loss, 0.0) / hold_loss
-            hold_melt = hold_melt * factor
-            hold_calved = hold_calved * factor
-            for key in loss_keys:
-                hold_flows[key] = hold_flows.get(key, 0.0) * factor
+        frozen = [frozen_land_total, frozen_ocean_retained_total, frozen_retained_total, frozen_bare_melted_total]
+        hold_melt, hold_calved = _hold_remainder(recent, remaining, ledger_total, n, frozen)
+        frozen_land_total, frozen_ocean_retained_total, frozen_retained_total, frozen_bare_melted_total = frozen
         melt_total += hold_melt
         calved_total += hold_calved
-        for key, value in hold_flows.items():
-            setattr(ledger_total, key, getattr(ledger_total, key) + value)
     ledger_total.closing_m3 = float(np.dot(depth, areas))
     # The interim glacier-water account (RFC 0016 G0, #732) reads one step's frozen
     # precipitation: the march sums every substep (plus the hold share) so it sees the
@@ -2262,6 +2326,8 @@ def _march_glacier(
         "last_change": None if last_change is None else round(last_change, 6), "sea_level_m": sea_level,
         "volume_path_km3": [round(v / 1e9, 6) for v in volumes[:: max(1, len(volumes) // 25)]],
         "tipping_growth": None if tipping_growth is None else round(tipping_growth, 6),
+        "capped": capped, "max_substep_years": max_dt,
+        "sea_level_resolves": resolves, "sea_level_skipped": skipped_resolves,
     })
     _logger.info(
         "glacier march: %d substeps, %.0f marched + %.0f held of %.0f yr, settled=%s, last_change=%s",
