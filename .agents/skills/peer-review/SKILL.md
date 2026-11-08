@@ -11,7 +11,8 @@ levels, or when an agent is asked to stand by for or perform one of those review
 RFC pull request, reviewers also follow [`rfc-review`](../rfc-review/SKILL.md).
 
 State lives in `$(git rev-parse --git-common-dir)/mantle-bloom-handoff/reviews/pr-<N>.json`,
-which all worktrees on the machine share and which never enters Git.
+which all worktrees on the machine share and which never enters Git. (Note: file locking uses
+POSIX `fcntl`, applicable to macOS and Linux development hosts).
 
 ## 1. Request reviews (author agent)
 
@@ -20,7 +21,8 @@ which all worktrees on the machine share and which never enters Git.
 2. Create the review request with `bin/peer_review.py request`, passing one `--reviewer`
    flag per requested reviewer in the form `AGENT[:MODEL[:REASONING]]`. Open-window mode is
    the default; pass `--spawn` only when the user asks to launch headless CLI processes
-   instead of using open windows. Its review trees follow the
+   instead of using open windows. (Note: `--spawn` CLI flags are experimental and should
+   be verified against the target tool's `--help` output before use). Its review trees follow the
    [`worktree` skill](../worktree/SKILL.md): siblings of the primary checkout by default, or
    pass `--worktree-root <primary>/worktrees` if your sandbox can't leave the workspace root:
 
@@ -84,12 +86,12 @@ python3 bin/peer_review.py claim --pr <N> --slot <slot-or-agent> \
      `gh pr diff <N>`, or create a temporary detached worktree at the PR's head SHA if you
      need to inspect surrounding code or run a targeted check. Follow the
      [`worktree` skill](../worktree/SKILL.md) for where it goes and how it is made: a
-     detached tree named `review-<N>-<slot>`, with no branch. Fetch the PR head first and
-     use it in place of `origin/main`:
+     detached tree named `review-<N>-<slot>`, with no branch. Fetch the PR head to an explicit ref
+     (to avoid concurrent FETCH_HEAD races) and check it out:
 
      ```bash
-     git fetch origin pull/<N>/head
-     git worktree add --detach <path> FETCH_HEAD
+     git fetch origin pull/<N>/head:refs/remotes/origin/pr/<N>
+     git worktree add --detach <path> refs/remotes/origin/pr/<N>
      ```
 
    - Never reuse the author's or another reviewer's tree. Remove your own review worktree

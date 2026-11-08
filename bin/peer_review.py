@@ -51,7 +51,7 @@ AGENT_ALIASES = {
 }
 
 HEADER_RE = re.compile(
-    r"^##\s+Peer\s+Review\s*(?:—|--|-|:|\()\s*([a-zA-Z0-9_-]+)",
+    r"^##\s+(?:Peer\s+Review|Code\s+review)\s*(?:—|--|-|:|\()\s*([a-zA-Z0-9_-]+)",
     re.IGNORECASE | re.MULTILINE,
 )
 MARKER_RE = re.compile(
@@ -138,6 +138,21 @@ class ReviewRequest:
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse_iso(ts: str) -> datetime | None:
+    if not ts:
+        return None
+    cleaned = ts.strip()
+    if cleaned.endswith("Z"):
+        cleaned = cleaned[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(cleaned)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError:
+        return None
 
 
 def canonical_agent(name: str) -> str:
@@ -255,14 +270,26 @@ def find_matching_slot(
     require_pending: bool = False,
 ) -> ReviewSlot | None:
     norm = canonical_agent(target)
+    # 1. Exact match on slot name
     for slot in req.slots:
-        if slot.slot == target or slot.slot == norm:
+        if slot.slot.lower() == target.lower():
             if not require_pending or slot.status == "pending":
                 return slot
-    for slot in req.slots:
-        if slot.agent == norm:
-            if not require_pending or slot.status == "pending":
-                return slot
+
+    # 2. Match by agent name
+    matching_slots = [s for s in req.slots if s.agent == norm]
+    if len(matching_slots) == 1:
+        s = matching_slots[0]
+        if not require_pending or s.status == "pending":
+            return s
+    elif len(matching_slots) > 1:
+        # If multiple slots belong to the same agent, pick the first pending slot
+        for s in matching_slots:
+            if s.status == "pending":
+                return s
+        if not require_pending:
+            # If not requiring pending, exact slot name was needed above
+            return None
     return None
 
 
@@ -314,6 +341,7 @@ def create_review_request(
     branch: str = "",
     head_sha: str = "",
     spawn: bool = False,
+    force: bool = False,
     requested_at: str | None = None,
 ) -> ReviewRequest:
     if not reviewer_specs:
@@ -330,6 +358,15 @@ def create_review_request(
         slots=slots,
     )
     with locked_pr(state_dir, pr):
+        path = pr_file(state_dir, pr)
+        if path.exists() and not force:
+            existing = load_request(state_dir, pr)
+            has_active = any(s.status in ("claimed", "completed") for s in existing.slots)
+            if has_active:
+                raise RuntimeError(
+                    f"Review request for PR #{pr} already exists with active/completed reviews. "
+                    "Use --force to overwrite."
+                )
         save_request(state_dir, req)
     return req
 
@@ -348,6 +385,12 @@ def claim_slot(
         if slot is None:
             return None
         if slot.status == "completed":
+            # Reopen or update model/reasoning if requested
+            if model:
+                slot.model = model
+            if reasoning:
+                slot.reasoning = reasoning
+            save_request(state_dir, req)
             return req, slot
         slot.status = "claimed"
         slot.claimed_at = now_iso()
@@ -429,8 +472,12 @@ def complete_slot(
         return req, slot
 
 
-def match_gh_entry_to_slot(req: ReviewRequest, body: str, created_at: str) -> ReviewSlot | None:
-    if created_at and req.requested_at and created_at < req.requested_at:
+def match_gh_entry_to_slot(
+    req: ReviewRequest, body: str, created_at: str, allow_completed: bool = False
+) -> ReviewSlot | None:
+    dt_created = parse_iso(created_at)
+    dt_requested = parse_iso(req.requested_at)
+    if dt_created and dt_requested and dt_created < dt_requested:
         return None
     marker = MARKER_RE.search(body)
     if marker:
@@ -440,21 +487,35 @@ def match_gh_entry_to_slot(req: ReviewRequest, body: str, created_at: str) -> Re
         slot_name = marker.group(2)
         agent_name = marker.group(3)
         slot = find_matching_slot(req, slot_name, require_pending=False)
-        if slot is not None and slot.status != "completed":
+        if slot is not None and (allow_completed or slot.status != "completed"):
             return slot
         slot = find_matching_slot(req, agent_name, require_pending=False)
-        if slot is not None and slot.status != "completed":
+        if slot is not None and (allow_completed or slot.status != "completed"):
             return slot
     header = HEADER_RE.search(body)
     if header:
         agent_token = header.group(1)
         for slot in req.slots:
-            if slot.status != "completed" and (
+            if (allow_completed or slot.status != "completed") and (
                 slot.slot.lower() == agent_token.lower()
                 or slot.agent == canonical_agent(agent_token)
             ):
                 return slot
     return None
+
+
+def extract_first_summary_line(body: str) -> str:
+    return next(
+        (
+            line.strip()
+            for line in body.splitlines()
+            if line.strip()
+            and not line.strip().startswith("## Peer Review")
+            and not line.strip().startswith("## Code review")
+            and not line.strip().startswith("<!--")
+        ),
+        "Posted peer review on GitHub",
+    )[:240]
 
 
 def sync_from_github_payload(
@@ -481,25 +542,26 @@ def sync_from_github_payload(
         req = load_request(state_dir, pr)
         changed = False
         for body, timestamp, url in entries:
-            slot = match_gh_entry_to_slot(req, body, timestamp)
-            if slot is not None:
-                slot.status = "completed"
-                slot.completed_at = timestamp or now_iso()
-                if url and not slot.review_url:
-                    slot.review_url = url
-                if not slot.summary:
-                    first_line = next(
-                        (
-                            line.strip()
-                            for line in body.splitlines()
-                            if line.strip()
-                            and not line.strip().startswith("## Peer Review")
-                            and not line.strip().startswith("<!--")
-                        ),
-                        "Posted peer review on GitHub",
-                    )
-                    slot.summary = first_line[:240]
-                changed = True
+            slot = match_gh_entry_to_slot(req, body, timestamp, allow_completed=False)
+            if slot is None:
+                # Check if it matches an already completed slot needing backfill
+                slot = match_gh_entry_to_slot(req, body, timestamp, allow_completed=True)
+                if slot is not None:
+                    if url and not slot.review_url:
+                        slot.review_url = url
+                        changed = True
+                    if not slot.summary:
+                        slot.summary = extract_first_summary_line(body)
+                        changed = True
+                continue
+
+            slot.status = "completed"
+            slot.completed_at = timestamp or now_iso()
+            if url and not slot.review_url:
+                slot.review_url = url
+            if not slot.summary:
+                slot.summary = extract_first_summary_line(body)
+            changed = True
         if changed:
             save_request(state_dir, req)
         return req
@@ -594,6 +656,28 @@ def detect_git_metadata() -> tuple[str, str]:
     return branch, sha
 
 
+def resolve_primary_checkout(state_dir: Path | None = None) -> Path:
+    if state_dir is not None and ".git" in state_dir.parts:
+        idx = state_dir.parts.index(".git")
+        return Path(*state_dir.parts[:idx])
+    proc = subprocess.run(
+        ["git", "rev-parse", "--git-common-dir"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode == 0 and proc.stdout.strip():
+        common = Path(proc.stdout.strip()).resolve()
+        if common.name == ".git":
+            return common.parent
+        if ".git" in common.parts:
+            idx = common.parts.index(".git")
+            return Path(*common.parts[:idx])
+    if state_dir is not None and len(state_dir.parents) >= 3:
+        return state_dir.parents[2]
+    return Path.cwd().resolve()
+
+
 def review_worktree_path(
     state_dir: Path, pr: int, slot: str, worktree_root: Path | None = None
 ) -> Path:
@@ -603,8 +687,7 @@ def review_worktree_path(
     name = f"review-{pr}-{slot}"
     if worktree_root is not None:
         return worktree_root / name
-    # state_dir is <git-common-dir>/mantle-bloom-handoff/reviews, so the primary is above .git
-    primary = state_dir.parents[2]
+    primary = resolve_primary_checkout(state_dir)
     return primary.parent / f"{primary.name}-{name}"
 
 
@@ -614,32 +697,56 @@ def spawn_cli_reviewer(
     slot: ReviewSlot,
     worktree_root: Path | None = None,
 ) -> subprocess.Popen[bytes]:
-    claim_slot(state_dir, req.pr, slot.slot)
     wt_dir = review_worktree_path(state_dir, req.pr, slot.slot, worktree_root)
-    if not wt_dir.exists():
-        # The PR head may not be fetched yet, and head_sha only names the author's last push.
-        subprocess.run(
-            ["git", "fetch", "origin", f"pull/{req.pr}/head"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        subprocess.run(
-            ["git", "worktree", "add", "--detach", str(wt_dir), "FETCH_HEAD"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+    # 1. Build command upfront to catch unsupported CLI builders (e.g. muse) before any side-effects
     cmd = build_cli_command(req, slot, wt_dir)
-    log_path = state_dir / f"pr-{req.pr}-{slot.slot}.log"
-    log_handle = log_path.open("ab")
-    return subprocess.Popen(
-        cmd,
-        cwd=str(wt_dir),
-        stdout=log_handle,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-    )
+
+    created_wt = False
+    log_handle = None
+    try:
+        if not wt_dir.exists():
+            subprocess.run(
+                ["git", "fetch", "origin", f"pull/{req.pr}/head"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "worktree", "add", "--detach", str(wt_dir), "FETCH_HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            created_wt = True
+
+        claim_slot(state_dir, req.pr, slot.slot)
+        log_path = state_dir / f"pr-{req.pr}-{slot.slot}.log"
+        log_handle = log_path.open("ab")
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(wt_dir),
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        return proc
+    except Exception:
+        if log_handle is not None:
+            try:
+                log_handle.close()
+            except Exception:
+                pass
+        if created_wt and wt_dir.exists():
+            subprocess.run(["git", "worktree", "remove", "--force", str(wt_dir)], check=False)
+        # Release slot back to pending
+        with locked_pr(state_dir, req.pr):
+            cur_req = load_request(state_dir, req.pr)
+            s = find_matching_slot(cur_req, slot.slot)
+            if s and s.status == "claimed":
+                s.status = "pending"
+                s.claimed_at = ""
+                save_request(state_dir, cur_req)
+        raise
 
 
 def format_status_report(req: ReviewRequest) -> str:
@@ -666,6 +773,7 @@ def cmd_request(args: argparse.Namespace, state_dir: Path) -> int:
         branch=args.branch or branch,
         head_sha=args.head_sha or sha,
         spawn=args.spawn,
+        force=args.force,
     )
     if args.spawn:
         for slot in req.slots:
@@ -810,6 +918,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--spawn",
         action="store_true",
         help="Spawn headless CLI reviewers in detached worktrees instead of open windows",
+    )
+    p_req.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing review request even if slots are claimed or completed",
     )
     p_req.add_argument(
         "--worktree-root",

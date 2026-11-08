@@ -231,6 +231,66 @@ def test_review_worktree_goes_beside_the_primary_not_inside_git(tmp_path):
     assert scoped == tmp_path / "wt" / "review-830-muse"
 
 
+def test_shallow_state_dir_computes_worktree_path_safely(tmp_path):
+    shallow_state = tmp_path / "reviews"
+    wt_path = pr_mod.review_worktree_path(shallow_state, 830, "codex")
+    assert wt_path.name == "mantle-bloom-review-830-codex" or "review-830-codex" in wt_path.name
+
+
+def test_duplicate_agent_slots_disambiguate_claim(tmp_path):
+    pr_mod.create_review_request(
+        tmp_path,
+        pr=840,
+        reviewer_specs=["codex:gpt-5.4:high", "codex:o3:medium"],
+    )
+    req = pr_mod.load_request(tmp_path, 840)
+    # Searching by agent when multiple slots exist picks next pending slot
+    s1 = pr_mod.find_matching_slot(req, "codex", require_pending=True)
+    assert s1.slot == "codex-1"
+    s1.status = "claimed"
+    s2 = pr_mod.find_matching_slot(req, "codex", require_pending=True)
+    assert s2.slot == "codex-2"
+
+
+def test_iso_timestamp_comparison_with_fractional_seconds(tmp_path):
+    pr_mod.create_review_request(
+        tmp_path,
+        pr=845,
+        reviewer_specs=["muse:opus:high"],
+        requested_at="2026-11-08T02:00:00Z",
+    )
+    payload = {
+        "comments": [
+            {
+                "body": "## Code review — muse (model: opus, reasoning: high)\nLGTM with subsecond ts",
+                "createdAt": "2026-11-08T02:00:00.123Z",
+                "url": "https://github.com/adubey/mantle-bloom/pull/845#comment-1",
+            }
+        ]
+    }
+    done = pr_mod.wait_for_reviews(
+        tmp_path,
+        pr=845,
+        timeout=0.1,
+        poll_interval=0.01,
+        gh_fetcher=lambda _pr: payload,
+    )
+    assert done.all_completed()
+    assert done.slots[0].review_url == "https://github.com/adubey/mantle-bloom/pull/845#comment-1"
+
+
+def test_request_guard_prevents_accidental_overwrite(tmp_path):
+    pr_mod.create_review_request(tmp_path, pr=850, reviewer_specs=["codex:gpt-5.4:high"])
+    pr_mod.claim_slot(tmp_path, pr=850, target="codex")
+    with pytest.raises(RuntimeError, match="already exists"):
+        pr_mod.create_review_request(tmp_path, pr=850, reviewer_specs=["muse:opus:high"])
+    # With force=True it succeeds
+    req = pr_mod.create_review_request(
+        tmp_path, pr=850, reviewer_specs=["muse:opus:high"], force=True
+    )
+    assert req.slots[0].agent == "muse"
+
+
 def test_cli_end_to_end_workflow(tmp_path, capsys):
     base = ["--state-dir", str(tmp_path)]
     assert (
