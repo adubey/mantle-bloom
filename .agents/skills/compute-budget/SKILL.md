@@ -83,6 +83,9 @@ is over budget even if it says `RUN`.
   time), since the figures change. Ask even when you think the wait is right. Don't start an
   overridden run without an answer, and an override covers that one run only.
 
+  If no user can answer (an automatically spawned agent or a subagent), don't ask and don't
+  stall: run the loop above and start when it exits, as the next paragraph's batch rule says.
+
 Two agents that check close together can both get `RUN`, because `check` can't see a run until
 it's started. `bin/debug/` scripts and test workers are listed as soon as they start, but a
 script anywhere else is listed only once it passes 1 GB, which can take minutes. An agent the
