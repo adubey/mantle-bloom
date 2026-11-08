@@ -143,6 +143,15 @@ def test_github_payload_reconciles_reviews_and_ignores_stale_comments(tmp_path):
             {
                 "body": (
                     "## Peer Review — muse (model: opus, reasoning: high)\n"
+                    "<!-- mantle-bloom-peer-review: pr=999 slot=muse agent=muse -->\n"
+                    "Copied comment from another PR."
+                ),
+                "submittedAt": "2026-11-07T19:02:00Z",
+                "url": "https://github.com/adubey/mantle-bloom/pull/820#pullrequestreview-other-pr",
+            },
+            {
+                "body": (
+                    "## Peer Review — muse (model: opus, reasoning: high)\n"
                     "<!-- mantle-bloom-peer-review: pr=820 slot=muse agent=muse -->\n"
                     "No conservation issues found on the new commit."
                 ),

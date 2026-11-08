@@ -434,6 +434,9 @@ def match_gh_entry_to_slot(req: ReviewRequest, body: str, created_at: str) -> Re
         return None
     marker = MARKER_RE.search(body)
     if marker:
+        marker_pr = int(marker.group(1))
+        if marker_pr != req.pr:
+            return None
         slot_name = marker.group(2)
         agent_name = marker.group(3)
         slot = find_matching_slot(req, slot_name, require_pending=False)
