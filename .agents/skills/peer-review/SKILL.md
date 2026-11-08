@@ -20,7 +20,9 @@ which all worktrees on the machine share and which never enters Git.
 2. Create the review request with `bin/peer_review.py request`, passing one `--reviewer`
    flag per requested reviewer in the form `AGENT[:MODEL[:REASONING]]`. Open-window mode is
    the default; pass `--spawn` only when the user asks to launch headless CLI processes
-   instead of using open windows:
+   instead of using open windows. Its review trees follow the
+   [`worktree` skill](../worktree/SKILL.md): siblings of the primary checkout by default, or
+   pass `--worktree-root <primary>/worktrees` if your sandbox can't leave the workspace root:
 
    ```bash
    python3 bin/peer_review.py request --pr <N> \
@@ -80,15 +82,18 @@ python3 bin/peer_review.py claim --pr <N> --slot <slot-or-agent> \
    `#<N>` after the request timestamp. Form your own assessment from the code and diff:
    - Inspect `gh pr view <N>` (description, linked issue, author summary) and
      `gh pr diff <N>`, or create a temporary detached worktree at the PR's head SHA if you
-     need to inspect surrounding code or run a targeted check:
+     need to inspect surrounding code or run a targeted check. Follow the
+     [`worktree` skill](../worktree/SKILL.md) for where it goes and how it is made: a
+     detached tree named `review-<N>-<slot>`, with no branch. Fetch the PR head first and
+     use it in place of `origin/main`:
 
      ```bash
      git fetch origin pull/<N>/head
-     git worktree add --detach ../mantle-bloom-review-<N>-<slot> FETCH_HEAD
+     git worktree add --detach <path> FETCH_HEAD
      ```
 
-   - Remove any temporary review worktree (`git worktree remove ../mantle-bloom-review-<N>-<slot>`)
-     when finished.
+   - Never reuse the author's or another reviewer's tree. Remove your own review worktree
+     (`git worktree remove <path>`, no `--force`) when finished.
 2. **Focus on high-signal checks.** As [`AGENTS.md`](../../../AGENTS.md#workflow) specifies,
    when the PR's author reports its tests passing, do not rerun the test suite. Check:
    - whether the change respects [`docs/design-principles.md`](../../../docs/design-principles.md),

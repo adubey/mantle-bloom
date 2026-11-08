@@ -213,6 +213,15 @@ def test_build_cli_command_passes_model_and_reasoning(tmp_path):
         pr_mod.build_cli_command(req, muse_slot, tmp_path)
 
 
+def test_review_worktree_goes_beside_the_primary_not_inside_git(tmp_path):
+    state = tmp_path / "mantle-bloom" / ".git" / "mantle-bloom-handoff" / "reviews"
+    sibling = pr_mod.review_worktree_path(state, 830, "codex")
+    assert sibling == tmp_path / "mantle-bloom-review-830-codex"
+
+    scoped = pr_mod.review_worktree_path(state, 830, "muse", tmp_path / "wt")
+    assert scoped == tmp_path / "wt" / "review-830-muse"
+
+
 def test_cli_end_to_end_workflow(tmp_path, capsys):
     base = ["--state-dir", str(tmp_path)]
     assert (

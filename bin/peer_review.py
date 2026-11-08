@@ -591,17 +591,38 @@ def detect_git_metadata() -> tuple[str, str]:
     return branch, sha
 
 
+def review_worktree_path(
+    state_dir: Path, pr: int, slot: str, worktree_root: Path | None = None
+) -> Path:
+    """Where a spawned reviewer's detached tree goes, per the worktree skill: a sibling of
+    the primary checkout, or `<worktree_root>/review-<pr>-<slot>` when the caller's sandbox
+    is scoped to the workspace root. The state dir sits in .git, never a place for a tree."""
+    name = f"review-{pr}-{slot}"
+    if worktree_root is not None:
+        return worktree_root / name
+    # state_dir is <git-common-dir>/mantle-bloom-handoff/reviews, so the primary is above .git
+    primary = state_dir.parents[2]
+    return primary.parent / f"{primary.name}-{name}"
+
+
 def spawn_cli_reviewer(
     state_dir: Path,
     req: ReviewRequest,
     slot: ReviewSlot,
+    worktree_root: Path | None = None,
 ) -> subprocess.Popen[bytes]:
     claim_slot(state_dir, req.pr, slot.slot)
-    ref = req.head_sha or "origin/main"
-    wt_dir = state_dir / f"worktree-pr-{req.pr}-{slot.slot}"
+    wt_dir = review_worktree_path(state_dir, req.pr, slot.slot, worktree_root)
     if not wt_dir.exists():
+        # The PR head may not be fetched yet, and head_sha only names the author's last push.
         subprocess.run(
-            ["git", "worktree", "add", "--detach", str(wt_dir), ref],
+            ["git", "fetch", "origin", f"pull/{req.pr}/head"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "worktree", "add", "--detach", str(wt_dir), "FETCH_HEAD"],
             check=True,
             capture_output=True,
             text=True,
@@ -645,7 +666,7 @@ def cmd_request(args: argparse.Namespace, state_dir: Path) -> int:
     )
     if args.spawn:
         for slot in req.slots:
-            spawn_cli_reviewer(state_dir, req, slot)
+            spawn_cli_reviewer(state_dir, req, slot, args.worktree_root)
             print(
                 f"Spawned headless CLI reviewer for slot '{slot.slot}' "
                 f"({slot.agent}, model={slot.model}, reasoning={slot.reasoning})."
@@ -786,6 +807,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--spawn",
         action="store_true",
         help="Spawn headless CLI reviewers in detached worktrees instead of open windows",
+    )
+    p_req.add_argument(
+        "--worktree-root",
+        type=Path,
+        default=None,
+        help="With --spawn, put review worktrees here instead of beside the primary checkout",
     )
     p_req.add_argument(
         "--claim-wait",
