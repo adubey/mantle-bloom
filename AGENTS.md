@@ -55,8 +55,11 @@ Run from the repo root (or worktree root).
 
 - **One issue branch and worktree per issue, branched off `origin/main`.** Name the branch
   `<agent>/issue-<N>-<slug>`, where `<agent>` is the short identifier of the agent/tool
-  doing the work (for example, `claude`, `codex`, or `muse`). Use your own identifier; don't
-  present yourself as another agent. RFCs are large
+  doing the work (for example, `claude`, `codex`, `gemini`, or `muse`). Use your own identifier; don't
+  present yourself as another agent. The [`worktree` skill](.agents/skills/worktree/SKILL.md)
+  owns where worktrees go (agents scoped to the workspace root, such as `gemini`, use
+  `worktrees/<name>`; others use `../mantle-bloom-<name>`), their names and the creation
+  command. RFCs are large
   decisions tracked by a parent issue with sub-issues; each sub-issue gets its own isolated
   issue worktree. Never switch the RFC proposal worktree to an issue branch. Use
   `start-rfc` to begin or advance an RFC workstream, `continue-rfc` to reconstruct an RFC
@@ -66,8 +69,10 @@ Run from the repo root (or worktree root).
   don't pull or reset it. Run `./bin/setup.sh` in each new worktree. Each worktree has its own
   `backend/.venv`, so don't symlink one from another tree.
 - **Ports:** never use 8000 or 5173 (the user's own instance). Pick free ports for each
-  worktree so issues can run side by side.
-- **Before/after comparisons** use a task-specific detached `origin/main` worktree. Never
+  worktree so issues can run side by side. Worktree locations are in the
+  [`worktree` skill](.agents/skills/worktree/SKILL.md).
+- **Before/after comparisons** use a task-specific detached `origin/main` worktree (made
+  with the [`worktree` skill](.agents/skills/worktree/SKILL.md)). Never
   share or reuse another task's baseline worktree. Never use `git stash`: the stash is
   shared by every worktree, including the user's.
 - **Compute budget:** each agent runs at most one heavy run at a time, whatever skill it's
@@ -107,7 +112,7 @@ Run from the repo root (or worktree root).
   them or a private note to another machine, use the `b2-saves` skill.
 - Tool-agnostic skills for these workflows are in `.agents/skills/`; Claude Code's
   `.claude/skills` links there. Any coding agent working in this repo can use them:
-  `explore-problem`, `create-issue`, `start-issue`,
+  `explore-problem`, `create-issue`, `start-issue`, `worktree`,
   `start-rfc`, `continue-rfc`, `edit-rfc`, `project-management`, `compute-budget`,
   `replay-ab`, `b2-saves`, `peer-review`, `pre-push-check`, `rfc-authoring`, `rfc-review`,
   `complete-rfc`, `documentation`.
