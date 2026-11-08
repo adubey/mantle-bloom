@@ -1404,6 +1404,8 @@ def route_downstream(
         )
         deposited[i] += through_flux[i]
         cycle_settlement[i] += through_flux[i]
+        if erosion_only_flux is not None:
+            erosion_only_flux[i] = 0.0
 
     source_total = float(np.where(~is_ocean, source_amount, 0.0).sum())
     residual = source_total - (
@@ -2829,9 +2831,10 @@ def compute_hydrology(
     spill_target = lake_result.spill_target
     rim_node_idx = lake_result.rim_node_idx
 
-    # The erosion-only breach surge uses this step's resolved spill bodies. Its size remains
-    # lagged to the prior lake extent, but the spill state and rim now agree with discharge.
-    lake_component_size = _lake_component_sizes(prev_lake_water_m > LAKE_MIN_VISIBLE_DEPTH_M, neighbor_idx)
+    # The erosion-only breach surge uses this step's resolved spill bodies and solved lake
+    # extent (#506), so a basin that fills and spills within the step erodes its outlet now.
+    solved_lake_water_m = lake_result.lake_depth + lake_ice_m
+    lake_component_size = _lake_component_sizes(solved_lake_water_m > LAKE_MIN_VISIBLE_DEPTH_M, neighbor_idx)
     lake_breach_source = np.where(should_spill, LAKE_BREACH_EROSION_COEFFICIENT * lake_component_size, 0.0)
     rim_breach_source = np.zeros(n)
     spilling_idx = np.nonzero(should_spill)[0]

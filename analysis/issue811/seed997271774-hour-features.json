@@ -1,0 +1,437 @@
+{
+ "save": "mantle-bloom-seed997271774-87400000y.mbworld",
+ "baseline_commit": "dc855ca3",
+ "wind": "diagnostic",
+ "step_years": 0.00011408,
+ "note": "big = |storage change| or overflow to ocean over 50 km3; km3 throughout",
+ "runs": {
+  "warmup_10": [
+   {
+    "step": 12,
+    "calls_since_load": 22,
+    "overflow_to_ocean": 373.6,
+    "overflow_out": 373.6,
+    "storage_change": -372.8,
+    "internal_transfer": 2193.5,
+    "bodies_gone": [
+     {
+      "volume_km3": 9.339,
+      "area_km2": 3896.072,
+      "former_nodes_ocean_now": 0.0
+     }
+    ],
+    "bodies_moved": [
+     {
+      "delta_km3": -934.6,
+      "before_km3": 1040.8,
+      "after_km3": 106.3,
+      "area_before_km2": 46843.5,
+      "area_after_km2": 9936.8,
+      "former_nodes_ocean_now": 0.0
+     },
+     {
+      "delta_km3": 563.5,
+      "before_km3": 4460.2,
+      "after_km3": 5023.6,
+      "area_before_km2": 97640.6,
+      "area_after_km2": 100901.7,
+      "former_nodes_ocean_now": 0.0
+     }
+    ],
+    "top_discharge": {
+     "node": 66968,
+     "discharge_m3_s": 74677.91,
+     "flow_km3_over_step": 0.27,
+     "elevation_m": -385.28,
+     "lake_depth_m": 0.0
+    }
+   },
+   {
+    "step": 13,
+    "calls_since_load": 23,
+    "overflow_to_ocean": 5151.4,
+    "overflow_out": 5152.9,
+    "storage_change": -5135.5,
+    "internal_transfer": 0.2,
+    "bodies_gone": [
+     {
+      "volume_km3": 5023.628,
+      "area_km2": 100901.718,
+      "former_nodes_ocean_now": 0.967
+     },
+     {
+      "volume_km3": 106.252,
+      "area_km2": 9936.821,
+      "former_nodes_ocean_now": 1.0
+     },
+     {
+      "volume_km3": 7.091,
+      "area_km2": 3863.315,
+      "former_nodes_ocean_now": 0.0
+     }
+    ],
+    "bodies_moved": [],
+    "top_discharge": {
+     "node": 32143,
+     "discharge_m3_s": 1630423.16,
+     "flow_km3_over_step": 5.87,
+     "elevation_m": -364.57,
+     "lake_depth_m": 0.0
+    }
+   },
+   {
+    "step": 110,
+    "calls_since_load": 120,
+    "overflow_to_ocean": 0.0,
+    "overflow_out": 12.7,
+    "storage_change": -11.8,
+    "internal_transfer": 0.2,
+    "bodies_gone": [
+     {
+      "volume_km3": 11.99,
+      "area_km2": 3896.072,
+      "former_nodes_ocean_now": 0.0
+     }
+    ],
+    "bodies_moved": [],
+    "top_discharge": {
+     "node": 33851,
+     "discharge_m3_s": 3531614.04,
+     "flow_km3_over_step": 12.71,
+     "elevation_m": 82.13,
+     "lake_depth_m": 0.0
+    }
+   }
+  ],
+  "warmup_20": [
+   {
+    "step": 2,
+    "calls_since_load": 22,
+    "overflow_to_ocean": 373.7,
+    "overflow_out": 373.7,
+    "storage_change": -372.2,
+    "internal_transfer": 2193.7,
+    "bodies_gone": [
+     {
+      "volume_km3": 16.624,
+      "area_km2": 3896.072,
+      "former_nodes_ocean_now": 0.0
+     }
+    ],
+    "bodies_moved": [
+     {
+      "delta_km3": -934.6,
+      "before_km3": 1040.8,
+      "after_km3": 106.3,
+      "area_before_km2": 46843.5,
+      "area_after_km2": 9936.8,
+      "former_nodes_ocean_now": 0.0
+     },
+     {
+      "delta_km3": 563.2,
+      "before_km3": 4447.8,
+      "after_km3": 5011.0,
+      "area_before_km2": 97640.6,
+      "area_after_km2": 100901.7,
+      "former_nodes_ocean_now": 0.0
+     }
+    ],
+    "top_discharge": {
+     "node": 47445,
+     "discharge_m3_s": 23714.79,
+     "flow_km3_over_step": 0.09,
+     "elevation_m": 604.06,
+     "lake_depth_m": 1.58
+    }
+   },
+   {
+    "step": 3,
+    "calls_since_load": 23,
+    "overflow_to_ocean": 5151.4,
+    "overflow_out": 5152.8,
+    "storage_change": -5122.3,
+    "internal_transfer": 0.1,
+    "bodies_gone": [
+     {
+      "volume_km3": 5010.966,
+      "area_km2": 100901.718,
+      "former_nodes_ocean_now": 0.967
+     },
+     {
+      "volume_km3": 106.252,
+      "area_km2": 9936.821,
+      "former_nodes_ocean_now": 1.0
+     },
+     {
+      "volume_km3": 15.597,
+      "area_km2": 7732.26,
+      "former_nodes_ocean_now": 0.0
+     }
+    ],
+    "bodies_moved": [
+     {
+      "delta_km3": -4.3,
+      "before_km3": 792.5,
+      "after_km3": 788.2,
+      "area_before_km2": 173807.3,
+      "area_after_km2": 169545.2,
+      "former_nodes_ocean_now": 0.0
+     }
+    ],
+    "top_discharge": {
+     "node": 32143,
+     "discharge_m3_s": 1630475.73,
+     "flow_km3_over_step": 5.87,
+     "elevation_m": -364.57,
+     "lake_depth_m": 0.0
+    }
+   },
+   {
+    "step": 7,
+    "calls_since_load": 27,
+    "overflow_to_ocean": 206.1,
+    "overflow_out": 206.1,
+    "storage_change": -205.1,
+    "internal_transfer": 244.4,
+    "bodies_gone": [
+     {
+      "volume_km3": 20.509,
+      "area_km2": 3370.935,
+      "former_nodes_ocean_now": 0.0
+     },
+     {
+      "volume_km3": 15.763,
+      "area_km2": 7732.26,
+      "former_nodes_ocean_now": 0.0
+     }
+    ],
+    "bodies_moved": [
+     {
+      "delta_km3": -186.3,
+      "before_km3": 428.2,
+      "after_km3": 241.8,
+      "area_before_km2": 27580.5,
+      "area_after_km2": 24124.6,
+      "former_nodes_ocean_now": 0.0
+     }
+    ],
+    "top_discharge": {
+     "node": 32143,
+     "discharge_m3_s": 155588.9,
+     "flow_km3_over_step": 0.56,
+     "elevation_m": -394.34,
+     "lake_depth_m": 7.95
+    }
+   }
+  ],
+  "warmup_5": [
+   {
+    "step": 15,
+    "calls_since_load": 20,
+    "overflow_to_ocean": 784.0,
+    "overflow_out": 784.1,
+    "storage_change": -784.3,
+    "internal_transfer": 784.2,
+    "bodies_gone": [
+     {
+      "volume_km3": 5.269,
+      "area_km2": 3896.072,
+      "former_nodes_ocean_now": 0.0
+     }
+    ],
+    "bodies_moved": [
+     {
+      "delta_km3": -785.1,
+      "before_km3": 6294.4,
+      "after_km3": 5509.3,
+      "area_before_km2": 111522.1,
+      "area_after_km2": 117974.9,
+      "former_nodes_ocean_now": 0.0
+     }
+    ],
+    "top_discharge": {
+     "node": 66968,
+     "discharge_m3_s": 346127.64,
+     "flow_km3_over_step": 1.25,
+     "elevation_m": -385.28,
+     "lake_depth_m": 0.0
+    }
+   },
+   {
+    "step": 17,
+    "calls_since_load": 22,
+    "overflow_to_ocean": 373.6,
+    "overflow_out": 373.6,
+    "storage_change": -373.4,
+    "internal_transfer": 2193.6,
+    "bodies_gone": [
+     {
+      "volume_km3": 5.345,
+      "area_km2": 3896.072,
+      "former_nodes_ocean_now": 0.0
+     }
+    ],
+    "bodies_moved": [
+     {
+      "delta_km3": -934.6,
+      "before_km3": 1040.8,
+      "after_km3": 106.3,
+      "area_before_km2": 46843.5,
+      "area_after_km2": 9936.8,
+      "former_nodes_ocean_now": 0.0
+     },
+     {
+      "delta_km3": 563.1,
+      "before_km3": 4466.9,
+      "after_km3": 5030.0,
+      "area_before_km2": 97640.6,
+      "area_after_km2": 100901.7,
+      "former_nodes_ocean_now": 0.0
+     }
+    ],
+    "top_discharge": {
+     "node": 66968,
+     "discharge_m3_s": 337840.39,
+     "flow_km3_over_step": 1.22,
+     "elevation_m": -385.28,
+     "lake_depth_m": 0.0
+    }
+   },
+   {
+    "step": 18,
+    "calls_since_load": 23,
+    "overflow_to_ocean": 5151.4,
+    "overflow_out": 5152.8,
+    "storage_change": -5142.0,
+    "internal_transfer": 0.3,
+    "bodies_gone": [
+     {
+      "volume_km3": 5029.961,
+      "area_km2": 100901.718,
+      "former_nodes_ocean_now": 0.967
+     },
+     {
+      "volume_km3": 106.252,
+      "area_km2": 9936.821,
+      "former_nodes_ocean_now": 1.0
+     },
+     {
+      "volume_km3": 4.469,
+      "area_km2": 3863.315,
+      "former_nodes_ocean_now": 0.0
+     }
+    ],
+    "bodies_moved": [],
+    "top_discharge": {
+     "node": 32143,
+     "discharge_m3_s": 1630427.64,
+     "flow_km3_over_step": 5.87,
+     "elevation_m": -364.57,
+     "lake_depth_m": 0.0
+    }
+   }
+  ],
+  "warmup_0": [
+   {
+    "step": 22,
+    "calls_since_load": 22,
+    "overflow_to_ocean": 373.5,
+    "overflow_out": 373.6,
+    "storage_change": -374.1,
+    "internal_transfer": 2193.3,
+    "bodies_gone": [],
+    "bodies_moved": [
+     {
+      "delta_km3": -934.6,
+      "before_km3": 1040.8,
+      "after_km3": 106.3,
+      "area_before_km2": 46843.5,
+      "area_after_km2": 9936.8,
+      "former_nodes_ocean_now": 0.0
+     },
+     {
+      "delta_km3": 562.9,
+      "before_km3": 4470.2,
+      "after_km3": 5033.0,
+      "area_before_km2": 97640.6,
+      "area_after_km2": 100901.7,
+      "former_nodes_ocean_now": 0.0
+     }
+    ],
+    "top_discharge": {
+     "node": 67024,
+     "discharge_m3_s": 3504476.99,
+     "flow_km3_over_step": 12.62,
+     "elevation_m": 52.39,
+     "lake_depth_m": 0.0
+    }
+   },
+   {
+    "step": 23,
+    "calls_since_load": 23,
+    "overflow_to_ocean": 5151.4,
+    "overflow_out": 5152.8,
+    "storage_change": -5145.9,
+    "internal_transfer": 0.1,
+    "bodies_gone": [
+     {
+      "volume_km3": 5033.036,
+      "area_km2": 100901.718,
+      "former_nodes_ocean_now": 0.967
+     },
+     {
+      "volume_km3": 106.252,
+      "area_km2": 9936.821,
+      "former_nodes_ocean_now": 1.0
+     }
+    ],
+    "bodies_moved": [],
+    "top_discharge": {
+     "node": 67024,
+     "discharge_m3_s": 3477652.91,
+     "flow_km3_over_step": 12.52,
+     "elevation_m": 52.39,
+     "lake_depth_m": 0.0
+    }
+   }
+  ]
+ },
+ "sea_level_first_16_steps_hour_vs_day_m": {
+  "hour": [
+   -402.57,
+   -402.525,
+   -402.502,
+   -402.554,
+   -402.546,
+   -402.489,
+   -402.488,
+   -402.533,
+   -402.531,
+   -402.519,
+   -402.462,
+   -402.541,
+   -402.526,
+   -402.444,
+   -402.439,
+   -402.505
+  ],
+  "day": [
+   -402.57,
+   -402.525,
+   -402.502,
+   -402.554,
+   -402.546,
+   -402.489,
+   -402.488,
+   -402.534,
+   -402.532,
+   -402.52,
+   -402.463,
+   -402.541,
+   -402.527,
+   -402.445,
+   -402.439,
+   -402.505
+  ]
+ }
+}

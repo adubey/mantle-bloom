@@ -365,13 +365,11 @@ all). Compared with day mode from [`seed997271774-cfd.json`](seed997271774-cfd.j
   cell. In day mode the same release gave 124 M m3/s, which is 97% of the drop. The peak grows
   with 1/dt (2.3 G at one hour against 0.12 G at one day, 19x for a 24x shorter step), as
   `overflow / max(years, 1e-30)` predicts. It is a bookkeeping rate, not a river.
-- **The diagnostic hour run has two features that are not lake dumps.** Its 3.5 M m3/s peak is
-  at step 110, with a lake change of only 12 km3 (times 3,600 s that is 12.7 km3 of flow), so it
-  is not a release. Its one 5,136 km3 lake drop is at step 13, where the largest discharge is
-  1.6 M m3/s (5.9 km3), so the water did not leave through the largest river either. A drop of
-  the same size (5,112 km3) appears in diagnostic day mode, so it does not scale with the step.
-  I have not traced either feature; the step-13 drop is not the step-2 transient in the
-  warm-up section.
+- **The two diagnostic-run features are explained in the next section.** The 3.5 M m3/s peak at
+  step 110 is a 12.7 km3 lake release booked as a one-hour flow (an earlier version of this
+  note said it was not a release; that was wrong), and the 5,136 km3 drop at step 13 is a lake
+  that reached the ocean.
+
 - **No large-lake reversals at all** in either hour run. Ice moves under 0.1% and sea level
   0.5 m (diagnostic) or 0.03 m (`cfd`) over the run.
   The sampled lake window is 8.3 days, so this says little about flicker, which needs
@@ -385,6 +383,195 @@ all). Compared with day mode from [`seed997271774-cfd.json`](seed997271774-cfd.j
   march), so it clears the short-step end of the range and nothing more. Ice is the old
   one-shot solver at every step size.
 
+## Why the D/E anchor lake is largest at 5 kyr, and why A's anchor goes dry
+
+Compact data: [`rfc0016-window-de-peak.json`](rfc0016-window-de-peak.json). Same pinned source
+(`0bda513d`) and checkpoints as the windows section above. Probe scripts:
+`bin/debug/trace_lake_anchor.py` (single steps) and `bin/debug/probe_anchor_shore.py` (new).
+
+### D and E: two lake states, and the step size decides which one the run is in
+
+Measuring the anchor lake's catchment per step shows it is in one of two states. In the small
+state the catchment is 3 to 8M km2 and the lake 0.3 to 1.5M km3 over 1 to 1.8M km2. In the merged
+state the catchment is 19 to 25M km2 and the lake 3 to 7M km3 over 6 to 9M km2: the anchor basin
+has joined its neighbours into one inland sea. The 5 kyr "peak" in the earlier table is the
+merged state.
+
+| Step | D steps in merged state | E steps in merged state | Largest world lake, M km3 (D / E) |
+|---|---|---|---|
+| 1 kyr | 0 of 400 | 0 of 400 | 3.85 / 3.14 |
+| 2.5 kyr | 145 of 160 | 126 of 160 | 5.87 / 6.31 |
+| 5 kyr | 72 of 80 | 68 of 80 | 9.03 / 8.27 |
+| 10 kyr | 1 of 40 | 0 of 40 | 4.16 / 4.22 |
+| 25 kyr | 0 of 16 | 0 of 16 | 4.15 / 4.04 |
+| 100 kyr | 0 of 4 | 0 of 4 | 4.12 / 4.02 |
+
+The merged state is entered at 2.5 and 5 kyr, in the first 20 to 30 kyr, and almost never at the
+other sizes. At matched times up to 15 kyr all of 1, 2.5 and 5 kyr are in the small state, with the
+longer steps' lake larger (D at 15 kyr: 0.49, 0.96 and 1.44M km3).
+
+### Same start, one step: the lake after one step depends on the step length
+
+D's checkpoint has the anchor lake at 0.02M km3 (E's is dry). One step of each size from that same
+state, climate computed once from it:
+
+| Step | D anchor lake after one step, M km3 | World lake, M km3 | Lake merges/splits in the step |
+|---|---|---|---|
+| 1 kyr | 0.53 | 2.28 | 81 / 72 |
+| 2.5 kyr | 0.34 | 2.28 | 92 / 84 |
+| 5 kyr | 0.62 | 2.47 | 93 / 86 |
+| 10 kyr | 1.19 | 3.02 | 98 / 93 |
+| 25 kyr | 2.29 | 4.12 | 108 / 100 |
+| 100 kyr | 2.29 | 4.12 | 116 / 107 |
+
+The 25 and 100 kyr lakes are identical, a basin filled to its cap. The ledger residual is below
+1e-11 in every case, so this is not a water-balance error. In every case the hierarchy merges and
+splits 64 to 116 bodies in one step.
+
+### Control: shorten the lake solver's internal slices, nothing else
+
+`solve_lakes_prognostic` has a `substeps` argument that `step_world` leaves at 1, so a 100 kyr
+step is one implicit slice. I forced more slices for the same single step (climate unchanged):
+
+| Step | One slice | Shorter slices |
+|---|---|---|
+| 5 kyr | 0.62M km3 | 0.56 (1 kyr slices), 0.29 (200 yr slices) |
+| 25 kyr | 2.29M | 1.46 (1 kyr slices) |
+| 100 kyr | 2.29M | 0.85 (1 kyr slices) |
+
+The answer moves every time the slice shortens, and it has not converged at 200 yr. So the lake
+state depends on the slice length of the solver itself, within one step, at fixed climate. It
+fits the D-and-E picture: longer slices fill further, and a lake that is filled further can
+reach a saddle and merge.
+
+### What this does and does not show
+
+- **Shown:** the 5 kyr peak is the merged state, which only 2.5 and 5 kyr runs enter; one step
+  from identical state gives 0.34 to 2.29M km3 depending on the step; shortening the solver's
+  slices at fixed climate changes the result.
+- **Not shown:** why the merged state is entered at 2.5 and 5 kyr but not at 10 kyr. E at 100 kyr
+  dries out (0.11M km3) where E at 10 and 25 kyr holds 1.3 to 1.4M, so the order is not
+  monotone. I did not separate the slice length from the climate refresh interval: the single
+  steps with shorter slices hold the climate fixed, while the 1 kyr chain refreshes it every
+  kyr, and the 1 kyr chain stays near 0.5M km3 where the 1 kyr-slice controls at 25 and 100 kyr
+  reach 1.46 and 0.85. I also did not test whether the merged state is stable if started there
+  at 1 kyr.
+- **Relation to #754:** #754 traced the registered D and E reversals to lake-ice sublimation
+  charged outside the lake balance (fixed by #757 and #758). That is a separate effect. This
+  one is that the size and the merge state of the lake depend on the step length even with
+  the ledger closing.
+
+### A: the dry steps are a thin rim cell, not a vanishing lake
+
+The window A anchor is a single cell. A 5 kyr replay with the new probe, which keeps the nearest
+lake body whether or not it contains the anchor, shows a body of 0.86 to 0.95M km3, 0.66 to 0.68M
+km2 and 1.3 km mean depth at every step, including the dry ones. The anchor cell is on its rim:
+5.7 to 7.2 m of water through step 35, then 1.74 m at step 36, a level drop of about 5.5 m
+in one step, and below the 1 m visibility threshold (`LAKE_MIN_VISIBLE_DEPTH_M`) from step 40
+onward, while the ground under it rises 0.1 to 0.3 m a step. So the "dry" steps in A are the
+visibility threshold at the lake's edge. It does not change the earlier reading that A has no
+reversals. Two things I noticed and did not chase: the body's volume alternates every step
+(0.953 and 0.887M km3 from step 28 to 34, a period-2 swing of about 7%), and the 5.5 m level
+step at step 36. One window, one step size.
+
+## The hour run's two odd features, and a start-up transient keyed to the call count
+
+Compact data: [`seed997271774-hour-features.json`](seed997271774-hour-features.json). New probe:
+`bin/debug/probe_hour_features.py`. Diagnostic wind, the hour-mode setup, `dc855ca3`.
+
+- **Step 110, the 3.5 M m3/s peak, is a lake release.** The lake ledger shows 12.73 km3 overflowing
+  out of lakes and 11.78 km3 leaving storage, in a 3,896 km2 lake of 12.0 km3 that empties. The
+  largest river carries 12.7 km3 over the 3,600 s step, so it is the overflow-as-rate behaviour
+  (finding 1) at a small scale.
+- **Step 13, the 5,136 km3 drop, is a lake reaching the ocean.** Two bodies vanish: one of
+  5,024 km3 over 100,902 km2 (mean depth 50 m) and one of 106 km3, and 97% and 100% of their former
+  nodes are ocean afterwards. The ledger books 5,151 km3 of overflow to the ocean and a
+  storage change of -5,136 km3. The largest river carries only 5.9 km3 that step, so the water did
+  not travel by a river. The sea level rises 14.3 mm, which over a 3.6e8 km2 ocean (my figure, not
+  read from the world) is 5,150 km3. The step before (step 12) has a 373.6 km3 overflow to the
+  ocean and 2,193 km3 of lake-to-lake transfer, with a 1,041 km3 body falling to 106 km3.
+- **Both land on the same call number whatever the step length.** In diagnostic wind the first big drop
+  is at measured step 13 for hour steps (5,136 km3), day steps (5,112 km3) and 1 yr steps (3,085
+  km3). In `cfd` wind the drops are at steps 8, 9 and 10 for both hour and day: 11,052, 2,819 and
+  2,394 km3 against 11,060, 2,821 and 2,394 km3. A 24x change in step length does not move them.
+  The sea level series agrees to within 2 mm step by step between hour and day over the first
+  16 steps (-402.570, -402.525, -402.502, -402.554 for steps 1 to 4 in both).
+- **It is the call count since the save was loaded, not the warm-up.** I changed the warm-up
+  from 10 to 0, 5 and 20 day steps (diagnostic, hour steps). The 5,151 km3 overflow to the ocean
+  happens at call 23 after load in every case (measured step 13, 23, 18 and 3), the 374 km3
+  overflow at call 22, and a smaller 784 km3 one at call 20 in the 5-step case. So it is a
+  deterministic start-up sequence, measured in calls, that does not scale with the step.
+- **What I did not establish.** What carries the sequence from call to call. A hypothesis that fits:
+  a spill chain between lakes that moves one link per call, so that it takes about 23 calls to
+  reach the ocean. I did not test it, and I found no call counter in `world.py`, `hydrology.py` or
+  `lakes.py` (grep for step counts and modulo cadences). I also did not run it on a save made
+  after #758, so it may be specific to this older save.
+- **Why it matters for #811.** The earlier modes' first 10 to 30 measured steps are partly this
+  transient, in every step size. At 100 kyr, 23 calls is 2.3 Myr of simulated time; at one hour
+  it is 23 hours. If it is a spill chain moving one link per call, it is a real
+  time-scale mismatch (water crossing a chain of lakes at a rate set by the step count, not by
+  the step length), and it would act in the long-step modes as well as the short ones. That
+  is a hypothesis, not a result.
+
+## Second save (seed 910211954, 220.2 Myr) at every mode
+
+**In plain terms.** I ran the same eight step sizes with both wind models on a second world. It
+confirms the first save's pattern and adds two things. The start-up sequence of big lake drops
+lands on the same measured step numbers at hour, day and year steps (the first save showed this
+too), so it is not an artefact of one world. And this world is in a much icier state than the
+first, so its ice numbers say little about normal conditions and I do not use them.
+
+- **Save and driver.** `mantle-bloom-seed910211954-220200000y.mbworld`, SHA-256 `bd487409...`,
+  the same driver (`dc855ca3`), 10 day-steps of warm-up, ice-age cycle off, 200 measured steps
+  (80 and 20 for the two bridges). Data: `seed910211954-modes.json`.
+- **This save is glaciated.** Sea level is -871 m and glacier ice is 82.9 M km3 at step 1,
+  against -403 m and 5.7 M km3 for seed 997271774. In 200 day-steps (0.55 yr) the ice loses 10%
+  and sea level rises 28 m, which cannot be a steady state. We agreed to skip ice-age saves. I ran
+  it before checking, so treat the lake, wind and discharge columns as usable and the ice,
+  sea-level and glacier columns as provisional until the RFC 0015 D2 march is rerun. Lake volume
+  is 4.2 M km3 (13 times the first save's), so the lakes are also far from typical.
+
+| Mode / wind | lake start to end (k km3) | steps dropping > 1,000 km3 | largest one-step drop (km3) | median max discharge (k m3/s) | body reversals | worst lake ledger residual |
+|---|---|---|---|---|---|---|
+| hour, diagnostic | 4,171 to 4,119 | 13 | 3,766 | 4,732 | 3 of 11,526 | 7e-6 |
+| day, diagnostic | 4,171 to 4,109 | 16 | 4,299 | 56 | 8 of 11,733 | 1e-5 |
+| year, diagnostic | 4,172 to 4,622 | 0 | 473 | 83 | 5 of 14,065 | 2e-8 |
+| century, diagnostic | 4,399 to 3,404 | 129 | 83,867 | 93 | 34 of 8,939 | 6e-11 |
+| 250 yr, diagnostic | 4,640 to 3,086 | 133 | 116,749 | 92 | 49 of 8,177 | 3e-11 |
+| 100 kyr, diagnostic | 3,982 to 2,097 | 89 | 921,033 | 46 | 23 of 1,405 | 3e-11 |
+| 250 kyr bridge, diagnostic | 3,863 to 1,541 | 44 | 1,498,053 | 65 | 31 of 506 | 1e-11 |
+| 1 Myr bridge, diagnostic | 3,497 to 1,186 | 13 | 1,942,913 | 45 | 2 of 54 | 1e-11 |
+| hour, cfd | 4,092 to 3,868 | 30 | 43,816 | 9,990 | 0 of 11,164 | 2e-4 |
+| day, cfd | 4,092 to 3,871 | 34 | 43,894 | 54 | 2 of 11,540 | 1e-5 |
+| year, cfd | 4,090 to 4,028 | 40 | 41,749 | 64 | 0 of 15,562 | 2e-7 |
+| century, cfd | 4,089 to 3,339 | 90 | 40,071 | 93 | 20 of 11,231 | 3e-11 |
+| 250 yr, cfd | 4,029 to 3,802 | 83 | 90,337 | 90 | 60 of 10,440 | 6e-12 |
+| 100 kyr, cfd | 3,103 to 2,065 | 103 | 698,468 | 45 | 45 of 1,424 | 7e-12 |
+| 250 kyr bridge, cfd | 3,089 to 2,397 | 42 | 794,177 | 45 | 19 of 516 | 8e-12 |
+| 1 Myr bridge, cfd | 2,198 to 1,395 | 13 | 655,513 | 36 | 15 of 92 | 9e-12 |
+
+- **Overflow-as-rate shows again.** Hour steps have a median max discharge of 4.7 M m3/s
+  (diagnostic) and 10 M m3/s (cfd), against 56 k m3/s at day steps. At 3,600 s that discharge
+  times the step is the size of a lake drop, not a river. The first save showed the same
+  one-off-release-booked-as-a-rate effect (diagnostic step 110, cfd step 8), but there it hit 3
+  steps; here it is in more than a tenth of the steps, because this world has many large lakes
+  near their caps. The #553 depth-cap warning fires on this save at step 1.
+- **The start-up sequence repeats.** The big lake drops at the first measured steps are the same
+  at hour and day steps, step for step. Diagnostic: 3, 1, 3, 3 and 2 thousand km3 at steps 2,
+  3, 4, 5 and 7 in both modes. cfd: 36, 14, 44, 13 thousand km3 at steps 2 to 5 at hour and
+  day, and 34, 11, 42, 12 at year. Century steps begin later (step 5) and look different. With
+  the first save's call-23 result, this makes a call-keyed start-up sequence two for two, but I
+  still have not found its mechanism.
+- **Drift against step size.** Diagnostic lake volume moves from -1.5% (day) to +10.8% (year) to
+  -22.6% (century) to -47% (100 kyr) over the same 200 steps. The runs cover different spans of
+  time (0.55 yr to 20 Myr), so some of this is real evolution, and the bridges' large losses
+  (-60%, -66%) with 1,900,000 km3 single-step drops are lakes releasing at 20 Myr scale. I did
+  not separate evolution from step-size artefact: a fixed-span comparison would be needed.
+- **Ledger.** Residuals fall from 1e-5 to 1e-11 as the step grows, as in the first save. The
+  worst is hour cfd, 2e-4. It was 5e-6 on the first save, and I did not trace the difference.
+- **Runtime.** Median 6.7 to 8.1 s per step on diagnostic wind and 8.8 to 11.6 s on cfd. The
+  memory peak was about 6.5 GB at 250 yr on diagnostic, not the 1.7 GB the early modes used.
+
 ## Method change: warm up first
 
 Because of finding 2, every mode now runs the same `--warmup-days` day-length steps (default 10)
@@ -394,8 +581,9 @@ taken without warm-up and is kept for the record.
 ## Open
 
 - Identify the step-2 body and why it disappears (cap level, tier, rim, `#758` hysteresis).
-- Why the D/E lake peaks at 5 kyr, and the anchor's dry steps in A.
-- Second save at every mode.
+- Why the merged D/E lake state is entered at 2.5 and 5 kyr but not at 10 kyr, and whether the slice length or the climate refresh interval drives it; the period-2 volume swing and the 5.5 m level step in A.
+- Test whether a spill chain moving one link per call explains the call-23 start-up transient, and rerun on a post-#758 save.
+- Second save: the world is glaciated, so rerun it, or pick a second save with ordinary ice, once D2 is in. Separate evolution from step-size artefact with a fixed-span comparison. Find why its hour cfd ledger is 2e-4.
 - Rerun the ice metrics once RFC 0015 D2 merges (PR #806, merged 2026-11-07; march cost and regime boundary in the RFC 0015 note).
 - The #553 depth-cap warning on seed 910211954 at step 1 (6.7e4 km3 gross overflow on lake-tier
   bodies, 3.5e4 on sea-tier bodies) is another large-overflow route.

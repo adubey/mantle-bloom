@@ -838,12 +838,12 @@ def test_compute_hydrology_spilling_lake_also_erodes_its_own_rim_when_that_is_th
     temperature_at_nodes = np.full(n, 15.0)
     fields = hydrology.compute_hydrology(world, precipitation_at_nodes, temperature_at_nodes, years=1)
 
-    # Both sides of the true bottleneck now carry roughly one component-size's worth of
-    # LAKE_BREACH_EROSION_COEFFICIENT -- the lake's own rim (11, previously untouched) just as
-    # much as the far side (15, which already worked before this fix).
-    assert fields.flow_accum[11] >= hydrology.LAKE_BREACH_EROSION_COEFFICIENT
-    assert fields.flow_accum[11] < hydrology.LAKE_BREACH_EROSION_COEFFICIENT * 1.1
-    assert fields.flow_accum[15] >= hydrology.LAKE_BREACH_EROSION_COEFFICIENT
+    # Both nodes of the two-node basin (floor 10 and partly flooded rim member 11) exceed
+    # LAKE_MIN_VISIBLE_DEPTH_M after the prognostic solve, so both sides of the bottleneck
+    # carry two nodes' worth of LAKE_BREACH_EROSION_COEFFICIENT (#506).
+    assert fields.flow_accum[11] >= 2.0 * hydrology.LAKE_BREACH_EROSION_COEFFICIENT
+    assert fields.flow_accum[11] < 2.1 * hydrology.LAKE_BREACH_EROSION_COEFFICIENT
+    assert fields.flow_accum[15] >= 2.0 * hydrology.LAKE_BREACH_EROSION_COEFFICIENT
     lake = fields.lake_forest[0]
     assert fields.should_spill[lake.sink_node_idx]
     assert lake.is_spilling
@@ -2850,3 +2850,51 @@ def test_new_settle_presets_cover_the_step(monkeypatch, preset):
     fields, entry = _march_with(monkeypatch, ice_sheet.march_cost(preset), 10_000)
     assert entry["marched_years"] + entry["held_years"] == pytest.approx(10_000.0)
     assert entry["settle_test"] in (None, "pair", "recurrence", "trend")
+
+
+def test_breach_surge_fires_when_a_dry_basin_opens_within_step_and_stops_when_reheld():
+    # Issue #506: a dry basin (prev_lake_depth == 0) that fills and spills within the step
+    # gets its breach surge this step, while a previously full basin whose level falls below
+    # its rim under evaporation gets none.
+    elevation = np.array(
+        [500.0, 480.0, 460.0, 440.0, 420.0, 400.0, 380.0, 360.0, 340.0, 320.0]
+        + [50.0]
+        + [250.0, 300.0, 260.0, 200.0, 150.0, 100.0, 50.0, 20.0]
+        + [-10.0, -50.0, -100.0]
+    )
+    n = len(elevation)
+    theta = 0.002 * np.arange(n)
+
+    dry_world = World(seed=0, plates=[_flow_line_plate_with_lake(0, theta, elevation, np.zeros(n))])
+    opened = hydrology.compute_hydrology(dry_world, np.full(n, 2000.0), np.full(n, 5.0), years=10_000)
+    assert opened.should_spill[10]
+    assert opened.breach_surge[10] == pytest.approx(hydrology.LAKE_BREACH_EROSION_COEFFICIENT)
+    assert opened.breach_surge_accum[14] > 0.0
+
+    wet_depth = np.zeros(n)
+    wet_depth[10] = 160.0
+    wet_world = World(seed=0, plates=[_flow_line_plate_with_lake(0, theta, elevation, wet_depth)])
+    reheld = hydrology.compute_hydrology(wet_world, np.zeros(n), np.full(n, 30.0), years=1_000)
+    assert not reheld.should_spill[10]
+    assert np.all(reheld.breach_surge == 0.0)
+    assert np.all(reheld.breach_surge_accum == 0.0)
+
+
+def test_breach_surge_accum_leaves_no_flux_stranded_on_flow_cycles():
+    # Issue #506: if breach_surge enters a flow cycle, route_downstream clears erosion_only_flux
+    # on the cycle nodes alongside settling through_flux into cycle_settlement.
+    elevation = np.array([40.0, 30.0, 20.0, 10.0, -10.0])
+    is_ocean = np.array([False, False, False, False, True])
+    # Node 0 drains into the 1 <-> 2 cycle; node 3 drains to ocean 4.
+    flow_target = np.array([1, 2, 1, 4, -1])
+    source = np.array([100.0, 10.0, 10.0, 50.0, 0.0])
+    surge = np.array([100.0, 0.0, 10.0, 50.0, 0.0])
+
+    routed = hydrology.route_downstream(
+        elevation, is_ocean, flow_target, source, erosion_only_source_amount=surge
+    )
+    _, _, breach_surge_accum = routed
+    assert routed.cycle_settlement[[1, 2]].sum() == pytest.approx(120.0)
+    assert breach_surge_accum[0] == pytest.approx(100.0)
+    assert np.all(breach_surge_accum[[1, 2]] == 0.0)
+    assert breach_surge_accum[3] == pytest.approx(50.0)

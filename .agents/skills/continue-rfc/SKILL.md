@@ -56,11 +56,8 @@ revision after new evidence, use [`edit-rfc`](../edit-rfc/SKILL.md); for a revie
   or push to the existing shared RFC branch. Fetch `origin`, create a new worktree on a
   unique branch based on the RFC PR branch, and submit the revision from that branch:
 
-  ```bash
-  git fetch origin
-  git worktree add -b <agent>/rfc-<NNNN>-continue-<slug> \
-    ../mantle-bloom-rfc-<NNNN>-continue-<slug> origin/<rfc-branch>
-  ```
+  Create it with the [`worktree` skill](../worktree/SKILL.md) (RFC continuation, based on
+  `origin/<rfc-branch>`).
 
   Confirm the new branch name is unused locally and remotely first. Propose the new branch
   as a PR targeting the existing RFC branch so its current draft history is retained; do
