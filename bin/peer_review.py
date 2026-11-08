@@ -30,6 +30,7 @@ import fcntl
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -609,28 +610,68 @@ def wait_for_reviews(
         sleep_fn(poll_interval)
 
 
+def resolve_binary(name: str) -> str:
+    """Find the full executable path for an agent CLI, checking standard search locations."""
+    # Check PATH first
+    found = shutil.which(name)
+    if found:
+        return found
+    # Common user locations on macOS / Linux
+    home = Path.home()
+    candidates = [
+        home / ".local" / "bin" / name,
+        home / "bin" / name,
+        Path("/opt/homebrew/bin") / name,
+        Path("/usr/local/bin") / name,
+    ]
+    if name == "codex":
+        candidates.append(
+            Path("/Applications/Codex.app/Contents/Resources/codex-cli/bin/codex")
+        )
+    elif name == "agy":
+        candidates.append(home / ".gemini" / "bin" / "agy")
+    for c in candidates:
+        if c.is_file() and os.access(c, os.X_OK):
+            return str(c)
+    return name
+
+
 def build_cli_command(req: ReviewRequest, slot: ReviewSlot, worktree: Path) -> list[str]:
     prompt = format_review_brief(req, slot)
     if slot.agent == "codex":
-        cmd = ["codex", "exec", "--cd", str(worktree)]
+        bin_path = resolve_binary("codex")
+        cmd = [bin_path, "exec", "--cd", str(worktree)]
         if slot.model != "default":
             cmd.extend(["-m", slot.model])
         if slot.reasoning != "default":
-            cmd.extend(["-c", f'model_reasoning_effort="{slot.reasoning}"'])
+            cmd.extend(["-c", f"model_reasoning_effort={slot.reasoning}"])
         cmd.append(prompt)
         return cmd
     if slot.agent == "claude":
-        cmd = ["claude", "-p"]
+        bin_path = resolve_binary("claude")
+        cmd = [bin_path, "-p"]
         if slot.model != "default":
             cmd.extend(["--model", slot.model])
         if slot.reasoning != "default":
             cmd.extend(["--effort", slot.reasoning])
         cmd.append(prompt)
         return cmd
-    if slot.agent == "antigravity":
-        cmd = ["agy"]
+    if slot.agent == "muse":
+        bin_path = resolve_binary("muse")
+        cmd = [bin_path, "exec", "--workspace", str(worktree)]
         if slot.model != "default":
             cmd.extend(["--model", slot.model])
+        if slot.reasoning != "default":
+            cmd.extend(["--reasoning-effort", slot.reasoning])
+        cmd.append(prompt)
+        return cmd
+    if slot.agent == "antigravity":
+        bin_path = resolve_binary("agy")
+        cmd = [bin_path, "-p"]
+        if slot.model != "default":
+            cmd.extend(["--model", slot.model])
+        if slot.reasoning != "default":
+            cmd.extend(["--effort", slot.reasoning])
         cmd.append(prompt)
         return cmd
     raise ValueError(

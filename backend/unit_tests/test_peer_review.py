@@ -197,29 +197,40 @@ def test_build_cli_command_passes_model_and_reasoning(tmp_path):
     )
     codex_slot = pr_mod.ReviewSlot("codex", "codex", "gpt-5.4", "xhigh", "cli")
     codex_cmd = pr_mod.build_cli_command(req, codex_slot, tmp_path)
-    assert codex_cmd[:7] == [
-        "codex",
+    assert codex_cmd[1:6] == [
         "exec",
         "--cd",
         str(tmp_path),
         "-m",
         "gpt-5.4",
-        "-c",
     ]
-    assert codex_cmd[7] == 'model_reasoning_effort="xhigh"'
+    assert codex_cmd[6] == "-c"
+    assert codex_cmd[7] == "model_reasoning_effort=xhigh"
     assert "PR #825" in codex_cmd[8]
 
     claude_slot = pr_mod.ReviewSlot("claude", "claude", "opus", "high", "cli")
     claude_cmd = pr_mod.build_cli_command(req, claude_slot, tmp_path)
-    assert claude_cmd[:6] == ["claude", "-p", "--model", "opus", "--effort", "high"]
+    assert claude_cmd[1:6] == ["-p", "--model", "opus", "--effort", "high"]
 
-    agy_slot = pr_mod.ReviewSlot("antigravity", "antigravity", "pro", "default", "cli")
+    muse_slot = pr_mod.ReviewSlot("muse", "muse", "opus", "high", "cli")
+    muse_cmd = pr_mod.build_cli_command(req, muse_slot, tmp_path)
+    assert muse_cmd[1:7] == [
+        "exec",
+        "--workspace",
+        str(tmp_path),
+        "--model",
+        "opus",
+        "--reasoning-effort",
+    ]
+    assert muse_cmd[7] == "high"
+
+    agy_slot = pr_mod.ReviewSlot("antigravity", "antigravity", "pro", "high", "cli")
     agy_cmd = pr_mod.build_cli_command(req, agy_slot, tmp_path)
-    assert agy_cmd[:3] == ["agy", "--model", "pro"]
+    assert agy_cmd[1:6] == ["-p", "--model", "pro", "--effort", "high"]
 
-    muse_slot = pr_mod.ReviewSlot("muse", "muse", "opus", "high", "window")
-    with pytest.raises(ValueError, match="open-window mode"):
-        pr_mod.build_cli_command(req, muse_slot, tmp_path)
+    unknown_slot = pr_mod.ReviewSlot("other", "other", "default", "default", "cli")
+    with pytest.raises(ValueError, match="does not have a headless CLI builder"):
+        pr_mod.build_cli_command(req, unknown_slot, tmp_path)
 
 
 def test_review_worktree_goes_beside_the_primary_not_inside_git(tmp_path):
