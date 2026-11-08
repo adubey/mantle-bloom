@@ -68,8 +68,10 @@ Run from the repo root (or worktree root).
   don't pull or reset it. Run `./bin/setup.sh` in each new worktree. Each worktree has its own
   `backend/.venv`, so don't symlink one from another tree.
 - **Ports:** never use 8000 or 5173 (the user's own instance). Pick free ports for each
-  worktree so issues can run side by side.
-- **Before/after comparisons** use a task-specific detached `origin/main` worktree. Never
+  worktree so issues can run side by side. Worktree locations are in the
+  [`worktree` skill](.agents/skills/worktree/SKILL.md).
+- **Before/after comparisons** use a task-specific detached `origin/main` worktree (made
+  with the [`worktree` skill](.agents/skills/worktree/SKILL.md)). Never
   share or reuse another task's baseline worktree. Never use `git stash`: the stash is
   shared by every worktree, including the user's.
 - **Compute budget:** each agent runs at most one heavy run at a time, whatever skill it's
