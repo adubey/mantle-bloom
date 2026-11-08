@@ -55,10 +55,10 @@ Run from the repo root (or worktree root).
 - **One issue branch and worktree per issue, branched off `origin/main`.** Name the branch
   `<agent>/issue-<N>-<slug>`, where `<agent>` is the short identifier of the agent/tool
   doing the work (for example, `claude`, `codex`, `gemini`, or `muse`). Use your own identifier; don't
-  present yourself as another agent. Agents whose sandbox and file tools are scoped to the
-  workspace root (such as `gemini`) may place worktrees under `worktrees/<name>` inside the
-  primary checkout (gitignored via `/worktrees/`) instead of `../mantle-bloom-<name>` to
-  avoid out-of-workspace approval prompts. RFCs are large
+  present yourself as another agent. The [`worktree` skill](.agents/skills/worktree/SKILL.md)
+  owns where worktrees go (agents scoped to the workspace root, such as `gemini`, use
+  `worktrees/<name>`; others use `../mantle-bloom-<name>`), their names and the creation
+  command. RFCs are large
   decisions tracked by a parent issue with sub-issues; each sub-issue gets its own isolated
   issue worktree. Never switch the RFC proposal worktree to an issue branch. Use
   `start-rfc` to begin or advance an RFC workstream, `continue-rfc` to reconstruct an RFC
@@ -108,7 +108,7 @@ Run from the repo root (or worktree root).
   them or a private note to another machine, use the `b2-saves` skill.
 - Tool-agnostic skills for these workflows are in `.agents/skills/`; Claude Code's
   `.claude/skills` links there. Any coding agent working in this repo can use them:
-  `explore-problem`, `create-issue`, `start-issue`,
+  `explore-problem`, `create-issue`, `start-issue`, `worktree`,
   `start-rfc`, `continue-rfc`, `edit-rfc`, `project-management`, `compute-budget`,
   `replay-ab`, `b2-saves`, `pre-push-check`, `rfc-authoring`, `rfc-review`, `complete-rfc`,
   `documentation`.

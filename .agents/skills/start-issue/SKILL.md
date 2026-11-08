@@ -22,36 +22,12 @@ description: Set up an isolated branch, worktree, venv and ports for a Mantle-Bl
    evidence, not to choose an issue checkout. RFCs are large
    decisions tracked by a parent issue and sub-issues; every issue,
    including an RFC sub-issue, gets its own isolated issue worktree. Do not reuse or switch
-   the RFC proposal worktree. Name an RFC-linked issue worktree for both the RFC and issue.
-   Branch from `origin/main`, check that the branch name is unused locally and remotely,
-   and never switch branches in a tree another task may be using. The primary checkout's
-   local `main` may lag behind `origin`; never base work on it, and never pull or reset it.
+   the RFC proposal worktree, and never switch branches in a tree another task may be using.
+   Create the issue worktree (an RFC-linked issue is named for both the RFC and the issue)
+   with the [`worktree` skill](../worktree/SKILL.md), which owns the path, branch name and
+   creation command.
 
-   ```bash
-   git fetch origin
-   git worktree add -b <agent>/issue-<N>-<slug> ../mantle-bloom-issue-<N> origin/main
-   ```
-
-   `<agent>` is the short identifier for the agent/tool doing the work (for example,
-   `claude`, `codex`, `gemini`, or `muse`); use your own identifier. `<slug>` is two to four words,
-   e.g. `muse/issue-320-crust-transfer`. Agents whose sandbox and file tools are scoped to
-   the primary checkout root (such as `gemini`) may use `worktrees/issue-<N>` (and
-   `worktrees/rfc-<NNNN>-issue-<N>` or `worktrees/issue-<N>-baseline`) inside the primary
-   checkout instead of `../mantle-bloom-*`. For an RFC-linked issue, use an RFC-specific path
-   while creating the issue branch directly from `origin/main`:
-
-   ```bash
-   git worktree add -b <agent>/issue-<N>-<slug> \
-     ../mantle-bloom-rfc-<NNNN>-issue-<N> origin/main
-   ```
-
-   In this repository, create the issue worktree with the command above. Do not rely on a
-   harness-created worktree unless you have verified its base commit is `origin/main`; a
-   branch rename does not change its base. If it is based on another commit, create a fresh
-   issue worktree instead and leave the harness tree untouched.
-
-3. **Install deps** in the worktree: `./bin/setup.sh`. It creates the worktree's own
-   `backend/.venv`. Don't symlink another tree's venv.
+3. **Install deps** in the worktree, as the `worktree` skill describes.
 
 4. **Pick ports** if you'll run the app. Ports 8000 and 5173 belong to the user's own
    instance. Use e.g. `8000+N` for the backend and `9000+N` for the frontend, after checking
@@ -64,15 +40,8 @@ description: Set up an isolated branch, worktree, venv and ports for a Mantle-Bl
    ```
 
 5. **If the work needs before/after numbers**, set up a baseline now. Use a task-specific,
-   detached `origin/main` worktree; never share or reuse another task's baseline tree:
-
-   ```bash
-   git worktree add --detach ../mantle-bloom-issue-<N>-baseline origin/main
-   (cd ../mantle-bloom-issue-<N>-baseline && ./bin/setup.sh --backend-only)
-   ```
-
-   If that path already exists, do not switch or reuse its worktree; choose another unique
-   path for this issue.
+   detached `origin/main` worktree made with the [`worktree` skill](../worktree/SKILL.md)
+   (baseline, `--backend-only` setup); never share or reuse another task's baseline tree.
 
    See the `replay-ab` skill for running the comparison.
 

@@ -37,21 +37,11 @@ as the canonical source for acceptance, diagnosis gates and implementation-issue
   For an accepted RFC, use an isolated worktree from `origin/main` when code or RFC files
   must be edited.
 
-  ```bash
-  git fetch origin
-  git worktree add -b <agent>/rfc-<NNNN>-<slug> ../mantle-bloom-rfc-<NNNN> origin/main
-  ```
-
-  `<agent>` is the short identifier for the agent/tool doing the work (for example,
-  `claude`, `codex`, `gemini`, or `muse`). Use your own identifier. Agents scoped to the
-  primary checkout root (such as `gemini`) may use `worktrees/rfc-<NNNN>` instead of
-  `../mantle-bloom-rfc-<NNNN>`. Keep the proposal tree for RFC
-  work. Each
+  Create the worktree with the [`worktree` skill](../worktree/SKILL.md), which owns the
+  path, branch name, creation command and setup. Keep the proposal tree for RFC work. Each
   implementation sub-issue gets its own isolated worktree and branch from `origin/main`
   through [`start-issue`](../start-issue/SKILL.md); never switch the proposal worktree to
   an issue branch.
-- Run `./bin/setup.sh` in a new worktree. Each worktree needs its own `backend/.venv`; do
-  not symlink one from another tree.
 - Use `rfc-authoring` to write the proposal and open its RFC proposal PR. Pick free,
   non-user ports only if running the app. For before/after replay numbers, follow
   `replay-ab`.
