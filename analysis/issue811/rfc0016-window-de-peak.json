@@ -1,0 +1,348 @@
+{
+ "source": "0bda513d pinned, windows D (225.1 Myr) and E (224 Myr), seed 910211954",
+ "note": "anchor lake = the wet component containing the registered anchor point; V,A,C in M km3, M km2, M km2 catchment",
+ "two_state": {
+  "d-1000": {
+   "steps": 400,
+   "anchor_wet_steps": 400,
+   "merged_state_steps(catchment>15M km2)": 0,
+   "median_catchment_Mkm2": 5.5,
+   "max_world_lake_Mkm3": 3.85
+  },
+  "d-2500": {
+   "steps": 160,
+   "anchor_wet_steps": 160,
+   "merged_state_steps(catchment>15M km2)": 145,
+   "median_catchment_Mkm2": 19.5,
+   "max_world_lake_Mkm3": 5.87
+  },
+  "d-5000": {
+   "steps": 80,
+   "anchor_wet_steps": 80,
+   "merged_state_steps(catchment>15M km2)": 72,
+   "median_catchment_Mkm2": 23.5,
+   "max_world_lake_Mkm3": 9.03
+  },
+  "d-10000": {
+   "steps": 40,
+   "anchor_wet_steps": 27,
+   "merged_state_steps(catchment>15M km2)": 1,
+   "median_catchment_Mkm2": 5.1,
+   "max_world_lake_Mkm3": 4.16
+  },
+  "d-25000": {
+   "steps": 16,
+   "anchor_wet_steps": 16,
+   "merged_state_steps(catchment>15M km2)": 0,
+   "median_catchment_Mkm2": 2.3,
+   "max_world_lake_Mkm3": 4.15
+  },
+  "d-100000": {
+   "steps": 4,
+   "anchor_wet_steps": 4,
+   "merged_state_steps(catchment>15M km2)": 0,
+   "median_catchment_Mkm2": 2.3,
+   "max_world_lake_Mkm3": 4.12
+  },
+  "e-1000": {
+   "steps": 400,
+   "anchor_wet_steps": 400,
+   "merged_state_steps(catchment>15M km2)": 0,
+   "median_catchment_Mkm2": 7.8,
+   "max_world_lake_Mkm3": 3.14
+  },
+  "e-2500": {
+   "steps": 160,
+   "anchor_wet_steps": 160,
+   "merged_state_steps(catchment>15M km2)": 126,
+   "median_catchment_Mkm2": 21.1,
+   "max_world_lake_Mkm3": 6.31
+  },
+  "e-5000": {
+   "steps": 80,
+   "anchor_wet_steps": 79,
+   "merged_state_steps(catchment>15M km2)": 68,
+   "median_catchment_Mkm2": 25.1,
+   "max_world_lake_Mkm3": 8.27
+  },
+  "e-10000": {
+   "steps": 40,
+   "anchor_wet_steps": 28,
+   "merged_state_steps(catchment>15M km2)": 0,
+   "median_catchment_Mkm2": 5.5,
+   "max_world_lake_Mkm3": 4.22
+  },
+  "e-25000": {
+   "steps": 16,
+   "anchor_wet_steps": 11,
+   "merged_state_steps(catchment>15M km2)": 0,
+   "median_catchment_Mkm2": 4.3,
+   "max_world_lake_Mkm3": 4.04
+  },
+  "e-100000": {
+   "steps": 4,
+   "anchor_wet_steps": 4,
+   "merged_state_steps(catchment>15M km2)": 0,
+   "median_catchment_Mkm2": 4.3,
+   "max_world_lake_Mkm3": 4.02
+  }
+ },
+ "first_step_same_start": {
+  "d-1000": {
+   "step0_VA": [
+    0.02,
+    0.51
+   ],
+   "step1_VA": [
+    0.53,
+    1.47
+   ],
+   "world_lake_Mkm3": [
+    1.54,
+    2.28
+   ],
+   "merge_split": [
+    81,
+    72
+   ]
+  },
+  "d-2500": {
+   "step0_VA": [
+    0.02,
+    0.51
+   ],
+   "step1_VA": [
+    0.34,
+    0.97
+   ],
+   "world_lake_Mkm3": [
+    1.54,
+    2.28
+   ],
+   "merge_split": [
+    92,
+    84
+   ]
+  },
+  "d-5000": {
+   "step0_VA": [
+    0.02,
+    0.51
+   ],
+   "step1_VA": [
+    0.62,
+    1.06
+   ],
+   "world_lake_Mkm3": [
+    1.54,
+    2.47
+   ],
+   "merge_split": [
+    93,
+    86
+   ]
+  },
+  "d-10000": {
+   "step0_VA": [
+    0.02,
+    0.51
+   ],
+   "step1_VA": [
+    1.19,
+    1.01
+   ],
+   "world_lake_Mkm3": [
+    1.54,
+    3.02
+   ],
+   "merge_split": [
+    98,
+    93
+   ]
+  },
+  "d-25000": {
+   "step0_VA": [
+    0.02,
+    0.51
+   ],
+   "step1_VA": [
+    2.29,
+    1.16
+   ],
+   "world_lake_Mkm3": [
+    1.54,
+    4.12
+   ],
+   "merge_split": [
+    108,
+    100
+   ]
+  },
+  "d-100000": {
+   "step0_VA": [
+    0.02,
+    0.51
+   ],
+   "step1_VA": [
+    2.29,
+    1.16
+   ],
+   "world_lake_Mkm3": [
+    1.54,
+    4.12
+   ],
+   "merge_split": [
+    116,
+    107
+   ]
+  },
+  "e-1000": {
+   "step0_VA": null,
+   "step1_VA": [
+    0.32,
+    1.23
+   ],
+   "world_lake_Mkm3": [
+    2.73,
+    3.14
+   ],
+   "merge_split": [
+    84,
+    82
+   ]
+  },
+  "e-2500": {
+   "step0_VA": null,
+   "step1_VA": [
+    0.59,
+    1.33
+   ],
+   "world_lake_Mkm3": [
+    2.73,
+    3.07
+   ],
+   "merge_split": [
+    85,
+    83
+   ]
+  },
+  "e-5000": {
+   "step0_VA": null,
+   "step1_VA": [
+    0.92,
+    1.25
+   ],
+   "world_lake_Mkm3": [
+    2.73,
+    2.74
+   ],
+   "merge_split": [
+    86,
+    84
+   ]
+  },
+  "e-10000": {
+   "step0_VA": null,
+   "step1_VA": [
+    1.33,
+    1.19
+   ],
+   "world_lake_Mkm3": [
+    2.73,
+    2.7
+   ],
+   "merge_split": [
+    98,
+    95
+   ]
+  },
+  "e-25000": {
+   "step0_VA": null,
+   "step1_VA": [
+    1.41,
+    0.93
+   ],
+   "world_lake_Mkm3": [
+    2.73,
+    2.76
+   ],
+   "merge_split": [
+    102,
+    100
+   ]
+  },
+  "e-100000": {
+   "step0_VA": null,
+   "step1_VA": [
+    0.11,
+    0.62
+   ],
+   "world_lake_Mkm3": [
+    2.73,
+    1.45
+   ],
+   "merge_split": [
+    71,
+    64
+   ]
+  }
+ },
+ "lake_slice_control_window_d": {
+  "d-5000-substeps1": {
+   "slice_years": 5000.0,
+   "step1_VA": [
+    0.62,
+    1.06
+   ],
+   "world_lake_Mkm3": 2.47
+  },
+  "d-5000-substeps5": {
+   "slice_years": 1000.0,
+   "step1_VA": [
+    0.56,
+    0.99
+   ],
+   "world_lake_Mkm3": 2.06
+  },
+  "d-5000-substeps25": {
+   "slice_years": 200.0,
+   "step1_VA": [
+    0.29,
+    0.75
+   ],
+   "world_lake_Mkm3": 1.72
+  },
+  "d-25000-substeps1": {
+   "slice_years": 25000.0,
+   "step1_VA": [
+    2.29,
+    1.16
+   ],
+   "world_lake_Mkm3": 4.12
+  },
+  "d-25000-substeps25": {
+   "slice_years": 1000.0,
+   "step1_VA": [
+    1.46,
+    1.04
+   ],
+   "world_lake_Mkm3": 2.88
+  },
+  "d-100000-substeps1": {
+   "slice_years": 100000.0,
+   "step1_VA": [
+    2.29,
+    1.16
+   ],
+   "world_lake_Mkm3": 4.12
+  },
+  "d-100000-substeps100": {
+   "slice_years": 1000.0,
+   "step1_VA": [
+    0.85,
+    0.97
+   ],
+   "world_lake_Mkm3": 2.28
+  }
+ }
+}
