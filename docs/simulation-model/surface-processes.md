@@ -391,9 +391,10 @@ Tectonics moves the cover too (`mobile_cover.py`):
 
 Shortening, underplating, anatexis, fault relief and the column caps act at depth and leave
 it alone. Anything left above a column is clipped at the next erosion step
-(`stale_mobile_cover_excess_m3`). Strike-slip advection copies every field from its nearest
-upstream node, which conserves no extensive field, Hc and the continental tracer included. Its
-net change to the cover is booked, signed, as `fault_advection_m3`. `World.mobile_cover_ledger`
+(`stale_mobile_cover_excess_m3`). Strike-slip advection copies each field from its nearest
+upstream node and rescales `RemapClass.EXTENSIVE` fields over the sheared nodes to conserve
+area-integrated volume (issue #299); any residual after column-cap clipping is booked, signed,
+as `fault_advection_m3`. `World.mobile_cover_ledger`
 keeps these sources and sinks, so `mobile_cover.balance_error_m3` closes to round-off.
 
 The budget reports `bedrock_detached_m3` plus the cover's

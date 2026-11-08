@@ -419,6 +419,248 @@ def test_strike_slip_fault_shears_the_field_along_strike_without_crossing_the_tr
     assert new_elevation[opposite_idx] != marker_value  # never jumped across the trace
 
 
+def test_strike_slip_fault_shear_conserves_extensive_fields_and_closes_ledgers():
+    from app import continental_ledger, cratons
+    from app.hydroclimate import mobile_cover
+    from app.surface_fields import CRATON_UNFORMED_YEARS
+
+    n = int(round((np.pi / 2) / 0.001))
+    rows, columns = np.arange(-20, 21, 10), np.arange(-50, 51)
+    count = len(rows) * len(columns)
+    rng = np.random.default_rng(7)
+    hc = rng.uniform(32_000.0, 48_000.0, size=count)
+    hm = rng.uniform(90_000.0, 130_000.0, size=count)
+    material = rng.uniform(18_000.0, 30_000.0, size=count)
+    craton = rng.uniform(0.0, 15_000.0, size=count)
+    cover = rng.uniform(10.0, 80.0, size=count)
+    plate = quad_plate(
+        0,
+        "continental",
+        columns=columns,
+        rows=rows,
+        n=n,
+        crustal_thickness_m=hc,
+        mantle_lithosphere_thickness_m=hm,
+        continental_material_m=material,
+        craton_crust_m=craton,
+        craton_formed_years=np.where(craton > 0.0, -2.5e9, CRATON_UNFORMED_YEARS),
+        mobile_cover_m=cover,
+        mobile_cover_continental_m=0.5 * cover,
+        soil_depth=rng.uniform(0.5, 3.0, size=count),
+        lake_depth=rng.uniform(0.0, 20.0, size=count),
+    )
+    lithosphere.sync_plate_elevation(plate)
+
+    tiny = 1e-5
+    base = geometry.local_xyz(np.array([0.0]), np.array([0.0]))[0]
+    shifted = geometry.local_xyz(np.array([0.0]), np.array([tiny]))[0]
+    dip_dir_local = geometry.normalize(shifted - base)
+    f = _fault(
+        kind=_KIND_STRIKE_SLIP,
+        local_phi=np.linspace(-0.03, 0.03, 7),
+        local_theta=np.zeros(7),
+        dip_dir_local=dip_dir_local,
+        strike_sense=1,
+        slip_rate_m_per_myr=faults.SLIP_RATE_MAX_M_PER_MYR,
+        lifespan_myr=1e9,
+        plate_id=0,
+    )
+    world = World(seed=0, plates=[plate])
+    world.fault_deformation_mode = "boundary"
+    world.faults = [f]
+    continental_ledger.ensure_initialized(world)
+    cratons.ensure_initialized(world)
+    mobile_cover.ensure_ledger(world)
+
+    areas = plate.node_areas_m2()
+    tracked = (
+        "crustal_thickness_m",
+        "mantle_lithosphere_thickness_m",
+        "continental_material_m",
+        "craton_crust_m",
+        "mobile_cover_m",
+        "mobile_cover_continental_m",
+        "soil_depth",
+        "lake_depth",
+    )
+    volumes_before = {name: float(plate.collect(name) @ areas) for name in tracked}
+
+    faults._apply_plate_fault_shear(world, plate, years_myr=10.0)
+
+    continental_ledger.assert_closed(world)
+    assert cratons.balance_error_m3(world) == pytest.approx(0.0, abs=1e-9 * volumes_before["craton_crust_m"])
+    assert mobile_cover.balance_error_m3(world) == pytest.approx(0.0, abs=1e-9 * volumes_before["mobile_cover_m"])
+    for name, before_m3 in volumes_before.items():
+        after_m3 = float(plate.collect(name) @ areas)
+        assert after_m3 == pytest.approx(before_m3, rel=1e-12), f"{name} volume drifted"
+
+
+def test_strike_slip_shear_does_not_mutate_untouched_interior_nodes():
+    """Recommendation 1: _rescale_bounded_extensive must not mutate nodes outside shifted
+    (no action-at-a-distance via all_nodes)."""
+    n = 10
+    areas = np.ones(n)
+    orig = np.array([10.0] * n)
+    arr = np.array([10.0] * n)
+    shifted = np.zeros(n, dtype=bool)
+    shifted[:2] = True  # only first 2 nodes are shifted
+
+    # Headroom on shifted is strictly 0.0 (upper == arr on shifted)
+    arr[:2] = 0.0
+    upper = np.array([0.0, 0.0] + [20.0] * 8)
+    lower = np.zeros(n)
+
+    # Calling _rescale_bounded_extensive with all_nodes present leaks residual into nodes 2..9
+    faults._rescale_bounded_extensive(arr, orig, areas, shifted, lower, upper)
+
+    # Nodes outside shifted (2..9) must NOT be mutated!
+    assert np.all(arr[2:] == 10.0), f"Nodes outside shifted were mutated: {arr[2:]}"
+
+
+def test_strike_slip_shear_adjusts_elevation_for_rescaled_crust_and_mantle():
+    """Recommendation 2: When Hc and Hm are rescaled to conserve volume, elevation on the
+    sheared nodes must be adjusted by the corresponding isostatic difference."""
+    n = int(round((np.pi / 2) / 0.001))
+    rows, columns = np.arange(-20, 21, 10), np.arange(-50, 51)
+    count = len(rows) * len(columns)
+    rng = np.random.default_rng(123)
+    hc = rng.uniform(30_000.0, 45_000.0, size=count)
+    hm = rng.uniform(90_000.0, 120_000.0, size=count)
+    plate = quad_plate(
+        0,
+        "continental",
+        columns=columns,
+        rows=rows,
+        n=n,
+        crustal_thickness_m=hc,
+        mantle_lithosphere_thickness_m=hm,
+    )
+    lithosphere.sync_plate_elevation(plate)
+
+    tiny = 1e-5
+    base = geometry.local_xyz(np.array([0.0]), np.array([0.0]))[0]
+    shifted = geometry.local_xyz(np.array([0.0]), np.array([tiny]))[0]
+    dip_dir_local = geometry.normalize(shifted - base)
+    f = _fault(
+        kind=_KIND_STRIKE_SLIP,
+        local_phi=np.linspace(-0.03, 0.03, 7),
+        local_theta=np.zeros(7),
+        dip_dir_local=dip_dir_local,
+        strike_sense=1,
+        slip_rate_m_per_myr=faults.SLIP_RATE_MAX_M_PER_MYR,
+        lifespan_myr=1e9,
+        plate_id=0,
+    )
+    world = World(seed=0, plates=[plate])
+    world.fault_deformation_mode = "boundary"
+    world.faults = [f]
+    elev_before = plate.collect("elevation").copy()
+
+    # Pre-calculate what the nearest-neighbor copied (unscaled) hc, hm, and elevation would be
+    own_points, tree = faults._own_points_and_tree(plate, {})
+    trace = faults.fault_world_points(f, plate)
+    reach_rad = faults.MAX_FAULT_REACH_KM / faults.PLANET_RADIUS_KM
+    neighbours = tree.query_ball_point(trace, reach_rad)
+    affected = np.array(sorted({i for sub in neighbours for i in sub}))
+    pts = own_points[affected]
+    dists = np.linalg.norm(pts[:, None, :] - trace[None, :, :], axis=-1)
+    nearest = np.argmin(dists, axis=1)
+    taper = np.clip(1.0 - dists[np.arange(len(pts)), nearest] / reach_rad, 0.0, 1.0)
+    lo = np.clip(nearest - 1, 0, len(trace) - 1)
+    hi = np.clip(nearest + 1, 0, len(trace) - 1)
+    tangent = trace[hi] - trace[lo]
+    tangent = tangent - np.sum(tangent * pts, axis=-1, keepdims=True) * pts
+    tangent = tangent / np.linalg.norm(tangent, axis=-1, keepdims=True)
+    dip_dir_world = geometry.to_world(plate.frame, f.dip_dir_local)
+    side_sign = np.sign((pts - trace[len(trace) // 2]) @ dip_dir_world)
+    side_sign[side_sign == 0.0] = 1.0
+    shift_rad = taper * side_sign * (f.slip_rate_m_per_myr * 10.0 / 1000.0 / faults.PLANET_RADIUS_KM)
+    upstream = geometry.normalize(pts - shift_rad[:, None] * tangent)
+    _, source_idx = tree.query(upstream)
+    actually_moved = source_idx != affected
+
+    faults._apply_plate_fault_shear(world, plate, years_myr=10.0)
+
+    # For nodes whose Hc or Hm changed during extensive rescaling, elevation must include the isostatic adjustment
+    target_nodes = affected[actually_moved]
+    new_hc = plate.collect("crustal_thickness_m")[target_nodes]
+    new_hm = plate.collect("mantle_lithosphere_thickness_m")[target_nodes]
+    unscaled_hc = hc[source_idx[actually_moved]]
+    unscaled_hm = hm[source_idx[actually_moved]]
+    unscaled_elev = elev_before[source_idx[actually_moved]]
+    rho = lithosphere.node_crust_density(plate.collect("crust_type_code")[target_nodes], plate.crust_type)
+
+    isostatic_delta = lithosphere.isostatic_elevation(new_hc, new_hm, rho) - lithosphere.isostatic_elevation(unscaled_hc, unscaled_hm, rho)
+    rescaled_nodes = np.abs(isostatic_delta) > 1e-3
+    assert np.any(rescaled_nodes), "rescaling should move columns"
+    expected_elevation = unscaled_elev[rescaled_nodes] + isostatic_delta[rescaled_nodes]
+    actual_elevation = plate.collect("elevation")[target_nodes[rescaled_nodes]]
+    assert np.allclose(actual_elevation, expected_elevation, atol=1e-3)
+
+
+def test_strike_slip_shear_does_not_rescale_zero_displacement_nodes():
+    """Recommendation 3: Nodes in the outer reach where displacement is less than node
+    spacing (source_idx == idx_dest) must not be rescaled by owed / placed."""
+    n = int(round((np.pi / 2) / 0.001))
+    rows, columns = np.arange(-20, 21, 10), np.arange(-50, 51)
+    count = len(rows) * len(columns)
+    rng = np.random.default_rng(99)
+    hc = rng.uniform(30_000.0, 45_000.0, size=count)
+    plate = quad_plate(0, "continental", columns=columns, rows=rows, n=n, crustal_thickness_m=hc)
+
+    tiny = 1e-5
+    base = geometry.local_xyz(np.array([0.0]), np.array([0.0]))[0]
+    shifted = geometry.local_xyz(np.array([0.0]), np.array([tiny]))[0]
+    dip_dir_local = geometry.normalize(shifted - base)
+    f = _fault(
+        kind=_KIND_STRIKE_SLIP,
+        local_phi=np.linspace(-0.03, 0.03, 7),
+        local_theta=np.zeros(7),
+        dip_dir_local=dip_dir_local,
+        strike_sense=1,
+        slip_rate_m_per_myr=faults.SLIP_RATE_MAX_M_PER_MYR,
+        lifespan_myr=1e9,
+        plate_id=0,
+    )
+    world = World(seed=0, plates=[plate])
+    world.fault_deformation_mode = "boundary"
+    world.faults = [f]
+
+    own_points, tree = faults._own_points_and_tree(plate, {})
+    trace = faults.fault_world_points(f, plate)
+    reach_rad = faults.MAX_FAULT_REACH_KM / faults.PLANET_RADIUS_KM
+    neighbours = tree.query_ball_point(trace, reach_rad)
+    affected = np.array(sorted({i for sub in neighbours for i in sub}))
+    pts = own_points[affected]
+    dists = np.linalg.norm(pts[:, None, :] - trace[None, :, :], axis=-1)
+    nearest = np.argmin(dists, axis=1)
+    taper = np.clip(1.0 - dists[np.arange(len(pts)), nearest] / reach_rad, 0.0, 1.0)
+    lo = np.clip(nearest - 1, 0, len(trace) - 1)
+    hi = np.clip(nearest + 1, 0, len(trace) - 1)
+    tangent = trace[hi] - trace[lo]
+    tangent = tangent - np.sum(tangent * pts, axis=-1, keepdims=True) * pts
+    tangent = tangent / np.linalg.norm(tangent, axis=-1, keepdims=True)
+    dip_dir_world = geometry.to_world(plate.frame, f.dip_dir_local)
+    side_sign = np.sign((pts - trace[len(trace) // 2]) @ dip_dir_world)
+    side_sign[side_sign == 0.0] = 1.0
+    shift_rad = taper * side_sign * (f.slip_rate_m_per_myr * 10.0 / 1000.0 / faults.PLANET_RADIUS_KM)
+    upstream = geometry.normalize(pts - shift_rad[:, None] * tangent)
+    _, source_idx = tree.query(upstream)
+
+    # Nodes that are in affected (within reach) with shift_rad > 0, but source_idx == affected
+    fringe = (source_idx == affected) & (np.abs(shift_rad) > 1e-12)
+    fringe_nodes = affected[fringe]
+    assert len(fringe_nodes) > 0, "should have nodes in the fringe where displacement didn't cross a cell"
+    hc_before = hc[fringe_nodes].copy()
+
+    faults._apply_plate_fault_shear(world, plate, years_myr=10.0)
+
+    # These nodes did not displace; their extensive fields must remain strictly unchanged
+    assert np.array_equal(plate.collect("crustal_thickness_m")[fringe_nodes], hc_before)
+
+
+
+
 # ------------------------------------------------------------ fault-localised deformation mode
 
 

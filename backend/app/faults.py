@@ -61,7 +61,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import boundary, geometry, lithosphere, trace
+from . import boundary, cratons, geometry, lithosphere, trace
 from .hydroclimate import mobile_cover
 from .elevation_lines import (
     ELEV_CHANGE_FAULT_NORMAL,
@@ -69,9 +69,10 @@ from .elevation_lines import (
     ELEV_CHANGE_FAULT_STRIKE_SLIP,
     ELEV_CHANGE_MIN_DELTA_M,
     PLANET_RADIUS_KM,
+    effective_is_continental_from_codes,
     line_spacing_rad,
 )
-from .surface_fields import SURFACE_FIELDS
+from .surface_fields import CRATON_UNFORMED_YEARS, SURFACE_FIELDS, RemapClass
 from .plates import OVERLAP_TOLERANCE_MULT, Plate, cached_node_position_tree, collect_all_points, query_workers
 
 if TYPE_CHECKING:
@@ -1305,6 +1306,177 @@ def _own_points_and_tree(plate: Plate, cache: dict | None) -> tuple[np.ndarray, 
     return own_points, tree
 
 
+def _place_extensive_headroom(
+    arr: np.ndarray,
+    areas: np.ndarray,
+    masks: tuple[np.ndarray, ...],
+    upper: np.ndarray,
+    residual: float,
+) -> None:
+    for mask in masks:
+        if residual <= 0.0:
+            break
+        headroom = np.maximum(upper[mask] - arr[mask], 0.0)
+        if not np.all(np.isfinite(headroom)):
+            area_sum = float(np.sum(areas[mask]))
+            if area_sum > 0.0:
+                arr[mask] += residual / area_sum
+                residual = 0.0
+            continue
+        cap_vol = float(np.dot(headroom, areas[mask]))
+        if cap_vol > 0.0:
+            take = min(residual, cap_vol)
+            arr[mask] += headroom * (take / cap_vol)
+            residual -= take
+
+
+def _remove_extensive_excess(
+    arr: np.ndarray,
+    areas: np.ndarray,
+    masks: tuple[np.ndarray, ...],
+    lower: np.ndarray,
+    excess: float,
+) -> None:
+    for mask in masks:
+        if excess <= 0.0:
+            break
+        room = np.maximum(arr[mask] - lower[mask], 0.0)
+        if not np.all(np.isfinite(room)):
+            area_sum = float(np.sum(areas[mask]))
+            if area_sum > 0.0:
+                arr[mask] -= excess / area_sum
+                excess = 0.0
+            continue
+        room_vol = float(np.dot(room, areas[mask]))
+        if room_vol > 0.0:
+            take = min(excess, room_vol)
+            arr[mask] -= room * (take / room_vol)
+            excess -= take
+
+
+def _rescale_bounded_extensive(
+    arr: np.ndarray,
+    orig: np.ndarray,
+    areas: np.ndarray,
+    shifted: np.ndarray,
+    lower: np.ndarray,
+    upper: np.ndarray,
+) -> None:
+    """Rescale `arr` in place so its area-weighted volume matches `orig` while holding
+    `lower <= arr <= upper`."""
+    owed = float(np.dot(orig[shifted], areas[shifted]))
+    arr[shifted] = np.clip(arr[shifted], lower[shifted], upper[shifted])
+    placed = float(np.dot(arr[shifted], areas[shifted]))
+    if placed != 0.0 and owed * placed >= 0.0:
+        arr[shifted] = np.clip(arr[shifted] * (owed / placed), lower[shifted], upper[shifted])
+    residual = float(np.dot(orig - arr, areas))
+    if residual > 0.0:
+        _place_extensive_headroom(arr, areas, (shifted & (arr > lower), shifted), upper, residual)
+    elif residual < 0.0:
+        _remove_extensive_excess(arr, areas, (shifted,), lower, -residual)
+
+
+def _conserve_sheared_extensive_fields(
+    plate: Plate,
+    originals: dict[str, np.ndarray],
+    overrides: dict[str, np.ndarray],
+    shifted: np.ndarray,
+    areas: np.ndarray,
+) -> None:
+    """Rescale every `RemapClass.EXTENSIVE` field after nearest-upstream shear copy so
+    area-integrated volumes are conserved and column-share invariants hold (issue #299)."""
+    n = len(areas)
+    zeros = np.zeros(n, dtype=float)
+    inf = np.full(n, np.inf, dtype=float)
+
+    pre_scale_hc = overrides["crustal_thickness_m"][shifted].copy()
+    pre_scale_hm = overrides["mantle_lithosphere_thickness_m"][shifted].copy()
+
+    _rescale_bounded_extensive(
+        overrides["crustal_thickness_m"],
+        originals["crustal_thickness_m"],
+        areas,
+        shifted,
+        np.full(n, lithosphere.MIN_CRUSTAL_THICKNESS_M),
+        np.full(n, lithosphere.MAX_CRUSTAL_THICKNESS_M),
+    )
+    _rescale_bounded_extensive(
+        overrides["mantle_lithosphere_thickness_m"],
+        originals["mantle_lithosphere_thickness_m"],
+        areas,
+        shifted,
+        np.full(n, lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M),
+        np.full(n, lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M),
+    )
+
+    rho = lithosphere.node_crust_density(overrides["crust_type_code"][shifted], plate.crust_type)
+    old_iso = lithosphere.isostatic_elevation(pre_scale_hc, pre_scale_hm, rho)
+    new_iso = lithosphere.isostatic_elevation(
+        overrides["crustal_thickness_m"][shifted],
+        overrides["mantle_lithosphere_thickness_m"][shifted],
+        rho,
+    )
+    overrides["elevation"][shifted] += new_iso - old_iso
+    hc = overrides["crustal_thickness_m"]
+    is_continental = effective_is_continental_from_codes(
+        overrides["crust_type_code"], plate.crust_type == "continental"
+    )
+    craton_upper = np.where(is_continental, hc, 0.0)
+    plateau_upper = np.where(
+        is_continental, 0.0, np.maximum(hc - lithosphere.REFERENCE_HC_OCEANIC_M, 0.0)
+    )
+
+    for name, upper in (
+        ("continental_material_m", hc),
+        ("craton_crust_m", craton_upper),
+        ("mobile_cover_m", hc),
+        ("restite_m", hc),
+        ("plateau_crust_m", plateau_upper),
+    ):
+        _rescale_bounded_extensive(overrides[name], originals[name], areas, shifted, zeros, upper)
+
+    cover_cont_upper = np.minimum(overrides["mobile_cover_m"], overrides["continental_material_m"])
+    _rescale_bounded_extensive(
+        overrides["mobile_cover_continental_m"],
+        originals["mobile_cover_continental_m"],
+        areas,
+        shifted,
+        zeros,
+        cover_cont_upper,
+    )
+
+    handled = {
+        "crustal_thickness_m",
+        "mantle_lithosphere_thickness_m",
+        "continental_material_m",
+        "craton_crust_m",
+        "mobile_cover_m",
+        "mobile_cover_continental_m",
+        "restite_m",
+        "plateau_crust_m",
+    }
+    for name, spec in SURFACE_FIELDS.items():
+        if spec.remap_class == RemapClass.EXTENSIVE and name not in handled:
+            lower = np.full(n, -np.inf) if name == "buoyant_crust_time_m_yr" else zeros
+            _rescale_bounded_extensive(overrides[name], originals[name], areas, shifted, lower, inf)
+
+    valid_formed = originals["craton_formed_years"] != CRATON_UNFORMED_YEARS
+    fallback_formed = (
+        float(np.min(originals["craton_formed_years"][valid_formed]))
+        if np.any(valid_formed)
+        else CRATON_UNFORMED_YEARS
+    )
+    formed = np.where(
+        overrides["craton_formed_years"] != CRATON_UNFORMED_YEARS,
+        overrides["craton_formed_years"],
+        fallback_formed,
+    )
+    overrides["craton_formed_years"] = np.where(
+        overrides["craton_crust_m"] > 0.0, formed, CRATON_UNFORMED_YEARS
+    )
+    cratons.keep_belts_off_cratons(overrides)
+
+
 def _apply_plate_fault_shear(world: "World", plate: Plate, years_myr: float, _cache: dict | None = None) -> None:
     """Physically displace crust across an active strike-slip trace -- a river valley or
     ridge crest straddling the fault should end up offset along-strike by
@@ -1350,7 +1522,7 @@ def _apply_plate_fault_shear(world: "World", plate: Plate, years_myr: float, _ca
     field_names = tuple(SURFACE_FIELDS)
     originals = {name: plate.collect(name) for name in field_names}
     overrides = {name: arr.copy() for name, arr in originals.items()}
-    any_shifted = False
+    shifted = np.zeros(len(own_points), dtype=bool)
 
     for fault in active:
         trace = fault_world_points(fault, plate)
@@ -1397,15 +1569,22 @@ def _apply_plate_fault_shear(world: "World", plate: Plate, years_myr: float, _ca
         _, source_idx = tree.query(upstream, workers=query_workers(len(upstream)))
 
         idx_dest = affected[moved]
+        actually_moved = source_idx != idx_dest
+        if not np.any(actually_moved):
+            continue
+        dest_moved = idx_dest[actually_moved]
+        src_moved = source_idx[actually_moved]
         for name in field_names:
-            overrides[name][idx_dest] = originals[name][source_idx]
-        any_shifted = True
+            overrides[name][dest_moved] = originals[name][src_moved]
+        shifted[dest_moved] = True
 
-    if any_shifted:
-        plate.set_fields_on_plate(**overrides)
-        # A nearest-upstream copy conserves no extensive field (issue #299); book the cover's
-        # net change so its ledger stays closed (see mobile_cover.py).
+    if np.any(shifted):
+        # A nearest-upstream copy across unequal cells conserves no extensive field on its own
+        # (issue #299); rescale extensive fields over the sheared set so volumes and ledgers
+        # stay closed.
         areas = plate.accounting_areas_m2(line_spacing_rad(world.node_density))
+        _conserve_sheared_extensive_fields(plate, originals, overrides, shifted, areas)
+        plate.set_fields_on_plate(**overrides)
         change = float(np.dot(originals["mobile_cover_m"] - overrides["mobile_cover_m"], areas))
         mobile_cover.record(world, "fault_advection_m3", change)
 

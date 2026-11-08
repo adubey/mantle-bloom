@@ -20,9 +20,9 @@ Shortening, underplating, anatexis, fault relief and the column caps change Hc a
 don't move material in this model, and leave it alone; what any of them leaves above its
 column is clipped at the next erosion step (``clipped_m3``). Quad merge, refinement and
 coarsening remap it as an extensive field, exactly. Strike-slip advection
-(`faults._apply_plate_fault_shear`) copies every field from its nearest upstream node, which
-conserves no extensive field -- Hc and the continental tracer included -- so its net change is
-booked, signed, as ``fault_advection_m3``.
+(`faults._apply_plate_fault_shear`) rescales extensive fields over the sheared nodes to
+conserve volume (issue #299), and books any residual after column-cap clipping, signed, as
+``fault_advection_m3``.
 
 Like continental_ledger.py, the world stores only sources and sinks; the live inventory is
 recomputed from the nodes, so ``balance_error_m3`` is zero when every change is booked. The
