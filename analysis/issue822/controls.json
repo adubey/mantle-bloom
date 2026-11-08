@@ -1,0 +1,14 @@
+{
+ "gen30_d2_125yr": {
+  "what": "d2 at 125 yr base substep vs 250 yr d2, gen30 (seed 30, 8 plates), one 0.25 Myr step, same opening state",
+  "command": "probe_822_march_cost.py gen30-p8.mbworld --preset d2 --substep-years 125 --steps 1 --myr 0.25",
+  "save_sha256": "7edae919783675cc4c07500eb19d6d71f54344dabcd2037ab26f5814fc58885e",
+  "substeps": 286,
+  "settled": true,
+  "ice_vs_d2_250": -0.07337,
+  "depth_l1_vs_d2_250": 0.10036,
+  "ice_closure": 0.01844889586030778,
+  "march_s": 34.6,
+  "sea_level_m": -166.44382935402086
+ }
+}

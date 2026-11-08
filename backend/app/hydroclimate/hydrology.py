@@ -2093,7 +2093,9 @@ class _SettleWatch:
         return float(self.areas @ np.abs(a - b)) / max(float(self.areas @ a), 1.0)
 
     def _recurs(self, depth: np.ndarray, volumes: list[float]) -> bool:
-        self._snaps.append(depth)
+        # A copy: the march rebinds `depth` each substep today, but an in-place update
+        # would silently corrupt every stored snapshot (#839 review).
+        self._snaps.append(depth.copy())
         tol = self.cost.recurrence_tol
         period = None
         for p in range(1, len(self._snaps)):
@@ -2390,7 +2392,7 @@ def _march_glacier(
         watch_settled, watch_sub = watch.observe(depth, volumes, sub, years - elapsed)
         if watch_settled:
             break
-        sub = watch_sub or sub
+        sub = sub if watch_sub is None else watch_sub
         if not capped and cost.max_substeps is not None and substeps >= cost.max_substeps and elapsed < years - 1e-6:
             capped = True
             if cost.cap_fill != "endpoint":

@@ -76,7 +76,8 @@ options 1 and 2 goes forward.
 One process per arm, arms run one after another and alone (compute-budget), on one 8 GB
 Apple Silicon machine. Accuracy metrics are deterministic for a given start state and
 code. Wall time varies with machine load; a ratio within ~10% of 1 counts as no change.
-The `d2` preset runs exactly the D2 code path, and is checked bit-identical to the
+The `d2` preset gives bit-identical results to the D2 march (the new code adds only
+log and counter work at the default), and is checked bit-identical to the
 pre-change march by the existing unit tests.
 
 ## Results
@@ -237,7 +238,7 @@ Expected:
 
 The `d2` control rerun on gen5's 0.25 Myr step matched round 1's closing depths
 exactly (max difference 0.0 m), so round 1's `d2`, `cap-hold` and `adaptive` arms are
-reused unchanged. Full per-world tables: `compare_round2.json` (made by
+reused unchanged. Full per-world tables: `compare_round2.json` (the 125 yr control is archived in `controls.json`) (made by
 `summarize_822_march_cost.py --presets ...`). Land closure is <= 1.3e-12 on every step
 of every arm.
 
@@ -292,6 +293,15 @@ What the numbers say:
   sensitivity.
 
 ### Verdict (round 2)
+
+Scope note (#839 review): the round-1 bar was written for "the never-settling generated
+worlds", and gen30 is one of them. Round 2 shows those worlds are two kinds, so the table
+below judges each arm per kind. Read against the bar as written (march cost <= 0.5x on
+gen5 and gen30), `trend-hold` and `cap-hold-recur` pass on gen5 and fail on gen30
+(1.00x and 0.20x with a 3.6% ledger, respectively). One exception to "ledger closed":
+`trend-adapt` at a 1 kyr ceiling closes gen30 at 2.3e-3, above 1e-3; it is a diagnostic
+arm. Round 2 also ran each arm once per world, and cycling sheets number three
+(period 30, 5, 20), so "safe" there is an observation, not a guarantee.
 
 | Arm | Cycling sheets (gen5 ×2, 649) | Drifting sheets (997 step 3, gen30) | Verdict |
 |---|---|---|---|

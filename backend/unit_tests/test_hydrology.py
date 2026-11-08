@@ -2898,3 +2898,53 @@ def test_breach_surge_accum_leaves_no_flux_stranded_on_flow_cycles():
     assert breach_surge_accum[0] == pytest.approx(100.0)
     assert np.all(breach_surge_accum[[1, 2]] == 0.0)
     assert breach_surge_accum[3] == pytest.approx(50.0)
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_real_march_settles_by_recurrence_on_the_flow_line_cycle(monkeypatch):
+    # With the pair test off (tolerance 0), the fixture falls into an exact period-3 cycle
+    # that only the recurrence test sees; the rest of the step is held (#839 review).
+    monkeypatch.setattr(ice_sheet, "MARCH_SETTLE_TOLERANCE", 0.0)
+    _, entry = _march_with(monkeypatch, ice_sheet.MarchCost(recurrence=True), 200_000)
+    assert entry["settled"] is True and entry["settle_test"] == "recurrence"
+    assert entry["period"] == 3
+    assert entry["held_years"] > 0.0
+    assert entry["marched_years"] + entry["held_years"] == pytest.approx(200_000.0)
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_real_march_holds_on_the_trend_test(monkeypatch):
+    monkeypatch.setattr(ice_sheet, "MARCH_SETTLE_TOLERANCE", 0.0)
+    fields, entry = _march_with(monkeypatch, ice_sheet.MarchCost(trend=True, trend_grow=False), 200_000)
+    assert entry["settled"] is True and entry["settle_test"] == "trend"
+    assert entry["period"] is None and entry["trend_changes"]
+    assert entry["marched_years"] + entry["held_years"] == pytest.approx(200_000.0)
+    # The held ice is the last substep's, so the ledger's closing ice is the march's final ice.
+    assert fields.ice.ledger.closing_m3 == pytest.approx(entry["volume_path_km3"][-1] * 1e9, rel=1e-2)
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_default_march_logs_pair_settles_only(monkeypatch):
+    _, entry = _march_with(monkeypatch, ice_sheet.MarchCost(), 10_000)
+    assert entry["settle_test"] in ("pair", None)
+    assert entry["period"] is None and entry["trend_changes"] == []
+
+
+def test_recurrence_keeps_enough_substeps_for_its_longest_period():
+    assert _watch(ice_sheet.MarchCost(recurrence=True)).window == 2 * 64
+    assert _watch(ice_sheet.MarchCost(trend=True)).window == 30
+
+
+def test_trend_settles_a_still_growing_sheet_near_the_end_of_the_step():
+    # A steadily growing sheet has no shrinking ratio, so the projection is the change
+    # times the windows left: with a hundredth of a window left, it is below tolerance.
+    states = [np.array([10.0, 20.0, 30.0, 40.0]) * (1.0 + 0.01 * i) for i in range(12)]
+    cost = ice_sheet.MarchCost(trend=True, trend_window=2)
+    assert _feed(_watch(cost), states, remaining=1e5)[0] is None
+    near_end = _watch(cost)
+    assert _feed(near_end, states, remaining=5.0)[0] is not None and near_end.settled_by == "trend"
+
+
+def test_march_cost_rejects_a_recurrence_period_below_one():
+    with pytest.raises(ValueError):
+        ice_sheet.MarchCost(recurrence=True, recurrence_max_period=0)
