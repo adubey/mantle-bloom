@@ -513,6 +513,65 @@ Compact data: [`seed997271774-hour-features.json`](seed997271774-hour-features.j
   the step length), and it would act in the long-step modes as well as the short ones. That
   is a hypothesis, not a result.
 
+## Second save (seed 910211954, 220.2 Myr) at every mode
+
+**In plain terms.** I ran the same eight step sizes with both wind models on a second world. It
+confirms the first save's pattern and adds two things. The start-up sequence of big lake drops
+lands on the same measured step numbers at hour, day and year steps (the first save showed this
+too), so it is not an artefact of one world. And this world is in a much icier state than the
+first, so its ice numbers say little about normal conditions and I do not use them.
+
+- **Save and driver.** `mantle-bloom-seed910211954-220200000y.mbworld`, SHA-256 `bd487409...`,
+  the same driver (`dc855ca3`), 10 day-steps of warm-up, ice-age cycle off, 200 measured steps
+  (80 and 20 for the two bridges). Data: `seed910211954-modes.json`.
+- **This save is glaciated.** Sea level is -871 m and glacier ice is 82.9 M km3 at step 1,
+  against -403 m and 5.7 M km3 for seed 997271774. In 200 day-steps (0.55 yr) the ice loses 10%
+  and sea level rises 28 m, which cannot be a steady state. We agreed to skip ice-age saves. I ran
+  it before checking, so treat the lake, wind and discharge columns as usable and the ice,
+  sea-level and glacier columns as provisional until the RFC 0015 D2 march is rerun. Lake volume
+  is 4.2 M km3 (13 times the first save's), so the lakes are also far from typical.
+
+| Mode / wind | lake start to end (k km3) | steps dropping > 1,000 km3 | largest one-step drop (km3) | median max discharge (k m3/s) | body reversals | worst lake ledger residual |
+|---|---|---|---|---|---|---|
+| hour, diagnostic | 4,171 to 4,119 | 13 | 3,766 | 4,732 | 3 of 11,526 | 7e-6 |
+| day, diagnostic | 4,171 to 4,109 | 16 | 4,299 | 56 | 8 of 11,733 | 1e-5 |
+| year, diagnostic | 4,172 to 4,622 | 0 | 473 | 83 | 5 of 14,065 | 2e-8 |
+| century, diagnostic | 4,399 to 3,404 | 129 | 83,867 | 93 | 34 of 8,939 | 6e-11 |
+| 250 yr, diagnostic | 4,640 to 3,086 | 133 | 116,749 | 92 | 49 of 8,177 | 3e-11 |
+| 100 kyr, diagnostic | 3,982 to 2,097 | 89 | 921,033 | 46 | 23 of 1,405 | 3e-11 |
+| 250 kyr bridge, diagnostic | 3,863 to 1,541 | 44 | 1,498,053 | 65 | 31 of 506 | 1e-11 |
+| 1 Myr bridge, diagnostic | 3,497 to 1,186 | 13 | 1,942,913 | 45 | 2 of 54 | 1e-11 |
+| hour, cfd | 4,092 to 3,868 | 30 | 43,816 | 9,990 | 0 of 11,164 | 2e-4 |
+| day, cfd | 4,092 to 3,871 | 34 | 43,894 | 54 | 2 of 11,540 | 1e-5 |
+| year, cfd | 4,090 to 4,028 | 40 | 41,749 | 64 | 0 of 15,562 | 2e-7 |
+| century, cfd | 4,089 to 3,339 | 90 | 40,071 | 93 | 20 of 11,231 | 3e-11 |
+| 250 yr, cfd | 4,029 to 3,802 | 83 | 90,337 | 90 | 60 of 10,440 | 6e-12 |
+| 100 kyr, cfd | 3,103 to 2,065 | 103 | 698,468 | 45 | 45 of 1,424 | 7e-12 |
+| 250 kyr bridge, cfd | 3,089 to 2,397 | 42 | 794,177 | 45 | 19 of 516 | 8e-12 |
+| 1 Myr bridge, cfd | 2,198 to 1,395 | 13 | 655,513 | 36 | 15 of 92 | 9e-12 |
+
+- **Overflow-as-rate shows again.** Hour steps have a median max discharge of 4.7 M m3/s
+  (diagnostic) and 10 M m3/s (cfd), against 56 k m3/s at day steps. At 3,600 s that discharge
+  times the step is the size of a lake drop, not a river. The first save showed the same
+  one-off-release-booked-as-a-rate effect (diagnostic step 110, cfd step 8), but there it hit 3
+  steps; here it is in more than a tenth of the steps, because this world has many large lakes
+  near their caps. The #553 depth-cap warning fires on this save at step 1.
+- **The start-up sequence repeats.** The big lake drops at the first measured steps are the same
+  at hour and day steps, step for step. Diagnostic: 3, 1, 3, 3 and 2 thousand km3 at steps 2,
+  3, 4, 5 and 7 in both modes. cfd: 36, 14, 44, 13 thousand km3 at steps 2 to 5 at hour and
+  day, and 34, 11, 42, 12 at year. Century steps begin later (step 5) and look different. With
+  the first save's call-23 result, this makes a call-keyed start-up sequence two for two, but I
+  still have not found its mechanism.
+- **Drift against step size.** Diagnostic lake volume moves from -1.5% (day) to +10.8% (year) to
+  -22.6% (century) to -47% (100 kyr) over the same 200 steps. The runs cover different spans of
+  time (0.55 yr to 20 Myr), so some of this is real evolution, and the bridges' large losses
+  (-60%, -66%) with 1,900,000 km3 single-step drops are lakes releasing at 20 Myr scale. I did
+  not separate evolution from step-size artefact: a fixed-span comparison would be needed.
+- **Ledger.** Residuals fall from 1e-5 to 1e-11 as the step grows, as in the first save. The
+  worst is hour cfd, 2e-4. It was 5e-6 on the first save, and I did not trace the difference.
+- **Runtime.** Median 6.7 to 8.1 s per step on diagnostic wind and 8.8 to 11.6 s on cfd. The
+  memory peak was about 6.5 GB at 250 yr on diagnostic, not the 1.7 GB the early modes used.
+
 ## Method change: warm up first
 
 Because of finding 2, every mode now runs the same `--warmup-days` day-length steps (default 10)
@@ -524,7 +583,7 @@ taken without warm-up and is kept for the record.
 - Identify the step-2 body and why it disappears (cap level, tier, rim, `#758` hysteresis).
 - Why the merged D/E lake state is entered at 2.5 and 5 kyr but not at 10 kyr, and whether the slice length or the climate refresh interval drives it; the period-2 volume swing and the 5.5 m level step in A.
 - Test whether a spill chain moving one link per call explains the call-23 start-up transient, and rerun on a post-#758 save.
-- Second save at every mode.
+- Second save: the world is glaciated, so rerun it, or pick a second save with ordinary ice, once D2 is in. Separate evolution from step-size artefact with a fixed-span comparison. Find why its hour cfd ledger is 2e-4.
 - Rerun the ice metrics once RFC 0015 D2 merges (PR #806, merged 2026-11-07; march cost and regime boundary in the RFC 0015 note).
 - The #553 depth-cap warning on seed 910211954 at step 1 (6.7e4 km3 gross overflow on lake-tier
   bodies, 3.5e4 on sea-tier bodies) is another large-overflow route.
