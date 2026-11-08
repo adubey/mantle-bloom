@@ -85,18 +85,20 @@ def test_growth_seed_thickness_is_oceanic_and_submerged():
 
 
 def test_stepping_a_world_keeps_land_bounded_and_populates_overlap_onset():
-    world = generate_world(7, node_density=1.0, cratons_first=False)
+    # Coarse world, 10 steps (#826); the original density-1.0, 30 Myr run that pinned the land
+    # runaway lives in stress_tests/test_world_stepping.py with the same assertions.
+    # This unit version is smoke-leaning: measured land-fraction rise is ~0.027 here (and ~0.027
+    # in the stress run) against the 0.04 bound, but the pre-fix engine can't be run to prove
+    # 10 coarse steps would trip it; the stress test carries the regression.
+    world = generate_world(7, node_density=0.5, climate_density=0.5, fluid_density=0.5, cratons_first=False)
 
     def land_fraction(w):
         elev = np.concatenate([p.all_points_and_elevation()[1] for p in w.plates])
         return float(np.mean(elev > w.sea_level_m))
 
     start = land_fraction(world)
-    for _ in range(30):
+    for _ in range(10):
         step_world(world, 1_000_000.0)
-
-    # The pre-fix engine ran land fraction up ~0.07 in 30 Myr at this density; it must not
-    # run away upward any more.
     assert land_fraction(world) < start + 0.04
 
     onset = np.concatenate([p.collect("overlap_onset_years") for p in world.plates])

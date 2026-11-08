@@ -40,8 +40,13 @@ def _fast_faults(monkeypatch):
     monkeypatch.setattr(faults, "SYSTEM_LIFESPAN_MAX_MYR", 10.0)
 
 
+# Coarse climate/fluid/plate grids: these tests assert fault bookkeeping, not climate or wind
+# fidelity, and each generate+step cost dominated the unit suite (#826).
+_COARSE = dict(node_density=0.5, climate_density=0.5, fluid_density=0.5)
+
+
 def _run(seed: int, *, plates: int = 8, steps: int = 15, dt: float = 1_000_000) -> World:
-    world = generate_world(seed=seed, num_plates=plates)
+    world = generate_world(seed=seed, num_plates=plates, **_COARSE)
     for _ in range(steps):
         step_world(world, dt)
     return world
@@ -146,8 +151,10 @@ def test_spawning_is_deterministic_per_seed():
     key = lambda w: sorted(
         (f.fault_id, f.kind, round(f.cumulative_offset_m, 3), round(f.age_myr, 6)) for f in w.faults
     )
-    assert key(_run(seed=11, steps=10)) == key(_run(seed=11, steps=10))
-    assert key(_run(seed=11, steps=10)) != key(_run(seed=12, steps=10))
+    # Three runs, not four, and 6 steps (#826): same seed twice must match, a different seed must not.
+    first = key(_run(seed=11, steps=6))
+    assert first == key(_run(seed=11, steps=6))
+    assert first != key(_run(seed=12, steps=6))
 
 
 class _StubPlate:
@@ -207,7 +214,7 @@ def test_fault_relief_stamps_a_fault_reason_code_on_nearby_crust():
 def test_reverse_fault_has_no_second_uplift_and_normal_fault_balances_relief():
     # Drive one plate's crust past a single hand-placed fault of each kind, isolated
     # from the spawn model.
-    world = generate_world(seed=2, num_plates=6)
+    world = generate_world(seed=2, num_plates=6, **_COARSE)
     step_world(world, 1_000_000)
     world.boundary_faults = []  # isolate the hand-placed fault from the step's boundary mesh
     plate = max(world.plates, key=lambda p: p.node_count())
@@ -244,7 +251,7 @@ def test_reverse_fault_has_no_second_uplift_and_normal_fault_balances_relief():
 def test_fault_relief_backs_elevation_change_with_crustal_thickness():
     # Permanent relief is backed by Hc, with equal local donor debit and recipient
     # credit. Reverse shortening was already placed by deform().
-    world = generate_world(seed=2, num_plates=6)
+    world = generate_world(seed=2, num_plates=6, **_COARSE)
     step_world(world, 1_000_000)
     world.boundary_faults = []  # isolate the hand-placed fault from the step's boundary mesh
     plate = max(world.plates, key=lambda p: p.node_count())
@@ -301,7 +308,7 @@ def test_fault_relief_conserves_volume_and_carries_material_on_unequal_quad_cell
     # Issue #276: the transfer balances volume on cells of unequal area, and a donor's
     # continental material leaves with its crust, so no tracer is left above Hc for erosion
     # to clip away unbooked.
-    world = generate_world(seed=2, num_plates=6)
+    world = generate_world(seed=2, num_plates=6, **_COARSE)
     step_world(world, 1_000_000)
     world.boundary_faults = []
     plate = max((p for p in world.plates if p.crust_type == "continental"), key=lambda p: p.node_count())
@@ -434,9 +441,9 @@ def test_fault_influence_tapers_from_one_to_floor_and_is_all_ones_without_faults
 
 
 def test_fault_mode_is_the_default_and_differs_from_boundary_mode():
-    a = generate_world(seed=4, num_plates=6)
+    a = generate_world(seed=4, num_plates=6, **_COARSE)
     assert a.fault_deformation_mode == "fault"
-    b = generate_world(seed=4, num_plates=6)
+    b = generate_world(seed=4, num_plates=6, **_COARSE)
     b.fault_deformation_mode = "boundary"
 
     def elev(w):
@@ -461,9 +468,9 @@ def test_fault_mode_is_the_default_and_differs_from_boundary_mode():
 
 
 def test_boundary_mode_deform_is_deterministic():
-    a = generate_world(seed=4, num_plates=6)
+    a = generate_world(seed=4, num_plates=6, **_COARSE)
     a.fault_deformation_mode = "boundary"
-    b = generate_world(seed=4, num_plates=6)
+    b = generate_world(seed=4, num_plates=6, **_COARSE)
     b.fault_deformation_mode = "boundary"
     for _ in range(6):
         step_world(a, 1_000_000)
@@ -474,7 +481,7 @@ def test_boundary_mode_deform_is_deterministic():
 
 
 def test_fault_mode_still_steps_cleanly_and_localises_relief():
-    world = generate_world(seed=4, num_plates=6)
+    world = generate_world(seed=4, num_plates=6, **_COARSE)
     world.fault_deformation_mode = "fault"
     for _ in range(12):
         step_world(world, 1_000_000)
@@ -498,7 +505,7 @@ def test_faults_spawn_boundary_hugging():
 def test_boundary_faults_line_the_plate_boundaries():
     """generate_boundary_faults lays a fault family along essentially every plate boundary --
     the whole point of the feature (the Poisson intraplate spawner can't)."""
-    world = generate_world(seed=4, num_plates=6)
+    world = generate_world(seed=4, num_plates=6, **_COARSE)
     step_world(world, 1_000_000)
     bf = world.boundary_faults
     assert len(bf) > 50
@@ -519,7 +526,7 @@ def test_boundary_faults_line_the_plate_boundaries():
 def test_boundary_faults_are_regenerated_not_accumulated():
     """They track the moving boundary, so each step throws the previous set away -- the count
     stays bounded rather than growing without limit."""
-    world = generate_world(seed=7, num_plates=6)
+    world = generate_world(seed=7, num_plates=6, **_COARSE)
     counts = []
     for _ in range(6):
         step_world(world, 1_000_000)
@@ -530,7 +537,7 @@ def test_boundary_faults_are_regenerated_not_accumulated():
 
 def test_boundary_fault_regime_matches_the_boundary_motion():
     """A converging stretch gets reverse faults, a diverging stretch normal faults."""
-    world = generate_world(seed=4, num_plates=6)
+    world = generate_world(seed=4, num_plates=6, **_COARSE)
     for _ in range(3):
         step_world(world, 1_000_000)
     kinds = {f.kind for f in world.boundary_faults}
@@ -539,7 +546,7 @@ def test_boundary_fault_regime_matches_the_boundary_motion():
 
 
 def test_boundary_faults_survive_a_save_load_roundtrip(tmp_path):
-    world = generate_world(seed=4, num_plates=6)
+    world = generate_world(seed=4, num_plates=6, **_COARSE)
     step_world(world, 1_000_000)
     save = tmp_path / "w.mbworld"
     save.write_bytes(persistence.save_world_bytes(world))
@@ -552,7 +559,7 @@ def test_boundary_faults_survive_a_save_load_roundtrip(tmp_path):
 
 
 def test_reconcile_faults_drops_faults_whose_plate_is_gone():
-    world = generate_world(seed=4, num_plates=6)
+    world = generate_world(seed=4, num_plates=6, **_COARSE)
     step_world(world, 1_000_000)
     ghost = _fault(fault_id=42, plate_id=99_999)  # a plate id that does not exist
     ghost.world_polyline = None
@@ -562,7 +569,7 @@ def test_reconcile_faults_drops_faults_whose_plate_is_gone():
 
 
 def test_reconcile_faults_rehomes_a_fault_onto_the_plate_now_under_its_trace():
-    world = generate_world(seed=4, num_plates=6)
+    world = generate_world(seed=4, num_plates=6, **_COARSE)
     step_world(world, 1_000_000)
     donor = max(world.plates, key=lambda p: p.node_count())
     other = min((p for p in world.plates if p.plate_id != donor.plate_id), key=lambda p: p.node_count())
@@ -666,7 +673,7 @@ def test_fault_systems_round_trip_through_a_save(tmp_path):
 
 
 def test_old_save_without_fault_systems_field_still_loads(tmp_path):
-    world = generate_world(seed=7, num_plates=6)
+    world = generate_world(seed=7, num_plates=6, **_COARSE)
     del world.fault_systems
     save = tmp_path / "old_sys.mbworld"
     save.write_bytes(persistence.save_world_bytes(world))
@@ -678,7 +685,7 @@ def test_old_save_without_fault_systems_field_still_loads(tmp_path):
 
 
 def test_old_save_without_faults_field_still_loads(tmp_path):
-    world = generate_world(seed=7, num_plates=6)
+    world = generate_world(seed=7, num_plates=6, **_COARSE)
     del world.faults  # simulate a pickle written before the field existed
     save = tmp_path / "old.mbworld"
     save.write_bytes(persistence.save_world_bytes(world))
@@ -699,7 +706,7 @@ def test_faults_round_trip_through_a_save(tmp_path):
 
 
 def test_old_save_without_earthquakes_field_still_loads(tmp_path):
-    world = generate_world(seed=7, num_plates=6)
+    world = generate_world(seed=7, num_plates=6, **_COARSE)
     del world.earthquakes  # simulate a pickle written before the field existed
     save = tmp_path / "old_quakes.mbworld"
     save.write_bytes(persistence.save_world_bytes(world))
@@ -850,7 +857,7 @@ def test_old_earthquake_without_trigger_reads_as_tectonic():
 def test_step_world_hands_this_steps_unloading_to_the_faults(monkeypatch):
     calls = []
     monkeypatch.setattr(faults, "trigger_unloading_earthquakes", lambda w, points, change, years: calls.append((points, change, years)) or [])
-    world = generate_world(seed=3, num_plates=6)
+    world = generate_world(seed=3, num_plates=6, **_COARSE)
     step_world(world, 1_000_000)
     assert len(calls) == 1
     points, change, years = calls[0]

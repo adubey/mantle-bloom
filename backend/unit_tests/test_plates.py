@@ -6,6 +6,7 @@ from app.elevation_lines import (
     CRUST_TYPE_CONTINENTAL,
     CRUST_TYPE_INHERIT,
     CRUST_TYPE_OCEANIC,
+    DEFAULT_NODE_DENSITY,
     NODE_DENSITY_CHOICES,
     line_spacing_rad,
 )
@@ -59,7 +60,9 @@ def test_generate_plates_node_density_quadruples_node_count():
 
 
 def test_node_density_choices_all_produce_a_valid_world():
-    for density in NODE_DENSITY_CHOICES:
+    # Smallest choice and the app default only (#826); the full sweep over every choice is
+    # stress_tests/test_plates.py::test_node_density_choices_all_produce_a_valid_world.
+    for density in (NODE_DENSITY_CHOICES[0], DEFAULT_NODE_DENSITY):
         plates = generate_plates(seed=3, num_plates=6, node_density=density)
         assert all(p.node_count() > 0 for p in plates)
 

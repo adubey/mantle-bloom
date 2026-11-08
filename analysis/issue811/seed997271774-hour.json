@@ -1,0 +1,74 @@
+{
+ "save": "mantle-bloom-seed997271774-87400000y.mbworld",
+ "baseline_commit": "dc855ca3",
+ "step_years": 0.00011408,
+ "note": "hour steps (1 h), 200 measured steps after 10 day-step warm-up",
+ "modes": {
+  "hour": {
+   "diagnostic": {
+    "steps": 200,
+    "lake_km3_first_last": [
+     99608,
+     92451
+    ],
+    "steps_with_lake_drop_over_1000_km3": 1,
+    "lake_largest_drop_km3": 5136,
+    "max_discharge_m3_s_range": [
+     23462,
+     3531614
+    ],
+    "median_max_discharge_m3_s": 47802,
+    "mean_precipitation_mm": 1199.8,
+    "mean_air_temperature_c": 16.72,
+    "body_reversals": 0,
+    "comparable_body_steps": 4019,
+    "worst_lake_residual": 4.1521348208313715e-08,
+    "mean_runtime_s": 6.1,
+    "sea_level_first_last": [
+     -402.57,
+     -402.08
+    ],
+    "peak_discharge_step": 110,
+    "lake_change_at_peak_km3": -12,
+    "steps_over_1M_m3_s": [
+     13,
+     110
+    ]
+   },
+   "cfd": {
+    "steps": 200,
+    "lake_km3_first_last": [
+     288089,
+     271862
+    ],
+    "steps_with_lake_drop_over_1000_km3": 3,
+    "lake_largest_drop_km3": 11052,
+    "max_discharge_m3_s_range": [
+     120128,
+     2295798790
+    ],
+    "median_max_discharge_m3_s": 137739,
+    "mean_precipitation_mm": 1196.7,
+    "mean_air_temperature_c": 16.71,
+    "body_reversals": 0,
+    "comparable_body_steps": 4000,
+    "worst_lake_residual": 5.021111508008563e-06,
+    "mean_runtime_s": 8.7,
+    "sea_level_first_last": [
+     -403.09,
+     -403.06
+    ],
+    "peak_discharge_step": 8,
+    "lake_change_at_peak_km3": -11052,
+    "cfd_simulated_days_first_last": [
+     11.0,
+     210.0
+    ],
+    "steps_over_1M_m3_s": [
+     8,
+     9
+    ]
+   }
+  }
+ }
+}

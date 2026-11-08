@@ -363,7 +363,8 @@ def test_restore_skips_worlds_over_the_cap(client, tmp_path):
 
 def test_animation_rejects_steps_per_frame_over_dialog_max(client):
     """Round-5 P2-anim: one frame may hold the gate for at most the dialog's
-    largest choice (100 steps)."""
+    largest choice (100 steps). The accepted case renders one frame (no steps), so only the
+    validation bound is exercised, not 100 real steps of simulation (#826)."""
     record = client.post("/worlds", json={}).json()
     scenario = client.get("/debug/scenarios").json()["scenarios"][0]["name"]
     client.post(f"/worlds/{record['world_id']}/generate_debug", json={"scenario": scenario, "seed": 1})
@@ -372,7 +373,7 @@ def test_animation_rejects_steps_per_frame_over_dialog_max(client):
         f"/worlds/{wid}/animate", json={"step_years": 100000, "steps_per_frame": 101, "num_frames": 2}
     ).status_code == 400
     assert client.post(
-        f"/worlds/{wid}/animate", json={"step_years": 100000, "steps_per_frame": 100, "num_frames": 2}
+        f"/worlds/{wid}/animate", json={"step_years": 100000, "steps_per_frame": 100, "num_frames": 1}
     ).status_code == 200
 
 

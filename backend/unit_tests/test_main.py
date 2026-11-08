@@ -1187,8 +1187,9 @@ def test_fault_at_rejects_non_finite_query(client):
 
 
 def test_faults_returns_well_formed_entries_after_stepping(client):
-    _post_generate(client, json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
-    for _ in range(20):
+    # Coarse grids, 10 steps (was default density, 20 steps; #826).
+    _post_generate(client, json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5, "node_density": 0.5, "climate_density": 0.5, "fluid_density": 0.5})
+    for _ in range(10):
         _post_step(client, json={"years": 1_000_000})
     body = client.get("/world/faults").json()
     assert body["faults"], "expected some faults after 20 Myr"
@@ -1223,14 +1224,16 @@ def test_faults_returns_well_formed_entries_after_stepping(client):
 
 
 def test_volcanoes_returns_well_formed_entries(client):
-    _post_generate(client, json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    # Coarse grids and 12 x 12 Myr steps rather than 30 x 5 Myr on a default-density world
+    # (~114 s -> bounded, #826); the same 144 Myr horizon of subduction.
+    _post_generate(client, json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5, "node_density": 0.5, "climate_density": 0.5, "fluid_density": 0.5})
     # Empty (or at least well-formed) right after generate; degrade-to-empty like /world/faults.
     body = client.get("/world/volcanoes").json()
     assert body["volcanoes"] == []
-    for _ in range(30):
-        _post_step(client, json={"years": 5_000_000})
+    for _ in range(12):
+        _post_step(client, json={"years": 12_000_000})
     body = client.get("/world/volcanoes").json()
-    assert body["volcanoes"], "expected some volcano nodes after 150 Myr of subduction"
+    assert body["volcanoes"], "expected some volcano nodes after 144 Myr of subduction"
     for v in body["volcanoes"]:
         assert len(v["position"]) == 3 and all(isinstance(c, float) for c in v["position"])
         assert isinstance(v["active"], bool)
@@ -2096,9 +2099,9 @@ def test_controls_node_cloud_resample_mode_toggle_and_validation(client):
 
 
 def test_earthquakes_endpoint(client):
-    _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "node_density": 0.5, "climate_density": 0.5, "fluid_density": 0.5})
     assert client.get("/world/earthquakes").json()["earthquakes"] == []  # none before a step
-    for _ in range(20):
+    for _ in range(8):  # was 20 (#826)
         _post_step(client, json={"years": 1_000_000})
     body = client.get("/world/earthquakes").json()
     for q in body["earthquakes"]:
