@@ -21,7 +21,8 @@ description: Measure a Mantle-Bloom change by replaying a saved world (.mbworld)
    a new one under `bin/debug/` with a usage docstring, only when nothing measures what you
    need.
 
-3. **Baseline = a task-specific detached `origin/main` worktree** (see `start-issue`).
+3. **Baseline = a task-specific detached `origin/main` worktree** (see `start-issue` and the
+   [`worktree` skill](../worktree/SKILL.md)).
    Never share or reuse another task's baseline worktree. Record its commit. Never
    `git stash` to get a "before" run: the stash is shared by every worktree, including the
    user's own. Never use the primary checkout either, because its `main` lags `origin`.
