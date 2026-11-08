@@ -17,13 +17,16 @@ opens from identical bytes), then run each preset as its own process, one at a t
         <save> --preset cap-hold --steps 1 --myr 0.25 --out <scratch>/gen5-cap-hold.json
 
 `--set key=value` overrides one MarchCost field on top of the preset (repeatable), e.g.
-`--set max_substeps=400`. `--substep-years 125` reruns an arm at a shorter base substep.
+`--set max_substeps=400`. `--substep-years 125` reruns an arm at a shorter base substep, and
+`--ice-age-period-myr 8` turns ice ages on (bin/debug/march_cli.py). `--ensemble` (#842 E3)
+re-marches the step after the `--steps` warm-up steps once per #765 opening-ice member
+(depths scaled by +/-0.01-0.5%), recording each member's closing ice and largest
+single-substep volume move.
 """
 
 from __future__ import annotations
 
 import argparse
-import dataclasses
 import hashlib
 import json
 import resource
@@ -39,14 +42,12 @@ from app import persistence  # noqa: E402
 from app import world as world_mod  # noqa: E402
 from app.hydroclimate import hydrology, ice_sheet  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from march_cli import add_march_args, apply_march_args, apply_world_args  # noqa: E402
 
-def _parse_override(text: str) -> tuple[str, object]:
-    key, _, raw = text.partition("=")
-    fields = {f.name: f for f in dataclasses.fields(ice_sheet.MarchCost)}
-    if key not in fields:
-        raise SystemExit(f"unknown MarchCost field {key!r}; known: {sorted(fields)}")
-    value = json.loads(raw) if raw not in ("hold", "endpoint") else raw
-    return key, value
+# #765's opening-ice ensemble: an unperturbed member 0, then 12 members scaled by
+# +/-0.01-0.5% (6 magnitudes, both signs).
+ENSEMBLE_SCALES = [0.0] + [sign * m for m in (1e-4, 3e-4, 1e-3, 2e-3, 3.5e-3, 5e-3) for sign in (1.0, -1.0)]
 
 
 def _generate(spec: str, out: Path) -> None:
@@ -102,12 +103,12 @@ def main() -> None:
     args.add_argument("save", type=Path, nargs="?")
     args.add_argument("--generate", help="JSON generate_world options incl. seed; writes --write-save")
     args.add_argument("--write-save", type=Path)
-    args.add_argument("--preset", default="d2", choices=sorted(ice_sheet.MARCH_COST_PRESETS))
-    args.add_argument("--set", action="append", default=[], metavar="FIELD=VALUE")
+    add_march_args(args)
+    args.add_argument("--ensemble", action="store_true",
+                      help="re-march the step after --steps warm-up steps once per ENSEMBLE_SCALES member")
     args.add_argument("--steps", type=int, default=1)
     args.add_argument("--myr", type=float, default=0.25)
     args.add_argument("--out", type=Path)
-    args.add_argument("--substep-years", type=float, help="override MARCH_SUBSTEP_YEARS (a d2 convergence control)")
     ns = args.parse_args()
 
     if ns.generate:
@@ -118,15 +119,34 @@ def main() -> None:
     if ns.save is None or ns.out is None:
         raise SystemExit("a save and --out are required")
 
-    cost = dataclasses.replace(ice_sheet.march_cost(ns.preset), **dict(_parse_override(t) for t in ns.set))
-    ice_sheet.MARCH_COST = cost
-    if ns.substep_years:
-        ice_sheet.MARCH_SUBSTEP_YEARS = ns.substep_years
+    choice = apply_march_args(ns, ice_sheet)
     raw = ns.save.read_bytes()
     world = persistence.load_world_bytes(raw)
+    apply_world_args(ns, world)
     ice_sheet.MARCH_LOG.clear()
     clock = _timed_march()
 
+    steps, depths = _run_steps(ns, world, clock)
+    members = _run_ensemble(ns, world, clock) if ns.ensemble else None
+
+    np.savez_compressed(ns.out.with_suffix(".npz"), **depths)
+    peak_gb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e9
+    ns.out.write_text(json.dumps({
+        "save": ns.save.name,
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "preset": ns.preset,
+        "march_choice": choice,
+        "cost": choice["cost"],
+        "steps": ns.steps,
+        "myr_per_step": ns.myr,
+        "peak_rss_gb": round(peak_gb, 2),
+        "per_step": steps,
+        "ensemble": members,
+    }, indent=1) + "\n")
+    print(f"wrote {ns.out} peak_rss_gb={peak_gb:.2f}")
+
+
+def _run_steps(ns, world, clock):
     steps, depths = [], {}
     for i in range(ns.steps):
         clock["s"] = 0.0
@@ -143,21 +163,33 @@ def main() -> None:
             f"ice_closure={rec['ice_closure']:.2e} sea={rec['sea_level_m']:.2f}",
             flush=True,
         )
+    return steps, depths
 
-    np.savez_compressed(ns.out.with_suffix(".npz"), **depths)
-    peak_gb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e9
-    ns.out.write_text(json.dumps({
-        "save": ns.save.name,
-        "sha256": hashlib.sha256(raw).hexdigest(),
-        "preset": ns.preset,
-        "cost": dataclasses.asdict(cost),
-        "steps": ns.steps,
-        "myr_per_step": ns.myr,
-        "peak_rss_gb": round(peak_gb, 2),
-        "per_step": steps,
-    }, indent=1) + "\n")
-    print(f"wrote {ns.out} peak_rss_gb={peak_gb:.2f}")
 
+def _run_ensemble(ns, world, clock):
+    """#765's opening-ice ensemble: from the state after the warm-up steps, scale every
+    node's glacier depth by (1 + s) for each s in ENSEMBLE_SCALES and step once."""
+    snapshot = persistence.save_exact_bytes(world)
+    members = []
+    for k, scale in enumerate(ENSEMBLE_SCALES):
+        member = persistence.load_world_bytes(snapshot)
+        for plate in member.plates:
+            if plate.node_count() > 0:
+                plate.set_fields_on_plate(glacier_depth=plate.collect("glacier_depth") * (1.0 + scale))
+        clock["s"] = 0.0
+        start = time.perf_counter()
+        world_mod.step_world(member, ns.myr * 1e6)
+        rec = _step_record(ns.steps, member, time.perf_counter() - start, clock["s"])
+        rec["member"], rec["scale"] = k, scale
+        members.append(rec)
+        m = rec["march"] or {}
+        print(
+            f"[{ns.preset}] member {k} ({scale:+.2%}): ice={rec['ice_closing_km3']:.1f} km3 "
+            f"substeps={m.get('substeps')} max_substep_change={m.get('max_substep_change')} "
+            f"settle={m.get('settle_test')}",
+            flush=True,
+        )
+    return members
 
 if __name__ == "__main__":
     main()

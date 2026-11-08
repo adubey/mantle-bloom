@@ -2845,11 +2845,13 @@ def test_march_cost_rejects_trend_with_adaptive():
 
 
 @pytest.mark.usefixtures("march_glaciers")
-@pytest.mark.parametrize("preset", ["cap-hold-recur", "trend-adapt", "trend-hold"])
+@pytest.mark.parametrize("preset", ["cap-hold-recur", "trend-adapt", "trend-hold", "trend-adapt-1k"])
 def test_new_settle_presets_cover_the_step(monkeypatch, preset):
     fields, entry = _march_with(monkeypatch, ice_sheet.march_cost(preset), 10_000)
     assert entry["marched_years"] + entry["held_years"] == pytest.approx(10_000.0)
     assert entry["settle_test"] in (None, "pair", "recurrence", "trend")
+    # Relative to the volume before the substep (#765), so unbounded when ice starts at 0.
+    assert entry["max_substep_change"] >= 0.0
 
 
 def test_breach_surge_fires_when_a_dry_basin_opens_within_step_and_stops_when_reheld():

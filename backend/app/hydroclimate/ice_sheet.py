@@ -185,6 +185,8 @@ MARCH_COST_PRESETS: dict[str, MarchCost] = {
     "cap-hold-recur": MarchCost(max_substeps=200, recurrence=True),
     "trend-adapt": MarchCost(trend=True),
     "trend-hold": MarchCost(trend=True, trend_grow=False),
+    # #842's candidate default: trend-adapt with a 1 kyr longest substep (#741: no drops at 1 kyr).
+    "trend-adapt-1k": MarchCost(trend=True, trend_max_substep_years=1_000.0),
 }
 MARCH_COST = MARCH_COST_PRESETS["d2"]
 

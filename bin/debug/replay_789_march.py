@@ -10,7 +10,10 @@ inputs, and the march must settle on the diagnosis replays.
 
     cd backend
     PYTHONPATH=backend .venv/bin/python ../bin/debug/replay_789_march.py \
-        <save> --steps 10 --myr 0.25 --out <scratch-output>.json
+        <save> --steps 10 --myr 0.25 --out <scratch-output>.json [--preset trend-adapt-1k]
+
+`--preset`, `--set`, `--substep-years` and `--ice-age-period-myr` choose the march and the
+ice-age forcing (bin/debug/march_cli.py); the default is the D2 march.
 
 For the origin/main arm, run the same script with the baseline worktree's venv and
 `MANTLE_BLOOM_BACKEND=<baseline-worktree>/backend`; the march entry is then null.
@@ -35,6 +38,20 @@ from app import persistence  # noqa: E402
 from app import world as world_mod  # noqa: E402
 from app.hydroclimate import ice_sheet  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from march_cli import add_march_args, apply_march_args, apply_world_args  # noqa: E402
+
+
+def _ice_area_km2(world) -> float:
+    """Area of visibly glaciated nodes (depth >= GLACIER_VISIBLE_DEPTH_M), km2."""
+    from app.elevation_lines import line_spacing_rad
+    from app.hydroclimate import hydrology
+    from app.plates import collect_all_accounting_areas_m2, collect_all_glacier_depth
+
+    depth = collect_all_glacier_depth(world.plates)
+    areas = collect_all_accounting_areas_m2(world.plates, line_spacing_rad(world.node_density))
+    return float(areas[depth >= hydrology.GLACIER_VISIBLE_DEPTH_M].sum()) / 1e6
+
 
 def main() -> None:
     args = argparse.ArgumentParser(description=__doc__)
@@ -42,10 +59,13 @@ def main() -> None:
     args.add_argument("--steps", type=int, default=10)
     args.add_argument("--myr", type=float, default=0.25)
     args.add_argument("--out", type=Path, required=True)
+    add_march_args(args)
     ns = args.parse_args()
+    march_choice = apply_march_args(ns, ice_sheet)
 
     raw = ns.save.read_bytes()
     world = persistence.load_world_bytes(raw)
+    apply_world_args(ns, world)
     march_log = getattr(ice_sheet, "MARCH_LOG", None)  # absent on origin/main
     if march_log is not None:
         march_log.clear()
@@ -69,6 +89,7 @@ def main() -> None:
             "ice_accumulation_m3": ice.accumulation_m3,
             "ice_closure": abs(ice.residual_m3) / max(ice.accumulation_m3, 1.0),
             "ice_closing_km3": round(ice.closing_m3 / 1e9, 3),
+            "ice_area_km2": round(_ice_area_km2(world), 1),
             "sea_level_m": round(float(world.sea_level_m), 2),
             "march": march,
         })
@@ -89,6 +110,7 @@ def main() -> None:
         "sha256": hashlib.sha256(raw).hexdigest(),
         "steps": ns.steps,
         "myr_per_step": ns.myr,
+        "march_choice": march_choice,
         "peak_rss_gb": round(peak_gb, 2),
         "per_step": steps,
     }, indent=1) + "\n")

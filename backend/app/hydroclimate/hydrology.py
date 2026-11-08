@@ -2428,6 +2428,10 @@ def _march_glacier(
         "trend_changes": [round(c, 8) for c in watch.trend_changes[-8:]],
         "last_change": None if last_change is None else round(last_change, 6), "sea_level_m": sea_level,
         "volume_path_km3": [round(v / 1e9, 6) for v in volumes[:: max(1, len(volumes) // 25)]],
+        # The largest single-substep volume move (the #765 invariant reads it: <= 20%).
+        "max_substep_change": round(max(
+            (abs(b - a) / max(a, 1.0) for a, b in zip(volumes, volumes[1:])), default=0.0
+        ), 6),
         "tipping_growth": None if tipping_growth is None else round(tipping_growth, 6),
         "capped": capped, "max_substep_years": max_dt,
         "sea_level_resolves": resolves, "sea_level_skipped": skipped_resolves,
