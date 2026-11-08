@@ -79,7 +79,8 @@ Run from the repo root (or worktree root).
   using: a replay, probe, sweep, stress test run, or unit or affected test run. Before
   starting one, follow the [`compute-budget` skill](.agents/skills/compute-budget/SKILL.md),
   which decides from free memory whether to start now or wait for other agents, and how many
-  test workers to use. A mature-world replay peaks near 6 GB.
+  test workers to use. When it says to wait, ask the user whether to override, with the
+  machine's memory and the runs in progress (agents with no user to answer just wait). A mature-world replay peaks near 6 GB.
 - **Reviews:** when a PR's author reports its tests passing, don't rerun them. Run targeted
   checks they couldn't have covered instead. Use the [`peer-review` skill](.agents/skills/peer-review/SKILL.md)
   to coordinate independent multi-agent reviews across open windows or CLIs.

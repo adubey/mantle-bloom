@@ -55,12 +55,36 @@ is over budget even if it says `RUN`.
   ./bin/stress_test.sh -n 2
   ```
 
-- **`WAIT`:** run this loop in the background, then start your run when it exits. Do other
-  work in the meantime.
+- **`WAIT`:** don't just queue up quietly. The check is conservative: it counts each run's
+  full expected peak as reserved, though most runs sit well below it for much of their life.
+  So every time you would wait, **ask the user whether to override and run now**, and give
+  them what they need to decide (below). Then, unless they say to run anyway, run this loop
+  in the background and start your run when it exits. Do other work in the meantime.
 
   ```bash
   until python3 bin/compute_budget.py check --run sim --gb 6; do sleep 120; done
   ```
+
+  Put this in the question, from the `check` output, in plain numbers:
+
+  - **Requested:** the peak you need (GB), and for tests the worker count.
+  - **Machine:** installed RAM, GB available now, and the memory pressure level.
+  - **Load now:** how many runs all agents have going (the `running:` lines, yours excluded
+    unless it's listed), the GB they use now (RSS) and the GB `check` reserves for them.
+    Say which are replays, probes or test workers when the lines show it.
+  - **Shortfall:** the `WAIT` line's "needed" and "free" figures, and how much of the gap is
+    reservation rather than real use (reserved minus used). If available memory alone would
+    cover your run, say so.
+  - **Your recommendation**, with the risk: an override on a loaded machine slows runs by
+    swapping rather than crashing them (see section 4), and a young save or fewer workers
+    may fit without an override.
+
+  Ask again at each new `WAIT` (a new run, or the same one after it has waited a long
+  time), since the figures change. Ask even when you think the wait is right. Don't start an
+  overridden run without an answer, and an override covers that one run only.
+
+  If no user can answer (an automatically spawned agent or a subagent), don't ask and don't
+  stall: run the loop above and start when it exits, as the next paragraph's batch rule says.
 
 Two agents that check close together can both get `RUN`, because `check` can't see a run until
 it's started. `bin/debug/` scripts and test workers are listed as soon as they start, but a
@@ -69,10 +93,11 @@ user prompted directly doesn't need to allow for this, since those rarely start 
 Automatically spawned agents do: whatever spawns a batch of them should start their heavy
 runs one at a time, starting each only once `check` lists the one before.
 
-The user can override a `WAIT`: if they tell you to run anyway, start the run.
+If the user tells you to run anyway, start the run.
 
 If `check` says `WAIT` for critical memory pressure with no runs listed, the user's own apps
-are short of memory. Keep waiting, and tell the user if it lasts more than 30 minutes. If it says it
+are short of memory. Still offer the override with the figures above, but recommend waiting,
+and tell the user if it lasts more than 30 minutes. If it says it
 can't read the machine, it's probably in a sandbox that denies `ps`, so run it outside the
 sandbox rather than looping: the wait would never end.
 
