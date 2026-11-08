@@ -20,6 +20,8 @@ from pathlib import Path
 import numpy as np
 
 PRESETS = ["d2", "cap-hold", "cap-endpoint", "adaptive", "cheap-substep", "cheap-substep-limited"]
+# Round 2 (settle tests). An arm label may carry a suffix such as "-1k" for a --set run.
+ROUND2 = ["d2", "cap-hold", "adaptive", "adaptive-1k", "cap-hold-recur", "trend-hold", "trend-adapt", "trend-adapt-1k"]
 
 
 def _load(directory: Path, world: str, preset: str):
@@ -61,6 +63,7 @@ def main() -> None:
     args.add_argument("directory", type=Path)
     args.add_argument("--worlds", nargs="+", required=True)
     args.add_argument("--json", type=Path)
+    args.add_argument("--presets", nargs="+", default=PRESETS, help=f"arm labels (round 2: {' '.join(ROUND2)})")
     ns = args.parse_args()
 
     rows = []
@@ -69,7 +72,7 @@ def main() -> None:
         if ref is None:
             print(f"(no d2 arm for {world})")
             continue
-        for preset in PRESETS:
+        for preset in ns.presets:
             run, depth = _load(ns.directory, world, preset)
             if run is not None:
                 rows.append(_row(world, preset, run, depth, ref, ref_depth))

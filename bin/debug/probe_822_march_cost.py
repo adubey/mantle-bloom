@@ -17,7 +17,7 @@ opens from identical bytes), then run each preset as its own process, one at a t
         <save> --preset cap-hold --steps 1 --myr 0.25 --out <scratch>/gen5-cap-hold.json
 
 `--set key=value` overrides one MarchCost field on top of the preset (repeatable), e.g.
-`--set max_substeps=400`.
+`--set max_substeps=400`. `--substep-years 125` reruns an arm at a shorter base substep.
 """
 
 from __future__ import annotations
@@ -107,6 +107,7 @@ def main() -> None:
     args.add_argument("--steps", type=int, default=1)
     args.add_argument("--myr", type=float, default=0.25)
     args.add_argument("--out", type=Path)
+    args.add_argument("--substep-years", type=float, help="override MARCH_SUBSTEP_YEARS (a d2 convergence control)")
     ns = args.parse_args()
 
     if ns.generate:
@@ -119,6 +120,8 @@ def main() -> None:
 
     cost = dataclasses.replace(ice_sheet.march_cost(ns.preset), **dict(_parse_override(t) for t in ns.set))
     ice_sheet.MARCH_COST = cost
+    if ns.substep_years:
+        ice_sheet.MARCH_SUBSTEP_YEARS = ns.substep_years
     raw = ns.save.read_bytes()
     world = persistence.load_world_bytes(raw)
     ice_sheet.MARCH_LOG.clear()

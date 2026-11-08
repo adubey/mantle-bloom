@@ -152,6 +152,9 @@ ice closure is read relative to `d2`.
 
 ### Why the march never settles: a period-5 limit cycle
 
+(Round 2 found the 0.25 Myr step's cycle is period 30, and 649 step 1's is period 20:
+the period varies by step. See round 2 below.)
+
 `cap-hold` at 1 Myr on gen5 closes on exactly `d2`'s ice (node-wise max difference
 8e-7 m) after 200 substeps instead of 4000. A follow-up run recording every substep's
 closing volume on that step shows why. From somewhere between substep 100 and 200, the
@@ -229,3 +232,78 @@ Expected:
   its ice error between `trend-hold`'s and `adaptive`'s, and the ledger to close.
 - The 1 kyr ceilings: if the long substeps cause the bias, both 1 kyr arms land closer
   to `d2` than their 4 kyr versions, at somewhat higher cost.
+
+### Results (round 2)
+
+The `d2` control rerun on gen5's 0.25 Myr step matched round 1's closing depths
+exactly (max difference 0.0 m), so round 1's `d2`, `cap-hold` and `adaptive` arms are
+reused unchanged. Full per-world tables: `compare_round2.json` (made by
+`summarize_822_march_cost.py --presets ...`). Land closure is <= 1.3e-12 on every step
+of every arm.
+
+Each long march is compared with `d2` from the **same opening state**. That is step 0
+on the generated worlds. On the saves it is the step with the long march (649 step 1,
+997 step 3); every arm except the two `adaptive` ones opens that step from `d2`'s exact
+depths, because earlier steps all settled the same way. The `adaptive` arms open
+diverged and are marked \*. Cost is the march wall time over the whole run, as a
+multiple of `d2`'s.
+
+Cost, closing ice vs `d2`, node-wise L1 depth difference, and ice closure:
+
+| Arm | gen5 0.25 Myr | gen5 1 Myr | 649 step 1 | 997 step 3 | gen30 0.25 Myr |
+|---|---|---|---|---|---|
+| `cap-hold` | 0.20x, −0.01%, 0.0%, 5.6e-4 | 0.05x, 0.00%, 0.0%, 1.2e-2 | 0.24x, 0.00%, 0.0%, 7.1e-3 | 0.77x, +0.82%, 3.2%, 1.2e-2 | 0.19x, +0.66%, 7.8%, 3.6e-2 |
+| `adaptive` | 0.17x, +3.08%, 4.4%, 0 | 0.09x, +4.29%, 4.0%, 0 | 0.19x, +1.12%\*, 13.5%\*, 0 | 0.64x, +0.45%\*, 6.1%\*, 0 | 0.15x, +4.91%, 14.6%, 0 |
+| `adaptive` 1 kyr | 0.29x, −0.87%, 2.5%, 0 | 0.02x, +0.59%, 2.2%, 9.9e-5 | 0.31x, +2.08%\*, 7.2%\*, 0 | 0.56x, +0.32%\*, 4.0%\*, 6.9e-5 | 0.30x, +7.12%, 10.8%, 0 |
+| `cap-hold-recur` | 0.17x, +0.44%, 1.9%, 4.5e-7 (period 30) | 0.04x, −0.32%, 1.9%, 5.2e-6 (period 5) | 0.16x, −0.15%, 5.8%, 1.0e-6 (period 20) | = `cap-hold` (no cycle) | = `cap-hold` (no cycle) |
+| `trend-hold` | 0.14x, +0.46%, 1.9%, 1.4e-5 | 0.04x, 0.00%, 0.0%, 3.1e-5 | 0.13x, −0.01%, 0.1%, 1.6e-4 | 1.00x, = `d2` (never holds) | 1.00x, = `d2` (never holds) |
+| `trend-adapt` | 0.21x, −0.87%, 1.8%, 2.7e-6 | 0.04x, +0.03%, 0.5%, 5.3e-4 | = `trend-hold` | 0.61x, +0.23%, 2.4%, 7.6e-4 | 0.22x, −0.15%, 14.5%, 0 |
+| `trend-adapt` 1 kyr | 0.24x, −0.81%, 2.5%, 0 | = `trend-adapt` | = `trend-hold` | = `trend-adapt` | 0.21x, +7.87%, 11.0%, 2.3e-3 |
+| `d2` at 125 yr (control, `--substep-years 125`) | — | — | — | — | 0.26x, **−7.34%, 10.0%**, 1.8e-2 (pair-settled) |
+
+`d2`'s own ice closure on the saves' long steps is 8.6e-4 (997 step 3); the
+"0" entries are below 1e-15.
+
+What the numbers say:
+
+- **Exact cycles are common, and their periods vary:** 30 and 5 on gen5, 20 on 649
+  step 1. gen30 and 997 step 3 show no exact cycle within 200 substeps. On those two the
+  sheet is still moving: `cap-hold`'s ledger residual there comes from that drift.
+- **Recurrence** settles every cycle before the cap, with the ledger closed to
+  ~1e-6, as predicted. The ice differs from `d2` by up to 0.44% because the march
+  stops at a different point of the cycle than `d2`'s last substep. That is the cycle's
+  swing, not an error, and the hold can't remove it. With no cycle it is `cap-hold`
+  exactly, ledger failure included.
+- **`trend-hold`** is the most accurate early stop on these worlds. Where it holds,
+  ice is within 0.46% (L1 <= 1.9%) and closure <= 1.6e-4. It is also the cheapest on
+  cycles (0.04–0.14x), because a 30-substep window cancels periods 5 and 30. Period 20
+  doesn't divide 30, yet the windowed change still fell below tolerance on 649. On a
+  drifting sheet the windowed change stays at ~1.5e-2 and it never holds: no saving,
+  but no harm either.
+- **`trend-adapt`** saves where nothing else does without breaking the ledger: 0.61x
+  on 997 step 3 (L1 2.4%) and 0.22x on gen30. On cycles it either holds as
+  `trend-hold` does or grows first and lands a bit further off (−0.87% on gen5 0.25 Myr).
+- **The 1 kyr ceiling hypothesis is not supported.** `adaptive` at 1 kyr is closer on
+  gen5 (+3.1% → −0.9%, +4.3% → +0.6%) but further on gen30 (+4.9% → +7.1%) and 649;
+  `trend-adapt` at 1 kyr is no better. The error isn't a simple function of substep length.
+- **gen30 can't rank accuracy.** Halving `d2`'s own substep moves gen30's closing ice
+  by −7.3% (L1 10%), as far as any arm. On a sheet that is still changing, 250 yr is not
+  a converged reference. Every arm's 7–15% L1 there is within `d2`'s own substep
+  sensitivity.
+
+### Verdict (round 2)
+
+| Arm | Cycling sheets (gen5 ×2, 649) | Drifting sheets (997 step 3, gen30) | Verdict |
+|---|---|---|---|
+| `cap-hold-recur` | 0.04–0.17x, ice ≤ 0.44%, ledger ~1e-6 | Falls back to `cap-hold` (ledger 1.2–3.6%) | **Promising**: strictly better than `cap-hold`; the cap is still the weak part |
+| `trend-hold` | 0.04–0.14x, ice ≤ 0.46%, L1 ≤ 1.9%, ledger ≤ 1.6e-4 | No saving (1.00x), exact | **Promising, safe**: passes the threshold on every cycling sheet, never worse than `d2` |
+| `trend-adapt` | 0.04–0.21x, ice ≤ 0.87% | 0.22–0.61x, ledger closed, L1 2.4–14.5% | **Promising with a caveat**: the only arm that saves on drifting sheets with a closed ledger; its gen30 field error can't be judged against an unconverged `d2` |
+| `adaptive` / `adaptive` 1 kyr | 0.02–0.31x, ice +0.6% to +4.3% | 0.15–0.64x | **Not yet**: the bias moves with the ceiling but doesn't go away |
+
+### Follow-ups suggested by round 2 (not implemented here)
+
+- **Combine:** the trend test's hold plus its substep growth (`trend-adapt`), with
+  recurrence as a second settle test. That covers cycles of any period cheaply and
+  gives drifting sheets a ledger-closed saving, with no cap and no ledger failure.
+- **Reference for drifting sheets:** a 125 yr / 62.5 yr `d2` convergence study on
+  gen30 and 997 step 3, so drifting-sheet accuracy can be judged at all.

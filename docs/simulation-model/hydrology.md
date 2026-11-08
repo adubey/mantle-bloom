@@ -825,9 +825,17 @@ since climate.py runs *before* this module each step).
     the inside distance on the positive set and its boundary only, which gives the
     same result as the full search. `dijkstra_limit_m` caps the outside distance's
     reach, and falls back to the full search when the cap would cut off a body member.
+  - Two extra settle tests, run beside the pair test. `recurrence` settles once the
+    depth field repeats the one p substeps back (p <= 64), which catches the exact
+    limit cycles that pair means never settle; the hold then averages whole periods.
+    `trend` compares 30-substep window-mean depth fields. It holds once the change
+    still to come (projected from the ratio of successive changes) is under 0.1%. While
+    the change shrinks it can also double the substep (`trend_grow`, up to 4 kyr), and
+    it drops back to 250 yr when the change jumps.
 
-  Every march log entry also records `capped`, `max_substep_years` and the sea-level
-  re-solve/skip counts. The first comparison is in `analysis/issue822/`.
+  Every march log entry also records `capped`, `max_substep_years`, the sea-level
+  re-solve/skip counts, and which test settled it (`settle_test`, with the cycle
+  `period` for recurrence). The comparisons are in `analysis/issue822/`.
 - **Plastic geometry.** Within an extent, the ice takes Nye's (1952) perfectly plastic
   profile, `|grad s| = c / H` with `c = tau_b / (rho_i g)` (11.1 m at 100 kPa) -- a geometry
   approximation, as ICESHEET (Gowan et al. 2016) uses it for reconstruction, not a claim that
