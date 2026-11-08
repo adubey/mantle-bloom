@@ -84,8 +84,12 @@ Looks for active, passive, rollback and transtension rift settings, routes a cra
 each site, and compares it with the great circle through that site. Read-only. `--saves` surveys
 snapshots. `--seed` is RFC 0010 Gate D1: one fresh world with production topology unchanged, detecting
 just before topology, merging boundary fragments into fronts and tracking them until they persist
-for 2 Myr. `--no-detect` is its control arm, whose `fingerprint` must match. `--summarize` builds the
-gate tables from the per-seed reports.
+for 2 Myr. `--no-detect` is its control arm, whose `fingerprint` must match. Gate D2 routes each event
+as it starts: arms run to the cheapest pair of boundary endpoints, spread by bearing, that leaves both
+daughters at 5% of the plate without hugging its margin, and a site with no open path to the boundary on both sides is a barrier.
+Steps along the plate edge inside the 150 km margin band cost twice as much, so arms stay in the
+interior; a step heading straight to the edge pays nothing extra.
+`--summarize` builds the D1 and D2 tables from the per-seed reports.
 
 ```bash
 PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_rift_settings.py \
@@ -103,4 +107,15 @@ undecided and why frozen verdicts reverse. Read-only; its fingerprint matches th
 
 ```bash
 PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_age_polarity.py <seed> <out.json>
+```
+
+### `draw_d2_routes.py`
+
+Replays one seed with the `probe_rift_settings.py` census and draws listed Gate D2 events side by
+side, routed without and with the margin limit. Each panel shows the plate's daughters, craton, the
+150 km margin band and the route. Read-only.
+
+```bash
+PYTHONPATH=backend backend/.venv/bin/python bin/debug/draw_d2_routes.py \
+    --seed <n> --events <setting:plate:neighbour:onset_myr> [...] --out-dir <private-dir>
 ```
