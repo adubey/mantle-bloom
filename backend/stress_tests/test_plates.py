@@ -1,3 +1,4 @@
+from app.elevation_lines import NODE_DENSITY_CHOICES
 from app.lithosphere_plate import generate_plates
 from app.plates import (
     MAX_AUTO_PLATES,
@@ -21,3 +22,11 @@ def test_generate_plates_without_num_plates_picks_a_plausible_count():
     for seed in range(20):
         plates = generate_plates(seed=seed, cratons_first=False)
         assert MIN_AUTO_PLATES <= len(plates) <= MAX_AUTO_PLATES
+
+
+def test_node_density_choices_all_produce_a_valid_world():
+    # Full sweep moved from unit_tests/test_plates.py (#826); the unit test keeps the
+    # smallest choice and the default.
+    for density in NODE_DENSITY_CHOICES:
+        plates = generate_plates(seed=3, num_plates=6, node_density=density)
+        assert all(p.node_count() > 0 for p in plates)

@@ -182,7 +182,8 @@ def test_volcanism_multiplier_scales_total_land_built():
 def _stepped_crust_and_relief(seed: int, steps: int, **knobs) -> tuple[float, float]:
     from app import plates as plates_mod
 
-    world = generate_world(seed=seed, num_plates=8)
+    # Coarse grids (#826): the collision trio cost ~130 s of the unit suite at default density.
+    world = generate_world(seed=seed, num_plates=8, node_density=0.5, climate_density=0.5, fluid_density=0.5)
     # The collision-uplift knobs act on deform()'s smooth boundary-band thickening
     # (orogen_strength / the dilated near-field ring). In the default "fault" mode that band
     # is gated onto fault traces, which mutes the *reach* knob's extra near-field crust in

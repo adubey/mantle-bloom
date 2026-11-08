@@ -642,9 +642,12 @@ def _pinned_branches(seed, step_years, total_years):
 
 def test_pinned_branch_agrees_across_partitions():
     """RFC 0007 (#624): on pinned motion, the oceanic/continental branch agrees
-    on over 95% of events between 1 Myr and 10 Myr partitions."""
-    fine = _pinned_branches(7, 1e6, 20e6)
-    coarse = _pinned_branches(7, 10e6, 20e6)
+    on over 95% of events between 1 Myr and 5 Myr partitions over 10 Myr
+    (the 20 Myr, 1-vs-10 Myr version is in stress_tests/test_plume_timestep.py, #826)."""
+    # 10 Myr horizon with 1 vs 5 Myr partitions (was 20 Myr, 1 vs 10; #826). The original
+    # comparison is stress_tests/test_plume_timestep.py::test_pinned_branch_agrees_across_partitions_over_20_myr.
+    fine = _pinned_branches(7, 1e6, 10e6)
+    coarse = _pinned_branches(7, 5e6, 10e6)
     # Drops are partition-independent (same schedule, same drop rule), so the
     # id sets must match exactly -- intersection would hide a divergence.
     assert set(fine) == set(coarse), f"only in fine: {set(fine) - set(coarse)}, only in coarse: {set(coarse) - set(fine)}"
@@ -694,7 +697,7 @@ def _world_fingerprint(world):
 
 def test_multiplier_zero_matches_plume_off_replay(monkeypatch):
     """RFC 0007 (#624): `plume_multiplier = 0` is a strict no-op, matching a
-    10-step replay with the plume pass patched out."""
+    5-step replay with the plume pass patched out."""
     from app import debug_worlds
     from app import world as world_mod
 
@@ -709,7 +712,7 @@ def test_multiplier_zero_matches_plume_off_replay(monkeypatch):
             # world, so this pins the patched dict to the real contract.
             assert set(zero_result) == set(plumes.apply(world, 0.0))
             monkeypatch.setattr(plumes, "apply", lambda *a, **k: dict(zero_result))
-        for _ in range(10):
+        for _ in range(5):  # was 10 (#826)
             world_mod.step_world(world, 1e6)
         return _world_fingerprint(world)
 
