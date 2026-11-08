@@ -85,6 +85,7 @@ import heapq
 import logging
 import os
 
+from collections import deque
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
@@ -2058,6 +2059,95 @@ def _hold_remainder(recent: list[tuple], remaining: float, ledger_total, n: int,
     return hold_melt, hold_calved
 
 
+class _SettleWatch:
+    """The #822 extra settle tests beside D2's pair test (`MarchCost.recurrence`,
+    `MarchCost.trend`). `observe` takes each substep's closing depth and returns
+    (settled, next substep length or None); `hold_window` is how many of the last
+    substeps a settled hold should average (MARCH_HOLD_WINDOW unless a test settled)."""
+
+    def __init__(self, cost, areas: np.ndarray, base_sub: float, hold_window: int, patience: int):
+        self.cost = cost
+        self.patience = patience
+        self.areas = areas
+        self.base_sub = base_sub
+        self.hold_window = hold_window
+        self.settled_by: str | None = None
+        self.period: int | None = None
+        self._snaps: deque = deque(maxlen=cost.recurrence_max_period + 1)
+        self._hits = 0
+        self._block_sum: np.ndarray | None = None
+        self._block_n = 0
+        self._prev_block: np.ndarray | None = None
+        self._prev_change: float | None = None
+        self.trend_changes: list[float] = []
+
+    @property
+    def window(self) -> int:
+        """How many recent substeps the march must keep for any hold this watch may ask."""
+        span = self.cost.recurrence_max_period * 2 if self.cost.recurrence else 0
+        return max(self.hold_window, span, self.cost.trend_window if self.cost.trend else 0)
+
+    def _rel(self, a: np.ndarray, b: np.ndarray) -> float:
+        return float(self.areas @ np.abs(a - b)) / max(float(self.areas @ a), 1.0)
+
+    def _recurs(self, depth: np.ndarray, volumes: list[float]) -> bool:
+        self._snaps.append(depth)
+        tol = self.cost.recurrence_tol
+        period = None
+        for p in range(1, len(self._snaps)):
+            # A cheap volume screen first; only a matching volume pays the field check.
+            if abs(volumes[-1] - volumes[-1 - p]) > tol * max(volumes[-1], 1.0):
+                continue
+            if self._rel(depth, self._snaps[-1 - p]) < tol:
+                period = p
+                break
+        self._hits = self._hits + 1 if period is not None and period == self.period else int(period is not None)
+        self.period = period
+        if self._hits < self.patience:
+            return False
+        # Whole periods only, at least the D2 window when the march is long enough for it.
+        whole = max(1, min(-(-self.hold_window // period), (len(volumes) - 1) // period))
+        self.hold_window = period * whole
+        self.settled_by = "recurrence"
+        return True
+
+    def _trend(self, depth: np.ndarray, sub: float, remaining: float) -> tuple[bool, float | None]:
+        cost = self.cost
+        self._block_sum = depth.copy() if self._block_sum is None else self._block_sum + depth
+        self._block_n += 1
+        if self._block_n < cost.trend_window:
+            return False, None
+        block = self._block_sum / self._block_n
+        self._block_sum, self._block_n = None, 0
+        prev, self._prev_block = self._prev_block, block
+        if prev is None:
+            return False, None
+        change = self._rel(block, prev)
+        self.trend_changes.append(change)
+        prev_change, self._prev_change = self._prev_change, change
+        if prev_change is None:
+            return False, None
+        ratio = change / prev_change if prev_change > 0.0 else (0.0 if change == 0.0 else np.inf)
+        windows_left = remaining / max(sub * cost.trend_window, 1e-9)
+        to_come = change * ratio / (1.0 - ratio) if ratio < 1.0 else change * windows_left
+        if min(to_come, change * windows_left) < cost.trend_tol:
+            self.hold_window = cost.trend_window
+            self.settled_by = "trend"
+            return True, None
+        if ratio > cost.trend_shrink_ratio:
+            return False, self.base_sub
+        if ratio < 1.0 and cost.trend_grow:
+            return False, min(sub * cost.adaptive_growth, max(cost.trend_max_substep_years, self.base_sub))
+        return False, None
+
+    def observe(self, depth: np.ndarray, volumes: list[float], sub: float, remaining: float) -> tuple[bool, float | None]:
+        if self.cost.recurrence and self._recurs(depth, volumes):
+            return True, None
+        if self.cost.trend:
+            return self._trend(depth, sub, remaining)
+        return False, None
+
+
 def _march_glacier(
     world: "World",
     points: np.ndarray,
@@ -2225,6 +2315,7 @@ def _march_glacier(
     base_sub = min(ice_sheet.MARCH_SUBSTEP_YEARS, years)
     sub = base_sub
     capped = False
+    watch = _SettleWatch(cost, areas, base_sub, ice_sheet.MARCH_HOLD_WINDOW, ice_sheet.MARCH_SETTLE_PATIENCE)
     resolves = skipped_resolves = 0
     resolved_debit = to_water * float(np.dot(areas, depth))
     max_dt = 0.0
@@ -2277,7 +2368,7 @@ def _march_glacier(
                 skipped_resolves += 1
         volumes.append(float(np.dot(depth, areas)))
         recent = (recent + [(dt, melt, ice.calved_m3, ice.ledger, ice.frozen_precipitation)])[
-            -max(ice_sheet.MARCH_HOLD_WINDOW, 1):
+            -max(watch.window, 1):
         ]
         # Settle on non-overlapping pairs only ("after each pair", RFC 0015 D2): checking
         # every substep tests overlapping windows, which settle on correlated pairs and can
@@ -2293,6 +2384,11 @@ def _march_glacier(
             # Pair boundaries only, so both substeps of a pair share one length (#822).
             if cost.adaptive:
                 sub = _adapt_substep_years(cost, sub, base_sub, last_change)
+        # The #822 recurrence and trend tests (no-ops at the D2 default).
+        watch_settled, watch_sub = watch.observe(depth, volumes, sub, years - elapsed)
+        if watch_settled:
+            break
+        sub = watch_sub or sub
         if not capped and cost.max_substeps is not None and substeps >= cost.max_substeps and elapsed < years - 1e-6:
             capped = True
             if cost.cap_fill != "endpoint":
@@ -2303,7 +2399,7 @@ def _march_glacier(
     remaining = years - elapsed
     if remaining > 1e-6 and recent:
         frozen = [frozen_land_total, frozen_ocean_retained_total, frozen_retained_total, frozen_bare_melted_total]
-        hold_melt, hold_calved = _hold_remainder(recent, remaining, ledger_total, n, frozen)
+        hold_melt, hold_calved = _hold_remainder(recent[-watch.hold_window:], remaining, ledger_total, n, frozen)
         frozen_land_total, frozen_ocean_retained_total, frozen_retained_total, frozen_bare_melted_total = frozen
         melt_total += hold_melt
         calved_total += hold_calved
@@ -2322,7 +2418,10 @@ def _march_glacier(
         tipping_growth = pair_changes[-1] / pair_changes[0]
     ice_sheet.MARCH_LOG.append({
         "substeps": substeps, "marched_years": elapsed, "held_years": max(remaining, 0.0),
-        "settled": settled >= ice_sheet.MARCH_SETTLE_PATIENCE,
+        "settled": settled >= ice_sheet.MARCH_SETTLE_PATIENCE or watch.settled_by is not None,
+        "settle_test": watch.settled_by or ("pair" if settled >= ice_sheet.MARCH_SETTLE_PATIENCE else None),
+        "period": watch.period if watch.settled_by == "recurrence" else None,
+        "trend_changes": [round(c, 8) for c in watch.trend_changes[-8:]],
         "last_change": None if last_change is None else round(last_change, 6), "sea_level_m": sea_level,
         "volume_path_km3": [round(v / 1e9, 6) for v in volumes[:: max(1, len(volumes) // 25)]],
         "tipping_growth": None if tipping_growth is None else round(tipping_growth, 6),

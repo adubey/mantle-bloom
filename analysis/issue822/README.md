@@ -185,3 +185,47 @@ reached its balance long before the cap; only the settle test missed it.
 - **Option 3:** keep `local_dijkstra` (exact). Drop `dijkstra_limit_m`. The sea-level
   skip is worth re-measuring only once the substep count is fixed, since its saving
   (<= 16%) is small next to options 1 and 2.
+
+## Round 2: settle tests that see the cycle
+
+### Preregistration (round 2)
+
+Written before the round-2 runs. One diagnostic came first: a `d2` run of gen5's
+0.25 Myr step recording every substep's depth field. Its depths repeat **exactly**
+(L1 difference 0) every **30** substeps from about substep 141 on. Shorter lags only
+nearly repeat: lag 6 differs by 1.8e-4 and lag 5 by 1.8e-2. The period-5 cycle reported
+above was in the 1 Myr step's volume, so the cycle period changes from step to step.
+A 10-substep window mean leaves a 2e-3 change on this step; a 30-substep one leaves 0.
+
+New presets (code in `ice_sheet.MarchCost`, `hydrology._SettleWatch`). Both new tests
+run beside D2's pair test, not instead of it:
+
+| Preset | What it changes |
+|---|---|
+| `cap-hold-recur` | `cap-hold` plus a recurrence settle test: the march settles when its depth field matches the one p substeps back (L1 < 1e-6 of the ice, p <= 64) three substeps running, then holds on whole periods' flows. |
+| `trend-hold` | The owner's proposal, hold only: every 30 substeps, the L1 change between consecutive 30-substep window-mean depth fields. The change still to come is estimated as D r/(1-r) while the ratio r of successive changes is < 1, else D times the windows left. The march holds on the last window's flows once that estimate is < 1e-3. |
+| `trend-adapt` | The owner's proposal: as `trend-hold`, and while the change shrinks (r < 1) and the march hasn't held, the substep doubles, up to 4 kyr; r > 1.5 drops it back to 250 yr. |
+| `trend-adapt` + `trend_max_substep_years=1000` | Tests whether `adaptive`'s ice bias comes from the long substeps. |
+| `adaptive` + `adaptive_max_substep_years=1000` | Same test on round 1's adaptive rule. |
+
+`d2`, `cap-hold` and `adaptive` are not rerun: their code paths are unchanged. A `d2`
+control rerun on gen5's 0.25 Myr step checks that, and must match round 1's closing
+depths bit for bit. Worlds, steps, metrics and the "promising" threshold are as in
+round 1.
+
+Expected:
+
+- `cap-hold-recur`: on gen5 (both step lengths) it settles by recurrence before the cap,
+  at about 0.15–0.2x march cost. Its closing ice differs from `d2` by at most the
+  cycle's swing (0.6% on the 0.25 Myr step), because the march stops at a different
+  point of the cycle. Ice closure drops to <= 1e-4, since a whole cycle's flows net to
+  zero. Where no exact cycle forms within 200 substeps (possibly gen30 and the 997 save's
+  step 3), it falls back to the cap and matches `cap-hold`.
+- `trend-hold`: about the cost of `cap-hold-recur` wherever the cycle period divides 30
+  (5 and 30 both do). Elsewhere the windowed change plateaus above 1e-3 and the march
+  runs to the end of the step, like `d2`. Ledger as `cap-hold-recur`.
+- `trend-adapt`: cheaper than `trend-hold` if the change shrinks early, before the
+  cycle. Growth may push it onto a different cycle or bias it like `adaptive`. Expect
+  its ice error between `trend-hold`'s and `adaptive`'s, and the ledger to close.
+- The 1 kyr ceilings: if the long substeps cause the bias, both 1 kyr arms land closer
+  to `d2` than their 4 kyr versions, at somewhat higher cost.

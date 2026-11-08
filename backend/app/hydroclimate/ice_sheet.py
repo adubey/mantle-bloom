@@ -122,6 +122,23 @@ class MarchCost:
        path from outside S into S can be cut at its last outside node).
        `dijkstra_limit_m` caps the outside distance's reach; a member it would cut off,
        or one past half the limit, falls back to the unlimited search.
+
+    Two extra settle tests run beside D2's pair test, either one ending the march early:
+
+    - `recurrence`: the march settles once its depth field repeats itself, i.e. the
+      area-weighted L1 distance to the state p substeps back is below `recurrence_tol`
+      of the ice for some p <= `recurrence_max_period`, MARCH_SETTLE_PATIENCE substeps
+      running with the same p. The never-settling marches sit on exact limit cycles
+      (period 30 on the seed-5 world's 0.25 Myr step), which pair means can never
+      settle. The hold then uses whole periods' flows, so its mean is the cycle mean.
+    - `trend`: every `trend_window` substeps, the area-weighted L1 change between
+      consecutive window-mean depth fields, as a fraction of the ice. While that change
+      shrinks (ratio r < 1), the change still to come is ~ D r / (1 - r); otherwise it is
+      D times the windows left. Below `trend_tol` the march holds on the last window's
+      flows; still shrinking, the substep grows by `adaptive_growth` up to
+      `trend_max_substep_years` (when `trend_grow`); a ratio above `trend_shrink_ratio`
+      drops it back to MARCH_SUBSTEP_YEARS. A window that is a whole number of cycle
+      periods cancels the cycle.
     """
 
     max_substeps: int | None = None
@@ -134,8 +151,23 @@ class MarchCost:
     sea_level_skip_m: float = 0.0
     local_dijkstra: bool = False
     dijkstra_limit_m: float | None = None
+    recurrence: bool = False
+    recurrence_max_period: int = 64
+    recurrence_tol: float = 1.0e-6
+    trend: bool = False
+    trend_window: int = 30
+    trend_tol: float = 1.0e-3
+    trend_grow: bool = True
+    trend_max_substep_years: float = 4_000.0
+    trend_shrink_ratio: float = 1.5
 
     def __post_init__(self):
+        if self.trend and self.adaptive:
+            raise ValueError("trend and adaptive both set the substep length; pick one")
+        if self.trend_window < 2 or self.trend_window % 2:
+            raise ValueError("trend_window must be even, so a window ends on a settle pair")
+        if self.recurrence_max_period < 1:
+            raise ValueError("recurrence_max_period must be at least 1")
         if self.cap_fill not in ("hold", "endpoint"):
             raise ValueError(f"cap_fill must be 'hold' or 'endpoint', not {self.cap_fill!r}")
         if self.max_substeps is not None and self.max_substeps < 2:
@@ -150,6 +182,9 @@ MARCH_COST_PRESETS: dict[str, MarchCost] = {
     "adaptive": MarchCost(adaptive=True),
     "cheap-substep": MarchCost(sea_level_skip_m=0.01, local_dijkstra=True),
     "cheap-substep-limited": MarchCost(sea_level_skip_m=0.01, local_dijkstra=True, dijkstra_limit_m=1_000_000.0),
+    "cap-hold-recur": MarchCost(max_substeps=200, recurrence=True),
+    "trend-adapt": MarchCost(trend=True),
+    "trend-hold": MarchCost(trend=True, trend_grow=False),
 }
 MARCH_COST = MARCH_COST_PRESETS["d2"]
 

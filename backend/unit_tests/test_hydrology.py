@@ -2774,3 +2774,79 @@ def test_local_dijkstra_march_is_bit_identical_to_d2(monkeypatch):
     local, _ = _march_with(monkeypatch, ice_sheet.MarchCost(local_dijkstra=True), 2_000)
     np.testing.assert_array_equal(local.glacier_depth, d2.glacier_depth)
     assert local.ice.ledger.closing_m3 == d2.ice.ledger.closing_m3
+
+
+def _watch(cost):
+    return hydrology._SettleWatch(cost, np.ones(4), 250.0, ice_sheet.MARCH_HOLD_WINDOW, ice_sheet.MARCH_SETTLE_PATIENCE)
+
+
+def _feed(watch, states, sub=250.0, remaining=1e5):
+    volumes = [float(np.sum(states[0]))]
+    for i, depth in enumerate(states[1:], start=1):
+        volumes.append(float(np.sum(depth)))
+        settled, next_sub = watch.observe(np.asarray(depth, dtype=float), volumes, sub, remaining)
+        if settled:
+            return i, next_sub
+        sub = next_sub or sub
+    return None, sub
+
+
+def test_settle_watch_is_a_no_op_at_the_d2_default():
+    watch = _watch(ice_sheet.MarchCost())
+    assert watch.window == ice_sheet.MARCH_HOLD_WINDOW
+    cycle = [np.array([1.0, 2.0, 3.0, 4.0]) * (1 + (i % 3)) for i in range(40)]
+    assert _feed(watch, cycle) == (None, 250.0)
+    assert watch.settled_by is None and watch.hold_window == ice_sheet.MARCH_HOLD_WINDOW
+
+
+def test_recurrence_settles_an_exact_cycle_on_whole_periods():
+    # #822: a period-4 cycle (pair means never coincide on it either) settles once it has
+    # repeated MARCH_SETTLE_PATIENCE substeps running; the hold covers whole periods.
+    base = np.array([10.0, 20.0, 30.0, 40.0])
+    cycle = [base * (1.0, 1.01, 0.98, 1.03)[i % 4] for i in range(40)]
+    watch = _watch(ice_sheet.MarchCost(recurrence=True))
+    settled_at, _ = _feed(watch, cycle)
+    # Substep 5 is the first to see its state 4 substeps back (the opening isn't kept).
+    assert settled_at == 5 + ice_sheet.MARCH_SETTLE_PATIENCE - 1
+    assert watch.settled_by == "recurrence" and watch.period == 4
+    assert watch.hold_window == 4  # only one whole period has run when it settles
+
+
+def test_recurrence_never_settles_a_drift():
+    states = [np.array([10.0, 20.0, 30.0, 40.0]) * (1.0 + 1e-4 * i) for i in range(60)]
+    watch = _watch(ice_sheet.MarchCost(recurrence=True))
+    assert _feed(watch, states)[0] is None
+
+
+def test_trend_holds_a_decaying_change_and_grows_while_it_shrinks():
+    # Window means approach a fixed state geometrically (ratio 0.5): the first ratio
+    # predicts ~D of change still to come, which is too much at first (grow), then holds.
+    target = np.array([10.0, 20.0, 30.0, 40.0])
+    states = [target * (1.0 + 0.2 * 0.5 ** (i // 2)) for i in range(40)]
+    watch = _watch(ice_sheet.MarchCost(trend=True, trend_window=2))
+    settled_at, _ = _feed(watch, states)
+    assert watch.settled_by == "trend" and watch.hold_window == 2
+    assert settled_at is not None and settled_at % 2 == 0
+    grown = _watch(ice_sheet.MarchCost(trend=True, trend_window=2, trend_tol=1e-12))
+    assert _feed(grown, states[:12])[1] > 250.0
+
+
+def test_trend_drops_back_on_a_growing_change():
+    states = [np.array([10.0, 20.0, 30.0, 40.0]) * (1.0 + 1e-3 * 3 ** (i // 2)) for i in range(12)]
+    watch = _watch(ice_sheet.MarchCost(trend=True, trend_window=2))
+    assert _feed(watch, states, sub=1_000.0) == (None, 250.0)
+
+
+def test_march_cost_rejects_trend_with_adaptive():
+    with pytest.raises(ValueError):
+        ice_sheet.MarchCost(trend=True, adaptive=True)
+    with pytest.raises(ValueError):
+        ice_sheet.MarchCost(trend=True, trend_window=3)
+
+
+@pytest.mark.usefixtures("march_glaciers")
+@pytest.mark.parametrize("preset", ["cap-hold-recur", "trend-adapt", "trend-hold"])
+def test_new_settle_presets_cover_the_step(monkeypatch, preset):
+    fields, entry = _march_with(monkeypatch, ice_sheet.march_cost(preset), 10_000)
+    assert entry["marched_years"] + entry["held_years"] == pytest.approx(10_000.0)
+    assert entry["settle_test"] in (None, "pair", "recurrence", "trend")
