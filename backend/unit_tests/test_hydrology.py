@@ -2687,6 +2687,171 @@ def test_march_profiler_spans_fire_only_above_the_cost_gate():
     assert not any("glacier-march" in p or "march ice" in p or "march sea level" in p for p in labels)
 
 
+def _march_with(monkeypatch, cost, years, world=None):
+    """One march of the flow-line fixture under a #822 cost option; returns
+    (fields, march log entry)."""
+    monkeypatch.setattr(ice_sheet, "MARCH_COST", cost)
+    ice_sheet.MARCH_LOG.clear()
+    fields = hydrology.compute_hydrology(
+        world or _flow_line_march_world(), np.full(12, 800.0), np.full(12, -3.0), years=years
+    )
+    return fields, ice_sheet.MARCH_LOG[-1]
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_march_substep_cap_holds_the_remainder(monkeypatch):
+    # #822 option 1: an unsettled march stops at the cap and holds the rest of the step
+    # on its window's mean flows, like a settled hold.
+    fields, entry = _march_with(monkeypatch, ice_sheet.MarchCost(max_substeps=6), 10_000)
+    assert entry["capped"] is True
+    assert entry["settled"] is False
+    assert entry["substeps"] == 6
+    assert entry["marched_years"] == pytest.approx(1_500.0)
+    assert entry["held_years"] == pytest.approx(8_500.0)
+    # Held ice doesn't move: the closing ice is the capped substep's.
+    assert float(np.dot(fields.glacier_depth, _node_areas(_flow_line_march_world()))) == pytest.approx(
+        fields.ice.ledger.closing_m3
+    )
+    assert entry["volume_path_km3"][-1] == pytest.approx(fields.ice.ledger.closing_m3 / 1e9, rel=1e-5)
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_march_substep_cap_endpoint_closes_its_ledger(monkeypatch):
+    # #822 option 1, endpoint fill: one backward-Euler substep over the remainder after
+    # the cap, so the step is fully marched and the ice ledger closes like D2's.
+    fields, entry = _march_with(monkeypatch, ice_sheet.MarchCost(max_substeps=6, cap_fill="endpoint"), 10_000)
+    assert entry["capped"] is True
+    assert entry["substeps"] == 7
+    assert entry["marched_years"] == pytest.approx(10_000.0)
+    assert entry["held_years"] == 0.0
+    assert entry["max_substep_years"] == pytest.approx(8_500.0)
+    ledger = fields.ice.ledger
+    assert ledger.accumulation_m3 > 0.0
+    assert abs(ledger.residual_m3) <= 1e-3 * ledger.accumulation_m3
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_adaptive_march_grows_substeps_in_pairs(monkeypatch):
+    # #822 option 2: with growth forced on every pair, substeps double per pair up to
+    # the cap, the step still sums to its length, and the ledger closes.
+    cost = ice_sheet.MarchCost(adaptive=True, adaptive_grow_below=10.0, adaptive_shrink_above=20.0,
+                               adaptive_max_substep_years=1_000.0)
+    fields, entry = _march_with(monkeypatch, cost, 10_000)
+    # The first settle check needs five volumes: four 250 yr substeps, a 500 yr pair,
+    # then 1000 yr substeps for the last 8000 yr.
+    assert entry["substeps"] == 14
+    assert entry["max_substep_years"] == pytest.approx(1_000.0)
+    assert entry["marched_years"] + entry["held_years"] == pytest.approx(10_000.0)
+    ledger = fields.ice.ledger
+    assert abs(ledger.residual_m3) <= 1e-3 * ledger.accumulation_m3
+
+
+def test_adaptive_substep_shrinks_back_on_a_jump():
+    cost = ice_sheet.MarchCost(adaptive=True)
+    assert hydrology._adapt_substep_years(cost, 250.0, 250.0, None) == 250.0
+    assert hydrology._adapt_substep_years(cost, 250.0, 250.0, 1e-3) == 500.0
+    assert hydrology._adapt_substep_years(cost, 4_000.0, 250.0, 1e-3) == 4_000.0
+    assert hydrology._adapt_substep_years(cost, 2_000.0, 250.0, 2e-2) == 2_000.0
+    assert hydrology._adapt_substep_years(cost, 2_000.0, 250.0, 0.1) == 250.0
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_march_sea_level_skip_counts_resolves(monkeypatch):
+    # #822 option 3: the D2 march re-solves after every substep but the last; a skip
+    # threshold no debit can reach re-solves none, and the substeps are unchanged.
+    _, d2 = _march_with(monkeypatch, ice_sheet.MarchCost(), 1_000)
+    assert d2["substeps"] == 4
+    assert (d2["sea_level_resolves"], d2["sea_level_skipped"]) == (3, 0)
+    _, skip = _march_with(monkeypatch, ice_sheet.MarchCost(sea_level_skip_m=1e12), 1_000)
+    assert (skip["sea_level_resolves"], skip["sea_level_skipped"]) == (0, 3)
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_local_dijkstra_march_is_bit_identical_to_d2(monkeypatch):
+    # #822 option 3: the local inside-distance search is exact, so a march with it is
+    # the D2 march bit for bit.
+    d2, _ = _march_with(monkeypatch, ice_sheet.MarchCost(), 2_000)
+    local, _ = _march_with(monkeypatch, ice_sheet.MarchCost(local_dijkstra=True), 2_000)
+    np.testing.assert_array_equal(local.glacier_depth, d2.glacier_depth)
+    assert local.ice.ledger.closing_m3 == d2.ice.ledger.closing_m3
+
+
+def _watch(cost):
+    return hydrology._SettleWatch(cost, np.ones(4), 250.0, ice_sheet.MARCH_HOLD_WINDOW, ice_sheet.MARCH_SETTLE_PATIENCE)
+
+
+def _feed(watch, states, sub=250.0, remaining=1e5):
+    volumes = [float(np.sum(states[0]))]
+    for i, depth in enumerate(states[1:], start=1):
+        volumes.append(float(np.sum(depth)))
+        settled, next_sub = watch.observe(np.asarray(depth, dtype=float), volumes, sub, remaining)
+        if settled:
+            return i, next_sub
+        sub = next_sub or sub
+    return None, sub
+
+
+def test_settle_watch_is_a_no_op_at_the_d2_default():
+    watch = _watch(ice_sheet.MarchCost())
+    assert watch.window == ice_sheet.MARCH_HOLD_WINDOW
+    cycle = [np.array([1.0, 2.0, 3.0, 4.0]) * (1 + (i % 3)) for i in range(40)]
+    assert _feed(watch, cycle) == (None, 250.0)
+    assert watch.settled_by is None and watch.hold_window == ice_sheet.MARCH_HOLD_WINDOW
+
+
+def test_recurrence_settles_an_exact_cycle_on_whole_periods():
+    # #822: a period-4 cycle (pair means never coincide on it either) settles once it has
+    # repeated MARCH_SETTLE_PATIENCE substeps running; the hold covers whole periods.
+    base = np.array([10.0, 20.0, 30.0, 40.0])
+    cycle = [base * (1.0, 1.01, 0.98, 1.03)[i % 4] for i in range(40)]
+    watch = _watch(ice_sheet.MarchCost(recurrence=True))
+    settled_at, _ = _feed(watch, cycle)
+    # Substep 5 is the first to see its state 4 substeps back (the opening isn't kept).
+    assert settled_at == 5 + ice_sheet.MARCH_SETTLE_PATIENCE - 1
+    assert watch.settled_by == "recurrence" and watch.period == 4
+    assert watch.hold_window == 4  # only one whole period has run when it settles
+
+
+def test_recurrence_never_settles_a_drift():
+    states = [np.array([10.0, 20.0, 30.0, 40.0]) * (1.0 + 1e-4 * i) for i in range(60)]
+    watch = _watch(ice_sheet.MarchCost(recurrence=True))
+    assert _feed(watch, states)[0] is None
+
+
+def test_trend_holds_a_decaying_change_and_grows_while_it_shrinks():
+    # Window means approach a fixed state geometrically (ratio 0.5): the first ratio
+    # predicts ~D of change still to come, which is too much at first (grow), then holds.
+    target = np.array([10.0, 20.0, 30.0, 40.0])
+    states = [target * (1.0 + 0.2 * 0.5 ** (i // 2)) for i in range(40)]
+    watch = _watch(ice_sheet.MarchCost(trend=True, trend_window=2))
+    settled_at, _ = _feed(watch, states)
+    assert watch.settled_by == "trend" and watch.hold_window == 2
+    assert settled_at is not None and settled_at % 2 == 0
+    grown = _watch(ice_sheet.MarchCost(trend=True, trend_window=2, trend_tol=1e-12))
+    assert _feed(grown, states[:12])[1] > 250.0
+
+
+def test_trend_drops_back_on_a_growing_change():
+    states = [np.array([10.0, 20.0, 30.0, 40.0]) * (1.0 + 1e-3 * 3 ** (i // 2)) for i in range(12)]
+    watch = _watch(ice_sheet.MarchCost(trend=True, trend_window=2))
+    assert _feed(watch, states, sub=1_000.0) == (None, 250.0)
+
+
+def test_march_cost_rejects_trend_with_adaptive():
+    with pytest.raises(ValueError):
+        ice_sheet.MarchCost(trend=True, adaptive=True)
+    with pytest.raises(ValueError):
+        ice_sheet.MarchCost(trend=True, trend_window=3)
+
+
+@pytest.mark.usefixtures("march_glaciers")
+@pytest.mark.parametrize("preset", ["cap-hold-recur", "trend-adapt", "trend-hold"])
+def test_new_settle_presets_cover_the_step(monkeypatch, preset):
+    fields, entry = _march_with(monkeypatch, ice_sheet.march_cost(preset), 10_000)
+    assert entry["marched_years"] + entry["held_years"] == pytest.approx(10_000.0)
+    assert entry["settle_test"] in (None, "pair", "recurrence", "trend")
+
+
 def test_breach_surge_fires_when_a_dry_basin_opens_within_step_and_stops_when_reheld():
     # Issue #506: a dry basin (prev_lake_depth == 0) that fills and spills within the step
     # gets its breach surge this step, while a previously full basin whose level falls below
@@ -2733,3 +2898,53 @@ def test_breach_surge_accum_leaves_no_flux_stranded_on_flow_cycles():
     assert breach_surge_accum[0] == pytest.approx(100.0)
     assert np.all(breach_surge_accum[[1, 2]] == 0.0)
     assert breach_surge_accum[3] == pytest.approx(50.0)
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_real_march_settles_by_recurrence_on_the_flow_line_cycle(monkeypatch):
+    # With the pair test off (tolerance 0), the fixture falls into an exact period-3 cycle
+    # that only the recurrence test sees; the rest of the step is held (#839 review).
+    monkeypatch.setattr(ice_sheet, "MARCH_SETTLE_TOLERANCE", 0.0)
+    _, entry = _march_with(monkeypatch, ice_sheet.MarchCost(recurrence=True), 200_000)
+    assert entry["settled"] is True and entry["settle_test"] == "recurrence"
+    assert entry["period"] == 3
+    assert entry["held_years"] > 0.0
+    assert entry["marched_years"] + entry["held_years"] == pytest.approx(200_000.0)
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_real_march_holds_on_the_trend_test(monkeypatch):
+    monkeypatch.setattr(ice_sheet, "MARCH_SETTLE_TOLERANCE", 0.0)
+    fields, entry = _march_with(monkeypatch, ice_sheet.MarchCost(trend=True, trend_grow=False), 200_000)
+    assert entry["settled"] is True and entry["settle_test"] == "trend"
+    assert entry["period"] is None and entry["trend_changes"]
+    assert entry["marched_years"] + entry["held_years"] == pytest.approx(200_000.0)
+    # The held ice is the last substep's, so the ledger's closing ice is the march's final ice.
+    assert fields.ice.ledger.closing_m3 == pytest.approx(entry["volume_path_km3"][-1] * 1e9, rel=1e-2)
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_default_march_logs_pair_settles_only(monkeypatch):
+    _, entry = _march_with(monkeypatch, ice_sheet.MarchCost(), 10_000)
+    assert entry["settle_test"] in ("pair", None)
+    assert entry["period"] is None and entry["trend_changes"] == []
+
+
+def test_recurrence_keeps_enough_substeps_for_its_longest_period():
+    assert _watch(ice_sheet.MarchCost(recurrence=True)).window == 2 * 64
+    assert _watch(ice_sheet.MarchCost(trend=True)).window == 30
+
+
+def test_trend_settles_a_still_growing_sheet_near_the_end_of_the_step():
+    # A steadily growing sheet has no shrinking ratio, so the projection is the change
+    # times the windows left: with a hundredth of a window left, it is below tolerance.
+    states = [np.array([10.0, 20.0, 30.0, 40.0]) * (1.0 + 0.01 * i) for i in range(12)]
+    cost = ice_sheet.MarchCost(trend=True, trend_window=2)
+    assert _feed(_watch(cost), states, remaining=1e5)[0] is None
+    near_end = _watch(cost)
+    assert _feed(near_end, states, remaining=5.0)[0] is not None and near_end.settled_by == "trend"
+
+
+def test_march_cost_rejects_a_recurrence_period_below_one():
+    with pytest.raises(ValueError):
+        ice_sheet.MarchCost(recurrence=True, recurrence_max_period=0)

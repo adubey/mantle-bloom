@@ -810,6 +810,33 @@ since climate.py runs *before* this module each step).
   profiler, steps of `MARCH_PROFILE_MIN_YEARS` (5 kyr) or more record the march's
   discrete phases -- graph build, ice solves, sea-level re-solves -- as spans;
   shorter marches record none.
+- **March cost options** (#822, experimental, off by default). `ice_sheet.MARCH_COST`
+  (a `MarchCost`, chosen by name from `ice_sheet.MARCH_COST_PRESETS`) selects
+  cheaper marches for comparison. The production default, `d2`, is the march above
+  unchanged. The options compose:
+  - A substep cap (`max_substeps`). After the cap, an unsettled march fills the rest
+    of the step with the settled hold (`cap_fill="hold"`, which leaves a still-moving
+    sheet's net drift in the ledger residual) or with one backward-Euler substep over
+    the whole remainder (`"endpoint"`, which closes its own ledger).
+  - Adaptive substeps (`adaptive`). The substep doubles after each settle pair whose
+    pair-mean change is under 1%, up to 4 kyr, and drops back to 250 yr above 5%. Both
+    substeps of a pair always share one length.
+  - Cheaper substeps. `sea_level_skip_m` skips the sea-level re-solve while the ice
+    debit has moved less than that many metres of sea level. `local_dijkstra` searches
+    the inside distance on the positive set and its boundary only, which gives the
+    same result as the full search. `dijkstra_limit_m` caps the outside distance's
+    reach, and falls back to the full search when the cap would cut off a body member.
+  - Two extra settle tests, run beside the pair test. `recurrence` settles once the
+    depth field repeats the one p substeps back (p <= 64), which catches the exact
+    limit cycles that pair means never settle; the hold then averages whole periods.
+    `trend` compares 30-substep window-mean depth fields. It holds once the change
+    still to come (projected from the ratio of successive changes) is under 0.1%. While
+    the change shrinks it can also double the substep (`trend_grow`, up to 4 kyr), and
+    it drops back to 250 yr when the change jumps.
+
+  Every march log entry also records `capped`, `max_substep_years`, the sea-level
+  re-solve/skip counts, and which test settled it (`settle_test`, with the cycle
+  `period` for recurrence). The comparisons are in `analysis/issue822/`.
 - **Plastic geometry.** Within an extent, the ice takes Nye's (1952) perfectly plastic
   profile, `|grad s| = c / H` with `c = tau_b / (rho_i g)` (11.1 m at 100 kPa) -- a geometry
   approximation, as ICESHEET (Gowan et al. 2016) uses it for reconstruction, not a claim that
