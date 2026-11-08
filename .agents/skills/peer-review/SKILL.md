@@ -19,10 +19,9 @@ POSIX `fcntl`, applicable to macOS and Linux development hosts).
 1. Ensure the branch is pushed and the PR is open or updated on GitHub (`<N>` is the PR
    number).
 2. Create the review request with `bin/peer_review.py request`, passing one `--reviewer`
-   flag per requested reviewer in the form `AGENT[:MODEL[:REASONING]]`. Open-window mode is
-   the default; pass `--spawn` only when the user asks to launch headless CLI processes
-   instead of using open windows. (Note: `--spawn` CLI flags are experimental and should
-   be verified against the target tool's `--help` output before use). Its review trees follow the
+   flag per requested reviewer in the form `AGENT[:MODEL[:REASONING]]`. Headless CLI mode is
+   the default (spawns background reviewer processes in detached worktrees); pass `--no-spawn`
+   only when the user asks to use already-open windows instead. Its review trees follow the
    [`worktree` skill](../worktree/SKILL.md): siblings of the primary checkout by default, or
    pass `--worktree-root <primary>/worktrees` if your sandbox can't leave the workspace root:
 
@@ -33,12 +32,10 @@ POSIX `fcntl`, applicable to macOS and Linux development hosts).
      --reviewer <agent2>:<model2>:<reasoning2>
    ```
 
-   `request` waits briefly (`--claim-wait 2.0`) to see whether standby listeners in
-   already-open windows claim the slots automatically.
-   - For any slot claimed by a standby window, tell the user that window has picked up the
-     review.
-   - For any slot still pending, give the user the printed one-line prompt to paste into
-     that open window after choosing the requested model and reasoning level in its UI.
+   In the default headless CLI mode, reviewers are spawned immediately in the background. If
+   `--no-spawn` was requested, `request` waits briefly (`--claim-wait 2.0`) to see whether
+   standby listeners in open windows claim the slots automatically, or outputs prompt one-liners
+   to paste into open windows.
 
 3. Start the completion watcher **in the background** so this author session stays
    available while the reviewers work, and wakes automatically when all reviews are done:

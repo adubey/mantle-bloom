@@ -806,6 +806,7 @@ def format_status_report(req: ReviewRequest) -> str:
 
 def cmd_request(args: argparse.Namespace, state_dir: Path) -> int:
     branch, sha = detect_git_metadata()
+    spawn = not args.no_spawn
     req = create_review_request(
         state_dir=state_dir,
         pr=args.pr,
@@ -813,10 +814,10 @@ def cmd_request(args: argparse.Namespace, state_dir: Path) -> int:
         author=args.author,
         branch=args.branch or branch,
         head_sha=args.head_sha or sha,
-        spawn=args.spawn,
+        spawn=spawn,
         force=args.force,
     )
-    if args.spawn:
+    if spawn:
         for slot in req.slots:
             spawn_cli_reviewer(state_dir, req, slot, args.worktree_root)
             print(
@@ -956,9 +957,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_req.add_argument("--branch", default="", help="PR branch name")
     p_req.add_argument("--head-sha", default="", help="PR head commit SHA")
     p_req.add_argument(
-        "--spawn",
+        "--no-spawn",
         action="store_true",
-        help="Spawn headless CLI reviewers in detached worktrees instead of open windows",
+        help="Use open-window mode instead of spawning headless CLI reviewers",
     )
     p_req.add_argument(
         "--force",

@@ -317,6 +317,7 @@ def test_cli_end_to_end_workflow(tmp_path, capsys):
                 "muse:opus:high",
                 "--reviewer",
                 "codex:gpt-5.4:high",
+                "--no-spawn",
                 "--claim-wait",
                 "0",
             ]
