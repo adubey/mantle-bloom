@@ -28,6 +28,7 @@ Run from the repo root (or worktree root).
 | Run the app | `./bin/restart.sh --port <P>`, or add `--dev --frontend-port <Q>` for Vite HMR |
 | Stop the app | `./bin/stop.sh --port <P> [--frontend-port <Q>]` |
 | List, fetch or upload saves across machines | `bin/b2_saves.py list`, `pull <name>`, `push <file>` (`b2-saves` skill) |
+| Request, claim or wait on multi-agent PR reviews | `bin/peer_review.py request`, `listen`, `claim`, `complete`, `wait` (`peer-review` skill) |
 
 - The three test scripts pick their worker count from free memory and idle cores, and CI
   stays on `-n auto`. Pass `-n N` to set it yourself.
@@ -75,7 +76,8 @@ Run from the repo root (or worktree root).
   which decides from free memory whether to start now or wait for other agents, and how many
   test workers to use. A mature-world replay peaks near 6 GB.
 - **Reviews:** when a PR's author reports its tests passing, don't rerun them. Run targeted
-  checks they couldn't have covered instead.
+  checks they couldn't have covered instead. Use the [`peer-review` skill](.agents/skills/peer-review/SKILL.md)
+  to coordinate independent multi-agent reviews across open windows or CLIs.
 - **GitHub CLI authentication:** `gh` in the restricted command sandbox may report an
   invalid `default` token even when the user's macOS Keychain login is valid. For GitHub
   CLI commands, use the less restricted host context by default so `gh` can use the
@@ -107,8 +109,8 @@ Run from the repo root (or worktree root).
   `.claude/skills` links there. Any coding agent working in this repo can use them:
   `explore-problem`, `create-issue`, `start-issue`,
   `start-rfc`, `continue-rfc`, `edit-rfc`, `project-management`, `compute-budget`,
-  `replay-ab`, `b2-saves`, `pre-push-check`, `rfc-authoring`, `rfc-review`, `complete-rfc`,
-  `documentation`.
+  `replay-ab`, `b2-saves`, `peer-review`, `pre-push-check`, `rfc-authoring`, `rfc-review`,
+  `complete-rfc`, `documentation`.
 
 ## Conventions
 
