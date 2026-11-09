@@ -1,0 +1,28 @@
+{
+  "protocol": "RFC0018-G2-experimental-v1",
+  "source_report": "analysis/issue797/g2-summary.json",
+  "seed_registry_sha256": "214623b962984be9e95c6ced1f87b470b105a6d628f96cdb7cfae5d5844eba2f",
+  "source_commit_for_g0_candidate_method": "5da20be8cbf7760960a2557bcba915c8fb828292",
+  "g2_runner_sha256": "ebb0978027631ee8e54b26300497a85ef7da1b234d7cb33f930c0c06240da54c",
+  "horizon_years": 200000000,
+  "step_years": 1000000,
+  "runtime_measurement_note": "Wall times below are copied from the completed G2 paired runs. The report does not record enough run-isolation metadata to treat them as a definitive G3 runtime comparison.",
+  "pairs": [
+    {"seed": 228191914, "baseline_wall_s": 487.9597952920012, "graph_wall_s": 11189.561624708003, "graph_to_baseline_ratio": 22.931318794434755},
+    {"seed": 2058294723, "baseline_wall_s": 516.0383624160313, "graph_wall_s": 8659.950871917012, "graph_to_baseline_ratio": 16.781602885824483},
+    {"seed": 2069607991, "baseline_wall_s": 493.67611108295387, "graph_wall_s": 7216.151843749976, "graph_to_baseline_ratio": 14.617178513905092},
+    {"seed": 1305368628, "baseline_wall_s": 525.2029218749958, "graph_wall_s": 7699.448557416035, "graph_to_baseline_ratio": 14.659949967392967},
+    {"seed": 857560705, "baseline_wall_s": 492.02817829104606, "graph_wall_s": 7815.465351541992, "graph_to_baseline_ratio": 15.884182443955401},
+    {"seed": 640625437, "baseline_wall_s": 479.00622562499484, "graph_wall_s": 11293.552568375017, "graph_to_baseline_ratio": 23.577047571019527},
+    {"seed": 2137727007, "baseline_wall_s": 573.4042277080007, "graph_wall_s": 8067.097275125037, "graph_to_baseline_ratio": 14.068778856707542},
+    {"seed": 1471988496, "baseline_wall_s": 494.3562818330247, "graph_wall_s": 7784.640893292031, "graph_to_baseline_ratio": 15.747025332473465},
+    {"seed": 1249837662, "baseline_wall_s": 584.7030218750006, "graph_wall_s": 10167.669398208032, "graph_to_baseline_ratio": 17.389459294400066},
+    {"seed": 1416208252, "baseline_wall_s": 550.2370419580257, "graph_wall_s": 9141.362312666955, "graph_to_baseline_ratio": 16.613498575336365}
+  ],
+  "median_baseline_wall_s": 505.197322124528,
+  "median_graph_wall_s": 8363.524073521025,
+  "median_graph_to_baseline_ratio": 16.248840509645884,
+  "runtime_gate_target": "median full-simulation runtime within 2% of paired production baseline",
+  "production_semantics_gap": "The G2 callback returns no breakup immediately when its event draw is above P_break. It does not apply failed-rift thinning or graph-path craton diagnostics. Issue #846 requires the production implementation to apply failed-rift thinning and diagnostics along the selected graph path.",
+  "interpretation": "The measured graph-arm wall times strongly suggest that the current candidate search will exceed the G3 runtime limit. Because the G2 timing is not documented as a controlled G3 runtime run and the callback omits production failed-rift behavior, treat this as a revision trigger and diagnostic evidence, not a definitive G3 failure."
+}
