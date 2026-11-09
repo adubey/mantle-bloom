@@ -579,7 +579,7 @@ This reruns the sweep with the RFC 0015 D2 march and `trend-adapt` (selected on 
 instruction; its error against `d2` is for another experiment). Code: PR #839 merged locally onto
 `origin/main` `ce24f509` in a throwaway worktree (not pushed), driver `replay_timescale_sweep.py
 --march-preset trend-adapt`. Diagnostic wind, ice-age cycle off, 10 day-step warm-up. Data:
-`ice-trend-adapt.json`. Second-save bridges and year were still running when this was written.
+`ice-trend-adapt.json`.
 
 | Save | Mode | Ice start to end (M km3) | Sea level (m) | Median s/step | Median substeps | Steps with ice residual/closing ice > 1e-3 |
 |---|---|---|---|---|---|---|
@@ -589,9 +589,12 @@ instruction; its error against `d2` is for another experiment). Code: PR #839 me
 | 997271774 | 100 kyr | 16.2 to 8.9 | -432 to -538 | 18.9 | 25 | 183 of 200 |
 | 997271774 | 250 kyr bridge | 16.2 to 9.5 | -435 to -546 | 20.9 | 35 | 75 of 80 |
 | 997271774 | 1 Myr bridge | 15.7 to 9.3 | -445 to -554 | 23.3 | 39 | 19 of 20 |
+| 910211954 | year | 42.1 to 28.5 | -770 to -739 | 6.9 | 1 | 0 of 200 |
 | 910211954 | century | 21.7 to 31.0 | -719 to -740 | 7.0 | 1 | 0 of 200 |
 | 910211954 | 250 yr | 20.7 to 34.4 | -718 to -748 | 6.8 | 1 | 0 of 200 |
 | 910211954 | 100 kyr | 34.2 to 34.7 | -750 to -839 | 55.2 | 82 | 137 of 200 |
+| 910211954 | 250 kyr bridge | 34.3 to 33.7 | -750 to -846 | 35.4 | 47 | 75 of 80 |
+| 910211954 | 1 Myr bridge | 34.0 to 34.8 | -760 to -862 | 30.5 | 31 | 19 of 20 |
 
 - **The ledger breaks at long steps, and `d2` does it too.** Up to 250 yr the ice ledger closes to
   round-off (5e-16). From 100 kyr almost every step settles by the pair test and holds most of the
@@ -606,11 +609,12 @@ instruction; its error against `d2` is for another experiment). Code: PR #839 me
 - **Cost.** The march adds most of the step time at long steps: median 19 s per 100 kyr step on the
   first save against about 6 s without it, and 55 s against 7 s on the second. Individual steps swing
   from a few seconds to over 130 s with the substep count.
-- **The second save's 83 M km3 was the old solve.** Under the march the ice is 21 to 35 M km3 from the
-  first measured step. I did not trace which step shed it. The world is still much icier than the first
+- **The second save's 83 M km3 was the old solve.** Under the march the ice is 21 to 42 M km3 from the
+  first measured step, and its year-step run (200 yr) is still relaxing, 42.1 to 28.5 M km3 with sea
+  level -770 to -739 m, so the save's ice field was far from the march's state. I did not trace which step shed it. The world is still much icier than the first
   save, so the earlier ice-state caveat is smaller but not gone.
 - **Not done.** No `d2` reference over a whole run (the error `trend-adapt` adds is another
-  experiment's), no comparison of fields, and the second save's bridges and year.
+  experiment's) and no comparison of fields.
 
 ## Verdict for #811
 
@@ -647,6 +651,6 @@ taken without warm-up and is kept for the record.
 - Why the merged D/E lake state is entered at 2.5 and 5 kyr but not at 10 kyr, and whether the slice length or the climate refresh interval drives it; the period-2 volume swing and the 5.5 m level step in A.
 - Test whether a spill chain moving one link per call explains the call-23 start-up transient, and rerun on a post-#758 save.
 - Second save: the world is glaciated, so rerun it, or pick a second save with ordinary ice, once D2 is in. Separate evolution from step-size artefact with a fixed-span comparison. Find why its hour cfd ledger is 2e-4.
-- Ice with the D2 march: the second save's bridges and year are still running; a `d2` reference over a whole run is for the `trend-adapt` error experiment.
+- Ice with the D2 march: a `d2` reference over a whole run is for the `trend-adapt` error experiment.
 - The #553 depth-cap warning on seed 910211954 at step 1 (6.7e4 km3 gross overflow on lake-tier
   bodies, 3.5e4 on sea-tier bodies) is another large-overflow route.

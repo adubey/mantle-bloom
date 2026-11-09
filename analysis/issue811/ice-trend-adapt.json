@@ -135,6 +135,51 @@
    },
    "steps_closure_over_1e3": 137,
    "worst_closure": 0.1964772925805653
+  },
+  "910211954-year": {
+   "steps": 200,
+   "ice_first_Mkm3": 42.11727171351971,
+   "ice_last_Mkm3": 28.506772557120723,
+   "sea_first_m": -770.2715650083156,
+   "sea_last_m": -739.315543432915,
+   "median_step_s": 6.920435312436894,
+   "median_substeps": 1.0,
+   "settle_tests": {
+    "None": 200
+   },
+   "steps_closure_over_1e3": 0,
+   "worst_closure": 5.546114351995696e-16
+  },
+  "910211954-bridge250k": {
+   "steps": 80,
+   "ice_first_Mkm3": 34.30117205250824,
+   "ice_last_Mkm3": 33.71625479039707,
+   "sea_first_m": -750.0585057915616,
+   "sea_last_m": -846.0497796385964,
+   "median_step_s": 35.3645248124958,
+   "median_substeps": 47.0,
+   "settle_tests": {
+    "pair": 73,
+    "None": 4,
+    "trend": 3
+   },
+   "steps_closure_over_1e3": 75,
+   "worst_closure": 0.487440293941578
+  },
+  "910211954-bridge1m": {
+   "steps": 20,
+   "ice_first_Mkm3": 33.99797234589645,
+   "ice_last_Mkm3": 34.792151364700246,
+   "sea_first_m": -759.6828344844167,
+   "sea_last_m": -862.4401333722337,
+   "median_step_s": 30.471428562013898,
+   "median_substeps": 31.0,
+   "settle_tests": {
+    "pair": 19,
+    "None": 1
+   },
+   "steps_closure_over_1e3": 19,
+   "worst_closure": 1.513095352255705
   }
  },
  "d2_test": {
