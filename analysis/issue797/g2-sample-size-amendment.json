@@ -1,0 +1,65 @@
+{
+  "amendment": "RFC0018-G2-sample-size-v1",
+  "date": "2026-11-08",
+  "owner_approval": "User-directed in the active RFC 0018 workstream",
+  "previous_amendment": "analysis/issue797/g2-nonworsening-amendment.json",
+  "reason": "The graph-cut replay pairs take a long time; the owner requested reducing the required sample from 20 pairs to 10.",
+  "selection": {
+    "registry": "analysis/issue797/g2-seed-preregistration.json",
+    "registry_sha256": "214623b962984be9e95c6ced1f87b470b105a6d628f96cdb7cfae5d5844eba2f",
+    "rule": "Evaluate the first 10 primary held-out seeds in the unchanged frozen registry, in registry order.",
+    "sample_size_before": 20,
+    "sample_size_after": 10,
+    "nonworsening_fraction_preserved": 0.1,
+    "maximum_negative_D_s_after": 1
+  },
+  "revised_pass_conditions": [
+    "Complete both baseline and graph arms for the first 10 primary held-out seeds in the frozen registry",
+    "No more than one of those 10 seeds has D_s < 0; D_s = 0 counts as non-worsening",
+    "At least 50 combined actual split events across those 10 pairs"
+  ],
+  "unchanged": [
+    "D_s = baseline tiny-split count minus graph tiny-split count; tiny means smaller daughter area below 7% of parent area",
+    "200 Myr per arm and the same simulation settings, random streams, and candidate method",
+    "The frozen registry and seed order",
+    "Descriptive reporting of mean D_s, paired seed-bootstrap interval, improved-seed count, tiny-split shares, and daughter distributions"
+  ],
+  "post_result_amendment": {
+    "first_10_outcomes_observed_before_change": true,
+    "preregistered": false,
+    "interpretation": "Owner-directed post-result amendment; the ten-pair result is not confirmatory and supports non-worsening only, not positive efficacy. The smaller sample has less precision."
+  },
+  "observed_first_10_pairs": {
+    "seeds": [
+      228191914,
+      2058294723,
+      2069607991,
+      1305368628,
+      857560705,
+      640625437,
+      2137727007,
+      1471988496,
+      1249837662,
+      1416208252
+    ],
+    "baseline_actual_splits": 157,
+    "graph_actual_splits": 98,
+    "combined_actual_splits": 255,
+    "baseline_tiny_splits": 0,
+    "graph_tiny_splits": 0,
+    "D_s_by_seed": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "negative_D_s_count": 0,
+    "positive_D_s_count": 0,
+    "mean_D_s": 0.0,
+    "paired_seed_bootstrap_95pct_interval": [0.0, 0.0],
+    "tiny_share_difference_percentage_points": 0.0,
+    "relative_tiny_share_reduction": null
+  },
+  "gate_outcome_under_amended_criteria": {
+    "all_10_pairs_complete": "PASS",
+    "negative_D_s_at_most_1_of_10": "PASS (0 of 10)",
+    "combined_actual_splits_at_least_50": "PASS (255)",
+    "overall": "PASS, conditional on adoption of this amendment"
+  },
+  "excluded_observation": "Seed 205240614 has a completed baseline arm but no graph arm. It is unpaired and outside the first ten registry seeds, so it is excluded from this gate."
+}
