@@ -202,9 +202,11 @@ def test_another_trigger_firing_does_not_reset_a_cooldown(tmp_path, world):
     assert gaps and all(gap >= 3 * 1_000.0 for gap in gaps)
 
 
-def test_disk_cap_removes_the_oldest_records(tmp_path, world, saved_world):
+def test_disk_cap_removes_the_oldest_records(tmp_path, world):
+    # A record is an exact (stored) save, larger than the deflated `saved_world` fixture.
+    record_size = len(persistence.save_exact_bytes(world))
     log = ReplayLog(
-        tmp_path, max_bytes=int(2.5 * len(saved_world)), min_steps_between=1,
+        tmp_path, max_bytes=int(2.5 * record_size), min_steps_between=1,
         triggers={"always": lambda outcome: {}}, step_progress=_fake_step(lambda w: None),
     )
     for _ in range(4):

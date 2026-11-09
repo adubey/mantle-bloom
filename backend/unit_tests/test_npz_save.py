@@ -534,3 +534,24 @@ def test_loading_a_v5_missing_world_scalars_raises(stepped_bytes):
 
     with pytest.raises(persistence.CorruptSaveError, match="missing world fields"):
         persistence.load_world_bytes(_remanifested(stepped_bytes, strip))
+
+
+def _methods(data: bytes) -> set[int]:
+    return {info.compress_type for info in zipfile.ZipFile(io.BytesIO(data)).infolist()}
+
+
+def test_default_save_is_deflated_and_smaller_than_the_exact_save(stepped_world, stepped_bytes):
+    assert _methods(stepped_bytes) == {zipfile.ZIP_DEFLATED}
+    assert len(stepped_bytes) < 0.8 * len(persistence.save_exact_bytes(stepped_world))
+
+
+def test_replay_and_compact_saves_stay_stored(stepped_world):
+    assert _methods(persistence.save_exact_bytes(stepped_world)) == {zipfile.ZIP_STORED}
+    assert _methods(persistence.save_compact_bytes(stepped_world)) == {zipfile.ZIP_STORED}
+
+
+def test_a_stored_and_a_deflated_save_load_to_the_same_state(stepped_world):
+    stored = npz_save.save_world_v5(stepped_world, profile="default")
+    deflated = npz_save.save_world_v5(stepped_world, profile="default", compress=True)
+    assert _methods(stored) == {zipfile.ZIP_STORED}
+    assert state_hash(persistence.load_world_bytes(stored)) == state_hash(persistence.load_world_bytes(deflated))

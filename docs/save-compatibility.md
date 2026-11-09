@@ -341,6 +341,12 @@ it goes and lands close to but not on the uninterrupted state, pinned by an
 approximate continuation test (land fraction within 1e-3, sea level within 1 m on
 the reference world) rather than H9.
 
+**Compression.** `save_world_bytes` (File > Save, checkpoints, diagnostics) deflates its zip
+entries at level 6, which leaves a save at about 30% of its stored size (27-33% across a young
+world, a mature one and a 355 MB one). `save_exact_bytes` (replay-log records, written before
+every logged step) and `save_compact_bytes` stay stored. The loader reads either method per
+entry, so saves written before this change, stored, load unchanged.
+
 User-facing saves are named `*.bloom`. Loading sniffs the content, never the
 extension: `persistence.save_kind` reports `"v5"` for a zip-manifest save and
 `"pickle"` for a legacy pickled save, and `load_world_bytes` reads both. The v1-v4
