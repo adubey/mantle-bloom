@@ -9,6 +9,7 @@ import hashlib
 import importlib.util
 import json
 import sys
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -97,3 +98,39 @@ def test_one_unsaveable_file_is_reported_and_does_not_stop_the_batch(tmp_path, m
     args = cs.argparse.Namespace(dirs=[str(tmp_path)], dry_run=False, verify_step=False)
     assert cs.cmd_local(args) == 1
     assert (tmp_path / "b.bloom").exists()  # the zip still moved
+
+
+def _stored_zip(path, **entries):
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as archive:
+        for name, data in entries.items():
+            archive.writestr(name, data)
+
+
+def test_recompress_deflates_in_place_keeps_entries_and_records_the_old_hash(tmp_path):
+    path = tmp_path / "w.bloom"
+    _stored_zip(path, **{"manifest.json": b"{}", "a/x.npy": b"0" * 100_000})
+    old_sha1, old_sha256 = hashlib.sha1(path.read_bytes()).hexdigest(), hashlib.sha256(path.read_bytes()).hexdigest()
+    (tmp_path / "SHA256SUMS").write_text(f"{old_sha256}  w.bloom\n")
+    (tmp_path / cs.LEGACY_FILE).write_text(json.dumps({"older": {"how": "converted", "name": "w.bloom", "sha1": old_sha1}}))
+
+    assert cs.recompress_local(path, dry_run=False).startswith("recompressed w.bloom")
+
+    with zipfile.ZipFile(path) as archive:
+        assert {i.compress_type for i in archive.infolist()} == {zipfile.ZIP_DEFLATED}
+        assert archive.read("a/x.npy") == b"0" * 100_000
+    new_sha1, new_sha256 = hashlib.sha1(path.read_bytes()).hexdigest(), hashlib.sha256(path.read_bytes()).hexdigest()
+    assert (tmp_path / "SHA256SUMS").read_text() == f"{new_sha256}  w.bloom\n"
+    table = json.loads((tmp_path / cs.LEGACY_FILE).read_text())
+    assert table[old_sha1]["sha1"] == new_sha1 and table[old_sha1]["legacy_sha256"] == old_sha256
+    assert table["older"]["sha1"] == new_sha1 and table["older"]["how"] == "converted+recompressed"
+    assert not list(tmp_path.glob("*.part"))
+
+
+def test_recompress_skips_a_deflated_file_and_dry_run_changes_nothing(tmp_path):
+    path = tmp_path / "w.bloom"
+    _stored_zip(path, **{"manifest.json": b"{}" * 1000})
+    before = path.read_bytes()
+    assert cs.recompress_local(path, dry_run=True).startswith("would recompress")
+    assert path.read_bytes() == before
+    cs.recompress_local(path, dry_run=False)
+    assert cs.recompress_local(path, dry_run=False) == "SKIP w.bloom: already deflated"

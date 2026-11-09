@@ -16,6 +16,12 @@ Originals are never deleted. Run with the backend venv (it imports `backend/app`
 
     backend/.venv/bin/python -I bin/convert_saves.py local DIR [DIR ...] [--dry-run]
     backend/.venv/bin/python -I bin/convert_saves.py remote [--name NAME] [--dry-run]
+    backend/.venv/bin/python -I bin/convert_saves.py recompress DIR [DIR ...] [--dry-run]
+
+`recompress` rewrites stored `.bloom` zips with deflate (what `save_world_bytes` now writes,
+#860) in place. It copies entries without loading the world, replaces the file only after the
+new zip's entry names, sizes and CRCs match the old one, and then records the old SHA-1 in
+`LEGACY_HASHES.json` and corrects the file's `SHA256SUMS` line.
 
 `remote` converts exactly one bucket file per run (the next unconverted one, or `--name`),
 so a shell loop controls the download/upload budget. A bucket file that is already a v5 zip is
@@ -32,6 +38,7 @@ import json
 import os
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -202,6 +209,90 @@ def convert_local(path: Path, *, dry_run: bool, verify_step: bool) -> str:
     return f"converted {path.name} -> {target.name} ({len(bloom) / 1e6:.0f} MB; {report}); original kept"
 
 
+def set_sum(directory: Path, name: str, sha256: str) -> None:
+    """Point a directory's SHA256SUMS line for `name` at new bytes."""
+    path = directory / SUMS_FILE
+    if not path.exists():
+        return
+    out = []
+    for line in path.read_text().splitlines():
+        _digest, _, listed = line.partition("  ")
+        out.append(f"{sha256}  {listed}" if listed.lstrip("*") == name else line)
+    path.write_text("\n".join(out) + "\n")
+
+
+def file_digests(path: Path) -> tuple[str, str]:
+    sha1, sha256 = hashlib.sha1(), hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1 << 20):
+            sha1.update(chunk)
+            sha256.update(chunk)
+    return sha1.hexdigest(), sha256.hexdigest()
+
+
+def is_stored(path: Path) -> bool:
+    with zipfile.ZipFile(path) as archive:
+        return any(info.compress_type == zipfile.ZIP_STORED for info in archive.infolist())
+
+
+def recompress_zip(src: Path, dst: Path) -> None:
+    """Copy `src` to `dst` with every entry deflated, one entry in memory at a time, and
+    raise unless `dst` holds the same names, sizes and CRCs."""
+    from app import npz_save
+
+    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED, compresslevel=npz_save.COMPRESSLEVEL) as zout:
+        for info in zin.infolist():
+            zout.writestr(info.filename, zin.read(info.filename))
+    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst) as zout:
+        before = [(i.filename, i.file_size, i.CRC) for i in zin.infolist()]
+        after = [(i.filename, i.file_size, i.CRC) for i in zout.infolist()]
+        if before != after or zout.testzip() is not None:
+            raise ValueError("recompressed zip differs from the original")
+
+
+def record_recompressed(directory: Path, name: str, old: tuple[str, str], new: tuple[str, str]) -> None:
+    """Keep the old SHA-1 resolvable: refresh every entry that pointed at the old bytes, and
+    add one for the old SHA-1 itself when none had it as a key."""
+    table = read_json(directory / LEGACY_FILE)
+    for entry in table.values():
+        if entry.get("sha1") == old[0]:
+            entry.update(sha1=new[0], sha256=new[1], how=entry["how"] + "+recompressed")
+    table.setdefault(old[0], {"legacy_name": name, "legacy_sha256": old[1], "name": name, "sha1": new[0], "sha256": new[1], "how": "recompressed"})
+    write_json(directory / LEGACY_FILE, table)
+
+
+def recompress_local(path: Path, *, dry_run: bool) -> str:
+    if not is_stored(path):
+        return f"SKIP {path.name}: already deflated"
+    if dry_run:
+        return f"would recompress {path.name} ({path.stat().st_size / 1e6:.0f} MB)"
+    old = file_digests(path)
+    before = path.stat().st_size
+    partial = path.with_name(path.name + ".part")
+    try:
+        recompress_zip(path, partial)
+        new = file_digests(partial)
+        os.replace(partial, path)
+    finally:
+        partial.unlink(missing_ok=True)
+    record_recompressed(path.parent, path.name, old, new)
+    set_sum(path.parent, path.name, new[1])
+    return f"recompressed {path.name}: {before / 1e6:.0f} -> {path.stat().st_size / 1e6:.0f} MB"
+
+
+def cmd_recompress(args: argparse.Namespace) -> int:
+    paths = sorted(p for d in args.dirs for p in Path(d).expanduser().rglob("*.bloom"))
+    failed = 0
+    for path in paths:
+        try:
+            print(recompress_local(path, dry_run=args.dry_run), flush=True)
+        except (ValueError, OSError, zipfile.BadZipFile) as err:
+            failed += 1
+            print(f"FAILED {path}: {err}", file=sys.stderr)
+    print(f"{len(paths)} files, {failed} failed")
+    return 1 if failed else 0
+
+
 def cmd_local(args: argparse.Namespace) -> int:
     paths = sorted(p for d in args.dirs for p in Path(d).expanduser().rglob("*.mbworld"))
     # Zips first: they are free, and pickles are the memory-heavy ones, done one at a time.
@@ -286,6 +377,10 @@ def main(argv: list[str] | None = None) -> int:
     local.add_argument("--dry-run", action="store_true")
     local.add_argument("--verify-step", action="store_true", help="also step both worlds once and compare")
     local.set_defaults(handler=cmd_local)
+    recompress = commands.add_parser("recompress")
+    recompress.add_argument("dirs", nargs="+")
+    recompress.add_argument("--dry-run", action="store_true")
+    recompress.set_defaults(handler=cmd_recompress)
     remote = commands.add_parser("remote")
     remote.add_argument("--name")
     remote.add_argument("--dry-run", action="store_true")
