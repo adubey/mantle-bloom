@@ -1,10 +1,29 @@
 # RFC 0018: Plates split along weak paths that are pulling apart
 
-- **Status:** Accepted (revised 2026-11-06 after G2 non-worsening criterion review; revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
+- **Status:** Accepted (revised 2026-11-08 after G2 sample-size review; revised 2026-11-06 after G2 non-worsening criterion review; revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
 - **Date:** 2026-11-03
 - **Related:** #770, #797, #802; RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (accepted predecessor; withdrawal follows gates)
 
 ## Revision note
+
+**2026-11-08 — G2 sample-size amendment.** The owner requested reducing the G2 held-out
+sample from 20 pairs to 10 because the graph runs are taking a long time. The first ten
+seeds in the frozen registry are the evaluation set; all ten paired runs are complete. Keep
+the existing non-worsening tolerance at 10% of the sample, rounded to one seed: at most one
+of ten may have `D_s < 0`. Keep the combined 50-actual-split requirement and all other
+simulation settings and outcome definitions unchanged. The ten pairs produced 255 actual
+splits (157 baseline, 98 graph), zero tiny splits in either arm, and `D_s = 0` for every pair.
+Thus the amended criteria pass on these ten pairs.
+
+This is a post-result, owner-directed amendment: the first ten outcomes were observed before
+the sample size was reduced. It is not preregistered or confirmatory, and the smaller sample
+has less precision. The result supports non-worsening on these ten pairs; it does not show
+positive efficacy. The ten-pair results and amendment are recorded in
+[`analysis/issue797/g2-sample-size-amendment.json`](../analysis/issue797/g2-sample-size-amendment.json).
+
+| Gate | Previous criterion | Revised criterion | Reason |
+|---|---|---|---|
+| G2 sample and non-worsening threshold | Complete all 20 frozen held-out pairs; at most two may have `D_s < 0`; at least 50 combined actual split events | Complete the first 10 seeds in the frozen registry; at most one may have `D_s < 0`; at least 50 combined actual split events | The owner requested a shorter evaluation because graph runs take a long time; preserving the 10% tolerance gives a limit of one worsened pair out of ten. The change was made after the first ten outcomes were observed. |
 
 **2026-11-06 — G2 non-worsening criterion amendment.** This revision is proposed in
 [PR #824](https://github.com/adubey/mantle-bloom/pull/824). The owner approved replacing the
@@ -12,7 +31,7 @@ positive-effect requirements after the first four held-out pairs had `D_s = 0` i
 neither method produced a tiny breakup (66 baseline splits and 38 graph splits, zero tiny
 events in either arm). The previous amendment required a positive mean
 `D_s`, a paired bootstrap interval wholly above zero, and improvement on at least two seeds.
-The revised criterion passes when no more than two of the 20 held-out seeds have `D_s < 0`;
+At that stage, the criterion passed when no more than two of the 20 held-out seeds had `D_s < 0`;
 `D_s = 0` counts as non-worsening. This permits a result with no improvement if the graph
 method also avoids adding tiny breakups. This is an owner-selected tolerance, not a geological
 rate threshold. The seed list and simulation settings remain fixed; all four observed pairs
@@ -46,8 +65,9 @@ calculations.
 | G2 supporting measures | Tiny-breakup share and daughter mass distribution | Report the original relative share reduction, percentage-point difference `S_baseline - S_graph`, and smaller-daughter area and mass distributions as secondary measures. | Preserve comparison with #770 while showing conditional split quality and daughter sizes. |
 | G3 timestep comparison | Tiny-breakup share within 20% of the normal-step result | Keep the 20% relative comparison when the normal-step share is nonzero; if it is zero, require zero tiny breakups at half step. Report paired counts and shares. | Avoid dividing by a zero normal-step share. |
 
-The current outcome threshold in the later 2026-11-06 amendment supersedes the intermediate
-positive-effect criterion in this table. The intermediate endpoint and criterion were both
+The current outcome threshold in the later 2026-11-06 amendment, further amended on
+2026-11-08 for sample size, supersedes the intermediate positive-effect criterion in this
+table. The intermediate endpoint and criterion were both
 changed transparently after held-out outcomes had been observed.
 
 The G2 endpoint is an amended analysis because it was selected after two seed-pair outcomes
@@ -324,15 +344,19 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
    with uncertainty. There is no fixed usable-opportunity percentage for passing G1: the
    geological record does not define one for this denominator. This gate tests internal
    probability behavior and structural safety, not Earth's breakup frequency.
-3. **G2 — Compare actual breakups on held-out worlds.** Freeze a new 20-seed list before
-   running. Compare the production great-circle method and graph-cut method from identical
-   generated worlds, settings, step schedule and random streams for 200 Myr. Use the same
+3. **G2 — Compare actual breakups on held-out worlds.** Freeze a 20-seed registry before
+   running; the amended gate evaluates its first 10 seeds. Compare the production
+   great-circle method and graph-cut method from identical generated worlds, settings, step
+   schedule and random streams for 200 Myr. Use the same
    A tiny breakup is an actual split whose smaller daughter has less than 7% of the parent
    plate's area, preserving the event definition used in #770. For each seed `s`, let
    `T_baseline,s` and `T_graph,s` be the tiny-breakup counts over the fixed 200 Myr horizon,
-   and define `D_s = T_baseline,s - T_graph,s`. The graph method passes only if all 20
-   preregistered held-out pairs are complete, no more than two seeds have `D_s < 0`, and the
-   existing combined 50-actual-split event threshold is met. A tie (`D_s = 0`) counts as
+   and define `D_s = T_baseline,s - T_graph,s`. Under the 2026-11-08 owner-directed amendment,
+   the graph method passes only if the first 10
+   pairs in the frozen registry are complete, no more than one has `D_s < 0`, and the existing
+   combined 50-actual-split event threshold is met. This sample-size reduction was made after
+   the first ten outcomes were observed; describe the result as post-result amended evidence,
+   not as a preregistered confirmatory result. A tie (`D_s = 0`) counts as
    non-worsening. Report the mean `D_s`, its two-sided 95% paired seed-bootstrap interval, and
    the number of seeds with `D_s > 0` descriptively; resample whole seed pairs 10,000 times
    and never resample individual split events as independent observations. For method `m`,
@@ -369,12 +393,13 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
 - [ ] G1 validates candidate availability and the coupled breakup probability on controlled
       cases, including the required monotonic responses; report development-world event rates
       with uncertainty but apply no fixed per-opportunity success fraction.
-- [ ] G2 passes on 20 separate, predeclared held-out seeds: no more than two seeds have
-      `D_s < 0`, ties count as non-worsening, and the event-count requirement is met. Report
+- [ ] G2 passes on the first 10 seeds in the frozen held-out registry: no more than one seed has
+      `D_s < 0`, ties count as non-worsening, and the event-count requirement is met. The
+      sample-size amendment was made after these outcomes were observed. Report
       the mean paired difference, its 95% seed-bootstrap interval, improved-seed count,
       `S_baseline - S_graph` in percentage points and the original relative share reduction
-      when defined. Report both G2 amendments transparently; each was adopted after outcomes
-      were observed.
+      when defined. Report all three G2 amendments transparently; each was adopted after
+      outcomes were observed.
 - [ ] Every applied split makes exactly two connected plates, assigns each parent cell to
       one daughter, and preserves crust and mantle ledgers. Report daughter mass shares and
       cut trace fragments; no fixed 30% mass minimum is added.
@@ -397,8 +422,9 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
 - **Weakness does not guide real splits.** If the chosen cuts do not follow the weak marks
   more often than matched control cuts, the edge-cost hypothesis is unsupported. Revisit the
   cost signals; do not claim pseudo-sutures helped solely because they appear under a cut.
-- **Mass weighting worsens tiny-breakup burden.** If more than two held-out seeds have
-  `D_s < 0` after the weights and `mu` have been frozen on development seeds, the method
+- **Mass weighting worsens tiny-breakup burden.** If more than one of the first ten evaluated
+  held-out seeds has `D_s < 0` after the weights and `mu` have been frozen on development
+  seeds, the method
   exceeds the owner's non-worsening tolerance; reject or revise the score. Do not tune on the
   held-out seeds.
 - **The split score rewards closing or broken cuts.** If high-scoring cuts often close, break
