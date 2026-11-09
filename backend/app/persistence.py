@@ -89,8 +89,9 @@ def save_world_bytes(world: World, *, name: str | None = None) -> bytes:
     bit-identical variant for replay-log records and anywhere exactness is needed,
     and `save_compact_bytes` the smaller approximate one. `name` stamps the record's
     display name into the manifest (see `load_world_name`); checkpoints pass none so
-    a rename doesn't churn their bytes."""
-    return npz_save.save_world_v5(world, profile="default", name=name)
+    a rename doesn't churn their bytes. Deflated, to about 30% of the stored size: saving
+    is infrequent and a world is 100-400 MB stored. `save_exact_bytes` stays stored."""
+    return npz_save.save_world_v5(world, profile="default", name=name, compress=True)
 
 
 def save_exact_bytes(world: World) -> bytes:

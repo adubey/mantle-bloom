@@ -47,6 +47,7 @@ from . import healpix_grid
 from .sparse_quad_patch import PlateWithSparseQuadPatch
 from .world import World
 
+COMPRESSLEVEL = 6
 FORMAT = "mantle-bloom-world"
 VERSION = 5
 SURFACES = ("quad", "empty")
@@ -374,7 +375,7 @@ def is_v5_file(file: BinaryIO) -> bool:
     return is_v5(magic)
 
 
-def save_world_v5(world: World, *, profile: str, name: str | None = None) -> bytes:
+def save_world_v5(world: World, *, profile: str, name: str | None = None, compress: bool = False) -> bytes:
     """Serialize `world` as a v5 zip (`manifest.json` plus one `.npy` per array).
     `default` (user saves, checkpoints) drops the erosion cache; `exact`
     (replay-log records) keeps it too, so a replay re-steps exactly including its
@@ -387,7 +388,9 @@ def save_world_v5(world: World, *, profile: str, name: str | None = None) -> byt
     `persistence.load_world_name`) so an import can restore the planet's display
     name, but the loader ignores it -- an older build reads a named save fine
     and just drops the name (#652). Only File > Save passes one; checkpoints
-    stay nameless so their bytes don't churn with renames."""
+    stay nameless so their bytes don't churn with renames. `compress` deflates the
+    entries (see below); the caller chooses because a replay-log record is written
+    before every logged step, where the extra seconds per save would add up."""
     from . import sparse_quad_patch
     from .persistence import world_surface
     from .sparse_quad_patch import PlateWithSparseQuadPatch
@@ -417,7 +420,11 @@ def save_world_v5(world: World, *, profile: str, name: str | None = None) -> byt
     if name is not None:
         manifest["name"] = name
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+    # Deflate (level 6) shrinks a save to about 30% (27-33% on a young, a mature and a
+    # 355 MB world; level 9 gains under 1% for 4x the time, lzma is 4-5 points smaller but
+    # an uncommon zip method). `zipfile` reads either method, so old stored saves still load.
+    method, level = (zipfile.ZIP_DEFLATED, COMPRESSLEVEL) if compress else (zipfile.ZIP_STORED, None)
+    with zipfile.ZipFile(buf, "w", method, compresslevel=level) as zf:
         zf.writestr("manifest.json", json.dumps(manifest))
         for path in sorted(arrays):
             # Write straight into the zip: `np.save` streams header-then-data, so the
