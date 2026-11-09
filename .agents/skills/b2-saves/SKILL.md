@@ -44,6 +44,14 @@ extension is old; a few are pickles (format 1-4). `bin/convert_saves.py` moves b
 - A `.mbworld` whose `.bloom` name is already taken by different bytes is skipped, locally
   and in the bucket; rename one of them by hand, then run the converter again.
 - A pin set under the old `.mbworld` name still shows on the converted file in `list`.
+- `recompress DIR...` deflates stored `.bloom` files in place (`save_world_bytes` now writes
+  deflated saves), `zips DIR` unwraps and converts `*.mbworld.zip`, and `upload DIR...` sends one
+  local `.bloom` per run for a bucket `.mbworld` that has no converted copy yet, found through
+  the `LEGACY_HASHES.json` files under DIR. That path needs no download. Prefer it to
+  `remote` whenever the local `.bloom` exists; `remote` is for a bucket file with no local copy.
+- While the old `.mbworld` is still in the bucket, `pull <old name or SHA-1>` fetches that
+  original, because an exact match wins. The lookup returns the `.bloom` only after the old file
+  is deleted from the bucket.
 - Originals are never deleted by the converter, locally or in the bucket. Removing an old
   `.mbworld` from the bucket is `delete-remote`, only for a file the user names.
 - Run `install-cron` again afterwards, so the installed copy knows about legacy hashes.

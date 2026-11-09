@@ -157,3 +157,19 @@ def test_zips_unwraps_a_v5_inner_file_deflates_it_and_records_both_hashes(tmp_pa
     assert entry["legacy_zip_sha1"] == hashlib.sha1(wrapper.read_bytes()).hexdigest()
     assert wrapper.exists()  # never deleted
     assert cs.convert_zip(wrapper, dry_run=False, verify_step=False).startswith("SKIP")
+
+
+def test_upload_pairs_each_bucket_mbworld_with_its_local_bloom_once(tmp_path):
+    b2 = cs._load_b2()
+    for directory in ("a", "b"):  # the same world kept in two directories
+        (tmp_path / directory).mkdir()
+        (tmp_path / directory / "w.bloom").write_bytes(b"x")
+        (tmp_path / directory / cs.LEGACY_FILE).write_text(json.dumps({"old1": {"name": "w.bloom", "sha1": "new"}, "old2": {"name": "gone.bloom", "sha1": "n"}, "old3": {"name": "w.bloom", "sha1": "n"}}))
+    remotes = [
+        b2.Remote("w.mbworld", 1, "old1", 0, {}),
+        b2.Remote("gone.mbworld", 1, "old2", 0, {}),  # no local file
+        b2.Remote("done.mbworld", 1, "old3", 0, {}),
+        b2.Remote("done.bloom", 1, "z", 0, {"legacy_sha1": "old3"}),  # already converted
+    ]
+    pairs = cs.local_blooms_for_bucket([str(tmp_path)], remotes)
+    assert [(r.name, p.parent.name) for r, p, _ in pairs] == [("w.mbworld", "a")]
