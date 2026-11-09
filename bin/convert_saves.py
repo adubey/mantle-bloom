@@ -17,7 +17,13 @@ Originals are never deleted. Run with the backend venv (it imports `backend/app`
     backend/.venv/bin/python -I bin/convert_saves.py local DIR [DIR ...] [--dry-run]
     backend/.venv/bin/python -I bin/convert_saves.py remote [--name NAME] [--dry-run]
     backend/.venv/bin/python -I bin/convert_saves.py recompress DIR [DIR ...] [--dry-run]
+    backend/.venv/bin/python -I bin/convert_saves.py upload DIR [DIR ...] [--dry-run]
     backend/.venv/bin/python -I bin/convert_saves.py zips DIR [DIR ...] [--dry-run] [--verify-step]
+
+`upload` sends one local `.bloom` per run, the next whose original `.mbworld` is still the only
+copy in the bucket, with `legacy_name`/`legacy_sha1`/`legacy_sha256` file info. It finds the
+`.bloom` through the `LEGACY_HASHES.json` files under DIR, so nothing is downloaded and the
+converted bytes are exactly what was verified locally. The bucket's `.mbworld` stays.
 
 `zips` converts each `*.mbworld.zip` (a zip wrapping one `.mbworld`) to a deflated `.bloom`
 named after the inner file. The inner file's SHA-1 and SHA-256, which are what the bucket holds,
@@ -377,6 +383,59 @@ def next_remote(remotes: list, name: str | None):
     return candidates[0] if candidates else None
 
 
+def local_blooms_for_bucket(dirs: list[str], remotes: list) -> list[tuple]:
+    """(remote .mbworld, local .bloom, legacy entry) for every bucket `.mbworld` whose
+    SHA-1 some `LEGACY_HASHES.json` under `dirs` maps to an existing local file and that
+    has no converted copy in the bucket yet."""
+    converted = {r.info.get("legacy_sha1") for r in remotes}
+    by_sha1 = {r.sha1: r for r in remotes if r.name.endswith(".mbworld") and r.sha1 not in converted}
+    found: dict[str, tuple] = {}
+    for directory in dirs:
+        for table_path in sorted(Path(directory).expanduser().rglob(LEGACY_FILE)):
+            for key, entry in read_json(table_path).items():
+                local = table_path.parent / entry["name"]
+                if key in by_sha1 and key not in found and local.exists():
+                    found[key] = (by_sha1[key], local, entry)
+    return sorted(found.values(), key=lambda item: item[0].name)
+
+
+def cmd_upload(args: argparse.Namespace) -> int:
+    b2 = _load_b2()
+    client = b2.client_for(b2.load_config())
+    remotes = client.list_files()
+    pending = local_blooms_for_bucket(args.dirs, remotes)
+    print(f"{len(pending)} bucket .mbworld files have a local .bloom and no converted copy")
+    if not pending:
+        return 0
+    remote, local, entry = pending[0]
+    if local.stat().st_size > b2.MAX_UPLOAD_BYTES:
+        raise ValueError(f"{local.name} is over the upload limit")
+    name = b2.unique_remote_name(new_name(remote.name), remote.sha1, {r.name for r in remotes})
+    if args.dry_run:
+        print(f"would upload {local} as {name} ({local.stat().st_size / 1e6:.0f} MB)")
+        return 0
+    sha1, sha256 = file_digests(local)
+    if entry["sha1"] != sha1:
+        raise ValueError(f"{local} no longer matches its LEGACY_HASHES.json entry; rerun the conversion")
+    info = {
+        **b2.save_metadata(local),
+        **{k: v for k, v in remote.info.items() if k not in {"kind", "format_version", "world_name"}},
+        "kind": "bloom",
+        "format_version": "5",
+        "legacy_name": remote.name,
+        "legacy_sha1": remote.sha1,
+    }
+    if entry.get("legacy_sha256"):
+        info["legacy_sha256"] = entry["legacy_sha256"]
+    if entry.get("state_hash"):
+        info["converted_state_hash"] = entry["state_hash"]
+    uploaded = client.upload(local, name, sha1, info)
+    if uploaded.sha1 != sha1:
+        raise ValueError(f"{name}: bucket reports SHA-1 {uploaded.sha1}, expected {sha1}")
+    print(f"uploaded {name} ({uploaded.size / 1e6:.0f} MB) for {remote.name}; {len(pending) - 1} left")
+    return 0
+
+
 def cmd_remote(args: argparse.Namespace) -> int:
     b2 = _load_b2()
     cfg = b2.load_config()
@@ -446,6 +505,10 @@ def main(argv: list[str] | None = None) -> int:
     zips.add_argument("--dry-run", action="store_true")
     zips.add_argument("--verify-step", action="store_true")
     zips.set_defaults(handler=cmd_zips)
+    upload = commands.add_parser("upload")
+    upload.add_argument("dirs", nargs="+")
+    upload.add_argument("--dry-run", action="store_true")
+    upload.set_defaults(handler=cmd_upload)
     remote = commands.add_parser("remote")
     remote.add_argument("--name")
     remote.add_argument("--dry-run", action="store_true")
