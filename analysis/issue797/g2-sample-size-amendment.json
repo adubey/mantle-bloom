@@ -47,11 +47,25 @@
     "combined_actual_splits": 255,
     "baseline_tiny_splits": 0,
     "graph_tiny_splits": 0,
-    "D_s_by_seed": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "D_s_by_seed": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
     "negative_D_s_count": 0,
     "positive_D_s_count": 0,
     "mean_D_s": 0.0,
-    "paired_seed_bootstrap_95pct_interval": [0.0, 0.0],
+    "paired_seed_bootstrap_95pct_interval": [
+      0.0,
+      0.0
+    ],
     "tiny_share_difference_percentage_points": 0.0,
     "relative_tiny_share_reduction": null
   },
@@ -59,7 +73,8 @@
     "all_10_pairs_complete": "PASS",
     "negative_D_s_at_most_1_of_10": "PASS (0 of 10)",
     "combined_actual_splits_at_least_50": "PASS (255)",
-    "overall": "PASS, conditional on adoption of this amendment"
+    "overall": "PASS (owner-approved amendment merged in PR #845)"
   },
-  "excluded_observation": "Seed 205240614 has a completed baseline arm but no graph arm. It is unpaired and outside the first ten registry seeds, so it is excluded from this gate."
+  "excluded_observation": "Seed 205240614 has a completed baseline arm but no graph arm. It is unpaired and outside the first ten registry seeds, so it is excluded from this gate.",
+  "rfc_revision_pr": "https://github.com/adubey/mantle-bloom/pull/845"
 }

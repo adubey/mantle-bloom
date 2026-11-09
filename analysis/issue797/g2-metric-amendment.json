@@ -1,0 +1,39 @@
+{
+  "amendment": "RFC0018-G2-amended-count-v1",
+  "date": "2026-11-06",
+  "owner_approval": "User directed revision in the active RFC workstream; merged in PR #823",
+  "reason": "The preregistered relative reduction in tiny-breakup share is undefined when the baseline share is zero.",
+  "original_protocol": "RFC0018-G2-experimental-v1",
+  "original_seed_registry": "analysis/issue797/g2-seed-preregistration.json",
+  "original_seed_registry_sha256": "214623b962984be9e95c6ced1f87b470b105a6d628f96cdb7cfae5d5844eba2f",
+  "simulation_settings_changed": false,
+  "seed_selection_changed": false,
+  "primary_endpoint": {
+    "per_seed_difference": "D_s = T_baseline,s - T_graph,s",
+    "T_definition": "count of actual splits with smaller daughter area below 7% of parent area in the 200 Myr run",
+    "overall_estimate": "mean D_s across paired seed worlds",
+    "uncertainty": "two-sided 95% percentile interval from 10,000 bootstrap resamples of whole seed pairs",
+    "bootstrap_seed": 180018,
+    "pass_conditions": [
+      "mean D_s > 0",
+      "95% bootstrap interval lower bound > 0",
+      "D_s > 0 on at least two seeds",
+      "at least 50 combined actual split events across the seed set"
+    ]
+  },
+  "secondary_endpoints": [
+    "relative reduction in tiny-breakup share when the baseline share is positive",
+    "percentage-point difference S_baseline - S_graph when both shares are defined",
+    "smaller-daughter area and mass distributions"
+  ],
+  "pairs_completed_before_amendment": {
+    "seed_ids": [228191914, 2058294723],
+    "baseline_actual_splits": 42,
+    "graph_actual_splits": 19,
+    "baseline_tiny_breakups": 0,
+    "graph_tiny_breakups": 0,
+    "D_s": [0, 0],
+    "share_difference_percentage_points": 0.0
+  },
+  "reporting": "The revised endpoint was selected after two pair outcomes were observed. Retain all preregistered seeds and completed pairs, label G2 as an amended analysis, and do not describe the revised endpoint as preregistered."
+}

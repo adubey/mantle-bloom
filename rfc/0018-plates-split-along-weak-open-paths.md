@@ -2,9 +2,19 @@
 
 - **Status:** Accepted (revised 2026-11-08 after G2 sample-size review; revised 2026-11-06 after G2 non-worsening criterion review; revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
 - **Date:** 2026-11-03
-- **Related:** #770, #797, #802; RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (accepted predecessor; withdrawal follows gates)
+- **Related:** #770, #797, #802, #846; RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (accepted predecessor; withdrawal follows gates)
 
 ## Revision note
+
+**2026-11-08 — G0–G2 diagnosis results recorded.** Revised G0 and the coupled-probability
+G1 diagnostics pass on the 20 preregistered development worlds. G2 passes under the
+owner-directed 10-pair amendment merged in [PR #845](https://github.com/adubey/mantle-bloom/pull/845):
+all first 10 frozen pairs completed, zero had `D_s < 0`, and they produced 255 combined actual
+splits. The G2 amendment was made after those ten outcomes were observed, so it is post-result
+evidence with lower precision and supports non-worsening on the evaluated pairs, not positive
+efficacy. Production implementation is tracked in [#846](https://github.com/adubey/mantle-bloom/issues/846). Gate details and compact evidence are in
+[`analysis/issue797/README.md`](../analysis/issue797/README.md). Production implementation,
+implementation-level ledger checks, G3 and the remaining acceptance criteria are still open.
 
 **2026-11-08 — G2 sample-size amendment.** The owner requested reducing the G2 held-out
 sample from 20 pairs to 10 because the graph runs are taking a long time. The first ten
@@ -388,18 +398,20 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
 
 ### Acceptance criteria
 
-- [ ] G0 passes on the 20 development seeds, with all seed failures and rejection reasons
-      kept in the report.
-- [ ] G1 validates candidate availability and the coupled breakup probability on controlled
-      cases, including the required monotonic responses; report development-world event rates
-      with uncertainty but apply no fixed per-opportunity success fraction.
-- [ ] G2 passes on the first 10 seeds in the frozen held-out registry: no more than one seed has
+- [x] G0 passes on the 20 development seeds, with all seed failures and rejection reasons
+      kept in the report; see `analysis/issue797/README.md` and `g0-prior-summary.json`.
+- [x] G1 validates candidate availability and the coupled breakup probability on controlled
+      cases, including the required monotonic responses; development-world event rates and
+      uncertainty are reported without a fixed per-opportunity success fraction in
+      `analysis/issue797/README.md` and `g1-results.json`.
+- [x] G2 passes on the first 10 seeds in the frozen held-out registry: no more than one seed has
       `D_s < 0`, ties count as non-worsening, and the event-count requirement is met. The
       sample-size amendment was made after these outcomes were observed. Report
       the mean paired difference, its 95% seed-bootstrap interval, improved-seed count,
       `S_baseline - S_graph` in percentage points and the original relative share reduction
       when defined. Report all three G2 amendments transparently; each was adopted after
-      outcomes were observed.
+      outcomes were observed. Production implementation and remaining checks are tracked in
+      [#846](https://github.com/adubey/mantle-bloom/issues/846).
 - [ ] Every applied split makes exactly two connected plates, assigns each parent cell to
       one daughter, and preserves crust and mantle ledgers. Report daughter mass shares and
       cut trace fragments; no fixed 30% mass minimum is added.
