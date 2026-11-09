@@ -572,6 +572,69 @@ first, so its ice numbers say little about normal conditions and I do not use th
 - **Runtime.** Median 6.7 to 8.1 s per step on diagnostic wind and 8.8 to 11.6 s on cfd. The
   memory peak was about 6.5 GB at 250 yr on diagnostic, not the 1.7 GB the early modes used.
 
+## Ice with the D2 march (`trend-adapt`, PR #839 preset)
+
+Earlier ice numbers came from the old one-shot glacier solve (the base `dc855ca3` predates PR #806).
+This reruns the sweep with the RFC 0015 D2 march and `trend-adapt` (selected on the owner's
+instruction; its error against `d2` is for another experiment). Code: PR #839 merged locally onto
+`origin/main` `ce24f509` in a throwaway worktree (not pushed), driver `replay_timescale_sweep.py
+--march-preset trend-adapt`. Diagnostic wind, ice-age cycle off, 10 day-step warm-up. Data:
+`ice-trend-adapt.json`. Second-save bridges and year were still running when this was written.
+
+| Save | Mode | Ice start to end (M km3) | Sea level (m) | Median s/step | Median substeps | Steps with ice residual/closing ice > 1e-3 |
+|---|---|---|---|---|---|---|
+| 997271774 | year | 4.9 to 4.8 | -401 to -401 | 5.0 | 1 | 0 of 200 |
+| 997271774 | century | 4.3 to 15.7 | -400 to -430 | 5.6 | 1 | 0 of 200 |
+| 997271774 | 250 yr | 4.5 to 17.4 | -401 to -435 | 6.1 | 1 | 0 of 200 |
+| 997271774 | 100 kyr | 16.2 to 8.9 | -432 to -538 | 18.9 | 25 | 183 of 200 |
+| 997271774 | 250 kyr bridge | 16.2 to 9.5 | -435 to -546 | 20.9 | 35 | 75 of 80 |
+| 997271774 | 1 Myr bridge | 15.7 to 9.3 | -445 to -554 | 23.3 | 39 | 19 of 20 |
+| 910211954 | century | 21.7 to 31.0 | -719 to -740 | 7.0 | 1 | 0 of 200 |
+| 910211954 | 250 yr | 20.7 to 34.4 | -718 to -748 | 6.8 | 1 | 0 of 200 |
+| 910211954 | 100 kyr | 34.2 to 34.7 | -750 to -839 | 55.2 | 82 | 137 of 200 |
+
+- **The ledger breaks at long steps, and `d2` does it too.** Up to 250 yr the ice ledger closes to
+  round-off (5e-16). From 100 kyr almost every step settles by the pair test and holds most of the
+  step (step 1 of the 100 kyr run held 86,000 of 100,000 yr; step 1 of the 1 Myr bridge 988,000 of
+  1,000,000), and the ledger misses. One-step probes from the first save, `d2` against `trend-adapt`,
+  gave bit-identical results (0.1 Myr: 52 substeps, 87,000 yr held, residual 910,545 km3; 0.25 Myr: 34
+  substeps, 241,500 yr held, residual 3,189,356 km3). `trend-adapt`'s additions engaged on 9 of 200
+  steps at 100 kyr and 2 of 80 at the 250 kyr bridge, so most of these runs are effectively `d2`.
+- **Two closure numbers.** The #822 probe divides the residual by the ice throughput and gets 1.2e-3
+  and 1.7e-3 for those two probes; dividing by closing ice gives 5.6% and 20%. Which is the right gate
+  is the RFC 0015 owner's call.
+- **Cost.** The march adds most of the step time at long steps: median 19 s per 100 kyr step on the
+  first save against about 6 s without it, and 55 s against 7 s on the second. Individual steps swing
+  from a few seconds to over 130 s with the substep count.
+- **The second save's 83 M km3 was the old solve.** Under the march the ice is 21 to 35 M km3 from the
+  first measured step. I did not trace which step shed it. The world is still much icier than the first
+  save, so the earlier ice-state caveat is smaller but not gone.
+- **Not done.** No `d2` reference over a whole run (the error `trend-adapt` adds is another
+  experiment's), no comparison of fields, and the second save's bridges and year.
+
+## Verdict for #811
+
+**Time-scale mismatches are real, measurable and costly in places. This evidence does not show that
+they explain why RFC 0015 and RFC 0016 progressed slowly.**
+
+- **Established.** (1) Lakes book a one-off release as a rate (`overflow_m3 / years`), so a drop V
+  becomes a discharge V/dt: 2.3 G m3/s at hour steps on the first save under `cfd`, 4.7 to 10 M m3/s
+  median on the second. (2) The glacier march is cheap and closes the ledger up to 250 yr, and at 100 kyr
+  and above it settles early, holds most of the step and misses the ledger; it also adds most of the
+  step time. (3) `cfd` wind advances a fixed day per call, 24 times too fast at hour steps.
+- **Plausible, not proven.** RFC 0016's anchor lake depends on the step length: from one start the lake
+  after one step differs by step size, the merged D/E state occurs at 2.5 and 5 kyr but not 10 kyr, and
+  shortening the lake solver's slices changes the result (not converged at 200 yr). Slice length was not
+  separated from the climate refresh interval. A start-up sequence of big lake drops lands on the same
+  measured steps at hour, day and year steps on both saves, which fits a spill chain moving one link per
+  call; untested.
+- **Not supported.** That these cause RFC 0015's or RFC 0016's slow progress. Rivers (steady-state) and
+  the diagnostic wind, ocean currents and rain (instant) showed no time-scale problem of their own.
+- **Suggested follow-ups.** Book lake releases as volumes, not rates. Test lake-slice convergence at
+  fixed climate. Hand the glacier hold's ledger break to the RFC 0015 owner (#842, #822). Test the
+  spill-chain hypothesis on a post-#758 save. Have RFC gates state their step size and report
+  sensitivity to it.
+
 ## Method change: warm up first
 
 Because of finding 2, every mode now runs the same `--warmup-days` day-length steps (default 10)
@@ -584,6 +647,6 @@ taken without warm-up and is kept for the record.
 - Why the merged D/E lake state is entered at 2.5 and 5 kyr but not at 10 kyr, and whether the slice length or the climate refresh interval drives it; the period-2 volume swing and the 5.5 m level step in A.
 - Test whether a spill chain moving one link per call explains the call-23 start-up transient, and rerun on a post-#758 save.
 - Second save: the world is glaciated, so rerun it, or pick a second save with ordinary ice, once D2 is in. Separate evolution from step-size artefact with a fixed-span comparison. Find why its hour cfd ledger is 2e-4.
-- Rerun the ice metrics once RFC 0015 D2 merges (PR #806, merged 2026-11-07; march cost and regime boundary in the RFC 0015 note).
+- Ice with the D2 march: the second save's bridges and year are still running; a `d2` reference over a whole run is for the `trend-adapt` error experiment.
 - The #553 depth-cap warning on seed 910211954 at step 1 (6.7e4 km3 gross overflow on lake-tier
   bodies, 3.5e4 on sea-tier bodies) is another large-overflow route.
