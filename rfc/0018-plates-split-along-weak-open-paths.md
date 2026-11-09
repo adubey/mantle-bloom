@@ -1,10 +1,80 @@
 # RFC 0018: Plates split along weak paths that are pulling apart
 
-- **Status:** Accepted (revised 2026-11-08 after G2 sample-size review; revised 2026-11-06 after G2 non-worsening criterion review; revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
+- **Status:** Accepted (revision proposed 2026-11-09 after spectral-weighting, runtime and failed-rift review; revised 2026-11-08 after G2 sample-size review; revised 2026-11-06 after G2 non-worsening criterion review; revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
 - **Date:** 2026-11-03
-- **Related:** #770, #797, #802, #846; RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (accepted predecessor; withdrawal follows gates)
+- **Related:** #770, #797, #802, #846, #848, #850, #851; RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (accepted predecessor; withdrawal follows gates)
 
 ## Revision note
+
+**2026-11-09 — weak-path weighting, failed-rift outcomes and runtime evidence (revision proposed in #848).**
+The accepted method used `conductance = 1 / edge_cost` in its weighted graph Laplacian even though
+`edge_cost` is the resistance to cutting. Since the Laplacian quadratic form is
+`xᵀLx = Σ wᵢⱼ(xᵢ - xⱼ)²`, this mapping penalizes separating the low-resistance edges that the
+proposal intends to cut. In the controlled comparison in
+[#850](https://github.com/adubey/mantle-bloom/issues/850), the inverse mapping crossed both
+planted weak links in 0/100 cycles; direct cost crossed both in 100/100. Across 68 frozen G0
+opportunities, direct cost shared no candidate partition fingerprints with the inverse mapping,
+changed the selected partition in all 68, and selected the same anchor in 9/68. Direct cost
+therefore matches the weak-link direction better, but it is not a validated final method: its
+selected development cuts had median net opening `−0.059 cm/yr`, so geometry, availability and
+the accepted `O/R/S` prior must be rechecked before held-out runs. The direct-cost snapshot
+comparison made 6,072 sparse eigensolves in 259.6 s versus 6,481 in 311.6 s for inverse cost;
+these are diagnostic timings, not full-simulation runtime evidence. [PR #851](https://github.com/adubey/mantle-bloom/pull/851)
+records the reproducible comparison.
+
+The first ten G2 pairs had median wall times of 8,363.5 s for the graph callback and 505.2 s
+for baseline (16.25×), but the run record lacks sufficient isolation metadata to call this a
+controlled G3 failure. The graph callback also returned on a failed breakup without applying
+the RFC-required thinning and craton diagnostics along a selected path. This means G2 remains
+evidence for the experimental callback and the old candidate method only; it does not establish
+runtime or full failed-rift behavior for the revised method. The accepted G3 runtime limit
+remains unchanged until a controlled paired measurement exists. No output-preserving runtime
+optimization has been demonstrated, so the candidate method's ability to meet the 2% limit
+remains unknown.
+
+The inverse weighting conflicts with principle 8 because it steers the partition away from
+the weak paths the breakup process is intended to use. The solve cost raises principle 2's
+runtime constraint, and principle 9 requires controlled evidence before calling G3 failed or
+passed.
+
+This revision proposes `edge_cost` as the positive, dimensionless Laplacian adjacency weight,
+preserving the cost meaning: lower-cost edges carry a smaller separation penalty. It also makes
+the event outcome explicit. For candidate `i`, let `qᵢ` be its proposal probability and `pᵢ` its
+frozen breakup prior; let `q₀` be the probability of proposing no structurally valid path. Draw
+breakup with `P_break = Σᵢ qᵢpᵢ`. On breakup, retain the conditional path distribution
+`qᵢpᵢ / P_break`. On no breakup, choose a failed path with conditional mass
+`qᵢ(1−pᵢ) / (1−P_break)`, or choose no path with mass `q₀ / (1−P_break)`. The same path then
+drives the split or failed-rift thinning and craton diagnostics. The no-path outcome makes no
+geological mark. This is the candidate-first proposal-and-outcome model written in event-first
+form; it preserves the successful path distribution and gives a failed attempt a path without
+applying a second independent success roll. Event and path draws use separate keyed streams.
+
+| Item | Verdict | Reason |
+|---|---|---|
+| G0 | Must rerun | The Laplacian weighting changes candidate partitions and selected traces; remeasure geometry, candidate availability, opening, score and runtime on development worlds. |
+| G1 | Must rerun | Revalidate the frozen `O/R/S` prior and structural checks against the revised candidate distribution, and test failed-path selection and no-path outcomes. |
+| G2 | Must rerun | The existing pass is for the inverse-weight experimental callback and omits failed-rift effects. Use only still-unrun held-out seeds for the revised method after the revised sample is frozen. |
+| G3 | Blocked | Run after the method and failed-rift semantics are implemented; use controlled paired full simulations. Keep the 2% runtime limit pending valid measurements. |
+| #846 | Blocked | Keep production implementation paused until the revision and required G0/G1 gates are accepted and pass. |
+| #847 | Unchanged as historical evidence | It records the old method's G0–G2 results; it is not validation for this revision. |
+| #850 / #851 | Unchanged as completed diagnostic evidence | The controlled weighting result stands; it motivates a revised candidate but does not validate it. |
+| #797 | Re-scope after revision decision | Update the gate checklist and implementation dependency after the owner decides on this revision. |
+| RFC 0010 | Blocked | It remains accepted until the revised RFC 0018 gates and lifecycle decision are settled. |
+
+The first ten G2 seeds remain excluded from tuning and revised-method validation. Of registry
+seeds 11–20, nine remain wholly unrun. Seed `205240614` has a completed baseline-only run and
+should not be described as unseen; this revision excludes it from a clean revised-method
+sample. To retain ten pairs, the proposed new sample is the nine untouched registry seeds
+12–20 plus the first frozen reserve seed, `1479220500`, subject to the owner's approval of this
+revised gate. The remaining 29 reserve seeds stay available under the preregistered reserve
+rule. No seed in the proposed sample is used for development or tuning.
+
+| Gate | Previously accepted evidence or criterion | Proposed revision | Reason |
+|---|---|---|---|
+| G0 | Passed on 20 development worlds for inverse weighting | Repeat on 20 development worlds with direct-cost weighting; compare with uniform control and report candidate geometry, opening, availability and solve cost | Direct cost changed the selected partition in all 68 measured opportunities, so the old geometry and runtime evidence does not apply. |
+| G1 | Passed controlled probability and structural checks for the old candidate flow | Repeat the `O/R/S` checks and validate success-path, failed-path and no-path distributions | The candidate paths change, and the old callback had no failed-path outcome. |
+| G2 | The amended gate evaluated the first ten registry seeds; at most one of ten could have `D_s < 0` and the pair set needed at least 50 actual splits | For the revised method, evaluate seeds 12–20 plus frozen reserve seed `1479220500`; retain the one-of-ten and 50-split limits | The first ten have already evaluated the old method. Seed 11 (`205240614`) has a baseline-only run, leaving nine wholly unseen registry seeds. This sample change needs owner approval before use. |
+| G3 | Median runtime within 2% of paired production baseline; existing craton, plate-count and timestep limits | Keep all limits. Use paired, serialized, same-host and same-settings full runs with profiling separate | Existing wall times are not controlled enough to justify changing the 2% limit. |
 
 **2026-11-08 — G0–G2 diagnosis results recorded.** Revised G0 and the coupled-probability
 G1 diagnostics pass on the 20 preregistered development worlds. G2 passes under the
@@ -156,12 +226,16 @@ method or a mass exponent.
    gates, but the #770 routing experiments found that weaker pseudo-sutures did not reduce
    tiny breakups. Continuing to tune their route cost is not the proposal tested here.
 3. **Choose a graph cut using weakness and opening (recommended).** Treat each surface cell
-   as a node and each shared edge as a possible break. Generate several low-cost cuts through
-   sampled weak edges. Reject cuts that do not form a connected path across the plate or
-   would make the sides move together. Among the rest, prefer cuts whose daughter motions
-   differ more from the parent's, weighted by mass, and prefer more balanced daughter masses.
-   This makes weakness, opening and split size part of the
-   same choice while leaving the starting world unchanged.
+   as a node and each shared edge as a possible break. Use the dimensionless `edge_cost`
+   itself as the positive weighted-Laplacian adjacency, so low-resistance edges are cheaper
+   to separate. Generate several cuts through sampled weak edges. Reject candidates that do
+   not form connected daughters with a dominant edge-to-edge trace. The direct-cost mapping
+   is the leading revised candidate because it crossed planted weak links in the controlled
+   comparison; it remains provisional because selected development cuts had negative median
+   net opening. Re-run G0 and G1 before treating this mapping as validated. Among structurally
+   valid candidates, the frozen `O/R/S` prior accounts for outward motion and resistance, and
+   the score ranks changes to daughter motion and mass balance. This leaves the starting
+   world unchanged.
 
 ## Design
 
@@ -194,7 +268,10 @@ For an eligible plate:
    proposing no structurally valid cut is part of breakup availability. For each proposed
    cut, keep connected daughters with one dominant edge-to-edge trace as hard topology
    requirements. At least 90% of the cut length must belong to that trace; report the
-   remaining fragments. Key the candidate stream to world seed, plate and event index so
+   remaining fragments. Build the weighted Laplacian with `edge_cost` as its positive
+   adjacency weight; do not invert resistance. The dimensionless cost is normalized by
+   median edge length and relative resistance, so a lower-cost weak edge contributes less
+   to the cut objective. Key the candidate stream to world seed, plate and event index so
    replay and timestep behavior can be checked without coupling it to unrelated random
    processes.
 4. Measure signed, shared-edge-length-weighted opening `O` and candidate resistance `R` for
@@ -205,11 +282,22 @@ For an eligible plate:
    The exact prior and its numerical scale are not selected by current evidence; freeze them
    before G1 and test the declared behavior on controlled cases.
 5. Use the proposal distribution and candidate probabilities to determine an event-level
-   breakup probability. Draw once for breakup; if breakup is selected, draw the cut from
-   the candidates conditional on their proposal and breakup probabilities. Do not apply
-   the legacy independent 0.55 success chance. The potential-momentum score may rank or
-   weight candidate proposals, but it is not physical momentum and must not override the
-   coupled breakup probability.
+   breakup probability. Let `q_i` be the mass of valid candidate `i` in the frozen proposal
+   distribution, `p_i` its frozen candidate breakup probability, and `q_0` the mass for no
+   structurally valid candidate. Then `P_break = Σ_i q_i p_i`. Draw once for breakup. If
+   breakup is selected, draw the cut with probability `q_i p_i / P_break`. If breakup is not
+   selected, draw among failed paths and no path using their residual masses: candidate `i`
+   has mass `q_i(1 - p_i)` and no path has mass `q_0`, normalized by `1 - P_break`. Apply
+   failed-rift thinning and craton-cut diagnostics only when a failed candidate path is
+   selected; use that same trace for both. A no-path outcome has no trace to thin or record.
+   If `P_break = 1`, no failed outcome is sampled; if `P_break = 0`, no successful path is
+   sampled. Handle those limits without dividing by zero.
+   This joint distribution is equivalent to proposing a candidate first and then drawing its
+   outcome, so it preserves the success probability and successful path distribution in the
+   accepted event model. Use independent keyed draws for the event and conditional path,
+   keyed by world seed, plate and event index. Do not apply the legacy independent 0.55
+   success chance. The potential-momentum score may rank or weight candidate proposals, but
+   it is not physical momentum and must not override the coupled breakup probability.
 
 For each cell `n`, estimate its mass as cell area times the mass per area of its crust and
 mantle lithosphere: `m_n = A_n * (rho_c * Hc_n + rho_m * Hm_n)` (kg). The fitted rotations
@@ -336,17 +424,26 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
    values in the table. Freeze the score, `mu`, candidate proposal rule and the `O,R`-to-prior
    mapping before G1. If G1 reveals a failed monotonic response or structurally invalid
    applied split, diagnose the mechanism before changing weights; use the predeclared
-   one-at-a-time resistance sweep only on development seeds, then rerun G0/G1. Report
-   uncertainty by resampling worlds, not individual opportunities. Do not tune against G2
-   seeds.
+   one-at-a-time resistance sweep only on development seeds, then rerun G0/G1. This revision
+   reruns G0 with direct-cost Laplacian weights because that mapping changes candidate
+   partitions and selected paths. Compare direct cost with uniform weights as a control, and
+   report weak-edge cost percentile, structural availability, signed opening, `O/R/S`
+   inputs, daughter mass share and sparse-solve count. The inverse mapping is a historical
+   control, not a production candidate. Report uncertainty by resampling worlds, not
+   individual opportunities. Do not tune against G2 seeds.
 2. **G1 — Check the coupled breakup model.** Before the gate, freeze the event-level
    `P_break` mapping and candidate proposal rule. A single uniform draw decides breakup from
    that probability; do not apply the legacy independent 55% success roll. The model must
    include candidate availability and couple outward motion to resistance so that, with
    other inputs held fixed, more opening cannot lower breakup probability and weaker
    resistance cannot raise the opening required for the same probability. Validate the
-   probability-to-draw implementation on controlled cases with known probabilities. Every
-   applied split must produce two connected daughters, a dominant edge-to-edge trace, and
+   probability-to-draw implementation on controlled cases with known probabilities. Also
+   verify successful-path frequencies `q_i p_i / P_break` and, conditional on no breakup,
+   failed-path frequencies `q_i(1 - p_i) / (1 - P_break)` plus the no-path frequency
+   `q_0 / (1 - P_break)`. Verify that a no-path outcome makes no thinning or craton mark.
+   Cover `P_break = 0` and `P_break = 1` without dividing by zero. Use separate keyed event
+   and path draws. Every applied
+   split must produce two connected daughters, a dominant edge-to-edge trace, and
    pass the existing hard daughter-size and ownership checks. Treat pole separation and the
    motion difference as probabilistic inputs to `P_break`, not independent hard pass/fail
    filters. On the 20 development seeds, report every eligible opportunity, candidate
@@ -354,19 +451,24 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
    with uncertainty. There is no fixed usable-opportunity percentage for passing G1: the
    geological record does not define one for this denominator. This gate tests internal
    probability behavior and structural safety, not Earth's breakup frequency.
-3. **G2 — Compare actual breakups on held-out worlds.** Freeze a 20-seed registry before
-   running; the amended gate evaluates its first 10 seeds. Compare the production
+3. **G2 — Compare actual breakups on held-out worlds.** Keep the original frozen 20-seed
+   registry and its reserve rule. The original first ten pairs remain historical evidence
+   for the inverse weighting and callback without failed-rift effects; exclude those seeds
+   from tuning and revised-method validation. Seed `205240614` (registry position 11) has a
+   baseline-only run, so it is not fully unseen. For this revision, use the nine wholly unrun
+   registry seeds 12–20 plus the first frozen reserve seed as a new ten-pair held-out sample,
+   subject to owner approval of this revised gate. Compare the production
    great-circle method and graph-cut method from identical generated worlds, settings, step
-   schedule and random streams for 200 Myr. Use the same
+   schedule and random streams for 200 Myr. Use the tiny-breakup event definition and paired
+   count endpoint below.
    A tiny breakup is an actual split whose smaller daughter has less than 7% of the parent
    plate's area, preserving the event definition used in #770. For each seed `s`, let
    `T_baseline,s` and `T_graph,s` be the tiny-breakup counts over the fixed 200 Myr horizon,
-   and define `D_s = T_baseline,s - T_graph,s`. Under the 2026-11-08 owner-directed amendment,
-   the graph method passes only if the first 10
-   pairs in the frozen registry are complete, no more than one has `D_s < 0`, and the existing
-   combined 50-actual-split event threshold is met. This sample-size reduction was made after
-   the first ten outcomes were observed; describe the result as post-result amended evidence,
-   not as a preregistered confirmatory result. A tie (`D_s = 0`) counts as
+   and define `D_s = T_baseline,s - T_graph,s`. For the revised method, all ten remaining
+   pairs must be complete, no more than one may have `D_s < 0`, and the existing combined
+   50-actual-split event threshold must be met. This uses seeds frozen before the first G2
+   outcome but not used in that amended sample; label it a new revised-method evaluation,
+   not a continuation or confirmation of the prior result. A tie (`D_s = 0`) counts as
    non-worsening. Report the mean `D_s`, its two-sided 95% paired seed-bootstrap interval, and
    the number of seeds with `D_s > 0` descriptively; resample whole seed pairs 10,000 times
    and never resample individual split events as independent observations. For method `m`,
@@ -392,21 +494,29 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
    size on three predeclared held-out seeds; plate counts and craton loss must stay within 20%
    of normal-step results. Compare tiny-breakup shares within 20% when the normal-step share
    is nonzero; when it is zero, the half-step run must also have zero tiny breakups. Report
-   the paired tiny-breakup counts and shares. Median full-simulation runtime must remain within 2% of the paired current
-   production baseline. Record any seed where the model cannot finish or maintain its
-   ledgers.
+   the paired tiny-breakup counts and shares. For the runtime gate, run each normal-step
+   baseline/candidate pair on the same machine and software environment, from the same
+   generated world and with the same settings and step schedule. Run pairs serially, with no
+   competing heavy workload; record commits, commands, environment, machine load and wall
+   times. Keep profiling instrumentation out of acceptance timings and report it separately.
+   The median of the three per-seed runtime ratios must remain within 2% of the paired
+   current-production baseline. Record any seed where the model cannot finish or maintain
+   its ledgers.
 
 ### Acceptance criteria
 
-- [x] G0 passes on the 20 development seeds, with all seed failures and rejection reasons
-      kept in the report; see `analysis/issue797/README.md` and `g0-prior-summary.json`.
-- [x] G1 validates candidate availability and the coupled breakup probability on controlled
-      cases, including the required monotonic responses; development-world event rates and
-      uncertainty are reported without a fixed per-opportunity success fraction in
-      `analysis/issue797/README.md` and `g1-results.json`.
-- [x] G2 passes on the first 10 seeds in the frozen held-out registry: no more than one seed has
-      `D_s < 0`, ties count as non-worsening, and the event-count requirement is met. The
-      sample-size amendment was made after these outcomes were observed. Report
+- [ ] G0 is repeated for the direct-cost mapping on 20 development worlds; report candidate
+      geometry, weak-edge costs, opening, availability, sparse-solve counts and runtime.
+      The earlier G0 result remains historical evidence for inverse weighting.
+- [ ] G1 is repeated for the revised candidate distribution and failed-path outcome model;
+      controlled cases cover probability monotonicity, successful-path weights, failed-path
+      weights and no-path outcomes. The earlier G1 result remains historical evidence for
+      inverse weighting.
+- [ ] G2 is repeated on the nine wholly unrun registry seeds 12–20 and the first frozen
+      reserve seed, subject to owner approval of this revised gate. No more than one pair may
+      have `D_s < 0`, ties
+      count as non-worsening, and the event-count requirement must be met. The first-ten
+      amendment remains post-result evidence for the old experimental callback. Report
       the mean paired difference, its 95% seed-bootstrap interval, improved-seed count,
       `S_baseline - S_graph` in percentage points and the original relative share reduction
       when defined. Report all three G2 amendments transparently; each was adopted after
@@ -421,7 +531,8 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
       later revision explains why they are needed and how old saves initialize them.
 - [ ] Unit tests cover connected daughters, boundary-to-boundary traces, probability bounds
       and monotonic responses to opening and weakness, balanced-score ordering, area-weighted
-      mass, failed-rift thinning along the graph path, exact ownership and old-save loading.
+      mass, the successful and failed path distributions, no-path behavior, failed-rift thinning
+      along the graph path, exact ownership and old-save loading.
 - [ ] Show five predeclared held-out world snapshots at the first split, or show the
       no-split result for any seed with no split in 200 Myr. Use a shared projection and
       legend. Show land, water, cratons, belts, sutures, the graph-cut trace and both daughter
@@ -434,8 +545,8 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
 - **Weakness does not guide real splits.** If the chosen cuts do not follow the weak marks
   more often than matched control cuts, the edge-cost hypothesis is unsupported. Revisit the
   cost signals; do not claim pseudo-sutures helped solely because they appear under a cut.
-- **Mass weighting worsens tiny-breakup burden.** If more than one of the first ten evaluated
-  held-out seeds has `D_s < 0` after the weights and `mu` have been frozen on development
+- **Mass weighting worsens tiny-breakup burden.** If more than one of the ten revised-method
+  held-out pairs has `D_s < 0` after the weights and `mu` have been frozen on development
   seeds, the method
   exceeds the owner's non-worsening tolerance; reject or revise the score. Do not tune on the
   held-out seeds.
@@ -479,9 +590,13 @@ census and all other seeds used to choose graph weights or `mu` are also tuning 
 - `docs/simulation-model/tectonics.md`: explain when the graph cut is evaluated, how it is
   chosen, and what the relative cost and balance score do not claim.
 
-No persistent state is expected. Each eligible plate needs one sparse partition solve and
-12 candidate checks; the full work grows with the plate's cells and shared edges. Measure
-the actual end-to-end cost at production resolution; do not assume sparse graph work is free.
+No persistent state is expected. Candidate-specific motion-fit resistance can require repeated
+weighted partition solves: the diagnostic implementation used up to eight refinements per
+candidate plus the base solve, for a maximum of 97 solves with 12 candidates. On 68 frozen G0
+opportunities, direct-cost weighting made 6,072 sparse solves in 259.6 s. This snapshot probe
+does not predict full-simulation runtime. Measure the production-resolution cost with profiling
+separate from the controlled G3 wall-time comparison. Do not reduce the candidate budget or
+change its proposal distribution as a performance shortcut without repeating G0 and G1.
 
 ## Assumptions and uncertainty
 

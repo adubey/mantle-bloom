@@ -27,7 +27,7 @@ Withdrawn RFCs are archived in [abandoned/](abandoned/).
 | [0014](abandoned/0014-lake-water-volume-and-freezing.md) | Lakes conserve their water: in-step fill-spill-merge, seasonal freezing and water-surface temperature (abandoned) | Withdrawn (owner decision; original G7 criterion unmet, G8 incomplete) |
 | [0015](0015-frozen-water-in-physical-units.md) | Frozen water in physical units: glacier mass balance, ice flow and meltwater, freezing lakes and rivers, ocean ice and polar snow | Accepted (revised 2026-10-31 after G0's drifting-noise runs) |
 | [0016](0016-effective-land-water-store.md) | Effective land-water storage and upstream groundwater feedback | Accepted (revised 2026-11-01 to bound G0 and G1 to liquid land water until RFC 0015 completes; revised 2026-11-01 to permit the interim ledger implementation while G0 remains blocked; revised 2026-10-31 after G0 full-precipitation ledger blocked) |
-| [0018](0018-plates-split-along-weak-open-paths.md) | Plates split along weak paths that are pulling apart | Accepted (G0–G2 passed; production implementation #846 in progress) |
+| [0018](0018-plates-split-along-weak-open-paths.md) | Plates split along weak paths that are pulling apart | Accepted (revision proposed 2026-11-09 after spectral-weighting, runtime and failed-rift review; G0–G2 must be rerun if accepted) |
 | [0019](0019-conservative-atmospheric-moisture.md) | Conserve atmospheric moisture in diagnostic rain and transport | Draft |
 
 RFCs 0001–0007 come from one investigation: a 19.2 Gyr run (seed 456862899) that lost
