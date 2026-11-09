@@ -563,7 +563,7 @@ def catalog(remotes: list[Remote], local: dict[str, tuple], pins: set[str]) -> l
                 "uploaded": datetime.fromtimestamp(
                     remote.uploaded_ms / 1000, timezone.utc
                 ).isoformat(timespec="seconds"),
-                "pinned": remote.name in pins,
+                "pinned": bool(pins & {remote.name, remote.info.get("legacy_name")}),
                 **remote.info,
             }
         )

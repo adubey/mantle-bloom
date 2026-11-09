@@ -8,8 +8,9 @@ reloaded world has the same `surface_parity.state_hash`. A converted file has ne
 the old name and hashes are recorded where lookups can find them:
 
 * locally, in `LEGACY_HASHES.json` beside the file (legacy SHA-1 -> new name and hashes);
-* in the bucket, as `legacy_name`, `legacy_sha1` and `legacy_sha256` file info, which
-  `bin/b2_saves.py` resolves in `pull`, `sync`, `purge` and `list`.
+* in the bucket, as `legacy_name` and `legacy_sha1` file info (plus `legacy_sha256` for a
+  converted pickle; a server-side copy never reads the bytes, and the bucket stores only
+  SHA-1), which `bin/b2_saves.py` resolves in `pull`, `sync`, `purge` and `list`.
 
 Originals are never deleted. Run with the backend venv (it imports `backend/app`):
 
@@ -78,26 +79,34 @@ def backfill_dataclass_defaults(world) -> list[str]:
     def visit(value) -> None:
         if id(value) in seen:
             return
-        if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        if isinstance(value, dict):
             seen.add(id(value))
-            for field in dataclasses.fields(value):
-                if field.name in value.__dict__ or hasattr(type(value), field.name):
-                    continue
-                if field.default is not dataclasses.MISSING:
-                    setattr(value, field.name, field.default)
-                elif field.default_factory is not dataclasses.MISSING:
-                    setattr(value, field.name, field.default_factory())
-                else:
-                    raise ValueError(f"{type(value).__name__}.{field.name} has no default")
-                filled.append(f"{type(value).__name__}.{field.name}")
-            for child in list(vars(value).values()):
-                visit(child)
-        elif isinstance(value, dict):
             for child in list(value.values()):
                 visit(child)
-        elif isinstance(value, (list, tuple)):
-            for child in value:
+        elif isinstance(value, (list, tuple, set, frozenset)):
+            seen.add(id(value))
+            for child in list(value):
                 visit(child)
+        elif hasattr(value, "__dict__") and not isinstance(value, type):
+            # Any object, not just a dataclass: a plate (plain class) can hold a cache
+            # dataclass that gained a field.
+            seen.add(id(value))
+            if dataclasses.is_dataclass(value):
+                fill(value)
+            for child in list(vars(value).values()):
+                visit(child)
+
+    def fill(value) -> None:
+        for field in dataclasses.fields(value):
+            if field.name in value.__dict__ or hasattr(type(value), field.name):
+                continue
+            if field.default is not dataclasses.MISSING:
+                setattr(value, field.name, field.default)
+            elif field.default_factory is not dataclasses.MISSING:
+                setattr(value, field.name, field.default_factory())
+            else:
+                raise ValueError(f"{type(value).__name__}.{field.name} has no default")
+            filled.append(f"{type(value).__name__}.{field.name}")
 
     visit(world)
     return filled
@@ -201,7 +210,7 @@ def cmd_local(args: argparse.Namespace) -> int:
     for path in paths:
         try:
             print(convert_local(path, dry_run=args.dry_run, verify_step=args.verify_step), flush=True)
-        except (ValueError, OSError) as err:
+        except (ValueError, OSError, TypeError, AttributeError) as err:
             failed += 1
             print(f"FAILED {path}: {err}", file=sys.stderr)
     print(f"{len(paths)} files, {failed} failed")

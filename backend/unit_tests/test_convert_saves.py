@@ -68,3 +68,32 @@ def test_next_remote_skips_files_already_converted_by_hash_or_name():
     ]
     assert cs.next_remote(remotes, None).name == "b.mbworld"
     assert cs.next_remote(remotes, "c.mbworld") is None
+
+
+def test_backfill_reaches_a_dataclass_held_by_a_plain_object():
+    @dataclasses.dataclass
+    class Cache:
+        added: list = dataclasses.field(default_factory=lambda: [7])
+
+    class Plate:  # a plain class, like the real plates
+        pass
+
+    cache = Cache()
+    del cache.__dict__["added"]
+    plate = Plate()
+    plate.cache = cache
+    assert cs.backfill_dataclass_defaults([plate, {"again": plate}]) == ["Cache.added"]
+    assert cache.added == [7]
+
+
+def test_one_unsaveable_file_is_reported_and_does_not_stop_the_batch(tmp_path, monkeypatch):
+    (tmp_path / "a.mbworld").write_bytes(b"not a zip")
+    (tmp_path / "b.mbworld").write_bytes(ZIP)
+
+    def boom(*_args, **_kwargs):
+        raise AttributeError("a field the writer cannot find")
+
+    monkeypatch.setattr(cs, "convert_pickle_bytes", boom)
+    args = cs.argparse.Namespace(dirs=[str(tmp_path)], dry_run=False, verify_step=False)
+    assert cs.cmd_local(args) == 1
+    assert (tmp_path / "b.bloom").exists()  # the zip still moved

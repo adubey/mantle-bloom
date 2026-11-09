@@ -532,3 +532,9 @@ def test_catalog_shows_a_legacy_save_as_held_by_its_converted_bloom():
     remote = converted("a.bloom", "new", "a.mbworld", "old")
     rows = b2.catalog([remote], {"a.mbworld": (5, "old")}, set())
     assert [(row["name"], row["where"]) for row in rows] == [("a.bloom", "both")]
+
+
+def test_catalog_shows_a_pin_placed_under_the_legacy_name():
+    remote = converted("a.bloom", "new", "a.mbworld", "old")
+    assert b2.catalog([remote], {}, {"a.mbworld"})[0]["pinned"] is True
+    assert b2.catalog([remote], {}, set())[0]["pinned"] is False
