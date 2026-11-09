@@ -17,6 +17,12 @@ Originals are never deleted. Run with the backend venv (it imports `backend/app`
     backend/.venv/bin/python -I bin/convert_saves.py local DIR [DIR ...] [--dry-run]
     backend/.venv/bin/python -I bin/convert_saves.py remote [--name NAME] [--dry-run]
     backend/.venv/bin/python -I bin/convert_saves.py recompress DIR [DIR ...] [--dry-run]
+    backend/.venv/bin/python -I bin/convert_saves.py zips DIR [DIR ...] [--dry-run] [--verify-step]
+
+`zips` converts each `*.mbworld.zip` (a zip wrapping one `.mbworld`) to a deflated `.bloom`
+named after the inner file. The inner file's SHA-1 and SHA-256, which are what the bucket holds,
+and the zip's own are recorded in `LEGACY_HASHES.json`, with the world's true seed and years
+(a file name can disagree with its world). The zip is kept.
 
 `recompress` rewrites stored `.bloom` zips with deflate (what `save_world_bytes` now writes,
 #860) in place. It copies entries without loading the world, replaces the file only after the
@@ -280,6 +286,60 @@ def recompress_local(path: Path, *, dry_run: bool) -> str:
     return f"recompressed {path.name}: {before / 1e6:.0f} -> {path.stat().st_size / 1e6:.0f} MB"
 
 
+def convert_zip(path: Path, *, dry_run: bool, verify_step: bool) -> str:
+    with zipfile.ZipFile(path) as outer:
+        (info,) = outer.infolist()
+        inner_name = Path(info.filename).name
+        data = outer.read(info.filename)
+    target = path.parent / new_name(inner_name)
+    if target.exists():
+        return f"SKIP {path.name}: {target.name} already exists"
+    if dry_run:
+        return f"would convert {path.name} ({'v5' if is_zip(data) else 'pickle'}, {len(data) / 1e6:.0f} MB) -> {target.name}"
+    inner_sha1, inner_sha256 = digests(data)
+    partial = target.with_name(target.name + ".part")
+    try:
+        if is_zip(data):
+            staged = target.with_name(target.name + ".stored")
+            staged.write_bytes(data)
+            try:
+                recompress_zip(staged, partial)
+            finally:
+                staged.unlink(missing_ok=True)
+            how, report = "unzipped+recompressed", {}
+        else:
+            bloom, report = convert_pickle_bytes(data, verify_step=verify_step)
+            partial.write_bytes(bloom)
+            how = "unzipped+converted"
+        os.replace(partial, target)
+    finally:
+        partial.unlink(missing_ok=True)
+    new_sha1, new_sha256 = file_digests(target)
+    zip_sha1, zip_sha256 = file_digests(path)
+    table = read_json(path.parent / LEGACY_FILE)
+    table[inner_sha1] = {
+        "legacy_name": inner_name, "legacy_sha256": inner_sha256, "legacy_zip": path.name,
+        "legacy_zip_sha1": zip_sha1, "legacy_zip_sha256": zip_sha256,
+        "name": target.name, "sha1": new_sha1, "sha256": new_sha256, "how": how,
+        "state_hash": report.get("state_hash"),
+    }
+    write_json(path.parent / LEGACY_FILE, table)
+    return f"{path.name} -> {target.name} ({len(data) / 1e6:.0f} -> {target.stat().st_size / 1e6:.0f} MB; {how})"
+
+
+def cmd_zips(args: argparse.Namespace) -> int:
+    paths = sorted(p for d in args.dirs for p in Path(d).expanduser().glob("*.mbworld.zip"))
+    failed = 0
+    for path in paths:
+        try:
+            print(convert_zip(path, dry_run=args.dry_run, verify_step=args.verify_step), flush=True)
+        except (ValueError, OSError, TypeError, AttributeError, zipfile.BadZipFile) as err:
+            failed += 1
+            print(f"FAILED {path}: {err}", file=sys.stderr)
+    print(f"{len(paths)} files, {failed} failed")
+    return 1 if failed else 0
+
+
 def cmd_recompress(args: argparse.Namespace) -> int:
     paths = sorted(p for d in args.dirs for p in Path(d).expanduser().rglob("*.bloom"))
     failed = 0
@@ -381,6 +441,11 @@ def main(argv: list[str] | None = None) -> int:
     recompress.add_argument("dirs", nargs="+")
     recompress.add_argument("--dry-run", action="store_true")
     recompress.set_defaults(handler=cmd_recompress)
+    zips = commands.add_parser("zips")
+    zips.add_argument("dirs", nargs="+")
+    zips.add_argument("--dry-run", action="store_true")
+    zips.add_argument("--verify-step", action="store_true")
+    zips.set_defaults(handler=cmd_zips)
     remote = commands.add_parser("remote")
     remote.add_argument("--name")
     remote.add_argument("--dry-run", action="store_true")

@@ -134,3 +134,26 @@ def test_recompress_skips_a_deflated_file_and_dry_run_changes_nothing(tmp_path):
     assert path.read_bytes() == before
     cs.recompress_local(path, dry_run=False)
     assert cs.recompress_local(path, dry_run=False) == "SKIP w.bloom: already deflated"
+
+
+def test_zips_unwraps_a_v5_inner_file_deflates_it_and_records_both_hashes(tmp_path):
+    inner = tmp_path / "w.mbworld"
+    _stored_zip(inner, **{"manifest.json": b"{}", "a/x.npy": b"0" * 50_000})
+    wrapper = tmp_path / "w.mbworld.zip"
+    with zipfile.ZipFile(wrapper, "w") as outer:
+        outer.write(inner, "w.mbworld")
+    inner_sha1 = hashlib.sha1(inner.read_bytes()).hexdigest()
+    inner.unlink()
+
+    assert cs.convert_zip(wrapper, dry_run=True, verify_step=False).startswith("would convert")
+    assert not (tmp_path / "w.bloom").exists()
+    cs.convert_zip(wrapper, dry_run=False, verify_step=False)
+
+    with zipfile.ZipFile(tmp_path / "w.bloom") as bloom:
+        assert {i.compress_type for i in bloom.infolist()} == {zipfile.ZIP_DEFLATED}
+        assert bloom.read("a/x.npy") == b"0" * 50_000
+    entry = json.loads((tmp_path / cs.LEGACY_FILE).read_text())[inner_sha1]
+    assert entry["legacy_name"] == "w.mbworld" and entry["legacy_zip"] == "w.mbworld.zip"
+    assert entry["legacy_zip_sha1"] == hashlib.sha1(wrapper.read_bytes()).hexdigest()
+    assert wrapper.exists()  # never deleted
+    assert cs.convert_zip(wrapper, dry_run=False, verify_step=False).startswith("SKIP")
