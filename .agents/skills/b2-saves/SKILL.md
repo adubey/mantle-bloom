@@ -23,6 +23,31 @@ moved out of it. Bucket copies stay until someone deletes them by hand.
 | Protect a local copy | `bin/b2_saves.py pin <name>`, undo with `unpin` |
 | Check the setup | `bin/b2_saves.py doctor` |
 
+## Legacy `.mbworld` saves and their hashes
+
+`.bloom` is the v5 zip. Most files still named `.mbworld` are v5 zips too, and only the
+extension is old; a few are pickles (format 1-4). `bin/convert_saves.py` moves both to
+`.bloom` without losing an old hash (run it with `backend/.venv/bin/python -I`):
+
+- **A v5 zip is renamed.** The bytes and SHA-1 don't change, so every recorded hash still
+  matches. In the bucket the rename is a server-side copy, so no bytes are downloaded or
+  uploaded.
+- **A pickle is converted**, then reloaded; the result is accepted only if the reloaded
+  world has the same `surface_parity.state_hash` (`--verify-step` also steps both worlds
+  once). New bytes mean a new SHA-1, so the old name, SHA-1 and SHA-256 are kept:
+  locally in `LEGACY_HASHES.json` beside the file, and in the bucket as `legacy_name`,
+  `legacy_sha1` file info (and `legacy_sha256` for a converted pickle). `pull` accepts the old name or SHA-1,
+  and `sync`, `purge` and `list` count the legacy copy as held.
+- `local DIR...` converts a directory tree. `remote` converts **one** bucket file per run,
+  the next unconverted one or `--name`, so a loop controls the transfer budget. A pickle costs
+  one download and one upload. `--dry-run` previews either.
+- A `.mbworld` whose `.bloom` name is already taken by different bytes is skipped, locally
+  and in the bucket; rename one of them by hand, then run the converter again.
+- A pin set under the old `.mbworld` name still shows on the converted file in `list`.
+- Originals are never deleted by the converter, locally or in the bucket. Removing an old
+  `.mbworld` from the bucket is `delete-remote`, only for a file the user names.
+- Run `install-cron` again afterwards, so the installed copy knows about legacy hashes.
+
 ## Move evidence to another machine
 
 Automatic sync covers only saves in the local directory. Anything else, including files in

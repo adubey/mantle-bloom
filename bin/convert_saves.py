@@ -1,0 +1,300 @@
+#!/usr/bin/env python3
+"""Convert legacy `.mbworld` saves to `.bloom`, keeping every old hash resolvable.
+
+Most files named `.mbworld` are already v5 zips (the extension is all that is legacy). Those
+are renamed: same bytes, same SHA-1, so nothing needs recording. The rest are pickles
+(format 1-4); each is loaded, written as a v5 `.bloom`, reloaded, and accepted only if the
+reloaded world has the same `surface_parity.state_hash`. A converted file has new bytes, so
+the old name and hashes are recorded where lookups can find them:
+
+* locally, in `LEGACY_HASHES.json` beside the file (legacy SHA-1 -> new name and hashes);
+* in the bucket, as `legacy_name` and `legacy_sha1` file info (plus `legacy_sha256` for a
+  converted pickle; a server-side copy never reads the bytes, and the bucket stores only
+  SHA-1), which `bin/b2_saves.py` resolves in `pull`, `sync`, `purge` and `list`.
+
+Originals are never deleted. Run with the backend venv (it imports `backend/app`):
+
+    backend/.venv/bin/python -I bin/convert_saves.py local DIR [DIR ...] [--dry-run]
+    backend/.venv/bin/python -I bin/convert_saves.py remote [--name NAME] [--dry-run]
+
+`remote` converts exactly one bucket file per run (the next unconverted one, or `--name`),
+so a shell loop controls the download/upload budget. A bucket file that is already a v5 zip is
+renamed with a server-side copy, which moves no bytes through this machine.
+"""
+
+from __future__ import annotations
+
+import argparse
+import dataclasses
+import hashlib
+import importlib.util
+import json
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "backend"))
+
+LEGACY_FILE = "LEGACY_HASHES.json"
+SUMS_FILE = "SHA256SUMS"
+
+
+def _load_b2():
+    spec = importlib.util.spec_from_file_location("b2_saves", REPO / "bin" / "b2_saves.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["b2_saves"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def digests(data: bytes) -> tuple[str, str]:
+    return hashlib.sha1(data).hexdigest(), hashlib.sha256(data).hexdigest()
+
+
+def is_zip(data: bytes) -> bool:
+    return data[:2] == b"PK"
+
+
+def file_is_zip(path: Path) -> bool:
+    with path.open("rb") as handle:
+        return is_zip(handle.read(2))
+
+
+def new_name(name: str) -> str:
+    return str(Path(name).with_suffix(".bloom")) if name.endswith(".mbworld") else name
+
+
+def backfill_dataclass_defaults(world) -> list[str]:
+    """Give cached dataclass objects the fields added since the pickle was written.
+
+    A pickle restores `__dict__` only, so a field added later (`HydrologyFields.lake_ice_m`)
+    is simply absent and the v5 writer fails on it. Fill it from the field's own default,
+    which is what a freshly built object holds. Returns the filled field names."""
+    filled: list[str] = []
+    seen: set[int] = set()
+
+    def visit(value) -> None:
+        if id(value) in seen:
+            return
+        if isinstance(value, dict):
+            seen.add(id(value))
+            for child in list(value.values()):
+                visit(child)
+        elif isinstance(value, (list, tuple, set, frozenset)):
+            seen.add(id(value))
+            for child in list(value):
+                visit(child)
+        elif hasattr(value, "__dict__") and not isinstance(value, type):
+            # Any object, not just a dataclass: a plate (plain class) can hold a cache
+            # dataclass that gained a field.
+            seen.add(id(value))
+            if dataclasses.is_dataclass(value):
+                fill(value)
+            for child in list(vars(value).values()):
+                visit(child)
+
+    def fill(value) -> None:
+        for field in dataclasses.fields(value):
+            if field.name in value.__dict__ or hasattr(type(value), field.name):
+                continue
+            if field.default is not dataclasses.MISSING:
+                setattr(value, field.name, field.default)
+            elif field.default_factory is not dataclasses.MISSING:
+                setattr(value, field.name, field.default_factory())
+            else:
+                raise ValueError(f"{type(value).__name__}.{field.name} has no default")
+            filled.append(f"{type(value).__name__}.{field.name}")
+
+    visit(world)
+    return filled
+
+
+def convert_pickle_bytes(data: bytes, *, verify_step: bool = False) -> tuple[bytes, dict]:
+    """The v5 bytes for a pickled save, and what was checked. Raises if the round trip moves state."""
+    from app import persistence, surface_parity, world as world_mod
+
+    world = persistence.load_world_bytes(data)
+    name = persistence.load_world_name(data)
+    filled = backfill_dataclass_defaults(world)
+    bloom = persistence.save_world_bytes(world, name=name)
+    again = persistence.load_world_bytes(bloom)
+    before, after = surface_parity.state_hash(world), surface_parity.state_hash(again)
+    if before != after:
+        raise ValueError("reloaded .bloom differs from the pickle-loaded world")
+    report = {"state_hash": before, "backfilled": sorted(set(filled))}
+    if verify_step:
+        # One step from each side: the conversion must not change how the world evolves.
+        world_mod.step_world(world, 100_000.0)
+        world_mod.step_world(again, 100_000.0)
+        if surface_parity.state_hash(world) != surface_parity.state_hash(again):
+            raise ValueError("a step from the .bloom lands on different state than from the pickle")
+        report["step_checked"] = True
+    return bloom, report
+
+
+def read_json(path: Path) -> dict:
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def write_json(path: Path, value: dict) -> None:
+    partial = path.with_name(path.name + ".part")
+    partial.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
+    os.replace(partial, path)
+
+
+def record_legacy(directory: Path, legacy: dict, current: dict) -> None:
+    table = read_json(directory / LEGACY_FILE)
+    table[legacy["sha1"]] = {
+        "legacy_name": legacy["name"],
+        "legacy_sha256": legacy["sha256"],
+        "name": current["name"],
+        "sha1": current["sha1"],
+        "sha256": current["sha256"],
+        "how": current["how"],
+    }
+    write_json(directory / LEGACY_FILE, table)
+
+
+def update_sums(directory: Path, old: str, new: str, new_sha256: str | None, keep_old: bool) -> None:
+    """Keep a directory's SHA256SUMS true: rename a line (same bytes), or add one (new bytes)."""
+    path = directory / SUMS_FILE
+    if not path.exists():
+        return
+    lines, out = path.read_text().splitlines(), []
+    for line in lines:
+        digest, _, name = line.partition("  ")
+        if name.lstrip("*") == old:
+            if keep_old:
+                out.append(line)
+                out.append(f"{new_sha256}  {new}")
+            else:
+                out.append(f"{digest}  {new}")
+        else:
+            out.append(line)
+    path.write_text("\n".join(out) + "\n")
+
+
+def convert_local(path: Path, *, dry_run: bool, verify_step: bool) -> str:
+    data = path.read_bytes()
+    sha1, sha256 = digests(data)
+    target = path.with_name(new_name(path.name))
+    legacy = {"name": path.name, "sha1": sha1, "sha256": sha256}
+    if target.exists():
+        return f"SKIP {path}: {target.name} already exists"
+    if is_zip(data):
+        if not dry_run:
+            os.rename(path, target)
+            update_sums(path.parent, path.name, target.name, None, keep_old=False)
+            record_legacy(path.parent, legacy, {"name": target.name, "sha1": sha1, "sha256": sha256, "how": "renamed"})
+        return f"renamed {path.name} -> {target.name}"
+    if dry_run:
+        return f"would convert pickle {path.name} ({len(data) / 1e6:.0f} MB)"
+    bloom, report = convert_pickle_bytes(data, verify_step=verify_step)
+    new_sha1, new_sha256 = digests(bloom)
+    partial = target.with_name(target.name + ".part")
+    partial.write_bytes(bloom)
+    os.replace(partial, target)
+    record_legacy(path.parent, legacy, {"name": target.name, "sha1": new_sha1, "sha256": new_sha256, "how": "converted"})
+    update_sums(path.parent, path.name, target.name, new_sha256, keep_old=True)
+    return f"converted {path.name} -> {target.name} ({len(bloom) / 1e6:.0f} MB; {report}); original kept"
+
+
+def cmd_local(args: argparse.Namespace) -> int:
+    paths = sorted(p for d in args.dirs for p in Path(d).expanduser().rglob("*.mbworld"))
+    # Zips first: they are free, and pickles are the memory-heavy ones, done one at a time.
+    paths.sort(key=lambda p: not file_is_zip(p))
+    failed = 0
+    for path in paths:
+        try:
+            print(convert_local(path, dry_run=args.dry_run, verify_step=args.verify_step), flush=True)
+        except (ValueError, OSError, TypeError, AttributeError) as err:
+            failed += 1
+            print(f"FAILED {path}: {err}", file=sys.stderr)
+    print(f"{len(paths)} files, {failed} failed")
+    return 1 if failed else 0
+
+
+def next_remote(remotes: list, name: str | None):
+    by_name = {r.name: r for r in remotes}
+    converted = {r.info.get("legacy_sha1") for r in remotes} | {r.sha1 for r in remotes if r.name.endswith(".bloom")}
+    candidates = [r for r in remotes if r.name.endswith(".mbworld") and r.sha1 not in converted and new_name(r.name) not in by_name]
+    if name:
+        candidates = [r for r in candidates if r.name == name]
+    return candidates[0] if candidates else None
+
+
+def cmd_remote(args: argparse.Namespace) -> int:
+    b2 = _load_b2()
+    cfg = b2.load_config()
+    client = b2.client_for(cfg)
+    remotes = client.list_files()
+    remote = next_remote(remotes, args.name)
+    if remote is None:
+        print("nothing left to convert")
+        return 0
+    zipped = remote.info.get("format_version") == "5"
+    taken = {r.name for r in remotes}
+    name = b2.unique_remote_name(new_name(remote.name), remote.sha1, taken)
+    if zipped:
+        # Already v5: a server-side copy gives it the new name with identical bytes.
+        print(f"{'would copy' if args.dry_run else 'copying'} {remote.name} -> {name} server-side ({remote.size / 1e6:.0f} MB, no transfer)")
+        if not args.dry_run:
+            copied = client.copy(remote, name, {**remote.info, "kind": "bloom", "legacy_name": remote.name, "legacy_sha1": remote.sha1})
+            assert copied.sha1 == remote.sha1
+        return 0
+    print(f"{'would convert' if args.dry_run else 'converting'} {remote.name} ({remote.size / 1e6:.0f} MB down, about as much up)")
+    if args.dry_run:
+        return 0
+    with tempfile.TemporaryDirectory(dir=args.work_dir) as work:
+        source = Path(work) / remote.name
+        got = client.download(remote.name, source)
+        if got != remote.sha1:
+            raise ValueError(f"{remote.name}: downloaded SHA-1 {got}, expected {remote.sha1}")
+        data = source.read_bytes()
+        if is_zip(data):
+            raise ValueError(f"{remote.name} is a zip but lacks format_version; rerun after fixing its info")
+        bloom, report = convert_pickle_bytes(data, verify_step=args.verify_step)
+        source.unlink()
+        target = Path(work) / name
+        target.write_bytes(bloom)
+        sha1, sha256 = digests(bloom)
+        info = {
+            **b2.save_metadata(target),
+            **{k: v for k, v in remote.info.items() if k not in {"kind", "format_version", "world_name"}},
+            "kind": "bloom",
+            "format_version": "5",
+            "legacy_name": remote.name,
+            "legacy_sha1": remote.sha1,
+            "legacy_sha256": hashlib.sha256(data).hexdigest(),
+            "converted_state_hash": report["state_hash"],
+        }
+        uploaded = client.upload(target, name, sha1, info)
+        if uploaded.sha1 != sha1:
+            raise ValueError(f"{name}: bucket reports SHA-1 {uploaded.sha1}, expected {sha1}")
+    print(f"uploaded {name} ({uploaded.size / 1e6:.0f} MB); {report}; the original {remote.name} stays in the bucket")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    commands = parser.add_subparsers(dest="command", required=True)
+    local = commands.add_parser("local")
+    local.add_argument("dirs", nargs="+")
+    local.add_argument("--dry-run", action="store_true")
+    local.add_argument("--verify-step", action="store_true", help="also step both worlds once and compare")
+    local.set_defaults(handler=cmd_local)
+    remote = commands.add_parser("remote")
+    remote.add_argument("--name")
+    remote.add_argument("--dry-run", action="store_true")
+    remote.add_argument("--verify-step", action="store_true")
+    remote.add_argument("--work-dir", default=None, help="scratch directory for the one download")
+    remote.set_defaults(handler=cmd_remote)
+    args = parser.parse_args(argv)
+    return args.handler(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

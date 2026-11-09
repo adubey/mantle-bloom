@@ -481,3 +481,60 @@ def test_wire_delete_still_works_on_a_public_bucket(client):
     Stub.bucket_type = "allPublic"
     Stub.versions = [{"files": [{"fileName": "saves/a.bloom", "fileId": "1"}]}]
     assert client.delete("a.bloom") == 1
+
+
+def converted(name, sha1, legacy_name, legacy_sha1):
+    """A bucket file `bin/convert_saves.py` uploaded: new bytes, old identity in file info."""
+    return b2.Remote(name, 10, sha1, 0, {"legacy_name": legacy_name, "legacy_sha1": legacy_sha1})
+
+
+def test_a_converted_file_answers_to_its_legacy_name_and_sha1():
+    remotes = [converted("a.bloom", "new1", "a.mbworld", "old1"), b2.Remote("b.bloom", 1, "new2", 0, {})]
+    assert b2.resolve_remote(remotes, "a.bloom").name == "a.bloom"
+    assert b2.resolve_remote(remotes, "a.mbworld").name == "a.bloom"
+    assert b2.resolve_remote(remotes, "old1").name == "a.bloom"
+    assert b2.resolve_remote(remotes, "new2").name == "b.bloom"
+    with pytest.raises(ValueError, match="not in the bucket"):
+        b2.resolve_remote(remotes, "nope")
+
+
+def test_pull_by_legacy_name_fetches_the_bloom(tmp_path):
+    bucket = FakeBucket()
+    (tmp_path / "src").mkdir()
+    source = save(tmp_path / "src", "x.bloom", "bloom bytes")
+    sha1 = hashlib.sha1(source.read_bytes()).hexdigest()
+    bucket.files["x.bloom"] = (converted("x.bloom", sha1, "x.mbworld", "old"), source.read_bytes())
+    dest = b2.pull(bucket, "x.mbworld", tmp_path / "dest")
+    assert dest.name == "x.bloom"
+
+
+def test_sync_does_not_reupload_a_legacy_save_whose_bloom_is_in_the_bucket(tmp_path):
+    bucket = FakeBucket()
+    old = save(tmp_path, "mantle-bloom-seed1-1y.mbworld", "pickle bytes", age_days=1)
+    legacy = hashlib.sha1(old.read_bytes()).hexdigest()
+    bucket.files["mantle-bloom-seed1-1y.bloom"] = (
+        converted("mantle-bloom-seed1-1y.bloom", "new", old.name, legacy),
+        b"",
+    )
+    assert b2.sync(bucket, tmp_path, NOW) == 0
+    assert list(bucket.files) == ["mantle-bloom-seed1-1y.bloom"]
+
+
+def test_purge_counts_a_converted_bloom_as_the_legacy_copy(tmp_path):
+    bucket = FakeBucket()
+    old = save(tmp_path, "mantle-bloom-seed1-1y.mbworld", "pickle bytes", age_days=30)
+    legacy = hashlib.sha1(old.read_bytes()).hexdigest()
+    bucket.files["x.bloom"] = (converted("x.bloom", "new", old.name, legacy), b"")
+    assert b2.purge(bucket, config(tmp_path), NOW, False, set()) == [old]
+
+
+def test_catalog_shows_a_legacy_save_as_held_by_its_converted_bloom():
+    remote = converted("a.bloom", "new", "a.mbworld", "old")
+    rows = b2.catalog([remote], {"a.mbworld": (5, "old")}, set())
+    assert [(row["name"], row["where"]) for row in rows] == [("a.bloom", "both")]
+
+
+def test_catalog_shows_a_pin_placed_under_the_legacy_name():
+    remote = converted("a.bloom", "new", "a.mbworld", "old")
+    assert b2.catalog([remote], {}, {"a.mbworld"})[0]["pinned"] is True
+    assert b2.catalog([remote], {}, set())[0]["pinned"] is False
