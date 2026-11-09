@@ -46,6 +46,11 @@ DAY_YEARS = 1.0 / 365.25
 def add_arguments(ap) -> None:
     ap.add_argument("--wind", choices=("diagnostic", "cfd"), default="diagnostic")
     ap.add_argument(
+        "--march-preset", default=None,
+        help="ice_sheet.MARCH_COST_PRESETS name for the end-of-step glacier march (#822); needs a backend that has "
+        "it. Default: leave the backend's own march cost. Recorded in the result with the march log (#811)",
+    )
+    ap.add_argument(
         "--warmup-days", type=int, default=10,
         help="Day-length steps run before measuring, the same in every mode: a save written before #758 "
         "sheds a lake-sized volume and reclassifies about 2 million km^2 as ocean at its second step (#811)",
@@ -74,6 +79,15 @@ def main() -> None:
     world.ice_age_period_years = 0.0
     world.wind_model = args.wind
     result.update(wind_model=args.wind, steps=[])
+    from app.hydroclimate import ice_sheet  # noqa: E402
+
+    if args.march_preset:
+        ice_sheet.MARCH_COST = ice_sheet.MARCH_COST_PRESETS[args.march_preset]
+    march_cost = getattr(ice_sheet, "MARCH_COST", None)
+    result.update(
+        march_preset=args.march_preset, simulate_glacier_march=bool(world.simulate_glacier_march),
+        march_cost=repr(march_cost),
+    )
     from app import plates as plates_mod  # noqa: E402
     from app.elevation_lines import line_spacing_rad  # noqa: E402
 
@@ -126,6 +140,11 @@ def main() -> None:
             "world_elapsed_seconds": world.elapsed_years * SECONDS_PER_YEAR,
         }
         step.update(climate_means())
+        march = dict(ice_sheet.MARCH_LOG[-1]) if getattr(ice_sheet, "MARCH_LOG", None) else {}
+        step["march"] = {k: v for k, v in march.items() if k != "volume_path_km3"}
+        ice_ledger = hydro.ice.ledger if getattr(hydro, "ice", None) is not None else None
+        step["ice_closing_km3"] = float(ice_ledger.closing_m3) / M3_PER_KM3 if ice_ledger else None
+        step["ice_closure"] = float(ice_ledger.residual_m3) / max(float(ice_ledger.closing_m3), 1.0) if ice_ledger else None
         result["steps"].append(step)
 
     def close_window(_steps: int) -> dict:
