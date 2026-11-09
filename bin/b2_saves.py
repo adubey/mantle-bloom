@@ -101,6 +101,13 @@ class Remote:
     sha1: str
     uploaded_ms: int
     info: dict[str, str] = field(default_factory=dict)
+    file_id: str = ""
+
+    @property
+    def known_sha1s(self) -> set[str]:
+        """Every SHA-1 this file answers to: its own, and the legacy `.mbworld` it was
+        converted from (`bin/convert_saves.py` records it), so the old copy counts as held."""
+        return {self.sha1} | ({self.info["legacy_sha1"]} if self.info.get("legacy_sha1") else set())
 
 
 def read_env_file(path: Path) -> dict[str, str]:
@@ -185,6 +192,7 @@ def to_remote(entry: dict) -> Remote:
         sha1=entry["contentSha1"],
         uploaded_ms=entry["uploadTimestamp"],
         info=info,
+        file_id=entry.get("fileId", ""),
     )
 
 
@@ -312,6 +320,21 @@ class B2:
                 time.sleep(2**attempt)
         raise AssertionError("unreachable")
 
+    def copy(self, source: Remote, name: str, info: dict[str, str]) -> Remote:
+        """Server-side copy under a new name with new file info: no bytes cross this machine."""
+        self._require_private()
+        entry = self._call(
+            "b2_copy_file",
+            {
+                "sourceFileId": source.file_id,
+                "fileName": remote_key(name),
+                "metadataDirective": "REPLACE",
+                "contentType": "application/octet-stream",
+                "fileInfo": {key: urllib.parse.quote(value, safe="") for key, value in info.items()},
+            },
+        )
+        return to_remote(entry)
+
     def download(self, name: str, dest: Path) -> str:
         """Stream a file to `dest` and return the SHA-1 of what arrived."""
         self._account()
@@ -418,7 +441,7 @@ def push_file(client, path: Path, remotes: list[Remote], note: str = "") -> None
     if size > MAX_UPLOAD_BYTES:
         raise ValueError(f"{path.name} is {size} bytes, over the {MAX_UPLOAD_BYTES} upload limit")
     sha1 = sha1_of(path)
-    if existing := next((r for r in remotes if r.sha1 == sha1), None):
+    if existing := next((r for r in remotes if sha1 in r.known_sha1s), None):
         print(f"already in bucket: {path.name} as {existing.name}")
         return
     name = unique_remote_name(path.name, sha1, {r.name for r in remotes})
@@ -441,7 +464,7 @@ def sync(client, saves_dir: Path, now: float, hashes: dict | None = None) -> int
         if now - path.stat().st_mtime < SETTLE_SECONDS:
             continue
         try:
-            if cached_sha1(path, hashes) not in {remote.sha1 for remote in remotes}:
+            if cached_sha1(path, hashes) not in {s for remote in remotes for s in remote.known_sha1s}:
                 push_file(client, path, remotes)
         except (B2Error, OSError, ValueError) as err:
             failures += 1
@@ -469,7 +492,7 @@ def purge(client, cfg: Config, now: float, dry_run: bool, pins: set[str]) -> lis
     )
     if not candidates:
         return []
-    in_bucket = {remote.sha1 for remote in client.list_files()}
+    in_bucket = {s for remote in client.list_files() for s in remote.known_sha1s}
     purged = []
     for path in candidates:
         if sha1_of(path) not in in_bucket:
@@ -482,11 +505,28 @@ def purge(client, cfg: Config, now: float, dry_run: bool, pins: set[str]) -> lis
     return purged
 
 
+def resolve_remote(remotes: list[Remote], query: str) -> Remote:
+    """The bucket file a name or a full SHA-1 refers to: an exact name first, then the
+    `.mbworld` name or SHA-1 a file was converted from (`bin/convert_saves.py`)."""
+    for match in (
+        lambda r: r.name == query,
+        lambda r: r.info.get("legacy_name") == query,
+        lambda r: r.sha1 == query,
+        lambda r: r.info.get("legacy_sha1") == query,
+    ):
+        found = [r for r in remotes if match(r)]
+        if len(found) == 1:
+            if found[0].name != query:
+                print(f"{query} is {found[0].name}")
+            return found[0]
+        if found:
+            raise ValueError(f"{query} matches several files: {', '.join(r.name for r in found)}")
+    raise ValueError(f"{query} is not in the bucket")
+
+
 def pull(client, name: str, saves_dir: Path) -> Path:
-    remotes = {remote.name: remote for remote in client.list_files()}
-    if name not in remotes:
-        raise ValueError(f"{name} is not in the bucket")
-    remote = remotes[name]
+    remote = resolve_remote(client.list_files(), name)
+    name = remote.name
     dest = saves_dir / Path(name).name  # a bucket name must not escape the saves directory
     if dest.exists():
         if sha1_of(dest) == remote.sha1:
@@ -517,7 +557,7 @@ def catalog(remotes: list[Remote], local: dict[str, tuple], pins: set[str]) -> l
         rows.append(
             {
                 "name": remote.name,
-                "where": "both" if remote.sha1 in local_sha1s else "cloud",
+                "where": "both" if remote.known_sha1s & local_sha1s else "cloud",
                 "size": remote.size,
                 "sha1": remote.sha1,
                 "uploaded": datetime.fromtimestamp(
@@ -527,7 +567,7 @@ def catalog(remotes: list[Remote], local: dict[str, tuple], pins: set[str]) -> l
                 **remote.info,
             }
         )
-    remote_sha1s = {remote.sha1 for remote in remotes}
+    remote_sha1s = {s for remote in remotes for s in remote.known_sha1s}
     for name, (size, sha1) in sorted(local.items()):
         if sha1 not in remote_sha1s:
             rows.append(
