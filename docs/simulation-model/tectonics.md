@@ -1558,7 +1558,11 @@ step's own snapshot, the same semi-Lagrangian-backward-trace technique
 taper (1 at the trace, 0 at the reach) scales the slip distance itself, so at the outer edge
 the upstream sample point collapses back onto the node and every field -- `elevation` and
 everything else in `surface_fields.SURFACE_FIELDS`, bool/categorical fields included -- is an
-exact no-op with no type-specific handling needed. Which side of the trace moves which way
+exact no-op with no type-specific handling needed. Because nearest-neighbour sampling across
+cells of unequal area does not conserve extensive volumes on its own, `_conserve_sheared_extensive_fields`
+rescales every `RemapClass.EXTENSIVE` field over the sheared nodes so area-integrated volumes
+(`crustal_thickness_m`, `mantle_lithosphere_thickness_m`, `continental_material_m`,
+`craton_crust_m`, `mobile_cover_m`, etc.) and column-share invariants hold (issue #299). Which side of the trace moves which way
 comes from the fault's own `dip_dir_local` (already computed at spawn for every kind, just
 otherwise idle for strike-slip) crossed with `strike_sense` (otherwise only the relief bend
 above) as an arbitrary but per-fault-consistent left/right-lateral handedness. Runs
