@@ -53,6 +53,14 @@ description: Measure a Mantle-Bloom change by replaying a saved world (.mbworld)
    the same shell invocation; shell variables do not carry between separate agent tool
    calls.
 
+   **While the replay runs, poll it; don't wait on one long call.** Provider prompt caches
+   expire after minutes to an hour of no model requests, and a long idle wait forces a full
+   re-read of the context. Check the log with a short sleep (about 4 minutes, within your
+   tool's timeout), print a one-line status (checkpoint reached, elapsed time), and repeat
+   until it finishes. Each check is a model request, which keeps the cache warm. Never block
+   on a single wait longer than your tool timeout, and never wait on a background task's
+   wake-up alone with no checks. Skip the polling if the run is under about 10 minutes.
+
 6. **Interpret the comparison.** If the gap is near measured variability, run the planned
    replicates on both arms and report the spread of each. A gap within measured variability
    is inconclusive. When a gap matters, compare the trajectory across checkpoints or use a
