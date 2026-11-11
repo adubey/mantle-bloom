@@ -607,6 +607,13 @@ hydroclimate/lakes.py              every-step lake growth/evaporation/merge/spli
                      also rebuilt fresh, on demand, by main.py to answer the Lake Inspector's
                      GET /worlds/{world_id}/lakes and GET /worlds/{world_id}/lake_at (see
                      simulation-model/hydrology.md#lake-inspector)
+hydroclimate/river_substeps.py    the #867 exploration's river-substep arms, every one off by default:
+                     a module knob (like hydrology.MARCH_GLACIERS) that lets a breached
+                     threatened outlet carve beyond the ordinary budget (the outlet and
+                     uplift bounds, through breaching.OutletRelief) or marches one step's
+                     river incision and routing in slices (march_rivers, called from
+                     erosion.apply_erosion). Driven by bin/debug/river_substep_arms.py
+                     (see simulation-model/hydrology.md#river-substep-arms)
 hydroclimate/stranded_basins.py   diagnostic-only: finds endorheic below-sea-level basins with no ocean
                      drainage (the "land-locked coastal pit") in lakes.py's forest, and
                      tracks how long each has persisted across steps (world.stranded_basin_

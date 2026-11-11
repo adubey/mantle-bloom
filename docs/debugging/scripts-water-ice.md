@@ -77,6 +77,29 @@ backend/.venv/bin/python bin/debug/measure_river_hops.py world.mbworld --myr 0.1
     --backend ../mantle-bloom-baseline/backend --center 43 153 --render-dir /tmp/main --out /tmp/main.json
 ```
 
+### `river_substep_arms.py`
+
+Issue #867's assumption ladder. `reference` generates a world (the #866 seed at density 4 by
+default) or continues a save, steps it with the production model, and at every checkpoint
+writes a loadable `.bloom` save and combined and elevation maps, so each checkpoint opens in
+the Lake Inspector. `branch` loads one checkpoint and runs each `--arm` from the same bytes
+with the same step schedule: `off`, `outlet-bound[:all]`, `uplift-bound[:all]` and
+`march:<substeps>` (see [hydrology.md](../simulation-model/hydrology.md#river-substep-arms)).
+Every step records inland-water area and volume by tier, the largest bodies, endorheic
+roots, the exporting land area and old-outlet retention, channel and notch geometry, the
+erosion budget's closure, the lake, land-water and glacier ledgers, runtime and peak RSS,
+and the arm's own log entry. The `off` arm's first-step `state_hash` is written beside the
+reference's hash at the same age, so a branch can be checked to be a continuation.
+
+```bash
+backend/.venv/bin/python bin/debug/river_substep_arms.py reference --seed 544349906 \
+    --node-density 4 --myr 25 --checkpoint-myr 5 --out-dir ~/mantle-bloom-captures/issue867/reference
+backend/.venv/bin/python bin/debug/river_substep_arms.py branch \
+    ~/mantle-bloom-captures/issue867/reference/reference-25.0Myr.bloom \
+    --arm off --arm outlet-bound --arm uplift-bound --arm march:10 --myr 5 --checkpoint-myr 1 \
+    --out-dir ~/mantle-bloom-captures/issue867/branch-25
+```
+
 ### `measure_discharge_calibration.py`
 
 Replays river and glacier calibration on the same save in two code trees (#355). First

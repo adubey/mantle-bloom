@@ -158,6 +158,7 @@ Gate 2 load, mesh and capacity diagnostics.
 | [`gate_lake_ice_cap.py`](debugging/scripts-water-ice.md#gate_lake_ice_cappy) | RFC 0014 G5 lake ice-cap equilibrium and sensitivities |
 | [`gate_lake_endpoint.py`](debugging/scripts-water-ice.md#gate_lake_endpointpy) | RFC 0014 G1 endpoint-vs-C qualification under D2(c) |
 | [`measure_breaching.py`](debugging/scripts-water-ice.md#measure_breachingpy) | depression breaching on and off |
+| [`river_substep_arms.py`](debugging/scripts-water-ice.md#river_substep_armspy) | #867's river-substep arms: a reference trajectory with checkpoints, then branches from one |
 | [`measure_ice_sheet.py`](debugging/scripts-water-ice.md#measure_ice_sheetpy) | glacier extent, volume, erosion and the ice ledger |
 | [`measure_seasonal_melt.py`](debugging/scripts-water-ice.md#measure_seasonal_meltpy) | glaciated land by annual-mean temperature |
 | [`measure_ice_loading.py`](debugging/scripts-water-ice.md#measure_ice_loadingpy) | isostatic ice-load deflection |

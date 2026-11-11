@@ -233,6 +233,34 @@ discharge, channel-width growth, deposition, geology or lake silt.
   its banks and leaves it intact. Uplift is measured against `channel_reference_elevation_m`,
   the post-erosion elevation recorded each step. Set `hydrology.BREACH_DEPRESSIONS_ENABLED =
   False` for the old centre-only behaviour.
+
+  <a id="river-substep-arms"></a>
+  **Experimental river-substep arms (`river_substeps.py`, issue #867).** Off by default, and
+  not a model change: `river_substeps.ARM` is a module knob (like `MARCH_GLACIERS`) that the
+  driver `bin/debug/river_substep_arms.py` sets for one process. The exploration asks whether
+  rivers need intermediate chances to incise and reroute inside a 100 kyr step, after #866
+  found that lost outlets needed a median 81 m cut while channels on the old route grew 0 m.
+  Three arms form an assumption ladder, run from one checkpoint with the same tectonics:
+  - *outlet bound*: a pit whose water reached the ocean last step (a threatened outlet, read
+    from the previous routing resampled onto this step's nodes) may cut its least-climb route
+    at 1 m/yr for the step, stopping at the cut the route needs (`breaching.OutletRelief`:
+    the per-node limits and the summed-cost screen are raised for eligible pits only, the
+    route stays the ordinary least-climb path, and the water gate still applies). `:all`
+    makes every land pit eligible, which bounds what any incision rule could do.
+  - *uplift bound*: the same trigger, with each node's allowance equal to its rise since the
+    last erosion pass (`channel_reference_elevation_m`): a river that keeps pace with uplift.
+  - *march*: `erosion.apply_erosion` replaces its one-shot river term with
+    `river_substeps.march_rivers`, which splits the step into slices. Slice 0 reads the
+    opening routing; each later slice re-breaches (with the time left in the step as its
+    budget), rebuilds the depression hierarchy and flow directions on the terrain the earlier
+    slices cut, re-routes the step's steady sources (dry runoff, meltwater, exported overflow,
+    kept on `HydrologyFields.river_source_m3_per_yr` and never saved), and applies
+    stream-power incision for its share of the step. The summed demand then goes through the
+    ordinary cover-first, headroom-capped pipeline, and the step's drop cap rises to the
+    march's own slice-by-slice cut where the valley deepened. Climate, the lake solve and the
+    ice solve stay at their opening full-step values, so the water ledger closes on the
+    opening routing; the published `flow_target`/`discharge_m3_s` are the last slice's. A
+    one-slice march is the baseline bit for bit.
 - **Partial-cell lake flooding** (`lakes.CellHypsometry`, issue #297): a cell's elevation is
   its mean, so its ground is taken as spread evenly over `elevation +/- relief`. The relief is
   half the mean height difference to its neighbours, capped at 500 m. A lake floods each cell

@@ -112,10 +112,15 @@ class BreachResult:
     # Pit nodes cheap enough to breach whose water balance keeps them closed (endorheic).
     # These stay closed too. Empty when no climate is given.
     endorheic_pits: np.ndarray = None
+    # Breached pits the ordinary rule would have kept closed: they passed only with an
+    # `OutletRelief` allowance (#867's bound arms). Empty without one.
+    relieved_pits: np.ndarray = None
 
     def __post_init__(self) -> None:
         if self.endorheic_pits is None:
             self.endorheic_pits = np.zeros(0, dtype=np.int64)
+        if self.relieved_pits is None:
+            self.relieved_pits = np.zeros(0, dtype=np.int64)
 
 
 @dataclass
@@ -144,6 +149,21 @@ class WaterBalance:
     direct_supply_m3_per_yr: np.ndarray | None = None
     lake_evaporation_m_per_yr: np.ndarray | None = None
     lake_sublimation_m_per_yr: np.ndarray | None = None
+
+
+@dataclass
+class OutletRelief:
+    """An extra carving allowance for chosen pits (the #867 bound arms, see
+    `river_substeps.outlet_relief`). Both arrays have shape (N,).
+
+    An `eligible` pit is judged on its least-cost path with each node's carving limit raised
+    by that node's `extra_cut_m` (capped at BREACH_MAX_NOTCH_M), and its summed-cost screen
+    counts only the part of each node's cut beyond its allowance. The path itself is still the
+    ordinary least-climb path, so the allowance changes whether a route opens, never which
+    route. Pits that aren't eligible see the ordinary rule unchanged."""
+
+    eligible: np.ndarray
+    extra_cut_m: np.ndarray
 
 
 def open_water_evaporation_mm(temperature_c: np.ndarray) -> np.ndarray:
@@ -292,9 +312,11 @@ def breach_depressions(
     water: WaterBalance | None = None,
     prior_notch_m: np.ndarray | None = None,
     mobile_cover_m: np.ndarray | None = None,
+    relief: OutletRelief | None = None,
 ) -> BreachResult:
     """Breach every pit whose least climb to the ocean fits this step's carving budget. See
-    the module docstring.
+    the module docstring. `relief` (#867) raises the budget and the per-node limits for its
+    eligible pits only; see `OutletRelief`.
 
     The result doesn't depend on node order. Each node's notch is the deepest cut that any
     breached path through it needs. That cut is set by the lowest water level arriving at the
@@ -342,13 +364,18 @@ def breach_depressions(
     budget = min(BREACH_REFERENCE_CARVE_M_PER_MYR * dt_myr, BREACH_MAX_NOTCH_M)
     pits = _pits(elevation, is_ocean, neighbor_idx)
     pit_cost = cost[pits]
-    breachable = (pit_cost > _MIN_BREACH_CLIMB_M) & (pit_cost <= budget)
-    closed_pits = pits[np.isfinite(pit_cost) & (pit_cost > budget)]
+    relieved = np.zeros(len(pits), dtype=bool) if relief is None else np.asarray(relief.eligible, dtype=bool)[pits]
+    breachable = (pit_cost > _MIN_BREACH_CLIMB_M) & ((pit_cost <= budget) | (relieved & np.isfinite(pit_cost)))
+    closed_pits = pits[np.isfinite(pit_cost) & (pit_cost > budget) & ~relieved]
     endorheic_pits = np.zeros(0, dtype=np.int64)
+    only_by_relief = np.zeros(len(pits), dtype=bool)
     max_cut = _carve_limit_m(cover, bedrock_rate, dt_myr)
     if np.any(breachable):
         candidates = np.flatnonzero(breachable)
-        drains, rim_level = _walk_paths(pits[candidates], channel_passage, next_hop, max_cut)
+        drains, rim_level, only_by_relief[candidates] = _judge_candidates(
+            pits[candidates], pit_cost[candidates], relieved[candidates], budget, channel_passage, next_hop,
+            max_cut, relief, cover, bedrock_rate,
+        )
         closed_pits = np.sort(np.concatenate([closed_pits, pits[candidates[~drains]]]))
         breachable[candidates[~drains]] = False
         if water is not None and np.any(drains):
@@ -395,7 +422,92 @@ def breach_depressions(
                 arriving_list[nxt] = out_level
         notch = np.asarray(notch_list)
 
-    return BreachResult(cost, next_hop, channel_passage, notch, channel_passage - notch, breached_pits, closed_pits, endorheic_pits)
+    return BreachResult(
+        cost, next_hop, channel_passage, notch, channel_passage - notch, breached_pits, closed_pits, endorheic_pits,
+        relieved_pits=pits[breachable & only_by_relief],
+    )
+
+
+def _judge_candidates(
+    pits: np.ndarray,
+    pit_cost: np.ndarray,
+    relieved: np.ndarray,
+    budget: float,
+    passage: np.ndarray,
+    next_hop: np.ndarray,
+    max_cut: np.ndarray,
+    relief: OutletRelief | None,
+    cover: np.ndarray,
+    bedrock_rate: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The drain test for every candidate pit: `(drains, rim_level, only_by_relief)`. Ordinary
+    candidates walk their path under `max_cut`. Relieved candidates (#867) walk it under
+    `max_cut + extra_cut_m` and pass the summed-cost screen on either their full cost or the
+    cost beyond their allowance; `only_by_relief` marks those the ordinary rule would have
+    refused."""
+    drains = np.zeros(len(pits), dtype=bool)
+    rim_level = np.zeros(len(pits))
+    only_by_relief = np.zeros(len(pits), dtype=bool)
+    plain = ~relieved
+    if np.any(plain):
+        drains[plain], rim_level[plain] = _walk_paths(pits[plain], passage, next_hop, max_cut)
+    if relief is not None and np.any(relieved):
+        extra = np.clip(np.asarray(relief.extra_cut_m, dtype=float), 0.0, None)
+        relaxed = np.minimum(max_cut + extra, BREACH_MAX_NOTCH_M)
+        drains_relaxed, rim_relaxed, paid = _walk_relieved_paths(pits[relieved], passage, next_hop, relaxed, extra, cover, bedrock_rate)
+        drains_relaxed &= (pit_cost[relieved] <= budget) | (paid <= budget)
+        drains_plain, _ = _walk_paths(pits[relieved], passage, next_hop, max_cut)
+        drains[relieved] = drains_relaxed
+        rim_level[relieved] = rim_relaxed
+        only_by_relief[relieved] = drains_relaxed & ~((pit_cost[relieved] <= budget) & drains_plain)
+    return drains, rim_level, only_by_relief
+
+
+def _walk_relieved_paths(
+    pits: np.ndarray,
+    passage: np.ndarray,
+    next_hop: np.ndarray,
+    max_cut: np.ndarray,
+    extra_cut: np.ndarray,
+    cover: np.ndarray,
+    bedrock_rate: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """`_walk_paths` for relieved pits (#867), with a third result: the path's climb cost
+    beyond each node's allowance, in metres of reference-strength rock. It charges the same
+    hop-to-hop climbs `least_climb_to_ocean` charges (a descent past the rim costs nothing
+    there either), less each node's allowance, so the summed-cost screen counts only what the
+    allowance doesn't cover. The drain test itself is unchanged: every node's cut down to the
+    arriving level must fit its (raised) limit."""
+    passage_list = passage.tolist()
+    next_list = next_hop.tolist()
+    max_cut_list = max_cut.tolist()
+    extra_list = extra_cut.tolist()
+    cover_list = cover.tolist()
+    rate_list = bedrock_rate.tolist()
+    drains, rims, paid = [], [], []
+    for pit in pits.tolist():
+        level = passage_list[pit]
+        rim = level
+        previous = level
+        node = next_list[pit]
+        ok = True
+        cost = 0.0
+        while node >= 0:
+            here = passage_list[node]
+            rim = max(rim, here)
+            if here - level > max_cut_list[node] + 1e-9:
+                ok = False
+            beyond = max(here - previous - extra_list[node], 0.0)
+            if beyond > 0.0:
+                in_cover = min(beyond, cover_list[node])
+                cost += (in_cover / BREACH_WEAK_CARVE_M_PER_MYR + (beyond - in_cover) / rate_list[node]) * BREACH_REFERENCE_CARVE_M_PER_MYR
+            level = min(level, here)
+            previous = here
+            node = next_list[node]
+        drains.append(ok)
+        rims.append(rim)
+        paid.append(cost)
+    return np.asarray(drains, dtype=bool), np.asarray(rims, dtype=float), np.asarray(paid, dtype=float)
 
 
 def _walk_paths(
