@@ -81,8 +81,36 @@ wind, 100 kyr steps. Record the commit, controls and node count (the driver writ
 **Primary measures**, per step and compared at matched ages: visible lake area and liquid
 volume, sea-tier area and volume, the number of bodies over 10,000 km², endorheic roots and
 their area; the exporting land area and old-outlet retention (the share of last step's
-exporting area that still exports); channel depth (land mean, p99, max), notch sum, the
+exporting area that still exports); channel depth (land mean, standard deviation, p99), notch sum, the
 arm's own log (eligible, breached and relieved pits; march slices, cost and rerouted nodes).
+
+**Channel depth** (land nodes, mean over the 50 steps of each branch; the standard deviation is
+across land nodes within a step, then averaged). From 25 Myr:
+
+| Arm | Mean depth (m) | Std dev (m) | p99 (m) | Notch sum (m) |
+|---|---|---|---|---|
+| `off` | 0.677 | 22.5 | 0.99 | 9,430 |
+| `outlet-bound` | 0.702 | 22.0 | 2.31 | 424,294 |
+| `outlet-bound:all` | 0.690 | 21.3 | 2.47 | 650,877 |
+| `uplift-bound` | 0.678 | 22.5 | 1.00 | 9,631 |
+| `march:10` | 0.683 | 22.8 | 0.94 | 18,218 |
+| `march:100` | 0.684 | 22.8 | 0.97 | 58,517 |
+
+From 5 Myr:
+
+| Arm | Mean depth (m) | Std dev (m) | p99 (m) | Notch sum (m) |
+|---|---|---|---|---|
+| `off` | 0.583 | 17.3 | 1.08 | 17,904 |
+| `outlet-bound` | 0.594 | 16.3 | 2.93 | 732,476 |
+| `outlet-bound:all` | 0.632 | 16.2 | 3.94 | 1,882,381 |
+| `uplift-bound` | 0.583 | 17.2 | 1.10 | 17,921 |
+
+The standard deviation (16 to 23 m) is far above the mean (0.6 to 0.7 m) and the p99 (about 1 to
+4 m): a few nodes at the 2000 m per-node notch ceiling dominate it, in every arm including `off`.
+Read it as a tail indicator; the mean and p99 describe the typical channel. Only the outlet bounds
+deepen anything: their p99 rises from 1 m to 2.3 to 3.9 m and their notch sum 40 to 100 fold,
+at a few hundred to a few thousand cut nodes. `uplift-bound` and the march arms leave mean depth
+and p99 within 0.01 m of `off`.
 
 **Validity.** Every arm must keep the land-water ledger residual at or below 1e-9 of rain
 plus meltwater, the lake ledger residual at round-off, and `removed == deposited + terminal`
@@ -183,7 +211,7 @@ the land-water residual at or below 8e-13 and the rock residual at or below 2e-1
 | `outlet-bound:all` | 3.49 | -36% | 11.5 | 3.10 |
 | `uplift-bound` | 5.45 | 0% | 24.6 | 5.76 |
 
-**Validity.** Largest land-water residual 3.9e-11 (`off` from 25 Myr), lake-ledger residual
+**Validity.** The whole experiment was rerun after replacing the driver's `channel_depth_max_m` with a land standard deviation; every state hash matches the first run. Largest land-water residual 3.9e-11 (`off` from 25 Myr), lake-ledger residual
 1.5e-10, rock residual 3e-16, all within the preregistered limits. The 5 Myr `off` branch's first
 step has the same `state_hash` as the reference's step 51 (`43f20671af49`), as does
 `uplift-bound` (it relieves nothing there): the branch is a continuation. The 25 Myr `off`

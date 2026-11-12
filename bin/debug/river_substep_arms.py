@@ -176,7 +176,7 @@ def _channel_metrics(world) -> dict:
     return {
         "channel_depth_land_mean_m": float(channel[land].mean()) if land.any() else 0.0,
         "channel_depth_p99_m": float(np.percentile(channel[land], 99)) if land.any() else 0.0,
-        "channel_depth_max_m": float(channel.max()) if len(channel) else 0.0,
+        "channel_depth_land_std_m": float(channel[land].std()) if land.any() else 0.0,
         "channel_volume_km3": float(np.dot(channel, area) / M3_PER_KM3),
         "notch_sum_m": float(notch.sum()),
         "notched_nodes": int(np.count_nonzero(notch > 0.0)),
