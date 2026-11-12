@@ -69,7 +69,9 @@ IMAGE_VIEWS = ("combined", "elevation")
 
 
 def _peak_rss_gb() -> float:
-    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e9
+    # ru_maxrss is bytes on macOS and kibibytes on Linux.
+    scale = 1.0 if sys.platform == "darwin" else 1024.0
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * scale / 1e9
 
 
 def _commit() -> str:
@@ -332,6 +334,14 @@ def _branch_one(args, text: str) -> None:
         river_substeps.set_arm(river_substeps.RiverSubstepArm())
 
 
+def _spawn_branch(args, text: str) -> None:
+    command = [sys.executable, str(Path(__file__).resolve()), "branch", str(args.checkpoint), "--arm", text]
+    command += ["--myr", str(args.myr), "--step-years", str(args.step_years), "--checkpoint-myr", str(args.checkpoint_myr)]
+    command += ["--out-dir", str(args.out_dir), "--glacier-march", args.glacier_march] + (["--exact"] if args.exact else [])
+    print(json.dumps({"spawn": text}), flush=True)
+    subprocess.run(command, check=True)
+
+
 def cmd_branch(args) -> None:
     """Each arm runs in its own process, one after the other: hydrology's per-process caches
     (`_LAST_OCEAN_TREE`, the nearest-node cache) keep the previous arm's world alive
@@ -340,18 +350,18 @@ def cmd_branch(args) -> None:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     if len(args.arm) == 1:
         _branch_one(args, args.arm[0])
-        return
-    for text in args.arm:
-        command = [sys.executable, str(Path(__file__).resolve()), "branch", str(args.checkpoint), "--arm", text]
-        command += ["--myr", str(args.myr), "--step-years", str(args.step_years), "--checkpoint-myr", str(args.checkpoint_myr)]
-        command += ["--out-dir", str(args.out_dir), "--glacier-march", args.glacier_march] + (["--exact"] if args.exact else [])
-        print(json.dumps({"spawn": text}), flush=True)
-        subprocess.run(command, check=True)
-    merged = {"issue": 867, "kind": "branch", "commit": _commit(), "arms": {}}
+    else:
+        for text in args.arm:
+            _spawn_branch(args, text)
+    # `summary.json` collects every arm this directory has run, so single-arm invocations
+    # (the `march:100` convergence check) merge into the earlier arms' summary.
+    summary_path = args.out_dir / "summary.json"
+    merged = json.loads(summary_path.read_text()) if summary_path.exists() else {"issue": 867, "kind": "branch", "arms": {}}
+    merged["commit"] = _commit()
     for text in args.arm:
         label = river_substeps.parse_arm(text).label.replace(":", "-")
         merged["arms"][label] = json.loads((args.out_dir / f"{label}-summary.json").read_text())
-    (args.out_dir / "summary.json").write_text(json.dumps(merged, indent=1))
+    summary_path.write_text(json.dumps(merged, indent=1))
 
 
 def main() -> None:

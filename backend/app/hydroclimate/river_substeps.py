@@ -99,15 +99,17 @@ LOG: deque[dict] = deque(maxlen=64)
 
 def parse_arm(text: str) -> RiverSubstepArm:
     """`off`, `outlet-bound[:all]`, `uplift-bound[:all]` or `march:<substeps>`."""
-    name, _, option = text.strip().partition(":")
+    name, has_option, option = text.strip().partition(":")
     name = name.replace("_", "-")
-    if name == "off":
+    usage = f"use off, outlet-bound[:all], uplift-bound[:all] or march:<n>, not {text!r}"
+    # A mistyped spelling must fail loudly: a preregistered run can't quietly become `off`.
+    if name == "off" and not has_option:
         return RiverSubstepArm()
-    if name == "march":
-        return RiverSubstepArm(mode="march", substeps=int(option or 1))
-    if name in ("outlet-bound", "uplift-bound"):
+    if name == "march" and option.isdigit():
+        return RiverSubstepArm(mode="march", substeps=int(option))
+    if name in ("outlet-bound", "uplift-bound") and (not has_option or option in TRIGGERS):
         return RiverSubstepArm(mode=name.replace("-", "_"), trigger=option or "threatened")
-    raise ValueError(f"unknown arm {text!r}; use off, outlet-bound[:all], uplift-bound[:all] or march:<n>")
+    raise ValueError(usage)
 
 
 def set_arm(arm: RiverSubstepArm) -> None:
@@ -232,10 +234,6 @@ class RiverMarch:
     extra_notch_m: np.ndarray
     substeps: int
     seconds: float
-    # Nodes whose flow target differs between the opening routing and the final slice.
-    rerouted_nodes: int
-    # Pits breached by the later slices, summed.
-    later_breached_pits: int
 
 
 def _reroute(world, hydro, elevation, channel, cover, notch, remaining_years, solved_water_m, areas):
@@ -381,6 +379,4 @@ def march_rivers(
         extra_notch_m=extra_notch,
         substeps=arm.substeps,
         seconds=seconds,
-        rerouted_nodes=rerouted,
-        later_breached_pits=later_breached,
     )

@@ -2681,8 +2681,9 @@ def compute_hydrology(
         )
         breach_carve_rate = breaching.bedrock_carve_rate_m_per_myr(craton_strength)
         # The #867 bound arms (off by default) widen the carving allowance of threatened
-        # outlets; see river_substeps.outlet_relief.
-        relief = river_substeps.outlet_relief(world, points, elevation, plates_in_order, is_ocean, years)
+        # outlets over the same span as the ordinary budget (`fill_years`, the bootstrap's
+        # history too); see river_substeps.outlet_relief.
+        relief = river_substeps.outlet_relief(world, points, elevation, plates_in_order, is_ocean, fill_years)
         breach = breaching.breach_depressions(
             elevation, is_ocean, neighbor_idx, prev_channel_depth,
             breach_carve_rate, fill_years,

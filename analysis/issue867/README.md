@@ -1,7 +1,7 @@
 # Issue #867: targeted river substeps for persistent valley incision
 
-**Status:** experiment set up and technically verified; the reference run and the branches
-have not been run. This page is the preregistration, the technical verification of the three
+**Status:** experiment set up, technically verified and peer reviewed (PR #868); the
+reference run and the branches have not been run. This page is the preregistration, the technical verification of the three
 arms, and the runbook for the agent that runs them. No model change is proposed.
 
 ## The question
@@ -28,7 +28,7 @@ unchanged; the unit tests pin that a one-slice march is bit-identical to the bas
 | Arm | Spelling | What it assumes | Where it acts |
 |---|---|---|---|
 | Baseline | `off` | the production model | — |
-| Outlet-preservation bound | `outlet-bound` | a *threatened outlet* (a pit whose water reached the ocean last step) may cut its least-climb route at 1 m/yr for the step, stopping at the cut the route needs | `breaching.OutletRelief`: the per-node carving limits and the summed-cost screen are raised for eligible pits; the route stays the ordinary least-climb path; the water gate still applies |
+| Outlet-preservation bound | `outlet-bound` | a *threatened outlet* (a pit whose water reached the ocean last step) may cut its least-climb route at 1 m/yr for the step, stopping at the cut the route needs | `breaching.OutletRelief`: the per-node carving limits and the summed-cost screen are raised for eligible pits; the route stays the ordinary least-climb path; the water gate still applies. The allowance is per node on the route, and at 100 kyr steps it is 100 km, so the binding constraint is the per-node notch ceiling (`BREACH_MAX_NOTCH_M`, 2000 m), not the rate: in effect every threatened pit with a finite-cost route and a passing water gate drains |
 | Outlet bound, ceiling | `outlet-bound:all` | every land pit is eligible | same; bounds what *any* incision rule could achieve |
 | Uplift-limited bound | `uplift-bound` | the same trigger, but each node's allowance is its rise since the last erosion pass (`channel_reference_elevation_m`): a river keeping pace with uplift | same mechanism, per-node allowance |
 | Simulation-driven march | `march:<n>` | the step's river incision and routing run in `n` slices; each slice re-breaches (with the time left in the step as its budget), rebuilds the depression hierarchy and flow directions on the terrain the earlier slices cut, re-routes the step's steady sources, and incises for its share of the step | `erosion.apply_erosion` takes the summed demand through its ordinary caps; `hydro.flow_target`/`discharge_m3_s` become the last slice's |
@@ -44,6 +44,14 @@ solve are computed once on the opening routing, as today; the water ledger close
 routing. A basin the march opens mid-step keeps its opening water until the next step's
 solve drains it (the one-step lag a breach already has). Re-solving lakes per slice is the
 broad step-integrated landscape solve of #297, out of this issue's scope.
+
+**Two choices inside the march** (from the PR #868 review) that the reading must allow for.
+Each later slice re-breaches with the *time left in the step* as its budget, not its own
+slice length, so the `march:100` versus `march:10` comparison is partly convergence of
+that choice and not only of routing frequency. And the step's drop cap is widened to the
+march's own slice-by-slice cut for the whole step's removal, so rain, weathering, glacier
+and seismic removal in a deepened valley can use headroom only the river slices earned
+(conservative in practice: each slice's cut was drop-capped on its own terrain).
 
 **Rock and water accounting.** The bounds only change which pits breach; notches are
 sub-cell relief as before. The march's cut is a demand that goes through the same
@@ -90,11 +98,15 @@ the branch is a continuation and not a perturbation (verified on the density-4 p
   evaporation, hypsometry and startup water (#856) instead.
 - If `outlet-bound:all` helps but `outlet-bound` does not, the lost outlets are not the
   mechanism; basins that never had an outlet are.
+- An `outlet-bound` effect is the effect of letting threatened outlets drain, not of a
+  1 m/yr rate (see the arms table): do not read it as a rate result. `uplift-bound` is the
+  rate-limited arm.
 - If `outlet-bound` helps and `uplift-bound` recovers most of it, a rate-limited rule tied to
   uplift is worth an implementation issue.
 - If the bounds help and `march:10` recovers a meaningful share, with `march:100` close to
   `march:10`, the simulation-driven route is viable and converging; if `march:100` differs a
-  lot from `march:10`, report the interval sensitivity and do not claim convergence.
+  lot from `march:10`, report the interval sensitivity and do not claim convergence (the
+  remaining-time breach budget above is one reason the two can differ).
 - "Materially" is preregistered as a 10% change in whole-world liquid lake volume at
   matched age, with the direction stated; smaller effects are reported as such.
 

@@ -245,7 +245,10 @@ discharge, channel-width growth, deposition, geology or lake silt.
     from the previous routing resampled onto this step's nodes) may cut its least-climb route
     at 1 m/yr for the step, stopping at the cut the route needs (`breaching.OutletRelief`:
     the per-node limits and the summed-cost screen are raised for eligible pits only, the
-    route stays the ordinary least-climb path, and the water gate still applies). `:all`
+    route stays the ordinary least-climb path, and the water gate still applies; the cost
+    screen charges only the climb beyond each node's allowance, with the allowance taking
+    the node's loose cover first). At 100 kyr steps the allowance exceeds the per-node notch
+    ceiling, so this arm in effect lets every threatened pit with a finite route drain. `:all`
     makes every land pit eligible, which bounds what any incision rule could do.
   - *uplift bound*: the same trigger, with each node's allowance equal to its rise since the
     last erosion pass (`channel_reference_elevation_m`): a river that keeps pace with uplift.

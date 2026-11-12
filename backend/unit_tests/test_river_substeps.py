@@ -47,8 +47,9 @@ def test_parse_arm_round_trips_every_spelling():
         arm = river_substeps.parse_arm(text)
         assert (arm.mode, arm.trigger, arm.substeps) == (mode, trigger, substeps)
         assert river_substeps.parse_arm(arm.label) == arm
-    with pytest.raises(ValueError):
-        river_substeps.parse_arm("faster-rivers")
+    for mistyped in ("faster-rivers", "off:all", "march:", "march:ten", "outlet-bound:soon"):
+        with pytest.raises(ValueError):
+            river_substeps.parse_arm(mistyped)
     with pytest.raises(ValueError):
         river_substeps.RiverSubstepArm(mode="march", substeps=0)
 
@@ -126,6 +127,7 @@ def test_the_march_runs_logs_and_keeps_the_ledgers_closed():
     entry = river_substeps.LOG[-1]
     assert entry["mode"] == "march" and entry["substeps"] == 3
     assert entry["demand_sum_m"] > 0.0 and entry["seconds"] > 0.0
+    assert entry["rerouted_nodes"] > 0  # the later slices found a different routing
     fields = world.hydrology_cache
     land = fields.land_water_ledger
     residual = hydrology.full_land_water_residual_m3(land, fields.glacier_water_ledger)
@@ -138,12 +140,16 @@ def test_the_march_runs_logs_and_keeps_the_ledgers_closed():
 
 
 def test_the_bound_arms_run_through_a_real_step_and_log_their_pits():
-    for arm in ("outlet-bound", "uplift-bound"):
+    for arm in ("outlet-bound", "outlet-bound:all", "uplift-bound"):
         world = _run(arm, steps=2)
         entry = river_substeps.LOG[-1]
-        assert entry["mode"] == arm.replace("-", "_")
+        assert entry["mode"] == arm.split(":")[0].replace("-", "_")
         assert 0 <= entry["relieved_pits"] <= entry["breached_pits"] <= entry["pits"]
         assert 0 <= entry["eligible_pits"] <= entry["pits"]
+        if arm == "outlet-bound:all":
+            # The allowance opened pits the ordinary rule refused (the threatened trigger
+            # alone finds its first on this tiny world only at step 4).
+            assert entry["relieved_pits"] > 0
         fields = world.hydrology_cache
         land = fields.land_water_ledger
         assert abs(hydrology.full_land_water_residual_m3(land, fields.glacier_water_ledger)) <= 1e-9 * (land.rain_m3 + land.meltwater_m3)

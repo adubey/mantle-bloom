@@ -228,6 +228,12 @@ def _cut_time_myr(depth_m: np.ndarray, cover_m: np.ndarray, bedrock_rate: np.nda
     return in_cover / BREACH_WEAK_CARVE_M_PER_MYR + (depth_m - in_cover) / bedrock_rate
 
 
+def _cut_time_scalar(depth_m: float, cover_m: float, bedrock_rate: float) -> float:
+    """`_cut_time_myr` for one cell, for the per-node path walks."""
+    in_cover = min(max(depth_m, 0.0), cover_m)
+    return in_cover / BREACH_WEAK_CARVE_M_PER_MYR + (max(depth_m, 0.0) - in_cover) / bedrock_rate
+
+
 def _carve_limit_m(cover_m: np.ndarray, bedrock_rate: np.ndarray, dt_myr: float) -> np.ndarray:
     """How deep a river can cut each cell in `dt_myr`: through its cover at the weak-rock rate,
     then into bedrock at its own rate for the time left. Capped at BREACH_MAX_NOTCH_M."""
@@ -476,8 +482,11 @@ def _walk_relieved_paths(
     beyond each node's allowance, in metres of reference-strength rock. It charges the same
     hop-to-hop climbs `least_climb_to_ocean` charges (a descent past the rim costs nothing
     there either), less each node's allowance, so the summed-cost screen counts only what the
-    allowance doesn't cover. The drain test itself is unchanged: every node's cut down to the
-    arriving level must fit its (raised) limit."""
+    allowance doesn't cover. The allowance cuts from the top, so it uses up the node's loose
+    cover first and the residual is `_cut_time_myr(climb) - _cut_time_myr(allowance)`, not the
+    residual depth priced as if the cover were still there (PR #868 review). The drain test
+    itself is unchanged: every node's cut down to the arriving level must fit its (raised)
+    limit."""
     passage_list = passage.tolist()
     next_list = next_hop.tolist()
     max_cut_list = max_cut.tolist()
@@ -497,10 +506,13 @@ def _walk_relieved_paths(
             rim = max(rim, here)
             if here - level > max_cut_list[node] + 1e-9:
                 ok = False
-            beyond = max(here - previous - extra_list[node], 0.0)
-            if beyond > 0.0:
-                in_cover = min(beyond, cover_list[node])
-                cost += (in_cover / BREACH_WEAK_CARVE_M_PER_MYR + (beyond - in_cover) / rate_list[node]) * BREACH_REFERENCE_CARVE_M_PER_MYR
+            climb = max(here - previous, 0.0)
+            covered = min(extra_list[node], climb)
+            if climb > covered:
+                cost += (
+                    _cut_time_scalar(climb, cover_list[node], rate_list[node])
+                    - _cut_time_scalar(covered, cover_list[node], rate_list[node])
+                ) * BREACH_REFERENCE_CARVE_M_PER_MYR
             level = min(level, here)
             previous = here
             node = next_list[node]

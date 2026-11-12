@@ -512,6 +512,28 @@ def test_the_uplift_allowance_covers_only_the_cut_within_each_nodes_uplift():
     assert wrong_node.breached_pits.tolist() == []
 
 
+def test_the_allowance_uses_up_the_cover_first_and_the_residual_is_priced_on_bedrock():
+    # A 120 m rim climb through 100 m of loose cover, against a 30 m reference budget (300 m/Myr
+    # x 100 kyr). Cutting the whole climb takes 100/1000 + 20/300 Myr, so a 20 m allowance,
+    # taken from the top where the cover is, leaves 44 reference metres to pay: over budget,
+    # the pit stays closed. Pricing the residual 100 m as if it were all still cover would
+    # charge 30 m and breach it (PR #868 review). An 80 m allowance leaves 26 m and breaches.
+    elevation = np.array([130.0, 0.0, 120.0, 10.0, -50.0])
+    is_ocean = np.array([False, False, False, False, True])
+    cover = np.array([0.0, 0.0, 100.0, 0.0, 0.0])
+    eligible = [False, True, False, False, False]
+    short = breaching.breach_depressions(
+        elevation, is_ocean, _chain(5), np.zeros(5), _ordinary_rate(5), years=100_000,
+        mobile_cover_m=cover, relief=_relief(eligible, [0.0, 0.0, 20.0, 0.0, 0.0]),
+    )
+    assert short.breached_pits.tolist() == [] and short.closed_pits.tolist() == [1]
+    enough = breaching.breach_depressions(
+        elevation, is_ocean, _chain(5), np.zeros(5), _ordinary_rate(5), years=100_000,
+        mobile_cover_m=cover, relief=_relief(eligible, [0.0, 0.0, 80.0, 0.0, 0.0]),
+    )
+    assert enough.breached_pits.tolist() == [1] and enough.relieved_pits.tolist() == [1]
+
+
 def test_a_pit_breached_by_the_ordinary_rule_is_not_counted_as_relieved():
     elevation = np.array([30.0, 0.0, 20.0, 10.0, -50.0])
     is_ocean = np.array([False, False, False, False, True])
