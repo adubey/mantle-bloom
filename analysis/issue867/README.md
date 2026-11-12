@@ -81,36 +81,52 @@ wind, 100 kyr steps. Record the commit, controls and node count (the driver writ
 **Primary measures**, per step and compared at matched ages: visible lake area and liquid
 volume, sea-tier area and volume, the number of bodies over 10,000 km², endorheic roots and
 their area; the exporting land area and old-outlet retention (the share of last step's
-exporting area that still exports); channel depth (land mean, standard deviation, p99), notch sum, the
+exporting area that still exports); channel depth (land mean, standard deviation, p99, max), notch sum, the
 arm's own log (eligible, breached and relieved pits; march slices, cost and rerouted nodes).
 
 **Channel depth** (land nodes, mean over the 50 steps of each branch; the standard deviation is
 across land nodes within a step, then averaged). From 25 Myr:
 
-| Arm | Mean depth (m) | Std dev (m) | p99 (m) | Notch sum (m) |
-|---|---|---|---|---|
-| `off` | 0.677 | 22.5 | 0.99 | 9,430 |
-| `outlet-bound` | 0.702 | 22.0 | 2.31 | 424,294 |
-| `outlet-bound:all` | 0.690 | 21.3 | 2.47 | 650,877 |
-| `uplift-bound` | 0.678 | 22.5 | 1.00 | 9,631 |
-| `march:10` | 0.683 | 22.8 | 0.94 | 18,218 |
-| `march:100` | 0.684 | 22.8 | 0.97 | 58,517 |
+| Arm | Mean depth (m) | Std dev (m) | p99 (m) | Max (m) | Notch sum (m) |
+|---|---|---|---|---|---|
+| `off` | 0.677 | 22.5 | 0.99 | 2,000 | 9,430 |
+| `outlet-bound` | 0.702 | 22.0 | 2.31 | 2,000 | 424,294 |
+| `outlet-bound:all` | 0.690 | 21.3 | 2.47 | 2,000 | 650,877 |
+| `uplift-bound` | 0.678 | 22.5 | 1.00 | 2,000 | 9,631 |
+| `march:10` | 0.683 | 22.8 | 0.94 | 2,000 | 18,218 |
+| `march:100` | 0.684 | 22.8 | 0.97 | 2,000 | 58,517 |
 
 From 5 Myr:
 
-| Arm | Mean depth (m) | Std dev (m) | p99 (m) | Notch sum (m) |
-|---|---|---|---|---|
-| `off` | 0.583 | 17.3 | 1.08 | 17,904 |
-| `outlet-bound` | 0.594 | 16.3 | 2.93 | 732,476 |
-| `outlet-bound:all` | 0.632 | 16.2 | 3.94 | 1,882,381 |
-| `uplift-bound` | 0.583 | 17.2 | 1.10 | 17,921 |
+| Arm | Mean depth (m) | Std dev (m) | p99 (m) | Max (m) | Notch sum (m) |
+|---|---|---|---|---|---|
+| `off` | 0.583 | 17.3 | 1.08 | 2,000 | 17,904 |
+| `outlet-bound` | 0.594 | 16.3 | 2.93 | 2,000 | 732,476 |
+| `outlet-bound:all` | 0.632 | 16.2 | 3.94 | 2,000 | 1,882,381 |
+| `uplift-bound` | 0.583 | 17.2 | 1.10 | 2,000 | 17,921 |
 
 The standard deviation (16 to 23 m) is far above the mean (0.6 to 0.7 m) and the p99 (about 1 to
-4 m): a few nodes at the 2000 m per-node notch ceiling dominate it, in every arm including `off`.
+4 m): a few nodes at the 2000 m channel-depth ceiling dominate it, in every arm including `off` (max 2000 m everywhere).
 Read it as a tail indicator; the mean and p99 describe the typical channel. Only the outlet bounds
 deepen anything: their p99 rises from 1 m to 2.3 to 3.9 m and their notch sum 40 to 100 fold,
 at a few hundred to a few thousand cut nodes. `uplift-bound` and the march arms leave mean depth
 and p99 within 0.01 m of `off`.
+
+**Raised ceiling** (25 Myr, 5 Myr, mean over 50 steps; `--depth-cap-m 20000` lifts both
+`BREACH_MAX_NOTCH_M` and `MAX_CHANNEL_DEPTH_M` from 2000 m for the process):
+
+| Arm | Lake volume, 2000 m cap | Lake volume, 20,000 m cap | Lake area (million km²), 2000 / 20,000 m | Notch sum (m), 2000 / 20,000 m | Max depth (m), 2000 / 20,000 m |
+|---|---|---|---|---|---|
+| `off` | 5.31 | 5.31 | 18.5 / 18.5 | 9,430 / 9,429 | 2,000 / 3,401 |
+| `outlet-bound` | 4.04 | 3.48 | 12.9 / 11.5 | 424,294 / 1,326,312 | 2,000 / 3,005 |
+| `outlet-bound:all` | 3.41 | 2.65 | 10.6 / 9.4 | 650,877 / 2,393,439 | 2,000 / 2,681 |
+
+Lifting the ceiling drains more: `outlet-bound` -34% against `off` (was -24%) and
+`outlet-bound:all` -50% (was -36%), so the 2000 m ceiling was limiting both bounds. The deepest
+channels reach about 3,000 m, well under 20,000 m. Baseline channels also hit the ceiling: the
+raised-cap `off` run diverges from the 2000 m run (no matching step hash) with a larger standard
+deviation, though its lake volume is unchanged (5.31). Lakes still hold 2.65 million km³ in the
+best case, about 15 times Earth's. These runs started from the 25 Myr checkpoint only.
 
 **Validity.** Every arm must keep the land-water ledger residual at or below 1e-9 of rain
 plus meltwater, the lake ledger residual at round-off, and `removed == deposited + terminal`
@@ -220,7 +236,7 @@ branch cannot be checked this way, because the reference stops at 25 Myr.
 **Reading.**
 
 - `outlet-bound:all` cuts lake volume by 36% at both ages, yet leaves 3.4 to 3.5 million km³,
-  about 19 times Earth's. Incision of any kind, with every pit allowed to drain, does not
+  about 19 times Earth's (2.65 million, about 15 times, with the ceiling raised to 20,000 m). Incision of any kind, with every pit allowed to drain, does not
   remove the inland water. The remainder is a water-balance or startup-water question (#856).
 - `outlet-bound` (threatened outlets only) takes off 17 to 24%: lost outlets are part of the
   mechanism, but a small part. This is the effect of letting them drain, not of a rate.
@@ -231,9 +247,12 @@ branch cannot be checked this way, because the reference stops at 25 Myr.
   Lake volume also keeps rising during all branches.
 - The march costs 7.5 s per step at 10 slices and 27 s at 100, against 5.6 s.
 
-**Recommendation.** Redirect to the water balance (#856: startup water, evaporation,
-hypsometry) rather than a river-incision rule. Not run: the glacier march (kept off, so glacier
-carving is untested), and branches from 5 Myr for the march arms.
+**Recommendation.** Lakes stay 15 to 19 times Earth's even when every pit may drain and the
+2000 m ceiling is lifted, so incision alone does not fix them: look at the water balance (#856:
+startup water, evaporation, hypsometry) first. The ceiling is worth its own look, though: it
+limited both bounds, and the baseline's own channels reach 3,400 m when it is lifted. Not run:
+the glacier march (kept off, so glacier carving is untested), the march and `uplift-bound` arms
+at the raised ceiling, and the raised ceiling from 5 Myr.
 
 ## Suggested changes to the design
 

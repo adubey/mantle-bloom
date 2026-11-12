@@ -60,7 +60,7 @@ from lake_body_tracking import components  # noqa: E402
 
 from app import continental_ledger, persistence, plates, render_image, surface_parity  # noqa: E402
 from app import world as world_mod  # noqa: E402
-from app.hydroclimate import hydrology, lakes, river_substeps  # noqa: E402
+from app.hydroclimate import breaching, erosion, hydrology, lakes, river_substeps  # noqa: E402
 
 M3_PER_KM3 = 1e9
 LARGE_BODY_KM2 = 10_000.0
@@ -176,6 +176,7 @@ def _channel_metrics(world) -> dict:
     return {
         "channel_depth_land_mean_m": float(channel[land].mean()) if land.any() else 0.0,
         "channel_depth_p99_m": float(np.percentile(channel[land], 99)) if land.any() else 0.0,
+        "channel_depth_max_m": float(channel.max()) if len(channel) else 0.0,
         "channel_depth_land_std_m": float(channel[land].std()) if land.any() else 0.0,
         "channel_volume_km3": float(np.dot(channel, area) / M3_PER_KM3),
         "notch_sum_m": float(notch.sum()),
@@ -316,14 +317,30 @@ def cmd_reference(args) -> None:
     run.run()
 
 
+def _branch_label(args, text: str) -> str:
+    """The arm's label, with the raised ceiling appended when `--depth-cap-m` is set."""
+    label = river_substeps.parse_arm(text).label.replace(":", "-")
+    return f"{label}-cap{args.depth_cap_m:g}" if args.depth_cap_m else label
+
+
+def _raise_depth_cap(cap_m: float) -> None:
+    """Lift the per-node notch and channel-depth ceilings (2000 m in production) for this
+    process. Both are plain module constants read at call time, so patching them is enough."""
+    breaching.BREACH_MAX_NOTCH_M = cap_m
+    erosion.MAX_CHANNEL_DEPTH_M = cap_m
+
+
 def _branch_one(args, text: str) -> None:
     """One arm from the checkpoint, in this process; writes `<label>-summary.json`."""
     arm = river_substeps.parse_arm(text)
-    label = arm.label.replace(":", "-")
+    label = _branch_label(args, text)
+    if args.depth_cap_m:
+        _raise_depth_cap(args.depth_cap_m)
     summary = _summary(args, "branch", f"{label}-summary.json")
     data = args.checkpoint.read_bytes()
     summary["source"] = {"save": str(args.checkpoint), "sha256": hashlib.sha256(data).hexdigest()}
     summary["arm"] = arm.label
+    summary["depth_cap_m"] = args.depth_cap_m or breaching.BREACH_MAX_NOTCH_M
     river_substeps.set_arm(arm)
     try:
         world = persistence.load_world_bytes(data)
@@ -338,6 +355,7 @@ def _spawn_branch(args, text: str) -> None:
     command = [sys.executable, str(Path(__file__).resolve()), "branch", str(args.checkpoint), "--arm", text]
     command += ["--myr", str(args.myr), "--step-years", str(args.step_years), "--checkpoint-myr", str(args.checkpoint_myr)]
     command += ["--out-dir", str(args.out_dir), "--glacier-march", args.glacier_march] + (["--exact"] if args.exact else [])
+    command += ["--depth-cap-m", str(args.depth_cap_m)] if args.depth_cap_m else []
     print(json.dumps({"spawn": text}), flush=True)
     subprocess.run(command, check=True)
 
@@ -359,7 +377,7 @@ def cmd_branch(args) -> None:
     merged = json.loads(summary_path.read_text()) if summary_path.exists() else {"issue": 867, "kind": "branch", "arms": {}}
     merged["commit"] = _commit()
     for text in args.arm:
-        label = river_substeps.parse_arm(text).label.replace(":", "-")
+        label = _branch_label(args, text)
         merged["arms"][label] = json.loads((args.out_dir / f"{label}-summary.json").read_text())
     summary_path.write_text(json.dumps(merged, indent=1))
 
@@ -374,6 +392,7 @@ def main() -> None:
     _common_arguments(ref)
     branch = sub.add_parser("branch", help="run arms from one checkpoint")
     branch.add_argument("checkpoint", type=Path)
+    branch.add_argument("--depth-cap-m", type=float, default=0.0, help="raise the 2000 m per-node notch and channel-depth ceilings to this (0 keeps production's); the label gains `-cap<m>`")
     branch.add_argument("--arm", action="append", required=True, help="off, outlet-bound[:all], uplift-bound[:all] or march:<substeps>; repeat")
     _common_arguments(branch)
     args = parser.parse_args()
