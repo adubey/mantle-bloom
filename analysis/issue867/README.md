@@ -1,7 +1,6 @@
 # Issue #867: targeted river substeps for persistent valley incision
 
-**Status:** experiment set up, technically verified and peer reviewed (PR #868); the
-reference run and the branches have not been run. This page is the preregistration, the technical verification of the three
+**Status:** experiment run (see Results); set up, technically verified and peer reviewed in PR #868. This page is the preregistration, the technical verification of the three
 arms, and the runbook for the agent that runs them. No model change is proposed.
 
 ## The question
@@ -151,6 +150,62 @@ holds or drains; if it is in place at 5 Myr, branch from the 5 Myr checkpoint as
 Second, at this age the uplift bound changes nothing: the rise since the last erosion pass
 on the route nodes is below what the closed pits need. That is the arm doing what it says;
 it may matter more once mountains are growing.
+
+## Results
+
+Commit 22a56a65, seed 544349906, density 4.0, glacier march off, 100 kyr steps. Per-step series
+(preregistered measures, arm logs, hashes) are in `results.json`; saves and maps are in
+`~/mantle-bloom-captures/issue867/{reference,branch-25,branch-5}`.
+
+**Reference (0 to 25 Myr).** Lake volume (million km³) is 0.48 at 0.1 Myr, 4.25 at 1, 7.08 at 5
+(31 million km² of lake, one 10.9 million km² body), then 5.73, 6.93, 6.68 and 4.86 at 10, 15,
+20 and 25 Myr; Earth is 0.18. Old-outlet retention is 0.76 to 0.98, so most outlets persist. The
+excess is present from generation and never falls below about 4.9 million km³. Every step kept
+the land-water residual at or below 8e-13 and the rock residual at or below 2e-16.
+
+**Branches from 25 Myr** (5 Myr, mean over 50 steps; change is against `off`):
+
+| Arm | Lake volume (million km³) | Change | Lake area (million km²) | End volume | Retention | s/step | Peak RSS (GB) |
+|---|---|---|---|---|---|---|---|
+| `off` | 5.31 | | 18.5 | 6.59 | 0.915 | 5.6 | 2.62 |
+| `outlet-bound` | 4.04 | -24% | 12.9 | 5.11 | 0.894 | 5.6 | 2.87 |
+| `outlet-bound:all` | 3.41 | -36% | 10.6 | 4.54 | 0.887 | 5.5 | 2.71 |
+| `uplift-bound` | 5.37 | +1% | 18.5 | 6.65 | 0.916 | 5.6 | 2.57 |
+| `march:10` | 5.36 | +1% | 18.6 | 6.44 | 0.913 | 7.5 | 2.92 |
+| `march:100` | 5.35 | +1% | 18.4 | 6.39 | 0.910 | 27.4 | 2.68 |
+
+**Branches from 5 Myr** (mean over 50 steps; reference mean over the same window 5.47):
+
+| Arm | Lake volume (million km³) | Change | Lake area (million km²) | End volume |
+|---|---|---|---|---|
+| `off` | 5.47 | | 24.6 | 5.73 |
+| `outlet-bound` | 4.56 | -17% | 18.2 | 5.02 |
+| `outlet-bound:all` | 3.49 | -36% | 11.5 | 3.10 |
+| `uplift-bound` | 5.45 | 0% | 24.6 | 5.76 |
+
+**Validity.** Largest land-water residual 3.9e-11 (`off` from 25 Myr), lake-ledger residual
+1.5e-10, rock residual 3e-16, all within the preregistered limits. The 5 Myr `off` branch's first
+step has the same `state_hash` as the reference's step 51 (`43f20671af49`), as does
+`uplift-bound` (it relieves nothing there): the branch is a continuation. The 25 Myr `off`
+branch cannot be checked this way, because the reference stops at 25 Myr.
+
+**Reading.**
+
+- `outlet-bound:all` cuts lake volume by 36% at both ages, yet leaves 3.4 to 3.5 million km³,
+  about 19 times Earth's. Incision of any kind, with every pit allowed to drain, does not
+  remove the inland water. The remainder is a water-balance or startup-water question (#856).
+- `outlet-bound` (threatened outlets only) takes off 17 to 24%: lost outlets are part of the
+  mechanism, but a small part. This is the effect of letting them drain, not of a rate.
+- `uplift-bound` has no effect (it relieves no pit at either age): a rate tied to uplift is not
+  worth an implementation issue.
+- `march:10` and `march:100` are within 1% of `off`, and within 2% of each other. That is
+  convergence to a null effect, not evidence that the simulation-driven route recovers outlets.
+  Lake volume also keeps rising during all branches.
+- The march costs 7.5 s per step at 10 slices and 27 s at 100, against 5.6 s.
+
+**Recommendation.** Redirect to the water balance (#856: startup water, evaporation,
+hypsometry) rather than a river-incision rule. Not run: the glacier march (kept off, so glacier
+carving is untested), and branches from 5 Myr for the march arms.
 
 ## Suggested changes to the design
 
