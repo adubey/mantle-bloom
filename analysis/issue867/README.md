@@ -115,18 +115,21 @@ and p99 within 0.01 m of `off`.
 **Raised ceiling** (25 Myr, 5 Myr, mean over 50 steps; `--depth-cap-m 20000` lifts both
 `BREACH_MAX_NOTCH_M` and `MAX_CHANNEL_DEPTH_M` from 2000 m for the process):
 
-| Arm | Lake volume, 2000 m cap | Lake volume, 20,000 m cap | Lake area (million km²), 2000 / 20,000 m | Notch sum (m), 2000 / 20,000 m | Max depth (m), 2000 / 20,000 m |
-|---|---|---|---|---|---|
-| `off` | 5.31 | 5.31 | 18.5 / 18.5 | 9,430 / 9,429 | 2,000 / 3,401 |
-| `outlet-bound` | 4.04 | 3.48 | 12.9 / 11.5 | 424,294 / 1,326,312 | 2,000 / 3,005 |
-| `outlet-bound:all` | 3.41 | 2.65 | 10.6 / 9.4 | 650,877 / 2,393,439 | 2,000 / 2,681 |
+| Arm | Lake volume, 2000 m cap (vs `off`) | Lake volume, 20,000 m cap (vs `off`) | Lake area (million km²), 2000 / 20,000 m | Notch sum (m), 2000 / 20,000 m | Max depth (m), 2000 / 20,000 m | s/step at 20,000 m |
+|---|---|---|---|---|---|---|
+| `off` | 5.31 (+0%) | 5.31 (+0%) | 18.5 / 18.5 | 9,430 / 9,429 | 2,000 / 3,401 | 5.7 |
+| `outlet-bound` | 4.04 (-24%) | 3.48 (-34%) | 12.9 / 11.5 | 424,294 / 1,326,312 | 2,000 / 3,005 | 5.7 |
+| `outlet-bound:all` | 3.41 (-36%) | 2.65 (-50%) | 10.6 / 9.4 | 650,877 / 2,393,439 | 2,000 / 2,681 | 5.7 |
+| `uplift-bound` | 5.37 (+1%) | 5.37 (+1%) | 18.5 / 18.5 | 9,631 / 9,631 | 2,000 / 3,405 | 5.5 |
+| `march:10` | 5.36 (+1%) | 5.36 (+1%) | 18.6 / 18.6 | 18,218 / 18,740 | 2,000 / 3,630 | 7.6 |
+| `march:100` | 5.35 (+1%) | 5.35 (+1%) | 18.4 / 18.4 | 58,517 / 104,402 | 2,000 / 3,630 | 28.3 |
 
 Lifting the ceiling drains more: `outlet-bound` -34% against `off` (was -24%) and
 `outlet-bound:all` -50% (was -36%), so the 2000 m ceiling was limiting both bounds. The deepest
 channels reach about 3,000 m, well under 20,000 m. Baseline channels also hit the ceiling: the
 raised-cap `off` run diverges from the 2000 m run (no matching step hash) with a larger standard
 deviation, though its lake volume is unchanged (5.31). Lakes still hold 2.65 million km³ in the
-best case, about 15 times Earth's. These runs started from the 25 Myr checkpoint only.
+best case, about 15 times Earth's. The `uplift-bound` and march arms do not respond to the raised ceiling either (all within 1% of `off`, `march:10` and `march:100` within 1% of each other). These runs started from the 25 Myr checkpoint only.
 
 **Validity.** Every arm must keep the land-water ledger residual at or below 1e-9 of rain
 plus meltwater, the lake ledger residual at round-off, and `removed == deposited + terminal`
@@ -251,8 +254,7 @@ branch cannot be checked this way, because the reference stops at 25 Myr.
 2000 m ceiling is lifted, so incision alone does not fix them: look at the water balance (#856:
 startup water, evaporation, hypsometry) first. The ceiling is worth its own look, though: it
 limited both bounds, and the baseline's own channels reach 3,400 m when it is lifted. Not run:
-the glacier march (kept off, so glacier carving is untested), the march and `uplift-bound` arms
-at the raised ceiling, and the raised ceiling from 5 Myr.
+the glacier march (kept off, so glacier carving is untested), and the raised ceiling from 5 Myr.
 
 ## Suggested changes to the design
 
