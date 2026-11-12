@@ -54,6 +54,22 @@ def test_parse_arm_round_trips_every_spelling():
         river_substeps.RiverSubstepArm(mode="march", substeps=0)
 
 
+def test_environment_selects_the_arm_and_the_depth_cap():
+    """The full app reads its arm and ceiling from the environment at import; unset is the
+    production model, and a bad value fails loudly rather than running the baseline."""
+    assert river_substeps.arm_from_env({}).mode == "off"
+    assert river_substeps.arm_from_env({river_substeps.ENV_ARM: " "}).mode == "off"
+    arm = river_substeps.arm_from_env({river_substeps.ENV_ARM: "outlet-bound:all"})
+    assert (arm.mode, arm.trigger) == ("outlet_bound", "all")
+    with pytest.raises(ValueError):
+        river_substeps.arm_from_env({river_substeps.ENV_ARM: "bogus"})
+    assert river_substeps.depth_cap_m(2000.0, {}) == 2000.0
+    assert river_substeps.depth_cap_m(2000.0, {river_substeps.ENV_DEPTH_CAP_M: "20000"}) == 20000.0
+    for bad in ("0", "-5", "abc", "nan", "inf"):
+        with pytest.raises(ValueError):
+            river_substeps.depth_cap_m(2000.0, {river_substeps.ENV_DEPTH_CAP_M: bad})
+
+
 def test_exported_to_ocean_follows_chains_and_rejects_sinks_and_cycles():
     # 0 -> 1 -> 2 (ocean); 3 -> 4 (land sink); 5 <-> 6 (a cycle); 2 is the ocean itself.
     flow_target = np.array([1, 2, -1, 4, -1, 6, 5])

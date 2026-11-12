@@ -59,6 +59,8 @@ import numpy as np
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import dijkstra
 
+from . import river_substeps
+
 # River incision rates into bedrock: roughly 10-100 m per 100 kyr, from strong to weak rock.
 # The reference rate is ordinary continental rock. Cratons are strong, and loose mobile cover
 # (sediment, lake silt, regolith: erosion.py's `mobile_cover_m`) is weak. A step of `dt` Myr
@@ -68,7 +70,7 @@ BREACH_STRONG_CARVE_M_PER_MYR = 100.0
 BREACH_WEAK_CARVE_M_PER_MYR = 1000.0
 # Same ceiling as erosion.MAX_CHANNEL_DEPTH_M, which caps every notch persisted into
 # channel_depth. It's repeated here because erosion.py imports hydrology.py, which imports this.
-BREACH_MAX_NOTCH_M = 2000.0
+BREACH_MAX_NOTCH_M = river_substeps.depth_cap_m(2000.0)  # #867: MANTLE_BLOOM_DEPTH_CAP_M
 # Water-balance gate (step 4 of the module docstring). Open-water (lake) evaporation is
 # roughly linear in mean annual temperature: about 0.3 m/yr at 0 C, 1.2 m/yr at 15 C, and
 # 1.8 m/yr at 25 C. Those are typical of the Caspian, the Great Basin and the Dead Sea.

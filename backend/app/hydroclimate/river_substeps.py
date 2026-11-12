@@ -28,13 +28,17 @@ The arms act through two hooks, both no-ops when `ARM.mode == "off"`:
 one-slice march is bit-identical to the baseline.
 
 The knobs live on this module (like `hydrology.MARCH_GLACIERS` and `ice_sheet.MARCH_COST`),
-not on `World`: saves stay unchanged and the UI never runs an arm. The driver
-`bin/debug/river_substep_arms.py` sets `ARM`, records every step's `LOG` entry, and writes
-the checkpoint saves and images. No model change is proposed here.
+not on `World`: saves stay unchanged. The driver `bin/debug/river_substep_arms.py` sets `ARM`,
+records every step's `LOG` entry, and writes the checkpoint saves and images. To run an arm in
+the full app, set `MANTLE_BLOOM_RIVER_ARM` (any spelling `parse_arm` reads) and optionally
+`MANTLE_BLOOM_DEPTH_CAP_M` (the per-node notch and channel-depth ceiling, 2000 m in production)
+before starting the server: both are read once at import, and unset means the production model.
+No model change is proposed here.
 """
 
 from __future__ import annotations
 
+import os
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -90,7 +94,32 @@ class RiverSubstepArm:
         return "off"
 
 
-ARM = RiverSubstepArm()
+ENV_ARM = "MANTLE_BLOOM_RIVER_ARM"
+ENV_DEPTH_CAP_M = "MANTLE_BLOOM_DEPTH_CAP_M"
+
+
+def arm_from_env(environ=None) -> RiverSubstepArm:
+    """The arm named by `MANTLE_BLOOM_RIVER_ARM`, or off when unset or empty. A bad spelling
+    raises at import: a server started for an experiment must not quietly run the baseline."""
+    text = (os.environ if environ is None else environ).get(ENV_ARM, "").strip()
+    return parse_arm(text) if text else RiverSubstepArm()
+
+
+def depth_cap_m(default: float, environ=None) -> float:
+    """The per-node notch and channel-depth ceiling: `default` unless
+    `MANTLE_BLOOM_DEPTH_CAP_M` sets it (metres, positive). The two ceilings
+    (`breaching.BREACH_MAX_NOTCH_M`, `erosion.MAX_CHANNEL_DEPTH_M`) read it once at import."""
+    text = (os.environ if environ is None else environ).get(ENV_DEPTH_CAP_M, "").strip()
+    if not text:
+        return default
+    try:
+        cap = float(text)
+    except ValueError:
+        cap = float("nan")
+    if not cap > 0.0 or cap == float("inf"):
+        raise ValueError(f"{ENV_DEPTH_CAP_M} must be a positive number of metres, not {text!r}")
+    return cap
+
 
 # One entry per hydrology/erosion step while an arm is on (the driver drains it). Bounded,
 # like `ice_sheet.MARCH_LOG`, so a long interactive session can't grow it without limit.
@@ -110,6 +139,9 @@ def parse_arm(text: str) -> RiverSubstepArm:
     if name in ("outlet-bound", "uplift-bound") and (not has_option or option in TRIGGERS):
         return RiverSubstepArm(mode=name.replace("-", "_"), trigger=option or "threatened")
     raise ValueError(usage)
+
+
+ARM = arm_from_env()
 
 
 def set_arm(arm: RiverSubstepArm) -> None:

@@ -237,7 +237,11 @@ discharge, channel-width growth, deposition, geology or lake silt.
   <a id="river-substep-arms"></a>
   **Experimental river-substep arms (`river_substeps.py`, issue #867).** Off by default, and
   not a model change: `river_substeps.ARM` is a module knob (like `MARCH_GLACIERS`) that the
-  driver `bin/debug/river_substep_arms.py` sets for one process. The exploration asks whether
+  driver `bin/debug/river_substep_arms.py` sets for one process. To run an arm in the full app, set
+  `MANTLE_BLOOM_RIVER_ARM` (for example `outlet-bound`) and optionally `MANTLE_BLOOM_DEPTH_CAP_M`
+  (metres; lifts `breaching.BREACH_MAX_NOTCH_M` and `erosion.MAX_CHANNEL_DEPTH_M` from 2000)
+  before `./bin/restart.sh`; both are read once at import, unset means the production model and a
+  bad value raises. The exploration asks whether
   rivers need intermediate chances to incise and reroute inside a 100 kyr step, after #866
   found that lost outlets needed a median 81 m cut while channels on the old route grew 0 m.
   Three arms form an assumption ladder, run from one checkpoint with the same tectonics:

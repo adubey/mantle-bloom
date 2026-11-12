@@ -163,7 +163,7 @@ RIVER_SLOPE_EXPONENT = 1.0
 # re-derivation.
 CHANNEL_EROSION_BOOST = 0.6
 CHANNEL_BOOST_REFERENCE_M = 200.0
-MAX_CHANNEL_DEPTH_M = 2000.0
+MAX_CHANNEL_DEPTH_M = river_substeps.depth_cap_m(2000.0)  # #867: MANTLE_BLOOM_DEPTH_CAP_M
 
 # Channel width is a mantle-bloom-original addition. "Larger discharges make a channel larger":
 # standard hydraulic-geometry scaling (width ~ discharge^b, b commonly observed near 0.5 for
