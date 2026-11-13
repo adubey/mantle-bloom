@@ -102,7 +102,9 @@ in this order:
        balance.
    - **Diagnosis gates:** if the cause isn't confirmed, a measurement phase comes first. Say
      what will be measured and which outcome leads to which fix. Fixes that depend on it
-     are chosen only after the gate, and the RFC is updated with the result.
+     are chosen only after the gate, and the RFC is updated with the result. Every gate
+     that runs a time-stepped simulation must state its step size and report the result at
+     at least one other step size (or state why not).
    - **Rough runtime cost** per step, and **save compatibility** (new pickled state, and
      how old saves load).
    - **Knobs:** each with its starting value, the source of that value (a citation or
@@ -123,7 +125,8 @@ in this order:
    standing in for depletion, for example), and how each will be validated.
 7. **Acceptance criteria:** a checklist of measurable outcomes: replay metrics with
    thresholds on named seeds, unit tests, ledger closure, runtime and save-size budgets,
-   old saves loading. Put the diagnosis gates first.
+   old saves loading. Put the diagnosis gates first, and for any gate running a stepped
+   simulation, name its step size and a second step size for sensitivity (or state why not).
 8. **Falsification criteria:** observations that would show the RFC's premise or
    mechanism is wrong, and what follows from each (reject, revise, or switch to an
    alternative). They differ from acceptance criteria: acceptance says the change works,

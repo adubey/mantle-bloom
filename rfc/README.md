@@ -114,6 +114,9 @@ RFC proposals are reviewed with
    work is not acceptance. Any agent may ask, but only the owner decides. Set the status to
    Accepted and create or update the tracking issue immediately, listing diagnosis gates
    and planned implementation steps. Run each gate next and record its result in the RFC.
+   Every gate that runs a time-stepped simulation must state its step size and report its
+   result at least one other step size (or state why not, e.g., when a fixed schedule is
+   required or a second step size is not comparable).
    If evidence challenges an accepted RFC, revise it with
    [`edit-rfc`](../.agents/skills/edit-rfc/SKILL.md). It stays Accepted, and the owner's merge
    of the revision PR is their decision on the gate or criteria changes it sets out.
