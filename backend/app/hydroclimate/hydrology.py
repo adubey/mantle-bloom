@@ -99,7 +99,7 @@ from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 from .. import cratons, geometry, healpix_grid, trace
-from . import breaching, lakes
+from . import breaching, lakes, river_substeps
 from ..elevation_lines import DEFAULT_NODE_DENSITY, PLANET_RADIUS_KM, line_spacing_rad
 from ..plates import (
     Plate,
@@ -309,6 +309,9 @@ _RIVER_REACH_READOUTS = (
     "river_water_inflow_m3", "river_water_outflow_m3", "river_water_routed_m3",
     "river_water_evaporation_m3", "river_water_residual_m3", "river_water_initial_m3",
 )
+# Step-transient inputs the #867 river march re-routes, set on HydrologyFields as plain
+# attributes (never saved; see its `__getstate__` comment).
+_MARCH_READOUTS = ("river_source_m3_per_yr", "river_transit_loss", "breach_water_balance", "breach_carve_rate")
 
 
 @dataclass
@@ -451,6 +454,12 @@ class HydrologyFields:
     river_water_evaporation_m3: np.ndarray | None = None
     river_water_residual_m3: np.ndarray | None = None
     river_water_initial_m3: np.ndarray | None = None
+    # Not fields: `compute_hydrology` also sets the `_MARCH_READOUTS` attributes (the step's
+    # steady land water sources, their transit loss, the breach gate's water balance and
+    # bedrock rates) for the #867 river march (`river_substeps.march_rivers`), which re-routes
+    # them on the terrain its slices cut. Plain attributes, like `_spill_path_cache`, so
+    # neither a pickle nor a v5 save carries them; every step's own `compute_hydrology`
+    # sets them before erosion asks for the march, so a loaded cache never needs them.
 
     def __getstate__(self) -> dict:
         # The spill-path drawing cache (`_spill_path_cache`) is rebuilt on first use, so a save
@@ -459,7 +468,7 @@ class HydrologyFields:
         state.pop("_spill_path_cache", None)
         state.pop("lake_solve_trace", None)
         state.pop("lake_trace_node_ids", None)
-        for key in _RIVER_REACH_READOUTS:
+        for key in _RIVER_REACH_READOUTS + _MARCH_READOUTS:
             state.pop(key, None)
         return state
 
@@ -2656,24 +2665,34 @@ def compute_hydrology(
     wet_precip_m3 = wet_full_mm / 1000.0 * areas
     breach = None
     interface_pass = None
+    breach_water = None
+    breach_carve_rate = None
     if BREACH_DEPRESSIONS_ENABLED:
         craton_strength = cratons.strength(np.concatenate([p.collect("craton_crust_m") for p in plates_in_order]))
         mobile_cover = np.concatenate([p.collect("mobile_cover_m") for p in plates_in_order])
         # The gate sees the same water budget the lakes are balanced with below, as far as it
         # can before routing: liquid precipitation, and the same per-node river losses.
+        breach_water = breaching.WaterBalance(
+            dry_rain_intensity_mm, temperature_at_nodes, areas,
+            loss_fraction=dry_transit_loss, dry_fraction=dry_fraction,
+            direct_supply_m3_per_yr=wet_precip_m3,
+            lake_evaporation_m_per_yr=lake_open_evaporation_m_per_yr,
+            lake_sublimation_m_per_yr=lake_sublimation_m_per_yr,
+        )
+        breach_carve_rate = breaching.bedrock_carve_rate_m_per_myr(craton_strength)
+        # The #867 bound arms (off by default) widen the carving allowance of threatened
+        # outlets over the same span as the ordinary budget (`fill_years`, the bootstrap's
+        # history too); see river_substeps.outlet_relief.
+        relief = river_substeps.outlet_relief(world, points, elevation, plates_in_order, is_ocean, fill_years)
         breach = breaching.breach_depressions(
             elevation, is_ocean, neighbor_idx, prev_channel_depth,
-            breaching.bedrock_carve_rate_m_per_myr(craton_strength), fill_years,
-            water=breaching.WaterBalance(
-                dry_rain_intensity_mm, temperature_at_nodes, areas,
-                loss_fraction=dry_transit_loss, dry_fraction=dry_fraction,
-                direct_supply_m3_per_yr=wet_precip_m3,
-                lake_evaporation_m_per_yr=lake_open_evaporation_m_per_yr,
-                lake_sublimation_m_per_yr=lake_sublimation_m_per_yr,
-            ),
+            breach_carve_rate, fill_years,
+            water=breach_water,
             mobile_cover_m=mobile_cover,
             prior_notch_m=collect_all_breach_notch_depth(plates_in_order),
+            relief=relief,
         )
+        river_substeps.note_breach(relief, breach, elevation, is_ocean, neighbor_idx)
         interface_pass = breaching.interface_pass_elevation(breach.passage_m, neighbor_idx)
     forest = lakes.build_lake_hierarchy(elevation, is_ocean, neighbor_idx, interface_pass_elevation=interface_pass)
     # Partial-cell flooding (issue #297): lake_depth is each cell's mean water depth over its
@@ -2865,6 +2884,9 @@ def compute_hydrology(
     steady_overflow_through, _ = route_downstream(
         elevation, is_ocean, flow_target, overflow_source, loss_fraction=transit_loss
     )
+    # The steady sources the #867 river march re-routes on its cut terrain (see
+    # HydrologyFields.river_source_m3_per_yr); the march reads them off the cache below.
+    march_source_m3_per_yr = dry_runoff_m3 + meltwater_source_m3 + overflow_source
     # Exported overflow is river water too, so an outlet river holds its share of `V = Q tau`.
     # It is a separate reservoir pass because lake supply had to be settled before the lake
     # solve produced it; the reservoir law is linear in inflow, so the two passes add.
@@ -2975,6 +2997,10 @@ def compute_hydrology(
     # than members of the river routing graph. Expose mouth discharge there for shelf geology;
     # river networks themselves still report their last land node.
     fields.discharge_m3_s = np.where(is_ocean, settled_m3, through_m3) / SECONDS_PER_YEAR
+    fields.river_source_m3_per_yr = march_source_m3_per_yr
+    fields.river_transit_loss = transit_loss
+    fields.breach_water_balance = breach_water
+    fields.breach_carve_rate = breach_carve_rate
     fields.breach_surge = breach_surge
     fields.breach_surge_accum = breach_surge_accum
     fields.lake_external_supply_m3_per_yr = external_supply

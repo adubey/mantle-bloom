@@ -74,7 +74,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from .. import continental_ledger, cratons, faults, geometry, lithosphere, trace
-from . import biomes, climate, hydrology, mobile_cover
+from . import biomes, climate, hydrology, mobile_cover, river_substeps
 from ..elevation_lines import (
     ELEV_CHANGE_COASTAL_LEVELING,
     ELEV_CHANGE_COLLISION,
@@ -163,7 +163,7 @@ RIVER_SLOPE_EXPONENT = 1.0
 # re-derivation.
 CHANNEL_EROSION_BOOST = 0.6
 CHANNEL_BOOST_REFERENCE_M = 200.0
-MAX_CHANNEL_DEPTH_M = 2000.0
+MAX_CHANNEL_DEPTH_M = river_substeps.depth_cap_m(2000.0)  # #867: MANTLE_BLOOM_DEPTH_CAP_M
 
 # Channel width is a mantle-bloom-original addition. "Larger discharges make a channel larger":
 # standard hydraulic-geometry scaling (width ~ discharge^b, b commonly observed near 0.5 for
@@ -1979,10 +1979,6 @@ def apply_erosion(
     # World's field group). Applied right where each term is formed so every downstream cap/
     # split/isostasy step just sees a scaled amount and stays self-consistent.
     rain = RAIN_EROSION_COEFFICIENT * world.rain_erosion_multiplier * slope * (precipitation_mm / 1000.0) * dt_myr
-    river = _river_erosion_amount(
-        discharge_m3_s, breach_surge_accum, slope, prior_channel_depth,
-        world.river_erosion_multiplier, dt_myr,
-    )
     humidity_norm = np.clip(humidity / HUMIDITY_REFERENCE_G_KG, 0.0, 1.0)
     relief_factor = np.clip(slope / WEATHERING_RELIEF_REFERENCE_SLOPE, 0.0, 1.0)
     weathering = WEATHERING_COEFFICIENT * world.wind_erosion_multiplier * wind_speed * humidity_norm * relief_factor * dt_myr
@@ -2006,12 +2002,6 @@ def apply_erosion(
     # Direct earthquake-driven landsliding burst around each recent epicentre (see
     # EARTHQUAKE_EROSION_* and faults.Earthquake). No-op when nothing has ruptured recently.
     seismic = seismic * _earthquake_erosion_multiplier(world, points)
-    # Zeroed over ocean nodes (elevation <= sea level, the same convention climate.py/plates.py
-    # use everywhere else): every source here is a subaerial process. The sea floor and the
-    # shoreline get their own erosion separately, below (submarine + coastal erosion -- see
-    # SUBMARINE_EROSION_* / COASTAL_EROSION_*).
-    raw_erosion_total = rain + river + weathering + glacier + seismic
-    detach_capacity = np.where(is_ocean_node, 0.0, np.clip(raw_erosion_total, 0.0, None))
     # Issue #275: every removal below is also capped at its column's Hc headroom above
     # lithosphere.MIN_CRUSTAL_THICKNESS_M *before* anything is routed. The Hc floor clip at the
     # write-back used to be the only guard, so a column eroded to the floor still handed its
@@ -2044,10 +2034,38 @@ def apply_erosion(
         0.0,
         np.minimum(prior_cover, prior_material),
     )
+    # River incision: one stream-power term over the step, or, under the #867 march arm (off by
+    # default), the same term summed over slices that re-route on the terrain the earlier
+    # slices cut (river_substeps.march_rivers). The march's result is a demand like the
+    # one-shot term and goes through the same caps below; its own per-slice cuts
+    # (`working_cut_m`) only widen the drop cap where the valley deepened slice by slice.
+    river = _river_erosion_amount(
+        discharge_m3_s, breach_surge_accum, slope, prior_channel_depth,
+        world.river_erosion_multiplier, dt_myr,
+    )
+    march_cut_m = 0.0
+    march = river_substeps.march_rivers(
+        world, hydro, points, elevation, prior_channel_depth, prior_hc, prior_hm, prior_cover, craton_keep, removable_m,
+        years, world.river_erosion_multiplier,
+    )
+    if march is not None:
+        river = march.demand_m
+        march_cut_m = march.working_cut_m
+        hydro.flow_target = march.flow_target
+        hydro.discharge_m3_s = march.discharge_m3_s
+        discharge_m3_s = march.discharge_m3_s
+        water_accum_m = hydrology.discharge_m3_s_to_flow_accum_mm_yr(discharge_m3_s) / 1000.0
+        hydro.breach_notch_m = (hydro.breach_notch_m if len(hydro.breach_notch_m) == n else 0.0) + march.extra_notch_m
+    # Zeroed over ocean nodes (elevation <= sea level, the same convention climate.py/plates.py
+    # use everywhere else): every source here is a subaerial process. The sea floor and the
+    # shoreline get their own erosion separately, below (submarine + coastal erosion -- see
+    # SUBMARINE_EROSION_* / COASTAL_EROSION_*).
+    raw_erosion_total = rain + river + weathering + glacier + seismic
+    detach_capacity = np.where(is_ocean_node, 0.0, np.clip(raw_erosion_total, 0.0, None))
     # Capped at the drop to the lowest neighbor so a single step can't erode a node below the
     # valley floor it drains into, and at the Hc headroom. A cap cuts substrate before cover
     # (the cover is on top, so it goes first).
-    erosion_cap_m = np.minimum(drop_to_lowest_neighbor_m, removable_m)
+    erosion_cap_m = np.minimum(np.maximum(drop_to_lowest_neighbor_m, march_cut_m), removable_m)
     cover_entrained, substrate_detached = _strip_mobile_cover(prior_cover, detach_capacity)
     cover_entrained = np.minimum(cover_entrained, erosion_cap_m)
     erosion_amount = cover_entrained + np.minimum(substrate_detached, erosion_cap_m - cover_entrained) * craton_keep
