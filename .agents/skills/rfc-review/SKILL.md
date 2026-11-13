@@ -67,7 +67,9 @@ For each load-bearing citation, open the paper (abstract or full text) and check
 
 ## 5. Criteria
 
-- Acceptance criteria are measurable, name their seeds and scripts, and put gates first.
+- Acceptance criteria are measurable, name their seeds and scripts, and put gates first;
+  any gate running a stepped simulation states its step size and reports at least one
+  other step size (or states why not).
 - Falsification criteria name observations that would show the premise or mechanism
   wrong, and say what follows from each.
 
