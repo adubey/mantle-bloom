@@ -680,9 +680,10 @@ every animation step instead of nothing until the run ends (#653). The final `do
 carries the same summary shape `/worlds/{world_id}/generate`/`/worlds/{world_id}/step` return, plus `video_base64`
 (decode via `data:video/mp4;base64,<this>` -- H.264, playable directly in a `<video>`
 element), `mime`, and `stopped_early` (true if `/worlds/{world_id}/animate/stop` was what ended the run
-short of `num_frames`, rather than reaching it on its own). If rendering raises partway
-through, a `{"type": "error", "detail": "..."}` line is emitted instead -- the HTTP status
-is already `200` by then.
+short of `num_frames`, rather than reaching it on its own). If a step or render fails after
+at least one frame, `done` carries the partial video and an `error` string; the last completed
+checkpoint remains available for recovery. Failures before a frame or while finalizing the
+encoder emit an `{"type": "error", "detail": "..."}` line instead.
 
 ## `POST /worlds/{world_id}/animate/stop`
 

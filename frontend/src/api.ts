@@ -1103,6 +1103,7 @@ export interface AnimateResponse extends WorldSummary {
   // requested `numFrames` on its own -- see backend main.py's `stopped_early`. Distinguishes
   // "you pressed Stop" from "keep going" mode running out its (generous) safety ceiling.
   stoppedEarly: boolean;
+  error?: string;
 }
 
 // Progress during a Record run -- `frame` of `total` frames rendered so far, plus
@@ -1149,7 +1150,8 @@ const ANIMATE_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 // image_base64}` per frame (surfaced via `onProgress` -- the image lets the caller paint the
 // live map), then a final `{type: "done", ...}` carrying the video, whether it ran to
 // `numFrames` or was ended early by stopAnimation() below (either way this resolves normally
-// with a complete video -- see `stoppedEarly` on the result). A mid-stream `{type: "error"}`
+// with a complete video -- see `stoppedEarly` on the result). A failed step or render can
+// also return a partial video with `error` set. A mid-stream `{type: "error"}`
 // line (rendering blew up after the response already 200'd) is re-thrown here like any other
 // failure. `cancelSignal` is a harder escape hatch than stopAnimation() -- aborting it (or the
 // stream going silent for ANIMATE_IDLE_TIMEOUT_MS) drops the connection outright and this
@@ -1263,6 +1265,7 @@ export async function animateWorld(
       videoBase64: done.video_base64 as string,
       mime: done.mime as string,
       stoppedEarly: Boolean(done.stopped_early),
+      error: typeof done.error === "string" ? done.error : undefined,
     };
   } catch (error) {
     const diagnostic = {

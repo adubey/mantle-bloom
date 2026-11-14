@@ -2012,21 +2012,23 @@ def _animate_message_line(session, world, message, last_frame, anim_spec: dict):
             # frontend just keeps showing its last-known snapshot in that case.
             "stats": world.stats_history[-1] if world.stats_history else None,
         }) + "\n", frame, False
-    _, mp4_bytes, stopped_early = message
-    if _hosted_worker:
+    _, mp4_bytes, stopped_early, *failure = message
+    error = failure[0] if failure else None
+    if _hosted_worker and not error:
         # Stop can leave whole steps beyond the final encoded frame. Commit
         # those steps before sending done, which the client may disconnect on.
         _world_changed(session)
-    # Finished with a video in hand -- stopped early by the user or ran to the end,
-    # either way there is nothing left to recover, so forget the sidecar (#638).
-    _clear_animation_progress(session)
+    # Keep the last whole-frame checkpoint when a step may have failed partway.
+    if not error:
+        _clear_animation_progress(session)
     return json.dumps({
         "type": "done",
         "mime": "video/mp4",
         "video_base64": base64.b64encode(mp4_bytes).decode("ascii"),
         "stopped_early": stopped_early,
+        "error": error,
         **_summary(session, world),
-    }) + "\n", last_frame, True
+    }) + "\n", last_frame, not bool(error)
 
 
 def _publish_disconnected_animation(session: WorldSession) -> None:

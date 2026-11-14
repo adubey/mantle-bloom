@@ -314,6 +314,28 @@ def test_stream_animation_mp4_stop_event_ends_the_run_early_but_still_yields_a_v
         assert sum(1 for _ in container.decode(video=0)) == 3
 
 
+
+def test_stream_animation_mp4_preserves_frames_when_step_fails():
+    world = _world()
+    calls = 0
+
+    def failing_step(w, years):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("Lake slice failed to settle")
+        step_world(w, years)
+
+    messages = list(render_image.stream_animation_mp4(
+        world, "behrmann", "elevation", 64, 64, None, 1_000_000, 1, 4,
+        step_fn=failing_step,
+    ))
+    assert [m[1] for m in messages if m[0] == "progress"] == [1, 2]
+    done = messages[-1]
+    assert done[3] == "RuntimeError: Lake slice failed to settle"
+    with av.open(io.BytesIO(done[1])) as container:
+        assert sum(1 for _ in container.decode(video=0)) == 2
+
 def test_stream_animation_mp4_runs_to_completion_when_never_stopped():
     world = _world()
     messages = list(render_image.stream_animation_mp4(
