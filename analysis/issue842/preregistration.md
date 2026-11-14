@@ -82,6 +82,13 @@ can run. Four things changed once the harness was built, before any run of this 
    1, 2 and 5) was relaxed after it was seen. The final evaluation says so, and keeps the
    as-written fail and amendment 6's fail beside the pass.
 
+8. **E3a skips step 0 (2026-11-14), set by the owner after seeing this plan's E3a results.**
+   On the ice-age saves, step 0's first substeps moved ice by 81% (374464662) and 36%
+   (447276134). `d2` moved it by exactly the same amounts, before the trend logic could
+   act. The likely cause is the replay switching on the 8 Myr ice-age forcing at load. E3a
+   now reads steps 1 and later. The all-steps result is reported beside it. This is post
+   hoc for this plan.
+
 ## Arms
 
 | Arm | March |
@@ -193,6 +200,6 @@ thresholds from the run JSONs. Under the old thresholds, row 5 uses the estimate
   new threshold, including every case where the old one would have failed and the new one
   passes.
 - Whether the result would change if the owner kept the old thresholds.
-- The seven amendments above, and for E3 whether either step was a drop step.
+- The eight amendments above, and for E3 whether either step was a drop step.
 - Amendment 6's averaged verdict beside the per-step verdicts, with each place where
   averaging turns a per-step failure into a pass (which saves or steps failed per step).

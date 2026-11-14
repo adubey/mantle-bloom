@@ -150,8 +150,16 @@ def _worst_substep(runs: dict) -> dict:
     worst = {}
     for name, run in runs.items():
         if "-trend-1k-" in name and not name.startswith(("e3-", "e4-", "e6-")):
-            worst[name] = max(((s["march"] or {}).get("worst_substep_move") or 0.0) for s in run["per_step"])
-    return {"by_run": worst, "pass": all(v <= SUBSTEP_MOVE_LIMIT for v in worst.values())}
+            worst[name] = {
+                "all_steps": max(((s["march"] or {}).get("worst_substep_move") or 0.0) for s in run["per_step"]),
+                # Amendment 8: step 0 absorbs the replay's start (the ice-age forcing switched on at
+                # load), and moved d2 exactly as much, so it doesn't gate.
+                "after_step_0": max((((s["march"] or {}).get("worst_substep_move") or 0.0) for s in run["per_step"][1:]),
+                                    default=0.0),
+            }
+    return {"by_run": worst,
+            "pass_all_steps": all(v["all_steps"] <= SUBSTEP_MOVE_LIMIT for v in worst.values()),
+            "pass": all(v["after_step_0"] <= SUBSTEP_MOVE_LIMIT for v in worst.values())}
 
 
 def _e4(runs: dict) -> dict:
