@@ -113,6 +113,7 @@ Gate 2 load, mesh and capacity diagnostics.
 | [`probe_rift_settings.py`](debugging/scripts-rifting.md#probe_rift_settingspy) | census of the four rift settings and craton-free routes on saved worlds |
 | [`generate_issue848_world.py`](debugging/scripts-rifting.md#rfc-0018-runtime-profile-issue-848) | generate and age a plates-only cratons-first world with synthetic relief, saving checkpoints |
 | [`profile_rfc0018_candidate_search.py`](debugging/scripts-rifting.md#rfc-0018-runtime-profile-issue-848) | time and count RFC 0018's candidate search on mature plates, by mapping and recent extension |
+| [`rebuild_rfc0018_mass_balanced.py`](debugging/scripts-rifting.md#rfc-0018-runtime-profile-issue-848) | rebuild RFC 0018's mass-balanced generator and `O/R/S` prior; checks it against the recorded probe |
 | [`summarize_rfc0018_profile.py`](debugging/scripts-rifting.md#rfc-0018-runtime-profile-issue-848) | compact JSON summary of that profile |
 
 ### Crust and mantle budgets

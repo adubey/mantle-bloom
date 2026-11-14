@@ -26,7 +26,39 @@ A first run with the defaults took about 385 s per Myr (4 steps, stopped), so th
 plates-only. That is also the likeliest reason G2's baseline averaged 2.5 s per step, but the G2
 settings are not recorded, so that is an inference.
 
-## Which candidate generator this measured
+## Rebuild of the frozen mass-balanced generator
+
+The G1/G2 generator's code is lost, but its output survived: `mass-balanced-probe.json` (SHA-256
+`c57a813c`, the `source_probe_sha256` in `g0-prior-summary.json`) and the 20 G0 snapshots
+(`LEGACY_HASHES.json` maps each recompressed `.bloom` back to the SHA-256 recorded in the G0
+evidence). `bin/debug/rebuild_rfc0018_mass_balanced.py` rebuilds the generator and the `O/R/S`
+prior from the written spec and compares every candidate with that probe. Compact result:
+[mass-balanced-rebuild.json](mass-balanced-rebuild.json).
+
+| | Rebuilt | Recorded |
+|---|---:|---:|
+| Opportunities / candidates | 68 / 812 | 68 / 812 |
+| Structurally valid candidates | 97 | 97 |
+| Opportunities with a valid candidate / positive `P_break` | 33 / 17 | 33 / 17 |
+| Mean `P_break` (`mu = 1`) | 0.046925976976340836 | 0.046925976976340836 |
+
+All 812 candidates match the probe on daughter node counts, cut cost, structural validity,
+momentum score and net opening. What the evidence fixed that the written spec did not:
+
+- The number of targets is `min(12, edges that cross the two flow clusters and have a nonzero
+  Fiedler gap)`, spaced by `linspace(0.15, 0.50, count)`; one plate had only 8 such edges.
+- A target is a share of plate mass for the low-Fiedler side, taken at the **first** node where
+  the cumulative mass reaches it (not the closest).
+- The mass-quantile cut is re-applied at every refinement iteration; the seed-edge midpoint of the
+  prototype is not used. Identical partitions are dropped, though none repeated here.
+- The conductance is still `1 / edge_cost`, so this reproduces the inverse-weight method. The
+  direct-cost revision of #857 changes this one line.
+
+This validates the rebuild on the G0 development snapshots only. It says nothing about the
+applying callback (how a chosen cut becomes a split, and failed-rift thinning), which is still
+not rebuilt, so G2 behaviour is not reproduced.
+
+## Which candidate generator the profile measured
 
 **This is the original G0 prototype, not the generator G1 and G2 froze.** `measure_rfc0018_g0.py`
 (commit 236b159c) proposes 12 variants from sampled weak seed edges. The G1/G2 method instead

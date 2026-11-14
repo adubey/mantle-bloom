@@ -107,6 +107,9 @@ PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_age_polarity.py <see
 
 ### RFC 0018 runtime profile (issue 848)
 
+`rebuild_rfc0018_mass_balanced.py` rebuilds the lost frozen candidate generator and prior from the written spec
+and checks every candidate against the recorded probe output on the 20 G0 snapshots (all 812 match).
+
 Three scripts divide the cost of RFC 0018's candidate search on a mature world. `generate_issue848_world.py`
 generates a cratons-first world with synthetic-history relief and steps it plates-only
 (`simulate_climate_biomes` off: about 1.7 s per Myr instead of about 385 s) saving checkpoints.
