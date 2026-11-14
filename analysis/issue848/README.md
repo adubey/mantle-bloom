@@ -204,10 +204,31 @@ checkpoints), 1,491 candidates. Compact results: `fit-iterations.json`.
   candidates alternating between two partitions, a period-2 cycle, not slow convergence.
 - **Cost.** Full search 390 s over these opportunities, 92.8 solves each; cap 4 is 210 s, cap 2 116 s.
 
-Conclusion: option (d) changes the distribution and is not exact, as expected. The cycling suggests an
-exact alternative: if a pass reproduces the partition of two passes earlier, the remaining passes only
-alternate, so the result at the cap follows from parity without more solves. That has not been tested
-and needs the cycle period measured per candidate (this run recorded only counts of passes).
+Conclusion: option (d) changes the distribution and is not exact, as expected.
+
+### Repeat shortcut
+
+Each pass maps one partition to the next deterministically (the solver starts from a fixed `v0`), so once a
+partition recurs the sequence is periodic and the partition at pass 8 follows from the period.
+`rebuild_rfc0018_mass_balanced.refine(..., shortcut=True)` stops at the first repeat; the `cycle` arm of the
+same script compares it with the reference on the same 125 opportunities. Compact results: `fit-cycles.json`.
+
+- **Exact.** 1,491 of 1,491 partitions identical, valid flags and counts identical, `P_break` total and
+  every opportunity's value identical (max difference 0.0).
+- **Small saving.** 92.8 to 78.2 solves per opportunity (16% fewer); search time 394 to 356 s (10%).
+  36% of candidates (542) never repeat within 8 passes, and repeats are found late: the first repeat
+  comes at pass 5 to 7 for most candidates.
+- **How the loops end.** Of the 949 that repeat: 111 fixed points, 668 period 2, 170 period 3 to 6.
+  The two partitions of a cycle differ in a median of 2.4% of nodes (mean 20%): most cycles are a few
+  nodes at the mass-quantile boundary trading sides, not two different cuts.
+- **Sign flips are not the cause.** 719 candidates had no flip of the Fiedler vector's sign between
+  passes. Flips occur, and probably account for the minority of cycles with large disagreement, but
+  the typical cycle is boundary jitter.
+
+The shortcut is safe to adopt but moves step time only slightly: on the skip table above, a perfect exact
+skip plus the shortcut is roughly 1.8x, against G3's 1.02x. Most of the remaining loop cost buys
+movement of about 2% of nodes. Stopping on a node-change tolerance, or stopping when the cut cost
+stops falling, would remove most solves, but changes the method and needs G0 and G1 evidence.
 
 ## What this changes in the plan
 

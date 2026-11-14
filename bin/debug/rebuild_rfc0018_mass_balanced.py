@@ -62,11 +62,47 @@ def low_side(fiedler: np.ndarray, mass: np.ndarray, target: float) -> np.ndarray
     return low
 
 
-def propose(g0, world, plate, max_fit_iterations: int = MAX_FIT_ITERATIONS) -> list[dict]:
+def refine(solve, side, mass, target, cap, shortcut=False):
+    """The frozen refinement loop: refit, re-solve and re-apply the mass quantile until unchanged or ``cap`` passes.
+
+    Each pass is a fixed map from one partition to the next (the solver starts from a fixed ``v0``), so once a
+    partition recurs the rest of the sequence repeats with the same period. With ``shortcut`` the loop stops at
+    the first recurrence and returns the partition the capped loop would have ended on, from the period alone.
+    The loop also records the cycle it found and how often the Fiedler vector's arbitrary sign flipped between
+    passes, which moves the low-mass side to the other end of the plate."""
+    states, first_seen = [side], {side.tobytes(): 0}
+    info = {"fit_passes": 0, "converged": False, "cycle_start": None, "cycle_period": None,
+            "cycle_detected_pass": None, "cycle_disagreement": None, "fiedler_sign_flips": 0}
+    previous = None
+    for t in range(cap):
+        fiedler = solve(side)
+        info["fit_passes"] = t + 1
+        if previous is not None and float(fiedler @ previous) < 0:
+            info["fiedler_sign_flips"] += 1
+        previous = fiedler
+        following = ~low_side(fiedler, mass, target)
+        start = first_seen.get(following.tobytes())
+        if start is not None and info["cycle_period"] is None:
+            period = t + 1 - start
+            info.update(cycle_start=start, cycle_period=period, cycle_detected_pass=t + 1,
+                        cycle_disagreement=float(np.mean(states[start] != states[start + 1])) if period > 1 else 0.0)
+        if np.array_equal(following, side):  # the frozen loop's own stop: the partition did not change
+            info["converged"] = True
+            return side, info
+        if start is not None and shortcut:  # periodic from ``start``: the capped loop ends on this state
+            return states[start + (cap - start) % (t + 1 - start)], info
+        first_seen.setdefault(following.tobytes(), t + 1)
+        states.append(following)
+        side = following
+    return side, info
+
+
+def propose(g0, world, plate, max_fit_iterations: int = MAX_FIT_ITERATIONS, cycle_shortcut: bool = False) -> list[dict]:
     """The mass-balanced candidates for one plate, each with the same fields as ``g0.choose_cut`` variants.
 
     ``max_fit_iterations`` caps the refinement passes (the frozen method uses 8; 0 keeps the initial cut).
-    Each candidate also reports ``fit_passes`` (solves in the loop) and ``converged`` (the loop stopped early)."""
+    ``cycle_shortcut`` stops a candidate's loop at its first repeated partition (see ``refine``). Each candidate
+    also reports ``fit_passes`` (solves in the loop), ``converged`` (the loop stopped early) and its cycle."""
     points, _ = plate.all_points_and_elevation()
     flow = mantle.flow_at(points, world.mantle_centers)
     _, labels = kmeans2(flow, k=2, minit="++", seed=plate.plate_id)
@@ -98,17 +134,9 @@ def propose(g0, world, plate, max_fit_iterations: int = MAX_FIT_ITERATIONS) -> l
     boundary_nodes = plate.exposed_sides().any(axis=1)
     candidates, seen = [], set()
     for target in targets:
-        low = low_side(fiedler, mass, target)
-        side = ~low
-        passes, converged = 0, False
-        for _ in range(max_fit_iterations):
-            candidate_fiedler = g0._fiedler_vector(len(points), i, j, cost_for(side))
-            passes += 1
-            following = ~low_side(candidate_fiedler, mass, target)
-            if np.array_equal(following, side):
-                converged = True
-                break
-            side = following
+        side, loop = refine(lambda s: g0._fiedler_vector(len(points), i, j, cost_for(s)),
+                            ~low_side(fiedler, mass, target), mass, target, max_fit_iterations, cycle_shortcut)
+        passes, converged = loop["fit_passes"], loop["converged"]
         if not side.any() or side.all():
             continue
         key = min(side.tobytes(), (~side).tobytes())
@@ -130,7 +158,7 @@ def propose(g0, world, plate, max_fit_iterations: int = MAX_FIT_ITERATIONS) -> l
         size_ok = int(side.sum()) >= min_nodes and int((~side).sum()) >= min_nodes
         cut_nodes = np.unique(np.concatenate([i[cut], j[cut]]))
         candidates.append({
-            "target": float(target), "fit_passes": passes, "converged": converged, "daughter_node_counts": [int(side.sum()), int((~side).sum())],
+            **loop, "target": float(target), "fit_passes": passes, "converged": converged, "daughter_node_counts": [int(side.sum()), int((~side).sum())],
             "cut_cost": float(cost[cut].sum()), "admissible_connected": bool(connected),
             "single_edge_to_edge_trace": bool(trace_ok), "daughter_size_ok": bool(size_ok),
             "structurally_valid": bool(connected and trace_ok and size_ok),
