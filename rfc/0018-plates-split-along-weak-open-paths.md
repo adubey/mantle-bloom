@@ -342,18 +342,53 @@ growing, not a sampled event.
 
 ### State in the rock
 
-Two new per-cell surface fields move with the rock:
+Three new per-cell surface fields move with the rock:
 
-- `rift_strain` (dimensionless, ≥ 0): accumulated extensional strain. It never decays and
-  records the permanent, fault-like part of the damage.
+- `rift_strain` (dimensionless, ≥ 0): accumulated extensional thinning strain, `−ln β` for the
+  cell's own thinning. It never decays and records the permanent, fault-like part of the damage.
 - `rift_warm_strain` (dimensionless, 0 ≤ `rift_warm_strain` ≤ `rift_strain`): the share of that
   strain whose thermal weakening has not yet healed. It decays with time constant `τ_heal`.
+- `rift_broken` (boolean): the cell has broken through (step 4). It is a separate latch, so
+  `rift_strain` keeps meaning thinning strain for softening, `ε_cand` and the recorder.
 
-Both are intensive (area-weighted on remap). Old saves load with both at their zero defaults
-(`surface_fields.SURFACE_FIELDS`), so a pre-revision world starts with no rift damage. Its belts,
-faults and plume heat still mark inherited weakness.
+**Remap.** Adaptive coarsening and plate merges must not heal damage, so area-weighted averaging
+is wrong for these fields: one broken cell coarsened with three intact siblings would drop from
+`ε = 2.0` to 0.5. `rift_strain` coarsens and merges by maximum, like `channel_depth` and
+`breach_notch_depth_m`, which are special-cased in `sparse_quad_patch` coarsening and
+`quad_merge`. `rift_warm_strain` is intensive (area-weighted), then clamped to at most the
+result's `rift_strain`. `rift_broken` is `BOOLEAN_PROVENANCE` (any). Refinement copies all three
+to the children.
 
-### Each step, for each eligible plate
+**Lifecycle when rock is replaced.** New rock carries no inherited rift damage:
+
+- A column reset by `lithosphere_plate._erupt_melted_nodes` (margin or column-pass eruption)
+  resets all three fields to zero.
+- A cell inserted at a margin by `quad_tectonics._open_rift` takes the area-weighted damage of its
+  donors scaled by its `stretch_share`. Its magmatic share contributes zero, and `rift_broken` is
+  false.
+- An arc or other freshly accreted cell starts at zero.
+- Removed rock (subduction, consumption in a merge) takes its damage with it, and nothing is
+  redistributed.
+
+Old saves load with all three at their zero defaults (`surface_fields.SURFACE_FIELDS`), so a
+pre-revision world starts with no rift damage. Its belts, faults and plume heat still mark
+inherited weakness.
+
+### Each step, for every plate
+
+The damage update (steps 1–5) runs once per step for **every** plate, in its own pass before the
+split pass. It does not depend on split eligibility, plate order or whether another plate split
+this step. `merge_split` splits at most one plate per step and skips the rest once one has split,
+and age and cooldown gates exclude new daughters, so a damage update inside `maybe_split_plate`
+would stop straining and healing on those plates. Only the breakthrough decision (step 6) is
+gated by minimum age and cooldown. Daughters inherit their cells' damage fields through the
+mask-based split.
+
+Within the update, loads, strengths and the disk-averaged strains `ε̄` are frozen at the start of
+the step. Each cell's strain, healing and thinning are then sub-stepped together, and all cells
+advance synchronously, so the result does not depend on cell order. The coupling to neighbours
+(through `ε̄`) and to thinning (through `N_cap`) is operator-split at the step, so results depend
+on step length only within the tolerance D3 measures.
 
 **1. Load, `N` (N/m, extensional, depth-integrated).** Each cell carries a symmetric 2×2
 membrane-resultant tensor `𝐍` in its tangent plane, summed from cheap directional terms that
@@ -363,13 +398,16 @@ principal value, `N = max(0, λ_max(𝐍))`, and its principal direction gives t
 register as extension.
 
 - **Basal drag:** traction `τ = c_drag (v_mantle - v_plate)` (Pa, from
-  `torque.basal_drag_force_vectors_n` divided by cell area). Along each shared edge with unit
-  tangent `t̂`, the signed traction difference `Δτ = (τ_j - τ_i)·t̂` (positive pulls the ends
-  apart, negative pushes them together) times a coupling length `L_drag` adds
+  `torque.basal_drag_force_vectors_n(plate, world, spacing)` divided by cell area). For each
+  pair of adjacent cells, let `t̂` be the unit tangent of the centre-to-centre line, oriented from
+  `i` to `j`. The signed traction difference `Δτ = (τ_j - τ_i)·t̂` (positive pulls the cells
+  apart, negative pushes them together; swapping `i` and `j` flips both factors, so it does not
+  depend on orientation) times a coupling length `L_drag` adds
   `Δτ L_drag (t̂ ⊗ t̂)` to both end cells, weighted by edge length.
 - **Slab pull:** each subducting boundary cell's slab-pull force
-  (`torque.slab_pull_force_vectors_n`) divided by its boundary length is a line load `F_sp`
-  (N/m) along direction `ê`, the tangent of the pull. A slab pulls its plate toward the trench,
+  (`torque.slab_pull_force_vectors_n(plate, inputs, subducting_mask, spacing)`) divided by its
+  boundary length (`torque.boundary_node_length_m`) is a line load `F_sp` (N/m) along `ê`, the
+  force direction projected into the cell's tangent plane and normalized. A slab pulls its plate toward the trench,
   so the plate carries it as tension along `ê`. It reaches into the plate as
   `F_sp exp(-d / L_pull) (ê ⊗ ê)`, where `d` is the distance to that boundary cell. Contributions
   from separate trenches add as tensors, so two slabs pulling a plate apart add tension and
@@ -378,10 +416,13 @@ register as extension.
   push (`torque.ridge_push_force_vectors_n`) enter the same way, decaying with `L_pull`, with
   negative (compressive) sign along their force direction. This keeps colliding margins from
   rifting.
-- **Plumes:** a cell with plume heat adds an isotropic tension `N_plume f_plume 𝐈`, standing in
-  for spreading above a plume head. `f_plume = min(1, plume_heat_myr / step_myr)` is the share
-  of the step the heat is active, as in `cratons.heated_strength`, so a countdown that ends
-  mid-step contributes only its active share.
+- **Plumes:** while a cell has plume heat it adds an isotropic tension `N_plume 𝐈`, standing in
+  for spreading above a plume head. The heat ends partway through a step at
+  `t_exp = plume_heat_myr`. Averaging the load over the step before applying the nonlinear strain
+  law would be timestep-dependent: a background load of 0.8 strength plus a plume load of 0.4
+  strength for half the step averages to exactly the strength and gives no strain, though the
+  heated half strains. The update therefore splits the step at `t_exp`, with full plume load and
+  plume weakening before it and none after, and sub-steps each part (step 3).
 
 `N` is a calibrated estimate of the thin-shell extensional resultant `N_ext`. `L_drag` and `L_pull` are calibrated in D0 against the thin-shell membrane
 diagnostic (`thin_shell.solve_thin_shell`), which solves the same per-node force field exactly
@@ -398,15 +439,17 @@ offline for calibration (alternative B under D0).
   ratio `K0` moves the over-capacity share from 3% to 58% of cells, so the absolute scale cannot
   be derived and is calibrated instead.
 - `M` is the product of the accepted inherited-weakness multipliers, clamped to `[0.12, 1]`: belt
-  0.65, suture 0.55, volcano 0.65, plume heat 0.65 and fault 0.60. Plume heat applies its
-  reduction over the active share of the step: `1 - 0.35 f_plume`. The `thinning` multiplier is
-  dropped, because thinning now enters through Hc, Hm and `W`.
+  0.65, suture 0.55, volcano 0.65, plume heat 0.65 and fault 0.60. The plume multiplier applies
+  only before `t_exp` in the split step. The `thinning` multiplier is dropped, because thinning
+  now enters through Hc, Hm and `W`.
 - `W = 1 - min(s_max, s_fault φ(ε̄) + s_warm φ(ε̄_warm))` is strain softening, with
   `φ(ε) = min(1, ε / ε_soft)`. `W` lies in `[1 - s_max, 1]`. `ε̄` and `ε̄_warm` are the two strain
   fields averaged over a disk of diameter `w_0` around the cell (area-weighted). This non-local
   average gives the band a physical width scale: softening cannot concentrate into a zone
   narrower than about `w_0`, whatever the node spacing. Local softening alone would make band
-  width follow the grid.
+  width follow the grid. `s_fault` and `s_warm` are reductions: `s_fault = 0.40` matches the
+  accepted fault multiplier 0.60. At the defaults `s_fault + s_warm = 0.80 < s_max = 0.88`, so the
+  cap does not bind; it guards the D1 search once `s_warm > 0.48`.
 
 **3. Strain.** A cell strains where its load exceeds its strength:
 
@@ -420,10 +463,10 @@ under 10 mm/yr full rate, `ε̇ ≈ 0.01 m/yr / 1.25e5 m = 8e-8 /yr`. As strain 
 `rift_strain` and `rift_warm_strain` equally; `rift_warm_strain` then decays as
 `d(warm)/dt = -warm / τ_heal`.
 
-Integration is timestep-robust. The rate depends nonlinearly on `ε` through `W`, so each step
-sub-steps the cell's update with `Δε ≤ Δε_max` per sub-step, and the decay uses its exact
-exponential. A cell's strain over a step therefore does not depend on how the step is divided,
-within the sub-step tolerance, which D3 tests.
+The rate depends nonlinearly on `ε` through `W`, so each part of the step is sub-stepped with
+`Δε ≤ Δε_max` per sub-step, and the decay uses its exact exponential. Softening raises the rate,
+so the sub-step count is capped at `K_sub`. A cell that would need more is advanced until it
+breaks (step 4) and latched there, and the event is counted for D3.
 
 **4. Thinning, subsidence and relief.** Pure-shear thinning over the step scales the cell's Hc
 and Hm by `exp(-Δε)` [[McKenzie, 1978]](#ref-mckenzie1978), so the band subsides isostatically
@@ -431,17 +474,29 @@ into a rift valley. The model's cells cannot gain area inside a plate, so the re
 moves to the band's flanks. The flank-transfer helper adapts `_allocate_stretch`'s volume and
 tracer rule in reverse. At margins, `_open_rift` thins pre-existing donors and gives their volume
 to newly inserted cells. Here the straining cells are the donors, and the recipients are cells
-within `RIFT_FLANK_ROWS` hops that did not strain this step, in proportion to their area.
-Straining cells never receive, so volume is not shuffled within the band. Hc and Hm move together
-with the same tracers `_allocate_stretch` moves: continental material, craton crust, mobile cover
-and its continental share, and the plume-head and arc tracers. Donor and recipient elevations are
-then recomputed isostatically. Volumes are conserved by construction, and the flanks rise
-slightly, like rift shoulders.
+of the **same plate** within `RIFT_FLANK_ROWS` hops that did not strain this step, in proportion
+to their area. Straining cells never receive, so volume is not shuffled within the band.
+
+- **Volume moved.** The transferred volume is computed from the donor's thickness change after
+  clamping to the floors (below), so a floored donor gives up only what it actually lost.
+- **Tracers.** Hc and Hm move with continental material, mobile cover and its continental share,
+  and the plume-head and arc tracers, as `_allocate_stretch` moves them. Craton crust follows
+  `_open_rift`'s existing rule: it thins in place on the donor, is not moved to the flanks, and the
+  lost volume is booked to the `rifted_stretch_m3` craton sink, which counts toward D3's
+  craton-loss limit.
+- **No recipient.** If a donor has no non-straining recipient within `RIFT_FLANK_ROWS`, the reach
+  widens one hop at a time up to `RIFT_FLANK_ROWS_MAX`. If there is still none (a band wider than
+  the reach, or a plate straining everywhere), that donor's thinning is withheld for the step: its
+  strain still accumulates, but no volume moves. Withheld events are counted for D1.
+
+Donor and recipient elevations are then recomputed isostatically. Volumes are conserved exactly,
+and the flanks rise slightly, like rift shoulders.
 
 Interior band cells do not erupt before breakup. Thinning stops at the floor
 `RIFT_CRITICAL_THICKNESS_M` for crust and `MIN_MANTLE_LITHOSPHERE_THICKNESS_M` for mantle
-lithosphere. A cell that reaches the crust floor is latched broken by setting
-`rift_strain = max(rift_strain, ε_break)`. `lithosphere_plate._erupt_melted_nodes` resets a
+lithosphere. A cell is latched broken (`rift_broken = true`) when its crust reaches the floor or
+its `rift_strain` reaches `ε_break`, whichever comes first. For 35 km crust the floor comes first
+(at strain 1.95); for crust thicker than about 37 km, `ε_break` does. `lithosphere_plate._erupt_melted_nodes` resets a
 melting land cell to the 35 km continental reference column, which would re-thicken the band, so
 it is not called here. New oceanic crust appears only after breakup, when the daughters separate
 and the existing margin path (`_open_rift`) fills the gap. Normal-fault
@@ -450,7 +505,7 @@ relief comes from the existing fault machinery: the spawn weight in
 bands grow sub-parallel normal faults, striking along the band's principal direction.
 
 **5. Physical candidates (diagnostic).** A physical candidate is a connected component of cells
-with `rift_strain ≥ ε_cand`. The two strain fields cannot recover a candidate's history: onset
+with `rift_strain ≥ ε_cand`. The damage fields cannot recover a candidate's history: onset
 time, onset width, time since last strain or rate history. A diagnostic recorder in the gate
 scripts therefore tracks candidates, outside saved state:
 
@@ -469,25 +524,26 @@ scripts therefore tracks candidates, outside saved state:
   and completed candidates. Candidates already present when a run starts (from a loaded save)
   have unknown onset and are excluded from onset statistics.
 
-Production code needs only the two fields; the recorder runs in the D1–D3 harness.
+Production code needs only the three damage fields; the recorder runs in the D1–D3 harness.
 
-**6. Breakthrough and split.** A cell is *broken* once `rift_strain ≥ ε_break`, including cells
-latched there on reaching the crust floor (step 4). For a physical candidate with broken cells,
+**6. Breakthrough and split.** A cell is *broken* when `rift_broken` is set (step 4). For a physical candidate with broken cells,
 find the cheapest path that runs from the plate boundary through the band and back to the
 boundary on the far side: two Dijkstra searches (`scipy.sparse.csgraph`) from the band's broken
 cells, one toward each end of the band's long axis. Broken cells cost zero and intact cells cost
 `N_eff × ds`, so the path runs through the band and bridges gaps through the weakest intact rock. Another band's
 broken cells also cost zero, so rifts can link. The intact part of the path, the ligament, must
-carry the band's whole load. In integrated force form, with `ds_i` the path length through cell
-`i` (half the centre-to-centre distances to its two path neighbours, so adaptive resolution does
-not bias the sum), the plate splits when
+carry the load that pulls the two sides apart across the path. That is the path-normal component
+`N⊥,i = max(0, n̂ᵢᵀ 𝐍ᵢ n̂ᵢ)`, with `n̂ᵢ` the in-plane unit normal to the path at cell `i`, not the
+largest principal value, which may point along the path. In integrated force form, with `ds_i`
+the path length through cell `i` (half the centre-to-centre distances to its two path neighbours,
+so adaptive resolution does not bias the sum), the plate splits when
 
 ```text
-Σ_path N_i ds_i  ≥  Σ_intact N_eff,i ds_i
+Σ_path N⊥,i ds_i  ≥  Σ_intact N_eff,i ds_i
 ```
 
 A fully broken path has an empty right-hand side, so it splits whenever the band still carries
-load (`Σ_path N_i ds_i > 0`). A fully broken band whose load has stopped stays an unsplit, failed
+path-normal load (`Σ_path N⊥,i ds_i > 0`). Tension parallel to the path never splits it. A fully broken band whose load has stopped stays an unsplit, failed
 rift.
 
 The path is an ordered chain of cells, each sharing an edge with the next, whose two ends are
@@ -517,6 +573,8 @@ exogenous ones.
 | `ε_break` | `2.0` | Design choice; about `β = 7.4`, which takes 35 km crust below 5 km | Fixed |
 | `t_fail` | `5 Myr` | Design choice | Diagnostic only |
 | `RIFT_FLANK_ROWS` | `2` | Matches `K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION` | Fixed |
+| `RIFT_FLANK_ROWS_MAX` | `4` | Design choice | D1 reports withheld-thinning events |
+| `K_sub` | `64` | Design choice | D3 reports capped cells |
 | `Δε_max` | `0.05` | Design choice | D3 timestep check |
 | Inherited multipliers | accepted RFC 0018 values | Accepted design choices | Fixed |
 
@@ -534,12 +592,15 @@ treat these first guesses as validated.
 
 ### Runtime and saves
 
-Per plate per step, the load uses existing per-node forces and a nearest-boundary distance query.
-The strength is a table interpolation, the strain update is per cell, and the components search
-is linear in cells. The path search runs only for candidates with broken cells. The expected cost
-is milliseconds per plate, small against a production step, but under plates-only stepping it
-could be a noticeable share. D3 measures it on production settings. The thin-shell solve is not
-on the step path. Saves gain two float surface fields, and old saves load with zeros.
+Production runs, per plate per step: the load tensor from existing per-node forces; a
+distance-to-boundary field for the slab, collision and ridge terms, which is the one non-trivial
+per-step cost (a nearest-neighbour query from every cell to the plate's force-bearing boundary
+cells); a table interpolation for strength; the disk average; and the per-cell strain update. The
+connected-component and path search runs only for plates with broken cells. The candidate
+recorder runs only in the D1–D3 harness. The hypothesis is milliseconds per plate, small against
+a production step, though under plates-only stepping it could be a noticeable share. This is not
+yet measured; D3 measures it on production settings. The thin-shell solve is not
+on the step path. Saves gain two float surface fields and one boolean, and old saves load with zeros.
 
 ### Diagnosis gates
 
@@ -553,7 +614,8 @@ No held-out seed is used for calibration or tuning.
    cheap tensor matches the thin-shell resultant under the same forces. First check
    manufactured cases with known answers: one-sided slab pull, two slabs pulling apart, a slab
    opposed by collision contact, and pure collision (compression only). The proxy must give the
-   shell's sign (tension or compression) in each. Then, on development worlds over cells where
+   shell's sign (tension or compression) in each. A further case puts tension parallel to an
+   intact path: the ligament rule must not split it. Then, on development worlds over cells where
    the shell is loaded, require:
    - **sign agreement** (extension versus none) on at least 80% of cells;
    - a **principal-direction difference** under 30° on at least 70% of extensional cells;
@@ -567,6 +629,11 @@ No held-out seed is used for calibration or tuning.
    over the D1 knobs, as in #313). Score each setting against the realism targets below and
    freeze the best before D2. Also record the #699 failure mode for every run: the largest
    damaged share of a plate and the number of damaged components at the time of each split.
+   Record successful rifts by crust kind: a rift is *oceanic* when more than half its path length
+   runs through oceanic crust. If more than one third of successful rifts in the frozen setting
+   are oceanic, apply the predeclared fallback: oceanic cells latch only on `ε_break`, and
+   `k_cap` gains a separate oceanic factor searched over 1–5. Then repeat D1. Also report
+   withheld-thinning events (step 4).
    Repeat the frozen setting on five development seeds at half the default node density. Onset
    width and median onset-to-breakup duration must stay within 25% of the default-density
    values, or band width is following the grid.
@@ -577,7 +644,9 @@ No held-out seed is used for calibration or tuning.
    (`D_s = T_baseline,s - T_rift,s < 0`; the accepted tiny-breakup definition, smaller daughter
    under 7% of parent area). The pairs must contain at least 50 actual splits across both arms
    combined, the accepted rule. If they do not, add seeds in order from the frozen reserve list,
-   excluding `1479220500`, until they do. Report all target values with seed-bootstrap intervals.
+   excluding `1479220500`, until they do. With `n` pairs in the enlarged sample, at most
+   `max(1, floor(0.1 n))` may have `D_s < 0`, keeping the accepted 10% tolerance. Realism targets
+   and intervals are computed over all `n` pairs. Report all target values with seed-bootstrap intervals.
 4. **D3: runtime and timestep.** Keep the accepted G3 limits: median runtime within 2% of the
    paired production baseline on three held-out seeds, from controlled serial runs with profiling
    kept separate; craton loss at most 2% per Gyr; and 10–40 plates at every output. Repeat at half
@@ -623,7 +692,13 @@ in a shared projection and legend.
 - [ ] Old saves load with zero rift strain and continue stepping (`test_persistence.py`).
 - [ ] Unit tests cover the bounds of the strength factors, softening monotonicity, timestep-robust
       strain integration, flank volume and tracer conservation, healing, the broken latch (no
-      interior eruption), plume step fractions, directional load signs (compression never
+      interior eruption), remap without healing (coarsen a quartet with one broken cell; it stays
+      broken and its strain does not fall), damage reset on eruption and fresh crust, margin
+      insertion inheriting only its stretched share, plume expiry (a crossing step matches the
+      step split at expiry), flank transfer with no recipient and with floored donors (volume
+      and thickness bounds hold), the damage update on a plate after another plate splits and on a
+      daughter in cooldown, path-normal loading (tension along the path never splits), directional
+      load signs (compression never
       registers as extension), the integrated ligament rule, a fully broken edge-to-edge band that
       splits, path validity and two-daughter splits.
 - [ ] The pictures above are in the gate report.
@@ -653,10 +728,17 @@ in a shared projection and legend.
 
 - `backend/app/rift_damage.py` (new): load proxy, strength table, strain update, healing,
   flank transfer, physical-candidate diagnostics, breakthrough path and ligament rule.
-- `backend/app/surface_fields.py`: add `rift_strain` and `rift_warm_strain` to
-  `SURFACE_FIELDS` as intensive float fields with zero default.
+- `backend/app/surface_fields.py`: add `rift_strain`, `rift_warm_strain` (float, zero default)
+  and `rift_broken` (`BOOLEAN_PROVENANCE`) to `SURFACE_FIELDS`.
+- `backend/app/sparse_quad_patch.py` coarsening and `backend/app/quad_merge.py`: add
+  `rift_strain` to the max-preserving special cases beside `channel_depth`; clamp
+  `rift_warm_strain` to `rift_strain` after remap.
+- `backend/app/lithosphere_plate.py` (`_erupt_melted_nodes`) and `backend/app/quad_tectonics.py`
+  (`_open_rift`, cell insertion): reset or inherit the damage fields as in the lifecycle rules.
+- `backend/app/merge_split.py` (or the step pipeline that calls it): run the damage update for
+  every plate in a pass of its own before the split pass.
 - `backend/app/merge_split.py`: `maybe_split_plate` keeps its age and cooldown gates and calls
-  `rift_damage` for the breakthrough decision and path, replacing the great-circle cut, its flow
+  `rift_damage` for the breakthrough decision and path (step 6 only), replacing the great-circle cut, its flow
   gates and the 0.55 success roll. Remove its `apply_failed_rift` call: failed rifts are bands
   that stop growing.
 - `backend/app/plates.py` and `backend/app/sparse_quad_patch.py`: the mask-based split helper
@@ -667,8 +749,10 @@ in a shared projection and legend.
   `contact_drag_force_vectors_n` and `ridge_push_force_vectors_n` for the load tensor; no change
   to plate-motion forces.
 - `backend/app/faults.py`: add a strain-rate term to the spawn weight in `_maybe_spawn_faults`.
-- `backend/app/cratons.py`: change `record_rift_cut` to take the path's band mask instead of a
-  cut normal; belt marking already accepts a mask.
+- `backend/app/cratons.py`: change `record_rift_cut(world, plate, points, cut_normal, band_sin,
+  kind)` to take the path's band mask instead of a cut normal and band width, so no great-circle
+  geometry remains at its call site in `maybe_split_plate`. Belt marking
+  (`mark_belt`) already accepts a mask.
 - Strength table: precomputed from the Gate 2 envelope (`bin/debug/diagnose_gate2_column_envelope.py`)
   as a small checked-in data file, or computed at import; decide in implementation.
 - `bin/debug/` (new scripts): D0 calibration against `thin_shell`, D1 search driver, realism-target
@@ -695,12 +779,12 @@ in a shared projection and legend.
 - **Plume load.** `N_plume` is a design choice; plume weakening already exists (RFC 0007).
 - **Sutures.** Generated pseudo-sutures are still #770 work. Until a per-cell suture field lands,
   belts carry inherited weakness, so the inherited-weakness target is lowered.
-- **Oceanic columns.** About 7 km of oceanic crust reaches the `RIFT_CRITICAL_THICKNESS_M` floor
-  and latches broken after a strain of only about 0.34, against about 1.95 for 35 km continental
-  crust. Oceanic plates stay
-  hard to break only through their higher mature-oceanic capacity in the #487 envelope. D1 reports
-  oceanic and continental breakups separately; if oceanic interiors break far more often, use the
-  strain threshold `ε_break` alone for oceanic cells.
+- **Oceanic columns.** The model's reference oceanic crust (`REFERENCE_HC_OCEANIC_M`, 11 km)
+  reaches the 5 km floor after a strain of about 0.79, against about 1.95 for 35 km continental
+  crust. In the #487 reference envelope its capacity is also lower: mature oceanic 4.20 TN/m,
+  against 15.82 TN/m continental (`analysis/issue487/gate2-column-envelope.json`). Oceanic
+  interiors therefore strain more easily and latch earlier than continental ones. D1 records it and
+  has a predeclared fallback.
 - **Directional proxy.** The load tensor sums uniaxial contributions with decay lengths. It is
   not an equilibrium stress field. D0's sign, direction and magnitude checks against the
   thin-shell solve decide whether it is good enough or periodic shell solves are needed.
