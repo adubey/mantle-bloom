@@ -1,8 +1,8 @@
 # RFC 0015: Frozen water in physical units: glacier mass balance, ice flow and meltwater, freezing lakes and rivers, ocean ice and polar snow
 
-- **Status:** Accepted (revised 2026-10-31 after G0's drifting-noise runs)
+- **Status:** Accepted (revised 2026-11-13 for the trend-adaptive march, #842, pending round 3; revised 2026-10-31 after G0's drifting-noise runs)
 - **Date:** 2026-10-23
-- **Related:** #544 (tracking); #368 (evidence), #353 and #359 (ice-sheet model, decision B), #355 (water units), #503 and #504 (lake freezing at `WATER_TO_ICE`), #297 (balanced lakes), RFC [0014](abandoned/0014-lake-water-volume-and-freezing.md) (lake water volume and seasonal lake ice; its D2(b) and D2(c) are prerequisites here), RFC [0012](0012-physics-first-simulation.md) (physics-first simulation); superseded on acceptance: #197, #203, #358 item 4, #313 Stage E (see "Open issues this RFC supersedes"); design principles 3, 5, 6 and 8
+- **Related:** #544 (tracking); #822 and #842 (march cost, trend-adaptive default); #368 (evidence), #353 and #359 (ice-sheet model, decision B), #355 (water units), #503 and #504 (lake freezing at `WATER_TO_ICE`), #297 (balanced lakes), RFC [0014](abandoned/0014-lake-water-volume-and-freezing.md) (lake water volume and seasonal lake ice; its D2(b) and D2(c) are prerequisites here), RFC [0012](0012-physics-first-simulation.md) (physics-first simulation); superseded on acceptance: #197, #203, #358 item 4, #313 Stage E (see "Open issues this RFC supersedes"); design principles 3, 5, 6 and 8
 
 ## Revision note
 
