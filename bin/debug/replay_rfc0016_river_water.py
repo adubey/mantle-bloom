@@ -35,11 +35,10 @@ from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
-from scipy.sparse import csr_matrix
 from scipy.spatial import cKDTree
 
 import rfc0016_land_store
-from replay_lib import load_replay, parse_replay_args, run_replay
+from replay_lib import load_replay, parse_replay_args, run_replay, upstream_catchment
 
 GRAVITY_M_S2 = 9.80665
 
@@ -86,24 +85,6 @@ def use_jobson_velocity(world, hydrology, plates_mod, line_spacing_rad) -> None:
         return raymond_route(points, elevation, is_ocean, flow_target, *rest, **kw)
 
     hydrology.route_river_reservoirs = route
-
-
-def upstream_catchment(flow_target, is_ocean, members) -> np.ndarray:
-    """Land nodes whose flow path reaches `members`, the members included. Walks the reversed
-    graph, so a flow cycle can't trap the search."""
-    sources = np.flatnonzero(flow_target >= 0)
-    graph = csr_matrix(
-        (np.ones(len(sources), dtype=bool), (flow_target[sources], sources)),
-        shape=(len(flow_target), len(flow_target)),
-    )
-    reached = np.zeros(len(flow_target), dtype=bool)
-    reached[members] = True
-    frontier = np.asarray(members, dtype=np.int64)
-    while len(frontier):
-        upstream = np.unique(graph[frontier].indices)
-        frontier = upstream[~reached[upstream]]
-        reached[frontier] = True
-    return reached & ~is_ocean
 
 
 def lake_bodies(hydro, areas, wet, lake_components) -> dict:

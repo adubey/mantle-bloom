@@ -19,6 +19,9 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+import numpy as np
+from scipy.sparse import csr_matrix
+
 
 def parse_replay_args(
     doc: str | None, add_arguments: Callable[[argparse.ArgumentParser], None] | None = None
@@ -57,6 +60,24 @@ def load_replay(args: argparse.Namespace, issue: int):
         "checkpoints": [],
     }
     return world, result
+
+
+def upstream_catchment(flow_target, is_ocean, members) -> np.ndarray:
+    """Land nodes whose flow path reaches `members`, the members included. Walks the reversed
+    graph, so a flow cycle can't trap the search."""
+    sources = np.flatnonzero(flow_target >= 0)
+    graph = csr_matrix(
+        (np.ones(len(sources), dtype=bool), (flow_target[sources], sources)),
+        shape=(len(flow_target), len(flow_target)),
+    )
+    reached = np.zeros(len(flow_target), dtype=bool)
+    reached[members] = True
+    frontier = np.asarray(members, dtype=np.int64)
+    while len(frontier):
+        upstream = np.unique(graph[frontier].indices)
+        frontier = upstream[~reached[upstream]]
+        reached[frontier] = True
+    return reached & ~is_ocean
 
 
 def run_replay(
