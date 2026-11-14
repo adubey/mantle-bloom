@@ -27,7 +27,7 @@ Withdrawn RFCs are archived in [abandoned/](abandoned/).
 | [0014](abandoned/0014-lake-water-volume-and-freezing.md) | Lakes conserve their water: in-step fill-spill-merge, seasonal freezing and water-surface temperature (abandoned) | Withdrawn (owner decision; original G7 criterion unmet, G8 incomplete) |
 | [0015](0015-frozen-water-in-physical-units.md) | Frozen water in physical units: glacier mass balance, ice flow and meltwater, freezing lakes and rivers, ocean ice and polar snow | Accepted (revised 2026-10-31 after G0's drifting-noise runs) |
 | [0016](0016-effective-land-water-store.md) | Effective land-water storage and upstream groundwater feedback | Accepted (revised 2026-11-01 to bound G0 and G1 to liquid land water until RFC 0015 completes; revised 2026-11-01 to permit the interim ledger implementation while G0 remains blocked; revised 2026-10-31 after G0 full-precipitation ledger blocked) |
-| [0018](0018-plates-split-along-weak-open-paths.md) | Plates split along weak paths that are pulling apart | Accepted (revision proposed 2026-11-09 after spectral-weighting, runtime and failed-rift review; G0–G2 must be rerun if accepted) |
+| [0018](0018-plates-split-along-weak-open-paths.md) | Plates split along weak paths that are pulling apart | Accepted (revision proposed 2026-11-14: damage bands replace the eigensolve candidate search after #848 and #876; gates become D0–D3. Earlier revision proposed 2026-11-09) |
 | [0019](0019-conservative-atmospheric-moisture.md) | Conserve atmospheric moisture in diagnostic rain and transport | Draft |
 
 RFCs 0001–0007 come from one investigation: a 19.2 Gyr run (seed 456862899) that lost
@@ -80,10 +80,13 @@ replacing its force-and-damage route. Earlier, it was revised to reject a static
 damage-driven local cuts that may link into rift segments; see
 [`analysis/issue480/`](../analysis/issue480/README.md).
 
-RFC 0018 is accepted for diagnosis gates to replace the great-circle split choice with a
-graph cut ranked by weak paths, outward opening and daughter mass. It draws on RFC 0010's
-failed minimum-cut and detected-route work, and on #770's finding that weaker pseudo-suture
-route cost alone did not reduce tiny breakups. RFC 0010 remains accepted until its withdrawal
+RFC 0018 is accepted for diagnosis gates to replace the great-circle split choice. Its
+2026-11-14 revision proposes rift strain stored in each cell: drag, slab pull and plumes strain
+rock past a softened strength, bands localize and thin, and a plate splits along the cheapest path
+through the remaining strength. This replaces the earlier graph cut, whose measured implementations and exact
+shortcuts stayed far above the runtime gate (#848) and whose validity checks measured geometry rather than load (#876).
+It draws on RFC 0010's failed minimum-cut, detected-route and damage work (#487, #699), and on
+#770's finding that weaker pseudo-suture route cost alone did not reduce tiny breakups. RFC 0010 remains accepted until its withdrawal
 is completed after RFC 0018's gates settle. Tracking issue: [#797](https://github.com/adubey/mantle-bloom/issues/797).
 
 ## Writing and reviewing
