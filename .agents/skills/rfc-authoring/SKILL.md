@@ -133,10 +133,13 @@ in this order:
    falsification says the idea was mistaken. Make them checkable with the same scripts.
 9. **References.**
 
-Two more sections go between the header and **Problem** when they apply, outside the numbered
-list. `## Outcome` comes first and records how an RFC ended; see `complete-rfc`.
-`## Revision note` comes next, for an accepted RFC revised through
-[`edit-rfc`](../edit-rfc/SKILL.md). Add one dated entry per revision, newest first. Each entry
+Two more sections go outside the numbered list when they apply. `## Outcome` goes between the
+header and **Problem** and records how an RFC ended; see `complete-rfc`. `## Revision note` goes
+at the end, immediately before **References**, so the RFC reads from its problem down without the
+revision history in the way. Add a header line pointing to it:
+`- **Revisions:** dated entries, newest first, are in the [Revision note](#revision-note) near the
+end.` The note is for an accepted RFC revised through [`edit-rfc`](../edit-rfc/SKILL.md) or an
+agreed revision. Add one dated entry per revision, newest first. Each entry
 gives the revision PR, what the earlier version proposed, what the evidence showed with links,
 and what changed, as in RFC 0009. For each changed gate or acceptance criterion, it gives the
 old criterion, new criterion and reason, and it links the impact table. A draft RFC doesn't
