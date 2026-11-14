@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { GlobeBasis, MapPixels } from "./globeTexture";
 import { loadWorldMapPixels, paintGlobe } from "./globeTexture";
+import { createGlobeTextureLoader } from "./globeTextureLoader";
 import type { Mat3 } from "./rotation";
 import { centerOfRotation, matApply, matTranspose, rotationForCenter, wrapPanLatLon } from "./rotation";
 
@@ -35,22 +36,52 @@ export default function GlobeSelector({ worldId, worldRevision, rotation, onRota
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [map, setMap] = useState<MapPixels | null>(null);
   const [preview, setPreview] = useState<Mat3 | null>(null);
+  const [inView, setInView] = useState(() => typeof IntersectionObserver === "undefined");
+  const [pageVisible, setPageVisible] = useState(() =>
+    typeof document === "undefined" ? true : document.visibilityState !== "hidden",
+  );
+  const visible = inView && pageVisible;
+  const loaderRef = useRef<ReturnType<typeof createGlobeTextureLoader<MapPixels>> | null>(null);
   const drag = useRef<{ pointerId: number; startX: number; startY: number; base: [number, number] } | null>(null);
   const shown = preview ?? rotation;
 
   useEffect(() => {
-    let cancelled = false;
-    loadWorldMapPixels(worldId, worldRevision)
-      .then((pixels) => {
-        if (!cancelled) setMap(pixels);
-      })
-      .catch(() => {
-        if (!cancelled) setMap(null);
-      });
+    const element = canvasRef.current;
+    if (!element || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry) setInView(entry.isIntersecting);
+      },
+      { threshold: 0 },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onVisibilityChange = () => setPageVisible(document.visibilityState !== "hidden");
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
+  useEffect(() => {
+    const loader = createGlobeTextureLoader<MapPixels>({
+      loadPixels: loadWorldMapPixels,
+      onLoaded: setMap,
+      onCleared: () => setMap(null),
+    });
+    loaderRef.current = loader;
     return () => {
-      cancelled = true;
+      loader.dispose();
+      loaderRef.current = null;
     };
-  }, [worldId, worldRevision]);
+  }, []);
+
+  useEffect(() => {
+    loaderRef.current?.update({ worldId, worldRevision, visible });
+  }, [worldId, worldRevision, visible]);
 
   useEffect(() => {
     const context = canvasRef.current?.getContext("2d");
