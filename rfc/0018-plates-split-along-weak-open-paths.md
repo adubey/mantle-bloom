@@ -177,31 +177,25 @@ advance synchronously, so the result does not depend on cell order. The coupling
 on step length only within the tolerance D3 measures.
 
 **1. Load, `N` (N/m, extensional, depth-integrated).** Each cell carries a symmetric 2×2
-membrane-resultant tensor `𝐍` in its tangent plane, summed from cheap directional terms that
-use forces the model already computes. Tension is positive. The extensional load is the largest
-principal value, `N = max(0, λ_max(𝐍))`, and its principal direction gives the band's strike
-(perpendicular to the largest tension). Opposing contributions cancel, so compression cannot
-register as extension.
+membrane-resultant tensor `𝐍` in its tangent plane. Tension is positive. The extensional load is
+the largest principal value, `N = max(0, λ_max(𝐍))`, and its principal direction gives the band's
+strike (perpendicular to the largest tension). `𝐍` is estimated by line cuts through the plate's
+balanced load (proxy C, adopted after D0; see the Revision note):
 
-- **Basal drag:** traction `τ = c_drag (v_mantle - v_plate)` (Pa, from
-  `torque.basal_drag_force_vectors_n(plate, world, spacing)` divided by cell area). For each
-  pair of adjacent cells, let `t̂` be the unit tangent of the centre-to-centre line, oriented from
-  `i` to `j`. The signed traction difference `Δτ = (τ_j - τ_i)·t̂` (positive pulls the cells
-  apart, negative pushes them together; swapping `i` and `j` flips both factors, so it does not
-  depend on orientation) times a coupling length `L_drag` adds
-  `Δτ L_drag (t̂ ⊗ t̂)` to both end cells, weighted by edge length.
-- **Slab pull:** each subducting boundary cell's slab-pull force
-  (`torque.slab_pull_force_vectors_n(plate, inputs, subducting_mask, spacing)`) divided by its
-  boundary length (`torque.boundary_node_length_m`) is a line load `F_sp` (N/m) along `ê`, the
-  force direction projected into the cell's tangent plane and normalized. A slab pulls its plate toward the trench,
-  so the plate carries it as tension along `ê`. It reaches into the plate as
-  `F_sp exp(-d / L_pull) (ê ⊗ ê)`, where `d` is the distance to that boundary cell. Contributions
-  from separate trenches add as tensors, so two slabs pulling a plate apart add tension and
-  their components along the same line combine by direction.
-- **Collision and ridge push:** contact drag (`torque.contact_drag_force_vectors_n`) and ridge
-  push (`torque.ridge_push_force_vectors_n`) enter the same way, decaying with `L_pull`, with
-  negative (compressive) sign along their force direction. This keeps colliding margins from
-  rifting.
+- **Balanced load.** Sum the per-node forces the torque engine already computes
+  (`torque.gather_per_node_force_field`: slab pull, slab drag, ridge push, basal drag and contact
+  drag), project them into each cell's tangent plane, and remove their area-weighted
+  rigid-rotation part, as `thin_shell.solve_thin_shell` does. What remains has zero net torque, so
+  it is the part that stresses the plate rather than turning it. Slab pull and basal drag enter
+  with their own signs; collision contact and ridge push push inward, so colliding margins come
+  out compressive.
+- **Line cuts.** In a frame tangent to the plate's centroid, for each of six directions `n̂`,
+  sort cells along `n̂`. For the straight line through cell `x` normal to `n̂`, the balanced force
+  on the far side, projected on `n̂`, divided by the plate's width there, is the resultant across
+  that line, `N_n̂(x)` (N/m). The width is the cell area within half a line spacing of the line,
+  divided by the spacing. A running sum over the sorted cells gives every line in `O(N log N)`.
+- **Tensor.** Fit `n̂ᵀ𝐍n̂ = N_n̂` over the six directions by least squares, rotate the result into
+  each cell's tangent basis, and multiply by `k_cut`.
 - **Plumes:** while a cell has plume heat it adds an isotropic tension `N_plume 𝐈`, standing in
   for spreading above a plume head. The heat ends partway through a step at
   `t_exp = plume_heat_myr`. Averaging the load over the step before applying the nonlinear strain
@@ -210,10 +204,10 @@ register as extension.
   heated half strains. The update therefore splits the step at `t_exp`, with full plume load and
   plume weakening before it and none after, and sub-steps each part (step 3).
 
-`N` is a calibrated estimate of the thin-shell extensional resultant `N_ext`. `L_drag` and `L_pull` are calibrated in D0 against the thin-shell membrane
-diagnostic (`thin_shell.solve_thin_shell`), which solves the same per-node force field exactly
-but costs about 1.6 s per plate. The cheap proxy runs every step; the shell solve runs only
-offline for calibration (alternative B under D0).
+D0 compared this estimate with the thin-shell resultant `N_ext` (`thin_shell.solve_thin_shell`),
+which solves the same force field exactly but costs about 1.3 s per plate. On 451 development
+plates it passed every D0 criterion with `k_cut = 1.33`, close to the physical value of 1,
+at about 2 ms per plate. The shell solve is not on the step path; D1 runs it in shadow as a check.
 
 **2. Strength, `N_eff` (N/m).** It is `N_eff = k_cap N_cap(kind, Hc, Hm, ΔT_moho) × M × W`, where:
 
@@ -352,7 +346,7 @@ exogenous ones.
 | `s_fault`, `s_warm`, `s_max` | `0.40`, `0.40`, `0.88` | `s_fault` matches the accepted fault reduction; `s_max` matches the accepted 0.12 clamp | D1 search on `s_warm` |
 | `τ_heal` | `62.8 Myr` | McKenzie 1978 thermal time constant | Fixed; sensitivity at 30 and 120 Myr |
 | `k_cap` | `1.0` | #487 reference envelope | D1 search over 0.3–3 (the `K0` bracket) |
-| `L_drag`, `L_pull` | fitted | D0 fit to thin-shell `N_ext` | D0 only |
+| `k_cut` | `1.33` | D0 fit to thin-shell `N_ext` on 451 development plates | Fixed after D0 |
 | `N_plume` | `0.5 TN/m` | Design choice, under a tenth of the 100 km continental capacity (6.28 TN/m) | D1 search over 0–2 TN/m |
 | `w_0` | `125 km` | Owner's onset width (100–150 km) | D1 resolution check |
 | `ε_cand` | `0.1` | Design choice | Diagnostic only |
@@ -378,10 +372,9 @@ treat these first guesses as validated.
 
 ### Runtime and saves
 
-Production runs, per plate per step: the load tensor from existing per-node forces; a
-distance-to-boundary field for the slab, collision and ridge terms, which is the one non-trivial
-per-step cost (a nearest-neighbour query from every cell to the plate's force-bearing boundary
-cells); a table interpolation for strength; the disk average; and the per-cell strain update. The
+Production runs, per plate per step: the line-cut load tensor from existing per-node forces
+(about 2 ms per plate in D0, six sorts plus a 3×3 rigid-rotation fit); a table interpolation for
+strength; the disk average; and the per-cell strain update. The
 connected-component and path search runs only for plates with broken cells. The candidate
 recorder runs only in the D1–D3 harness. The hypothesis is milliseconds per plate, small against
 a production step, though under plates-only stepping it could be a noticeable share. This is not
@@ -396,8 +389,8 @@ held-out sample is the ten-seed revised-method sample already set aside: registr
 plus the first frozen reserve seed `1479220500`, none of which has been run for a revised method.
 No held-out seed is used for calibration or tuning.
 
-1. **D0: calibrate the cheap load.** On development worlds, fit `L_drag` and `L_pull` so the
-   cheap tensor matches the thin-shell resultant under the same forces. First check
+1. **D0: calibrate the cheap load.** On development worlds, fit the load proxy's free parameters
+   (originally `L_drag` and `L_pull`; for the adopted proxy C, `k_cut`) so the cheap tensor matches the thin-shell resultant under the same forces. First check
    manufactured cases with known answers: one-sided slab pull, two slabs pulling apart, a slab
    opposed by collision contact, and pure collision (compression only). The proxy must give the
    shell's sign (tension or compression) in each. A further case puts tension parallel to an
@@ -410,6 +403,14 @@ No held-out seed is used for calibration or tuning.
 
    If any of these fails, use alternative B: run the thin-shell solve every `K` steps
    (start `K = 5 Myr`), hold `𝐍` between solves, and measure its cost in D3.
+
+   **Result (2026-11-14):** the originally specified local proxy (signed drag differences with
+   coupling length `L_drag`, plus slab, ridge and contact forces spread over a decay length
+   `L_pull`) failed. Sign agreement was 74.6%, direction 52.9% and Spearman 0.49; the magnitude
+   ratio passed; 3 of 4 manufactured cases matched. The line-cut proxy C passed every criterion:
+   sign 82.4%, direction 71.9%, Spearman 0.69, ratios 0.57 continental and 0.54 oceanic, and 4 of 4
+   manufactured cases, with `k_cut = 1.33`. The owner adopted C, so alternative B is not used
+   ([`analysis/issue797/`](../analysis/issue797/README.md), [PR #887](https://github.com/adubey/mantle-bloom/pull/887)).
 2. **D1: tune the mechanism on development worlds.** Run 200 Myr with plates-only stepping
    (`simulate_climate_biomes = False`) at 1 Myr steps, as G2 did, across a predeclared parameter
    search (Latin hypercube over the D1 knobs, as in #313). Score each setting against the realism
@@ -425,6 +426,8 @@ No held-out seed is used for calibration or tuning.
    are oceanic, apply the predeclared fallback: oceanic cells latch only on `ε_break`, and
    `k_cap` gains a separate oceanic factor searched over 1–5. Then repeat D1. Also report
    withheld-thinning events (step 4).
+   On the stage-2 runs, solve the thin shell every 10 Myr in shadow and report D0's statistics
+   for C on the evolving worlds; this is reporting, not a pass condition.
    Repeat the frozen setting on five development seeds at half the default node density. Onset
    width and median onset-to-breakup duration must stay within 25% of the default-density
    values, or band width is following the grid.
@@ -467,8 +470,8 @@ in a shared projection and legend.
 
 ### Acceptance criteria
 
-- [ ] D0 records the fitted `L_drag` and `L_pull` with their agreement statistics, or the switch
-      to alternative B with its cadence.
+- [x] D0 records the fitted load proxy with its agreement statistics: C passed with
+      `k_cut = 1.33` and was adopted (2026-11-14).
 - [ ] D1 records the parameter search, the scores and the frozen knob values, using development
       seeds only.
 - [ ] D2 passes on the ten held-out seeds: every realism target is met, no more than one pair
@@ -502,9 +505,9 @@ in a shared projection and legend.
   localization target fails in most runs at every softening setting), the premise that softening
   alone localizes bands is wrong. Add a tip-growth rule (strain concentrated at band ends, as in
   RFC 0010 Gate 3a) before D2, or reject the method.
-- **The cheap load cannot stand in for stress, and the shell solve is too costly.** If D0 falls
-  back to alternative B and D3 shows that even a coarse cadence exceeds the runtime limit, revise
-  the load model.
+- **The cheap load stops standing in for stress.** C passed D0 on development snapshots. If D1's
+  shadow shell solves on evolving worlds fall below D0's thresholds, revise the load model before
+  D2; alternative B (periodic shell solves) remains the fallback.
 - **No knob setting looks right.** If no D1 setting meets most realism targets on development
   worlds, the mechanism is missing a process. Diagnose which target fails before adding knobs.
 - **Rifts ignore weakness.** If successful paths follow inherited weakness no more often than
@@ -536,9 +539,8 @@ in a shared projection and legend.
   around `_plates_from_node_masks()`, as in the accepted design.
 - `backend/app/quad_tectonics.py`: reuse the `_allocate_stretch` volume rule for flank transfer.
   Interior band cells do not call `lithosphere_plate._erupt_melted_nodes` (see step 4).
-- `backend/app/torque.py`: reuse `basal_drag_force_vectors_n`, `slab_pull_force_vectors_n`,
-  `contact_drag_force_vectors_n` and `ridge_push_force_vectors_n` for the load tensor; no change
-  to plate-motion forces.
+- `backend/app/torque.py`: reuse `gather_per_node_force_field` for the balanced load; no change
+  to plate-motion forces. The line-cut estimate starts from `bin/debug/rift_damage_prototype.cut_tensor`.
 - `backend/app/faults.py`: add a strain-rate term to the spawn weight in `_maybe_spawn_faults`.
 - `backend/app/cratons.py`: change `record_rift_cut(world, plate, points, cut_normal, band_sin,
   kind)` to take the path's band mask instead of a cut normal and band width, so no great-circle
@@ -576,15 +578,25 @@ in a shared projection and legend.
   against 15.82 TN/m continental (`analysis/issue487/gate2-column-envelope.json`). Oceanic
   interiors therefore strain more easily and latch earlier than continental ones. D1 records it and
   has a predeclared fallback.
-- **Directional proxy.** The load tensor sums uniaxial contributions with decay lengths. It is
-  not an equilibrium stress field. D0's sign, direction and magnitude checks against the
-  thin-shell solve decide whether it is good enough or periodic shell solves are needed.
+- **Line-cut proxy.** C gives each straight line's average resultant, not the local stress: it
+  smooths how stress turns near plate edges and corners, straight lines can cross non-convex plates
+  more than once, and the centroid-tangent frame distorts very large plates. D0 found it good enough
+  on development snapshots (direction within 30° on 71.9% of cells, just above the 70% bar), and
+  D1's shadow shell solves check it on evolving worlds.
 - **Width scale.** The non-local softening disk `w_0` sets band width directly, which is a
   regularization choice, not a prediction. D1 checks that width does not follow the node spacing.
 - **Not geological rates.** Realism targets judge appearance and timing on model worlds. They are
   not calibrated rift-frequency estimates.
 
 ## Revision note
+
+**2026-11-14 — load proxy C adopted after D0.** D0 ([PR #887](https://github.com/adubey/mantle-bloom/pull/887))
+showed that the specified local load proxy failed three of its four statistical criteria and one
+manufactured case. A line-cut proxy through the balanced load passed all of them, at a tenth of the
+local proxy's cost. The owner chose to adopt it instead of the predeclared fallback of periodic
+thin-shell solves. Step 1 of the Design now specifies C, with `k_cut = 1.33` replacing `L_drag`
+and `L_pull`. D1 adds shadow shell solves as a check. D0's criteria are unchanged, and no other gate
+changes. [#888](https://github.com/adubey/mantle-bloom/issues/888) runs D1.
 
 **2026-11-14 — accepted.** The owner merged [PR #880](https://github.com/adubey/mantle-bloom/pull/880) and chose to run D1 in two stages: a coarse search on 5 development worlds, then the best settings on all 20. D1 and D2 state their 1 Myr step size, and D1 adds a 0.5 Myr check of the frozen setting, as the RFC lifecycle requires.
 
