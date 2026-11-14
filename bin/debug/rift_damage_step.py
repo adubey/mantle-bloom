@@ -41,6 +41,9 @@ class PlateStep:
     broken: np.ndarray
     oceanic: np.ndarray
     weak: np.ndarray  # inherited weakness marks (belt, volcano, fault) per cell
+    plumed: np.ndarray  # plume heat present per cell
+    elevation: np.ndarray
+    hc: np.ndarray
     seconds: float = 0.0
     stats: dict = field(default_factory=dict)
 
@@ -196,7 +199,7 @@ def damage_step(world, plate, years: float, state: Mechanism) -> PlateStep | Non
     n_eff = base_quiet * mech.softening(eps_bar, warm_bar, p)
     state.prev_reference[plate.plate_id] = (plate.cell_keys.copy(), _is_reference(out.hc, out.hm))
     step = PlateStep(plate.plate_id, plate.cell_keys.copy(), points, areas, graph, tensor, n_eff, eps1, d_eps,
-                     broken | newly_broken, ~continental, belt | volcano | near_fault, time.perf_counter() - started)
+                     broken | newly_broken, ~continental, belt | volcano | near_fault, heated, new_elevation, out.hc, time.perf_counter() - started)
     state.steps[plate.plate_id] = step
     return step
 
@@ -270,16 +273,21 @@ def band_path(step: PlateStep, boundary: np.ndarray, band: np.ndarray):
     return chain
 
 
-def split_masks(world, plate, step: PlateStep, path: np.ndarray, min_nodes: int):
+def split_masks(world, plate, step: PlateStep, path: np.ndarray, min_nodes: int, why: dict | None = None):
     """Remove the path; require exactly two components; give each path cell to the component it shares the most
     edges with, ties to the side whose fitted Euler pole matches the mantle flow there better. Returns the
-    boolean mask of side A (path cells assigned), or None if either daughter is disconnected or too small."""
+    boolean mask of side A (path cells assigned), or None if either daughter is disconnected or too small
+    (the reason is counted in ``why``)."""
+    def reject(reason):
+        if why is not None:
+            why[reason] = why.get(reason, 0) + 1
     n = len(step.points)
     off_path = np.ones(n, dtype=bool)
     off_path[path] = False
     sub = step.graph[off_path][:, off_path]
     count, labels = connected_components(sub, directed=False)
     if count != 2:
+        reject(f"components_after_removal_{min(count, 5)}")
         return None
     side = np.full(n, -1)
     side[off_path] = labels
@@ -293,7 +301,11 @@ def split_masks(world, plate, step: PlateStep, path: np.ndarray, min_nodes: int)
             side[cell] = _tie_side(world, step, side, cell)
     mask_a = side == 0
     for mask in (mask_a, ~mask_a):
-        if int(mask.sum()) < min_nodes or connected_components(step.graph[mask][:, mask], directed=False)[0] != 1:
+        if int(mask.sum()) < min_nodes:
+            reject("daughter_too_small")
+            return None
+        if connected_components(step.graph[mask][:, mask], directed=False)[0] != 1:
+            reject("daughter_disconnected")
             return None
     return mask_a
 
@@ -309,6 +321,28 @@ def _tie_side(world, step, side, cell) -> int:
         if s > score:
             best, score = k, s
     return best
+
+
+def random_path_weak_share(step: PlateStep, boundary: np.ndarray, plate_id: int, elapsed_years: float, trials: int = 20) -> float:
+    """Mean inherited-weakness share along matched random edge-to-edge paths: shortest paths between random pairs of
+    boundary cells at least 60% of the plate's longest boundary-to-boundary span apart (the falsification test's
+    baseline). Deterministic in (plate, time)."""
+    rng = np.random.default_rng((plate_id, round(elapsed_years)))
+    cells = np.flatnonzero(boundary)
+    if len(cells) < 4:
+        return float("nan")
+    span = 0.6 * float(np.max(np.linalg.norm(step.points[cells][:, None] - step.points[cells][None, :], axis=2)))
+    shares = []
+    for _ in range(trials * 5):
+        a, b = rng.choice(cells, 2, replace=False)
+        if np.linalg.norm(step.points[a] - step.points[b]) < span:
+            continue
+        _, pred = dijkstra(step.graph, directed=False, indices=a, return_predecessors=True)
+        chain = _trace(pred, b)
+        shares.append(float(step.weak[chain].mean()))
+        if len(shares) == trials:
+            break
+    return float(np.mean(shares)) if shares else float("nan")
 
 
 def localization(step: PlateStep, p: Params) -> dict:
@@ -353,7 +387,7 @@ def breakthrough(world, plate, state: Mechanism):
         if not proto.ligament_splits(step.tensor[path], normal, ds, ~step.broken[path], step.n_eff[path]):
             continue
         state.counters["ligament_pass"] += 1
-        mask_a = split_masks(world, plate, step, path, min_nodes)
+        mask_a = split_masks(world, plate, step, path, min_nodes, state.counters.setdefault("rejected_because", {}))
         if mask_a is None:
             state.counters["split_rejected"] += 1
             continue
@@ -383,6 +417,8 @@ def breakthrough(world, plate, state: Mechanism):
             "kind": "split", "elapsed_years": world.elapsed_years, "plate_id": int(plate.plate_id), "daughters": [int(a.plate_id), int(b.plate_id)],
             "path_cells": int(len(path)), "path_length_m": float(ds.sum()), "oceanic_share": oceanic_share, "oceanic": oceanic_share > 0.5,
             "intact_share": float(ds[~step.broken[path]].sum() / max(ds.sum(), 1e-9)), "weak_share": float(ds[step.weak[path]].sum() / max(ds.sum(), 1e-9)),
+            "plume_share": float(ds[step.plumed[path]].sum() / max(ds.sum(), 1e-9)),
+            "random_weak_share": random_path_weak_share(step, boundary, int(plate.plate_id), world.elapsed_years),
             "small_share": float(min(step.areas[mask_a].sum(), step.areas[~mask_a].sum()) / step.areas.sum()),
             "path_keys": step.keys[path].tolist(), **localization(step, p),
         })
