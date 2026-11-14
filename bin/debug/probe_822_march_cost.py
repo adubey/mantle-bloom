@@ -18,6 +18,18 @@ opens from identical bytes), then run each preset as its own process, one at a t
 
 `--set key=value` overrides one MarchCost field on top of the preset (repeatable), e.g.
 `--set max_substeps=400`. `--substep-years 125` reruns an arm at a shorter base substep.
+
+#842 round 3 (`analysis/issue842/preregistration.md`) adds:
+
+- `--ice-age-period-years 8e6` replays a save with ice ages at that period (RFC 0015's
+  period rule; the UI slider stops at 1 Myr).
+- `--scale-opening-ice 1.001` scales every node's opening glacier depth uniformly before
+  the first step (E3's opening-ice ensemble, as #741 and #765 ran it).
+- `--write-save-after K --write-save <path>` writes an exact save after K steps and keeps
+  going, so E3's members can open from one step of a replay.
+
+Each step also records the ice area (nodes with glacier depth > 0) and the march log's
+`worst_substep_move`, #741's drop signature.
 """
 
 from __future__ import annotations
@@ -58,11 +70,13 @@ def _generate(spec: str, out: Path) -> None:
 
 
 def _timed_march():
-    """Wrap hydrology._march_glacier to sum its wall time per step."""
-    clock = {"s": 0.0}
+    """Wrap hydrology._march_glacier to sum its wall time per step, and keep the node areas
+    it was given (the ice area each step needs them)."""
+    clock = {"s": 0.0, "areas": None}
     real = hydrology._march_glacier
 
     def timed(*args, **kwargs):
+        clock["areas"] = kwargs["areas_m2"] if "areas_m2" in kwargs else args[3]
         start = time.perf_counter()
         try:
             return real(*args, **kwargs)
@@ -73,7 +87,21 @@ def _timed_march():
     return clock
 
 
-def _step_record(i, world, wall, march_s):
+def _scale_opening_ice(world, factor: float) -> None:
+    """Scale every node's glacier depth by `factor` (E3's uniform opening-ice members)."""
+    for plate in world.plates:
+        if plate.node_count() > 0:
+            plate.set_fields_on_plate(glacier_depth=np.asarray(plate.collect("glacier_depth"), dtype=float) * factor)
+
+
+def _ice_area_km2(world, areas) -> float | None:
+    depth = np.asarray(world.hydrology_cache.glacier_depth, dtype=float)
+    if areas is None or len(areas) != len(depth):
+        return None
+    return float(np.sum(np.asarray(areas, dtype=float)[depth > 0.0])) / 1e6
+
+
+def _step_record(i, world, wall, march_s, areas=None):
     land = world.hydrology_cache.land_water_ledger
     ice = world.hydrology_cache.ice.ledger
     external = land.rain_m3 + land.meltwater_m3
@@ -88,6 +116,7 @@ def _step_record(i, world, wall, march_s):
         "march": march,
         "ice_opening_km3": ice.opening_m3 / 1e9,
         "ice_closing_km3": ice.closing_m3 / 1e9,
+        "ice_area_km2": _ice_area_km2(world, areas),
         "ice_accumulation_km3": ice.accumulation_m3 / 1e9,
         "ice_loss_km3": loss / 1e9,
         "ice_residual_km3": ice.residual_m3 / 1e9,
@@ -108,8 +137,13 @@ def main() -> None:
     args.add_argument("--myr", type=float, default=0.25)
     args.add_argument("--out", type=Path)
     args.add_argument("--substep-years", type=float, help="override MARCH_SUBSTEP_YEARS (a d2 convergence control)")
+    args.add_argument("--ice-age-period-years", type=float, help="replay with ice ages at this period (#842)")
+    args.add_argument("--scale-opening-ice", type=float, help="scale the opening glacier depth uniformly (#842 E3)")
+    args.add_argument("--write-save-after", type=int, metavar="K", help="write --write-save after K steps (#842 E3)")
     ns = args.parse_args()
 
+    if ns.write_save_after is not None and ns.write_save is None:
+        raise SystemExit("--write-save-after needs --write-save")
     if ns.generate:
         if ns.write_save is None:
             raise SystemExit("--generate needs --write-save")
@@ -124,6 +158,10 @@ def main() -> None:
         ice_sheet.MARCH_SUBSTEP_YEARS = ns.substep_years
     raw = ns.save.read_bytes()
     world = persistence.load_world_bytes(raw)
+    if ns.ice_age_period_years is not None:
+        world.ice_age_period_years = ns.ice_age_period_years
+    if ns.scale_opening_ice is not None:
+        _scale_opening_ice(world, ns.scale_opening_ice)
     ice_sheet.MARCH_LOG.clear()
     clock = _timed_march()
 
@@ -133,7 +171,10 @@ def main() -> None:
         start = time.perf_counter()
         world_mod.step_world(world, ns.myr * 1e6)
         wall = time.perf_counter() - start
-        steps.append(_step_record(i, world, wall, clock["s"]))
+        steps.append(_step_record(i, world, wall, clock["s"], clock["areas"]))
+        if ns.write_save_after is not None and i + 1 == ns.write_save_after:
+            ns.write_save.write_bytes(persistence.save_exact_bytes(world))
+            print(f"wrote {ns.write_save} sha256={hashlib.sha256(ns.write_save.read_bytes()).hexdigest()}")
         depths[f"step{i}"] = np.asarray(world.hydrology_cache.glacier_depth, dtype=float)
         rec = steps[-1]
         m = rec["march"] or {}
@@ -150,6 +191,9 @@ def main() -> None:
         "save": ns.save.name,
         "sha256": hashlib.sha256(raw).hexdigest(),
         "preset": ns.preset,
+        "ice_age_period_years": float(world.ice_age_period_years),
+        "scale_opening_ice": ns.scale_opening_ice,
+        "substep_years": ice_sheet.MARCH_SUBSTEP_YEARS,
         "cost": dataclasses.asdict(cost),
         "steps": ns.steps,
         "myr_per_step": ns.myr,

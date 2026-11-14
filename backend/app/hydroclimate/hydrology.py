@@ -2189,6 +2189,14 @@ class _SettleWatch:
         return False, None
 
 
+def _worst_substep_move(volumes: list[float]) -> float:
+    """Largest one-substep change in global ice volume, as a fraction of the volume before
+    it. #741's drop signature is one substep moving the volume by over 20%; the log's
+    volume path is subsampled, so it can't show that on its own (#842)."""
+    moves = [abs(b - a) / max(a, 1.0) for a, b in zip(volumes, volumes[1:])]
+    return round(max(moves), 6) if moves else 0.0
+
+
 def _march_glacier(
     world: "World",
     points: np.ndarray,
@@ -2465,6 +2473,7 @@ def _march_glacier(
         "trend_changes": [round(c, 8) for c in watch.trend_changes[-8:]],
         "last_change": None if last_change is None else round(last_change, 6), "sea_level_m": sea_level,
         "volume_path_km3": [round(v / 1e9, 6) for v in volumes[:: max(1, len(volumes) // 25)]],
+        "worst_substep_move": _worst_substep_move(volumes),
         "tipping_growth": None if tipping_growth is None else round(tipping_growth, 6),
         "capped": capped, "max_substep_years": max_dt,
         "sea_level_resolves": resolves, "sea_level_skipped": skipped_resolves,
