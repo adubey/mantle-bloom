@@ -929,3 +929,236 @@ were run, and no threshold was relaxed. The compact values, all anchors, full ch
 and per-step screens are in [`window-rescan-2-summary.json`](window-rescan-2-summary.json).
 Raw scans, replay outputs and checkpoints remain in the private capture under `rfc0016/window-rescan-2/`
 and are covered by its `SHA256SUMS` file.
+
+## Expanded window rescan (#871)
+
+Preregistered on `codex/issue-871-expanded-g1-windows` before the first scan. This expands the
+candidate worlds beyond #680's two diagnosis worlds. It selects replacement windows only; it does
+not run G0's river matrix or any G1 treatment.
+
+**Source and pool.** Pin source `5912a7d8be999e4148ce956be060932b77241614` (the fetched
+`origin/main` at preregistration). The candidate manifest is
+[`window-rescan-3-preregistration.json`](window-rescan-3-preregistration.json). It snapshots the
+B2 catalog on 2026-11-13, includes every canonical `mantle-bloom-seed*.bloom` save at least 100
+Myr old, chooses one save per seed (the greatest saved age; for equal-age duplicates, the name
+without a numeric suffix), and excludes all saves from RFC 0015's held-out seeds 447276134,
+628977350 and 295569319. Issue-specific checkpoint exports with the `seed<id>-...` naming pattern
+are excluded because they are derived diagnosis windows, not independent catalog worlds. No
+additional RFC 0016 acceptance save is named in the tracker or current RFC/report.
+The two #680 worlds remain in the pool for continuity; additional seeds expand it. Candidate file
+SHA-256 values are verified and recorded in the manifest before scanning.
+
+**Primary scan.** Run `bin/debug/measure_lake_step_budget.py` on each listed save, in manifest
+order, for 5 Myr at 100 kyr per step with the ice-age cycle disabled. Exclude the first 0.4 Myr
+(four outputs) as startup. Keep the source fixed for the entire scan. Report per-world reversal and
+comparable-body counts and candidate events using the unchanged #680/#588 detector: a matched
+component above 10,000 km² with successive volume changes reversing sign and each change above 50%
+of the prior volume.
+
+**Candidate windows and screens.** As in #791, each candidate is a non-overlapping four-step
+window starting two steps before a qualifying reversal; rank by descending `|ΔV|`. Use the
+detector-matched component as target and the wet node nearest its centroid as anchor. Apply these
+screens in order, without altering thresholds: (1) a source-world reload reproduces before, after
+and `ΔV`; (2) frozen precipitation is at most 10% across the window over the catchment of each
+land node draining to the target; (3) routed supply to the target is nonzero every step; (4) the
+normalized liquid-ledger residual is at most 0.1% every step; and (5) a lake-ice-sublimation
+knockout retains at least 50% of the control `|ΔV|`. Record every ranked candidate and its first
+failing screen. Select at most three highest-ranked individual passers, with no overlapping
+windows, disjoint target-node sets and anchors at least 1,000 km apart. Stop if fewer than three
+pass; do not relax any screen.
+
+**Step-size sensitivity.** Production remains 100 kyr steps. For every selected target, replay its
+four-step 0.4 Myr interval from the same checkpoint at 10 kyr steps and record the same anchor's
+lake-volume and connectivity trace. Treat this as a schedule sensitivity, not a replacement for the
+production result or a timestep-invariance proof. Interpret the comparison alongside #853's lake
+solver slice-length findings and #854's gate reporting requirement. No window is selected or
+rejected based on this alternate schedule.
+
+**Decision and artifacts.** Checkpoint hashes, anchor, target `|ΔV|`, frozen share, routed supply
+for every step, maximum normalized liquid-ledger residual, knockout response and the 10 kyr
+sensitivity go in compact JSON and this report. Save scans, replays and checkpoints only under the
+private capture path recorded in the manifest, with `SHA256SUMS` beside them. If three independent
+windows do not pass, document the evidence and recommend keeping G1b blocked or requesting an
+owner-approved RFC revision. G0 reruns once at the final pin only after three valid windows are
+selected.
+
+**Scan progress (updated 2026-11-14).** All completed saves used the registered source and schedule, and
+their save hashes matched the manifest. The first four outputs per save are excluded from the
+reportable counts. Peaks include the whole scan.
+
+| Seed, checkpoint | Reportable steps | Comparable observations | Reversals | Mean reportable step | Peak RSS | Largest reversal |
+|---|---:|---:|---:|---:|---:|---|
+| 910211954, 220.2 Myr | 46 | 3,254 | 74 | 45.3 s | 6,873.8 MB | 671,457 km³, step 44 |
+| 317739385, 200.8 Myr | 46 | 828 | 67 | 292.5 s | 8,001.7 MB | 1.353 million km³ after 1.343 million km³ growth, steps 9–10 |
+| 308161711, 121.5 Myr | 46 | 1,025 | 37 | 19.6 s | 1,206.0 MB | 313,023 km³, step 18 |
+| 373936961, 244.4 Myr | 46 | 2,229 | 118 | 50.4 s | 6,422.1 MB | 2.210 million km³, step 37 |
+| 374464662, 132.6 Myr | 46 | 611 | 15 | 14.8 s | 1,119.8 MB | 155,352 km³, step 16 |
+| 456862899, 19,191.8 Myr | 46 | 1 | 0 | 13.4 s | 2,606.7 MB | none; one comparable observation at step 46 |
+| 507012855, 479.0 Myr | 46 | 1,442 | 43 | 48.9 s | 1,236.8 MB | 2.328 million km³, step 49 |
+| 544349906, 422.9 Myr | 46 | 1,203 | 33 | 7.5 s | 1,262.5 MB | 1.752 million km³, step 39 |
+| 635056485, 452.8 Myr | 46 | 251 | 4 | 172.0 s | 3,867.1 MB | 140,707 km³, step 5 |
+| 762517225, 135.2 Myr | 46 | 896 | 20 | 88.9 s | 1,179.6 MB | 606,992 km³, step 12 |
+| 997271774, 130.5 Myr | 46 | 449 | 24 | 37.8 s | 1,748.5 MB | 297,049 km³, step 5 |
+
+These are raw detector signals, not passing candidate windows. Full outputs remain in the private
+capture, with hashes recorded beside the saves. Scans for seeds 308161711 and 373936961 emitted
+repeated glacier maximum-depth warnings with zero meltwater shed. The 19.2 Gyr save showed no
+detector reversals despite intermittent lakes reaching 53,216 km³ and several floor-drain
+transitions. Seed 507012855 is a lake-rich world with roughly 5.6–11.3 million km³ of lake
+volume in reportable steps; its 43 reversals are scan signals only. The 422.9 Myr save also
+has large raw lake-volume reversals (33 across 1,203 comparable observations). All pool scans are
+complete; candidate screening is in progress. Seed 635056485 repeatedly reached the 5,000 m glacier depth cap
+at 0–15 nodes with zero meltwater shed; its 172.0 s mean reportable step made this scan much slower
+than the others. It produced four raw reversals across 251 comparable observations. Seed 762517225
+also emitted intermittent one-node glacier-depth warnings with zero meltwater shed; its scan found
+20 raw reversals across 896 comparable observations.
+
+### Candidate screen progress
+
+Candidates are ranked by descending `|ΔV|` after greedily removing overlapping four-step windows
+within each source world. The top three nonoverlapping signals come from distinct seeds:
+
+| Rank | Seed, event step | `|ΔV|` (km³) | First failing screen / status |
+|---:|---|---:|---|
+| 1 | 507012855, 49 | 2,327,862 | Fails frozen precipitation: 58.08% across the window |
+| 2 | 373936961, 37 | 2,209,627 | Fails reload: detector-matched prior volume is not reproduced |
+| 3 | 544349906, 39 | 1,751,714 | Fails routed supply: target is absent at window step 4 |
+| 4 | 544349906, 46 | 1,703,174 | Passes individual screens; knockout retains 99.91% |
+| 5 | 544349906, 28 | 1,498,244 | Passes individual screens; knockout retains 99.999% |
+| 6 | 317739385, 10 | 1,353,242 | Fails frozen precipitation: 83.67% across the window |
+
+Candidate 2's checkpoint is at 247.8 Myr (SHA-256
+`1be2433e81f66f36b76cdbb89b58335ee5e381305297476a42e6249cf277fbad`), anchor
+`[-0.2391, -0.2595, 0.9357]`. The source scan's detector-matched target changed from 430.010 to
+2,210,056.907 km³, but the reloaded event output has no matched prior body, so screen 1 fails.
+Its after-volume reproduces. Diagnostic catchment values are also recorded: the four-step frozen
+share is 67.12%, routed supply is positive each step, and the maximum normalized lake and land
+residuals are `2.15e-13` and `7.11e-14`. These later checks do not alter the first-failure result;
+the sublimation knockout is not run. The compact metrics are in
+[`window-rescan-3-summary.json`](window-rescan-3-summary.json).
+
+Candidate 3's checkpoint is at 426.5 Myr (SHA-256
+`276b17601dbcdc23abd256bf27f260b7f6808f6ef0a310b2d70b6e1071393601`), anchor
+`[0.9650, -0.2499, 0.0789]`. Reload reproduces the detector-matched 2,655,397.058 to
+4,407,111.162 km³ event exactly. Frozen share is 1.65% weighted across the three wet-anchor
+outputs; the anchor has no target and no routed supply on step 4. The maximum normalized lake and
+land residuals are `7.51e-13` and `4.03e-13`. It fails screen 3, so the sublimation knockout is
+not run. See the compact JSON for the per-step values.
+
+Candidate 4's checkpoint is at 427.2 Myr (SHA-256
+`82b64049c81c765b221fbc850500f3ae7ee578f65022a32a06387faa0fb148ce`), anchor
+`[0.6434, -0.7536, 0.1345]`. Reload reproduces the 2,715,230.583 to 4,418,404.225 km³ event.
+Frozen share is 6.59%; routed supply is positive in every step, and the maximum normalized lake
+and land residuals are `4.41e-13` and `2.29e-13`. With lake-ice sublimation set to zero, the event
+is 1,701,689.422 km³, retaining 99.91% of the control change. It passes all individual screens;
+the independence rule applies when additional individual passers are available.
+
+Candidate 5's checkpoint is at 425.4 Myr (SHA-256
+`2f59c616610bcd754eab0306e780889f5729c7b09ac8ac0a9a236cdc04418a62`), anchor
+`[-0.2405, -0.9630, 0.1217]`. Reload reproduces the 1,548,925.991 to 50,681.820 km³ event.
+Frozen share is 1.64%; routed supply is positive in all four steps, and the maximum normalized
+lake and land residuals are `1.05e-12` and `5.27e-13`. With sublimation disabled, the event is
+−1,498,229.142 km³, retaining 99.999% of the control change. Its pairwise independence check
+against candidate 4 passes: anchors are 6,008 km apart and the windows' target-node sets have no
+overlap. These are two individual passers; a third is still needed.
+
+Candidate 6's checkpoint is at 201.5 Myr (SHA-256
+`5225d37f577110d131bc318396e49f80af93277b49aab67df2f1a2e9e94403fc`), anchor
+`[-0.7078, -0.6923, 0.1403]`. Reload reproduces the 1,354,885.552 to 1,643.860 km³ event and
+`ΔV = −1,353,241.692 km³`. Frozen share is 83.67%; routed supply is positive in each step, and
+maximum normalized lake and land residuals are `6.72e-14` and `1.22e-14`. It fails screen 2, so no
+sublimation knockout is run.
+
+Candidate 1's four-step source reload at 100 kyr reproduces the event exactly: the target is
+2,378,242.227 km³ before and 4,706,104.689 km³ after, `ΔV = +2,327,862.462 km³`. The weighted
+frozen share is 58.08%; its four step shares are 58.06%, 57.92%, 58.24% and 58.09%. Routed target
+supply is positive in all four steps. The largest normalized lake and land residuals are
+`1.63e-11` and `7.89e-12`, respectively. It fails screen 2, so the sublimation knockout and
+independence screens are not run for it. Its checkpoint hash, anchor, per-step values and raw
+screen output are recorded in `window-rescan-3-summary.json`; raw files and saves remain in the
+private capture.
+
+Candidate 7 (seed 507012855, event step 10) reloads from the checkpoint at 479.7 Myr. The four-step
+control reproduces the 780,981.413 to 100,647.589 km³ event (`ΔV = −680,333.823 km³`). Frozen
+precipitation exceeds the 10% screen (weighted frozen-to-liquid share 91.35%; per-step shares
+83.17%, 82.35%, 146.72% and 133.29%). Routed supply is positive in all four steps; maximum
+normalized lake and land residuals are `1.86e-13` and `8.15e-14`. It fails screen 2, so no
+sublimation knockout is run.
+
+Candidate 8 (seed 373936961, event step 50) reloads from the after-step-47 checkpoint at 249.1 Myr
+(SHA-256 `90a4ea1c070b25ba908251704fb4711f41c91cce5577d9ed04a13499f42b4e81`). The four-step
+control reproduces the 681,930.463 to 2,016.227 km³ event (`ΔV = −679,914.236 km³`). Its weighted
+frozen-to-liquid precipitation ratio is 25.07 (2,506.58%); all four steps exceed the 10% screen.
+Routed supply is positive throughout, and maximum normalized lake and land residuals are
+`2.53e-13` and `8.11e-14`. It fails screen 2, so no sublimation knockout is run.
+
+Candidate 9 (seed 910211954, event step 44) reloads from the after-step-41 checkpoint at 224.5 Myr
+(SHA-256 `ed562d2ffdfd43d60ca8dca0da880c3f7dfb12c2282c221d1dc1424267a4b9e1`). The four-step
+control reproduces the 673,721.222 to 2,264.690 km³ event (`ΔV = −671,456.532 km³`). Its weighted
+frozen-to-liquid precipitation ratio is 4.615 (461.50%); all four steps exceed the 10% screen.
+Routed supply is positive throughout, and maximum normalized lake and land residuals are
+`2.36e-12` and `5.44e-13`. It fails screen 2, so no sublimation knockout is run.
+
+Candidate 10 (seed 373936961, event step 43) reloads from the after-step-40 checkpoint at 248.4 Myr
+(SHA-256 `00a6aacf10b8639ffb0b80025701a1fed3509a84e3dfd50166861b18dadf7f91`). The four-step
+control reproduces the 670,740.039 to 3,071.312 km³ event (`ΔV = −667,668.726 km³`). Its weighted
+frozen-to-liquid precipitation ratio is 3.091 (309.13%); every step exceeds the 10% screen. Routed
+target supply is zero in the first three steps. Maximum normalized lake and land residuals are
+`1.09e-12` and `3.56e-13`. It fails screen 2, so no sublimation knockout is run.
+
+Candidate 11 (seed 544349906, event step 16) uses the existing after-step-13 checkpoint at 424.2
+Myr. The control reproduces the scan's 663,337.060 km³ after-volume, but the anchor's prior body
+does not match in the replay (the detector's 488.990 km³ before-volume cannot be reproduced), so
+the source-reload screen fails. Its weighted frozen-to-liquid precipitation ratio is 3.01%; routed
+supply is positive in all four steps, and maximum normalized lake and land residuals are
+`5.87e-14` and `3.16e-14`. Later screens, including the sublimation knockout, are not run.
+
+Candidate 12 (seed 544349906, event step 20) uses the existing after-step-17 checkpoint at 424.6
+Myr. The control reproduces the scan's 662,777.491 km³ after-volume, but the detector's 683.698 km³
+before-volume is not matched in the replay, so the source-reload screen fails. Its weighted
+frozen-to-liquid precipitation ratio is 2.97%; routed supply is positive in all four steps, and
+maximum normalized lake and land residuals are `2.77e-13` and `1.38e-13`. Later screens, including
+the sublimation knockout, are not run.
+
+Candidate 13 (seed 910211954, event step 30) uses the after-step-27 checkpoint at 223.1 Myr. The
+control reproduces the scan's 657,416.858 km³ after-volume, but the detector's 1,177.711 km³ prior
+volume is not matched in the replay, so the source-reload screen fails. Frozen share is also above
+the 10% limit (weighted frozen-to-liquid ratio 1.332); routed supply is positive in all four steps,
+and maximum normalized lake and land residuals are `1.43e-12` and `3.37e-13`. Later screens are not
+run.
+
+Candidate 14 (seed 507012855, event step 17) uses the after-step-14 checkpoint at 480.4 Myr. The
+control reproduces the scan's 652,630.120 km³ after-volume, but the detector's 343.781 km³ prior
+lake is not matched in the replay, so the source-reload screen fails. Frozen share is 0.71%; routed
+supply is positive throughout, and maximum normalized lake and land residuals are `7.22e-14` and
+`3.35e-14`. Later screens, including the sublimation knockout, are not run.
+
+
+Candidate 15 (seed 762517225, event step 12) uses the after-step-9 checkpoint at 136.1 Myr. The
+control reproduces the 607,472.077 to 480.506 km³ event (`ΔV = −606,991.572 km³`). Frozen share
+exceeds the 10% limit (weighted frozen-to-liquid ratio 12.73%; all four steps exceed 10%). Routed
+supply is positive throughout, and maximum normalized lake and land residuals are `8.79e-14` and
+`3.20e-14`. It fails screen 2, so no sublimation knockout is run.
+
+Candidate 16 (seed 544349906, event step 10) uses the after-step-7 checkpoint at 423.6 Myr (SHA-256
+`5e93f0feacf0b54d4016321bade8b0d36f435760ea55c1583a1678c94f2e9b41`). The control exactly
+reproduces the 603,549.454 to 410.769 km³ event (`ΔV = −603,138.685 km³`). Weighted frozen share
+is 9.15%; routed supply is positive in all four steps, and maximum normalized lake and land
+residuals are `6.64e-13` and `3.60e-13`. The sublimation knockout gives `ΔV = −603,079.817 km³`,
+retaining 99.99% of the control change.
+
+Candidate 16 is independent of candidate 4: their anchors are 3,514 km apart and their combined
+four-step target-node sets do not overlap. It is also independent of candidate 5: their anchors are
+2,499 km apart and their target-node sets do not overlap. The three selected windows are ranks 4,
+5 and 16.
+
+At 10 kyr resolution, candidate 4's anchor stayed wet at every 0.1 Myr endpoint. Its target-lake
+volumes were 3.949, 3.416, 3.698 and 3.609 million km³, compared with 4.528, 2.715, 4.418 and
+4.534 million km³ at 100 kyr. Candidate 5 also stayed wet at all endpoints; its target component
+had 12 nodes through 0.3 Myr and 10 nodes at 0.4 Myr. Its final endpoint volume was 20,408 km³,
+compared with 51,101 km³ at 100 kyr.
+
+At 10 kyr resolution, candidate 16's anchor remained wet at all four endpoints. Its target-lake
+volumes were 382, 427, 502 and 583 km³, with 9–10 target nodes, compared with 383, 439, 411 and
+380 km³ at 100 kyr. These alternate-cadence results describe volume and connectivity sensitivity;
+they do not affect candidate selection.
