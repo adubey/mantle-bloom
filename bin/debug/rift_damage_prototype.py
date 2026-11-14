@@ -93,6 +93,60 @@ def assemble(parts: LoadParts, kernels: dict, l_drag_m: float) -> np.ndarray:
     return total
 
 
+def balanced_tangent_force(points, areas, force_n) -> np.ndarray:
+    """Tangent force with its area-weighted rigid-rotation part removed, as `thin_shell.solve_thin_shell` does,
+    so the remainder has zero net torque and a line cut through the plate sees only the part that stresses it."""
+    tangent = force_n - np.sum(force_n * points, axis=1)[:, None] * points
+    xyz = points * RADIUS_M
+    modes = np.stack([np.cross(axis, xyz) for axis in np.eye(3)], axis=2)  # (N, 3 xyz, 3 rotation axes)
+    root = np.sqrt(np.maximum(areas, 1.0))
+    design = (modes * root[:, None, None]).reshape(-1, 3)
+    target = (tangent / root[:, None]).ravel()
+    coefficients, *_ = np.linalg.lstsq(design, target, rcond=None)
+    return tangent - areas[:, None] * (modes @ coefficients)
+
+
+CUT_ANGLES = np.linspace(0.0, np.pi, 6, endpoint=False)
+_CUT_DESIGN = np.column_stack([np.cos(CUT_ANGLES) ** 2, np.sin(CUT_ANGLES) ** 2, 2 * np.cos(CUT_ANGLES) * np.sin(CUT_ANGLES)])
+_CUT_INVERSE = np.linalg.pinv(_CUT_DESIGN)
+
+
+def _line_resultants(coords, force_2d, areas, spacing_m, angle) -> np.ndarray:
+    """Pull across the straight line through each cell normal to `angle`: the balanced force on its far side along
+    the normal, divided by the plate's width there (cell area within half a spacing of the line, over the spacing)."""
+    normal = np.array([np.cos(angle), np.sin(angle)])
+    position, push = coords @ normal, force_2d @ normal
+    order = np.argsort(position, kind="stable")
+    ranked = position[order]
+    beyond = np.empty(len(position))
+    beyond[order] = np.cumsum(push[order][::-1])[::-1] - 0.5 * push[order]  # strictly beyond, plus half its own cell
+    cumulative = np.concatenate([[0.0], np.cumsum(areas[order])])
+    upper = np.searchsorted(ranked, position + 0.5 * spacing_m, side="right")
+    lower = np.searchsorted(ranked, position - 0.5 * spacing_m, side="left")
+    width = np.maximum((cumulative[upper] - cumulative[lower]) / spacing_m, spacing_m)
+    return beyond / width
+
+
+def cut_tensor(points, areas, force_n, spacing_m) -> np.ndarray:
+    """Proxy C: the membrane tensor fitted to line-cut resultants in six directions, in each node's tangent basis."""
+    balanced = balanced_tangent_force(points, areas, force_n)
+    centre = points.mean(axis=0)
+    centre /= np.linalg.norm(centre)
+    e_u, e_v = (axis[0] for axis in thin_shell._tangent_basis(centre[None, :]))
+    coords = RADIUS_M * np.column_stack([points @ e_u, points @ e_v])
+    force_2d = np.column_stack([balanced @ e_u, balanced @ e_v])
+    resultants = np.column_stack([_line_resultants(coords, force_2d, areas, spacing_m, a) for a in CUT_ANGLES])
+    frame = resultants @ _CUT_INVERSE.T  # (N, 3): xx, yy, xy in the (e_u, e_v) frame
+    first, second = thin_shell._tangent_basis(points)
+    r11, r12, r21, r22 = first @ e_u, first @ e_v, second @ e_u, second @ e_v  # rotation from frame to node basis
+    xx, yy, xy = frame[:, 0], frame[:, 1], frame[:, 2]
+    return np.column_stack([
+        r11 * r11 * xx + 2 * r11 * r12 * xy + r12 * r12 * yy,
+        r21 * r21 * xx + 2 * r21 * r22 * xy + r22 * r22 * yy,
+        r11 * r21 * xx + (r11 * r22 + r12 * r21) * xy + r12 * r22 * yy,
+    ])
+
+
 def principal(tensor: np.ndarray):
     """Largest principal value, smallest principal value and the angle (rad, in the tangent basis) of the largest."""
     xx, yy, xy = tensor[:, 0], tensor[:, 1], tensor[:, 2]

@@ -10,7 +10,7 @@ simulation outputs remain outside the repository.
 RFC 0018's 2026-11-14 revision ([PR #880](https://github.com/adubey/mantle-bloom/pull/880)) replaced the
 graph-cut method, so G0–G2 above are historical evidence for the removed method. The revised gates are D0–D3.
 
-### D0: calibrate the cheap load: FAIL, use periodic shell solves
+### D0: calibrate the cheap load: proxy A FAILS (periodic shell solves apply); proxy C passes
 
 `bin/debug/calibrate_rift_load_proxy.py` builds the cheap directional load tensor of
 `bin/debug/rift_damage_prototype.py` for every plate and compares it with the thin-shell resultant
@@ -40,14 +40,37 @@ loaded extensional cells, on a grid of `L_pull` 250–4,000 km and `L_drag` 10�
 alternative B applies: run the thin-shell solve every `K` steps (start `K` = 5 Myr), hold the load tensor between
 solves, and measure the cost in D3. Plates without a connected mesh need a stated fallback in the D1 prototype.
 
-Compact results: [`d0-load-calibration.json`](d0-load-calibration.json), SHA-256
+**Alternative proxy C (line cuts): passes every D0 criterion.** `rift_damage_prototype.cut_tensor` removes the
+area-weighted rigid-rotation part of the plate's total load, as the thin shell does. For six directions it integrates
+the balanced force beyond the straight line through each cell and divides by the plate's width there. It then fits a
+2×2 tensor to the six resultants. Its only free parameter is one scale, `k_cut`, which fitted to 1.33, close to the
+physical 1. On the same 451 plates:
+
+| Criterion | Required | Proxy A | Proxy C (`k_cut` = 1.33) |
+|---|---|---|---|
+| Manufactured sign cases | 4 of 4 | 3 of 4 | 4 of 4 |
+| Tension parallel to an intact path | Does not split | Pass | Pass |
+| Sign agreement | ≥ 80% | 74.6% | 82.4% |
+| Principal direction within 30° | ≥ 70% | 52.9% | 71.9% |
+| Spearman | ≥ 0.5 | 0.490 | 0.692 |
+| Top-decile median ratio | 0.5–2 | 0.58 / 0.53 | 0.57 / 0.54 |
+| Proxy cost, 451 plates | — | 9.0 s per setting | 0.9 s |
+
+C is not the proxy form RFC 0018 specified, so adopting it needs the owner's decision and an RFC amendment; until then
+the RFC's alternative B stands. The A result was reproduced exactly from the cached shell solves with the refactored
+script (`--proxy local --cache`). Compact results: [`d0-load-calibration-cut.json`](d0-load-calibration-cut.json),
+SHA-256 `bd556a8a3244ece6fc5d00e7b8a3f9962909323b96f2049b2f55bf095e9c1ea7`.
+
+Compact results for proxy A: [`d0-load-calibration.json`](d0-load-calibration.json) (written before the `--proxy`
+option existed, so its grid entries use `l_pull_km` and `l_drag_m` keys), SHA-256
 `54cee4232045220aaea0b39f925a384c78421c478cd56c00e09172eebf361a15`.
 
 Reproduce (run label `rfc0018-d0`):
 
 ```bash
-backend/.venv/bin/python bin/debug/calibrate_rift_load_proxy.py --snapshots <rfc0018-g0-snapshots> \
-    --seeds <the 20 G0 seeds> --saves <the 8 #848 checkpoints> --out analysis/issue797/d0-load-calibration.json
+backend/.venv/bin/python bin/debug/calibrate_rift_load_proxy.py --proxy local|cut --cache <private-dir> \
+    --snapshots <rfc0018-g0-snapshots> --seeds <the 20 G0 seeds> --saves <the 8 #848 checkpoints> \
+    --out analysis/issue797/d0-load-calibration[-cut].json
 ```
 
 ## Gate status (graph-cut method, historical)
