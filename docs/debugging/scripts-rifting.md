@@ -104,3 +104,32 @@ undecided and why frozen verdicts reverse. Read-only; its fingerprint matches th
 ```bash
 PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_age_polarity.py <seed> <out.json>
 ```
+
+### RFC 0018 runtime profile (issue 848)
+
+`rebuild_rfc0018_mass_balanced.py` rebuilds the lost frozen candidate generator and prior from the written spec
+and checks every candidate against the recorded probe output on the 20 G0 snapshots (all 812 match).
+
+`study_rfc0018_skip_predictors.py` runs the rebuilt generator on every split opportunity of a checkpoint, records
+plate-level features available before any eigensolve, and reports the best zero-false-negative threshold per
+feature with leave-one-world-out scoring.
+
+`measure_rfc0018_fit_iterations.py` reruns the rebuilt generator with the refinement-pass cap lowered and
+compares partitions, validity and `P_break` with the 8-pass reference.
+
+Three scripts divide the cost of RFC 0018's candidate search on a mature world. `generate_issue848_world.py`
+generates a cratons-first world with synthetic-history relief and steps it plates-only
+(`simulate_climate_biomes` off: about 1.7 s per Myr instead of about 385 s) saving checkpoints.
+`profile_rfc0018_candidate_search.py` loads a checkpoint, loads the G0 prototype's candidate search (weak seed edges, not the later frozen mass-balanced generator) by path from
+`origin/codex/issue-797-evidence-rfc0018-g0` (`bin/debug/measure_rfc0018_g0.py`, not on `main`), wraps timers
+around its helpers and measures every split opportunity for the inverse and direct-cost mappings. Each row
+records when the plate last ran `_open_rift`, the rift-candidate marker proxy. `summarize_rfc0018_profile.py`
+reduces the rows to compact JSON. Timers overlap and add overhead, so the numbers divide cost and are not G3
+runtime evidence. Findings: [issue 848](../../analysis/issue848/README.md).
+
+```bash
+backend/.venv/bin/python bin/debug/generate_issue848_world.py --out <private-dir>
+backend/.venv/bin/python bin/debug/profile_rfc0018_candidate_search.py \
+    --save <private-dir>/world_100myr.mbworld --g0-script <measure_rfc0018_g0.py> --out <private-dir>/profile.jsonl
+backend/.venv/bin/python bin/debug/summarize_rfc0018_profile.py <private-dir>/profile.jsonl analysis/issue848/profile-summary.json
+```

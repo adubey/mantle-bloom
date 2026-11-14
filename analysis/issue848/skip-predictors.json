@@ -1,0 +1,516 @@
+{
+ "opportunities": 635,
+ "worlds": [
+  "files0",
+  "files1",
+  "files2",
+  "files3"
+ ],
+ "with_valid": 34,
+ "share_without_valid": 0.9464566929133859,
+ "search_s_total": 761.0801797043823,
+ "search_s_without_valid": 650.4139856204565,
+ "p_break_mean": 0.005320713591024977,
+ "features": {
+  "nodes": {
+   "all_data_rule": {
+    "direction": "le",
+    "threshold": 1407.0,
+    "skipped": 542
+   },
+   "all_data_share_skipped": 0.8535433070866142,
+   "leave_one_world_out": [
+    {
+     "world": "files0",
+     "opportunities": 170,
+     "p_break_mass": 0.6749007779037002,
+     "search_s": 177.21486887682113,
+     "skipped": 150,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 147.22775591991376
+    },
+    {
+     "world": "files1",
+     "opportunities": 165,
+     "p_break_mass": 0.0,
+     "search_s": 160.9190617489512,
+     "skipped": 143,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 128.9730674989696
+    },
+    {
+     "world": "files2",
+     "opportunities": 171,
+     "p_break_mass": 0.03651228366473844,
+     "search_s": 260.85948087173165,
+     "skipped": 145,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 153.2139898307505
+    },
+    {
+     "world": "files3",
+     "opportunities": 129,
+     "p_break_mass": 2.6672400687324216,
+     "search_s": 162.08676820687833,
+     "skipped": 116,
+     "false_negatives": 1,
+     "p_break_mass_lost": 0.09123460809742137,
+     "search_s_saved": 114.05378387187375
+    }
+   ]
+  },
+  "age_myr": {
+   "all_data_rule": {
+    "direction": "ge",
+    "threshold": 112.0,
+    "skipped": 8
+   },
+   "all_data_share_skipped": 0.012598425196850394,
+   "leave_one_world_out": [
+    {
+     "world": "files0",
+     "opportunities": 170,
+     "p_break_mass": 0.6749007779037002,
+     "search_s": 177.21486887682113,
+     "skipped": 0,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 0.0
+    },
+    {
+     "world": "files1",
+     "opportunities": 165,
+     "p_break_mass": 0.0,
+     "search_s": 160.9190617489512,
+     "skipped": 6,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 6.467861585028004
+    },
+    {
+     "world": "files2",
+     "opportunities": 171,
+     "p_break_mass": 0.03651228366473844,
+     "search_s": 260.85948087173165,
+     "skipped": 4,
+     "false_negatives": 1,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 15.646816249005497
+    },
+    {
+     "world": "files3",
+     "opportunities": 129,
+     "p_break_mass": 2.6672400687324216,
+     "search_s": 162.08676820687833,
+     "skipped": 58,
+     "false_negatives": 5,
+     "p_break_mass_lost": 1.059096000335684,
+     "search_s_saved": 72.83692212391179
+    }
+   ]
+  },
+  "internal_stress": {
+   "all_data_rule": {
+    "direction": "le",
+    "threshold": 0.5828052553789632,
+    "skipped": 64
+   },
+   "all_data_share_skipped": 0.10078740157480315,
+   "leave_one_world_out": [
+    {
+     "world": "files0",
+     "opportunities": 170,
+     "p_break_mass": 0.6749007779037002,
+     "search_s": 177.21486887682113,
+     "skipped": 0,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 0.0
+    },
+    {
+     "world": "files1",
+     "opportunities": 165,
+     "p_break_mass": 0.0,
+     "search_s": 160.9190617489512,
+     "skipped": 18,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 13.625989621999906
+    },
+    {
+     "world": "files2",
+     "opportunities": 171,
+     "p_break_mass": 0.03651228366473844,
+     "search_s": 260.85948087173165,
+     "skipped": 16,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 9.274612291977974
+    },
+    {
+     "world": "files3",
+     "opportunities": 129,
+     "p_break_mass": 2.6672400687324216,
+     "search_s": 162.08676820687833,
+     "skipped": 59,
+     "false_negatives": 2,
+     "p_break_mass_lost": 0.03574160160939446,
+     "search_s_saved": 60.296275581931695
+    }
+   ]
+  },
+  "residual_ratio": {
+   "all_data_rule": {
+    "direction": "le",
+    "threshold": 1.0064739144755375,
+    "skipped": 9
+   },
+   "all_data_share_skipped": 0.014173228346456693,
+   "leave_one_world_out": [
+    {
+     "world": "files0",
+     "opportunities": 170,
+     "p_break_mass": 0.6749007779037002,
+     "search_s": 177.21486887682113,
+     "skipped": 5,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 3.894859333988279
+    },
+    {
+     "world": "files1",
+     "opportunities": 165,
+     "p_break_mass": 0.0,
+     "search_s": 160.9190617489512,
+     "skipped": 10,
+     "false_negatives": 6,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 12.808640542003559
+    },
+    {
+     "world": "files2",
+     "opportunities": 171,
+     "p_break_mass": 0.03651228366473844,
+     "search_s": 260.85948087173165,
+     "skipped": 6,
+     "false_negatives": 1,
+     "p_break_mass_lost": 0.021216915768810254,
+     "search_s_saved": 10.800770874950103
+    },
+    {
+     "world": "files3",
+     "opportunities": 129,
+     "p_break_mass": 2.6672400687324216,
+     "search_s": 162.08676820687833,
+     "skipped": 0,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 0.0
+    }
+   ]
+  },
+  "small_cluster_node_share": {
+   "all_data_rule": {
+    "direction": "ge",
+    "threshold": 0.454661558109834,
+    "skipped": 85
+   },
+   "all_data_share_skipped": 0.13385826771653545,
+   "leave_one_world_out": [
+    {
+     "world": "files0",
+     "opportunities": 170,
+     "p_break_mass": 0.6749007779037002,
+     "search_s": 177.21486887682113,
+     "skipped": 30,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 31.35075525191496
+    },
+    {
+     "world": "files1",
+     "opportunities": 165,
+     "p_break_mass": 0.0,
+     "search_s": 160.9190617489512,
+     "skipped": 26,
+     "false_negatives": 4,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 28.87580724991858
+    },
+    {
+     "world": "files2",
+     "opportunities": 171,
+     "p_break_mass": 0.03651228366473844,
+     "search_s": 260.85948087173165,
+     "skipped": 53,
+     "false_negatives": 1,
+     "p_break_mass_lost": 0.021216915768810254,
+     "search_s_saved": 58.798361499008024
+    },
+    {
+     "world": "files3",
+     "opportunities": 129,
+     "p_break_mass": 2.6672400687324216,
+     "search_s": 162.08676820687833,
+     "skipped": 23,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 17.912909498933004
+    }
+   ]
+  },
+  "small_cluster_area_share": {
+   "all_data_rule": {
+    "direction": "ge",
+    "threshold": 0.46506471262440807,
+    "skipped": 62
+   },
+   "all_data_share_skipped": 0.09763779527559055,
+   "leave_one_world_out": [
+    {
+     "world": "files0",
+     "opportunities": 170,
+     "p_break_mass": 0.6749007779037002,
+     "search_s": 177.21486887682113,
+     "skipped": 12,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 13.598897583928192
+    },
+    {
+     "world": "files1",
+     "opportunities": 165,
+     "p_break_mass": 0.0,
+     "search_s": 160.9190617489512,
+     "skipped": 12,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 15.412972458958393
+    },
+    {
+     "world": "files2",
+     "opportunities": 171,
+     "p_break_mass": 0.03651228366473844,
+     "search_s": 260.85948087173165,
+     "skipped": 32,
+     "false_negatives": 1,
+     "p_break_mass_lost": 0.021216915768810254,
+     "search_s_saved": 37.175853500986705
+    },
+    {
+     "world": "files3",
+     "opportunities": 129,
+     "p_break_mass": 2.6672400687324216,
+     "search_s": 162.08676820687833,
+     "skipped": 28,
+     "false_negatives": 1,
+     "p_break_mass_lost": 0.09123460809742137,
+     "search_s_saved": 24.199436249909922
+    }
+   ]
+  },
+  "cluster_components": {
+   "all_data_rule": {
+    "direction": "ge",
+    "threshold": 7.0,
+    "skipped": 4
+   },
+   "all_data_share_skipped": 0.006299212598425197,
+   "leave_one_world_out": [
+    {
+     "world": "files0",
+     "opportunities": 170,
+     "p_break_mass": 0.6749007779037002,
+     "search_s": 177.21486887682113,
+     "skipped": 0,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 0.0
+    },
+    {
+     "world": "files1",
+     "opportunities": 165,
+     "p_break_mass": 0.0,
+     "search_s": 160.9190617489512,
+     "skipped": 3,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 4.426874875993235
+    },
+    {
+     "world": "files2",
+     "opportunities": 171,
+     "p_break_mass": 0.03651228366473844,
+     "search_s": 260.85948087173165,
+     "skipped": 0,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 0.0
+    },
+    {
+     "world": "files3",
+     "opportunities": 129,
+     "p_break_mass": 2.6672400687324216,
+     "search_s": 162.08676820687833,
+     "skipped": 2,
+     "false_negatives": 1,
+     "p_break_mass_lost": 0.005179519928144952,
+     "search_s_saved": 3.7855357909866143
+    }
+   ]
+  },
+  "cluster_edge_share": {
+   "all_data_rule": {
+    "direction": "ge",
+    "threshold": 0.019276534983341267,
+    "skipped": 285
+   },
+   "all_data_share_skipped": 0.44881889763779526,
+   "leave_one_world_out": [
+    {
+     "world": "files0",
+     "opportunities": 170,
+     "p_break_mass": 0.6749007779037002,
+     "search_s": 177.21486887682113,
+     "skipped": 55,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 54.567521710851
+    },
+    {
+     "world": "files1",
+     "opportunities": 165,
+     "p_break_mass": 0.0,
+     "search_s": 160.9190617489512,
+     "skipped": 78,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 74.001811663009
+    },
+    {
+     "world": "files2",
+     "opportunities": 171,
+     "p_break_mass": 0.03651228366473844,
+     "search_s": 260.85948087173165,
+     "skipped": 100,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 113.5497239556862
+    },
+    {
+     "world": "files3",
+     "opportunities": 129,
+     "p_break_mass": 2.6672400687324216,
+     "search_s": 162.08676820687833,
+     "skipped": 119,
+     "false_negatives": 13,
+     "p_break_mass_lost": 2.6672400687324216,
+     "search_s_saved": 150.29354687282466
+    }
+   ]
+  },
+  "cluster_cut_per_node": {
+   "all_data_rule": {
+    "direction": "ge",
+    "threshold": 0.03559481844386046,
+    "skipped": 305
+   },
+   "all_data_share_skipped": 0.48031496062992124,
+   "leave_one_world_out": [
+    {
+     "world": "files0",
+     "opportunities": 170,
+     "p_break_mass": 0.6749007779037002,
+     "search_s": 177.21486887682113,
+     "skipped": 56,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 55.73253471084172
+    },
+    {
+     "world": "files1",
+     "opportunities": 165,
+     "p_break_mass": 0.0,
+     "search_s": 160.9190617489512,
+     "skipped": 78,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 74.001811663009
+    },
+    {
+     "world": "files2",
+     "opportunities": 171,
+     "p_break_mass": 0.03651228366473844,
+     "search_s": 260.85948087173165,
+     "skipped": 100,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 113.5497239556862
+    },
+    {
+     "world": "files3",
+     "opportunities": 129,
+     "p_break_mass": 2.6672400687324216,
+     "search_s": 162.08676820687833,
+     "skipped": 117,
+     "false_negatives": 3,
+     "p_break_mass_lost": 0.12697620970681583,
+     "search_s_saved": 118.57786053986638
+    }
+   ]
+  },
+  "steps_since_open_rift": {
+   "all_data_rule": {
+    "direction": "ge",
+    "threshold": 5.0,
+    "skipped": 51
+   },
+   "all_data_share_skipped": 0.08031496062992126,
+   "leave_one_world_out": [
+    {
+     "world": "files0",
+     "opportunities": 170,
+     "p_break_mass": 0.6749007779037002,
+     "search_s": 177.21486887682113,
+     "skipped": 41,
+     "false_negatives": 2,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 39.290464624995366
+    },
+    {
+     "world": "files1",
+     "opportunities": 165,
+     "p_break_mass": 0.0,
+     "search_s": 160.9190617489512,
+     "skipped": 18,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 17.61878308307496
+    },
+    {
+     "world": "files2",
+     "opportunities": 171,
+     "p_break_mass": 0.03651228366473844,
+     "search_s": 260.85948087173165,
+     "skipped": 12,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 10.955648501956603
+    },
+    {
+     "world": "files3",
+     "opportunities": 129,
+     "p_break_mass": 2.6672400687324216,
+     "search_s": 162.08676820687833,
+     "skipped": 4,
+     "false_negatives": 0,
+     "p_break_mass_lost": 0.0,
+     "search_s_saved": 3.661174832028337
+    }
+   ]
+  }
+ }
+}
