@@ -134,6 +134,21 @@ backend/.venv/bin/python bin/debug/profile_rfc0018_candidate_search.py \
 backend/.venv/bin/python bin/debug/summarize_rfc0018_profile.py <private-dir>/profile.jsonl analysis/issue848/profile-summary.json
 ```
 
+### RFC 0018 D0 load calibration (issue 797)
+
+`rift_damage_prototype.py` is the offline prototype of RFC 0018's 2026-11-14 damage-band method that its gates
+use. It is not production code. It builds the cheap directional load tensor (signed basal-drag differences
+scaled by `L_drag`; slab forces as tension and ridge push and contact as compression, spread by an
+exponential kernel of length `L_pull`) in each node's thin-shell tangent basis. It also holds the path-normal
+ligament rule. `calibrate_rift_load_proxy.py` runs D0: manufactured sign cases on a real plate mesh, a ligament
+case, and a grid fit of `L_pull` and `L_drag` against `thin_shell.solve_thin_shell` on every plate of the
+development worlds. It then reports D0's frozen criteria. Findings: [issue 797](../../analysis/issue797/README.md).
+
+```bash
+backend/.venv/bin/python bin/debug/calibrate_rift_load_proxy.py --snapshots <rfc0018-g0-snapshots> \
+    --seeds <seed> ... --saves <a.mbworld> ... --out analysis/issue797/d0-load-calibration.json
+```
+
 ### Rift load maps against RFC 0018 cuts (issue 876)
 
 `compare_rift_load_maps.py` builds two extensional-load maps for every split opportunity before any eigensolve:
