@@ -18,7 +18,16 @@ def _unit_tests_do_not_march_glaciers():
     # before any function-scoped autouse fixture, so a function-scoped patch left them marching.
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(hydrology, "MARCH_GLACIERS", False)
+        # Same default for the lake substeps (#875): one slice in the suite,
+        # production substepping opt-in via the `substep_lakes` fixture.
+        mp.setattr(hydrology, "SUBSTEP_LAKES", False)
         yield
+
+
+@pytest.fixture
+def substep_lakes(monkeypatch):
+    """Opt back into the production lake substeps (#875)."""
+    monkeypatch.setattr(hydrology, "SUBSTEP_LAKES", True)
 
 
 @pytest.fixture

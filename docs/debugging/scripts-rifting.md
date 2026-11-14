@@ -133,3 +133,19 @@ backend/.venv/bin/python bin/debug/profile_rfc0018_candidate_search.py \
     --save <private-dir>/world_100myr.mbworld --g0-script <measure_rfc0018_g0.py> --out <private-dir>/profile.jsonl
 backend/.venv/bin/python bin/debug/summarize_rfc0018_profile.py <private-dir>/profile.jsonl analysis/issue848/profile-summary.json
 ```
+
+### Rift load maps against RFC 0018 cuts (issue 876)
+
+`compare_rift_load_maps.py` builds two extensional-load maps for every split opportunity before any eigensolve:
+a drag map (pull-apart rate of mantle flow against the plate's rigid motion, over rock-only resistance; no solve)
+and a shell map (the `thin_shell` incremental extensional resultant under the full per-node force field, over the
+issue 487 yield-envelope column capacity; one sparse solve per plate). It then runs the rebuilt RFC 0018 generator
+and scores how well each map separates valid cuts and positive breakup probability. It reuses helpers from
+`replay_gate2_capacity.py`, `rebuild_rfc0018_mass_balanced.py` and `study_rfc0018_skip_predictors.py`.
+Findings: [issue 876](../../analysis/issue876/README.md).
+
+```bash
+backend/.venv/bin/python bin/debug/compare_rift_load_maps.py --g0-script <measure_rfc0018_g0.py> \
+    --snapshots <rfc0018-g0-snapshots> --seeds <seed> ... --saves <a.mbworld> ... \
+    --out analysis/issue876/load-maps.json --rows <private-dir>/load-map-rows.jsonl
+```

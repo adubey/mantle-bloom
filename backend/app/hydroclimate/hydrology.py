@@ -154,6 +154,28 @@ CHANNEL_PREFERENCE_THRESHOLD_M = 5.0
 # docstring and lakes.py's own module docstring for why.
 LAKE_MIN_VISIBLE_DEPTH_M = 1.0
 
+# Lake-solve slice cap (#875, principle 3): the solver charges evaporation and
+# sublimation at the end-of-slice level for the whole slice, so a filling lake
+# overpays on a long slice and the result depends on slice length (#853). The
+# slice is the step's hundredth, clamped to [50, 1000] yr: 50 yr at a 5 kyr
+# step, 250 yr at 25 kyr, 1000 yr at the 100 kyr production step, each
+# converged to 1% in the #853 windows. No solver equation, state or parameter
+# changes; only the partition of the step changes. The count is capped at
+# LAKE_MAX_SUBSTEPS: convergence is only claimed at or below the 100 kyr
+# production step, so above it slices grow past 1000 yr rather than paying
+# unbounded slices per step (1 Myr stress steps included).
+LAKE_MAX_SLICE_YEARS = 1000.0
+LAKE_MIN_SLICE_YEARS = 50.0
+LAKE_MAX_SUBSTEPS = 100
+
+
+def lake_substeps(years: float) -> int:
+    """Substeps so no lake-solve slice exceeds the #875 cap for `years`."""
+    if years <= 0.0:
+        return 1
+    slice_years = min(LAKE_MAX_SLICE_YEARS, max(LAKE_MIN_SLICE_YEARS, years / 100.0))
+    return min(LAKE_MAX_SUBSTEPS, max(1, int(np.ceil(years / slice_years))))
+
 # `connected_ocean_mask`'s rule for a below-sea-level body that isn't joined to the largest
 # one: it is ocean too when it is ocean-sized, at least `ENCLOSED_OCEAN_MIN_AREA_KM2`, not by
 # its share of the largest body (#758). The old rule (5% of the largest component's nodes) left
@@ -303,6 +325,12 @@ BREACH_DEPRESSIONS_ENABLED = True
 # ~20 min); production and every other test run with the march on. Off takes the
 # same zero-length path as years ~= 0: one opening-state solve, ice frozen for the step.
 MARCH_GLACIERS = True
+
+# Substep the lake solve (#875), same test-knob pattern as MARCH_GLACIERS above:
+# production runs with it on; the unit suite turns it off in conftest (one slice,
+# the pre-#875 path) except tests that opt back in, because up to
+# LAKE_MAX_SUBSTEPS slices per step otherwise dominate suite time.
+SUBSTEP_LAKES = True
 
 
 _RIVER_REACH_READOUTS = (
@@ -2835,6 +2863,7 @@ def compute_hydrology(
     # the solve empties goes with its water.
     lake_result = lakes.solve_lakes_prognostic(
         forest, elevation, prev_lake_water_m, years, lake_climate, hypsometry,
+        substeps=lake_substeps(years) if SUBSTEP_LAKES else 1,
         is_ocean=is_ocean,
         diagnostic_trace=diagnostic_trace,
     )
