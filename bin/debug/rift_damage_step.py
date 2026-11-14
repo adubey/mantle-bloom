@@ -273,6 +273,11 @@ def band_path(step: PlateStep, boundary: np.ndarray, band: np.ndarray):
     return chain
 
 
+# Diagnostic sink (#888): (reason, sorted component sizes in cells, plate cells, min_nodes) per rejected path, filled only
+# when a measuring script replaces it with a list.
+REJECT_SIZES: list | None = None
+
+
 def split_masks(world, plate, step: PlateStep, path: np.ndarray, min_nodes: int, why: dict | None = None):
     """Remove the path; require exactly two components; give each path cell to the component it shares the most
     edges with, ties to the side whose fitted Euler pole matches the mantle flow there better. Returns the
@@ -288,6 +293,8 @@ def split_masks(world, plate, step: PlateStep, path: np.ndarray, min_nodes: int,
     count, labels = connected_components(sub, directed=False)
     if count != 2:
         reject(f"components_after_removal_{min(count, 5)}")
+        if REJECT_SIZES is not None:
+            REJECT_SIZES.append((f"components_{min(count, 5)}", sorted(np.bincount(labels).tolist(), reverse=True), n, min_nodes, int(len(path))))
         return None
     side = np.full(n, -1)
     side[off_path] = labels
@@ -303,6 +310,8 @@ def split_masks(world, plate, step: PlateStep, path: np.ndarray, min_nodes: int,
     for mask in (mask_a, ~mask_a):
         if int(mask.sum()) < min_nodes:
             reject("daughter_too_small")
+            if REJECT_SIZES is not None:
+                REJECT_SIZES.append(("daughter_too_small", sorted([int(mask_a.sum()), int((~mask_a).sum())], reverse=True), n, min_nodes, int(len(path))))
             return None
         if connected_components(step.graph[mask][:, mask], directed=False)[0] != 1:
             reject("daughter_disconnected")
