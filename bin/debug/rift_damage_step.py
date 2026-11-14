@@ -146,11 +146,9 @@ def damage_step(world, plate, years: float, state: Mechanism) -> PlateStep | Non
     nb_warm = disk @ warm0 - self_weight * warm0
 
     floor = rheology.RIFT_CRITICAL_THICKNESS_M
-    to_floor = np.log(np.maximum(hc, floor) / floor)
-    latch = np.minimum(p.eps_break, eps0 + to_floor)
-    if p.oceanic_latch_on_break_only:
-        latch = np.where(continental, latch, p.eps_break)
-    latch = np.where(broken, eps0, latch)
+    # Strain stops at eps_break. The crust-floor latch is applied after the thinning below, from the crust that
+    # actually reached the floor, so a donor whose thinning is withheld is not latched by thinning it never had.
+    latch = np.where(broken, eps0, p.eps_break)
 
     w0 = mech.softening(disk @ eps0, disk @ warm0, p)
     loaded = (load_bg > base_quiet * w0) | (heated & (load_plume > base_plume * w0))
@@ -158,7 +156,7 @@ def damage_step(world, plate, years: float, state: Mechanism) -> PlateStep | Non
     second = mech.integrate_strain(load_bg, base_quiet, first.eps, first.warm, nb_eps, nb_warm, self_weight, (1.0 - frac_heated) * years, latch, p)
     eps1, warm1 = second.eps, np.minimum(second.warm, second.eps)
     d_eps = np.maximum(eps1 - eps0, 0.0)
-    newly_broken = (eps1 >= latch - 1e-9) & loaded & ~broken
+    at_break = eps1 >= p.eps_break - 1e-9
     state.counters["capped"] += int(first.capped.sum() + second.capped.sum())
 
     graph, _, _ = mech.plate_graph(plate, points)
@@ -170,7 +168,11 @@ def damage_step(world, plate, years: float, state: Mechanism) -> PlateStep | Non
     plateau, arc, moment = terranes.plate_tracers(plate)
     columns.update(plateau=plateau, arc=arc, moment=moment)
     before_totals = _volumes(columns, areas)
-    out = mech.thin_with_flank_transfer(areas, adjacency, d_eps, broken | newly_broken, columns, p)
+    out = mech.thin_with_flank_transfer(areas, adjacency, d_eps, broken | (at_break & loaded), columns, p)
+    at_floor = out.hc <= floor + 1e-6
+    if p.oceanic_latch_on_break_only:
+        at_floor &= continental
+    newly_broken = loaded & ~broken & (at_break | at_floor)
     after_totals = _volumes({**columns, **{k: getattr(out, k) for k in columns}}, areas)
     _record_closure(state, before_totals, after_totals, out.craton_lost_m3, areas, columns["craton"])
     state.counters["withheld"] += int(out.withheld.sum())
@@ -233,8 +235,6 @@ def _path_normals(points, path, first, second):
     ds = np.zeros(len(path))
     ds[:-1] += 0.5 * step
     ds[1:] += 0.5 * step
-    ds[0] += 0.5 * step[0]
-    ds[-1] += 0.5 * step[-1]
     return normal, ds
 
 
@@ -358,6 +358,25 @@ def localization(step: PlateStep, p: Params) -> dict:
     return {"damaged_share": share, "damaged_components": count}
 
 
+def near_path_mask(step: PlateStep, path: np.ndarray) -> np.ndarray:
+    """The path cells and their edge neighbours: the one trace-derived band for belt marking and craton accounting."""
+    mask = np.zeros(len(step.points), dtype=bool)
+    mask[path] = True
+    return mask | ((step.graph > 0).astype(np.int8) @ mask.astype(np.int8) > 0)
+
+
+def record_cut_mask(world, plate, band: np.ndarray) -> None:
+    """``cratons.record_rift_cut`` for a mask band: the split's count, band area and craton area in the craton ledger."""
+    cratons.ensure_ledger(world)
+    areas = cratons._areas(world, plate)[band]
+    craton_area = float(areas[plate.collect("craton_crust_m")[band] > 0.0].sum())
+    ledger = world.craton_ledger
+    ledger["split_cuts"] += 1.0
+    ledger["split_cuts_through_craton"] += float(craton_area > 0.0)
+    ledger["split_band_area_m2"] += float(areas.sum())
+    ledger["split_band_craton_area_m2"] += craton_area
+
+
 def breakthrough(world, plate, state: Mechanism):
     """Step 6 for one plate (the caller has applied the age and size gates). Returns the daughters or None."""
     step = state.steps.get(plate.plate_id)
@@ -391,12 +410,18 @@ def breakthrough(world, plate, state: Mechanism):
         if mask_a is None:
             state.counters["split_rejected"] += 1
             continue
+        record_cut_mask(world, plate, near_path_mask(step, path))
         pieces = plate._plates_from_node_masks([mask_a, ~mask_a], [plate.plate_id, world.next_plate_id])
         if len(pieces) != 2:
             state.counters["split_rejected"] += 1
             continue
         world.next_plate_id += 1
         a, b = pieces
+        reference = state.prev_reference.get(plate.plate_id)
+        if reference is not None:  # daughters keep their cells' keys, so the eruption-reset memory carries over
+            for daughter in (a, b):
+                known = np.isin(reference[0], daughter.cell_keys)
+                state.prev_reference[daughter.plate_id] = (reference[0][known], reference[1][known])
         a.reset_age()
         b.reset_age()
         flow = mantle.flow_at(step.points, world.mantle_centers)
@@ -406,10 +431,7 @@ def breakthrough(world, plate, state: Mechanism):
         b.set_omega(mantle.clamp_rate(pole_b))
         a.set_internal_stress(0.0)
         b.set_internal_stress(0.0)
-        near_path = np.zeros(len(step.points), dtype=bool)
-        near_path[path] = True
-        pattern = (step.graph > 0).astype(np.int8)
-        near_path |= (pattern @ near_path.astype(np.int8)) > 0
+        near_path = near_path_mask(step, path)
         for daughter, mask in ((a, mask_a), (b, ~mask_a)):
             cratons.mark_belt(world, daughter, near_path[mask])
         oceanic_share = float(ds[step.oceanic[path]].sum() / max(ds.sum(), 1e-9))

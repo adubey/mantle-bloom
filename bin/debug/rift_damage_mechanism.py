@@ -93,7 +93,7 @@ def register_fields() -> None:
 # --- strength ------------------------------------------------------------------------------------
 
 HC_GRID = np.arange(2_000.0, 90_001.0, 2_000.0)
-HM_GRID = np.arange(2_000.0, 200_001.0, 8_000.0)
+HM_GRID = np.concatenate([np.arange(2_000.0, 24_000.0, 2_000.0), np.arange(24_000.0, 200_001.0, 8_000.0)])  # fine where thin
 LAG_GRID = np.array([0.0, 50.0, 100.0, 200.0, 400.0])
 KINDS = ("continental", "oceanic_young_ridge", "oceanic_mature")
 _TABLE_CACHE = Path.home() / "mantle-bloom-captures" / "issue888" / "ncap_table.npz"
@@ -107,7 +107,7 @@ def capacity_table() -> np.ndarray:
         return _table
     if _TABLE_CACHE.exists():
         data = np.load(_TABLE_CACHE)
-        if data["hc"].shape == HC_GRID.shape and data["hm"].shape == HM_GRID.shape and data["lag"].shape == LAG_GRID.shape:
+        if all(np.array_equal(data[k], grid) for k, grid in (("hc", HC_GRID), ("hm", HM_GRID), ("lag", LAG_GRID))):
             _table = data["table"]
             return _table
     table = np.zeros((len(KINDS), len(HC_GRID), len(HM_GRID), len(LAG_GRID)))
@@ -209,8 +209,8 @@ def integrate_strain(load, base, eps, warm, nb_eps, nb_warm, self_weight, durati
     over = np.flatnonzero(active)
     if len(over):
         capped[over] = True
+        warm[over] = np.minimum(warm[over] + np.maximum(latch_eps[over] - eps[over], 0.0), latch_eps[over])
         eps[over] = latch_eps[over]
-        warm[over] = np.minimum(warm[over] + 0.0, eps[over])
     return StrainResult(eps, warm, capped, substeps)
 
 

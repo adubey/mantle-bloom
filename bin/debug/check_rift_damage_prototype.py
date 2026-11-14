@@ -379,10 +379,67 @@ def check_edge_to_edge_band_splits(seed):
     assert event["kind"] == "split" and event["intact_share"] == 0.0 and event["path_cells"] >= 2
 
 
+def check_capacity_and_disk_kernels():
+    """The interpolated capacity matches a direct column evaluation, and disk averages are area-weighted rows of one."""
+    import replay_gate2_capacity as gate2
+
+    hc, hm, lag = np.array([35_000.0, 12_000.0, 8_000.0]), np.array([100_000.0, 40_000.0, 8_000.0]), np.array([0.0, 50.0, 0.0])
+    kind = np.array([0, 2, 1])
+    got = mech.capacity(kind, hc, hm, lag)
+    for i, name in enumerate(mech.KINDS[k] for k in kind):
+        direct = gate2._column_capacity(name, float(hc[i]), float(hm[i]), float(lag[i]))
+        assert abs(got[i] - direct) <= 0.02 * direct, (name, got[i], direct)
+    rng = np.random.default_rng(3)
+    pts = rng.normal(size=(200, 3))
+    pts /= np.linalg.norm(pts, axis=1)[:, None]
+    pts = pts[pts[:, 2] > 0.8]
+    areas = rng.uniform(1, 2, len(pts)) * 1e9
+    disk = mech.disk_average_matrix(pts, areas, 400e3)
+    assert np.allclose(np.asarray(disk.sum(axis=1)).ravel(), 1.0)
+    assert np.allclose(disk @ np.full(len(pts), 3.0), 3.0)
+
+
+def check_path_lengths_and_cap_bookkeeping():
+    """ds of a path is half the centre distances to its neighbours (ends: half of one); the K_sub cap keeps warm strain."""
+    from app import thin_shell
+
+    pts = np.column_stack([np.ones(3), np.array([0.0, 0.01, 0.02]), np.zeros(3)])
+    pts /= np.linalg.norm(pts, axis=1)[:, None]
+    first, second = thin_shell._tangent_basis(pts)
+    _, ds = step_mod._path_normals(pts, np.arange(3), first, second)
+    spacing = 0.01 * mech.RADIUS_M
+    assert np.allclose(ds / spacing, [0.5, 1.0, 0.5], rtol=1e-3), ds / spacing
+    tiny = Params(k_sub=2, d_eps_max=0.01)
+    r = mech.integrate_strain(np.array([1e14]), np.array([1e12]), np.zeros(1), np.zeros(1), np.zeros(1), np.zeros(1), np.zeros(1),
+                              np.array([5e6]), np.array([2.0]), tiny)
+    assert r.capped[0] and r.eps[0] == 2.0 and abs(r.warm[0] - 2.0) < 1e-6, (r.eps, r.warm)
+
+
+def check_withheld_donor_not_latched(seed):
+    """A donor whose thinning is withheld keeps its crust above the floor and is not latched by the floor."""
+    w = world(seed)
+    state = step_mod._STATE
+    plate = biggest(w)
+    n = plate.node_count()
+    # Every cell strains hard, so no cell has a recipient; crust stays above the floor and nothing may latch by the floor.
+    heavy, old = Params(eps_dot0=2e-7, k_cap=0.05, eps_break=1e9, k_sub=20_000), state.params
+    state.params = heavy
+    try:
+        hc0 = plate.collect("crustal_thickness_m").copy()
+        plate.set_fields_on_plate(rift_strain=np.zeros(n), rift_warm_strain=np.zeros(n), rift_broken=np.zeros(n, bool))
+        step_mod.damage_step(w, plate, 1e6, state)
+        broken, hc = plate.collect("rift_broken"), plate.collect("crustal_thickness_m")
+        floor_reached = hc <= rheology.RIFT_CRITICAL_THICKNESS_M + 1e-6
+        assert not np.any(broken & ~floor_reached & (hc0 > rheology.RIFT_CRITICAL_THICKNESS_M)), "latched without reaching the floor"
+    finally:
+        state.params = old
+
+
 CHECKS = [check_strength_bounds, check_softening_monotone, check_strain_timestep, check_healing, check_latch_stops_strain,
-          check_plume_expiry, check_flank_conservation, check_flank_no_recipient_and_floor, check_ligament_rule, check_directional_sign]
+          check_plume_expiry, check_flank_conservation, check_flank_no_recipient_and_floor, check_ligament_rule, check_directional_sign,
+          check_capacity_and_disk_kernels, check_path_lengths_and_cap_bookkeeping]
 PLATE_CHECKS = [check_remap_without_healing, check_reset_on_eruption, check_margin_insertion_share, check_latch_no_eruption,
-                check_damage_runs_for_every_plate, check_edge_to_edge_band_splits]
+                check_damage_runs_for_every_plate, check_edge_to_edge_band_splits, check_withheld_donor_not_latched]
 
 
 def main() -> None:
