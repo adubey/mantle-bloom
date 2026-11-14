@@ -77,7 +77,7 @@ def _physical_capacities() -> dict[str, list[float]]:
     return result
 
 
-def _event_force_field(world, plate):
+def _event_force_field(world, plate, with_divergent=False):
     spacing = line_spacing_rad(world.node_density)
     reach = torque.boundary_force_reach_rad(spacing)
     cache = getattr(world, "boundary_search_cache", None)
@@ -90,9 +90,10 @@ def _event_force_field(world, plate):
     subducting = torque.subducting_boundary_mask(plate, inputs, reach)
     craton_contact = torque.contact_craton_m(plate, neighbours, inputs)
     jam = torque.contact_jam_factor(plate, world, neighbours, inputs, reach)
-    return torque.gather_per_node_force_field(
+    field = torque.gather_per_node_force_field(
         plate, world, inputs, spacing, subducting, divergent, collision, craton_contact, jam
     )
+    return (field, np.asarray(divergent, dtype=bool)) if with_divergent else field
 
 
 def _topology_audit(plate, node_count: int, triangles: np.ndarray) -> dict:
