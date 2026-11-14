@@ -58,7 +58,6 @@ class Recorder:
     split_events_seen: int = 0
     super_sea_max_width_m: float = 0.0
     super_sea_violations: int = 0
-    rate_history: list = field(default_factory=list)
     start_years: float = 0.0
     last_years: float = 0.0
 
