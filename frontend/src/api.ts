@@ -786,6 +786,10 @@ export type ControlsState = {
   debug_diagnostics: boolean;
 } & TuningMultipliers;
 
+export function fetchControls(worldId: WorldId): Promise<ControlsState> {
+  return fetch(`${worldBase(API_BASE, worldId)}/controls`).then(asJson<ControlsState>);
+}
+
 export function updateControls(worldId: WorldId, controls: {
   seaLevelM?: number;
   solarMultiplier?: number;

@@ -8,7 +8,9 @@ import { COASTLINE_HALO_RGB, COASTLINE_RGB } from "./inspectorDrawing";
 import { ScreenProjector, trueLatLonDegAt } from "./screenProjector";
 
 interface Props {
-  imageBase64: string | null;
+  imageBase64?: string | null;
+  imageUrl?: string | null;
+  onImagePainted?: (source: string) => void;
   // width/height: the canvas's backing-store resolution, matching the image's own pixel
   // dimensions (see api.ts's renderWorld). displayWidth/displayHeight: its CSS size --
   // requesting a higher backing-store resolution than the CSS size is what makes the map
@@ -151,10 +153,11 @@ function applyHighlight(
 const CTX_OPTIONS: CanvasRenderingContext2DSettings = { willReadFrequently: true };
 
 export default function MapCanvas({
-  imageBase64, width, height, displayWidth, displayHeight, projection, rotation,
+  imageBase64, imageUrl, onImagePainted, width, height, displayWidth, displayHeight, projection, rotation,
   onRotationPreview, onRotationCommitted, highlightTarget, onProbe, alphaEncodedIds, highlightPoint, interactionDisabled,
   coastlineSegments,
 }: Props) {
+  const imageSource = imageUrl ?? (imageBase64 ? `data:image/png;base64,${imageBase64}` : null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // One Image element, reused for the component's whole lifetime rather than a fresh
   // `new Image()` per update -- lazily created here (the standard ref-during-render pattern
@@ -222,7 +225,7 @@ export default function MapCanvas({
     const ctx = canvas.getContext("2d", CTX_OPTIONS);
     if (!ctx) return;
 
-    if (!imageBase64) {
+    if (!imageSource) {
       ctx.fillStyle = BACKGROUND;
       ctx.fillRect(0, 0, width, height);
       return;
@@ -235,18 +238,21 @@ export default function MapCanvas({
     // (rather than creating a new Image) also means a still-decoding previous frame is
     // simply superseded -- the browser never fires onload for an aborted load, so stepping
     // faster than a decode completes can't paint a stale frame after a newer one.
-    img.onload = () => paintDecodedFrame();
-    img.src = `data:image/png;base64,${imageBase64}`;
-  }, [imageBase64, width, height, paintDecodedFrame]);
+    img.onload = () => {
+      paintDecodedFrame();
+      onImagePainted?.(imageSource);
+    };
+    img.src = imageSource;
+  }, [imageSource, width, height, paintDecodedFrame, onImagePainted]);
 
   // Re-applies (or clears) the highlight filter the instant the legend selection changes,
   // without waiting for a fresh render -- the image element already holds the fully decoded
   // frame at this point, so it can be redrawn synchronously. Deliberately keyed on
-  // highlightTarget alone (imageBase64/paintDecodedFrame omitted from deps on purpose): this
+  // highlightTarget alone (imageSource/paintDecodedFrame omitted from deps on purpose): this
   // effect exists to react to the highlight selection specifically, not to re-run
   // redundantly, one render after the effect above, on every image change too.
   useEffect(() => {
-    if (imageBase64 && imgRef.current?.complete) paintDecodedFrame();
+    if (imageSource && imgRef.current?.complete) paintDecodedFrame();
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [highlightTarget]);
 
@@ -254,7 +260,7 @@ export default function MapCanvas({
   // above, so selecting a new point (see App.tsx's pointProbe) repaints instantly rather than
   // waiting on a fresh server render.
   useEffect(() => {
-    if (imageBase64 && imgRef.current?.complete) paintDecodedFrame();
+    if (imageSource && imgRef.current?.complete) paintDecodedFrame();
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [highlightPoint]);
 
@@ -263,7 +269,7 @@ export default function MapCanvas({
     const ctx = canvas?.getContext("2d", CTX_OPTIONS);
     const img = imgRef.current;
     if (!canvas || !ctx || !img) return;
-    if (imageBase64) {
+    if (imageSource) {
       // Fill first so a Combined frame's sub-255 alpha (see alphaEncodedIds) blends onto solid
       // background rather than showing the page through, then draws effectively opaque.
       if (alphaEncodedIds) {

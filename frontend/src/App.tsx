@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import {
-  animateWorld, createWorld, deleteWorld, fetchAnimationRecovery, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchRunState, fetchStats, fetchStatsHistory, fetchSuggestedName, fetchVolcanoes, fetchWorldSummary, fetchWorlds, generateDebugWorld, generateWorld, patchWorld, renderWorld, setRunState, stopAnimation, updateControls, worldLabel,
+  animateWorld, createWorld, deleteWorld, fetchAnimationRecovery, fetchControls, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchRunState, fetchStats, fetchStatsHistory, fetchSuggestedName, fetchVolcanoes, fetchWorldSummary, fetchWorlds, generateDebugWorld, generateWorld, patchWorld, renderWorld, setRunState, stopAnimation, updateControls, worldLabel,
   RunStateRefused, TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
@@ -969,7 +969,7 @@ export default function App() {
       } catch {
         // best-effort, same spirit as recordStats below -- see its own comment
       }
-      const controls = await updateControls(s.world_id, {});
+      const controls = await fetchControls(s.world_id);
       if (s.world_id !== worldIdRef.current) return;
       setSeaLevelM(controls.sea_level_m);
       setSolarMultiplier(controls.solar_multiplier);

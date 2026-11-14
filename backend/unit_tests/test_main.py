@@ -1990,6 +1990,23 @@ def test_step_does_not_advance_fluid_dynamics_when_climate_biomes_paused(client)
     assert world.atmosphere_cfd_state.elapsed_seconds == 0.0
 
 
+def test_get_controls_does_not_recompute_or_publish(client, monkeypatch):
+    from app.world import World
+
+    world = World(seed=7)
+    main._set_world(_default_session, world)
+    revision = _default_session.feed.revision()
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("reading controls recomputed climate")
+
+    monkeypatch.setattr(main.climate, "compute_climate", unexpected)
+    response = client.get("/world/controls")
+    assert response.status_code == 200
+    assert response.json()["solar_multiplier"] == world.solar_multiplier
+    assert _default_session.feed.revision() == revision
+
+
 def test_controls_ice_age_frequency_round_trip(client):
 
     _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})

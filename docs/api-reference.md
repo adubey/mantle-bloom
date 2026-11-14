@@ -14,9 +14,8 @@ request made on the server's own machine. Anyone else gets `401`. Cross-site wri
 ## `GET /healthz`
 
 `{"status": "ok"}`, open to anyone, and doesn't wait for the world lock. It's Railway's deploy
-health check (#376; see [hosting.md](hosting.md)). It can't answer before
-startup has restored the checkpoint. `503` with the reason in `detail` when a checkpoint
-directory is configured but couldn't be created or written.
+health check (#376). The hosted endpoint checks the checkpoint volume without restoring
+a world. An unusable volume fails startup or returns `503`. [Hosting](hosting.md)
 
 ## Login routes
 
@@ -47,7 +46,8 @@ Open to anyone, for the logged-out `/view` page (#373). See
 - `GET /public/worlds/{world_id}/world`: `{"name", "world": {"revision", "seed", "elapsed_years"},
   "running": bool, "is_default": bool, "view", "rotation": [9 floats], "steps_remaining": int | null, "step_limit": 30, "step_years": 100000,
   "step_progress": {"fraction", "phase"} | null}`. `view` and `rotation` are
-  the shared presentation every viewer of the world sees (#755).
+  the shared presentation every viewer of the world sees (#755). Hosted responses may
+  include `snapshot_first: true` to indicate that the viewer can try the saved PNG route.
   `name` is the planet's name, which changes with a rename or once a regenerate's new world
   is published. `steps_remaining` is null (unlimited) for the admin. `revision` is an
   opaque string that changes whenever the world does (#374). `step_progress` is a guest
@@ -60,7 +60,7 @@ Open to anyone, for the logged-out `/view` page (#373). See
   also answers early when a guest step publishes new progress without a new revision yet,
   so the wait progress bar moves mid-step (#653), and on an owner rename or visibility change.
   A world that went private during the wait answers `404`.
-- `GET /public/worlds/{world_id}/render?view=elevation|biome&width=&height=`: like `/worlds/{world_id}/render`, but always
+- `GET /public/worlds/{world_id}/render?view=elevation|biome|combined&width=&height=`: like `/worlds/{world_id}/render`, but always
   Eckert IV in the world's shared view and orientation (below) -- a `view` naming another
   viewer view is answered with the shared one, not a render of its own -- with width and
   height at most 2400. It returns
@@ -75,6 +75,11 @@ Open to anyone, for the logged-out `/view` page (#373). See
   seed and age, without re-rendering. `400` for
   any other view or size, `404` before a world exists, `503` if a render is needed and the
   owner holds the world for more than 10 s.
+- On the hosted entry point, `GET /public/worlds/{world_id}/preview.png` with `revision`,
+  `view`, and comma-separated `rotation` returns the committed canonical PNG.
+  A missing snapshot, mismatched presentation, or private world returns `404`.
+  `POST /public/worlds/{world_id}/warm` returns `202` and starts or joins a background
+  restore for the selected public world.
 - `POST /public/worlds/{world_id}/step` with `{"revision": str}`, the revision the viewer is showing: advances
   the world by 100 kyr and returns `{"world": {...}, "computed": bool, "steps_remaining"}`.
   Only a request that runs the step (`computed: true`) uses up allowance, and the response then
@@ -405,7 +410,11 @@ RAM twice (as bytes and as a world). Bodies past 512 MB (`MAX_LOAD_WORLD_BYTES` 
 `503` while a generation, step or animation is in progress, so a running step can't keep
 changing a world that has already been replaced.
 
-## `POST /worlds/{world_id}/controls`
+## `GET /worlds/{world_id}/controls`, `POST /worlds/{world_id}/controls`
+
+`GET` returns the current controls without recomputing climate, publishing a revision,
+or saving the world.
+
 
 Request body (all fields optional, independently settable -- the "Controls" window sends
 only whichever control the user touched):

@@ -8,8 +8,8 @@ Local development and localhost sign-in are covered by [local hosting](local-hos
 
 The public service runs on Railway from the repository's root [Dockerfile](../Dockerfile),
 configured as code in [.railway/railway.ts](../.railway/railway.ts). The multi-stage image
-builds the React frontend and installs the pinned Python runtime, then one Uvicorn process
-serves both from the same origin. Railway builds from `main` and uses `GET /healthz` as its
+builds the React frontend and installs the pinned Python runtime. One public Uvicorn process
+serves the frontend and API from the same origin and starts a private simulation worker on demand. Railway builds from `main` and uses `GET /healthz` as its
 health check. The Docker image is portable; Railway is the only deployment configured in
 this repository.
 
@@ -21,25 +21,37 @@ The service is a small hosted preview, not a multi-user world service:
   public viewer opens whichever ones the owner marks public. There are no separate
   user-owned worlds or general user accounts. On Railway the registry holds at most two
   worlds (`MANTLE_BLOOM_MAX_WORLDS: "2"` in `.railway/railway.ts`); the app default is 4.
-- A Railway volume stores the registry index plus every world's checkpoint and run status
-  (`worlds.json` and `worlds/<id>/` per world; a default world saves to about 20 MB).
-  On restart or wake, the process restores all of that state. If the service sleeps,
-  simulation pauses until a request wakes it; elapsed time is the time simulated, not
-  wall-clock time.
-- One replica and one Uvicorn worker are required by the in-memory worlds and single-writer
-  checkpoints. This setup does not provide horizontal scaling or parallel physics workers:
-  independently running worlds take turns at one compute gate. `MANTLE_BLOOM_MAX_WORLDS`
-  caps the registry (default 4 records); size the volume and memory for the worlds kept.
+- A Railway volume stores the registry index, world checkpoints, run status, and public
+  previews. One simulation worker owns checkpoint writes. It serializes compute across
+  worlds, so independently running worlds take turns at the same compute gate.
+- `MANTLE_BLOOM_MAX_WORLDS` caps the registry (default 4 records). Size memory for active
+  simulation and rendering at the detail you use.
 
-## Memory and uploading worlds
+## Idle worker and memory
 
-Worlds are memory-resident. Measured on a default-detail world (point density 4,
-climate resolution 4, fluid resolution 2): the process idles near 170 MB after imports, a
-fresh process generating its first world peaks near 480 MB, and each additional resident
-world adds roughly 135 MB. Two such worlds plus a generation fit under 800 MB; four plus a
-generation do not. Raise `MANTLE_BLOOM_MAX_WORLDS` only alongside the service's memory,
-budgeting per world at the detail the worlds are generated with (lower detail choices use
-proportionally less: a Very Low world settles at only a few MB).
+On `/view`, the public process reads the last committed map from the volume. After painting
+the map, the browser asks the worker to restore the selected world in the background.
+Admin requests for a world and authorized step requests start or join the same worker.
+The first open of a world saved before snapshot support may need to restore and render it.
+Public warm hints share a cooldown of twice the idle timeout, starting when a hint
+finishes. Explicit admin and step requests can wake the worker immediately.
+
+`MANTLE_BLOOM_IDLE_SECONDS` sets how long the worker stays up after its last active request
+(default 90 seconds). Routine public polling can continue through sleep. Play, requests
+with active simulation work, and unsaved checkpoint changes keep the worker alive.
+If the worker exits unexpectedly, the public process restarts it for any checkpointed
+Play session. A failed hosted step returns the world to its last committed checkpoint.
+The public list omits worlds beyond the registry cap. The admin list shows their load error.
+Every completed change to a public world can trigger a canonical 2200 × 1222 render,
+including worlds other than the default. Allow memory for that render when raising the cap.
+Railway Serverless is disabled so the public process can always serve the saved map and
+Play can continue without traffic. The [memory profile](../analysis/exploration-railway-sleep/README.md)
+records the original idle footprint and the local measurements that informed this design.
+
+The hosted entry point requires a signed owner session for admin routes, including when
+run on loopback. Use the desktop or development entry point for local admin access without OAuth.
+Opening the API schema starts the worker on the first request so the hosted docs include
+the admin API.
 
 To avoid generating on the host at all, generate locally and upload the result: File > Save
 World on the local app, then File > Load World on the hosted app (admin only, like every
