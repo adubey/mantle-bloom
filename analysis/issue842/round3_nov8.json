@@ -379,6 +379,21 @@
     "rule5b_flips": false
    },
    "pass": false
+  },
+  "amendment7_flips_without_fresh_worlds": {
+   "d2": 0,
+   "trend-adapt-1k": 0
+  },
+  "verdict_amendment7": {
+   "conditions": {
+    "rule1_mean": true,
+    "rule2_mean": true,
+    "rule3": true,
+    "rule4": true,
+    "rule5a_substep_move": true,
+    "rule5b_flips": true
+   },
+   "pass": true
   }
  }
 }

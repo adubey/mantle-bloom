@@ -45,6 +45,9 @@
       mean + 0.01%). It was per step.
     - **Runtime:** the mean of the per-save ratios is ≤ 1.15. It was the same limit on every
       save at both step sizes.
+  - **Freshly generated worlds don't gate, owner's decision of 2026-11-13** (preregistration
+    amendment 7). A world at year 0 hasn't brought its ice close to its climate yet, so its
+    warm-up noise is reported only. This drops gen30 from the earlier round 3's flip count.
   - **Impact table and round 3 results:** to be added to this PR before review.
 - **2026-11-03 — proposed by the #765 PR after #741's drop-step ensembles and G1 (#766).**
   - **Old:** D2 solved each body implicitly at the end of the step

@@ -137,6 +137,7 @@ def main() -> None:
         ns.json.write_text(text)
     print("as written", json.dumps(result["verdict_as_written"]))
     print("amendment 6", json.dumps(averaged["verdict"]))
+    print("amendment 7", json.dumps(averaged["verdict_amendment7"]))
 
 
 def _amendment6(directory: Path, saves: dict, rule4: dict, rule5: dict) -> dict:
@@ -165,9 +166,16 @@ def _amendment6(directory: Path, saves: dict, rule4: dict, rule5: dict) -> dict:
         "rule5a_substep_move": rule5["worst_substep_move"].get(TREND, 1.0) <= 0.20,
         "rule5b_flips": rule5["flips"][TREND] <= rule5["flips"]["d2"] + 2,
     }
+    # Amendment 7: freshly generated worlds (year 0, ice not yet near its climate) don't gate.
+    # Of the ensemble worlds that is gen30; s997 and s649 are long-run saves.
+    mature = {arm: sum(len(rule5["by_world"][w].get(arm, {}).get("flipped", [])) for w in ("s997", "s649"))
+              for arm in ("d2", TREND)}
+    amended7 = dict(conditions, rule5b_flips=mature[TREND] <= mature["d2"] + 2)
     return {"rule1": {"mean_closure": mean, "limit": limit, "per_save_mean_report_only": per_save},
             "rule2": {"mean_ratio": ratio, "limit": 0.6},
-            "verdict": {"conditions": conditions, "pass": all(conditions.values())}}
+            "verdict": {"conditions": conditions, "pass": all(conditions.values())},
+            "amendment7_flips_without_fresh_worlds": mature,
+            "verdict_amendment7": {"conditions": amended7, "pass": all(amended7.values())}}
 
 
 if __name__ == "__main__":

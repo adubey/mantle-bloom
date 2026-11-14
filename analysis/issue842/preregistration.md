@@ -70,6 +70,18 @@ can run. Four things changed once the harness was built, before any run of this 
    this average. This plan keeps its own 1.15× runtime limit (not the earlier run's 0.6×)
    and takes only the averaging. `bin/debug/score_842_round3*.py` compute all the verdicts.
 
+7. **Freshly generated worlds don't gate (2026-11-13), set by the owner after seeing that
+   gen30 caused the earlier run's only remaining failure.** A world at year 0 hasn't
+   brought its ice close to its climate, and noise while the simulation warms up doesn't
+   matter. gen30 and gen5 are reported only. In the earlier run, that drops gen30 from rule
+   5b: flips are 0 for `trend-adapt-1k` and 0 for `d2` on seeds 997271774 and 649658380.
+   None of this plan's gates used a fresh world (E6's gen5 and gen30 runs were already
+   report-only), so this plan is unchanged.
+
+   With amendments 6 and 7, the earlier run **passes**. Each of its three failures (rules
+   1, 2 and 5) was relaxed after it was seen. The final evaluation says so, and keeps the
+   as-written fail and amendment 6's fail beside the pass.
+
 ## Arms
 
 | Arm | March |
@@ -181,6 +193,6 @@ thresholds from the run JSONs. Under the old thresholds, row 5 uses the estimate
   new threshold, including every case where the old one would have failed and the new one
   passes.
 - Whether the result would change if the owner kept the old thresholds.
-- The six amendments above, and for E3 whether either step was a drop step.
+- The seven amendments above, and for E3 whether either step was a drop step.
 - Amendment 6's averaged verdict beside the per-step verdicts, with each place where
   averaging turns a per-step failure into a pass (which saves or steps failed per step).
