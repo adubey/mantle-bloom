@@ -127,13 +127,47 @@ def main() -> None:
     rule4, rule5 = _rule4(ns.directory), _rule5(ns.directory)
     conditions = {f"rule{k}": all(s[f"rule{k}"]["pass"] for s in saves.values()) for k in (1, 2, 3)}
     conditions["rule4"], conditions["rule5"] = rule4["pass"], rule5["pass"]
+    averaged = _amendment6(ns.directory, saves, rule4, rule5)
     result = {"tree": "a81c4ccc", "e4_d2_self_difference_997_step3": self_diff, "saves": saves,
               "rule4_step_gap_997": rule4, "rule5_ensembles": rule5,
-              "verdict": {"conditions": conditions, "pass": all(conditions.values())}}
+              "verdict_as_written": {"conditions": conditions, "pass": all(conditions.values())},
+              "amendment6_averaged": averaged}
     text = json.dumps(result, indent=1) + "\n"
     if ns.json:
         ns.json.write_text(text)
-    print(json.dumps(result["verdict"]))
+    print("as written", json.dumps(result["verdict_as_written"]))
+    print("amendment 6", json.dumps(averaged["verdict"]))
+
+
+def _amendment6(directory: Path, saves: dict, rule4: dict, rule5: dict) -> dict:
+    """The owner's 2026-11-13 averaged rules, set after this run's results were seen.
+
+    Rule 1: mean glacier closure over all 60 checked steps <= max(1e-3, d2's mean + 1e-4); the
+    land ledger stays per step. Rule 2: the mean of the six per-save ratios <= 0.6. Rule 5
+    split into 5a (no substep move > 20%) and 5b (flips <= d2's + 2). Rules 3 and 4 unchanged.
+    """
+    closures: dict = {"d2": [], TREND: []}
+    per_save = {}
+    for prefix, labels in (("e1", E1), ("e5", E5)):
+        for label, seed in labels.items():
+            for arm in closures:
+                closures[arm] += [s["ice_closure"] for s in _steps(directory, f"{prefix}-{label}-{arm}")]
+            per_save[seed] = {arm: statistics.mean(closures[arm][-10:]) for arm in closures}
+    mean = {arm: statistics.mean(v) for arm, v in closures.items()}
+    limit = max(1e-3, mean["d2"] + 1e-4)
+    land_ok = all(not s["rule1"]["land_failing_steps"] for s in saves.values())
+    ratio = statistics.mean(s["rule2"]["whole_step_time_ratio"] for s in saves.values())
+    conditions = {
+        "rule1_mean": mean[TREND] <= limit and land_ok,
+        "rule2_mean": ratio <= 0.6,
+        "rule3": all(s["rule3"]["pass"] for s in saves.values()),
+        "rule4": rule4["pass"],
+        "rule5a_substep_move": rule5["worst_substep_move"].get(TREND, 1.0) <= 0.20,
+        "rule5b_flips": rule5["flips"][TREND] <= rule5["flips"]["d2"] + 2,
+    }
+    return {"rule1": {"mean_closure": mean, "limit": limit, "per_save_mean_report_only": per_save},
+            "rule2": {"mean_ratio": ratio, "limit": 0.6},
+            "verdict": {"conditions": conditions, "pass": all(conditions.values())}}
 
 
 if __name__ == "__main__":

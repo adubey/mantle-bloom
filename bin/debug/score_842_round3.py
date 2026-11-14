@@ -4,7 +4,9 @@
 Reads every `probe_822_march_cost.py` JSON in a directory and applies
 `analysis/issue842/preregistration.md`: each criterion is reported against its old and its
 new (gating) threshold, and the verdict is computed under both, so the final evaluation can
-say whether keeping the old thresholds would change it.
+say whether keeping the old thresholds would change it. Amendment 6's averaged gates (ledger
+mean over every checked step, mean runtime ratio, E3a and E3b as separate conditions) get a
+third verdict; it's the one that decides, and the other two are kept for reference.
 
 File names carry the role, since the probe JSON doesn't:
 
@@ -65,6 +67,7 @@ def _ledger(runs: dict, seed: str, myr: str) -> dict:
         "steps_over_0.1pct": over,
         "worst": {arm: max(s["ice_closure"] for s in steps) for arm, steps in (("d2", d2), ("trend-1k", trend))},
         "new_failing_steps": new_fail,
+        "closures": {arm: [s["ice_closure"] for s in steps] for arm, steps in (("d2", d2), ("trend-1k", trend))},
         "land_ledger_ok": melt_ok,
         "old_pass": over["trend-1k"] == 0 and melt_ok,
         "new_pass": not new_fail and melt_ok,
@@ -184,8 +187,34 @@ def _e6(runs: dict) -> dict:
             "pass": bool(out) and all(v["ratio"] <= RUNTIME_LIMIT for v in out.values())}
 
 
-def _verdict(e1, e5, e3, substep, e6, which: str) -> dict:
+def _averaged(e1: dict, e5: dict, e6: dict) -> dict:
+    """Amendment 6's averaged gates: ledger mean over every checked step, runtime mean ratio."""
     replays = list(e1.values()) + list(e5.values())
+    pooled = {arm: [c for r in replays for led in r["ledger"].values() for c in led["closures"][arm]] for arm in ARMS}
+    mean = {arm: statistics.mean(v) if v else None for arm, v in pooled.items()}
+    limit = None if mean["d2"] is None else max(LEDGER_TOL, mean["d2"] + 1.0e-4)
+    ratios = [v["ratio"] for v in e6["by_save"].values()]
+    ratio = statistics.mean(ratios) if ratios else None
+    return {
+        "ledger": {"mean_closure": mean, "limit": limit, "steps": len(pooled["trend-1k"]),
+                   "pass": limit is not None and mean["trend-1k"] <= limit},
+        "runtime": {"mean_ratio": ratio, "limit": RUNTIME_LIMIT, "pass": ratio is not None and ratio <= RUNTIME_LIMIT},
+    }
+
+
+def _verdict(e1, e5, e3, substep, e6, which: str, averaged: dict | None = None) -> dict:
+    replays = list(e1.values()) + list(e5.values())
+    if averaged is not None:  # amendment 6
+        land_and_swings = all(all(v["land_ledger_ok"] for v in r["ledger"].values()) and r["gates"]["swing"]
+                              for r in replays)
+        conditions = {
+            "1_ledger_mean_and_swings": averaged["ledger"]["pass"] and land_and_swings,
+            "2_step_gap": all(r["gates"]["gap"]["new_pass"] for r in replays),
+            "3a_no_substep_move_over_20pct": substep["pass"],
+            "3b_drops": bool(e3) and all(r["pass"] for r in e3.values() if r["drop_step_confirmed"]),
+            "4_runtime_mean": averaged["runtime"]["pass"],
+        }
+        return {"conditions": conditions, "pass": all(conditions.values())}
     conditions = {
         "1_ledger_and_swings": all(r["gates"]["ledger"][f"{which}_pass"] and r["gates"]["swing"] for r in replays),
         "2_step_gap": all(r["gates"]["gap"][f"{which}_pass"] for r in replays),
@@ -204,16 +233,18 @@ def main() -> None:
     runs = _load(ns.directory)
     e1, e5 = _replays(runs, DIAGNOSIS, False), _replays(runs, HELD_OUT, True)
     e3, substep, e4, e6 = _e3(runs), _worst_substep(runs), _e4(runs), _e6(runs)
+    averaged = _averaged(e1, e5, e6)
     result = {
         "E1_E2_diagnosis": e1, "E5_held_out": e5, "E3_ensemble": e3, "E3_worst_substep": substep,
-        "E4_convergence": e4, "E6_runtime": e6,
+        "E4_convergence": e4, "E6_runtime": e6, "amendment6_averaged": averaged,
+        "verdict_amendment6_averaged": _verdict(e1, e5, e3, substep, e6, "new", averaged),
         "verdict_new_thresholds": _verdict(e1, e5, e3, substep, e6, "new"),
         "verdict_old_thresholds": _verdict(e1, e5, e3, substep, e6, "old"),
     }
     text = json.dumps(result, indent=1, default=str) + "\n"
     if ns.json:
         ns.json.write_text(text)
-    for key in ("verdict_new_thresholds", "verdict_old_thresholds"):
+    for key in ("verdict_amendment6_averaged", "verdict_new_thresholds", "verdict_old_thresholds"):
         print(key, json.dumps(result[key]))
 
 

@@ -321,7 +321,7 @@
   },
   "pass": false
  },
- "verdict": {
+ "verdict_as_written": {
   "conditions": {
    "rule1": false,
    "rule2": false,
@@ -330,5 +330,55 @@
    "rule5": false
   },
   "pass": false
+ },
+ "amendment6_averaged": {
+  "rule1": {
+   "mean_closure": {
+    "d2": 0.001938421070251018,
+    "trend-adapt-1k": 0.0018484959883950849
+   },
+   "limit": 0.002038421070251018,
+   "per_save_mean_report_only": {
+    "997271774": {
+     "d2": 0.0008001874503976242,
+     "trend-adapt-1k": 0.0007392692709595477
+    },
+    "649658380": {
+     "d2": 0.006525510893966506,
+     "trend-adapt-1k": 0.007373071161820349
+    },
+    "374464662": {
+     "d2": 0.0017707750487490367,
+     "trend-adapt-1k": 0.0012713694434631651
+    },
+    "447276134": {
+     "d2": 0.0009494655026555494,
+     "trend-adapt-1k": 0.0001965637934306978
+    },
+    "628977350": {
+     "d2": 0.000751550650612273,
+     "trend-adapt-1k": 2.8969446651508285e-06
+    },
+    "295569319": {
+     "d2": 0.0008330368751251187,
+     "trend-adapt-1k": 0.0015078053160315992
+    }
+   }
+  },
+  "rule2": {
+   "mean_ratio": 0.49998242738547716,
+   "limit": 0.6
+  },
+  "verdict": {
+   "conditions": {
+    "rule1_mean": true,
+    "rule2_mean": true,
+    "rule3": true,
+    "rule4": true,
+    "rule5a_substep_move": true,
+    "rule5b_flips": false
+   },
+   "pass": false
+  }
  }
 }

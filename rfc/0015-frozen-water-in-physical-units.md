@@ -38,6 +38,13 @@
     | Median step time at density 4 | ≤ +15% vs `origin/main` | ≤ +15% vs fixed-250 yr `d2`; ratio to `origin/main` reported |
 
     The final evaluation reports every round 3 result against both columns.
+  - **Averaged gates, owner's decision of 2026-11-13, made after seeing the earlier round 3's
+    scores and before any comparison of this round 3 had run** (preregistration amendment
+    6). These two replace the "New" column's rows above, which stay as references:
+    - **Ledger:** the mean glacier residual over every checked step is ≤ max(0.1%, `d2`'s
+      mean + 0.01%). It was per step.
+    - **Runtime:** the mean of the per-save ratios is ≤ 1.15. It was the same limit on every
+      save at both step sizes.
   - **Impact table and round 3 results:** to be added to this PR before review.
 - **2026-11-03 — proposed by the #765 PR after #741's drop-step ensembles and G1 (#766).**
   - **Old:** D2 solved each body implicitly at the end of the step
@@ -1312,11 +1319,12 @@ The thresholds below were confirmed by the project owner on 2026-10-23.
   of the longest step.
 - [ ] **No unforced swings:** with the ice-age control at "never", no step-to-step change in
   global ice volume exceeds 25% after the first 2 Myr.
-- [ ] **Ledgers close:** glacier ledger residual ≤ 0.1% of the step's accumulation, or no
-  worse than the fixed-250 yr `d2` march's on the same step, and both meltwater sources'
-  ledgers (D8) close to round-off, on every step of a 10-step replay of each held-out save.
-  (The "or no worse than `d2`" clause is the 2026-11-13 revision. #852 owns closing the
-  absolute residual at 100 kyr and longer steps.)
+- [ ] **Ledgers close:** the glacier ledger residual, as a fraction of the step's
+  accumulation and averaged over every step of 10-step replays of the held-out saves, is
+  ≤ max(0.1%, the fixed-250 yr `d2` march's mean + 0.01%). Both meltwater sources' ledgers
+  (D8) close to round-off on every step. (The 2026-11-13 revision introduced the comparison
+  with `d2` and then the averaging. Before it, the limit was 0.1% on every step. #852 owns
+  closing the absolute residual at 100 kyr and longer steps.)
 - [ ] **No water deleted:** the three-part partition of precipitation sums to P on every cell;
   liquid water lost outside the ledgers is 0.
 - [ ] **Units:** `WATER_TO_ICE` and `MODEL_UNIT_SCALE` are gone; every ice–water conversion
@@ -1339,9 +1347,10 @@ The thresholds below were confirmed by the project owner on 2026-10-23.
   against the LGM's ~52 × 10⁶ km³ of extra grounded ice and ~134 m
   [[Lambeck et al., 2014]](#ref-lambeck2014), with the world's ocean area and the velocity
   distribution of the ice (interior and margins) stated.
-- [ ] **Runtime:** median step time at density 4 within +15% of the fixed-250 yr `d2` march
-  on the same saves and steps (was `origin/main` until the 2026-11-13 revision; the ratio to
-  `origin/main` is reported).
+- [ ] **Runtime:** median step time at density 4 within +15% of the fixed-250 yr `d2` march,
+  as the mean of the per-save ratios on the same saves and steps. (The 2026-11-13 revision
+  changed this from `origin/main` and from a limit on every save. The ratio to `origin/main`
+  is reported.)
 - [ ] **Saves:** old saves load.
 - [ ] **Docs** updated as listed above.
 

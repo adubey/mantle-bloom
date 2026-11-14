@@ -51,6 +51,25 @@ can run. Four things changed once the harness was built, before any run of this 
    - **Held-out set.** The earlier E5 used the held-out saves, but not to choose any knob,
      so they stay valid held-out evidence for this plan.
 
+6. **Averaged gates (2026-11-13), set by the owner after seeing the earlier run's scores.**
+   This plan's own runs had not finished any comparison when this was set (only
+   `997271774-d2-0.25` had run, and nobody read it). So it is post hoc for the earlier run and
+   blind for this plan. Both rules keep their earlier verdicts for reference, and the
+   averaged verdict is the one that decides.
+
+   | Rule | Before amendment 6 | Amendment 6 (gating) |
+   |---|---|---|
+   | Earlier run, rule 1 | Glacier closure ≤ max(1e-3, `d2`'s + 1e-4) on every step | The same bound on the mean over all 60 checked steps (6 saves × 10): mean `trend-adapt-1k` closure ≤ max(1e-3, mean `d2` closure + 1e-4). Per-save means reported. Land ledger still per step |
+   | Earlier run, rule 2 | Median step time ≤ 0.6× `d2` on every save | Mean of the six per-save ratios ≤ 0.6 |
+   | Earlier run, rule 5 | One rule: no substep move > 20% and flips ≤ `d2` + 2 | 5a: no substep move > 20%. 5b: flips ≤ `d2`'s + 2. Each its own condition |
+   | This plan, gate 1 | Per step: ≤ 0.1% or ≤ `d2`'s residual on the same step | Mean `trend-1k` closure over every checked step of E1 and E5 (both step sizes) ≤ max(1e-3, mean `d2` closure + 1e-4). Land ledger still per step |
+   | This plan, row 5 | ≤ 1.15× `d2` on every diagnosis save at both step sizes | Mean of the six ratios (3 saves × 2 step sizes) ≤ 1.15 |
+   | This plan, condition 3 | E3a and E3b together | 3a (E3a) and 3b (E3b) as separate conditions |
+
+   For the earlier run's rule 1, the owner first proposed `d2` + 2% and then replaced it with
+   this average. This plan keeps its own 1.15× runtime limit (not the earlier run's 0.6×)
+   and takes only the averaging. `bin/debug/score_842_round3*.py` compute all the verdicts.
+
 ## Arms
 
 | Arm | March |
@@ -145,6 +164,10 @@ Round 3 **passes** when all of these hold:
 4. E6: `trend-1k`'s median step time is ≤ 1.15× `d2`'s on every diagnosis save at both step
    sizes.
 
+Amendment 6 replaces gate 1 and condition 4 with their averaged forms, and splits condition 3
+into 3a and 3b. The verdict under the averaged gates decides. The per-step verdicts above,
+under both the new and the old thresholds, are reported beside it.
+
 If any condition fails, the result goes to the owner. No flip and no threshold change.
 E4, the agreement with `d2`, either arm's absolute ledger count, and the E6 report-only
 timings are reported and don't gate.
@@ -158,4 +181,6 @@ thresholds from the run JSONs. Under the old thresholds, row 5 uses the estimate
   new threshold, including every case where the old one would have failed and the new one
   passes.
 - Whether the result would change if the owner kept the old thresholds.
-- The four amendments above, and for E3 whether either step was a drop step.
+- The six amendments above, and for E3 whether either step was a drop step.
+- Amendment 6's averaged verdict beside the per-step verdicts, with each place where
+  averaging turns a per-step failure into a pass (which saves or steps failed per step).
