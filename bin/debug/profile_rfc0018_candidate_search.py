@@ -8,7 +8,9 @@ Usage (repo root, this worktree's venv; follow the compute-budget skill first):
         [--warmup-steps 5] [--steps 15] [--mappings inverse,direct]
 
 ``--g0-script`` is ``bin/debug/measure_rfc0018_g0.py`` from origin/codex/issue-797-evidence-rfc0018-g0
-(the frozen G0/G2 candidate method, not on main); it is loaded by path so it isn't copied here.
+(the original G0 prototype with weak-seed-edge proposals, not on main); it is loaded by path so it isn't
+copied here. It is NOT the later mass-balanced, momentum-weighted generator that G1/G2 froze, which
+isn't on any pushed branch; both do 1 + up to 8 refinement solves per variant for up to 12 variants.
 Its ``choose_cut`` is called unchanged; only timers and counters are wrapped around its helpers.
 ``inverse`` is that script's ``conductance = 1 / edge_cost``; ``direct`` swaps in
 ``conductance = edge_cost`` (the RFC 0018 revision, #850), changing nothing else.

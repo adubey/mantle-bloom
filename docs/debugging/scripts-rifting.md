@@ -110,7 +110,7 @@ PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_age_polarity.py <see
 Three scripts divide the cost of RFC 0018's candidate search on a mature world. `generate_issue848_world.py`
 generates a cratons-first world with synthetic-history relief and steps it plates-only
 (`simulate_climate_biomes` off: about 1.7 s per Myr instead of about 385 s) saving checkpoints.
-`profile_rfc0018_candidate_search.py` loads a checkpoint, loads the frozen candidate method by path from
+`profile_rfc0018_candidate_search.py` loads a checkpoint, loads the G0 prototype's candidate search (weak seed edges, not the later frozen mass-balanced generator) by path from
 `origin/codex/issue-797-evidence-rfc0018-g0` (`bin/debug/measure_rfc0018_g0.py`, not on `main`), wraps timers
 around its helpers and measures every split opportunity for the inverse and direct-cost mappings. Each row
 records when the plate last ran `_open_rift`, the rift-candidate marker proxy. `summarize_rfc0018_profile.py`

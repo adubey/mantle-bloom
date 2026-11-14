@@ -1,6 +1,6 @@
 # Issue 848: where the RFC 0018 candidate search spends its time
 
-Issue [#848](https://github.com/adubey/mantle-bloom/issues/848) asks whether RFC 0018's frozen
+Issue [#848](https://github.com/adubey/mantle-bloom/issues/848) asks whether RFC 0018's
 candidate method can meet G3's 2% runtime limit, and what to do if it cannot. This report is
 the first step: a function-level profile of the search on mature plates, plus a check of how
 selective a rift-candidate marker based on recent extension (#836) could be. It is a profile,
@@ -26,15 +26,28 @@ A first run with the defaults took about 385 s per Myr (4 steps, stopped), so th
 plates-only. That is also the likeliest reason G2's baseline averaged 2.5 s per step, but the G2
 settings are not recorded, so that is an inference.
 
+## Which candidate generator this measured
+
+**This is the original G0 prototype, not the generator G1 and G2 froze.** `measure_rfc0018_g0.py`
+(commit 236b159c) proposes 12 variants from sampled weak seed edges. The G1/G2 method instead
+proposes up to 12 mass-balanced cuts (target fractions 0.15 to 0.50, deduplicated, weighted by
+the potential-momentum score; see `analysis/issue797/README.md`). That code is in the G2 runner
+and the #846 worktree, neither of which I could reach, so it was not profiled. The two share the
+per-variant refinement loop (one initial solve, then up to 8 per variant: up to 97 solves per
+decision, the same figure #848 gives for the frozen implementation), which is why the solve
+share is probably representative. The proposal rule, the `usable` test and the variant
+statistics (including the 96% iteration-cap share) may differ, so treat those as unconfirmed for
+the frozen method. Re-run this profile against the frozen generator once its code is reachable.
+
 ## Method
 
 `bin/debug/profile_rfc0018_candidate_search.py` loads `world_100myr`, steps it 5 unmeasured
 warm-up steps (101 to 105 Myr) then 15 measured steps (106 to 120 Myr), and at each
-measured step measures every plate the frozen method treats as a split opportunity
-(`_is_opportunity`), from the same pre-split state as the G0 runner. It calls the frozen
+measured step measures every plate the G0 prototype treats as a split opportunity
+(`_is_opportunity`), from the same pre-split state as the G0 runner. It calls the prototype's
 `choose_cut` from `measure_rfc0018_g0.py` (commit 236b159c on `origin/codex/issue-797-evidence-rfc0018-g0`,
 file SHA-256 `3e5a489f`) unchanged and wraps its helpers with timers. Both mappings ran on every
-opportunity: `inverse` is the frozen `conductance = 1 / edge_cost`, `direct` is `conductance =
+opportunity: `inverse` is the prototype's `conductance = 1 / edge_cost`, `direct` is `conductance =
 edge_cost` from the #850 revision. Production splitting continued unchanged.
 Summary: [profile-summary.json](profile-summary.json), built by `bin/debug/summarize_rfc0018_profile.py`.
 
@@ -43,7 +56,7 @@ Summary: [profile-summary.json](profile-summary.json), built by `bin/debug/summa
 150 opportunities over 15 steps (13 distinct plates, median 1,177 nodes, max 2,143), each
 measured under both mappings. Times are inclusive, so rows overlap.
 
-| | Inverse (frozen) | Direct (#850) |
+| | Inverse (as in G0 prototype) | Direct (#850) |
 |---|---:|---:|
 | Search time, all opportunities | 179 s | 145 s |
 | Median per opportunity | 1.11 s | 0.80 s |
@@ -65,7 +78,7 @@ measured under both mappings. Times are inclusive, so rows overlap.
    that hit the cap, so whether the later iterations change the cut is unmeasured. That is the
    most valuable next measurement: if they rarely change it, a smaller cap or a warm start
    would remove most solves. It would still change the method's outputs at some tolerance, so
-   it needs its own check against the frozen G0/G1 results.
+   it needs its own check against the G0/G1 results.
 3. **The direct mapping is somewhat cheaper (about 19% less time) but not a different order.**
    It does not by itself bring the cost near 2%.
 4. **Scale check against G2.** The 150 opportunities took 179 s of search time over 15 steps,
@@ -95,7 +108,7 @@ of the search. On a mature world almost every large plate has some extending edg
 step, so a plate-level on/off flag cannot cut the call count. A useful marker would have to be
 graded and local: how much extension, how concentrated, and whether it sits near an already
 weak line. #836 has not established what magnitude or localization is physically meaningful, and
-it cannot be added to the frozen method without G0 and G1 evidence, so this report does not
+it cannot be added to the accepted method without G0 and G1 evidence, so this report does not
 choose one.
 
 ## What this changes in the plan
