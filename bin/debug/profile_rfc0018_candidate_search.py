@@ -41,10 +41,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 from app import merge_split, persistence, quad_tectonics  # noqa: E402
 from app import world as world_mod  # noqa: E402
 
-TIMED = ["_fiedler_vector", "_node_resistance", "_opening", "_trace_stats", "_largest_component_share",
-         "_shared_edges", "eigsh", "kmeans2", "_fit_euler_pole"]
-
-
 def load_g0(path: Path):
     spec = importlib.util.spec_from_file_location("g0_candidate_search", path)
     module = importlib.util.module_from_spec(spec)
