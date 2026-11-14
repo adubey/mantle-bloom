@@ -189,29 +189,51 @@ describe("createGlobeTextureLoader", () => {
     loader.dispose();
   });
 
-  it("clears previous texture when worldId changes", async () => {
+  it("stops retrying after maxRetries and clears only when leaving a non-empty world", async () => {
     const timers = createFakeTimers();
+    let calls = 0;
     let cleared = 0;
     const loaded: string[] = [];
 
     const loader = createGlobeTextureLoader<string>({
-      loadPixels: async (worldId, rev) => `${worldId}:${rev}`,
+      loadPixels: async (worldId, rev) => {
+        calls += 1;
+        if (worldId === "w1") throw new Error("404");
+        return `${worldId}:${rev}`;
+      },
       onLoaded: (pixels) => loaded.push(pixels),
       onCleared: () => {
         cleared += 1;
       },
+      retryBaseMs: 1000,
+      retryMaxMs: 4000,
+      maxRetries: 2,
       setTimer: timers.setTimer,
       clearTimer: timers.clearTimer,
     });
 
     loader.update({ worldId: "w1", worldRevision: 1, visible: true });
     await flushMicrotasks();
-    assert.deepEqual(loaded, ["w1:1"]);
+    assert.equal(cleared, 0); // "" -> "w1" does not fire onCleared
+    assert.equal(calls, 1);
+
+    await timers.advanceBy(1000);
+    await flushMicrotasks();
+    assert.equal(calls, 2);
+
+    await timers.advanceBy(2000);
+    await flushMicrotasks();
+    assert.equal(calls, 3);
+
+    // No further retries scheduled after maxRetries (2).
+    assert.equal(timers.pendingCount(), 0);
+    await timers.advanceBy(10000);
+    assert.equal(calls, 3);
 
     loader.update({ worldId: "w2", worldRevision: 1, visible: true });
     await flushMicrotasks();
-    assert.equal(cleared, 2); // "" -> "w1", then "w1" -> "w2"
-    assert.deepEqual(loaded, ["w1:1", "w2:1"]);
+    assert.equal(cleared, 1); // "w1" -> "w2" fires onCleared once
+    assert.deepEqual(loaded, ["w2:1"]);
     loader.dispose();
   });
 });

@@ -14,6 +14,7 @@ export interface GlobeTextureLoaderOptions<T> {
   debounceMs?: number;
   retryBaseMs?: number;
   retryMaxMs?: number;
+  maxRetries?: number;
   setTimer?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
   clearTimer?: (id: ReturnType<typeof setTimeout>) => void;
 }
@@ -21,6 +22,7 @@ export interface GlobeTextureLoaderOptions<T> {
 const DEFAULT_DEBOUNCE_MS = 250;
 const DEFAULT_RETRY_BASE_MS = 1000;
 const DEFAULT_RETRY_MAX_MS = 15000;
+const DEFAULT_MAX_RETRIES = 6;
 
 export function createGlobeTextureLoader<T>({
   loadPixels,
@@ -29,6 +31,7 @@ export function createGlobeTextureLoader<T>({
   debounceMs = DEFAULT_DEBOUNCE_MS,
   retryBaseMs = DEFAULT_RETRY_BASE_MS,
   retryMaxMs = DEFAULT_RETRY_MAX_MS,
+  maxRetries = DEFAULT_MAX_RETRIES,
   setTimer = setTimeout,
   clearTimer = clearTimeout,
 }: GlobeTextureLoaderOptions<T>) {
@@ -55,6 +58,11 @@ export function createGlobeTextureLoader<T>({
     loaded.worldId === current.worldId &&
     loaded.worldRevision === current.worldRevision;
 
+  const isInFlightForCurrent = () =>
+    inFlight !== null &&
+    inFlight.worldId === current.worldId &&
+    inFlight.worldRevision === current.worldRevision;
+
   const scheduleFetch = (delayMs: number) => {
     cancelTimer();
     if (disposed || !isTargetValid(current) || isUpToDate()) return;
@@ -70,14 +78,7 @@ export function createGlobeTextureLoader<T>({
 
   const startFetch = () => {
     cancelTimer();
-    if (disposed || !isTargetValid(current) || isUpToDate()) return;
-    if (
-      inFlight !== null &&
-      inFlight.worldId === current.worldId &&
-      inFlight.worldRevision === current.worldRevision
-    ) {
-      return;
-    }
+    if (disposed || !isTargetValid(current) || isUpToDate() || isInFlightForCurrent()) return;
 
     const { worldId, worldRevision } = current;
     const reqGen = ++generation;
@@ -87,10 +88,12 @@ export function createGlobeTextureLoader<T>({
       (pixels) => {
         if (disposed || reqGen !== generation) return;
         inFlight = null;
-        if (current.worldId !== worldId) return;
+        if (current.worldId !== worldId || current.worldRevision <= 0) return;
         loaded = { worldId, worldRevision };
         retryAttempt = 0;
         onLoaded(pixels);
+        // If a newer revision arrived while this fetch was in flight, schedule a debounced
+        // catch-up fetch so the intermediate texture is shown without delaying indefinitely.
         if (current.worldRevision !== worldRevision && isTargetValid(current)) {
           scheduleFetch(debounceMs);
         }
@@ -103,12 +106,10 @@ export function createGlobeTextureLoader<T>({
           scheduleFetch(loaded === null ? 0 : debounceMs);
           return;
         }
+        if (retryAttempt >= maxRetries) return;
         const delay = Math.min(retryMaxMs, retryBaseMs * 2 ** retryAttempt);
         retryAttempt += 1;
-        timer = setTimer(() => {
-          timer = null;
-          startFetch();
-        }, delay);
+        scheduleFetch(delay);
       },
     );
   };
@@ -116,7 +117,8 @@ export function createGlobeTextureLoader<T>({
   return {
     update(next: GlobeTextureTarget) {
       if (disposed) return;
-      const worldChanged = next.worldId !== current.worldId;
+      const previousWorldId = current.worldId;
+      const worldChanged = next.worldId !== previousWorldId;
       const revisionChanged = next.worldRevision !== current.worldRevision;
 
       if (worldChanged) {
@@ -125,7 +127,7 @@ export function createGlobeTextureLoader<T>({
         retryAttempt = 0;
         generation += 1;
         cancelTimer();
-        onCleared?.();
+        if (previousWorldId) onCleared?.();
       } else if (revisionChanged) {
         retryAttempt = 0;
         cancelTimer();
@@ -142,13 +144,7 @@ export function createGlobeTextureLoader<T>({
         return;
       }
 
-      if (
-        inFlight !== null &&
-        inFlight.worldId === current.worldId &&
-        inFlight.worldRevision === current.worldRevision
-      ) {
-        return;
-      }
+      if (isInFlightForCurrent()) return;
 
       const immediate = loaded === null && inFlight === null;
       scheduleFetch(immediate ? 0 : debounceMs);

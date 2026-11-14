@@ -50,10 +50,10 @@ export default function GlobeSelector({ worldId, worldRevision, rotation, onRota
     if (!element || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver(
       (entries) => {
-        const entry = entries[0];
+        const entry = entries[entries.length - 1];
         if (entry) setInView(entry.isIntersecting);
       },
-      { threshold: 0 },
+      { rootMargin: "200px", threshold: 0 },
     );
     observer.observe(element);
     return () => observer.disconnect();
