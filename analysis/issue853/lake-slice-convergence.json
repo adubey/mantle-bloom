@@ -1,0 +1,761 @@
+{
+ "source_commit": "5912a7d8be999e4148ce956be060932b77241614",
+ "runs": [
+  {
+   "name": "fixed-100000-slice1000",
+   "mode": "fixed",
+   "total_years": 100000.0,
+   "slice_years": 1000.0,
+   "checkpoint_sha256": "c5b1f5d832e83e63f2a90a9f9f7bff03c885e831a0c6e585e22678a718168043",
+   "opening": {
+    "anchor_volume_km3": 20113.49345151008,
+    "anchor_area_km2": 512907.04213194747,
+    "anchor_catchment_km2": 1265154.8636241157,
+    "world_lake_km3": 1540651.5770105436
+   },
+   "final": {
+    "anchor_volume_km3": 415347.752269929,
+    "anchor_area_km2": 290374.6221373708,
+    "anchor_catchment_km2": 821167.0352436594,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "nearest",
+    "world_lake_km3": 3471584.871570408,
+    "peak_rss_mb": 3850.207232
+   },
+   "merged_records": 0,
+   "records": 2,
+   "ledger_km3": {
+    "external_supply_km3": 1776349593.5590618,
+    "evaporation_km3": 611568995.7573125,
+    "sublimation_km3": 219895319.67679003,
+    "overflow_out_km3": 942937382.2517147,
+    "internal_transfer_km3": 1883457577.764249,
+    "storage_change_km3": 1947895.8743454895,
+    "normalized_residual": 6.19779746054472e-13,
+    "merge_events": 83,
+    "split_events": 39
+   }
+  },
+  {
+   "name": "fixed-100000-slice10000",
+   "mode": "fixed",
+   "total_years": 100000.0,
+   "slice_years": 10000.0,
+   "checkpoint_sha256": "c5b1f5d832e83e63f2a90a9f9f7bff03c885e831a0c6e585e22678a718168043",
+   "opening": {
+    "anchor_volume_km3": 20113.49345151008,
+    "anchor_area_km2": 512907.04213194747,
+    "anchor_catchment_km2": 1265154.8636241157,
+    "world_lake_km3": 1540651.5770105436
+   },
+   "final": {
+    "anchor_volume_km3": 415347.6197347939,
+    "anchor_area_km2": 290374.6221373708,
+    "anchor_catchment_km2": 821167.0352436594,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "nearest",
+    "world_lake_km3": 3471446.220319404,
+    "peak_rss_mb": 4036.149248
+   },
+   "merged_records": 0,
+   "records": 2,
+   "ledger_km3": {
+    "external_supply_km3": 1776349593.5591698,
+    "evaporation_km3": 611669131.2101974,
+    "sublimation_km3": 219998852.62742248,
+    "overflow_out_km3": 942733852.6508074,
+    "internal_transfer_km3": 2183857129.769518,
+    "storage_change_km3": 1947757.0698057276,
+    "normalized_residual": 5.273018911346404e-13,
+    "merge_events": 83,
+    "split_events": 40
+   }
+  },
+  {
+   "name": "fixed-100000-slice100000",
+   "mode": "fixed",
+   "total_years": 100000.0,
+   "slice_years": 100000.0,
+   "checkpoint_sha256": "c5b1f5d832e83e63f2a90a9f9f7bff03c885e831a0c6e585e22678a718168043",
+   "opening": {
+    "anchor_volume_km3": 20113.49345151008,
+    "anchor_area_km2": 512907.04213194747,
+    "anchor_catchment_km2": 1265154.8636241157,
+    "world_lake_km3": 1540651.5770105436
+   },
+   "final": {
+    "anchor_volume_km3": 410813.61102085985,
+    "anchor_area_km2": 282240.391737999,
+    "anchor_catchment_km2": 821167.0352436594,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "nearest",
+    "world_lake_km3": 3455710.593648105,
+    "peak_rss_mb": 4565.123072
+   },
+   "merged_records": 0,
+   "records": 2,
+   "ledger_km3": {
+    "external_supply_km3": 1776349593.5591843,
+    "evaporation_km3": 611689858.7878803,
+    "sublimation_km3": 220018466.40074578,
+    "overflow_out_km3": 942709274.6006668,
+    "internal_transfer_km3": 4192562482.316509,
+    "storage_change_km3": 1931993.7675479006,
+    "normalized_residual": 1.3193098410906453e-12,
+    "merge_events": 83,
+    "split_events": 39
+   }
+  },
+  {
+   "name": "fixed-100000-slice200",
+   "mode": "fixed",
+   "total_years": 100000.0,
+   "slice_years": 200.0,
+   "checkpoint_sha256": "c5b1f5d832e83e63f2a90a9f9f7bff03c885e831a0c6e585e22678a718168043",
+   "opening": {
+    "anchor_volume_km3": 20113.49345151008,
+    "anchor_area_km2": 512907.04213194747,
+    "anchor_catchment_km2": 1265154.8636241157,
+    "world_lake_km3": 1540651.5770105436
+   },
+   "final": {
+    "anchor_volume_km3": 415347.7522704371,
+    "anchor_area_km2": 290374.6221373708,
+    "anchor_catchment_km2": 821167.0352436594,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "nearest",
+    "world_lake_km3": 3471587.5335763176,
+    "peak_rss_mb": 4573.233152
+   },
+   "merged_records": 0,
+   "records": 2,
+   "ledger_km3": {
+    "external_supply_km3": 1776349593.5594804,
+    "evaporation_km3": 611511014.2062762,
+    "sublimation_km3": 219839021.11777174,
+    "overflow_out_km3": 943051659.7021037,
+    "internal_transfer_km3": 1865338594.632593,
+    "storage_change_km3": 1947898.5481487175,
+    "normalized_residual": 8.342923911899305e-12,
+    "merge_events": 83,
+    "split_events": 39
+   }
+  },
+  {
+   "name": "fixed-25000-slice1000",
+   "mode": "fixed",
+   "total_years": 25000.0,
+   "slice_years": 1000.0,
+   "checkpoint_sha256": "c5b1f5d832e83e63f2a90a9f9f7bff03c885e831a0c6e585e22678a718168043",
+   "opening": {
+    "anchor_volume_km3": 20113.49345151008,
+    "anchor_area_km2": 512907.04213194747,
+    "anchor_catchment_km2": 1265154.8636241157,
+    "world_lake_km3": 1540651.5770105436
+   },
+   "final": {
+    "anchor_volume_km3": 410446.66403299634,
+    "anchor_area_km2": 282240.391737999,
+    "anchor_catchment_km2": 821167.0352436594,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "nearest",
+    "world_lake_km3": 3485108.4666948253,
+    "peak_rss_mb": 3804.594176
+   },
+   "merged_records": 0,
+   "records": 2,
+   "ledger_km3": {
+    "external_supply_km3": 455448806.04042155,
+    "evaporation_km3": 154582082.26515278,
+    "sublimation_km3": 55455314.95472735,
+    "overflow_out_km3": 243449788.74041805,
+    "internal_transfer_km3": 538684097.9614295,
+    "storage_change_km3": 1961620.080270982,
+    "normalized_residual": 3.24053983768488e-13,
+    "merge_events": 79,
+    "split_events": 38
+   }
+  },
+  {
+   "name": "fixed-25000-slice200",
+   "mode": "fixed",
+   "total_years": 25000.0,
+   "slice_years": 200.0,
+   "checkpoint_sha256": "c5b1f5d832e83e63f2a90a9f9f7bff03c885e831a0c6e585e22678a718168043",
+   "opening": {
+    "anchor_volume_km3": 20113.49345151008,
+    "anchor_area_km2": 512907.04213194747,
+    "anchor_catchment_km2": 1265154.8636241157,
+    "world_lake_km3": 1540651.5770105436
+   },
+   "final": {
+    "anchor_volume_km3": 410648.71590006165,
+    "anchor_area_km2": 282240.391737999,
+    "anchor_catchment_km2": 821167.0352436594,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "nearest",
+    "world_lake_km3": 3485310.657377222,
+    "peak_rss_mb": 2605.940736
+   },
+   "merged_records": 0,
+   "records": 2,
+   "ledger_km3": {
+    "external_supply_km3": 455448806.0404212,
+    "evaporation_km3": 154521730.5548121,
+    "sublimation_km3": 55397964.09914326,
+    "overflow_out_km3": 243567289.11646646,
+    "internal_transfer_km3": 520310374.34045637,
+    "storage_change_km3": 1961822.2710497805,
+    "normalized_residual": 2.3063415384313796e-12,
+    "merge_events": 79,
+    "split_events": 38
+   }
+  },
+  {
+   "name": "fixed-25000-slice25000",
+   "mode": "fixed",
+   "total_years": 25000.0,
+   "slice_years": 25000.0,
+   "checkpoint_sha256": "c5b1f5d832e83e63f2a90a9f9f7bff03c885e831a0c6e585e22678a718168043",
+   "opening": {
+    "anchor_volume_km3": 20113.49345151008,
+    "anchor_area_km2": 512907.04213194747,
+    "anchor_catchment_km2": 1265154.8636241157,
+    "world_lake_km3": 1540651.5770105436
+   },
+   "final": {
+    "anchor_volume_km3": 392526.6242638687,
+    "anchor_area_km2": 274858.21594741446,
+    "anchor_catchment_km2": 821167.0352436594,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "nearest",
+    "world_lake_km3": 3432647.709863522,
+    "peak_rss_mb": 4457.59488
+   },
+   "merged_records": 0,
+   "records": 2,
+   "ledger_km3": {
+    "external_supply_km3": 455448806.0404226,
+    "evaporation_km3": 154703794.1965169,
+    "sublimation_km3": 55542229.04808054,
+    "overflow_out_km3": 243293683.93508944,
+    "internal_transfer_km3": 1106695967.6300664,
+    "storage_change_km3": 1909098.860418101,
+    "normalized_residual": 6.972880283976721e-13,
+    "merge_events": 79,
+    "split_events": 38
+   }
+  },
+  {
+   "name": "fixed-25000-slice5000",
+   "mode": "fixed",
+   "total_years": 25000.0,
+   "slice_years": 5000.0,
+   "checkpoint_sha256": "c5b1f5d832e83e63f2a90a9f9f7bff03c885e831a0c6e585e22678a718168043",
+   "opening": {
+    "anchor_volume_km3": 20113.49345151008,
+    "anchor_area_km2": 512907.04213194747,
+    "anchor_catchment_km2": 1265154.8636241157,
+    "world_lake_km3": 1540651.5770105436
+   },
+   "final": {
+    "anchor_volume_km3": 408889.92612815095,
+    "anchor_area_km2": 282240.391737999,
+    "anchor_catchment_km2": 821167.0352436594,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "nearest",
+    "world_lake_km3": 3483547.690966269,
+    "peak_rss_mb": 4432.592896
+   },
+   "merged_records": 0,
+   "records": 2,
+   "ledger_km3": {
+    "external_supply_km3": 455448806.0404226,
+    "evaporation_km3": 154661449.66711932,
+    "sublimation_km3": 55517177.227962136,
+    "overflow_out_km3": 243310119.96090585,
+    "internal_transfer_km3": 652955082.5960914,
+    "storage_change_km3": 1960059.1841702375,
+    "normalized_residual": 5.819721041852401e-13,
+    "merge_events": 79,
+    "split_events": 39
+   }
+  },
+  {
+   "name": "fixed-5000-slice10",
+   "mode": "fixed",
+   "total_years": 5000.0,
+   "slice_years": 10.0,
+   "checkpoint_sha256": "c5b1f5d832e83e63f2a90a9f9f7bff03c885e831a0c6e585e22678a718168043",
+   "opening": {
+    "anchor_volume_km3": 20113.49345151008,
+    "anchor_area_km2": 512907.04213194747,
+    "anchor_catchment_km2": 1265154.8636241157,
+    "world_lake_km3": 1540651.5770105436
+   },
+   "final": {
+    "anchor_volume_km3": 394293.3097704,
+    "anchor_area_km2": 274858.21594741446,
+    "anchor_catchment_km2": 825046.5835090266,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "nearest",
+    "world_lake_km3": 3769677.292412455,
+    "peak_rss_mb": 3858.235392
+   },
+   "merged_records": 0,
+   "records": 2,
+   "ledger_km3": {
+    "external_supply_km3": 103061858.28503902,
+    "evaporation_km3": 33483015.747952055,
+    "sublimation_km3": 11138884.340683753,
+    "overflow_out_km3": 56193301.17642093,
+    "internal_transfer_km3": 126845474.1647571,
+    "storage_change_km3": 2246657.0218387,
+    "normalized_residual": 1.8012599723029506e-11,
+    "merge_events": 94,
+    "split_events": 47
+   }
+  },
+  {
+   "name": "fixed-5000-slice1000",
+   "mode": "fixed",
+   "total_years": 5000.0,
+   "slice_years": 1000.0,
+   "checkpoint_sha256": "c5b1f5d832e83e63f2a90a9f9f7bff03c885e831a0c6e585e22678a718168043",
+   "opening": {
+    "anchor_volume_km3": 20113.49345151008,
+    "anchor_area_km2": 512907.04213194747,
+    "anchor_catchment_km2": 1265154.8636241157,
+    "world_lake_km3": 1540651.5770105436
+   },
+   "final": {
+    "anchor_volume_km3": 366435.39014508465,
+    "anchor_area_km2": 266841.1030399441,
+    "anchor_catchment_km2": 825046.5835090266,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "nearest",
+    "world_lake_km3": 3726736.697807517,
+    "peak_rss_mb": 4505.419776
+   },
+   "merged_records": 0,
+   "records": 2,
+   "ledger_km3": {
+    "external_supply_km3": 103061858.28500661,
+    "evaporation_km3": 33634517.41303188,
+    "sublimation_km3": 11255062.389714858,
+    "overflow_out_km3": 55968581.8569057,
+    "internal_transfer_km3": 152822224.09839734,
+    "storage_change_km3": 2203696.6253916095,
+    "normalized_residual": 3.6329152824374185e-13,
+    "merge_events": 92,
+    "split_events": 44
+   }
+  },
+  {
+   "name": "fixed-5000-slice200",
+   "mode": "fixed",
+   "total_years": 5000.0,
+   "slice_years": 200.0,
+   "checkpoint_sha256": "c5b1f5d832e83e63f2a90a9f9f7bff03c885e831a0c6e585e22678a718168043",
+   "opening": {
+    "anchor_volume_km3": 20113.49345151008,
+    "anchor_area_km2": 512907.04213194747,
+    "anchor_catchment_km2": 1265154.8636241157,
+    "world_lake_km3": 1540651.5770105436
+   },
+   "final": {
+    "anchor_volume_km3": 389494.8632712929,
+    "anchor_area_km2": 274858.21594741446,
+    "anchor_catchment_km2": 825046.5835090266,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "nearest",
+    "world_lake_km3": 3762272.766218921,
+    "peak_rss_mb": 4474.257408
+   },
+   "merged_records": 0,
+   "records": 2,
+   "ledger_km3": {
+    "external_supply_km3": 103061858.28500602,
+    "evaporation_km3": 33534767.493775018,
+    "sublimation_km3": 11184161.533057274,
+    "overflow_out_km3": 56103681.94331263,
+    "internal_transfer_km3": 131000939.25805525,
+    "storage_change_km3": 2239247.3150690855,
+    "normalized_residual": 2.0181035298706564e-12,
+    "merge_events": 93,
+    "split_events": 46
+   }
+  },
+  {
+   "name": "fixed-5000-slice50",
+   "mode": "fixed",
+   "total_years": 5000.0,
+   "slice_years": 50.0,
+   "checkpoint_sha256": "c5b1f5d832e83e63f2a90a9f9f7bff03c885e831a0c6e585e22678a718168043",
+   "opening": {
+    "anchor_volume_km3": 20113.49345151008,
+    "anchor_area_km2": 512907.04213194747,
+    "anchor_catchment_km2": 1265154.8636241157,
+    "world_lake_km3": 1540651.5770105436
+   },
+   "final": {
+    "anchor_volume_km3": 393310.8308588597,
+    "anchor_area_km2": 274858.21594741446,
+    "anchor_catchment_km2": 825046.5835090266,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "nearest",
+    "world_lake_km3": 3768161.447374744,
+    "peak_rss_mb": 4499.832832
+   },
+   "merged_records": 0,
+   "records": 2,
+   "ledger_km3": {
+    "external_supply_km3": 103061858.28500858,
+    "evaporation_km3": 33500288.017020985,
+    "sublimation_km3": 11153146.96845828,
+    "overflow_out_km3": 56163282.89814279,
+    "internal_transfer_km3": 127682165.30872335,
+    "storage_change_km3": 2245140.4018805395,
+    "normalized_residual": 4.793427056533681e-12,
+    "merge_events": 93,
+    "split_events": 46
+   }
+  },
+  {
+   "name": "fixed-5000-slice5000",
+   "mode": "fixed",
+   "total_years": 5000.0,
+   "slice_years": 5000.0,
+   "checkpoint_sha256": "c5b1f5d832e83e63f2a90a9f9f7bff03c885e831a0c6e585e22678a718168043",
+   "opening": {
+    "anchor_volume_km3": 20113.49345151008,
+    "anchor_area_km2": 512907.04213194747,
+    "anchor_catchment_km2": 1265154.8636241157,
+    "world_lake_km3": 1540651.5770105436
+   },
+   "final": {
+    "anchor_volume_km3": 348607.1721010722,
+    "anchor_area_km2": 262785.4951501646,
+    "anchor_catchment_km2": 825046.5835090266,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "nearest",
+    "world_lake_km3": 3609904.805075308,
+    "peak_rss_mb": 4768.202752
+   },
+   "merged_records": 0,
+   "records": 2,
+   "ledger_km3": {
+    "external_supply_km3": 103061858.28500669,
+    "evaporation_km3": 33783858.73838072,
+    "sublimation_km3": 11366328.760035612,
+    "overflow_out_km3": 55825108.09633491,
+    "internal_transfer_km3": 262679284.3661873,
+    "storage_change_km3": 2086562.690220643,
+    "normalized_residual": 3.3763218109043375e-13,
+    "merge_events": 88,
+    "split_events": 42
+   }
+  },
+  {
+   "name": "fixedE-25000-slice1000",
+   "mode": "fixed",
+   "total_years": 25000.0,
+   "slice_years": 1000.0,
+   "checkpoint_sha256": "95dde684ab89b3209facd14ed623e784a30ebaa6ec1a71395c6a35eab1f3484c",
+   "opening": {
+    "anchor_volume_km3": 13305.624904993976,
+    "anchor_area_km2": 7528.821004837176,
+    "anchor_catchment_km2": 7528.821004837176,
+    "world_lake_km3": 2730558.955871313
+   },
+   "final": {
+    "anchor_volume_km3": 996544.710997446,
+    "anchor_area_km2": 673531.1397819417,
+    "anchor_catchment_km2": 1468477.6651934609,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "nearest",
+    "world_lake_km3": 4014145.9767505536,
+    "peak_rss_mb": 1172.635648
+   },
+   "merged_records": 0,
+   "records": 2,
+   "ledger_km3": {
+    "external_supply_km3": 438638922.0445108,
+    "evaporation_km3": 157674057.94608188,
+    "sublimation_km3": 57473468.98593217,
+    "overflow_out_km3": 222190541.45196256,
+    "internal_transfer_km3": 573315715.3609817,
+    "storage_change_km3": 1300853.655324567,
+    "normalized_residual": 1.1876759535423435e-11,
+    "merge_events": 73,
+    "split_events": 26
+   }
+  },
+  {
+   "name": "fixedE-25000-slice200",
+   "mode": "fixed",
+   "total_years": 25000.0,
+   "slice_years": 200.0,
+   "checkpoint_sha256": "95dde684ab89b3209facd14ed623e784a30ebaa6ec1a71395c6a35eab1f3484c",
+   "opening": {
+    "anchor_volume_km3": 13305.624904993976,
+    "anchor_area_km2": 7528.821004837176,
+    "anchor_catchment_km2": 7528.821004837176,
+    "world_lake_km3": 2730558.955871313
+   },
+   "final": {
+    "anchor_volume_km3": 996540.1977630274,
+    "anchor_area_km2": 673531.1397819417,
+    "anchor_catchment_km2": 1468477.6651934609,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "nearest",
+    "world_lake_km3": 4014144.457680199,
+    "peak_rss_mb": 974.290944
+   },
+   "merged_records": 0,
+   "records": 2,
+   "ledger_km3": {
+    "external_supply_km3": 438638922.04453427,
+    "evaporation_km3": 157615515.76106408,
+    "sublimation_km3": 57423818.95556426,
+    "overflow_out_km3": 222298735.1883504,
+    "internal_transfer_km3": 559875469.2894462,
+    "storage_change_km3": 1300852.1407920364,
+    "normalized_residual": 2.818984905025046e-12,
+    "merge_events": 73,
+    "split_events": 26
+   }
+  },
+  {
+   "name": "fixedE-25000-slice25000",
+   "mode": "fixed",
+   "total_years": 25000.0,
+   "slice_years": 25000.0,
+   "checkpoint_sha256": "95dde684ab89b3209facd14ed623e784a30ebaa6ec1a71395c6a35eab1f3484c",
+   "opening": {
+    "anchor_volume_km3": 13305.624904993976,
+    "anchor_area_km2": 7528.821004837176,
+    "anchor_catchment_km2": 7528.821004837176,
+    "world_lake_km3": 2730558.955871313
+   },
+   "final": {
+    "anchor_volume_km3": 999145.087029759,
+    "anchor_area_km2": 673531.1397819417,
+    "anchor_catchment_km2": 1468477.6651934609,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "nearest",
+    "world_lake_km3": 3981465.174460462,
+    "peak_rss_mb": 1155.629056
+   },
+   "merged_records": 0,
+   "records": 2,
+   "ledger_km3": {
+    "external_supply_km3": 438638922.0445085,
+    "evaporation_km3": 157932503.8139484,
+    "sublimation_km3": 57671722.44868732,
+    "overflow_out_km3": 221766622.1781362,
+    "internal_transfer_km3": 1016134303.9116862,
+    "storage_change_km3": 1268073.603453909,
+    "normalized_residual": 6.445643233896862e-13,
+    "merge_events": 71,
+    "split_events": 26
+   }
+  },
+  {
+   "name": "mergedD-100000-slice1000",
+   "mode": "refreshed",
+   "total_years": 100000.0,
+   "slice_years": 1000.0,
+   "checkpoint_sha256": "c5b1f5d832e83e63f2a90a9f9f7bff03c885e831a0c6e585e22678a718168043",
+   "opening": {
+    "anchor_volume_km3": 20113.49345151008,
+    "anchor_area_km2": 512907.04213194747,
+    "anchor_catchment_km2": 1265154.8636241157,
+    "world_lake_km3": 1540651.5770105436
+   },
+   "final": {
+    "anchor_volume_km3": 604334.9132499415,
+    "anchor_area_km2": 345956.79981816525,
+    "anchor_catchment_km2": 687526.7860760689,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "overlap",
+    "world_lake_km3": 6105141.737861896,
+    "peak_rss_mb": 6426.116096
+   },
+   "merged_records": 0,
+   "records": 51,
+   "ledger_km3": {
+    "external_supply_km3": 23934468.11273869,
+    "evaporation_km3": 7017378.533753129,
+    "sublimation_km3": 3398736.66958974,
+    "overflow_out_km3": 13510974.918126084,
+    "internal_transfer_km3": 32978827.356344514,
+    "storage_change_km3": 7613.259305169982,
+    "normalized_residual": 3.664151167439867e-13,
+    "merge_events": 5,
+    "split_events": 3
+   }
+  },
+  {
+   "name": "mergedE-100000-slice1000",
+   "mode": "refreshed",
+   "total_years": 100000.0,
+   "slice_years": 1000.0,
+   "checkpoint_sha256": "95dde684ab89b3209facd14ed623e784a30ebaa6ec1a71395c6a35eab1f3484c",
+   "opening": {
+    "anchor_volume_km3": 13305.624904993976,
+    "anchor_area_km2": 7528.821004837176,
+    "anchor_catchment_km2": 7528.821004837176,
+    "world_lake_km3": 2730558.955871313
+   },
+   "final": {
+    "anchor_volume_km3": 614453.2494461068,
+    "anchor_area_km2": 345956.79981816525,
+    "anchor_catchment_km2": 714074.7539059557,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "overlap",
+    "world_lake_km3": 6498216.940000384,
+    "peak_rss_mb": 7733.16608
+   },
+   "merged_records": 0,
+   "records": 51,
+   "ledger_km3": {
+    "external_supply_km3": 23943317.844641346,
+    "evaporation_km3": 6795669.132779577,
+    "sublimation_km3": 3569193.9930826025,
+    "overflow_out_km3": 13577138.797319265,
+    "internal_transfer_km3": 37643947.80687631,
+    "storage_change_km3": 1349.5529739195797,
+    "normalized_residual": 8.016152960537114e-12,
+    "merge_events": 2,
+    "split_events": 1
+   }
+  },
+  {
+   "name": "refreshed-25000-slice1000",
+   "mode": "refreshed",
+   "total_years": 25000.0,
+   "slice_years": 1000.0,
+   "checkpoint_sha256": "c5b1f5d832e83e63f2a90a9f9f7bff03c885e831a0c6e585e22678a718168043",
+   "opening": {
+    "anchor_volume_km3": 20113.49345151008,
+    "anchor_area_km2": 512907.04213194747,
+    "anchor_catchment_km2": 1265154.8636241157,
+    "world_lake_km3": 1540651.5770105436
+   },
+   "final": {
+    "anchor_volume_km3": 605158.5665458718,
+    "anchor_area_km2": 345956.79981816525,
+    "anchor_catchment_km2": 687526.7860760689,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "overlap",
+    "world_lake_km3": 5615763.0553802,
+    "peak_rss_mb": 6404.128768
+   },
+   "merged_records": 0,
+   "records": 26,
+   "ledger_km3": {
+    "external_supply_km3": 23580064.855192848,
+    "evaporation_km3": 6757205.605872911,
+    "sublimation_km3": 3185119.8991627847,
+    "overflow_out_km3": 13632433.903223488,
+    "internal_transfer_km3": 34389810.02714338,
+    "storage_change_km3": 5432.804892221689,
+    "normalized_residual": 2.865343051026709e-14,
+    "merge_events": 4,
+    "split_events": 3
+   }
+  },
+  {
+   "name": "refreshed-25000-slice200",
+   "mode": "refreshed",
+   "total_years": 25000.0,
+   "slice_years": 200.0,
+   "checkpoint_sha256": "c5b1f5d832e83e63f2a90a9f9f7bff03c885e831a0c6e585e22678a718168043",
+   "opening": {
+    "anchor_volume_km3": 20113.49345151008,
+    "anchor_area_km2": 512907.04213194747,
+    "anchor_catchment_km2": 1265154.8636241157,
+    "world_lake_km3": 1540651.5770105436
+   },
+   "final": {
+    "anchor_volume_km3": 604655.7422315333,
+    "anchor_area_km2": 345956.79981816525,
+    "anchor_catchment_km2": 679303.4763504263,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "overlap",
+    "world_lake_km3": 5751589.0131794,
+    "peak_rss_mb": 6698.975232
+   },
+   "merged_records": 0,
+   "records": 126,
+   "ledger_km3": {
+    "external_supply_km3": 4785124.855402935,
+    "evaporation_km3": 1354883.9672246494,
+    "sublimation_km3": 656225.9228245754,
+    "overflow_out_km3": 2771726.5169011587,
+    "internal_transfer_km3": 6920963.2607956,
+    "storage_change_km3": 2215.7190907240492,
+    "normalized_residual": 3.1735780917147704e-13,
+    "merge_events": 9,
+    "split_events": 9
+   }
+  },
+  {
+   "name": "refreshed-25000-slice5000",
+   "mode": "refreshed",
+   "total_years": 25000.0,
+   "slice_years": 5000.0,
+   "checkpoint_sha256": "c5b1f5d832e83e63f2a90a9f9f7bff03c885e831a0c6e585e22678a718168043",
+   "opening": {
+    "anchor_volume_km3": 20113.49345151008,
+    "anchor_area_km2": 512907.04213194747,
+    "anchor_catchment_km2": 1265154.8636241157,
+    "world_lake_km3": 1540651.5770105436
+   },
+   "final": {
+    "anchor_volume_km3": 606838.6538329585,
+    "anchor_area_km2": 345956.79981816525,
+    "anchor_catchment_km2": 687526.7860760689,
+    "merged_state": false,
+    "anchor_wet": false,
+    "tracked_how": "overlap",
+    "world_lake_km3": 5035899.103574008,
+    "peak_rss_mb": 4444.454912
+   },
+   "merged_records": 0,
+   "records": 6,
+   "ledger_km3": {
+    "external_supply_km3": 112193319.56749459,
+    "evaporation_km3": 32201219.78466372,
+    "sublimation_km3": 14429381.114416806,
+    "overflow_out_km3": 65479311.31735557,
+    "internal_transfer_km3": 137804168.4872187,
+    "storage_change_km3": 83033.87525796906,
+    "normalized_residual": 1.6435750830985758e-13,
+    "merge_events": 15,
+    "split_events": 9
+   }
+  }
+ ]
+}
