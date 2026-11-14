@@ -1,0 +1,1127 @@
+{
+  "issue": 871,
+  "source_commit": "5912a7d8be999e4148ce956be060932b77241614",
+  "protocol": "analysis/rfc0016/README.md#expanded-window-rescan-871",
+  "schedule": {
+    "step_years": 100000,
+    "horizon_years": 5000000,
+    "startup_exclusion_steps": 4
+  },
+  "scan_results": [
+    {
+      "seed": 910211954,
+      "age_myr": 220.2,
+      "steps": 46,
+      "comparable": 3254,
+      "reversals": 74,
+      "mean_step_s": 45.3,
+      "peak_rss_mb": 6873.8,
+      "largest_delta_km3": 671456.5316,
+      "largest_event_step": 44
+    },
+    {
+      "seed": 317739385,
+      "age_myr": 200.8,
+      "steps": 46,
+      "comparable": 828,
+      "reversals": 67,
+      "mean_step_s": 292.5,
+      "peak_rss_mb": 8001.7,
+      "largest_delta_km3": -1353241.6924,
+      "largest_event_step": 10
+    },
+    {
+      "seed": 308161711,
+      "age_myr": 121.5,
+      "steps": 46,
+      "comparable": 1025,
+      "reversals": 37,
+      "mean_step_s": 19.6,
+      "peak_rss_mb": 1206.0,
+      "largest_delta_km3": -313023.0,
+      "largest_event_step": 18
+    },
+    {
+      "seed": 373936961,
+      "age_myr": 244.4,
+      "steps": 46,
+      "comparable": 2229,
+      "reversals": 118,
+      "mean_step_s": 50.4,
+      "peak_rss_mb": 6422.1,
+      "largest_delta_km3": 2209626.8973,
+      "largest_event_step": 37
+    },
+    {
+      "seed": 374464662,
+      "age_myr": 132.6,
+      "steps": 46,
+      "comparable": 611,
+      "reversals": 15,
+      "mean_step_s": 14.8,
+      "peak_rss_mb": 1119.8,
+      "largest_delta_km3": -155352.0,
+      "largest_event_step": 16
+    },
+    {
+      "seed": 456862899,
+      "age_myr": 19191.8,
+      "steps": 46,
+      "comparable": 1,
+      "reversals": 0,
+      "mean_step_s": 13.4,
+      "peak_rss_mb": 2606.7,
+      "largest_delta_km3": null,
+      "largest_event_step": null
+    },
+    {
+      "seed": 507012855,
+      "age_myr": 479.0,
+      "steps": 46,
+      "comparable": 1442,
+      "reversals": 43,
+      "mean_step_s": 48.9,
+      "peak_rss_mb": 1236.8,
+      "largest_delta_km3": 2327862.4617,
+      "largest_event_step": 49
+    },
+    {
+      "seed": 544349906,
+      "age_myr": 422.9,
+      "steps": 46,
+      "comparable": 1203,
+      "reversals": 33,
+      "mean_step_s": 7.5,
+      "peak_rss_mb": 1262.5,
+      "largest_delta_km3": 1751714.1037,
+      "largest_event_step": 39
+    },
+    {
+      "seed": 635056485,
+      "age_myr": 452.8,
+      "steps": 46,
+      "comparable": 251,
+      "reversals": 4,
+      "mean_step_s": 172.0,
+      "peak_rss_mb": 3867.1,
+      "largest_delta_km3": -140707.0,
+      "largest_event_step": 5
+    },
+    {
+      "seed": 762517225,
+      "age_myr": 135.2,
+      "steps": 46,
+      "comparable": 896,
+      "reversals": 20,
+      "mean_step_s": 88.9,
+      "peak_rss_mb": 1179.6,
+      "largest_delta_km3": -606991.5717,
+      "largest_event_step": 12
+    },
+    {
+      "seed": 997271774,
+      "age_myr": 130.5,
+      "steps": 46,
+      "comparable": 449,
+      "reversals": 24,
+      "mean_step_s": 37.8,
+      "peak_rss_mb": 1748.5,
+      "largest_delta_km3": -297049.0114,
+      "largest_event_step": 5
+    }
+  ],
+  "candidate_screens": [
+    {
+      "rank": 1,
+      "seed": 507012855,
+      "source_save": "mantle-bloom-seed507012855-479000000y.bloom",
+      "source_save_sha256": "1605dc268a4c873516306db5c8380a344821b4ceffb08495af3dee0d34de9f9a",
+      "event_step": 49,
+      "window_scan_steps": [
+        47,
+        48,
+        49,
+        50
+      ],
+      "checkpoint_age_myr": 483.6,
+      "checkpoint_sha256": "16b6a41d9409edf0b9215e695059dc80b7a4c936717dbe9a4a450329f61f8574",
+      "anchor": [
+        0.46270308590530623,
+        -0.4657688781412778,
+        -0.7542978234415867
+      ],
+      "target_delta_km3": 2327862.461745355,
+      "reload": {
+        "passed": true,
+        "before_km3": 2378242.226901177,
+        "after_km3": 4706104.688646532,
+        "delta_km3": 2327862.461745355
+      },
+      "frozen_share": {
+        "passed": false,
+        "weighted_fraction": 0.5808082178,
+        "step_percent": [
+          58.05899,
+          57.91511,
+          58.24294,
+          58.09399
+        ]
+      },
+      "routed_supply_m3_per_year": [
+        5646786663642.082,
+        5056350132518.5625,
+        5466096688234.886,
+        5621783105870.872
+      ],
+      "max_normalized_residual": {
+        "lake": 1.628082297333794e-11,
+        "land": 7.881642950885072e-12
+      },
+      "first_failure": "frozen precipitation exceeds 10%; later screens not run",
+      "knockout_delta_km3": null,
+      "independence": "not applicable; candidate failed individual screen"
+    },
+    {
+      "rank": 2,
+      "seed": 373936961,
+      "source_save_sha256": "def0a208089a32e25df7cd4ea8320804b360761a585b5ef3b226a922f44fdbb9",
+      "event_step": 37,
+      "window_scan_steps": [
+        35,
+        36,
+        37,
+        38
+      ],
+      "checkpoint_age_myr": 247.8,
+      "checkpoint_sha256": "1be2433e81f66f36b76cdbb89b58335ee5e381305297476a42e6249cf277fbad",
+      "anchor": [
+        -0.2390731423585053,
+        -0.2594755955098377,
+        0.935690359006464
+      ],
+      "target_delta_km3": 2209626.8973,
+      "reload": {
+        "passed": false,
+        "scan_before_km3": 430.0098,
+        "scan_after_km3": 2210056.9071,
+        "reloaded_after_km3": 2210056.9071,
+        "reloaded_matched_previous_km3": null
+      },
+      "frozen_share": {
+        "weighted_fraction": 0.6712454725,
+        "step_percent": [
+          68.37946,
+          67.08446,
+          66.08522,
+          66.78035
+        ]
+      },
+      "routed_supply_m3_per_year": [
+        1872679985216.8806,
+        1858152348925.5693,
+        1845197945080.3196,
+        1843565241464.3682
+      ],
+      "max_normalized_residual": {
+        "lake": 2.1496906797713428e-13,
+        "land": 7.103101971313797e-14
+      },
+      "first_failure": "reload did not reproduce the detector-matched prior volume; detector prior 430.0098 km3 was not matched",
+      "knockout_delta_km3": null,
+      "independence": "not applicable; candidate failed reload screen"
+    },
+    {
+      "rank": 3,
+      "seed": 544349906,
+      "source_save_sha256": "10a127f99d79cf1d2d2272661ea5410613a0aaa6d5c3da6d6639411991a4fbde",
+      "event_step": 39,
+      "window_scan_steps": [
+        37,
+        38,
+        39,
+        40
+      ],
+      "checkpoint_age_myr": 426.5,
+      "checkpoint_sha256": "276b17601dbcdc23abd256bf27f260b7f6808f6ef0a310b2d70b6e1071393601",
+      "anchor": [
+        0.9650440480035858,
+        -0.2499444215448033,
+        0.07885284745341355
+      ],
+      "target_delta_km3": 1751714.1037,
+      "reload": {
+        "passed": true,
+        "before_km3": 2655397.0578,
+        "after_km3": 4407111.1616,
+        "delta_km3": 1751714.1037
+      },
+      "frozen_share": {
+        "passed": true,
+        "weighted_fraction_over_wet_anchor_outputs": 0.0164726871,
+        "step_percent": [
+          0.13246,
+          0.12315,
+          3.43644,
+          null
+        ]
+      },
+      "routed_supply_m3_per_year": [
+        21430744632305.86,
+        17340138444731.367,
+        14376328077514.229,
+        null
+      ],
+      "max_normalized_residual": {
+        "lake": 7.508216511972974e-13,
+        "land": 4.02329611165655e-13
+      },
+      "first_failure": "routed target supply is missing at window step 4",
+      "knockout_delta_km3": null,
+      "independence": "not applicable; candidate failed routed-supply screen"
+    },
+    {
+      "rank": 4,
+      "seed": 544349906,
+      "source_save_sha256": "10a127f99d79cf1d2d2272661ea5410613a0aaa6d5c3da6d6639411991a4fbde",
+      "event_step": 46,
+      "window_scan_steps": [
+        44,
+        45,
+        46,
+        47
+      ],
+      "checkpoint_age_myr": 427.2,
+      "checkpoint_sha256": "82b64049c81c765b221fbc850500f3ae7ee578f65022a32a06387faa0fb148ce",
+      "anchor": [
+        0.6434381541651752,
+        -0.7535958563270888,
+        0.13446422234613156
+      ],
+      "target_delta_km3": 1703173.6416,
+      "reload": {
+        "passed": true,
+        "before_km3": 2715230.5833,
+        "after_km3": 4418404.2249,
+        "delta_km3": 1703173.6416
+      },
+      "frozen_share": {
+        "passed": true,
+        "weighted_fraction": 0.0659201518,
+        "step_percent": [
+          6.59059,
+          5.92476,
+          7.15816,
+          6.7344
+        ]
+      },
+      "routed_supply_m3_per_year": [
+        17287841753064.264,
+        16638834527603.809,
+        13820902413268.387,
+        16920161844957.57
+      ],
+      "max_normalized_residual": {
+        "lake": 4.404373280592215e-13,
+        "land": 2.282025692735048e-13
+      },
+      "control_replay_peak_rss_mb": 1270.530048,
+      "knockout": {
+        "delta_km3": 1701689.4219,
+        "retained_fraction": 0.9991285564,
+        "passed": true
+      },
+      "first_failure": null,
+      "status": "passes individual and selected-set independence screens",
+      "independence": "independent of ranks 5 and 16"
+    },
+    {
+      "rank": 5,
+      "seed": 544349906,
+      "source_save_sha256": "10a127f99d79cf1d2d2272661ea5410613a0aaa6d5c3da6d6639411991a4fbde",
+      "event_step": 28,
+      "window_scan_steps": [
+        26,
+        27,
+        28,
+        29
+      ],
+      "checkpoint_age_myr": 425.4,
+      "checkpoint_sha256": "2f59c616610bcd754eab0306e780889f5729c7b09ac8ac0a9a236cdc04418a62",
+      "anchor": [
+        -0.24052260371005252,
+        -0.9629850951979817,
+        0.12169052358780816
+      ],
+      "target_delta_km3": -1498244.1704,
+      "reload": {
+        "passed": true,
+        "before_km3": 1548925.9909,
+        "after_km3": 50681.8205,
+        "delta_km3": -1498244.1704
+      },
+      "frozen_share": {
+        "passed": true,
+        "weighted_fraction": 0.0163837754,
+        "step_percent": [
+          1.72863,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "routed_supply_m3_per_year": [
+        74427471817.10765,
+        78212540959.92131,
+        80727099047.64456,
+        83166603704.08673
+      ],
+      "max_normalized_residual": {
+        "lake": 1.04942663508783e-12,
+        "land": 5.265918457487448e-13
+      },
+      "control_replay_peak_rss_mb": 1241.972736,
+      "knockout": {
+        "delta_km3": -1498229.1424,
+        "retained_fraction": 0.9999899696,
+        "passed": true
+      },
+      "status": "passes individual and selected-set independence screens",
+      "independence": "independent of ranks 4 and 16"
+    },
+    {
+      "rank": 6,
+      "seed": 317739385,
+      "source_save_sha256": "c7e8c4094376b2b57158e36b1066cf529eb475ac0bbf54a6b888b391f294d344",
+      "event_step": 10,
+      "window_scan_steps": [
+        8,
+        9,
+        10,
+        11
+      ],
+      "checkpoint_age_myr": 201.5,
+      "checkpoint_sha256": "5225d37f577110d131bc318396e49f80af93277b49aab67df2f1a2e9e94403fc",
+      "anchor": [
+        -0.7078146117250811,
+        -0.6923183508685462,
+        0.14033451634971436
+      ],
+      "target_delta_km3": -1353241.6924,
+      "reload": {
+        "passed": true,
+        "before_km3": 1354885.5522,
+        "after_km3": 1643.8598,
+        "delta_km3": -1353241.6924
+      },
+      "frozen_share": {
+        "passed": false,
+        "weighted_fraction": 0.8367423833,
+        "step_percent": [
+          88.34431,
+          78.50899,
+          76.26961,
+          65.16646
+        ]
+      },
+      "routed_supply_m3_per_year": [
+        18033338400.929653,
+        22400531966.59754,
+        20107907144.070225,
+        13655787877.125193
+      ],
+      "max_normalized_residual": {
+        "lake": 6.717220724242987e-14,
+        "land": 1.2115475334967211e-14
+      },
+      "control_replay_peak_rss_mb": 4392.337408,
+      "first_failure": "frozen precipitation exceeds 10%; later screens not run",
+      "status": "fails frozen screen"
+    },
+    {
+      "rank": 7,
+      "seed": 507012855,
+      "source_save": "mantle-bloom-seed507012855-479000000y.bloom",
+      "source_save_sha256": "1605dc268a4c873516306db5c8380a344821b4ceffb08495af3dee0d34de9f9a",
+      "event_step": 10,
+      "window_scan_steps": [
+        8,
+        9,
+        10,
+        11
+      ],
+      "checkpoint_age_myr": 479.7,
+      "checkpoint_sha256": "c638a00675c8765084be4eae42352ac74143f074c5d0faccbbc98298550938ef",
+      "anchor": [
+        0.40294208692072186,
+        0.33317504903980116,
+        -0.8524271589322535
+      ],
+      "target_delta_km3": -680333.823236,
+      "reload": {
+        "passed": true,
+        "before_km3": 780981.4125,
+        "after_km3": 100647.5893,
+        "delta_km3": -680333.8232
+      },
+      "frozen_share": {
+        "passed": false,
+        "weighted_fraction": 0.9134581956,
+        "step_percent": [
+          83.17483,
+          82.348,
+          146.72434,
+          133.29387
+        ]
+      },
+      "routed_supply_m3_per_year": [
+        4400123258183.917,
+        6675960038301.627,
+        3787193019945.507,
+        2162971555318.4314
+      ],
+      "max_normalized_residual": {
+        "lake": 1.8553741186e-13,
+        "land": 8.141689545e-14
+      },
+      "control_replay_peak_rss_mb": 1254.93248,
+      "first_failure": "frozen precipitation exceeds 10%; later screens not run",
+      "status": "fails frozen screen"
+    },
+    {
+      "rank": 8,
+      "seed": 373936961,
+      "source_save": "mantle-bloom-seed373936961-244400000y.bloom",
+      "source_save_sha256": "def0a208089a32e25df7cd4ea8320804b360761a585b5ef3b226a922f44fdbb9",
+      "event_step": 50,
+      "window_scan_steps": [
+        48,
+        49,
+        50,
+        51
+      ],
+      "checkpoint_age_myr": 249.1,
+      "checkpoint_sha256": "90a4ea1c070b25ba908251704fb4711f41c91cce5577d9ed04a13499f42b4e81",
+      "anchor": [
+        0.012252713543641705,
+        -0.3832311522868894,
+        0.9235711964584422
+      ],
+      "target_delta_km3": -679914.236041283,
+      "reload": {
+        "passed": true,
+        "before_km3": 681930.4631,
+        "after_km3": 2016.2271,
+        "delta_km3": -679914.236
+      },
+      "frozen_share": {
+        "passed": false,
+        "weighted_fraction": 25.0658047844,
+        "step_percent": [
+          2697.62021,
+          789.59768,
+          767.03301,
+          777.05014
+        ]
+      },
+      "routed_supply_m3_per_year": [
+        9123331675.548819,
+        8310989270.34076,
+        8686869413.44573,
+        8082497857.975004
+      ],
+      "max_normalized_residual": {
+        "lake": 2.5312040366e-13,
+        "land": 8.1045742367e-14
+      },
+      "control_replay_peak_rss_mb": 3462.889472,
+      "first_failure": "frozen precipitation exceeds 10%; later screens not run",
+      "status": "fails frozen screen",
+      "control_output_sha256": "971663f3583585e5346947e78082b7ff76437fb39d8e6d2e21bea57791cf1bb3"
+    },
+    {
+      "rank": 9,
+      "seed": 910211954,
+      "source_save": "mantle-bloom-seed910211954-220200000y.bloom",
+      "source_save_sha256": "8a51374c6b95335db7642be356b064d8237b2262909c3b4771fffa5cb8de43ed",
+      "event_step": 44,
+      "window_scan_steps": [
+        42,
+        43,
+        44,
+        45
+      ],
+      "checkpoint_age_myr": 224.5,
+      "checkpoint_sha256": "ed562d2ffdfd43d60ca8dca0da880c3f7dfb12c2282c221d1dc1424267a4b9e1",
+      "anchor": [
+        -0.41325369818970875,
+        -0.5088243772538058,
+        0.7551947656365083
+      ],
+      "target_delta_km3": -671456.5316172523,
+      "reload": {
+        "passed": true,
+        "before_km3": 673721.2221,
+        "after_km3": 2264.6905,
+        "delta_km3": -671456.5316
+      },
+      "frozen_share": {
+        "passed": false,
+        "weighted_fraction": 4.6149667227,
+        "step_percent": [
+          389.69292,
+          540.30285,
+          550.50069,
+          397.17733
+        ]
+      },
+      "routed_supply_m3_per_year": [
+        22475757824.018562,
+        24121218797.94794,
+        23710975227.26356,
+        22729771933.92611
+      ],
+      "max_normalized_residual": {
+        "lake": 2.3620093265e-12,
+        "land": 5.4369058546e-13
+      },
+      "control_replay_peak_rss_mb": 5355.02848,
+      "first_failure": "frozen precipitation exceeds 10%; later screens not run",
+      "status": "fails frozen screen",
+      "control_output_sha256": "25194d3bb58f32b744bae562d6b06c49d36a7e9ef499c471414c1f6792fc48b4"
+    },
+    {
+      "rank": 10,
+      "seed": 373936961,
+      "source_save": "mantle-bloom-seed373936961-244400000y.bloom",
+      "source_save_sha256": "def0a208089a32e25df7cd4ea8320804b360761a585b5ef3b226a922f44fdbb9",
+      "event_step": 43,
+      "window_scan_steps": [
+        41,
+        42,
+        43,
+        44
+      ],
+      "checkpoint_age_myr": 248.4,
+      "checkpoint_sha256": "00a6aacf10b8639ffb0b80025701a1fed3509a84e3dfd50166861b18dadf7f91",
+      "anchor": [
+        0.11958609322208602,
+        0.5234834773489963,
+        0.8436019293781177
+      ],
+      "target_delta_km3": -667668.7264076066,
+      "reload": {
+        "passed": true,
+        "before_km3": 670740.0386,
+        "after_km3": 3071.3122,
+        "delta_km3": -667668.7264
+      },
+      "frozen_share": {
+        "passed": false,
+        "weighted_fraction": 3.0912877816,
+        "step_percent": [
+          306.97169,
+          306.9026,
+          306.5822,
+          314.58781
+        ]
+      },
+      "routed_supply_m3_per_year": [
+        0.0,
+        0.0,
+        0.0,
+        7541708776.029411
+      ],
+      "max_normalized_residual": {
+        "lake": 1.0902925719e-12,
+        "land": 3.5536113383e-13
+      },
+      "control_replay_peak_rss_mb": 5083.46368,
+      "first_failure": "frozen precipitation exceeds 10%; later screens not run",
+      "status": "fails frozen screen",
+      "control_output_sha256": "bfdbd95809bcbe385609da58c96e95dc1e6cfabc14a57db0bdf18cabc638ee56"
+    },
+    {
+      "rank": 11,
+      "seed": 544349906,
+      "source_save": "mantle-bloom-seed544349906-422900000y.bloom",
+      "source_save_sha256": "10a127f99d79cf1d2d2272661ea5410613a0aaa6d5c3da6d6639411991a4fbde",
+      "event_step": 16,
+      "window_scan_steps": [
+        14,
+        15,
+        16,
+        17
+      ],
+      "checkpoint_age_myr": 424.2,
+      "checkpoint_sha256": "85a4525cca625b8bd6092da8123867648972c299ac5453df145a17e31ea06144",
+      "anchor": [
+        0.1684642110916991,
+        -0.9553013171538611,
+        0.24293868161606808
+      ],
+      "target_delta_km3": 662848.0703454548,
+      "reload": {
+        "passed": false,
+        "scan_before_km3": 488.9901,
+        "scan_after_km3": 663337.0604,
+        "reloaded_after_km3": 663337.0604,
+        "reloaded_matched_previous_km3": null
+      },
+      "frozen_share": {
+        "passed": true,
+        "weighted_fraction": 0.0300786382,
+        "step_percent": [
+          3.12389,
+          3.13806,
+          2.94086,
+          2.8408
+        ]
+      },
+      "routed_supply_m3_per_year": [
+        1784337661448.5435,
+        1205768911463.2007,
+        1952266936986.8833,
+        1931285355287.9177
+      ],
+      "max_normalized_residual": {
+        "lake": 5.8686116829e-14,
+        "land": 3.1645495895e-14
+      },
+      "control_replay_peak_rss_mb": 1291.665408,
+      "first_failure": "source reload cannot reproduce detector-matched prior lake volume",
+      "status": "fails reload screen",
+      "control_output_sha256": "52909c48d195d7819476e8bad2cd1caa078f1b774cb683b1ef895fd0c1038c70"
+    },
+    {
+      "rank": 12,
+      "seed": 544349906,
+      "source_save": "mantle-bloom-seed544349906-422900000y.bloom",
+      "source_save_sha256": "10a127f99d79cf1d2d2272661ea5410613a0aaa6d5c3da6d6639411991a4fbde",
+      "event_step": 20,
+      "window_scan_steps": [
+        18,
+        19,
+        20,
+        21
+      ],
+      "checkpoint_age_myr": 424.6,
+      "checkpoint_sha256": "02c8738967bbcf4ea40c82e2b859b0278f2e67aecfef7363610e8fac5e20d417",
+      "anchor": [
+        0.16825198936459057,
+        -0.9552707138077763,
+        0.2432059444504656
+      ],
+      "target_delta_km3": 662093.793619863,
+      "reload": {
+        "passed": false,
+        "scan_before_km3": 683.6978,
+        "scan_after_km3": 662777.4914,
+        "reloaded_after_km3": 662777.4914,
+        "reloaded_matched_previous_km3": null
+      },
+      "frozen_share": {
+        "passed": true,
+        "weighted_fraction": 0.0296668464,
+        "step_percent": [
+          2.86764,
+          2.77557,
+          2.80589,
+          3.39928
+        ]
+      },
+      "routed_supply_m3_per_year": [
+        2048010669892.0574,
+        1279354802347.161,
+        1926118626090.642,
+        1985121410859.379
+      ],
+      "max_normalized_residual": {
+        "lake": 2.7661147882e-13,
+        "land": 1.3772367478e-13
+      },
+      "control_replay_peak_rss_mb": 1286.848512,
+      "first_failure": "source reload cannot reproduce detector-matched prior lake volume",
+      "status": "fails reload screen",
+      "control_output_sha256": "a39d48cfd0db577b736cb387c807bdb54c5ca214db831f91ae489867776f28ba"
+    },
+    {
+      "rank": 13,
+      "seed": 910211954,
+      "source_save": "mantle-bloom-seed910211954-220200000y.bloom",
+      "source_save_sha256": "8a51374c6b95335db7642be356b064d8237b2262909c3b4771fffa5cb8de43ed",
+      "event_step": 30,
+      "window_scan_steps": [
+        28,
+        29,
+        30,
+        31
+      ],
+      "checkpoint_age_myr": 223.1,
+      "checkpoint_sha256": "72195694c7648f6095e25c7f40c79ea1e14903c5ac3c2a3556993bda2a034dd8",
+      "anchor": [
+        -0.4998422071283448,
+        -0.36451519219756773,
+        0.7856757872241048
+      ],
+      "target_delta_km3": 656239.1475376014,
+      "reload": {
+        "passed": false,
+        "scan_before_km3": 1177.7106,
+        "scan_after_km3": 657416.8581,
+        "reloaded_after_km3": 657416.8581,
+        "reloaded_matched_previous_km3": null
+      },
+      "frozen_share": {
+        "passed": false,
+        "weighted_fraction": 1.3321489099,
+        "step_percent": [
+          155.04241,
+          156.91264,
+          121.39122,
+          159.24372
+        ]
+      },
+      "routed_supply_m3_per_year": [
+        339668824376.1852,
+        567747522137.4742,
+        611879325838.636,
+        613932268626.178
+      ],
+      "max_normalized_residual": {
+        "lake": 1.4251406558e-12,
+        "land": 3.3698111445e-13
+      },
+      "control_replay_peak_rss_mb": 5918.900224,
+      "first_failure": "source reload cannot reproduce detector-matched prior lake volume",
+      "status": "fails reload screen",
+      "control_output_sha256": "2204ac3ea8a4e2c7c47bc91e2359ce8f5431b235cd063b7f5e4bce4e88a42f09"
+    },
+    {
+      "rank": 14,
+      "seed": 507012855,
+      "source_save": "mantle-bloom-seed507012855-479000000y.bloom",
+      "source_save_sha256": "1605dc268a4c873516306db5c8380a344821b4ceffb08495af3dee0d34de9f9a",
+      "event_step": 17,
+      "window_scan_steps": [
+        15,
+        16,
+        17,
+        18
+      ],
+      "checkpoint_age_myr": 480.4,
+      "checkpoint_sha256": "fa910d887655fb0fd1e061114151a206c0f11ac84e1e2b87f46783ba9c56c6c1",
+      "anchor": [
+        0.8902420439986224,
+        -0.43387412871623726,
+        0.13864466642429404
+      ],
+      "target_delta_km3": 652286.3392747651,
+      "reload": {
+        "passed": false,
+        "scan_before_km3": 343.7808,
+        "scan_after_km3": 652630.1201,
+        "reloaded_after_km3": 652630.1201,
+        "reloaded_matched_previous_km3": null
+      },
+      "frozen_share": {
+        "passed": true,
+        "weighted_fraction": 0.0071248754,
+        "step_percent": [
+          0.75717,
+          0.69747,
+          0.7087,
+          0.68811
+        ]
+      },
+      "routed_supply_m3_per_year": [
+        4453000019316.701,
+        4824898055495.84,
+        4493395465442.307,
+        4799873076015.658
+      ],
+      "max_normalized_residual": {
+        "lake": 7.2188131619e-14,
+        "land": 3.3431640461e-14
+      },
+      "control_replay_peak_rss_mb": 1245.396992,
+      "first_failure": "source reload cannot reproduce detector-matched prior lake volume",
+      "status": "fails reload screen",
+      "control_output_sha256": "12c2aa53fa6b119d29bd0b18f8d2b20b634d35a0c98c5ce393a940674261143c"
+    },
+    {
+      "rank": 15,
+      "seed": 762517225,
+      "source_save": "mantle-bloom-seed762517225-135200000y.bloom",
+      "source_save_sha256": "3e8bc5f4e99452d17e17b98db1f0fa8127b1d92d0189952e7e58e422e046e9fd",
+      "event_step": 12,
+      "window_scan_steps": [
+        10,
+        11,
+        12,
+        13
+      ],
+      "checkpoint_age_myr": 136.1,
+      "checkpoint_sha256": "dee974000fd8d6cea52cde6378a98d019f8c25e8fe89efc610a04f6e10c18e7d",
+      "anchor": [
+        0.9515704001048062,
+        -0.20971383923059161,
+        0.22479741831155975
+      ],
+      "target_delta_km3": -606991.5717075866,
+      "reload": {
+        "passed": true,
+        "before_km3": 607472.0773,
+        "after_km3": 480.5055,
+        "delta_km3": -606991.5717
+      },
+      "frozen_share": {
+        "passed": false,
+        "weighted_fraction": 0.1273455075,
+        "step_percent": [
+          12.15105,
+          10.04391,
+          14.41754,
+          13.90857
+        ]
+      },
+      "routed_supply_m3_per_year": [
+        6351439809.471766,
+        5135495189.063207,
+        5640084134.328733,
+        6232556560.531217
+      ],
+      "max_normalized_residual": {
+        "lake": 8.7867548915e-14,
+        "land": 3.2018809149e-14
+      },
+      "control_replay_peak_rss_mb": 1020.526592,
+      "first_failure": "frozen precipitation exceeds 10%; later screens not run",
+      "status": "fails frozen screen",
+      "control_output_sha256": "3b1feff07eae79cc6ee0311982ac5dbd886a903261707ae28b028aa575fa895b"
+    },
+    {
+      "rank": 16,
+      "seed": 544349906,
+      "source_save": "mantle-bloom-seed544349906-422900000y.bloom",
+      "source_save_sha256": "10a127f99d79cf1d2d2272661ea5410613a0aaa6d5c3da6d6639411991a4fbde",
+      "event_step": 10,
+      "window_scan_steps": [
+        8,
+        9,
+        10,
+        11
+      ],
+      "checkpoint_age_myr": 423.6,
+      "checkpoint_sha256": "5e93f0feacf0b54d4016321bade8b0d36f435760ea55c1583a1678c94f2e9b41",
+      "anchor": [
+        0.1470851410072547,
+        -0.9760284693770862,
+        0.16041941360166576
+      ],
+      "target_delta_km3": -603138.684871678,
+      "reload": {
+        "passed": true,
+        "before_km3": 603549.4536,
+        "after_km3": 410.7688,
+        "delta_km3": -603138.6849
+      },
+      "frozen_share": {
+        "passed": true,
+        "weighted_fraction": 0.0915031007,
+        "step_percent": [
+          7.40516,
+          11.84441,
+          10.52078,
+          6.7209
+        ]
+      },
+      "routed_supply_m3_per_year": [
+        82801205212.69661,
+        116927892280.39862,
+        103785045158.3645,
+        68179944367.25373
+      ],
+      "max_normalized_residual": {
+        "lake": 6.6372941166e-13,
+        "land": 3.5977840325e-13
+      },
+      "control_replay_peak_rss_mb": 1305.739264,
+      "knockout": {
+        "delta_km3": -603079.8175,
+        "retained_fraction": 0.9999024,
+        "passed": true,
+        "peak_rss_mb": 1277.100032
+      },
+      "independence": {
+        "against_rank_4": {
+          "anchor_distance_km": 3513.578,
+          "target_node_overlap": 0,
+          "passed": true
+        },
+        "against_rank_5": {
+          "anchor_distance_km": 2499.128,
+          "target_node_overlap": 0,
+          "passed": true
+        }
+      },
+      "status": "passes individual and independence screens",
+      "control_output_sha256": "9f4efa56fb217a1843004d83bbfe0c5f92efc6ed9aa77a70d545c3e85a682fa4",
+      "knockout_output_sha256": "c055e15efd6c4690a1a077c6e25da3bb950c0152519966bb9e22237ff3d05ee7"
+    }
+  ],
+  "independence_checks": [
+    {
+      "candidate_ranks": [
+        4,
+        5
+      ],
+      "anchor_distance_km": 6008.32,
+      "maximum_cross_window_target_node_overlap": 0,
+      "pair_passes": true,
+      "note": "Candidates 4 and 5 both pass the individual screens; their pairwise independence passes."
+    },
+    {
+      "rank_a": 4,
+      "rank_b": 16,
+      "anchor_distance_km": 3513.578,
+      "target_node_overlap": 0,
+      "passed": true
+    },
+    {
+      "rank_a": 5,
+      "rank_b": 16,
+      "anchor_distance_km": 2499.128,
+      "target_node_overlap": 0,
+      "passed": true
+    }
+  ],
+  "selection": {
+    "individual_passers": 3,
+    "selected_windows": 3,
+    "required": 3,
+    "selected_ranks": [
+      4,
+      5,
+      16
+    ],
+    "status": "complete",
+    "alternate_step_years": 10000
+  },
+  "private_capture_label": "rfc0016/issue871-window-rescan-3",
+  "alternate_sensitivity": [
+    {
+      "rank": 4,
+      "seed": 544349906,
+      "event_step": 46,
+      "step_years": 10000,
+      "outputs": [
+        {
+          "elapsed_myr": 427.3,
+          "volume_km3_10k": 3948810.9457,
+          "volume_km3_100k": 4527874.4982,
+          "anchor_wet_10k": true,
+          "target_nodes_10k": 2270
+        },
+        {
+          "elapsed_myr": 427.4,
+          "volume_km3_10k": 3415553.7755,
+          "volume_km3_100k": 2715230.5833,
+          "anchor_wet_10k": true,
+          "target_nodes_10k": 1859
+        },
+        {
+          "elapsed_myr": 427.5,
+          "volume_km3_10k": 3697515.0637,
+          "volume_km3_100k": 4418404.2249,
+          "anchor_wet_10k": true,
+          "target_nodes_10k": 1940
+        },
+        {
+          "elapsed_myr": 427.6,
+          "volume_km3_10k": 3608968.6207,
+          "volume_km3_100k": 4533956.6088,
+          "anchor_wet_10k": true,
+          "target_nodes_10k": 1914
+        }
+      ],
+      "peak_rss_mb": 1330.7904,
+      "output_sha256": "d0a00466adb49d422ccecab0822f19ae77621b76483beb70731c1f15fdbd60e1"
+    },
+    {
+      "rank": 5,
+      "seed": 544349906,
+      "event_step": 28,
+      "step_years": 10000,
+      "outputs": [
+        {
+          "elapsed_myr": 425.5,
+          "volume_km3_10k": 50001.572,
+          "volume_km3_100k": 49390.7389,
+          "anchor_wet_10k": true,
+          "target_nodes_10k": 12
+        },
+        {
+          "elapsed_myr": 425.6,
+          "volume_km3_10k": 50425.8716,
+          "volume_km3_100k": 50213.8711,
+          "anchor_wet_10k": true,
+          "target_nodes_10k": 12
+        },
+        {
+          "elapsed_myr": 425.7,
+          "volume_km3_10k": 50724.53,
+          "volume_km3_100k": 50681.8205,
+          "anchor_wet_10k": true,
+          "target_nodes_10k": 12
+        },
+        {
+          "elapsed_myr": 425.8,
+          "volume_km3_10k": 20408.0952,
+          "volume_km3_100k": 51101.415,
+          "anchor_wet_10k": true,
+          "target_nodes_10k": 10
+        }
+      ],
+      "peak_rss_mb": 1284.145152,
+      "output_sha256": "a0a2bc0f1b3f0f9310c2c7a5e197d6b9756b255e6009831072a8358b2e8c524c"
+    },
+    {
+      "rank": 16,
+      "seed": 544349906,
+      "event_step": 10,
+      "step_years": 10000,
+      "outputs": [
+        {
+          "elapsed_myr": 423.7,
+          "volume_km3_10k": 382.1855,
+          "volume_km3_100k": 383.0659,
+          "anchor_wet_10k": true,
+          "target_nodes_10k": 10
+        },
+        {
+          "elapsed_myr": 423.8,
+          "volume_km3_10k": 427.2463,
+          "volume_km3_100k": 438.5195,
+          "anchor_wet_10k": true,
+          "target_nodes_10k": 9
+        },
+        {
+          "elapsed_myr": 423.9,
+          "volume_km3_10k": 501.5386,
+          "volume_km3_100k": 410.7688,
+          "anchor_wet_10k": true,
+          "target_nodes_10k": 9
+        },
+        {
+          "elapsed_myr": 424.0,
+          "volume_km3_10k": 582.5234,
+          "volume_km3_100k": 380.2954,
+          "anchor_wet_10k": true,
+          "target_nodes_10k": 9
+        }
+      ],
+      "peak_rss_mb": 1333.723136,
+      "output_sha256": "26466f4c3a0c9664e3fe097d734f41aac34fee13f2d8573ed09a19f9bb0f2f67"
+    }
+  ]
+}

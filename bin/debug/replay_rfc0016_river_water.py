@@ -50,6 +50,10 @@ def add_arguments(ap) -> None:
     ap.add_argument("--residence-cap-years", type=float, default=1.0)
     ap.add_argument("--reach-dir", type=Path, help="write per-reach arrays for each step here")
     ap.add_argument("--keep-ice-age", action="store_true", help="keep the save's ice-age cycle")
+    ap.add_argument(
+        "--knockout-lake-ice-sublimation", action="store_true",
+        help="set the lake-ice sublimation rate to zero for the #754 artifact screen (#871)",
+    )
     ap.add_argument("--treatment", action="store_true", help="install the G1a land store (G1b)")
     ap.add_argument("--capacity-mm", type=float, default=300.0)
     ap.add_argument("--depletion", type=float, default=0.5)
@@ -150,6 +154,7 @@ def target_lake(hydro, areas, anchor_points, visible_depth, lake_components, pre
             "anchor_wet": False,
             "nearest_lake_km3": float(np.dot(hydro.lake_depth[members], areas[members])) / 1e9,
             "nearest_matched_previous_km3": matched_previous_km3(members, previous),
+            "target_nodes": members.tolist(),
         }, bodies
     members = np.flatnonzero(bodies["labels"] == bodies["labels"][anchor])
     # RFC 0016's frozen-precipitation screen: how much of this lake's upstream precipitation
@@ -174,6 +179,7 @@ def target_lake(hydro, areas, anchor_points, visible_depth, lake_components, pre
             "frozen_m3": float(frozen_m3[catchment].sum()),
         },
         "supply_m3_per_yr": {name: float(rate[members].sum()) for name, rate in sources.items()},
+        "target_nodes": members.tolist(),
     }, bodies
 
 
@@ -230,24 +236,45 @@ def main() -> None:
     from app.hydroclimate import hydrology  # noqa: E402
 
     hydrology.RIVER_MAX_RESIDENCE_SECONDS = args.residence_cap_years * 365.25 * 86400.0
+    if args.knockout_lake_ice_sublimation:
+        hydrology.LAKE_ICE_SUBLIMATION_M_PER_YR = 0.0
     if args.velocity == "jobson":
         use_jobson_velocity(world, hydrology, plates_mod, line_spacing_rad)
     land_store = install_treatment(args, world, hydrology, plates_mod)
     anchors = np.asarray(json.loads(args.anchors.read_text())["anchor_points"], dtype=float)
-    result.update(velocity=args.velocity, residence_cap_years=args.residence_cap_years, steps=[])
+    result.update(
+        velocity=args.velocity,
+        residence_cap_years=args.residence_cap_years,
+        knockout_lake_ice_sublimation=args.knockout_lake_ice_sublimation,
+        steps=[],
+    )
     if args.reach_dir is not None:
         args.reach_dir.mkdir(parents=True, exist_ok=True)
     previous_final_m3 = [None]
     previous_bodies = [None]
     precipitation = {}
-    original_partition = hydrology.partition_precipitation_m3
+    original_compute_hydrology = hydrology.compute_hydrology
 
-    def partition(precipitation_mm, is_frozen, area_m2, years):
-        liquid_m3, frozen_m3 = original_partition(precipitation_mm, is_frozen, area_m2, years)
-        precipitation.update(liquid_m3=liquid_m3, frozen_m3=frozen_m3)
-        return liquid_m3, frozen_m3
+    def capture_precipitation(world, precipitation_mm, temperature_c, years, *positional, **keyword):
+        hydro = original_compute_hydrology(
+            world, precipitation_mm, temperature_c, years, *positional, **keyword
+        )
+        amplitude = keyword.get("seasonal_amplitude_at_nodes")
+        if amplitude is None and len(positional) >= 2:
+            amplitude = positional[1]
+        if amplitude is None:
+            amplitude = np.zeros_like(temperature_c)
+        from app.hydroclimate import ice_sheet  # noqa: E402
 
-    hydrology.partition_precipitation_m3 = partition
+        # The #871 screen preserves #791's catchment share with the current fractional snow law.
+        precipitation.update(
+            precipitation_mm=np.asarray(precipitation_mm, dtype=float),
+            frozen_fraction=ice_sheet.snow_fraction(temperature_c, amplitude),
+            years=float(years),
+        )
+        return hydro
+
+    hydrology.compute_hydrology = capture_precipitation
 
     def snapshot() -> dict:
         return {"elapsed_myr": world.elapsed_years / 1e6}
@@ -266,6 +293,14 @@ def main() -> None:
         hydro = world.hydrology_cache
         areas = plates_mod.collect_all_accounting_areas_m2(
             hydro.plates_in_order, line_spacing_rad(world.node_density)
+        )
+        precipitation["frozen_m3"] = (
+            precipitation["precipitation_mm"] * precipitation["frozen_fraction"]
+            * areas * precipitation["years"] / 1000.0
+        )
+        precipitation["liquid_m3"] = (
+            precipitation["precipitation_mm"] * (1.0 - precipitation["frozen_fraction"])
+            * areas * precipitation["years"] / 1000.0
         )
         river, land, lake = hydro.river_water_ledger, hydro.land_water_ledger, hydro.lake_water_ledger
         cycles = hydrology.flow_cycles(hydro.flow_target)
