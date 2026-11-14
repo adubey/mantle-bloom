@@ -1,6 +1,6 @@
 # RFC 0018: Plates split along weak paths that are pulling apart
 
-- **Status:** Accepted (revision proposed 2026-11-14 after #848 runtime evidence and #876 rift-candidate exploration; revision proposed 2026-11-09 after spectral-weighting, runtime and failed-rift review; revised 2026-11-08 after G2 sample-size review; revised 2026-11-06 after G2 non-worsening criterion review; revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
+- **Status:** Accepted (revised 2026-11-14 after #848 runtime evidence and #876 rift-candidate exploration; revised 2026-11-09 after spectral-weighting, runtime and failed-rift review; revised 2026-11-08 after G2 sample-size review; revised 2026-11-06 after G2 non-worsening criterion review; revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
 - **Date:** 2026-11-03
 - **Revisions:** dated entries, newest first, are in the [Revision note](#revision-note) near the end.
 - **Related:** #487, #699, #770, #797, #802, #836, #846, #848, #850, #851, #866, #876; RFC [0007](0007-mantle-plumes-and-plateaus.md) (plumes); RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (accepted predecessor; withdrawal follows gates)
@@ -411,9 +411,14 @@ No held-out seed is used for calibration or tuning.
    If any of these fails, use alternative B: run the thin-shell solve every `K` steps
    (start `K = 5 Myr`), hold `𝐍` between solves, and measure its cost in D3.
 2. **D1: tune the mechanism on development worlds.** Run 200 Myr with plates-only stepping
-   (`simulate_climate_biomes = False`) across a predeclared parameter search (Latin hypercube
-   over the D1 knobs, as in #313). Score each setting against the realism targets below and
-   freeze the best before D2. Also record the #699 failure mode for every run: the largest
+   (`simulate_climate_biomes = False`) at 1 Myr steps, as G2 did, across a predeclared parameter
+   search (Latin hypercube over the D1 knobs, as in #313). Score each setting against the realism
+   targets below. The search runs in two stages (owner decision, 2026-11-14):
+   - **Stage 1:** a coarse search on 5 of the 20 development worlds, with the settings and the
+     five seeds predeclared before the first run.
+   - **Stage 2:** the best few stage-1 settings on all 20 development worlds. Freeze the best
+     before D2. Repeat the frozen setting at 0.5 Myr steps on three development seeds and report
+     the realism targets; D3's half-step comparison is the binding timestep check. Also record the #699 failure mode for every run: the largest
    damaged share of a plate and the number of damaged components at the time of each split.
    Record successful rifts by crust kind: a rift is *oceanic* when more than half its path length
    runs through oceanic crust. If more than one third of successful rifts in the frozen setting
@@ -424,7 +429,7 @@ No held-out seed is used for calibration or tuning.
    width and median onset-to-breakup duration must stay within 25% of the default-density
    values, or band width is following the grid.
 3. **D2: realism on held-out worlds.** With the frozen knobs, compare the damage-band method with
-   the production great-circle method on the ten held-out seeds for 200 Myr, from identical
+   the production great-circle method on the ten held-out seeds for 200 Myr at 1 Myr steps, from identical
    generated worlds, settings and step schedules. The method passes when it meets every realism
    target, and no more than one of ten pairs has more tiny breakups than its baseline
    (`D_s = T_baseline,s - T_rift,s < 0`; the accepted tiny-breakup definition, smaller daughter
@@ -580,6 +585,8 @@ in a shared projection and legend.
   not calibrated rift-frequency estimates.
 
 ## Revision note
+
+**2026-11-14 — accepted.** The owner merged [PR #880](https://github.com/adubey/mantle-bloom/pull/880) and chose to run D1 in two stages: a coarse search on 5 development worlds, then the best settings on all 20. D1 and D2 state their 1 Myr step size, and D1 adds a 0.5 Myr check of the frozen setting, as the RFC lifecycle requires.
 
 **2026-11-14 — damage bands replace the eigensolve candidate search (revision proposed after #848 and #876).**
 The previous version chose a split by a weighted-Laplacian graph cut: up to twelve candidate cuts per
