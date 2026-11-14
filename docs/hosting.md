@@ -63,6 +63,19 @@ Railway's variables, not committed to the repository:
 - User database file (`MANTLE_BLOOM_USER_DB_PATH`, a SQLite file on the volume;
   unset means the in-memory store, the desktop default -- see #620)
 
+### Hosted hydrology stop-gap
+
+The hosted service doesn't run the production lake and river model. `.railway/railway.ts` sets
+`MANTLE_BLOOM_RIVER_ARM=outlet-bound` and `MANTLE_BLOOM_DEPTH_CAP_M=20000`, two experiment
+knobs from #867 (see [hydrology](simulation-model/hydrology.md)). The first lets a basin whose
+water reached the ocean on the previous step cut its outlet open. The second raises the
+per-node notch and channel-depth ceilings from 2,000 m to 20 km. Neither is physical: both
+hold back the oversized inland water the production model makes, and that excess comes from
+the water balance, not incision. Lake outcomes on the hosted world therefore differ from local
+runs, which leave both variables unset. [#882](https://github.com/adubey/mantle-bloom/issues/882)
+tracks removing them once lakes are fixed. Both are read once at startup, so a change takes
+effect on the next deploy.
+
 ### Reaching the admin dashboard
 
 The full app at `/` needs the owner's session. Behind Railway's proxy the

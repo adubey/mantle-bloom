@@ -48,6 +48,13 @@ export default defineRailway(() => {
       // world on top of a ~170 MB baseline, with a fresh generate peaking near 480 MB (see
       // docs/hosting.md). Raise this only alongside the service's memory.
       MANTLE_BLOOM_MAX_WORLDS: "2",
+      // Stop-gap for the hosted world's oversized lakes, not a physical model: let a pit
+      // that drained to the ocean last step keep its outlet open (#867's outlet-preservation
+      // bound), with the notch and channel-depth ceilings raised from 2,000 m to 20 km. In
+      // #867 this cut lake volume by about a third, but lakes stayed ~15x Earth's; the cause
+      // is the water balance. Remove both once that is fixed (#882).
+      MANTLE_BLOOM_RIVER_ARM: "outlet-bound",
+      MANTLE_BLOOM_DEPTH_CAP_M: "20000",
     },
   });
 
