@@ -54,14 +54,18 @@ above. All arms fixed-mode, deterministic from the stated checkpoint.
 
 | Window | Total | Production (slice) | Converged | Diff | Single slice | Prod shift |
 |---|---|---:|---:|---:|---:|---:|
-| D | 5 kyr | 393,311 (50 yr) | 392,522 (10 yr) | 0.20% | 348,607 | +12.8% |
-| D | 25 kyr | 409,563 (250 yr) | 409,573 (200 yr) | 0.002% | 392,527 | +4.3% |
-| D | 100 kyr | 415,171 (1000 yr) | 415,140 (200 yr) | 0.007% | 410,814 | +1.1% |
-| E | 100 kyr | 987,494 (1000 yr) | 987,520 (200 yr) | 0.003% | 988,357 | −0.09% |
+| D | 5 kyr | 393,311 (50 yr) | 393,302 (10 yr) | 0.002% | 348,607 | +12.8% |
+| D | 25 kyr | 409,563 (250 yr) | 409,627 (200 yr) | 0.016% | 392,527 | +4.3% |
+| D | 100 kyr | 415,171 (1000 yr) | 415,152 (200 yr) | 0.005% | 410,814 | +1.1% |
+| E | 100 kyr | 987,494 (1000 yr) | 987,510 (200 yr) | 0.002% | 988,357 | −0.09% |
 
-Anchor volumes in km³. Every production arm is within 1% of its converged arm
-— the largest gap is 0.20% at 5 kyr, where the production arm sits marginally
-*above* the finer arm (a settle/discrete-body wiggle, inside tolerance). The
+Anchor volumes in km³, re-measured after the peer-review fixes (L1 settle
+criterion, spilling union, count cap); production arms are unchanged to the
+km³, converged arms moved slightly toward them. Every production arm is
+within 1% of its converged arm — the largest gap is 0.016%. Merge/split
+counts barely move between arms (D 5 kyr: 93/46 production against 94/48
+converged; elsewhere identical), so the effect remains the loss integration,
+not discrete events. The
 single-slice arms reproduce #853's values exactly (348,607 / 392,527 /
 410,814 km³), confirming the arms differ only in lake slicing. Shift against
 single-slice reverses #853's single-slice errors (13% / 4.2% / 1.1% low) as
@@ -72,7 +76,7 @@ inland-sea state (anchor catchment 0.82M km² on D).
 **Ledger residuals.** Production-arm normalized residuals: 4.8e-12 (D 5 kyr),
 2.4e-13 (D 25 kyr), 3.7e-13 (D 100 kyr), 1.5e-13 (E 100 kyr) — at or below the
 ~1e-11 acceptance level. The finest arm overall (D 5 kyr at 10 yr slices)
-reads 1.4e-11, within the range #853 treated as valid (≤5.1e-11).
+reads 1.5e-11, within the range #853 treated as valid (≤5.1e-11).
 
 **Step-time cost** (single runs, shared machine, indicative only): D at 5 kyr
 31.8 s single-slice against 44.0 s production (+38%); at 25 kyr 78.8 s against

@@ -266,7 +266,9 @@ def test_lake_substeps_caps_the_slice_at_every_step_length():
     assert hydrology.lake_substeps(5_000.0) == 100  # 50 yr slices
     assert hydrology.lake_substeps(25_000.0) == 100  # 250 yr slices
     assert hydrology.lake_substeps(100_000.0) == 100  # 1000 yr slices
-    assert hydrology.lake_substeps(1_000_000.0) == 1000
+    # Count capped at LAKE_MAX_SUBSTEPS: above 100 kyr slices grow instead.
+    assert hydrology.lake_substeps(1_000_000.0) == 100
+    assert hydrology.lake_substeps(10_000_000.0) == 100
 
 
 def test_prognostic_lake_volume_converges_as_substeps_grow_below_cap():
@@ -318,6 +320,40 @@ def test_settled_lake_solve_lumps_remainder_with_full_ledger():
     assert held.ledger.external_supply_m3 == pytest.approx(2.0e13 * 100.0, rel=1e-9)
     assert held.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e3)
     assert held.ledger.evaporation_m3 > 0.0
+
+
+def test_settle_stop_actually_lumps_settled_slices(monkeypatch):
+    # #875: the settle-stop must engage (fewer slice settles than substeps,
+    # the last over a lumped duration), and its result must match the
+    # settle-disabled solve. Fails if the settle-stop is removed.
+    forest = lakes.build_lake_hierarchy(_SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS)
+    area = np.full(3, 1.7e14)
+    hyps = lakes.CellHypsometry(
+        _SINK_ELEVATION, area, np.array([50.0, 50.0, 0.0]), float(area[0])
+    )
+    climate = lakes.LakeClimate(
+        np.zeros(3), np.full(3, 1.0), np.array([2.0e13, 0.0, 0.0])
+    )
+    calls = []
+    original = lakes._settle_prognostic_slice
+
+    def counting(*args, **kwargs):
+        calls.append(args[3])  # dt
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(lakes, "_settle_prognostic_slice", counting)
+    settled = lakes.solve_lakes_prognostic(
+        forest, _SINK_ELEVATION, np.zeros(3), 100.0, climate, hyps, substeps=256
+    )
+    assert 2 < len(calls) < 256
+    assert max(calls) > 100.0 / 256  # the lumped remainder slice
+    monkeypatch.setattr(lakes, "LAKE_SETTLE_TOLERANCE", -1.0)
+    unsettled = lakes.solve_lakes_prognostic(
+        forest, _SINK_ELEVATION, np.zeros(3), 100.0, climate, hyps, substeps=256
+    )
+    settled_volume = float((settled.lake_depth * area).sum())
+    unsettled_volume = float((unsettled.lake_depth * area).sum())
+    assert settled_volume == pytest.approx(unsettled_volume, rel=0.005)
 
 
 def test_prognostic_lake_solver_shrinks_by_evaporation_without_reset():
@@ -560,7 +596,11 @@ def test_prognostic_solver_exports_prior_storage_when_hierarchy_is_empty():
     assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e3)
 
 
-def test_prognostic_spill_status_tracks_the_final_substep():
+def test_prognostic_spill_status_unions_substeps():
+    # #875 review: with production substeps, should_spill keeps its #506
+    # meaning "spilled during the step" (union over slices), not "spilling
+    # in the final slice" — a basin that spills then drains still erodes
+    # its outlet this step.
     forest = lakes.build_lake_hierarchy(_SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS)
     hyps = lakes.CellHypsometry.whole_cells(_SINK_ELEVATION)
     lake = forest[0]
@@ -574,7 +614,7 @@ def test_prognostic_spill_status_tracks_the_final_substep():
 
     assert result.ledger.overflow_out_m3 > 0.0  # first slice spills
     assert result.lake_depth[0] < lake.max_depth - _SINK_ELEVATION[0]
-    assert not result.should_spill[lake.sink_node_idx]
+    assert result.should_spill[lake.sink_node_idx]
     assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e3)
 
 

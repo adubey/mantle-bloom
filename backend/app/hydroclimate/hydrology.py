@@ -160,9 +160,13 @@ LAKE_MIN_VISIBLE_DEPTH_M = 1.0
 # slice is the step's hundredth, clamped to [50, 1000] yr: 50 yr at a 5 kyr
 # step, 250 yr at 25 kyr, 1000 yr at the 100 kyr production step, each
 # converged to 1% in the #853 windows. No solver equation, state or parameter
-# changes; only the partition of the step changes.
+# changes; only the partition of the step changes. The count is capped at
+# LAKE_MAX_SUBSTEPS: convergence is only claimed at or below the 100 kyr
+# production step, so above it slices grow past 1000 yr rather than paying
+# unbounded slices per step (1 Myr stress steps included).
 LAKE_MAX_SLICE_YEARS = 1000.0
 LAKE_MIN_SLICE_YEARS = 50.0
+LAKE_MAX_SUBSTEPS = 100
 
 
 def lake_substeps(years: float) -> int:
@@ -170,7 +174,7 @@ def lake_substeps(years: float) -> int:
     if years <= 0.0:
         return 1
     slice_years = min(LAKE_MAX_SLICE_YEARS, max(LAKE_MIN_SLICE_YEARS, years / 100.0))
-    return max(1, int(np.ceil(years / slice_years)))
+    return min(LAKE_MAX_SUBSTEPS, max(1, int(np.ceil(years / slice_years))))
 
 # `connected_ocean_mask`'s rule for a below-sea-level body that isn't joined to the largest
 # one: it is ocean too when it is ocean-sized, at least `ENCLOSED_OCEAN_MIN_AREA_KM2`, not by
@@ -324,8 +328,8 @@ MARCH_GLACIERS = True
 
 # Substep the lake solve (#875), same test-knob pattern as MARCH_GLACIERS above:
 # production runs with it on; the unit suite turns it off in conftest (one slice,
-# the pre-#875 path) except tests that opt back in, because 100 slices per step
-# otherwise dominate suite time on stepped worlds.
+# the pre-#875 path) except tests that opt back in, because up to
+# LAKE_MAX_SUBSTEPS slices per step otherwise dominate suite time.
 SUBSTEP_LAKES = True
 
 

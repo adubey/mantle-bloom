@@ -212,8 +212,6 @@ SHALLOW_EVAPORATION_BOOST = 0.3
 LAKE_SETTLE_TOLERANCE = 1.0e-4
 
 
-
-
 @dataclass(frozen=True)
 class LakeClimate:
     """Real-unit water balance inputs, all with shape (N,).
@@ -1232,7 +1230,8 @@ def solve_lakes_prognostic(
 
     Each substep advances physical volume, limits evaporation and sublimation to the water
     available, and sends only water above a body's active cap to the leaf selected by the
-    hierarchy outlet. The uniform temporal partition is deterministic. An implicit volume update
+    hierarchy outlet. The temporal partition is uniform until the settle-stop
+    (below) lumps a settled remainder into one slice. An implicit volume update
     keeps the fast loss response stable when one slice spans thousands of years, while spill
     cascades settle through hierarchy receivers rather than repeated terrain-routing rounds.
     `prev_lake_depth` is the opening water column: hydrology passes liquid and lake ice
@@ -1277,37 +1276,42 @@ def solve_lakes_prognostic(
     seen_events: set[tuple[int, str]] = set()
 
     # Settle-stop (#875, mirroring the glacier march's settle-hold): once two
-    # slices in a row leave total volume within LAKE_SETTLE_TOLERANCE and no
-    # merge/split fires, the state is near the slice update's fixed point, so
-    # solve the whole remainder as one slice. At the fixed point that slice
+    # slices in a row move the depth field by at most LAKE_SETTLE_TOLERANCE in
+    # gross (L1, so filling and draining bodies cannot cancel) and the active
+    # body set is unchanged, the state is near the slice update's fixed point,
+    # so solve the whole remainder as one slice. At the fixed point that slice
     # ends at the same level with exact ledger totals; near it, the wet area
     # barely moves over the remainder, so the end-of-slice loss charge the
-    # substeps exist to avoid is negligible.
+    # substeps exist to avoid is negligible. Spilling bodies are unioned over
+    # slices: `is_spilling` means "spilled during the step" (#506), not only
+    # in the final slice.
     settled_slices = 0
-    prev_volume = total_initial
+    prev_depth = depth.copy()
+    prev_bodies = {id(body) for body in _active_bodies(forest, elevation, depth, hypsometry)}
+    ever_spilling_ids: set[int] = set()
     for slice_index in range(steps):
-        events_before = len(events)
         _settle_prognostic_slice(
             forest, depth, prev_lake_depth, dt, rates, climate, evaporation, sublimation,
             hypsometry, is_ocean, accounting, leaves, leaf_of_node, parent_by_id, events, seen_events,
         )
+        ever_spilling_ids |= accounting.final_spilling_ids
         volume = float((depth * hypsometry.area_m2).sum())
+        gross = float((np.abs(depth - prev_depth) * hypsometry.area_m2).sum())
         scale = max(volume, float(rates.sum()) * dt, 1.0)
-        if (
-            abs(volume - prev_volume) <= LAKE_SETTLE_TOLERANCE * scale
-            and len(events) == events_before
-            and not accounting.deferred and not accounting.cycle_surplus
-        ):
+        bodies = {id(body) for body in _active_bodies(forest, elevation, depth, hypsometry)}
+        if gross <= LAKE_SETTLE_TOLERANCE * scale and bodies == prev_bodies:
             settled_slices += 1
         else:
             settled_slices = 0
-        prev_volume = volume
+        prev_depth = depth.copy()
+        prev_bodies = bodies
         remaining = steps - slice_index - 1
         if settled_slices >= 2 and remaining > 0:
             _settle_prognostic_slice(
                 forest, depth, prev_lake_depth, dt * remaining, rates, climate, evaporation, sublimation,
                 hypsometry, is_ocean, accounting, leaves, leaf_of_node, parent_by_id, events, seen_events,
             )
+            ever_spilling_ids |= accounting.final_spilling_ids
             break
 
     lake_depth = np.zeros(n)
@@ -1326,7 +1330,7 @@ def solve_lakes_prognostic(
             float(np.max(hypsometry.level_from_depth(depth[wet_members], wet_members)))
             if len(wet_members) else hypsometry.dry_level(body.members)
         )
-        body.is_spilling = id(body) in accounting.final_spilling_ids
+        body.is_spilling = id(body) in ever_spilling_ids
         sinks = leaf_sinks(body)
         if body.max_depth is not None:
             filled_elevation[sinks] = body.max_depth
