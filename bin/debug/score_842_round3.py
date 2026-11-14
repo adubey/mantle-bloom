@@ -120,7 +120,7 @@ def _replays(runs: dict, seeds: tuple[str, ...], held_out: bool) -> dict:
 def _e3(runs: dict) -> dict:
     members: dict = defaultdict(lambda: defaultdict(dict))
     for name, run in runs.items():
-        if name.startswith("e3-"):
+        if name.startswith("e3-") and not name.startswith("e3-rerun-"):
             _, step, rest = name.split("-", 2)
             arm, scale = rest.rsplit("-", 1)
             s = run["per_step"][0]
