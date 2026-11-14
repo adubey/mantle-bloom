@@ -14,23 +14,21 @@ export default defineRailway(() => {
     build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
     deploy: {
       healthcheckPath: "/healthz",
-      // Covers loading a large world checkpoint at startup, before /healthz can answer.
-      healthcheckTimeout: 300,
+      // The public process checks the checkpoint volume without loading worlds.
+      healthcheckTimeout: 30,
       // The world lives in one process's memory and its checkpoint on one volume, which
       // Railway can't attach to more than one replica anyway.
       numReplicas: 1,
       // Fails a deploy with no volume here, rather than running one that forgets the world
       // whenever it sleeps.
       requiredMountPath: CHECKPOINT_MOUNT,
-      // Sleep when idle. The checkpoint restores the world and its run status on the next
-      // request; a running world is paused while asleep, not caught up.
-      sleepApplication: true,
+      // The app retires its simulation worker on idle and keeps the public snapshot
+      // available. Platform sleep would also stop a local-only Play session.
+      sleepApplication: false,
       restartPolicyType: "ON_FAILURE",
       restartPolicyMaxRetries: 5,
-      // SIGTERM to SIGKILL. uvicorn closes viewers' long polls within 5 s (Dockerfile), then
-      // waits 1 s for the run loop (run_control.WorldRunner.close). A step still under way
-      // after that is cut off: the world restarts from the step before, whose checkpoint is
-      // intact, and the cut-off write's temporary file is removed at startup.
+      // The public process drains requests for 2 s, then allows its worker up to 7 s
+      // to exit. The last committed checkpoint survives an interrupted write.
       drainingSeconds: 10,
     },
     volumeMounts: { [CHECKPOINT_MOUNT]: checkpoint },

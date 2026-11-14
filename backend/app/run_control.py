@@ -98,6 +98,10 @@ class WorldRunner:
         with self._cond:
             return self._version
 
+    def can_sleep(self) -> bool:
+        with self._status_mutex, self._cond:
+            return not (self._status.running or self._stepping or self._unsaved)
+
     def set_status(self, status: RunStatus, persist: bool = True) -> None:
         """Start, stop or resize the run. `persist=False` is for restoring a status that was
         just read from the checkpoint. Raises StatusNotSaved if the status took effect but

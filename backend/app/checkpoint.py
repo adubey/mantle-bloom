@@ -32,9 +32,10 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from . import persistence
-from .world import World
+if TYPE_CHECKING:
+    from .world import World
 
 CHECKPOINT_DIR_ENV = "MANTLE_BLOOM_CHECKPOINT_DIR"
 # Railway sets this on a service with a volume attached, so the volume works with no other
@@ -76,6 +77,25 @@ class RunStatus:
 
 def valid_step_years(value: object) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and 0 < value < float("inf")
+
+
+def max_worlds() -> int:
+    raw = os.environ.get("MANTLE_BLOOM_MAX_WORLDS", "4").strip()
+    try:
+        value = int(raw or "4")
+    except ValueError:
+        value = 0
+    if value < 1:
+        _logger.warning("MANTLE_BLOOM_MAX_WORLDS=%r must be a positive integer; using 4", raw)
+        return 4
+    return value
+
+
+def world_limit_error(cap: int) -> str:
+    return (
+        f"not restored: the checkpoint holds more worlds than MANTLE_BLOOM_MAX_WORLDS allows ({cap}); "
+        "raise the cap and restart, or delete this record"
+    )
 
 
 class CheckpointStore:
@@ -203,9 +223,42 @@ class CheckpointStore:
     def status_path(self) -> Path:
         return self.directory / STATUS_FILE
 
+    def world_generation(self) -> list[int] | None:
+        """Identity of the atomically replaced world file, without reading its arrays."""
+        try:
+            stat = self.world_path.stat()
+        except OSError:
+            return None
+        return [stat.st_ino, stat.st_mtime_ns, stat.st_size]
+
+    def save_hosted_summary(self, summary: dict) -> None:
+        self._replace(self.directory / "hosted_summary.json", json.dumps({
+            "generation": self.world_generation(), "summary": summary,
+        }).encode())
+
+    def load_hosted_summary(self) -> dict | None:
+        try:
+            entry = json.loads((self.directory / "hosted_summary.json").read_bytes())
+            generation = self.world_generation()
+            summary = entry["summary"]
+            if (generation is not None and entry["generation"] == generation
+                    and isinstance(summary["seed"], int) and self._is_timestamp(summary["elapsed_years"])
+                    and re.fullmatch(r"[0-9a-f]{8}-[0-9]+", summary["revision"])):
+                return summary
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        return None
+
+    def check_writable(self) -> None:
+        self.directory.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryFile(prefix=_TEMP_PREFIX, dir=self.directory):
+            pass
+
     def save_world(self, world: World) -> None:
         """Replace the world checkpoint. The caller holds the world lock, so the world can't
         change while it's serialized."""
+        from . import persistence
+
         started = time.monotonic()
         data = persistence.save_world_bytes(world)
         self._replace(self.world_path, data)
@@ -247,12 +300,10 @@ class CheckpointStore:
 
         Raises OSError if the directory can't be created or written: a volume that can't hold
         a checkpoint must fail the deploy's health check (#376), not the first step's write."""
-        self.directory.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryFile(prefix=_TEMP_PREFIX, dir=self.directory):
-            pass
+        self.check_writable()
         self._remove_partial_writes()
         world = self._load_world()
-        status = self._load_status()
+        status = self.load_status()
         if status.running and world is None:
             _logger.warning("checkpoint: the saved status is running, but there's no world to run; staying stopped")
             status = RunStatus(running=False, step_years=status.step_years)
@@ -261,6 +312,8 @@ class CheckpointStore:
         return world, status
 
     def _load_world(self) -> World | None:
+        from . import persistence
+
         path = self.world_path
         if not path.exists():
             # A warning, so a volume mounted at the wrong path shows in the deploy log.
@@ -285,7 +338,7 @@ class CheckpointStore:
         _logger.info("checkpoint: restored world seed %s at %.0f years from %s", world.seed, world.elapsed_years, path)
         return world
 
-    def _load_status(self) -> RunStatus:
+    def load_status(self) -> RunStatus:
         path = self.status_path
         if not path.exists():
             return RunStatus()
@@ -297,7 +350,6 @@ class CheckpointStore:
         except Exception as exc:  # noqa: BLE001 - same as _load_world
             _logger.error("checkpoint: can't read %s (%s: %s); staying stopped", path, type(exc).__name__, exc)
             return RunStatus()
-        _logger.info("checkpoint: restored run status %s (%.0f years per step)", "running" if running else "stopped", step_years)
         return RunStatus(running=running, step_years=float(step_years))
 
     def _replace(self, path: Path, data: bytes) -> None:

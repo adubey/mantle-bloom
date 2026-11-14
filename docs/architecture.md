@@ -273,7 +273,8 @@ The layout is a registry index plus one subdirectory per world:
   worlds.json
   worlds/<world_id>/world.mbworld
   worlds/<world_id>/run_status.json
-  worlds/<world_id>/viewer_image.json   (the default world's cached /view image, #755)
+  worlds/<world_id>/viewer_image.json   (cached canonical public map)
+  worlds/<world_id>/hosted_summary.json (hosted checkpoint generation and summary)
 ```
 
 - `worlds.json` is metadata only (id, name, visibility, timestamps): written on record
@@ -292,20 +293,22 @@ The layout is a registry index plus one subdirectory per world:
 - Each file is written to a temporary file in the same directory, fsynced, and renamed over
   the old one, so a process killed mid-write leaves the previous checkpoint whole; leftover
   temporaries are deleted at startup. Nothing relies on a pre-sleep or shutdown hook.
-- At startup (the app's lifespan) the world is restored exactly as saved, with no catch-up
-  for the time spent asleep, and the run resumes if it was running. An unreadable world file
-  is renamed to `world.mbworld.invalid-<time>` and the server starts with no world, stopped;
-  an unreadable status file means stopped. Each case is logged. A directory that can't be
-  created or written means no checkpointing at all, and `GET /healthz` answers `503`, so a
-  hosted deploy with a broken volume fails its health check (#376).
+- On restore, the world resumes at its saved age. An unreadable world is moved aside
+  with an `.invalid-<time>` suffix. An unreadable run status is treated as stopped.
+  The local and desktop entry point loads checkpoints at startup.
 
-Checkpoints assume one process owns the directory: keep the service at one replica while it
-uses the volume.
+The [hosted entry point](../backend/app/hosted.py) reads the index and snapshots without
+importing the simulation. It forwards simulation requests over a private Unix socket to
+one [worker process](../backend/app/hosted_worker.py). The worker defers loading stopped
+worlds with a valid hosted summary until a request needs the world. It restores running
+worlds on startup. A snapshot is served only when its checkpoint generation matches the
+current world file and the index still marks the world public. The saved revision survives
+worker retirement so a guest can advance the world shown in a snapshot.
 
-The hosted instance (#376) is the root `Dockerfile` on Railway, configured by
-`.railway/railway.ts`: one uvicorn process serving the built frontend and the API, with the
-volume at `/data` and `GET /healthz` as the deploy health check. See
-[hosting.md](hosting.md).
+The public process retires the worker after its idle timeout once no requests, runs,
+or unsaved world or index changes need it. The deployment uses one Railway replica and
+one volume at `/data`. Its health check validates the volume independently of world restore.
+See [hosting](hosting.md) for deployment settings.
 
 <a id="replay-log"></a>
 <a id="trace-spans"></a>
