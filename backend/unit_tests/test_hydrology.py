@@ -2564,6 +2564,8 @@ def test_march_carries_state_across_three_substeps():
     volumes = entry["volume_path_km3"]
     assert volumes[0] == 0.0
     assert volumes[-1] > 0.0
+    # #842: the largest one-substep volume move; from zero opening ice it's the first one.
+    assert entry["worst_substep_move"] > 0.0
     ledger = fields.ice.ledger
     assert ledger.accumulation_m3 > 0.0
     assert abs(ledger.residual_m3) <= 1e-3 * ledger.accumulation_m3
@@ -2845,7 +2847,7 @@ def test_march_cost_rejects_trend_with_adaptive():
 
 
 @pytest.mark.usefixtures("march_glaciers")
-@pytest.mark.parametrize("preset", ["cap-hold-recur", "trend-adapt", "trend-hold"])
+@pytest.mark.parametrize("preset", ["cap-hold-recur", "trend-adapt", "trend-hold", "trend-1k"])
 def test_new_settle_presets_cover_the_step(monkeypatch, preset):
     fields, entry = _march_with(monkeypatch, ice_sheet.march_cost(preset), 10_000)
     assert entry["marched_years"] + entry["held_years"] == pytest.approx(10_000.0)
@@ -2921,6 +2923,20 @@ def test_real_march_holds_on_the_trend_test(monkeypatch):
     assert entry["marched_years"] + entry["held_years"] == pytest.approx(200_000.0)
     # The held ice is the last substep's, so the ledger's closing ice is the march's final ice.
     assert fields.ice.ledger.closing_m3 == pytest.approx(entry["volume_path_km3"][-1] * 1e9, rel=1e-2)
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_trend_1k_march_never_substeps_past_one_kyr(monkeypatch):
+    # #842 round 3's arm: the trend march may grow the substep, but only to 1 kyr.
+    monkeypatch.setattr(ice_sheet, "MARCH_SETTLE_TOLERANCE", 0.0)
+    _, entry = _march_with(monkeypatch, ice_sheet.march_cost("trend-1k"), 200_000)
+    assert 0.0 < entry["max_substep_years"] <= 1_000.0
+    assert entry["marched_years"] + entry["held_years"] == pytest.approx(200_000.0)
+
+
+def test_worst_substep_move_is_the_largest_relative_change():
+    assert hydrology._worst_substep_move([100.0, 110.0, 55.0, 60.0]) == pytest.approx(0.5)
+    assert hydrology._worst_substep_move([7.0]) == 0.0
 
 
 @pytest.mark.usefixtures("march_glaciers")
