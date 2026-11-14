@@ -9,7 +9,8 @@
 #
 #   OUT=~/mantle-bloom-captures/issue-842 bin/debug/run_842_round3.sh [phase ...]
 #
-# Phases, in order by default: e12 e3 e4 e6 e5. Saves are read from $SAVES (default
+# Phases, in order by default: e12 e3 e6 e5. E4 is not in the default: amendment 5 of the
+# preregistration takes the earlier round 3's E4 instead (run it explicitly with `e4`). Saves are read from $SAVES (default
 # $MANTLE_BLOOM_SAVES_DIR, else ~/Downloads) by #548's file names; gen5 and gen30 come
 # from #822's capture directory ($GEN_DIR).
 set -euo pipefail
@@ -129,7 +130,7 @@ e6() {
 }
 
 phases=("$@")
-[[ ${#phases[@]} -eq 0 ]] && phases=(e12 e3 e4 e6 e5)
+[[ ${#phases[@]} -eq 0 ]] && phases=(e12 e3 e6 e5)
 for phase in "${phases[@]}"; do
   case "$phase" in
     e12) replays $DIAGNOSIS ;;

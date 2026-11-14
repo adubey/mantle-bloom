@@ -1,16 +1,17 @@
 # #842 round 3: preregistration
 
-Written 2026-11-13, before any round 3 run. The decision rule and thresholds below are
-frozen from this commit. A change after a round 3 result is a threshold change, and #842
+Written 2026-11-13, before any run of *this* plan and without anyone in the session having
+seen a round 3 result. An earlier, unscored round 3 had already run (amendment 5). The
+decision rule and thresholds below are frozen from this commit. A change after a round 3 result is a threshold change, and #842
 says a failed round 3 gets none: the result goes to the owner.
 
 Question: can the trend-adaptive march (longest substep **1 kyr**) replace fixed-250 yr D2
 as the production default, judged against RFC 0015's own criteria?
 
-## Amendments before any run (2026-11-13)
+## Amendments before any run of this plan (2026-11-13)
 
 The first draft (PR #870's first commit) was written before checking what `origin/main`
-can run. Four things changed once the harness was built, all before any round 3 run:
+can run. Four things changed once the harness was built, before any run of this plan:
 
 1. **No `origin/main` arm.** `origin/main` now has the D2 march, so it *is* the `d2` arm.
    The pre-march solve the old runtime threshold measured against is gone. The old runtime
@@ -25,6 +26,30 @@ can run. Four things changed once the harness was built, all before any round 3 
 4. **Step-gap denominator.** The gap is |V(0.25 Myr) − V(1 Myr)| / V(0.25 Myr) at the end
    of the run, for volume and for area (nodes with glacier depth > 0), and the larger of the
    two gates. #765's 9.71% used the 0.25 Myr run's volume.
+
+5. **An earlier round 3 had already run, unscored.** A previous session preregistered and
+   ran a round 3 on 2026-11-08/09: branch `claude/issue-842-adaptive-march-default`, commit
+   `a81c4ccc`, preregistration in that branch's `analysis/issue842/README.md`, captures in
+   `issue-842/`. It covers E1 and E5 (10 × 0.25 Myr, all six saves), E2 on seed 997271774,
+   E3 ensembles on 997, 649 and gen30, and E4 at 125 and 62.5 yr. Its results were never
+   scored or reported. It was found when this plan's runs were about to start, and nobody
+   in this session looked at its numbers. The owner confirmed they hadn't seen them
+   either before relaxing the thresholds. Its preset `trend-adapt-1k` has the same knobs as
+   `trend-1k`, but its tree predates #839's merge, so its runs aren't mixed with this plan's
+   inside any comparison: each save's two arms always come from one tree.
+
+   The owner chose (2026-11-13) to score both:
+
+   - **Scoring order.** First the earlier run under its own preregistered rule
+     (`bin/debug/score_842_round3_nov8.py`), then this plan under the rule below. Both go
+     in the final evaluation, and neither replaces the other.
+   - **Gap runs.** This plan runs only what the earlier run doesn't give it on one tree:
+     E1, E2 and E5 replays on all six saves (40 × 0.25 Myr and 10 × 1 Myr, both arms),
+     E3b, and E6's extras.
+   - **E4.** This plan's own E4 is dropped. The earlier E4 (`d2` at 125 and 62.5 yr on
+     gen30 and seed 997271774) is the report-only convergence reference.
+   - **Held-out set.** The earlier E5 used the held-out saves, but not to choose any knob,
+     so they stay valid held-out evidence for this plan.
 
 ## Arms
 
@@ -58,7 +83,7 @@ comparable. The ice-age saves get `--ice-age-period-years 8e6`.
 | E1 + E2 | 10 Myr replays: 40 × 0.25 Myr and 10 × 1 Myr, both arms | Diagnosis | 12 |
 | E5 | The same | Held out | 12 |
 | E3 | Opening-ice ensembles, one step, 3 arms × 13 members | Seed 997271774 | 78 (2 steps) |
-| E4 | `d2` at substeps 1000, 500, 250, 125 yr, one step at 0.25 Myr and one at 1 Myr, from the save | Diagnosis | 24 |
+| E4 | Dropped: the earlier round 3's E4 is the reference (amendment 5) | gen30, seed 997271774 | 0 |
 | E6 | Median step time from E1 + E2; plus #822's gen30 1 Myr monster step and gen5 0.25 Myr step, both arms, report-only | Diagnosis, gen5, gen30 | 4 extra |
 
 E1 and E5's ledger checks read the first 10 steps of each replay. Swings and step gaps read
@@ -86,7 +111,8 @@ all of it.
 
 ## Thresholds: old and new
 
-The owner relaxed five thresholds on 2026-11-13, before round 3 ran. The old values stay
+The owner relaxed five thresholds on 2026-11-13 without having seen any round 3 result
+(amendment 5). The old values stay
 here, and the final evaluation reports each result against both.
 
 | # | Criterion | Old | New (gating) |

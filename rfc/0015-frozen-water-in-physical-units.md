@@ -25,8 +25,9 @@
     (inside #741's 0-of-12-drops range), and the fixed-250 yr march stays selectable as
     `d2` (module setting, `MANTLE_BLOOM_GLACIER_MARCH=d2`, replay flags, a test fixture)
     and bit-identical to today's. No API or UI change.
-  - **Threshold changes, owner's decision of 2026-11-13, set before round 3 ran, not derived
-    from its results:**
+  - **Threshold changes, owner's decision of 2026-11-13, made without seeing any round 3
+    result.** An earlier round 3 (2026-11-08/09, unscored) had already run, and is scored
+    under its own stricter rule as well (preregistration amendment 5):
 
     | Criterion | Old | New |
     |---|---|---|
