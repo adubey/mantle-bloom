@@ -205,6 +205,14 @@ def subcell_relief(elevation: np.ndarray, neighbor_idx: np.ndarray) -> np.ndarra
 # total evaporation still rises with its level, which keeps the balanced level unique.
 SHALLOW_EVAPORATION_BOOST = 0.3
 
+# Settle-stop for substepped solves (#875): two consecutive slices whose total
+# volume moves less than this share count as settled, and the rest of the step
+# is solved as one slice. Stricter than the glacier march's 1e-3 because the
+# lumped remainder re-charges losses at its end level.
+LAKE_SETTLE_TOLERANCE = 1.0e-4
+
+
+
 
 @dataclass(frozen=True)
 class LakeClimate:
@@ -1268,11 +1276,39 @@ def solve_lakes_prognostic(
     events: list[LakeEvent] = []
     seen_events: set[tuple[int, str]] = set()
 
-    for _ in range(steps):
+    # Settle-stop (#875, mirroring the glacier march's settle-hold): once two
+    # slices in a row leave total volume within LAKE_SETTLE_TOLERANCE and no
+    # merge/split fires, the state is near the slice update's fixed point, so
+    # solve the whole remainder as one slice. At the fixed point that slice
+    # ends at the same level with exact ledger totals; near it, the wet area
+    # barely moves over the remainder, so the end-of-slice loss charge the
+    # substeps exist to avoid is negligible.
+    settled_slices = 0
+    prev_volume = total_initial
+    for slice_index in range(steps):
+        events_before = len(events)
         _settle_prognostic_slice(
             forest, depth, prev_lake_depth, dt, rates, climate, evaporation, sublimation,
             hypsometry, is_ocean, accounting, leaves, leaf_of_node, parent_by_id, events, seen_events,
         )
+        volume = float((depth * hypsometry.area_m2).sum())
+        scale = max(volume, float(rates.sum()) * dt, 1.0)
+        if (
+            abs(volume - prev_volume) <= LAKE_SETTLE_TOLERANCE * scale
+            and len(events) == events_before
+            and not accounting.deferred and not accounting.cycle_surplus
+        ):
+            settled_slices += 1
+        else:
+            settled_slices = 0
+        prev_volume = volume
+        remaining = steps - slice_index - 1
+        if settled_slices >= 2 and remaining > 0:
+            _settle_prognostic_slice(
+                forest, depth, prev_lake_depth, dt * remaining, rates, climate, evaporation, sublimation,
+                hypsometry, is_ocean, accounting, leaves, leaf_of_node, parent_by_id, events, seen_events,
+            )
+            break
 
     lake_depth = np.zeros(n)
     lake_is_sea = np.zeros(n, dtype=bool)
