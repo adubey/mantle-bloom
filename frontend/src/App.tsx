@@ -2002,7 +2002,7 @@ export default function App() {
             {!playing && !animating && (
               <GlobeSelector
                 worldId={worldId ?? ""}
-                worldRevision={crossSectionWorldRevision}
+                worldRevision={summary ? crossSectionWorldRevision : 0}
                 rotation={rotation}
                 onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
                 onRotationCommitted={(newRotation) => setRotation(newRotation)}
