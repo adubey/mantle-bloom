@@ -186,10 +186,33 @@ weak line. #836 has not established what magnitude or localization is physically
 it cannot be added to the accepted method without G0 and G1 evidence, so this report does not
 choose one.
 
+## Refinement passes (option a)
+
+`bin/debug/measure_rfc0018_fit_iterations.py` reruns the rebuilt generator with the pass cap lowered and
+compares each cap with the 8-pass reference on 125 opportunities (20 G0 snapshots plus 8 mature
+checkpoints), 1,491 candidates. Compact results: `fit-iterations.json`.
+
+- **The loop almost never converges.** 7.4% of candidates stop before pass 8; 92.7% (1,382) use all 8.
+  Pass counts of 2 to 7 together are 110 candidates. The cap of 8 is the answer, not a safety margin.
+- **A lower cap is not close.** Identical partitions against the reference: cap 0 0.1%, 1 0.4%, 2 16%,
+  3 7%, 4 42%. Mean node disagreement 7 to 15%, p95 about 0.44 to 0.47 (0.5 is the maximum). Valid-flag
+  agreement 92 to 98%; opportunities with the same valid count 71 to 85%.
+- **`P_break` moves.** Total relative error 16%, 11%, 7%, 1%, 5% for caps 0 to 4 (cap 3 is luck: max
+  per-opportunity difference is still 0.14; caps 2 and 4 reach 0.21 and 0.28). Positive-`P_break`
+  agreement is at most 97.6%, so a lower cap changes which plates can break.
+- **Even caps agree better than odd ones** (16% vs 7% at 2 vs 3; 42% at 4). That is the signature of
+  candidates alternating between two partitions, a period-2 cycle, not slow convergence.
+- **Cost.** Full search 390 s over these opportunities, 92.8 solves each; cap 4 is 210 s, cap 2 116 s.
+
+Conclusion: option (d) changes the distribution and is not exact, as expected. The cycling suggests an
+exact alternative: if a pass reproduces the partition of two passes earlier, the remaining passes only
+alternate, so the result at the cap follows from parity without more solves. That has not been tested
+and needs the cycle period measured per candidate (this run recorded only counts of passes).
+
 ## What this changes in the plan
 
 - **Priority:** reduce the number or cost of eigensolves per decision. Candidates, from least
-  to most invasive: (a) measure how often iterations 2 to 8 change a variant's cut; (b) warm-start
+  to most invasive: (a) measure how often iterations 2 to 8 change a variant's cut (done: see above); (b) warm-start
   each solve from the previous eigenvector; (c) reuse a plate's candidate set across steps while
   its inputs are unchanged; (d) lower the cap or variant count. (b) and (c) can keep outputs
   within solver tolerance. (a) is needed first, because (d) changes the distribution.

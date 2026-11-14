@@ -114,6 +114,9 @@ and checks every candidate against the recorded probe output on the 20 G0 snapsh
 plate-level features available before any eigensolve, and reports the best zero-false-negative threshold per
 feature with leave-one-world-out scoring.
 
+`measure_rfc0018_fit_iterations.py` reruns the rebuilt generator with the refinement-pass cap lowered and
+compares partitions, validity and `P_break` with the 8-pass reference.
+
 Three scripts divide the cost of RFC 0018's candidate search on a mature world. `generate_issue848_world.py`
 generates a cratons-first world with synthetic-history relief and steps it plates-only
 (`simulate_climate_biomes` off: about 1.7 s per Myr instead of about 385 s) saving checkpoints.

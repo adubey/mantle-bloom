@@ -62,8 +62,11 @@ def low_side(fiedler: np.ndarray, mass: np.ndarray, target: float) -> np.ndarray
     return low
 
 
-def propose(g0, world, plate) -> list[dict]:
-    """The mass-balanced candidates for one plate, each with the same fields as ``g0.choose_cut`` variants."""
+def propose(g0, world, plate, max_fit_iterations: int = MAX_FIT_ITERATIONS) -> list[dict]:
+    """The mass-balanced candidates for one plate, each with the same fields as ``g0.choose_cut`` variants.
+
+    ``max_fit_iterations`` caps the refinement passes (the frozen method uses 8; 0 keeps the initial cut).
+    Each candidate also reports ``fit_passes`` (solves in the loop) and ``converged`` (the loop stopped early)."""
     points, _ = plate.all_points_and_elevation()
     flow = mantle.flow_at(points, world.mantle_centers)
     _, labels = kmeans2(flow, k=2, minit="++", seed=plate.plate_id)
@@ -97,10 +100,13 @@ def propose(g0, world, plate) -> list[dict]:
     for target in targets:
         low = low_side(fiedler, mass, target)
         side = ~low
-        for _ in range(MAX_FIT_ITERATIONS):
+        passes, converged = 0, False
+        for _ in range(max_fit_iterations):
             candidate_fiedler = g0._fiedler_vector(len(points), i, j, cost_for(side))
+            passes += 1
             following = ~low_side(candidate_fiedler, mass, target)
             if np.array_equal(following, side):
+                converged = True
                 break
             side = following
         if not side.any() or side.all():
@@ -124,7 +130,7 @@ def propose(g0, world, plate) -> list[dict]:
         size_ok = int(side.sum()) >= min_nodes and int((~side).sum()) >= min_nodes
         cut_nodes = np.unique(np.concatenate([i[cut], j[cut]]))
         candidates.append({
-            "target": float(target), "daughter_node_counts": [int(side.sum()), int((~side).sum())],
+            "target": float(target), "fit_passes": passes, "converged": converged, "daughter_node_counts": [int(side.sum()), int((~side).sum())],
             "cut_cost": float(cost[cut].sum()), "admissible_connected": bool(connected),
             "single_edge_to_edge_trace": bool(trace_ok), "daughter_size_ok": bool(size_ok),
             "structurally_valid": bool(connected and trace_ok and size_ok),

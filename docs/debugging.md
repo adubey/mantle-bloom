@@ -115,6 +115,7 @@ Gate 2 load, mesh and capacity diagnostics.
 | [`profile_rfc0018_candidate_search.py`](debugging/scripts-rifting.md#rfc-0018-runtime-profile-issue-848) | time and count RFC 0018's candidate search on mature plates, by mapping and recent extension |
 | [`rebuild_rfc0018_mass_balanced.py`](debugging/scripts-rifting.md#rfc-0018-runtime-profile-issue-848) | rebuild RFC 0018's mass-balanced generator and `O/R/S` prior; checks it against the recorded probe |
 | [`study_rfc0018_skip_predictors.py`](debugging/scripts-rifting.md#rfc-0018-runtime-profile-issue-848) | which plate-level features predict that an opportunity has no valid candidate |
+| [`measure_rfc0018_fit_iterations.py`](debugging/scripts-rifting.md#rfc-0018-runtime-profile-issue-848) | how much a lower refinement-pass cap changes RFC 0018 candidates |
 | [`summarize_rfc0018_profile.py`](debugging/scripts-rifting.md#rfc-0018-runtime-profile-issue-848) | compact JSON summary of that profile |
 
 ### Crust and mantle budgets
