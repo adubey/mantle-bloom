@@ -97,6 +97,29 @@ def test_compute_hydrology_exposes_wet_precipitation_once_in_external_supply():
     )
 
 
+@pytest.mark.usefixtures("substep_lakes")
+def test_compute_hydrology_passes_capped_substeps_to_lake_solve(monkeypatch):
+    # #875 production wiring: with the knob on, compute_hydrology must hand the
+    # lake solver lake_substeps(years), not the old single slice.
+    seen = {}
+    original = lakes.solve_lakes_prognostic
+
+    def spy(*args, **kwargs):
+        seen["substeps"] = kwargs.get("substeps", 1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(lakes, "solve_lakes_prognostic", spy)
+    theta = 0.05 * np.arange(40)
+    elevation = np.full(40, 300.0)
+    elevation[0:15] = -100.0
+    elevation[28:31] = -60.0
+    prev_lake_depth = np.zeros(40)
+    prev_lake_depth[28:31] = 35.0
+    world = World(seed=0, plates=[_flow_line_plate_with_lake(0, theta, elevation, prev_lake_depth)])
+    hydrology.compute_hydrology(world, np.full(40, 800.0), np.full(40, 15.0), years=100_000)
+    assert seen["substeps"] == hydrology.lake_substeps(100_000.0) == 100
+
+
 @pytest.mark.usefixtures("march_glaciers")
 def test_lake_takes_full_wet_share_including_snow():
     # The lake's direct supply is its FULL wet share -- rain plus snow -- exactly, not a

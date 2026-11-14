@@ -6,9 +6,11 @@ import ProgressBar from "./ProgressBar";
 import {
   fetchPublicState,
   fetchPublicWorlds,
+  publicPreviewUrl,
   PublicStepRefused,
   renderPublicWorld,
   stepPublicWorld,
+  warmPublicWorld,
   type PublicState,
   type PublicView,
   type PublicWorldListing,
@@ -245,6 +247,7 @@ function WorldView({ worldId }: { worldId: WorldId }) {
   // progress-only answers whose orientation never changed (review on #756).
   const rotationKey = sharedRotation.join(",");
   const [image, setImage] = useState<string | null>(null);
+  const warmRequested = useRef(false);
   const [stepping, setStepping] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -252,6 +255,7 @@ function WorldView({ worldId }: { worldId: WorldId }) {
   const displayHeight = Math.round(displayWidth * ASPECT);
   const mapWrapperRef = useRef<HTMLDivElement>(null);
   const revision = state?.world?.revision ?? null;
+  const snapshotFirst = Boolean(state?.snapshot_first);
   const loaded = state !== null;
 
   useEffect(() => {
@@ -310,20 +314,39 @@ function WorldView({ worldId }: { worldId: WorldId }) {
 
   useEffect(() => {
     if (revision === null) return;
-    let cancelled = false;
-    renderPublicWorld(worldId, view, MAX_DISPLAY_WIDTH * RENDER_SCALE, Math.round(MAX_DISPLAY_WIDTH * ASPECT) * RENDER_SCALE)
-      .then((r) => {
-        if (!cancelled) setImage(r.image_base64);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(String(err));
-      });
+    const controller = new AbortController();
+    let objectUrl: string | undefined;
+    const load = async () => {
+      setError(null);
+      if (snapshotFirst) {
+        const response = await fetch(publicPreviewUrl(worldId, revision, view, rotationKey), { signal: controller.signal });
+        if (response.ok) {
+          const blob = await response.blob();
+          if (controller.signal.aborted) return;
+          objectUrl = URL.createObjectURL(blob);
+          setImage(objectUrl);
+          return;
+        }
+      }
+      const render = await renderPublicWorld(worldId, view, MAX_DISPLAY_WIDTH * RENDER_SCALE, Math.round(MAX_DISPLAY_WIDTH * ASPECT) * RENDER_SCALE);
+      if (!controller.signal.aborted) setImage(`data:image/png;base64,${render.image_base64}`);
+    };
+    void load().catch((err) => {
+      if (!controller.signal.aborted) setError(String(err));
+    });
     return () => {
-      cancelled = true;
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
     // rotationKey: a changed shared orientation re-fetches, since the cached
     // image on screen is the old orientation's (#755).
-  }, [view, revision, worldId, rotationKey]);
+  }, [view, revision, worldId, rotationKey, snapshotFirst]);
+
+  const warmAfterPaint = useCallback((source: string) => {
+    if (!source.startsWith("blob:") || warmRequested.current) return;
+    warmRequested.current = true;
+    void warmPublicWorld(worldId).catch(() => {});
+  }, [worldId]);
 
   const step = useCallback(async () => {
     if (revision === null) return;
@@ -376,7 +399,7 @@ function WorldView({ worldId }: { worldId: WorldId }) {
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, marginLeft: "auto", textAlign: "right" }}>
           {!isDemo && (
             <button onClick={step} disabled={stepping || exhausted}>
-              {stepping ? "Advancing..." : `Advance ${state.step_years.toLocaleString("en-US")} years`}
+              {stepping ? (state.step_progress ? "Advancing..." : "Preparing advance...") : `Advance ${state.step_years.toLocaleString("en-US")} years`}
             </button>
           )}
           <AllowanceNote state={state} demo={isDemo} />
@@ -394,7 +417,8 @@ function WorldView({ worldId }: { worldId: WorldId }) {
       )}
       <div ref={mapWrapperRef}>
         <MapCanvas
-          imageBase64={image}
+          imageUrl={image}
+          onImagePainted={warmAfterPaint}
           width={MAX_DISPLAY_WIDTH * RENDER_SCALE}
           height={Math.round(MAX_DISPLAY_WIDTH * ASPECT) * RENDER_SCALE}
           displayWidth={displayWidth}

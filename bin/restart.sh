@@ -21,6 +21,8 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+export MANTLE_BLOOM_RIVER_ARM="${MANTLE_BLOOM_RIVER_ARM:-outlet-bound}"
+export MANTLE_BLOOM_DEPTH_CAP_M="${MANTLE_BLOOM_DEPTH_CAP_M:-20000}"
 cd "$REPO_ROOT"
 
 dev=false

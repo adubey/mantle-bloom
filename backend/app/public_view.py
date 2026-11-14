@@ -31,12 +31,15 @@ instead of nothing until it ends (#653).
 from __future__ import annotations
 
 import asyncio
+import os
 import secrets
 import threading
+import time
 from dataclasses import dataclass
 from typing import Callable
 
 from fastapi import Request, Response
+from pydantic import BaseModel
 
 from . import auth
 
@@ -54,6 +57,7 @@ GUEST_VIEWS = ("elevation", "biome", "combined")
 GUEST_DEFAULT_VIEW = "combined"
 GUEST_DEFAULT_WIDTH = 2200
 GUEST_DEFAULT_HEIGHT = 1222
+GUEST_IDENTITY_ROTATION = (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
 # The viewer renders at 2x its 1100x611 display size; a little headroom past that, but well
 # under the admin cap, since a guest render holds the world lock.
 GUEST_MAX_RENDER_PX = 2400
@@ -88,7 +92,13 @@ GUEST_COOKIE_MAX_AGE_S = 365 * 24 * 3600
 
 # Used when no session secret is configured (e.g. a local run). A restart then resets every
 # guest's allowance, which is no worse than a guest clearing their cookie.
-_FALLBACK_SECRET = secrets.token_bytes(32)
+_FALLBACK_SECRET = (os.environ.get("MANTLE_BLOOM_GUEST_SECRET") or secrets.token_hex(32)).encode()
+
+
+def share_fallback_secret() -> None:
+    """Keep guest allowances valid across child restarts in this container."""
+    if not os.environ.get("MANTLE_BLOOM_GUEST_SECRET"):
+        os.environ["MANTLE_BLOOM_GUEST_SECRET"] = _FALLBACK_SECRET.decode()
 
 
 class WorldFeed:
@@ -103,18 +113,27 @@ class WorldFeed:
 
     def __init__(self) -> None:
         self._mutex = threading.Lock()
-        self._epoch = secrets.token_hex(4)
+        self._epoch = secrets.token_hex(16)
         self._count = 0
         self._summary: dict | None = None
         self._name: str | None = None
         self._waiters: list[tuple[asyncio.AbstractEventLoop, asyncio.Future]] = []
+        self._last_follower = float("-inf")
+
+    def restore(self, summary: dict, name: str) -> None:
+        """Keep the checkpoint's revision valid when a sleeping worker restarts."""
+        with self._mutex:
+            self._summary = {key: summary[key] for key in ("revision", "seed", "elapsed_years")}
+            self._name = name
+            waiters, self._waiters = self._waiters, []
+        _wake_all(waiters)
 
     def revision(self) -> str:
         with self._mutex:
             return self._revision()
 
     def _revision(self) -> str:
-        return f"{self._epoch}-{self._count}"
+        return self._summary["revision"] if self._summary is not None else f"{self._epoch}-{self._count}"
 
     def summary(self) -> dict | None:
         """{"revision", "seed", "elapsed_years"} of the current world, or None before one exists."""
@@ -141,7 +160,7 @@ class WorldFeed:
             self._count += 1
             if name is not None:
                 self._name = name
-            revision = self._revision()
+            revision = f"{self._epoch}-{self._count}"
             self._summary = None if world is None else {
                 "revision": revision, "seed": world.seed, "elapsed_years": float(world.elapsed_years)
             }
@@ -161,7 +180,12 @@ class WorldFeed:
         poll; without one it is pure cost on every change. Best-effort by nature --
         a waiter arriving mid-render just renders on demand as before."""
         with self._mutex:
-            return bool(self._waiters)
+            return bool(self._waiters) or time.monotonic() - self._last_follower < GUEST_POLL_WAIT_S
+
+    def note_follower(self) -> None:
+        """Track hosted polls that wait in the public process."""
+        with self._mutex:
+            self._last_follower = time.monotonic()
 
     async def wait_past(self, seen: str, timeout_s: float, changed: Callable[[], bool] | None = None) -> None:
         """Return once the revision differs from `seen` or `changed()` is true, or after
@@ -235,6 +259,16 @@ def steps_used(request: Request, config: auth.AuthConfig) -> int:
     payload = auth.read_token(request.cookies.get(GUEST_COOKIE), _secret(config), "guest-steps")
     used = payload.get("used") if payload else None
     return used if isinstance(used, int) and used >= 0 else 0
+
+
+def steps_remaining(request: Request, config: auth.AuthConfig, guest_demo: bool = False) -> int | None:
+    if auth.is_admin(request, config) and not guest_demo:
+        return None
+    return max(0, GUEST_STEP_LIMIT - steps_used(request, config))
+
+
+class PublicStepRequest(BaseModel):
+    revision: str
 
 
 def set_steps_used(response: Response, used: int, config: auth.AuthConfig) -> None:

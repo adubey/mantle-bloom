@@ -32,7 +32,6 @@ ENV MANTLE_BLOOM_FRONTEND_DIST=/app/frontend/dist \
 # Runs as root: Railway mounts the checkpoint volume root-owned, and a non-root user can't
 # write to it (docs/hosting.md).
 #
-# One process: the worlds live in its memory, so more workers would each hold a
-# different registry. Railway injects PORT. The graceful-shutdown cap ends viewers' 25 s
-# long polls on a redeploy instead of waiting them out; the checkpoint is already on disk.
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port \"${PORT:-8080}\" --timeout-graceful-shutdown 5"]
+# The public process serves the frontend and persisted snapshots. It starts one
+# private simulation worker when needed. Railway injects PORT.
+CMD ["sh", "-c", "exec uvicorn app.hosted:app --host 0.0.0.0 --port \"${PORT:-8080}\" --timeout-graceful-shutdown 2"]

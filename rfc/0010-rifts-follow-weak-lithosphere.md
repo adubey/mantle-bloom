@@ -3,67 +3,12 @@
 - **Status:** Accepted (revised 2026-10-31 to detected rifts on owner direction; revised 2026-10-30 after fixed-geometry Gate 3b result)
 - **Date:** 2026-10-15
 - **Last revised:** 2026-10-31; production rifts are detected from four tectonic settings and routed around cratons, replacing the Gate 3b requirement that rifting emerge from force and damage mechanics
+- **Revisions:** dated entries, newest first, are in the [Revision note](#revision-note) near the end.
 - **Related:** #737 (Gates D1–D3), #730 (detected-rift revision), #699 (Gate 3b tracking), #487 (closed Gate 3a evidence), #481 (superseded tracker), #480 (min-cut diagnostic), #472 / PR #479 (RFC 0009 G3), #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
   0003 solution 1); RFCs [0003](abandoned/0003-rifting-around-cratons.md) (superseded by RFC 0010),
   [0009](0009-craton-mosaic.md) (cratons-first layout; G3 initially selected the min-cut),
   [0007](0007-mantle-plumes-and-plateaus.md) (plume weakening),
   [0012](0012-physics-first-simulation.md) (force-response interfaces)
-
-## Revision note
-
-- **2026-10-31 ([PR #728](https://github.com/adubey/mantle-bloom/pull/728), tracker #730):** The earlier version required local damage under a
-  defensible load field to produce a rift, and for slab pull an evolving 3-D slab coupled to plate
-  deformation. The owner redirected the goal: Mantle-Bloom is a simulation with physics backing,
-  not a physics model. Rifts exist and avoid cratons, so the model should detect the settings
-  where they occur, start the rifting process there, and route it around cratons.
-
-  The evidence agrees with that change. In the [corrected controlled rerun](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6550450178),
-  all 28 slab histories passed accounting and none split within 20 Myr: the outcome rested on an
-  uncalibrated axial drag, and the strongest case failed 50.5% of the plate into 296 pieces. The
-  owner kept this work running in parallel. A [100 Myr continuation](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6554714055)
-  with persistent failed links produced a second connected piece of 17.9% at 80 Myr, in the
-  zero-drag upper-bound case on a plate with no cratons, with 413 other new pieces, so it does not
-  pass the two-daughter rule. It is a candidate graph separation, not a demonstrated moving
-  plate. The revision stands because detected rifts do not depend on resolving that mechanism. This is the
-  outcome the falsification criteria below anticipated under "no defensible local loading field":
-  revise in favor of a clearly labeled phenomenological rift model. The owner then set three
-  decisions: a detected setting at minimum weakens the plate and leaves weakened rock; a plume
-  usually cannot break a craton, though edges and weak cratons break more easily and an eroded keel
-  can give way; and the slab prototype stays as evidence that may be drawn on later. The [route and setting
-  census](../analysis/rfc0010/README.md#rift-settings-and-routes-2026-10-31) shows a craton-free
-  route works where min-cut did not.
-
-  | Changed item | Previous criterion | New criterion | Reason |
-  |---|---|---|---|
-  | Acceptance 3 (Gate 3b source) | Evolving slabs and shell loads produce a broad sustained event coupled to local cracks | Gates D1 and D2: all four settings are detectable, and every site at least weakens the plate | Load mechanics did not produce a rift, and the outcome depended on an uncalibrated parameter |
-  | Acceptance 4 (breakup) | 200 Myr histories with propagation from local damage | Same histories, with propagation along a detected, routed rift; no instantaneous plate-wide split | The owner's goal keeps staged growth but not emergent mechanics |
-  | Acceptance 5 (damage) | Timestep-invariant damage on supported local loading | Timestep-invariant rift progress and detection | No damage field remains |
-  | Acceptance 6 (segments) | Independent segments nucleate and link | One rift grows two arms from a site; multiple segments are out of scope | Simplest model that meets the goal |
-  | Acceptance 11 (attribution) | Attribute plume effects in rift initiation, growth and linkage with force budgets closed | Report rift counts by setting, with plumes on and off; force budgets dropped | The rift no longer depends on a force budget |
-  | Acceptance 7 | Split frequency and plate count within 10% of matched baseline | More than 10 and fewer than 40 plates at every output | A new system decides where rifts occur, so a match to the old rate is not a target |
-  | Acceptance 8 | Line and band craton rates fall at least 50% against matched replay | Zero blocked cells entered, and detached craton per rift under a limit from D1 | Worlds diverge after the first rift, and the old measure counts allowed edges as crossings |
-  | Acceptance 9 | At most 2%/Gyr, subject to matched replay | Same target, subject to ledger checks, reported by path | An absolute target needs no matched replay |
-  | Acceptance 10 | Includes old saves initializing slab and deformation history | Old saves load with no rifts running; new saves preserve running rifts, reached cells and tears; runtime against a fresh current-main run | The slab prototype is not in this design |
-  | New | None | Weakening is measurable; deeper keels with erosion and boundary jumps must ship before this RFC is Implemented | Owner decisions |
-  | Gates 1, 2 and 3a | Closed | Closed; retained as reference evidence | Their strength ordering still informs route resistance |
-
-  The full impact table is on [PR #728](https://github.com/adubey/mantle-bloom/pull/728).
-
-- **2026-10-30 ([PR #717](https://github.com/adubey/mantle-bloom/pull/717)):** The prior Gate 3b source criterion looked for a broad,
-  sustained load, then coupled it to local crack rules. The corrected 1 Gyr diagnostic created broad
-  load and damage but no viable daughter plates; it explicitly held plate geometry fixed and used an
-  effective slab-sink length instead of an evolving slab body ([Gate 3b result](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6538397727)). This
-  showed that fixed-geometry load screens cannot answer whether slab pull bends a slab and stretches
-  a plate into a rift. The revision gates slab-pull attribution on a reduced-order 3-D slab body,
-  endogenous plate finite strain and geometry, and a controlled pair of outward slab pulls before
-  geological-history acceptance runs.
-
-  | Changed item | Previous criterion | Revised criterion | Reason |
-  |---|---|---|---|
-  | Gate 3b event/source | Broad sustained extension supplied by a low-cost current field, then local crack response | For slab-pull cases, require evolving attached 3-D slab bodies, measured bending, and force-transmitted finite strain in the plate | Fixed-geometry runs can ramp load and accumulate damage but cannot demonstrate that the slab body or plate geometry evolves |
-  | Controlled case | At least one broad event on a generated plate | Opposed outward slab tractions on one plate, plus no-slab and detached-slab controls, before the event/source criterion | Separates slab-causal plate extension from an imposed trench-force pattern |
-  | Plate-scale histories | Run 200 Myr histories once the load source and crack response are coupled | Run histories only after the controlled slab/plate coupling demonstrates deformation, local crack linkage, and closed force/material accounts | Avoids spending long histories on fixed geometry that cannot produce physical breakup |
-  | State and runtime | Persist damage and segment history with O(N+E) expected work | Also persist slab-body and plate-deformation state, with O(N+E+S) expected work for S bounded slab stations | The added mechanics changes geometry and has continuing state across saves and steps |
 
 ## Problem
 
@@ -1180,6 +1125,62 @@ The earlier criteria follow.
   independent aperture or magma-volume bound, creates fracture without a supplied source, or fails to
   show the expected local stress relief alongside tip stress transfer, revise or reject the
   intrusion coupling; do not replace it with a fitted propagation multiplier.
+
+## Revision note
+
+- **2026-10-31 ([PR #728](https://github.com/adubey/mantle-bloom/pull/728), tracker #730):** The earlier version required local damage under a
+  defensible load field to produce a rift, and for slab pull an evolving 3-D slab coupled to plate
+  deformation. The owner redirected the goal: Mantle-Bloom is a simulation with physics backing,
+  not a physics model. Rifts exist and avoid cratons, so the model should detect the settings
+  where they occur, start the rifting process there, and route it around cratons.
+
+  The evidence agrees with that change. In the [corrected controlled rerun](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6550450178),
+  all 28 slab histories passed accounting and none split within 20 Myr: the outcome rested on an
+  uncalibrated axial drag, and the strongest case failed 50.5% of the plate into 296 pieces. The
+  owner kept this work running in parallel. A [100 Myr continuation](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6554714055)
+  with persistent failed links produced a second connected piece of 17.9% at 80 Myr, in the
+  zero-drag upper-bound case on a plate with no cratons, with 413 other new pieces, so it does not
+  pass the two-daughter rule. It is a candidate graph separation, not a demonstrated moving
+  plate. The revision stands because detected rifts do not depend on resolving that mechanism. This is the
+  outcome the falsification criteria below anticipated under "no defensible local loading field":
+  revise in favor of a clearly labeled phenomenological rift model. The owner then set three
+  decisions: a detected setting at minimum weakens the plate and leaves weakened rock; a plume
+  usually cannot break a craton, though edges and weak cratons break more easily and an eroded keel
+  can give way; and the slab prototype stays as evidence that may be drawn on later. The [route and setting
+  census](../analysis/rfc0010/README.md#rift-settings-and-routes-2026-10-31) shows a craton-free
+  route works where min-cut did not.
+
+  | Changed item | Previous criterion | New criterion | Reason |
+  |---|---|---|---|
+  | Acceptance 3 (Gate 3b source) | Evolving slabs and shell loads produce a broad sustained event coupled to local cracks | Gates D1 and D2: all four settings are detectable, and every site at least weakens the plate | Load mechanics did not produce a rift, and the outcome depended on an uncalibrated parameter |
+  | Acceptance 4 (breakup) | 200 Myr histories with propagation from local damage | Same histories, with propagation along a detected, routed rift; no instantaneous plate-wide split | The owner's goal keeps staged growth but not emergent mechanics |
+  | Acceptance 5 (damage) | Timestep-invariant damage on supported local loading | Timestep-invariant rift progress and detection | No damage field remains |
+  | Acceptance 6 (segments) | Independent segments nucleate and link | One rift grows two arms from a site; multiple segments are out of scope | Simplest model that meets the goal |
+  | Acceptance 11 (attribution) | Attribute plume effects in rift initiation, growth and linkage with force budgets closed | Report rift counts by setting, with plumes on and off; force budgets dropped | The rift no longer depends on a force budget |
+  | Acceptance 7 | Split frequency and plate count within 10% of matched baseline | More than 10 and fewer than 40 plates at every output | A new system decides where rifts occur, so a match to the old rate is not a target |
+  | Acceptance 8 | Line and band craton rates fall at least 50% against matched replay | Zero blocked cells entered, and detached craton per rift under a limit from D1 | Worlds diverge after the first rift, and the old measure counts allowed edges as crossings |
+  | Acceptance 9 | At most 2%/Gyr, subject to matched replay | Same target, subject to ledger checks, reported by path | An absolute target needs no matched replay |
+  | Acceptance 10 | Includes old saves initializing slab and deformation history | Old saves load with no rifts running; new saves preserve running rifts, reached cells and tears; runtime against a fresh current-main run | The slab prototype is not in this design |
+  | New | None | Weakening is measurable; deeper keels with erosion and boundary jumps must ship before this RFC is Implemented | Owner decisions |
+  | Gates 1, 2 and 3a | Closed | Closed; retained as reference evidence | Their strength ordering still informs route resistance |
+
+  The full impact table is on [PR #728](https://github.com/adubey/mantle-bloom/pull/728).
+
+- **2026-10-30 ([PR #717](https://github.com/adubey/mantle-bloom/pull/717)):** The prior Gate 3b source criterion looked for a broad,
+  sustained load, then coupled it to local crack rules. The corrected 1 Gyr diagnostic created broad
+  load and damage but no viable daughter plates; it explicitly held plate geometry fixed and used an
+  effective slab-sink length instead of an evolving slab body ([Gate 3b result](https://github.com/adubey/mantle-bloom/issues/699#issuecomment-6538397727)). This
+  showed that fixed-geometry load screens cannot answer whether slab pull bends a slab and stretches
+  a plate into a rift. The revision gates slab-pull attribution on a reduced-order 3-D slab body,
+  endogenous plate finite strain and geometry, and a controlled pair of outward slab pulls before
+  geological-history acceptance runs.
+
+  | Changed item | Previous criterion | Revised criterion | Reason |
+  |---|---|---|---|
+  | Gate 3b event/source | Broad sustained extension supplied by a low-cost current field, then local crack response | For slab-pull cases, require evolving attached 3-D slab bodies, measured bending, and force-transmitted finite strain in the plate | Fixed-geometry runs can ramp load and accumulate damage but cannot demonstrate that the slab body or plate geometry evolves |
+  | Controlled case | At least one broad event on a generated plate | Opposed outward slab tractions on one plate, plus no-slab and detached-slab controls, before the event/source criterion | Separates slab-causal plate extension from an imposed trench-force pattern |
+  | Plate-scale histories | Run 200 Myr histories once the load source and crack response are coupled | Run histories only after the controlled slab/plate coupling demonstrates deformation, local crack linkage, and closed force/material accounts | Avoids spending long histories on fixed geometry that cannot produce physical breakup |
+  | State and runtime | Persist damage and segment history with O(N+E) expected work | Also persist slab-body and plate-deformation state, with O(N+E+S) expected work for S bounded slab stations | The added mechanics changes geometry and has continuing state across saves and steps |
 
 ## References
 

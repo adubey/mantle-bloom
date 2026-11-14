@@ -47,6 +47,7 @@ export interface PublicState {
   // A guest step computing right now, whoever triggered it: the wait progress
   // bar's live position, or null when no step is running (#653).
   step_progress: PublicStepProgress | null;
+  snapshot_first?: boolean;
 }
 
 export interface PublicStepResult {
@@ -86,6 +87,15 @@ export function fetchPublicState(worldId: WorldId, after?: string, signal?: Abor
 export function renderPublicWorld(worldId: WorldId, view: PublicView, width: number, height: number): Promise<PublicWorld & { image_base64: string }> {
   const params = new URLSearchParams({ view, width: String(width), height: String(height) });
   return fetch(`${publicWorldBase(API_BASE, worldId)}/render?${params}`).then(asJson<PublicWorld & { image_base64: string }>);
+}
+
+export function publicPreviewUrl(worldId: WorldId, revision: string, view: PublicView, rotation: string): string {
+  const params = new URLSearchParams({ revision, view, rotation });
+  return `${publicWorldBase(API_BASE, worldId)}/preview.png?${params}`;
+}
+
+export function warmPublicWorld(worldId: WorldId): Promise<Response> {
+  return fetch(`${publicWorldBase(API_BASE, worldId)}/warm`, { method: "POST" });
 }
 
 export async function stepPublicWorld(worldId: WorldId, revision: string, guestDemo = false): Promise<PublicStepResult> {

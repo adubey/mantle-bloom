@@ -314,8 +314,17 @@ discharge, channel-width growth, deposition, geology or lake silt.
   potential evaporation. A lake with no ice-free season retains liquid water and balances
   supply against sublimation and overflow; water is not converted to ice at `WATER_TO_ICE`.
   The prognostic solver integrates storage through each timestep, limits losses to available
-  water, and books overflow above the rim or tier depth ceiling. Production uses one implicit
-  full-step solve by default (`substeps=1`); tests can request explicit substeps for a finer
+  water, and books overflow above the rim or tier depth ceiling. Production substeps the
+  solve (`hydrology.lake_substeps`, #875): the slice is the step's hundredth clamped to
+  [50, 1000] yr — 50 yr at a 5 kyr step, 1000 yr at the 100 kyr production step — because
+  losses charged at the end-of-slice level otherwise make one-step volumes depend on slice
+  length (#853, principle 3). The count is capped at 100 substeps, so above 100 kyr steps
+  slices grow past 1000 yr; convergence is claimed only at or below 100 kyr. Inside the
+  solve, a settle-stop lumps the remainder into one slice once two slices move the depth
+  field by at most 1e-4 in gross and the active body set is unchanged, and spilling bodies
+  are unioned across slices so `is_spilling` keeps meaning "spilled during the step"
+  (#506). The unit suite runs the solve unsliced (`hydrology.SUBSTEP_LAKES`, off in
+  `conftest.py`, opt-in per test), like the glacier march knob. Tests can request explicit substeps for a finer
   partition. Each slice settles lake transfers and merges before the next slice begins
   (#768). A body receiving a late transfer, or replacing its children after a merge, restores
   the losses already charged to its cells and re-solves the combined available water over

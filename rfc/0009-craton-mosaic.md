@@ -2,32 +2,12 @@
 
 - **Status:** Accepted 2026-10-15 (revised after gate G1; first version, “Cratons as a mosaic,” accepted 2026-10-15 in PR #428)
 - **Date:** 2026-10-15 (revised 2026-10-17)
+- **Revisions:** dated entries, newest first, are in the [Revision note](#revision-note) near the end.
 - **Related:** #427 (tracking), #426 (gate G1), #274 (cratons), #389 (RFC 0003 tracking),
   #409 (formation and ratchet diagnosis), #411; PRs #418 (RFC 0003 solution 1) and #430
   (G1); RFCs [0003](abandoned/0003-rifting-around-cratons.md) and [0004](abandoned/0004-proto-cratons.md)
   (both superseded by this RFC and [0010](0010-rifts-follow-weak-lithosphere.md)),
   [0007](0007-mantle-plumes-and-plateaus.md), [0008](0008-craton-collision-jamming.md)
-
-## Revision note
-
-The first version proposed seeding each continent's interior as a mosaic of cratonic cores
-and belts, inside today's plates. Its gate G1 failed (Design, [analysis/rfc0009](../analysis/rfc0009/README.md)):
-belts gave rifts a clear line slightly more often, but the band a rift thins still crossed
-craton, and belts were gone within a few hundred Myr. Mapping the worlds showed why the
-layout itself is the problem: generation makes plates first, makes each plate wholly
-continental or oceanic, and only then puts a craton in the middle of each continental plate.
-This revision reverses the order: cratonic cores first, continents built around them, plates
-placed last. The mosaic's cores and belts become the first step of that order, and its belt
-marks stay.
-
-The plate seed mechanism was revised in #477 while keeping continent, craton, belt and land
-generation intact. Each craton core now contributes its full lattice-cell polygon as a
-Voronoi seed. 200 point seeds, sampled by cell area outside cratons, fill the remaining
-surface; the first `num_plates` points root plate groups, and other points and cratons join
-their nearest root. This replaces the point-site Dijkstra partition and whole-core
-post-assignment. The same connectivity, core-indivisibility, area, land-aware objective and
-G3 outcome criteria remain; the polygon-seed variant still needs the full G3 comparison
-before this mechanism is validated.
 
 ## Problem
 
@@ -602,6 +582,27 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
 - **Belts become the new sink.** If marked belts lose crust so fast that continental area
   at 1 Gyr falls by more than 10% against the matched baseline, give belts partial craton
   resistance instead of none.
+
+## Revision note
+
+The first version proposed seeding each continent's interior as a mosaic of cratonic cores
+and belts, inside today's plates. Its gate G1 failed (Design, [analysis/rfc0009](../analysis/rfc0009/README.md)):
+belts gave rifts a clear line slightly more often, but the band a rift thins still crossed
+craton, and belts were gone within a few hundred Myr. Mapping the worlds showed why the
+layout itself is the problem: generation makes plates first, makes each plate wholly
+continental or oceanic, and only then puts a craton in the middle of each continental plate.
+This revision reverses the order: cratonic cores first, continents built around them, plates
+placed last. The mosaic's cores and belts become the first step of that order, and its belt
+marks stay.
+
+The plate seed mechanism was revised in #477 while keeping continent, craton, belt and land
+generation intact. Each craton core now contributes its full lattice-cell polygon as a
+Voronoi seed. 200 point seeds, sampled by cell area outside cratons, fill the remaining
+surface; the first `num_plates` points root plate groups, and other points and cratons join
+their nearest root. This replaces the point-site Dijkstra partition and whole-core
+post-assignment. The same connectivity, core-indivisibility, area, land-aware objective and
+G3 outcome criteria remain; the polygon-seed variant still needs the full G3 comparison
+before this mechanism is validated.
 
 ## References
 

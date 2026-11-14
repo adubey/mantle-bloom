@@ -104,3 +104,63 @@ undecided and why frozen verdicts reverse. Read-only; its fingerprint matches th
 ```bash
 PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_age_polarity.py <seed> <out.json>
 ```
+
+### RFC 0018 runtime profile (issue 848)
+
+`rebuild_rfc0018_mass_balanced.py` rebuilds the lost frozen candidate generator and prior from the written spec
+and checks every candidate against the recorded probe output on the 20 G0 snapshots (all 812 match).
+
+`study_rfc0018_skip_predictors.py` runs the rebuilt generator on every split opportunity of a checkpoint, records
+plate-level features available before any eigensolve, and reports the best zero-false-negative threshold per
+feature with leave-one-world-out scoring.
+
+`measure_rfc0018_fit_iterations.py` reruns the rebuilt generator with the refinement-pass cap lowered and
+compares partitions, validity and `P_break` with the 8-pass reference.
+
+Three scripts divide the cost of RFC 0018's candidate search on a mature world. `generate_issue848_world.py`
+generates a cratons-first world with synthetic-history relief and steps it plates-only
+(`simulate_climate_biomes` off: about 1.7 s per Myr instead of about 385 s) saving checkpoints.
+`profile_rfc0018_candidate_search.py` loads a checkpoint, loads the G0 prototype's candidate search (weak seed edges, not the later frozen mass-balanced generator) by path from
+`origin/codex/issue-797-evidence-rfc0018-g0` (`bin/debug/measure_rfc0018_g0.py`, not on `main`), wraps timers
+around its helpers and measures every split opportunity for the inverse and direct-cost mappings. Each row
+records when the plate last ran `_open_rift`, the rift-candidate marker proxy. `summarize_rfc0018_profile.py`
+reduces the rows to compact JSON. Timers overlap and add overhead, so the numbers divide cost and are not G3
+runtime evidence. Findings: [issue 848](../../analysis/issue848/README.md).
+
+```bash
+backend/.venv/bin/python bin/debug/generate_issue848_world.py --out <private-dir>
+backend/.venv/bin/python bin/debug/profile_rfc0018_candidate_search.py \
+    --save <private-dir>/world_100myr.mbworld --g0-script <measure_rfc0018_g0.py> --out <private-dir>/profile.jsonl
+backend/.venv/bin/python bin/debug/summarize_rfc0018_profile.py <private-dir>/profile.jsonl analysis/issue848/profile-summary.json
+```
+
+### RFC 0018 D0 load calibration (issue 797)
+
+`rift_damage_prototype.py` is the offline prototype of RFC 0018's 2026-11-14 damage-band method that its gates
+use. It is not production code. It builds the cheap directional load tensor (signed basal-drag differences
+scaled by `L_drag`; slab forces as tension and ridge push and contact as compression, spread by an
+exponential kernel of length `L_pull`) in each node's thin-shell tangent basis. It also holds the path-normal
+ligament rule. `calibrate_rift_load_proxy.py` runs D0: manufactured sign cases on a real plate mesh, a ligament
+case, and a grid fit of `L_pull` and `L_drag` against `thin_shell.solve_thin_shell` on every plate of the
+development worlds. It then reports D0's frozen criteria. Findings: [issue 797](../../analysis/issue797/README.md).
+
+```bash
+backend/.venv/bin/python bin/debug/calibrate_rift_load_proxy.py --snapshots <rfc0018-g0-snapshots> \
+    --seeds <seed> ... --saves <a.mbworld> ... --out analysis/issue797/d0-load-calibration.json
+```
+
+### Rift load maps against RFC 0018 cuts (issue 876)
+
+`compare_rift_load_maps.py` builds two extensional-load maps for every split opportunity before any eigensolve:
+a drag map (pull-apart rate of mantle flow against the plate's rigid motion, over rock-only resistance; no solve)
+and a shell map (the `thin_shell` incremental extensional resultant under the full per-node force field, over the
+issue 487 yield-envelope column capacity; one sparse solve per plate). It then runs the rebuilt RFC 0018 generator
+and scores how well each map separates valid cuts and positive breakup probability. It reuses helpers from
+`replay_gate2_capacity.py`, `rebuild_rfc0018_mass_balanced.py` and `study_rfc0018_skip_predictors.py`.
+Findings: [issue 876](../../analysis/issue876/README.md).
+
+```bash
+backend/.venv/bin/python bin/debug/compare_rift_load_maps.py --g0-script <measure_rfc0018_g0.py> \
+    --snapshots <rfc0018-g0-snapshots> --seeds <seed> ... --saves <a.mbworld> ... \
+    --out analysis/issue876/load-maps.json --rows <private-dir>/load-map-rows.jsonl
+```

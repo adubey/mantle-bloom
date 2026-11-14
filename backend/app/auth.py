@@ -93,7 +93,7 @@ class AuthConfig:
         )
 
 
-def load_config() -> AuthConfig:
+def load_config(request: Request | None = None) -> AuthConfig:
     """Read the auth settings from the environment on every call, so tests and a restarted
     process see changes without a reload."""
     owner = os.environ.get("MANTLE_BLOOM_GITHUB_OWNER_ID", "").strip()
@@ -103,7 +103,10 @@ def load_config() -> AuthConfig:
         owner_id=int(owner) if owner.isdigit() else None,
         session_secret=os.environ.get("MANTLE_BLOOM_SESSION_SECRET", "").encode(),
         public_url=os.environ.get("MANTLE_BLOOM_PUBLIC_URL", "").strip().rstrip("/"),
-        local_no_login=os.environ.get("MANTLE_BLOOM_LOCAL_NO_LOGIN", "1").strip() != "0",
+        local_no_login=(
+            os.environ.get("MANTLE_BLOOM_LOCAL_NO_LOGIN", "1").strip() != "0"
+            and (request is None or request.scope.get("mantle_bloom_allow_local", True))
+        ),
     )
 
 
@@ -239,13 +242,16 @@ class AuthMiddleware:
     """Pure ASGI rather than BaseHTTPMiddleware, so the streamed /worlds/{world_id}/generate,
     /worlds/{world_id}/step and /worlds/{world_id}/animate responses pass through untouched."""
 
-    def __init__(self, app, extra_origins: frozenset[str] = frozenset()):
+    def __init__(self, app, extra_origins: frozenset[str] = frozenset(), *, allow_local: bool = True):
         self.app = app
         self.extra_origins = extra_origins
+        self.allow_local = allow_local
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
-            refusal = gate(Request(scope), load_config(), self.extra_origins)
+            scope["mantle_bloom_allow_local"] = self.allow_local
+            request = Request(scope)
+            refusal = gate(request, load_config(request), self.extra_origins)
             if refusal is not None:
                 await refusal(scope, receive, send)
                 return
@@ -349,7 +355,7 @@ login is configured.</p>"""
 
 @router.get("/login", include_in_schema=False)
 def login_page(request: Request, error: str | None = None, demo: bool = False) -> Response:
-    config = load_config()
+    config = load_config(request)
     if is_admin(request, config) and not demo:
         return RedirectResponse("/", status_code=303)
     if not config.login_configured:
@@ -421,7 +427,7 @@ def logout() -> Response:
 
 @router.get("/auth/session")
 def auth_session(request: Request) -> dict:
-    config = load_config()
+    config = load_config(request)
     session = session_user(request, config)
     local = is_local_request(request, config)
     return {

@@ -132,6 +132,21 @@ real-unit coefficient. Each is split by whether the lake was spilling.
 backend/.venv/bin/python bin/debug/measure_lake_silt.py world.mbworld --myr 10 --out /tmp/branch.json
 ```
 
+### `measure_lake_slice_convergence.py`
+
+Separates the lake solver's internal slice length from the climate refresh interval (#853).
+In `fixed` mode one step of `--total-years` runs with the lake solver forced to
+`substeps = total / slice`; in `refreshed` mode the same total runs as repeated steps of
+`--slice-years`. Each record gives the anchor lake's volume, flooded area and upstream
+catchment (merged inland-sea state above 15M km2, as in #811) plus the lake solver's step
+ledger, so a slice effect is attributed to a ledger term.
+
+```bash
+backend/.venv/bin/python bin/debug/measure_lake_slice_convergence.py checkpoint.bloom \
+    --anchors analysis/rfc0016/target-anchor-window-d.json \
+    --mode fixed --total-years 25000 --slice-years 200 --myr 0.025 --out /tmp/fixed.json
+```
+
 ### `trace_lake_drainage_phases.py`
 
 Replays a saved lake-flicker event and maps the modeled drainage catchment in selected phases.

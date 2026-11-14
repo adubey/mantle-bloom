@@ -5,7 +5,52 @@ comparison. G0/G1 use 20 development worlds; G2 uses the first 10 seeds from the
 20-seed held-out registry. Detailed compact records and their hashes are listed below. Full
 simulation outputs remain outside the repository.
 
-## Gate status
+## Revised method (2026-11-14): damage-band gates
+
+RFC 0018's 2026-11-14 revision ([PR #880](https://github.com/adubey/mantle-bloom/pull/880)) replaced the
+graph-cut method, so G0–G2 above are historical evidence for the removed method. The revised gates are D0–D3.
+
+### D0: calibrate the cheap load: FAIL, use periodic shell solves
+
+`bin/debug/calibrate_rift_load_proxy.py` builds the cheap directional load tensor of
+`bin/debug/rift_damage_prototype.py` for every plate and compares it with the thin-shell resultant
+(`thin_shell.solve_thin_shell`) under the same per-node force field. It used the 20 G0 development
+snapshots plus the 8 #848 development checkpoints (seed 1091931222 at 50 and 100 Myr; 679647835, 229148564 and
+1333090219 at 50 and 100 Myr). That is 451 meshed plates, with 5 plates skipped for lack of a connected mesh,
+and 800,853 loaded cells. The fit chose `L_pull` and `L_drag` by the smallest median |log10(N / N_ext)| over
+loaded extensional cells, on a grid of `L_pull` 250–4,000 km and `L_drag` 10⁴–10¹⁰ m. A first grid capped at
+10⁷ m hit its upper edge on the smoke world and was widened before the full run.
+
+| Criterion (RFC 0018 D0) | Required | Result at `L_pull` = 1,000 km, `L_drag` = 10⁸ m |
+|---|---|---|
+| Manufactured sign cases | All four match the shell | 3 of 4: one-sided pull, two slabs apart and pure collision match; slab opposed by collision gives the wrong sign |
+| Tension parallel to an intact path | Does not split; crossing tension does | Pass |
+| Sign agreement (extension versus none) | ≥ 80% | 74.6% |
+| Principal direction within 30° | ≥ 70% of cells extensional in both | 52.9% |
+| Spearman(N, N_ext) | ≥ 0.5 | 0.490 |
+| Top-decile median N / N_ext | 0.5–2 for each crust kind | 0.58 continental, 0.53 oceanic |
+
+- **Insensitive to the pull length.** Every `L_pull` from 250 to 4,000 km scores within 1%, with the best
+  `L_drag` at about 10⁸ m for all of them. The local drag difference dominates, and it needs a coupling length
+  of roughly plate size squared over cell spacing to stand in for drag integrated across the plate.
+- **Cost.** The shell solves took 574 s for 451 plates (1.27 s per plate); the proxy took 8.8 s per setting
+  (0.02 s per plate).
+
+**Outcome.** Three of the four statistical criteria and one manufactured case fail, so the RFC's predeclared
+alternative B applies: run the thin-shell solve every `K` steps (start `K` = 5 Myr), hold the load tensor between
+solves, and measure the cost in D3. Plates without a connected mesh need a stated fallback in the D1 prototype.
+
+Compact results: [`d0-load-calibration.json`](d0-load-calibration.json), SHA-256
+`54cee4232045220aaea0b39f925a384c78421c478cd56c00e09172eebf361a15`.
+
+Reproduce (run label `rfc0018-d0`):
+
+```bash
+backend/.venv/bin/python bin/debug/calibrate_rift_load_proxy.py --snapshots <rfc0018-g0-snapshots> \
+    --seeds <the 20 G0 seeds> --saves <the 8 #848 checkpoints> --out analysis/issue797/d0-load-calibration.json
+```
+
+## Gate status (graph-cut method, historical)
 
 | Gate | Outcome | Evidence |
 |---|---|---|

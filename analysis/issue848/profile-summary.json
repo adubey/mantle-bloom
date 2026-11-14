@@ -1,0 +1,92 @@
+{
+  "rows": 300,
+  "measured_steps": 15,
+  "mappings": {
+    "direct": {
+      "opportunities": 150,
+      "not_ok": 0,
+      "total_s": 144.7,
+      "median_s": 0.797,
+      "sparse_solves": 12941,
+      "median_solves": 91.0,
+      "median_nodes": 1176.5,
+      "max_nodes": 2143,
+      "inclusive_time_share": {
+        "_fiedler_vector": 0.8588,
+        "eigsh": 0.8234,
+        "_shared_edges": 0.0654,
+        "_node_resistance": 0.0608,
+        "_fit_euler_pole": 0.0145,
+        "_opening": 0.0042,
+        "_largest_component_share": 0.0028,
+        "_trace_stats": 0.0025,
+        "kmeans2": 0.0003
+      },
+      "variants": 1800,
+      "variants_at_iteration_cap": 1371,
+      "iteration_cap_share": 0.7617,
+      "usable_variants": 0,
+      "selected_accepted": 0,
+      "extension_window_steps": {
+        "1": {
+          "opportunities": 100,
+          "opportunity_share": 0.6667,
+          "time_share": 0.7048
+        },
+        "3": {
+          "opportunities": 124,
+          "opportunity_share": 0.8267,
+          "time_share": 0.8479
+        },
+        "5": {
+          "opportunities": 138,
+          "opportunity_share": 0.92,
+          "time_share": 0.9312
+        }
+      }
+    },
+    "inverse": {
+      "opportunities": 150,
+      "not_ok": 0,
+      "total_s": 178.5,
+      "median_s": 1.109,
+      "sparse_solves": 14248,
+      "median_solves": 97.0,
+      "median_nodes": 1176.5,
+      "max_nodes": 2143,
+      "inclusive_time_share": {
+        "_fiedler_vector": 0.8796,
+        "eigsh": 0.8475,
+        "_node_resistance": 0.055,
+        "_shared_edges": 0.0529,
+        "_fit_euler_pole": 0.0129,
+        "_opening": 0.0034,
+        "_largest_component_share": 0.0023,
+        "_trace_stats": 0.002,
+        "kmeans2": 0.0003
+      },
+      "variants": 1800,
+      "variants_at_iteration_cap": 1722,
+      "iteration_cap_share": 0.9567,
+      "usable_variants": 0,
+      "selected_accepted": 0,
+      "extension_window_steps": {
+        "1": {
+          "opportunities": 100,
+          "opportunity_share": 0.6667,
+          "time_share": 0.7321
+        },
+        "3": {
+          "opportunities": 124,
+          "opportunity_share": 0.8267,
+          "time_share": 0.8574
+        },
+        "5": {
+          "opportunities": 138,
+          "opportunity_share": 0.92,
+          "time_share": 0.9305
+        }
+      }
+    }
+  }
+}

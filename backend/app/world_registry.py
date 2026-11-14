@@ -119,6 +119,8 @@ class WorldSession:
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     world: World | None = None
+    deferred_summary: dict | None = None
+    checkpoint_dirty: bool = False
     # Why the checkpointed world could not be restored at startup, if it could
     # not. Shown on the record rather than silently starting empty.
     load_error: str | None = None
