@@ -243,7 +243,7 @@ class CheckpointStore:
             summary = entry["summary"]
             if (generation is not None and entry["generation"] == generation
                     and isinstance(summary["seed"], int) and self._is_timestamp(summary["elapsed_years"])
-                    and re.fullmatch(r"[0-9a-f]{8}-[0-9]+", summary["revision"])):
+                    and re.fullmatch(r"(?:[0-9a-f]{8}|[0-9a-f]{32})-[0-9]+", summary["revision"])):
                 return summary
         except (OSError, ValueError, KeyError, TypeError):
             pass

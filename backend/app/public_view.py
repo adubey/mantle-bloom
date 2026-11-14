@@ -92,12 +92,13 @@ GUEST_COOKIE_MAX_AGE_S = 365 * 24 * 3600
 
 # Used when no session secret is configured (e.g. a local run). A restart then resets every
 # guest's allowance, which is no worse than a guest clearing their cookie.
-_FALLBACK_SECRET = os.environ.get("MANTLE_BLOOM_GUEST_SECRET", secrets.token_hex(32)).encode()
+_FALLBACK_SECRET = (os.environ.get("MANTLE_BLOOM_GUEST_SECRET") or secrets.token_hex(32)).encode()
 
 
 def share_fallback_secret() -> None:
     """Keep guest allowances valid across child restarts in this container."""
-    os.environ.setdefault("MANTLE_BLOOM_GUEST_SECRET", _FALLBACK_SECRET.decode())
+    if not os.environ.get("MANTLE_BLOOM_GUEST_SECRET"):
+        os.environ["MANTLE_BLOOM_GUEST_SECRET"] = _FALLBACK_SECRET.decode()
 
 
 class WorldFeed:
@@ -112,7 +113,7 @@ class WorldFeed:
 
     def __init__(self) -> None:
         self._mutex = threading.Lock()
-        self._epoch = secrets.token_hex(4)
+        self._epoch = secrets.token_hex(16)
         self._count = 0
         self._summary: dict | None = None
         self._name: str | None = None
@@ -121,18 +122,18 @@ class WorldFeed:
 
     def restore(self, summary: dict, name: str) -> None:
         """Keep the checkpoint's revision valid when a sleeping worker restarts."""
-        epoch, count = summary["revision"].rsplit("-", 1)
         with self._mutex:
-            self._epoch, self._count = epoch, int(count)
             self._summary = {key: summary[key] for key in ("revision", "seed", "elapsed_years")}
             self._name = name
+            waiters, self._waiters = self._waiters, []
+        _wake_all(waiters)
 
     def revision(self) -> str:
         with self._mutex:
             return self._revision()
 
     def _revision(self) -> str:
-        return f"{self._epoch}-{self._count}"
+        return self._summary["revision"] if self._summary is not None else f"{self._epoch}-{self._count}"
 
     def summary(self) -> dict | None:
         """{"revision", "seed", "elapsed_years"} of the current world, or None before one exists."""
@@ -159,7 +160,7 @@ class WorldFeed:
             self._count += 1
             if name is not None:
                 self._name = name
-            revision = self._revision()
+            revision = f"{self._epoch}-{self._count}"
             self._summary = None if world is None else {
                 "revision": revision, "seed": world.seed, "elapsed_years": float(world.elapsed_years)
             }

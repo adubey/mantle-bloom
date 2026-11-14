@@ -89,6 +89,8 @@ MAX_STEP_YEARS = 100_000_000.0
 # fairness guarantee instead of a separate total.
 MAX_STEPS_PER_FRAME = 100
 _hosted_worker = os.environ.get("MANTLE_BLOOM_HOSTED_WORKER") == "1"
+_public_render_slots = threading.BoundedSemaphore(public_view.GUEST_MAX_WAITERS)
+_owner_step_waiters = threading.BoundedSemaphore(public_view.GUEST_MAX_WAITERS)
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
@@ -359,9 +361,17 @@ def _hydrate(session: WorldSession) -> None:
     if session.deferred_summary is None:
         return
     with _compute_gate.hold(), session.lock:
-        if session.deferred_summary is not None and not session.deleted:
-            if not _load_checkpoint_session(session):
-                raise HTTPException(status_code=503, detail="the checkpoint could not be opened")
+        _hydrate_locked(session)
+
+
+def _hydrate_locked(session: WorldSession) -> bool:
+    if session.deferred_summary is None or session.deleted:
+        return False
+    # The runner already has its saved status from startup. A lazy load must
+    # never reinstall it over a Play/Stop request or a runner error.
+    if not _load_checkpoint_session(session, restore_run_status=False):
+        raise HTTPException(status_code=503, detail="the checkpoint could not be opened")
+    return True
 
 
 def _session_running(session: WorldSession) -> bool:
@@ -399,7 +409,7 @@ def _public_session_or_404(world_id: str) -> WorldSession:
     worlds -- but a world whose run loop is on answers while it runs (#597), so
     anyone can watch a planet that is currently stepping."""
     session = _registry.find(world_id)
-    if session is None or (session.world is None and session.deferred_summary is None):
+    if session is None or session.deleted or (session.world is None and session.deferred_summary is None):
         raise HTTPException(status_code=404, detail="no such public world")
     if not session.is_public and not _session_running(session):
         raise HTTPException(status_code=404, detail="no such public world")
@@ -408,7 +418,6 @@ def _public_session_or_404(world_id: str) -> WorldSession:
 
 def _world_changed(
     session: WorldSession, completed: bool = True, *, prerender_viewer: bool = True,
-    already_checkpointed: bool = False,
 ) -> None:
     """Publish a new revision of `session`'s world to its viewers. Call it after every change
     to the world, before releasing the session lock: a viewer's render takes the lock and
@@ -418,10 +427,14 @@ def _world_changed(
     A completed change is also checkpointed (#375), under the same lock so nothing mutates
     the world mid-pickle. `completed=False` is for a step that raised partway: viewers still
     see what it left, but a restart goes back to the last whole step rather than resuming
-    from a half-stepped world."""
+    from a half-stepped world. The hosted worker rolls back immediately to the
+    committed checkpoint so the failed step cannot prevent idle retirement."""
+    if _hosted_worker and not completed:
+        _rollback_hosted_world(session)
+        return
     session.touch()
     if _hosted_worker:
-        session.checkpoint_dirty = not already_checkpointed
+        session.checkpoint_dirty = True
     # Persist the touched timestamp, not just the world: the frontend auto-selects
     # the most recently updated world, and without this a restart would fall back
     # to the stale updated_at from the record's creation. A tiny atomic write.
@@ -434,17 +447,14 @@ def _world_changed(
     # mid-publish, and the clear/pre-render pair must agree on the answer
     # (review on #756).
     is_default = getattr(session, "is_default", False)
-    if is_default:
+    if is_default and not _hosted_worker:
         # The disk image is keyed to the world this change replaces: drop it
         # before publishing, so no reader can serve it for the new world. The
         # pre-render below writes the new one (#755).
         _clear_disk_viewer_image(session)
     session.feed.publish(session.world, session.name)
     if _hosted_worker:
-        if already_checkpointed and session.checkpoint_store is not None:
-            _save_hosted_summary(session)
-        elif completed:
-            _checkpoint_world(session)
+        _checkpoint_world(session)
     # `prerender_viewer=False` is for callers that do not hold the compute
     # gate (the animate disconnect finalizer): rendering here would run
     # parallel kernels alongside another world's step, so those publishes
@@ -501,13 +511,15 @@ def _save_disk_viewer_image(session: WorldSession, world, view: str, width: int,
     store = getattr(session, "checkpoint_store", None)
     if store is None or not (_hosted_worker or getattr(session, "is_default", False)) or world is None or getattr(session, "deleted", False):
         return
+    if _hosted_worker and session.checkpoint_dirty:
+        return
     try:
         entry = {
             "version": checkpoint.VIEWER_IMAGE_VERSION,
             "key": _viewer_image_key(session, world, view, width, height),
             "image_base64": image_base64,
         }
-        if _hosted_worker and not session.checkpoint_dirty:
+        if _hosted_worker:
             entry["generation"] = store.world_generation()
         store.save_viewer_image(entry)
     except Exception:  # noqa: BLE001 -- the render itself already succeeded
@@ -619,11 +631,12 @@ def _require_world(session: WorldSession) -> World:
     return world
 
 
-def _begin_world_operation(session: WorldSession) -> World:
+def _begin_world_operation(session: WorldSession) -> None:
     if not session.begin_operation():
         raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
     try:
-        return _require_world(session)
+        if session.deferred_summary is None:
+            _require_world(session)
     except HTTPException:
         session.end_operation()
         raise
@@ -641,7 +654,11 @@ def _record_json(session: WorldSession) -> dict:
         "stepping": runner.stepping(),
         "error": runner.error(),
     }
-    record["summary"] = session.deferred_summary if session.world is None else _summary(session, session.world)
+    saved = session.deferred_summary
+    if session.world is not None:
+        record["summary"] = _summary(session, session.world)
+    else:
+        record["summary"] = None if saved is None else {**saved, "replay_logs": []}
     return record
 
 
@@ -1487,12 +1504,10 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
     would carry, routed to the progress bar the same way. `404` if no world has been generated yet,
     `503` (before the stream starts, same as /worlds/{world_id}/animate) if a generation, step, or
     animation is already in progress."""
-    session = _session_or_404(world_id)
+    session = _session_or_404(world_id, hydrate=False)
     _require_valid_step_years(req.years)
-    # Capture under the flag: a replacer swapping session.world between this read
-    # and the stream's turn at the gate would leave the step mutating a detached
-    # world whose work never reaches the published state.
-    world = _begin_world_operation(session)
+    # Claim the mutation before queuing at the compute gate.
+    _begin_world_operation(session)
 
     def _stream():
         acquired = False
@@ -1518,8 +1533,10 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
                 return
             # Labels come from the spans inside the work (trace.py), merged with the
             # generator's messages on a worker thread so they arrive as the work starts.
-            progress = trace.run_traced(_step_progress(session, world, req.years), _step_weights(world))
             try:
+                _hydrate_locked(session)
+                world = _require_world(session)
+                progress = trace.run_traced(_step_progress(session, world, req.years), _step_weights(world))
                 for message in progress:
                     if not isinstance(message, tuple):
                         # Anything but a tagged tuple is a protocol violation --
@@ -1551,8 +1568,9 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
                 # it streamed progress. `world` is mutated in place (unlike generate_world_progress,
                 # which builds a fresh World to hand back), so there's nothing further to write to
                 # `_state` here -- just let the step finish.
-                _drain_progress(progress)
-                completed = True
+                if progress is not None:
+                    _drain_progress(progress)
+                    completed = True
                 raise
             except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
                 yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
@@ -1565,12 +1583,14 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
                     progress.close()
             finally:
                 # Nested so a close() that raises can never leak the lock and gate (see generate()).
-                if acquired:
-                    # Even a failed step has changed the world partway.
-                    _world_changed(session, completed)
-                    session.lock.release()
-                    _compute_gate.release()
-                session.end_operation()
+                try:
+                    if acquired and progress is not None:
+                        _world_changed(session, completed)
+                finally:
+                    if acquired:
+                        session.lock.release()
+                        _compute_gate.release()
+                    session.end_operation()
 
     return StreamingResponse(_stream(), media_type="application/x-ndjson")
 
@@ -1941,9 +1961,9 @@ def _animate_message_line(session, world, message, last_frame, anim_spec: dict):
     parameters for a later resume, #638). It also publishes the frame to the world's
     viewers (no checkpoint/index write -- just feed + render-cache) so /view watches
     each animation step instead of nothing until the end (#653). A heartbeat line just forwards the tick:
-    the world is mid-batch, so no checkpoint (#611). The done line flips `completed`
-    so the stream's finally publishes the run, and clears the recovery sidecar: a
-    finished run's video exists, so there is nothing left to recover.
+    the world is mid-batch, so no checkpoint (#611). The done line commits the
+    hosted world before sending the video and clears the recovery sidecar. The
+    standalone app publishes the completed run in the stream's finalizer.
     Split out of animate() so that function stays under the complexity cap."""
     if message[0] == "heartbeat":
         _, frame, total, elapsed_years = message
@@ -1957,6 +1977,7 @@ def _animate_message_line(session, world, message, last_frame, anim_spec: dict):
         _, frame, total, frame_png, elapsed_years = message
         watched = session.feed.has_waiters()
         if _hosted_worker:
+            session.checkpoint_dirty = True
             session.public_renders.clear()
             session.feed.publish(world)
         # The sidecar must never get ahead of the checkpoint: if this frame's
@@ -1992,6 +2013,10 @@ def _animate_message_line(session, world, message, last_frame, anim_spec: dict):
             "stats": world.stats_history[-1] if world.stats_history else None,
         }) + "\n", frame, False
     _, mp4_bytes, stopped_early = message
+    if _hosted_worker:
+        # Stop can leave whole steps beyond the final encoded frame. Commit
+        # those steps before sending done, which the client may disconnect on.
+        _world_changed(session)
     # Finished with a video in hand -- stopped early by the user or ran to the end,
     # either way there is nothing left to recover, so forget the sidecar (#638).
     _clear_animation_progress(session)
@@ -2017,9 +2042,7 @@ def _publish_disconnected_animation(session: WorldSession) -> None:
     try:
         if session.lock.acquire(blocking=False):
             try:
-                _world_changed(
-                    session, False, prerender_viewer=gate_held, already_checkpointed=not session.checkpoint_dirty,
-                )
+                _world_changed(session, False, prerender_viewer=gate_held)
             finally:
                 session.lock.release()
     finally:
@@ -2073,9 +2096,8 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
     # Mark busy synchronously, not via a `with` block -- the response streams, so
     # the release has to happen in the generator's own `finally` instead. An overlapping
     # step/animation on this world still 503s before the stream starts.
-    # Captured under the flag (see step): no replacer can swap session.world between
-    # this read and the stream's turn at the gate.
-    world = _begin_world_operation(session)
+    # Read session.world once the stream holds the gate and session lock (see step).
+    _begin_world_operation(session)
 
     # Clear any stale signal from a previous run (e.g. a stop request that arrived after that
     # run had already finished on its own) so this fresh run starts unsignaled.
@@ -2103,6 +2125,8 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
             completed = False
             if session.deleted:
                 return
+            _hydrate_locked(session)
+            world = _require_world(session)
             animation = render_image.stream_animation_mp4(
                 world, req.projection, req.view, req.width, req.height, view_rotation,
                 req.step_years, req.steps_per_frame, req.num_frames,
@@ -2152,6 +2176,8 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
                         # leaking the native libx264 context (see stream_animation_mp4).
                         animation.close()
                         raise
+                    if completed and _hosted_worker:
+                        break
                     _compute_gate.acquire()
                     try:
                         session.lock.acquire()
@@ -2177,16 +2203,16 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
                 )
                 yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
         finally:
-            if acquired:
-                # Published once at the end; between frames other worlds (and this
-                # world's own renders) get their turns at the gate instead of
-                # waiting out the whole run.
-                _world_changed(session, completed)
-                session.lock.release()
-                _compute_gate.release()
-            elif last_frame:
-                _publish_disconnected_animation(session)
-            session.end_operation()
+            try:
+                if acquired:
+                    _world_changed(session, completed)
+                elif last_frame and not _hosted_worker:
+                    _publish_disconnected_animation(session)
+            finally:
+                if acquired:
+                    session.lock.release()
+                    _compute_gate.release()
+                session.end_operation()
 
     return StreamingResponse(_stream(), media_type="application/x-ndjson")
 
@@ -2242,7 +2268,6 @@ def set_controls(world_id: str, req: ControlsRequest) -> dict:
     user has turned off per-step climate computation to speed up stepping. `400` for an
     unknown wind model or a negative multiplier; `404` if no world has been generated yet."""
     session = _session_or_404(world_id)
-    world = _require_world(session)
     if req.wind_model is not None and req.wind_model not in WIND_MODEL_CHOICES:
         raise HTTPException(
             status_code=400, detail=f"unknown wind_model {req.wind_model!r}; choices are {WIND_MODEL_CHOICES}"
@@ -2265,6 +2290,8 @@ def set_controls(world_id: str, req: ControlsRequest) -> dict:
         if not np.isfinite(value) or value < 0.0:
             raise HTTPException(status_code=400, detail=f"{name} must be finite and >= 0 (got {value})")
     with _compute_gate.hold(), session.lock:
+        _hydrate_locked(session)
+        world = _require_world(session)
         if req.sea_level_m is not None:
             # Sea level is eustatic now (see eustasy.py) -- the slider sets the conserved
             # ocean water volume to whatever floats the current hypsometry at this level,
@@ -3099,8 +3126,15 @@ def public_render(world_id: str, view: str = "elevation", width: int = 1100, hei
     if disk_entry is not None and session.feed.revision() == disk_entry["revision"]:
         session.public_renders.put(disk_entry["revision"], key, disk_entry)
         return disk_entry
-    _hydrate(session)
-    session = _public_session_or_404(world_id)
+    if not _public_render_slots.acquire(blocking=False):
+        raise HTTPException(status_code=503, detail="the world is busy; try again shortly")
+    try:
+        return _render_uncached_public_world(session, width, height)
+    finally:
+        _public_render_slots.release()
+
+
+def _render_uncached_public_world(session: WorldSession, width: int, height: int) -> dict:
     if not _compute_gate.acquire(timeout=public_view.GUEST_LOCK_WAIT_S):
         raise HTTPException(status_code=503, detail="the world is busy; try again shortly")
     try:
@@ -3109,6 +3143,11 @@ def public_render(world_id: str, view: str = "elevation", width: int = 1100, hei
         if not session.lock.acquire(timeout=public_view.GUEST_LOCK_WAIT_S):
             raise HTTPException(status_code=503, detail="the world is busy; try again shortly")
         try:
+            _public_session_or_404(session.world_id)
+            _hydrate_locked(session)
+            _public_session_or_404(session.world_id)
+            view = _viewer_view(session)
+            key = (view, width, height)
             # Look again: viewers that arrive together after a step queue here, and only
             # the first of them needs to render.
             revision = session.feed.revision()
@@ -3141,12 +3180,17 @@ def _await_owner_step(session: WorldSession, seen_revision: str) -> bool:
     owner's result instead of failing (#653). Sync polling, not the feed's async wait:
     this route is sync (it may compute), and a waiter that arrived here holds a worker
     thread either way. Costs nothing when the owner already finished."""
-    deadline = time.monotonic() + public_view.GUEST_OWNER_STEP_WAIT_S
-    while session.feed.revision() == seen_revision:
-        if time.monotonic() >= deadline:
-            return False
-        time.sleep(public_view.GUEST_OWNER_STEP_POLL_S)
-    return True
+    if not _owner_step_waiters.acquire(blocking=False):
+        return False
+    try:
+        deadline = time.monotonic() + public_view.GUEST_OWNER_STEP_WAIT_S
+        while session.feed.revision() == seen_revision:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(public_view.GUEST_OWNER_STEP_POLL_S)
+        return True
+    finally:
+        _owner_step_waiters.release()
 
 
 def _run_guest_step(session: WorldSession) -> None:
@@ -3156,11 +3200,12 @@ def _run_guest_step(session: WorldSession) -> None:
     # world's long-polling viewers) so /view shows a live wait progress bar for the
     # step, whatever viewer triggered it (#653). Heartbeats carry no new position, so
     # they don't republish.
+    _public_session_or_404(session.world_id)
+    _hydrate_locked(session)
+    world = _require_world(_public_session_or_404(session.world_id))
     completed = False
     try:
-        if session.deleted:
-            return
-        for message in _step_progress(session, _require_world(session), public_view.GUEST_STEP_YEARS):
+        for message in _step_progress(session, world, public_view.GUEST_STEP_YEARS):
             if isinstance(message, tuple) and message[0] == "progress" and len(message) == 3:
                 session.set_guest_step_progress((message[1], message[2]))
         completed = True
@@ -3181,9 +3226,6 @@ def public_step(world_id: str, req: public_view.PublicStepRequest, request: Requ
     asking for the same advance get the resulting world however it was computed (#653)."""
     session = _public_session_or_404(world_id)
     config, remaining = _guest_allowance(request, guest_demo)
-    if remaining != 0 and req.revision == session.feed.revision():
-        _hydrate(session)
-        session = _public_session_or_404(world_id)
     outcome = session.guest_steps.request_step(
         req.revision,
         may_compute=remaining is None or remaining > 0,
@@ -3240,6 +3282,8 @@ def _save_index() -> None:
             _checkpoint_root.save_index([session.record() for session in _registry.list()])
             _index_dirty = False
         except Exception:  # noqa: BLE001 -- e.g. a full volume mustn't fail the request
+            # Sleep would expose stale visibility from disk. Retry at the idle
+            # probe even if there are no more edits to trigger another write.
             _index_dirty = True
             _logger.exception("checkpoint: couldn't save the registry index")
 
@@ -3270,10 +3314,29 @@ def _checkpoint_world(session: WorldSession) -> bool:
 
 def _save_hosted_summary(session: WorldSession) -> None:
     try:
-        session.checkpoint_store.save_hosted_summary(_summary(session, session.world))
+        summary = _summary(session, session.world)
+        summary.pop("replay_logs")
+        session.checkpoint_store.save_hosted_summary(summary)
     except Exception:  # noqa: BLE001 - keep the worker resident and retry on the next checkpoint
         session.checkpoint_dirty = True
         _logger.exception("checkpoint: couldn't save summary for world %s", session.world_id)
+
+
+def _rollback_hosted_world(session: WorldSession) -> None:
+    """Drop partial compute and retain the last committed revision and image."""
+    if session.deleted:
+        return
+    store = session.checkpoint_store
+    session.public_renders.clear()
+    session.deferred_summary = store.load_hosted_summary() if store else None
+    session.world = None
+    if session.deferred_summary is not None:
+        session.feed.restore(session.deferred_summary, session.name)
+        session.checkpoint_dirty = False
+    elif store is None or not _load_checkpoint_session(session, restore_run_status=False):
+        session.feed.publish(None, session.name)
+        session.checkpoint_dirty = False
+    _logger.warning("discarded incomplete operation for world %s", session.world_id)
 
 
 def _save_run_status(session: WorldSession, status: checkpoint.RunStatus) -> None:
@@ -3288,11 +3351,12 @@ def _run_step_once(session: WorldSession, step_years: float, should_step) -> boo
     with _compute_gate.hold(), session.lock:
         if session.deleted:
             return True
+        if not should_step():
+            return True
+        _hydrate_locked(session)
         world = session.world
         if world is None:
             return False
-        if not should_step():
-            return True
         completed = False
         runner = session.runner
         tracker = trace.PhaseTracker(_step_weights(world))
@@ -3428,7 +3492,7 @@ def _restore_checkpoint_session(session: WorldSession) -> None:
     _load_checkpoint_session(session)
 
 
-def _load_checkpoint_session(session: WorldSession) -> bool:
+def _load_checkpoint_session(session: WorldSession, *, restore_run_status: bool = True) -> bool:
     """Restore one world with the session locked, keeping a committed revision on wake."""
     store = session.checkpoint_store
     had_world_file = store.world_path.exists()
@@ -3437,12 +3501,9 @@ def _load_checkpoint_session(session: WorldSession) -> bool:
     except OSError as exc:
         _logger.exception("checkpoint: couldn't load world %s", session.world_id)
         session.load_error = f"couldn't load the checkpointed world: {exc}"
-        if _hosted_worker:
-            session.checkpoint_dirty = True
         return False
     saved = store.load_hosted_summary() if _hosted_worker else None
     session.world = world
-    session.deferred_summary = None
     session.load_error = None
     if world is not None and saved is not None and (world.seed, world.elapsed_years) == (saved["seed"], saved["elapsed_years"]):
         session.feed.restore(saved, session.name)
@@ -3458,7 +3519,9 @@ def _load_checkpoint_session(session: WorldSession) -> bool:
         session.checkpoint_dirty = False
         if saved is None or saved["revision"] != session.feed.revision():
             _save_hosted_summary(session)
-    session.runner.set_status(status, persist=False)
+    if restore_run_status:
+        session.runner.set_status(status, persist=False)
+    session.deferred_summary = None
     return True
 
 
@@ -3611,26 +3674,45 @@ def healthz() -> dict:
     return {"status": "ok"}
 
 
-if _hosted_worker:
-    @app.get("/_worker/idle", include_in_schema=False)
-    def worker_idle() -> dict:
-        if _checkpoint_root is None or _index_dirty or not _compute_gate.acquire(timeout=0):
-            return {"idle": False}
-        try:
-            return {"idle": all(
-                not (session.checkpoint_dirty or session.operation_busy() or session.guest_steps.busy())
-                and session.runner.can_sleep()
-                and (session.replay_log is None or session.replay_log.flush(timeout_s=0))
-                for session in _registry.list()
-            )}
-        finally:
-            _compute_gate.release()
+def _worker_idle() -> dict:
+    if _checkpoint_root is None or not _compute_gate.acquire(timeout=0):
+        return {"idle": False}
+    try:
+        if _index_dirty:
+            _save_index()
+        return {"idle": not _index_dirty and all(_session_can_sleep(session) for session in _registry.list())}
+    finally:
+        _compute_gate.release()
 
-    @app.post("/_worker/warm/{world_id}", include_in_schema=False)
-    def worker_warm(world_id: str) -> dict:
-        session = _public_session_or_404(world_id)
-        _hydrate(session)
-        return {"status": "ok"}
+
+def _session_can_sleep(session: WorldSession) -> bool:
+    if session.operation_busy() or session.guest_steps.busy() or not session.lock.acquire(blocking=False):
+        return False
+    try:
+        session.runner.retry_unsaved_status()
+        if not session.runner.can_sleep():
+            return False
+        if session.checkpoint_dirty and session.deferred_summary is None and session.world is not None:
+            _checkpoint_world(session)
+        return not session.checkpoint_dirty and (
+            session.replay_log is None or session.replay_log.flush(timeout_s=0)
+        )
+    finally:
+        session.lock.release()
+
+
+def _worker_warm(world_id: str) -> dict:
+    session = _public_session_or_404(world_id)
+    if session.deferred_summary is None:
+        return {"warmed": False}
+    with _compute_gate.hold(), session.lock:
+        _public_session_or_404(world_id)
+        return {"warmed": _hydrate_locked(session)}
+
+
+if _hosted_worker:
+    app.add_api_route("/_worker/idle", _worker_idle, include_in_schema=False)
+    app.add_api_route("/_worker/warm/{world_id}", _worker_warm, methods=["POST"], include_in_schema=False)
 
 
 # In the packaged single-process app and the Railway image (Dockerfile, #376) there is no

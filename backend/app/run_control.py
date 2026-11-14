@@ -118,8 +118,7 @@ class WorldRunner:
                 raise StatusNotSaved("the run status couldn't be saved; a restart may not keep it")
 
     def retry_unsaved_status(self) -> None:
-        """Save the status again if its last save failed. Called with each world checkpoint,
-        so a volume that comes back catches the status up too."""
+        """Retry a failed run-status write at a checkpoint or when checking whether to sleep."""
         with self._status_mutex:
             with self._cond:
                 if not self._unsaved:

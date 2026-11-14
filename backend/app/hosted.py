@@ -14,6 +14,8 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.routing import Route
 
@@ -25,6 +27,7 @@ _logger = logging.getLogger(__name__)
 _WORLD_PATH = "/public/worlds/{world_id}"
 _WORLD_ID = re.compile(r"[0-9a-f]{32}")
 _IDLE_SECONDS = 90.0
+_RECOVERY_RETRY_SECONDS = 5.0
 _STATE_POLL_INTERVAL = 0.5
 _NO_STORE = {"Cache-Control": "no-store"}
 
@@ -45,59 +48,91 @@ def _records(root: checkpoint.CheckpointStore) -> list[dict]:
     return records
 
 
+def _idle_seconds() -> float:
+    message = "MANTLE_BLOOM_IDLE_SECONDS must be positive and finite"
+    try:
+        seconds = float(os.environ.get("MANTLE_BLOOM_IDLE_SECONDS", _IDLE_SECONDS))
+    except ValueError as exc:
+        raise ValueError(message) from exc
+    if not 0 < seconds < float("inf"):
+        raise ValueError(message)
+    return seconds
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     root = _root()
     root.check_writable()
     # Shared with every child in this container when OAuth signing is unconfigured.
     public_view.share_fallback_secret()
-    idle_seconds = float(os.environ.get("MANTLE_BLOOM_IDLE_SECONDS", _IDLE_SECONDS))
-    if not 0 < idle_seconds < float("inf"):
-        raise ValueError("MANTLE_BLOOM_IDLE_SECONDS must be positive and finite")
+    idle_seconds = _idle_seconds()
+    records = _records(root)
+    stores = [root.for_world(row["world_id"]) for row in records[:checkpoint.max_worlds()]]
+    for store in stores:
+        store.check_writable()
     with tempfile.TemporaryDirectory(prefix="mb-worker-") as directory:
         worker = HostedWorker(Path(directory) / "app.sock", idle_seconds)
         app.state.worker = worker
-        app.state.warms = {}
-        reaper = asyncio.create_task(worker.retire_when_idle())
+        app.state.warm_task = None
+        app.state.public_warm_after = 0.0
+        app.state.openapi_lock = asyncio.Lock()
+        app.state.openapi = None
+        supervisor = asyncio.create_task(_supervise_worker(root, worker))
         try:
-            records = _records(root)
-            stores = [root.for_world(row["world_id"]) for row in records[:checkpoint.max_worlds()]] or [root]
-            for store in stores:
-                store.check_writable()
-            if any(store.load_status().running for store in stores):
-                _schedule_warm(app, None)
             yield
         finally:
-            tasks = [reaper, *app.state.warms.values()]
+            tasks = [supervisor]
+            if app.state.warm_task is not None:
+                tasks.append(app.state.warm_task)
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             await worker.close()
 
 
-def _schedule_warm(app: FastAPI, world_id: str | None) -> None:
-    if world_id not in app.state.warms:
-        app.state.warms[world_id] = asyncio.create_task(_warm(app, world_id))
+def _saved_run_to_resume(root: checkpoint.CheckpointStore) -> bool:
+    records = _records(root)
+    stores = [root.for_world(row["world_id"]) for row in records[:checkpoint.max_worlds()]]
+    if not records:
+        stores = [root]
+    return any(store.world_path.is_file() and store.load_status().running for store in stores)
 
 
-async def _warm(app: FastAPI, world_id: str | None) -> None:
+async def _supervise_worker(root: checkpoint.CheckpointStore, worker: HostedWorker) -> None:
+    retry_at = 0.0
+    clock = asyncio.get_running_loop().time
+    while True:
+        if worker.ready:
+            await worker.retire_if_idle()
+        elif clock() >= retry_at:
+            try:
+                if _saved_run_to_resume(root):
+                    await worker.prepare()
+            except (OSError, WorkerUnavailable, httpx.RequestError, HTTPException):
+                _logger.exception("could not resume saved Play sessions")
+            retry_at = clock() + _RECOVERY_RETRY_SECONDS
+        await asyncio.sleep(min(worker.idle_seconds, _RECOVERY_RETRY_SECONDS))
+
+
+async def _warm(app: FastAPI, world_id: str) -> None:
     worker = app.state.worker
     try:
-        if world_id is None:
-            await worker.prepare()
-        else:
-            await worker.warm(world_id)
+        await worker.warm(world_id)
     except (OSError, WorkerUnavailable, httpx.RequestError):
         _logger.exception("could not warm the simulation")
     finally:
-        app.state.warms.pop(world_id, None)
+        app.state.public_warm_after = asyncio.get_running_loop().time() + 2 * worker.idle_seconds
+        app.state.warm_task = None
 
 
-def _public_record(world_id: str) -> tuple[dict, checkpoint.CheckpointStore]:
+def _public_record(world_id: str, *, include_running: bool = False) -> tuple[dict, checkpoint.CheckpointStore]:
     root = _root()
     for record in _records(root)[:checkpoint.max_worlds()]:
-        if record["world_id"] == world_id and record["is_public"]:
-            return record, root.for_world(world_id)
+        if record["world_id"] == world_id:
+            store = root.for_world(world_id)
+            if record["is_public"] or (include_running and store.load_status().running):
+                return record, store
+            break
     raise HTTPException(404, "no such public world")
 
 
@@ -118,22 +153,26 @@ def _presentation(record: dict) -> tuple[str, list[float]]:
     )
 
 
-def _state(record: dict, world: dict, request: Request, guest_demo: bool = False) -> dict:
+def _state(record: dict, world: dict, request: Request, guest_demo: bool = False, *, running: bool = False) -> dict:
     view, rotation = _presentation(record)
     return {
-        "name": record["name"], "world": world, "running": False,
+        "name": record["name"], "world": world, "running": running,
         "is_default": record.get("is_default", False), "view": view, "rotation": rotation,
-        "steps_remaining": public_view.steps_remaining(request, auth.load_config(), guest_demo),
+        "steps_remaining": public_view.steps_remaining(request, auth.load_config(request), guest_demo),
         "step_limit": public_view.GUEST_STEP_LIMIT, "step_years": public_view.GUEST_STEP_YEARS,
         "step_progress": None, "snapshot_first": True,
     }
 
 
-def _snapshot(store: checkpoint.CheckpointStore, record: dict) -> tuple[dict, str] | None:
+def _snapshot(
+    store: checkpoint.CheckpointStore, record: dict, *, revision: str | None = None,
+) -> tuple[dict, str] | None:
     generation = store.world_generation()
     world = _summary(store)
+    if generation is None or world is None or (revision is not None and world["revision"] != revision):
+        return None
     entry = store.load_viewer_image()
-    if generation is None or world is None or entry is None or entry.get("generation") != generation:
+    if entry is None or entry.get("generation") != generation:
         return None
     view, rotation = _presentation(record)
     expected = {
@@ -170,6 +209,8 @@ def _admin_records(root: checkpoint.CheckpointStore) -> dict:
         if index < cap:
             status = store.load_status()
             summary = store.load_hosted_summary()
+            if summary is not None:
+                summary["replay_logs"] = []
         else:
             load_error = checkpoint.world_limit_error(cap)
         worlds.append({
@@ -187,16 +228,17 @@ async def _public_records(request: Request) -> Response:
     records = _records(root)
     worlds = []
     for row in records[:checkpoint.max_worlds()]:
-        if not row["is_public"]:
-            continue
         store = root.for_world(row["world_id"])
+        running = store.load_status().running
+        if not (row["is_public"] or running):
+            continue
         summary = _summary(store)
         if summary is None and store.world_path.is_file():
             # A checkpoint from an older version needs a one-time metadata upgrade.
             return await _proxy(request)
         if summary is not None:
             worlds.append({
-                **summary, "world_id": row["world_id"], "name": row["name"], "running": False,
+                **summary, "world_id": row["world_id"], "name": row["name"], "running": running,
                 "is_default": row.get("is_default", False),
             })
     if not records and root.world_path.is_file():
@@ -213,8 +255,16 @@ async def _world_state(
     started = clock()
     deadline = started + public_view.GUEST_POLL_WAIT_S
     first = None
+    previous = None
+    state = None
     while True:
-        state = await _current_state(world_id, request, guest_demo)
+        worker = request.app.state.worker
+        source = (worker.generation, worker.ready)
+        # Only the worker writes these files. Reuse a sleeping response until
+        # a worker starts or exits, even if it fails before becoming ready.
+        if state is None or source[1] or source != previous:
+            state = await _current_state(world_id, request, guest_demo)
+        previous = source
         if state is None:
             return await _proxy(request)
         if first is None:
@@ -250,24 +300,26 @@ async def _current_state(world_id: str, request: Request, guest_demo: bool) -> d
         if not active.is_success:
             raise HTTPException(503, "public world state is unavailable")
         return {**active.json(), "snapshot_first": True}
-    record, store = _public_record(world_id)
+    record, store = _public_record(world_id, include_running=True)
     world = _summary(store)
     if world is None:
         if store.world_path.is_file():
             return None
         raise HTTPException(404, "no such public world")
-    return _state(record, world, request, guest_demo)
+    return _state(record, world, request, guest_demo, running=store.load_status().running)
 
 
 async def _preview(world_id: str, request: Request, revision: str, view: str, rotation: str) -> Response:
     record, store = _public_record(world_id)
-    snapshot = _snapshot(store, record)
     saved_view, saved_rotation = _presentation(record)
     try:
         matching_rotation = [float(value) for value in rotation.split(",")] == saved_rotation
     except ValueError:
         matching_rotation = False
-    if snapshot is None or snapshot[0]["revision"] != revision or view != saved_view or not matching_rotation:
+    if view != saved_view or not matching_rotation:
+        raise HTTPException(404, "no such public preview")
+    snapshot = _snapshot(store, record, revision=revision)
+    if snapshot is None:
         raise HTTPException(404, "no such public preview")
     try:
         png = base64.b64decode(snapshot[1], validate=True)
@@ -277,11 +329,11 @@ async def _preview(world_id: str, request: Request, revision: str, view: str, ro
         raise HTTPException(404, "no such public preview")
     # Recheck visibility after reading the file. The same request must not
     # authorize a preview against an older index after an unpublish.
-    current, _ = _public_record(world_id)
-    if _presentation(current) != (saved_view, saved_rotation):
-        raise HTTPException(404, "no such public preview")
     active = await _live_world_state(world_id, request)
     if active is not None and not _matches_active_preview(active, revision, saved_view, saved_rotation):
+        raise HTTPException(404, "no such public preview")
+    current, current_store = _public_record(world_id)
+    if _presentation(current) != (saved_view, saved_rotation) or _summary(current_store) != snapshot[0]:
         raise HTTPException(404, "no such public preview")
     return Response(png, media_type="image/png", headers=_NO_STORE)
 
@@ -297,14 +349,18 @@ async def _warm_world(world_id: str, request: Request) -> Response:
     _, store = _public_record(world_id)
     if not store.world_path.is_file():
         raise HTTPException(404, "no such public world")
-    _schedule_warm(request.app, world_id)
+    now = asyncio.get_running_loop().time()
+    # Apply the cooldown across worlds so rotating IDs cannot keep the worker
+    # resident. Admin and step requests do not go through this hint.
+    if request.app.state.warm_task is None and now >= request.app.state.public_warm_after:
+        request.app.state.warm_task = asyncio.create_task(_warm(request.app, world_id))
     return Response(status_code=202)
 
 
 async def _step(world_id: str, request: Request, guest_demo: bool = False) -> Response:
     worker = request.app.state.worker
     if not worker.running:
-        _, store = _public_record(world_id)
+        _, store = _public_record(world_id, include_running=True)
         if not store.world_path.is_file():
             raise HTTPException(404, "no such public world")
         # Exhausted and stale requests can be answered from committed metadata.
@@ -320,7 +376,7 @@ async def _step(world_id: str, request: Request, guest_demo: bool = False) -> Re
                 return await _proxy(request)
             if worker.running:
                 return await _proxy(request)
-            remaining = public_view.steps_remaining(request, auth.load_config(), guest_demo)
+            remaining = public_view.steps_remaining(request, auth.load_config(request), guest_demo)
             if payload.revision != world["revision"]:
                 return JSONResponse({"world": world, "computed": False, "steps_remaining": remaining})
             if remaining == 0:
@@ -337,7 +393,7 @@ async def _render(
     if not (1 <= width <= limit and 1 <= height <= limit):
         raise HTTPException(400, f"width/height must be in [1, {limit}]")
     if not request.app.state.worker.running:
-        record, store = _public_record(world_id)
+        record, store = _public_record(world_id, include_running=True)
         if not store.world_path.is_file():
             raise HTTPException(404, "no such public world")
         if (width, height) == (public_view.GUEST_DEFAULT_WIDTH, public_view.GUEST_DEFAULT_HEIGHT):
@@ -396,10 +452,14 @@ def _health() -> dict:
 
 
 def create_app(dist: str | None = None) -> FastAPI:
-    app = FastAPI(title="Mantle-Bloom", lifespan=_lifespan)
-    app.add_middleware(auth.AuthMiddleware)
+    app = FastAPI(title="Mantle-Bloom", lifespan=_lifespan, openapi_url=None)
+    app.add_middleware(auth.AuthMiddleware, allow_local=False)
     app.include_router(auth.router)
     app.add_api_route("/healthz", _health)
+    app.add_api_route("/openapi.json", _openapi, include_in_schema=False)
+    app.add_api_route("/docs", _swagger, include_in_schema=False)
+    app.add_api_route("/docs/oauth2-redirect", get_swagger_ui_oauth2_redirect_html, include_in_schema=False)
+    app.add_api_route("/redoc", _redoc, include_in_schema=False)
     app.add_api_route("/demo", _demo)
     app.add_api_route("/public/worlds", _public_records)
     app.add_api_route(_WORLD_PATH + "/world", _world_state)
@@ -415,6 +475,38 @@ def create_app(dist: str | None = None) -> FastAPI:
     if dist:
         mount_frontend(app, dist)
     return app
+
+
+async def _openapi(request: Request) -> dict:
+    app = request.app
+    async with app.state.openapi_lock:
+        if app.state.openapi is None:
+            try:
+                worker_schema = await app.state.worker.openapi()
+            except (OSError, WorkerUnavailable, httpx.HTTPError) as exc:
+                raise HTTPException(503, "the API schema is temporarily unavailable") from exc
+            # The simulator owns admin operations and their request/response
+            # models. Add only public operations implemented by this process.
+            public_schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
+            for path, operations in public_schema["paths"].items():
+                worker_schema["paths"].setdefault(path, operations)
+            schemas = worker_schema.setdefault("components", {}).setdefault("schemas", {})
+            for name, schema in public_schema.get("components", {}).get("schemas", {}).items():
+                schemas.setdefault(name, schema)
+            app.state.openapi = worker_schema
+    return app.state.openapi
+
+
+def _swagger(request: Request) -> Response:
+    root = request.scope.get("root_path", "")
+    return get_swagger_ui_html(
+        openapi_url=f"{root}/openapi.json", title="Mantle-Bloom API",
+        oauth2_redirect_url=f"{root}/docs/oauth2-redirect",
+    )
+
+
+def _redoc(request: Request) -> Response:
+    return get_redoc_html(openapi_url=f'{request.scope.get("root_path", "")}/openapi.json', title="Mantle-Bloom API")
 
 
 def _demo() -> RedirectResponse:

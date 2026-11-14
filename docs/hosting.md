@@ -33,13 +33,25 @@ On `/view`, the public process reads the last committed map from the volume. Aft
 the map, the browser asks the worker to restore the selected world in the background.
 Admin requests for a world and authorized step requests start or join the same worker.
 The first open of a world saved before snapshot support may need to restore and render it.
+Public warm hints share a cooldown of twice the idle timeout, starting when a hint
+finishes. Explicit admin and step requests can wake the worker immediately.
 
 `MANTLE_BLOOM_IDLE_SECONDS` sets how long the worker stays up after its last active request
 (default 90 seconds). Routine public polling can continue through sleep. Play, requests
 with active simulation work, and unsaved checkpoint changes keep the worker alive.
+If the worker exits unexpectedly, the public process restarts it for any checkpointed
+Play session. A failed hosted step returns the world to its last committed checkpoint.
+The public list omits worlds beyond the registry cap. The admin list shows their load error.
+Every completed change to a public world can trigger a canonical 2200 × 1222 render,
+including worlds other than the default. Allow memory for that render when raising the cap.
 Railway Serverless is disabled so the public process can always serve the saved map and
 Play can continue without traffic. The [memory profile](../analysis/exploration-railway-sleep/README.md)
 records the original idle footprint and the local measurements that informed this design.
+
+The hosted entry point requires a signed owner session for admin routes, including when
+run on loopback. Use the desktop or development entry point for local admin access without OAuth.
+Opening the API schema starts the worker on the first request so the hosted docs include
+the admin API.
 
 To avoid generating on the host at all, generate locally and upload the result: File > Save
 World on the local app, then File > Load World on the hosted app (admin only, like every

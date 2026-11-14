@@ -8,6 +8,7 @@ import os
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from http.cookiejar import CookieJar, DefaultCookiePolicy
 from pathlib import Path
 from typing import AsyncContextManager
 
@@ -33,6 +34,7 @@ class HostedWorker:
         self.socket = socket
         self.idle_seconds = idle_seconds
         self.process: asyncio.subprocess.Process | None = None
+        self.generation = 0
         self._ready = False
         self._startup = asyncio.Lock()
         self._requests = 0
@@ -41,11 +43,18 @@ class HostedWorker:
             base_url="http://simulation",
             transport=httpx.AsyncHTTPTransport(uds=str(socket)),
             timeout=httpx.Timeout(None, connect=2),
+            # Public responses set host-only cookies. Forward them to the
+            # caller without putting them in the shared client cookie jar.
+            cookies=CookieJar(policy=DefaultCookiePolicy(allowed_domains=())),
         )
 
     @property
     def running(self) -> bool:
         return self.process is not None and self.process.returncode is None
+
+    @property
+    def ready(self) -> bool:
+        return self.running and self._ready
 
     def touch(self) -> None:
         self._last_activity = asyncio.get_running_loop().time()
@@ -58,7 +67,7 @@ class HostedWorker:
         try:
             if wake:
                 await self._ensure_ready()
-            yield self.running and self._ready
+            yield self.ready
         finally:
             if activity:
                 self.touch()
@@ -77,6 +86,7 @@ class HostedWorker:
                     "--timeout-graceful-shutdown", "5",
                     env={**os.environ, "MANTLE_BLOOM_HOSTED_WORKER": "1", "MANTLE_BLOOM_LOCAL_NO_LOGIN": "0"},
                 )
+                self.generation += 1
             try:
                 async with asyncio.timeout(120):
                     while self.running:
@@ -117,12 +127,7 @@ class HostedWorker:
             await self._stop()
         await self._client.aclose()
 
-    async def retire_when_idle(self) -> None:
-        while True:
-            await asyncio.sleep(min(self.idle_seconds, 5))
-            await self._retire_if_idle()
-
-    async def _retire_if_idle(self) -> None:
+    async def retire_if_idle(self) -> None:
         if not self.running or not self._ready or self._requests or not self._idle_timeout_elapsed():
             return
         async with self._startup:
@@ -138,14 +143,23 @@ class HostedWorker:
         return asyncio.get_running_loop().time() - self._last_activity >= self.idle_seconds
 
     async def warm(self, world_id: str) -> None:
-        async with self.lease(wake=True, activity=True):
+        was_ready = self.ready
+        async with self.lease(wake=True, activity=False):
             response = await self._client.post(f"/_worker/warm/{world_id}", timeout=120)
             if response.status_code >= 500:
                 raise WorkerUnavailable("the checkpoint could not be opened")
+            if not was_ready or (response.is_success and response.json().get("warmed")):
+                self.touch()
 
     async def prepare(self) -> None:
         async with self.lease(wake=True, activity=True):
             pass
+
+    async def openapi(self) -> dict:
+        async with self.lease(wake=True, activity=True):
+            response = await self._client.get("/openapi.json", timeout=10)
+            response.raise_for_status()
+            return response.json()
 
     async def read(self, path: str, request: Request, params: dict | None = None) -> httpx.Response | None:
         async with self.lease(wake=False, activity=False) as ready:
@@ -154,11 +168,15 @@ class HostedWorker:
             try:
                 return await self._client.get(
                     path,
-                    headers=[(k, v) for k, v in request.headers.raw if k in (b"cookie", b"host")],
+                    headers=[(k, v) for k, v in request.headers.raw if k.lower() in (b"cookie", b"host")],
                     params=params,
                     timeout=2,
                 )
             except httpx.RequestError:
+                if not self.ready:
+                    return None
+                # While a live worker owns visibility changes, a timeout
+                # cannot authorize serving older metadata from disk.
                 return httpx.Response(503, json={"detail": "The simulation is unavailable. Try again shortly."})
 
     async def forward(self, request: Request, *, wake: bool = True, activity: bool = True) -> Response | None:
@@ -174,6 +192,8 @@ class HostedWorker:
         except (WorkerUnavailable, httpx.RequestError, OSError):
             if entered:
                 await lease.__aexit__(None, None, None)
+            if not wake and not self.ready:
+                return None
             return JSONResponse({"detail": "The simulation is waking up. Try again shortly."}, 503)
         except BaseException:
             if entered:
