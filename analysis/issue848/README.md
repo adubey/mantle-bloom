@@ -58,6 +58,49 @@ This validates the rebuild on the G0 development snapshots only. It says nothing
 applying callback (how a chosen cut becomes a split, and failed-rift thinning), which is still
 not rebuilt, so G2 behaviour is not reproduced.
 
+## Can a cheap test skip the search? (rebuilt generator, 4 worlds)
+
+Under the revised event model a plate with no structurally valid candidate has `q0 = 1`: no path and
+no geological mark, so skipping its search is exact if the test is exact. Three more worlds were
+generated (seeds `679647835`, `229148564`, `1333090219`, indices 1 to 3 of the same `profile` label;
+all development evidence, outside every registry). Each of the four worlds was measured from its 50
+and 100 Myr checkpoints for 10 steps after 3 warm-up steps (plates-only, production splitter), with
+the rebuilt generator on every split opportunity. Raw rows (635) stay private; the per-feature
+results are in [skip-predictors.json](skip-predictors.json), from `bin/debug/study_rfc0018_skip_predictors.py`.
+
+- **Most opportunities cannot produce a break at all.** 601 of 635 (94.6%) had no valid candidate,
+  and they took 650 of 761 s (85%) of the search time. Mean `P_break` was 0.005, 21 opportunities
+  were positive (the G0 snapshots, at 2 Myr, had 17 of 68).
+- **Plate node count is the only feature that separates them cleanly.** Every valid opportunity was on
+  a plate with at least 1,407 nodes. A threshold at 1,200 would skip 71% of opportunities and 55% of
+  search time; at 1,400, 84% and 68%. Held out by world (threshold fit on three worlds), the node-count
+  rule skipped 87% of opportunities with one false negative, which held 2.7% of `P_break` mass.
+- **That evidence is thinner than it looks.** The 34 valid rows sit at five node-count levels, so they
+  come from a handful of repeated plates, not 34 independent cases. Node count is also a proxy for
+  something else (plate shape or Fiedler-cut geometry); I have no mechanism that makes it a bound.
+  It is a sample-level rule, not an exact one, and the node threshold would scale with `node_density`.
+- **No other cheap feature is usable.** Flow-cluster edge share and cut length skip about half but
+  lose 79% and 4% of `P_break` mass; plate age, stress, residual ratio and recent extension
+  (`_open_rift`) skip little or lose a lot.
+
+| Step time vs a plates-only step (about 1.65 s), search included | Ratio |
+|---|---:|
+| Full search (as measured) | 6.8x |
+| Skip plates under 1,200 nodes | 3.6x |
+| Skip plates under 1,400 nodes | 2.8x |
+| Perfect exact skip of every no-valid opportunity | 1.84x |
+| G3 target (within 2%) | 1.02x |
+
+**Even a perfect exact skip cannot meet G3.** The 2% gate needs the search to cost about 0.3% of
+what it does now, which no filter of this kind reaches. Meeting it needs either a much cheaper
+solve (fewer iterations, warm starts, reuse across steps) or a revised runtime criterion with
+measured tradeoffs, which is one of the three options #848 lists. The ratios are from profiled
+runs on a plates-only baseline, so they are approximate.
+
+A predeclared rule (for example, skip plates under 1,200 nodes at density 1) should be checked on
+fresh seeds (profile indices 4 and up) before anyone relies on it, and changes the event
+distribution slightly, so G0 and G1 evidence would need a rerun.
+
 ## Which candidate generator the profile measured
 
 **This is the original G0 prototype, not the generator G1 and G2 froze.** `measure_rfc0018_g0.py`
