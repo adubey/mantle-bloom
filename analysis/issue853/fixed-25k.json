@@ -1,0 +1,69 @@
+{
+ "issue": 853,
+ "save": "/Users/adubey/Downloads/seed910211954-225.1myr.bloom",
+ "save_sha256": "c5b1f5d832e83e63f2a90a9f9f7bff03c885e831a0c6e585e22678a718168043",
+ "anchors": "analysis/rfc0016/target-anchor-window-d.json",
+ "merged_area_threshold_km2": 3000000.0,
+ "records": [
+  {
+   "step_years": 25000.0,
+   "slice_years": 25000.0,
+   "arm": "fixed_climate",
+   "substeps": 1,
+   "anchor_distance_km": 1.3298099964872123,
+   "anchor_wet": false,
+   "world_lake_km3": 3432647.709863522,
+   "anchor_lake_km3": 392526.6242638687,
+   "anchor_lake_area_km2": 274858.21594741446,
+   "merged": false,
+   "ledger_residual_norm": 6.972873247058384e-13,
+   "runtime_s": 134.2202470830016,
+   "peak_rss_mb": 1889.288192
+  },
+  {
+   "step_years": 25000.0,
+   "slice_years": 5000.0,
+   "arm": "fixed_climate",
+   "substeps": 5,
+   "anchor_distance_km": 1.3298099964872123,
+   "anchor_wet": false,
+   "world_lake_km3": 3483547.690966269,
+   "anchor_lake_km3": 408889.92612815095,
+   "anchor_lake_area_km2": 282240.391737999,
+   "merged": false,
+   "ledger_residual_norm": 5.81973774565522e-13,
+   "runtime_s": 137.53856749999977,
+   "peak_rss_mb": 1889.288192
+  },
+  {
+   "step_years": 25000.0,
+   "slice_years": 1000.0,
+   "arm": "fixed_climate",
+   "substeps": 25,
+   "anchor_distance_km": 1.3298099964872123,
+   "anchor_wet": false,
+   "world_lake_km3": 3485108.4666948253,
+   "anchor_lake_km3": 410446.66403299634,
+   "anchor_lake_area_km2": 282240.391737999,
+   "merged": false,
+   "ledger_residual_norm": 3.2405366850757793e-13,
+   "runtime_s": 123.24641616699955,
+   "peak_rss_mb": 1945.894912
+  },
+  {
+   "step_years": 25000.0,
+   "slice_years": 200.0,
+   "arm": "fixed_climate",
+   "substeps": 125,
+   "anchor_distance_km": 1.3298099964872123,
+   "anchor_wet": false,
+   "world_lake_km3": 3485310.657377222,
+   "anchor_lake_km3": 410648.71590006165,
+   "anchor_lake_area_km2": 282240.391737999,
+   "merged": false,
+   "ledger_residual_norm": 2.3063405370340788e-12,
+   "runtime_s": 110.2320774999971,
+   "peak_rss_mb": 1945.894912
+  }
+ ]
+}
