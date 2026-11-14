@@ -83,8 +83,8 @@ damage-driven local cuts that may link into rift segments; see
 RFC 0018 is accepted for diagnosis gates to replace the great-circle split choice. Its
 2026-11-14 revision proposes rift strain stored in each cell: drag, slab pull and plumes strain
 rock past a softened strength, bands localize and thin, and a plate splits along the cheapest path
-through the remaining strength. This replaces the earlier graph cut, whose eigensolves could not
-meet the runtime gate (#848) and whose validity checks measured geometry rather than load (#876).
+through the remaining strength. This replaces the earlier graph cut, whose measured implementations and exact
+shortcuts stayed far above the runtime gate (#848) and whose validity checks measured geometry rather than load (#876).
 It draws on RFC 0010's failed minimum-cut, detected-route and damage work (#487, #699), and on
 #770's finding that weaker pseudo-suture route cost alone did not reduce tiny breakups. RFC 0010 remains accepted until its withdrawal
 is completed after RFC 0018's gates settle. Tracking issue: [#797](https://github.com/adubey/mantle-bloom/issues/797).
