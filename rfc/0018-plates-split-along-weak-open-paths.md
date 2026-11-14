@@ -2,222 +2,8 @@
 
 - **Status:** Accepted (revision proposed 2026-11-14 after #848 runtime evidence and #876 rift-candidate exploration; revision proposed 2026-11-09 after spectral-weighting, runtime and failed-rift review; revised 2026-11-08 after G2 sample-size review; revised 2026-11-06 after G2 non-worsening criterion review; revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
 - **Date:** 2026-11-03
+- **Revisions:** dated entries, newest first, are in the [Revision note](#revision-note) near the end.
 - **Related:** #487, #699, #770, #797, #802, #836, #846, #848, #850, #851, #866, #876; RFC [0007](0007-mantle-plumes-and-plateaus.md) (plumes); RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (accepted predecessor; withdrawal follows gates)
-
-## Revision note
-
-**2026-11-14 — damage bands replace the eigensolve candidate search (revision proposed after #848 and #876).**
-The previous version chose a split by a weighted-Laplacian graph cut: up to twelve candidate cuts per
-plate, each refined by repeated sparse eigensolves, filtered by structural checks, scored by an
-`O/R/S` breakup prior and drawn as one keyed stochastic event. Failed attempts thinned a band along
-the drawn path.
-
-The evidence against keeping it:
-
-- **Runtime ([#848](https://github.com/adubey/mantle-bloom/issues/848), [`analysis/issue848/`](../analysis/issue848/README.md)).**
-  Eigensolves are about 85% of search time. A perfect exact skip of opportunities with no valid
-  candidate still leaves about 1.84 times the baseline step time. Lower refinement caps change
-  partitions and `P_break`, and the one exact shortcut saves 16% of solves.
-- **Validity is geometric ([#876](https://github.com/adubey/mantle-bloom/issues/876), [`analysis/issue876/`](../analysis/issue876/README.md)).**
-  Structural validity is unrelated to extensional load relative to strength (AUC 0.47–0.56), so
-  valid cuts are bookkeeping candidates, not physical ones. Valid cuts carry about 7% of column
-  capacity under one step's load.
-- **Damage needs softening ([#699](https://github.com/adubey/mantle-bloom/issues/699), [`analysis/issue487/`](../analysis/issue487/README.md)).**
-  Damage that does not weaken rock fragments plates. The absolute strength threshold depends on an
-  unconstrained background stress, so it must be calibrated.
-
-The owner then set the goal and rules for this revision in [#876](https://github.com/adubey/mantle-bloom/issues/876#issuecomment-6874579897):
-efficient, realistic-looking rifting rather than new science; parameters with literature defaults
-and a tuning search; loads from mantle drag, slab pull and plumes; bands that start about
-100–150 km wide and grow; physical candidates that can start anywhere; and gates on realism and
-runtime. This revision replaces the candidate search, prior and draws with rift strain stored in
-each cell. Strain grows where load exceeds a softened strength and thins the band in place, and a
-split follows the cheapest path through the remaining strength once the intact ligament fails. It
-keeps the minimum age, cooldown, mask-based split helper, trace-band craton diagnostics, tiny-breakup
-definition, held-out sample and the G3 limits.
-
-| Gate | Previous criterion | Proposed criterion | Reason |
-|---|---|---|---|
-| G0 | Candidate geometry, opening, availability and solve counts on 20 development worlds for direct-cost weighting | **D0:** calibrate the cheap directional load tensor against the thin-shell diagnostic: manufactured sign cases, then sign agreement, principal direction, rank correlation and magnitude ratio on development worlds; otherwise switch to periodic shell solves | The candidate search is removed; the load proxy is the new uncertain input |
-| G1 | `O/R/S` prior monotonicity and path-distribution checks | **D1:** predeclared parameter search on development worlds against the realism targets, including the #699 fragmentation check | The stochastic prior is removed; tuning replaces probability calibration, as the owner directed |
-| G2 | Ten revised held-out pairs (registry 12–20 plus reserve `1479220500`); at most one `D_s < 0`; at least 50 combined actual splits, with the frozen reserve-list fallback | **D2:** same ten seeds, same tiny-breakup non-worsening limit, same combined 50-split count and reserve fallback, plus every realism target | Owner gates on realism; the held-out sample is still unrun for any revised method |
-| G3 | Runtime within 2%; craton loss at most 2% per Gyr; 10–40 plates; half-step plate count, craton loss and tiny-breakup share within 20% (zero-share rule) | **D3:** all accepted limits unchanged, with breakup count and rift duration added to the half-step comparison | Owner gates on runtime; limits unchanged |
-
-| Item | Verdict | Reason |
-|---|---|---|
-| G0–G2 results for either weighting | Historical | They evaluate the removed candidate method |
-| G3 | Re-scoped as D3 | Limits unchanged; run after implementation |
-| [#846](https://github.com/adubey/mantle-bloom/issues/846) production implementation | Blocked, re-scope | Implement the damage-band method after D0 and D1 |
-| [#797](https://github.com/adubey/mantle-bloom/issues/797) tracking | Re-scope | Replace the G0–G3 checklist with D0–D3 |
-| [#848](https://github.com/adubey/mantle-bloom/issues/848) | Close after a return comment | Every measured implementation and tested exact shortcut stays far above G3's limit; untested equivalent optimizations are not ruled out, but the method they would speed up is replaced. Before closing, post a consolidated return on #848: the runtime findings, the failed-rift finding (the experimental callback never applied failed-rift thinning; failed rifts are now bands left in the rock) and the G0–G3 to D0–D3 gate change |
-| [#836](https://github.com/adubey/mantle-bloom/issues/836), [#866](https://github.com/adubey/mantle-bloom/issues/866) | Addressed in part | Interior localization is the proposed fix for wide subsidence; margin `_open_rift` is unchanged |
-| [#699](https://github.com/adubey/mantle-bloom/issues/699) | Evidence | Its fragmentation result motivates softening; no further gate depends on it |
-| RFC 0010 | Unchanged | Remains accepted until this RFC's gates and lifecycle decision settle |
-
-**2026-11-09 — weak-path weighting, failed-rift outcomes and runtime evidence (revision proposed in #848).**
-The accepted method used `conductance = 1 / edge_cost` in its weighted graph Laplacian even though
-`edge_cost` is the resistance to cutting. Since the Laplacian quadratic form is
-`xᵀLx = Σ wᵢⱼ(xᵢ - xⱼ)²`, this mapping penalizes separating the low-resistance edges that the
-proposal intends to cut. In the controlled comparison in
-[#850](https://github.com/adubey/mantle-bloom/issues/850), the inverse mapping crossed both
-planted weak links in 0/100 cycles; direct cost crossed both in 100/100. Across 68 frozen G0
-opportunities, direct cost shared no candidate partition fingerprints with the inverse mapping,
-changed the selected partition in all 68, and selected the same anchor in 9/68. Direct cost
-therefore matches the weak-link direction better, but it is not a validated final method: its
-selected development cuts had median net opening `−0.059 cm/yr`, so geometry, availability and
-the accepted `O/R/S` prior must be rechecked before held-out runs. The direct-cost snapshot
-comparison made 6,072 sparse eigensolves in 259.6 s versus 6,481 in 311.6 s for inverse cost;
-these are diagnostic timings, not full-simulation runtime evidence. [PR #851](https://github.com/adubey/mantle-bloom/pull/851)
-records the reproducible comparison.
-
-The first ten G2 pairs had median wall times of 8,363.5 s for the graph callback and 505.2 s
-for baseline (16.25×), but the run record lacks sufficient isolation metadata to call this a
-controlled G3 failure. The graph callback also returned on a failed breakup without applying
-the RFC-required thinning and craton diagnostics along a selected path. This means G2 remains
-evidence for the experimental callback and the old candidate method only; it does not establish
-runtime or full failed-rift behavior for the revised method. The accepted G3 runtime limit
-remains unchanged until a controlled paired measurement exists. No output-preserving runtime
-optimization has been demonstrated, so the candidate method's ability to meet the 2% limit
-remains unknown.
-
-The inverse weighting conflicts with principle 8 because it steers the partition away from
-the weak paths the breakup process is intended to use. The solve cost raises principle 2's
-runtime constraint, and principle 9 requires controlled evidence before calling G3 failed or
-passed.
-
-This revision proposes `edge_cost` as the positive, dimensionless Laplacian adjacency weight,
-preserving the cost meaning: lower-cost edges carry a smaller separation penalty. It also makes
-the event outcome explicit. For candidate `i`, let `qᵢ` be its proposal probability and `pᵢ` its
-frozen breakup prior; let `q₀` be the probability of proposing no structurally valid path. Draw
-breakup with `P_break = Σᵢ qᵢpᵢ`. On breakup, retain the conditional path distribution
-`qᵢpᵢ / P_break`. On no breakup, choose a failed path with conditional mass
-`qᵢ(1−pᵢ) / (1−P_break)`, or choose no path with mass `q₀ / (1−P_break)`. The same path then
-drives the split or failed-rift thinning and craton diagnostics. The no-path outcome makes no
-geological mark. This is the candidate-first proposal-and-outcome model written in event-first
-form; it preserves the successful path distribution and gives a failed attempt a path without
-applying a second independent success roll. Event and path draws use separate keyed streams.
-
-| Item | Verdict | Reason |
-|---|---|---|
-| G0 | Must rerun | The Laplacian weighting changes candidate partitions and selected traces; remeasure geometry, candidate availability, opening, score and runtime on development worlds. |
-| G1 | Must rerun | Revalidate the frozen `O/R/S` prior and structural checks against the revised candidate distribution, and test failed-path selection and no-path outcomes. |
-| G2 | Must rerun | The existing pass is for the inverse-weight experimental callback and omits failed-rift effects. Use only still-unrun held-out seeds for the revised method after the revised sample is frozen. |
-| G3 | Blocked | Run after the method and failed-rift semantics are implemented; use controlled paired full simulations. Keep the 2% runtime limit pending valid measurements. |
-| #846 | Blocked | Keep production implementation paused until the revision and required G0/G1 gates are accepted and pass. |
-| #847 | Unchanged as historical evidence | It records the old method's G0–G2 results; it is not validation for this revision. |
-| #850 / #851 | Unchanged as completed diagnostic evidence | The controlled weighting result stands; it motivates a revised candidate but does not validate it. |
-| #797 | Re-scope after revision decision | Update the gate checklist and implementation dependency after the owner decides on this revision. |
-| RFC 0010 | Blocked | It remains accepted until the revised RFC 0018 gates and lifecycle decision are settled. |
-
-The first ten G2 seeds remain excluded from tuning and revised-method validation. Of registry
-seeds 11–20, nine remain wholly unrun. Seed `205240614` has a completed baseline-only run and
-should not be described as unseen; this revision excludes it from a clean revised-method
-sample. To retain ten pairs, the proposed new sample is the nine untouched registry seeds
-12–20 plus the first frozen reserve seed, `1479220500`, subject to the owner's approval of this
-revised gate. The remaining 29 reserve seeds stay available under the preregistered reserve
-rule. No seed in the proposed sample is used for development or tuning.
-
-| Gate | Previously accepted evidence or criterion | Proposed revision | Reason |
-|---|---|---|---|
-| G0 | Passed on 20 development worlds for inverse weighting | Repeat on 20 development worlds with direct-cost weighting; compare with uniform control and report candidate geometry, opening, availability and solve cost | Direct cost changed the selected partition in all 68 measured opportunities, so the old geometry and runtime evidence does not apply. |
-| G1 | Passed controlled probability and structural checks for the old candidate flow | Repeat the `O/R/S` checks and validate success-path, failed-path and no-path distributions | The candidate paths change, and the old callback had no failed-path outcome. |
-| G2 | The amended gate evaluated the first ten registry seeds; at most one of ten could have `D_s < 0` and the pair set needed at least 50 actual splits | For the revised method, evaluate seeds 12–20 plus frozen reserve seed `1479220500`; retain the one-of-ten and 50-split limits | The first ten have already evaluated the old method. Seed 11 (`205240614`) has a baseline-only run, leaving nine wholly unseen registry seeds. This sample change needs owner approval before use. |
-| G3 | Median runtime within 2% of paired production baseline; existing craton, plate-count and timestep limits | Keep all limits. Use paired, serialized, same-host and same-settings full runs with profiling separate | Existing wall times are not controlled enough to justify changing the 2% limit. |
-
-**2026-11-08 — G0–G2 diagnosis results recorded.** Revised G0 and the coupled-probability
-G1 diagnostics pass on the 20 preregistered development worlds. G2 passes under the
-owner-directed 10-pair amendment merged in [PR #845](https://github.com/adubey/mantle-bloom/pull/845):
-all first 10 frozen pairs completed, zero had `D_s < 0`, and they produced 255 combined actual
-splits. The G2 amendment was made after those ten outcomes were observed, so it is post-result
-evidence with lower precision and supports non-worsening on the evaluated pairs, not positive
-efficacy. Production implementation is tracked in [#846](https://github.com/adubey/mantle-bloom/issues/846). Gate details and compact evidence are in
-[`analysis/issue797/README.md`](../analysis/issue797/README.md). Production implementation,
-implementation-level ledger checks, G3 and the remaining acceptance criteria are still open.
-
-**2026-11-08 — G2 sample-size amendment.** The owner requested reducing the G2 held-out
-sample from 20 pairs to 10 because the graph runs are taking a long time. The first ten
-seeds in the frozen registry are the evaluation set; all ten paired runs are complete. Keep
-the existing non-worsening tolerance at 10% of the sample, rounded to one seed: at most one
-of ten may have `D_s < 0`. Keep the combined 50-actual-split requirement and all other
-simulation settings and outcome definitions unchanged. The ten pairs produced 255 actual
-splits (157 baseline, 98 graph), zero tiny splits in either arm, and `D_s = 0` for every pair.
-Thus the amended criteria pass on these ten pairs.
-
-This is a post-result, owner-directed amendment: the first ten outcomes were observed before
-the sample size was reduced. It is not preregistered or confirmatory, and the smaller sample
-has less precision. The result supports non-worsening on these ten pairs; it does not show
-positive efficacy. The ten-pair results and amendment are recorded in
-[`analysis/issue797/g2-sample-size-amendment.json`](../analysis/issue797/g2-sample-size-amendment.json).
-
-| Gate | Previous criterion | Revised criterion | Reason |
-|---|---|---|---|
-| G2 sample and non-worsening threshold | Complete all 20 frozen held-out pairs; at most two may have `D_s < 0`; at least 50 combined actual split events | Complete the first 10 seeds in the frozen registry; at most one may have `D_s < 0`; at least 50 combined actual split events | The owner requested a shorter evaluation because graph runs take a long time; preserving the 10% tolerance gives a limit of one worsened pair out of ten. The change was made after the first ten outcomes were observed. |
-
-**2026-11-06 — G2 non-worsening criterion amendment.** This revision is proposed in
-[PR #824](https://github.com/adubey/mantle-bloom/pull/824). The owner approved replacing the
-positive-effect requirements after the first four held-out pairs had `D_s = 0` in every pair:
-neither method produced a tiny breakup (66 baseline splits and 38 graph splits, zero tiny
-events in either arm). The previous amendment required a positive mean
-`D_s`, a paired bootstrap interval wholly above zero, and improvement on at least two seeds.
-At that stage, the criterion passed when no more than two of the 20 held-out seeds had `D_s < 0`;
-`D_s = 0` counts as non-worsening. This permits a result with no improvement if the graph
-method also avoids adding tiny breakups. This is an owner-selected tolerance, not a geological
-rate threshold. The seed list and simulation settings remain fixed; all four observed pairs
-remain in the analysis. Because the criterion changed after four outcomes were observed,
-label the result as a second amended G2 analysis, not as preregistered. Continue to report the
-mean `D_s`, its 95% paired seed-bootstrap interval, and the number of seeds with `D_s > 0` as
-descriptive evidence, but they are no longer pass conditions.
-
-| Gate | Previous criterion | Revised criterion | Reason |
-|---|---|---|---|
-| G2 outcome threshold | Mean `D_s > 0`, two-sided 95% paired seed-bootstrap interval above zero, and `D_s > 0` on at least two seeds | No more than two of the 20 held-out seeds have `D_s < 0`; `D_s = 0` is non-worsening. Complete all 20 pairs and meet the existing 50-event requirement. | The first four pairs showed zero tiny events in both methods. Requiring positive improvement and a positive interval would reject ties even though the owner's goal is to avoid making tiny breakups worse. |
-
-**2026-11-06 — G2 tiny-breakup endpoint amendment.** This revision merged in
-[PR #823](https://github.com/adubey/mantle-bloom/pull/823). The owner approved this change after
-the first two held-out seed pairs exposed a zero-baseline failure: both methods had zero tiny
-breakups, so the relative reduction divided by a zero baseline share and was undefined. The
-relative share also conditions on the number of splits, which can differ between methods
-under the same 200 Myr exposure. The two pairs had 42 baseline splits and 19 graph splits,
-with zero tiny breakups in either arm (`S_baseline = 0`, `S_graph = 0`, so the share
-difference is 0 percentage points); their paired tiny-count differences are both zero.
-These are preliminary outcomes from the G2 diagnostic run associated with [#797](https://github.com/adubey/mantle-bloom/issues/797). The seed
-list and simulation protocol remain fixed. Because the endpoint changed after two pairs were
-observed, report the revised result as an amended G2 analysis, retain the originally
-preregistered share-based result as a secondary analysis, and do not describe the revised
-endpoint as preregistered. Keep both completed pairs in all summaries and uncertainty
-calculations.
-
-| Gate | Earlier criterion | Revised criterion | Reason |
-|---|---|---|---|
-| G2 primary outcome | At least one-third relative reduction in the share of actual splits with a smaller daughter under 7% of parent area, and improvement on at least two seeds | For each seed, `D_s = T_baseline,s - T_graph,s`, the difference in tiny-breakup counts over 200 Myr. Pass when the mean paired difference is positive, its two-sided 95% paired seed-bootstrap interval excludes zero in the beneficial direction, and `D_s > 0` for at least two seeds. Use 10,000 resamples of whole seed pairs. | Relative reduction is undefined at a zero baseline share. Paired count differences are defined even when an arm has no splits or no tiny splits, and measure event burden at the fixed world exposure. |
-| G2 supporting measures | Tiny-breakup share and daughter mass distribution | Report the original relative share reduction, percentage-point difference `S_baseline - S_graph`, and smaller-daughter area and mass distributions as secondary measures. | Preserve comparison with #770 while showing conditional split quality and daughter sizes. |
-| G3 timestep comparison | Tiny-breakup share within 20% of the normal-step result | Keep the 20% relative comparison when the normal-step share is nonzero; if it is zero, require zero tiny breakups at half step. Report paired counts and shares. | Avoid dividing by a zero normal-step share. |
-
-The current outcome threshold in the later 2026-11-06 amendment, further amended on
-2026-11-08 for sample size, supersedes the intermediate positive-effect criterion in this
-table. The intermediate endpoint and criterion were both
-changed transparently after held-out outcomes had been observed.
-
-The G2 endpoint is an amended analysis because it was selected after two seed-pair outcomes
-were observed. The original relative-share result remains reported for transparency. The
-seed list and the minimum of 50 actual split events across the seed set, with its frozen
-reserve rule, remain unchanged.
-
-**2026-11-04 — G1 gate review.** This revision proposed [PR #810](https://github.com/adubey/mantle-bloom/pull/810). The previous G1 required at least 10 observed opportunities
-and a usable candidate in at least two thirds of trigger-positive opportunities. The 2/3 rate
-was a project-selected usability cutoff, not a geological estimate. Geological rift systems
-are not independent draws from the simulation's per-trigger opportunities, and observations
-show both successful and failed systems whose outcomes depend on evolving force balance,
-weakening and competition. The literature does not establish a universal success fraction for
-this denominator; the mechanisms separating successful and failed rifts remain debated
-[[Brune et al., 2023]](#ref-brune2023), and mapped failed systems illustrate the variety of
-incomplete rift histories [[Elling et al., 2022]](#ref-elling2022).
-
-The old G1 rate criterion is removed. G1 now checks structural invariants and the stated
-probability model's behavior on controlled cases, while development-world outcome counts are
-reported descriptively with uncertainty. No aggregate per-opportunity fraction is called a
-geological pass threshold. G1 does not claim geological rate calibration; that would need a
-separate mapping between simulated opportunity exposure and geological rift episodes.
 
 ## Problem
 
@@ -792,6 +578,221 @@ in a shared projection and legend.
   regularization choice, not a prediction. D1 checks that width does not follow the node spacing.
 - **Not geological rates.** Realism targets judge appearance and timing on model worlds. They are
   not calibrated rift-frequency estimates.
+
+## Revision note
+
+**2026-11-14 — damage bands replace the eigensolve candidate search (revision proposed after #848 and #876).**
+The previous version chose a split by a weighted-Laplacian graph cut: up to twelve candidate cuts per
+plate, each refined by repeated sparse eigensolves, filtered by structural checks, scored by an
+`O/R/S` breakup prior and drawn as one keyed stochastic event. Failed attempts thinned a band along
+the drawn path.
+
+The evidence against keeping it:
+
+- **Runtime ([#848](https://github.com/adubey/mantle-bloom/issues/848), [`analysis/issue848/`](../analysis/issue848/README.md)).**
+  Eigensolves are about 85% of search time. A perfect exact skip of opportunities with no valid
+  candidate still leaves about 1.84 times the baseline step time. Lower refinement caps change
+  partitions and `P_break`, and the one exact shortcut saves 16% of solves.
+- **Validity is geometric ([#876](https://github.com/adubey/mantle-bloom/issues/876), [`analysis/issue876/`](../analysis/issue876/README.md)).**
+  Structural validity is unrelated to extensional load relative to strength (AUC 0.47–0.56), so
+  valid cuts are bookkeeping candidates, not physical ones. Valid cuts carry about 7% of column
+  capacity under one step's load.
+- **Damage needs softening ([#699](https://github.com/adubey/mantle-bloom/issues/699), [`analysis/issue487/`](../analysis/issue487/README.md)).**
+  Damage that does not weaken rock fragments plates. The absolute strength threshold depends on an
+  unconstrained background stress, so it must be calibrated.
+
+The owner then set the goal and rules for this revision in [#876](https://github.com/adubey/mantle-bloom/issues/876#issuecomment-6874579897):
+efficient, realistic-looking rifting rather than new science; parameters with literature defaults
+and a tuning search; loads from mantle drag, slab pull and plumes; bands that start about
+100–150 km wide and grow; physical candidates that can start anywhere; and gates on realism and
+runtime. This revision replaces the candidate search, prior and draws with rift strain stored in
+each cell. Strain grows where load exceeds a softened strength and thins the band in place, and a
+split follows the cheapest path through the remaining strength once the intact ligament fails. It
+keeps the minimum age, cooldown, mask-based split helper, trace-band craton diagnostics, tiny-breakup
+definition, held-out sample and the G3 limits.
+
+| Gate | Previous criterion | Proposed criterion | Reason |
+|---|---|---|---|
+| G0 | Candidate geometry, opening, availability and solve counts on 20 development worlds for direct-cost weighting | **D0:** calibrate the cheap directional load tensor against the thin-shell diagnostic: manufactured sign cases, then sign agreement, principal direction, rank correlation and magnitude ratio on development worlds; otherwise switch to periodic shell solves | The candidate search is removed; the load proxy is the new uncertain input |
+| G1 | `O/R/S` prior monotonicity and path-distribution checks | **D1:** predeclared parameter search on development worlds against the realism targets, including the #699 fragmentation check | The stochastic prior is removed; tuning replaces probability calibration, as the owner directed |
+| G2 | Ten revised held-out pairs (registry 12–20 plus reserve `1479220500`); at most one `D_s < 0`; at least 50 combined actual splits, with the frozen reserve-list fallback | **D2:** same ten seeds, same tiny-breakup non-worsening limit, same combined 50-split count and reserve fallback, plus every realism target | Owner gates on realism; the held-out sample is still unrun for any revised method |
+| G3 | Runtime within 2%; craton loss at most 2% per Gyr; 10–40 plates; half-step plate count, craton loss and tiny-breakup share within 20% (zero-share rule) | **D3:** all accepted limits unchanged, with breakup count and rift duration added to the half-step comparison | Owner gates on runtime; limits unchanged |
+
+| Item | Verdict | Reason |
+|---|---|---|
+| G0–G2 results for either weighting | Historical | They evaluate the removed candidate method |
+| G3 | Re-scoped as D3 | Limits unchanged; run after implementation |
+| [#846](https://github.com/adubey/mantle-bloom/issues/846) production implementation | Blocked, re-scope | Implement the damage-band method after D0 and D1 |
+| [#797](https://github.com/adubey/mantle-bloom/issues/797) tracking | Re-scope | Replace the G0–G3 checklist with D0–D3 |
+| [#848](https://github.com/adubey/mantle-bloom/issues/848) | Close after a return comment | Every measured implementation and tested exact shortcut stays far above G3's limit; untested equivalent optimizations are not ruled out, but the method they would speed up is replaced. Before closing, post a consolidated return on #848: the runtime findings, the failed-rift finding (the experimental callback never applied failed-rift thinning; failed rifts are now bands left in the rock) and the G0–G3 to D0–D3 gate change |
+| [#836](https://github.com/adubey/mantle-bloom/issues/836), [#866](https://github.com/adubey/mantle-bloom/issues/866) | Addressed in part | Interior localization is the proposed fix for wide subsidence; margin `_open_rift` is unchanged |
+| [#699](https://github.com/adubey/mantle-bloom/issues/699) | Evidence | Its fragmentation result motivates softening; no further gate depends on it |
+| RFC 0010 | Unchanged | Remains accepted until this RFC's gates and lifecycle decision settle |
+
+**2026-11-09 — weak-path weighting, failed-rift outcomes and runtime evidence (revision proposed in #848).**
+The accepted method used `conductance = 1 / edge_cost` in its weighted graph Laplacian even though
+`edge_cost` is the resistance to cutting. Since the Laplacian quadratic form is
+`xᵀLx = Σ wᵢⱼ(xᵢ - xⱼ)²`, this mapping penalizes separating the low-resistance edges that the
+proposal intends to cut. In the controlled comparison in
+[#850](https://github.com/adubey/mantle-bloom/issues/850), the inverse mapping crossed both
+planted weak links in 0/100 cycles; direct cost crossed both in 100/100. Across 68 frozen G0
+opportunities, direct cost shared no candidate partition fingerprints with the inverse mapping,
+changed the selected partition in all 68, and selected the same anchor in 9/68. Direct cost
+therefore matches the weak-link direction better, but it is not a validated final method: its
+selected development cuts had median net opening `−0.059 cm/yr`, so geometry, availability and
+the accepted `O/R/S` prior must be rechecked before held-out runs. The direct-cost snapshot
+comparison made 6,072 sparse eigensolves in 259.6 s versus 6,481 in 311.6 s for inverse cost;
+these are diagnostic timings, not full-simulation runtime evidence. [PR #851](https://github.com/adubey/mantle-bloom/pull/851)
+records the reproducible comparison.
+
+The first ten G2 pairs had median wall times of 8,363.5 s for the graph callback and 505.2 s
+for baseline (16.25×), but the run record lacks sufficient isolation metadata to call this a
+controlled G3 failure. The graph callback also returned on a failed breakup without applying
+the RFC-required thinning and craton diagnostics along a selected path. This means G2 remains
+evidence for the experimental callback and the old candidate method only; it does not establish
+runtime or full failed-rift behavior for the revised method. The accepted G3 runtime limit
+remains unchanged until a controlled paired measurement exists. No output-preserving runtime
+optimization has been demonstrated, so the candidate method's ability to meet the 2% limit
+remains unknown.
+
+The inverse weighting conflicts with principle 8 because it steers the partition away from
+the weak paths the breakup process is intended to use. The solve cost raises principle 2's
+runtime constraint, and principle 9 requires controlled evidence before calling G3 failed or
+passed.
+
+This revision proposes `edge_cost` as the positive, dimensionless Laplacian adjacency weight,
+preserving the cost meaning: lower-cost edges carry a smaller separation penalty. It also makes
+the event outcome explicit. For candidate `i`, let `qᵢ` be its proposal probability and `pᵢ` its
+frozen breakup prior; let `q₀` be the probability of proposing no structurally valid path. Draw
+breakup with `P_break = Σᵢ qᵢpᵢ`. On breakup, retain the conditional path distribution
+`qᵢpᵢ / P_break`. On no breakup, choose a failed path with conditional mass
+`qᵢ(1−pᵢ) / (1−P_break)`, or choose no path with mass `q₀ / (1−P_break)`. The same path then
+drives the split or failed-rift thinning and craton diagnostics. The no-path outcome makes no
+geological mark. This is the candidate-first proposal-and-outcome model written in event-first
+form; it preserves the successful path distribution and gives a failed attempt a path without
+applying a second independent success roll. Event and path draws use separate keyed streams.
+
+| Item | Verdict | Reason |
+|---|---|---|
+| G0 | Must rerun | The Laplacian weighting changes candidate partitions and selected traces; remeasure geometry, candidate availability, opening, score and runtime on development worlds. |
+| G1 | Must rerun | Revalidate the frozen `O/R/S` prior and structural checks against the revised candidate distribution, and test failed-path selection and no-path outcomes. |
+| G2 | Must rerun | The existing pass is for the inverse-weight experimental callback and omits failed-rift effects. Use only still-unrun held-out seeds for the revised method after the revised sample is frozen. |
+| G3 | Blocked | Run after the method and failed-rift semantics are implemented; use controlled paired full simulations. Keep the 2% runtime limit pending valid measurements. |
+| #846 | Blocked | Keep production implementation paused until the revision and required G0/G1 gates are accepted and pass. |
+| #847 | Unchanged as historical evidence | It records the old method's G0–G2 results; it is not validation for this revision. |
+| #850 / #851 | Unchanged as completed diagnostic evidence | The controlled weighting result stands; it motivates a revised candidate but does not validate it. |
+| #797 | Re-scope after revision decision | Update the gate checklist and implementation dependency after the owner decides on this revision. |
+| RFC 0010 | Blocked | It remains accepted until the revised RFC 0018 gates and lifecycle decision are settled. |
+
+The first ten G2 seeds remain excluded from tuning and revised-method validation. Of registry
+seeds 11–20, nine remain wholly unrun. Seed `205240614` has a completed baseline-only run and
+should not be described as unseen; this revision excludes it from a clean revised-method
+sample. To retain ten pairs, the proposed new sample is the nine untouched registry seeds
+12–20 plus the first frozen reserve seed, `1479220500`, subject to the owner's approval of this
+revised gate. The remaining 29 reserve seeds stay available under the preregistered reserve
+rule. No seed in the proposed sample is used for development or tuning.
+
+| Gate | Previously accepted evidence or criterion | Proposed revision | Reason |
+|---|---|---|---|
+| G0 | Passed on 20 development worlds for inverse weighting | Repeat on 20 development worlds with direct-cost weighting; compare with uniform control and report candidate geometry, opening, availability and solve cost | Direct cost changed the selected partition in all 68 measured opportunities, so the old geometry and runtime evidence does not apply. |
+| G1 | Passed controlled probability and structural checks for the old candidate flow | Repeat the `O/R/S` checks and validate success-path, failed-path and no-path distributions | The candidate paths change, and the old callback had no failed-path outcome. |
+| G2 | The amended gate evaluated the first ten registry seeds; at most one of ten could have `D_s < 0` and the pair set needed at least 50 actual splits | For the revised method, evaluate seeds 12–20 plus frozen reserve seed `1479220500`; retain the one-of-ten and 50-split limits | The first ten have already evaluated the old method. Seed 11 (`205240614`) has a baseline-only run, leaving nine wholly unseen registry seeds. This sample change needs owner approval before use. |
+| G3 | Median runtime within 2% of paired production baseline; existing craton, plate-count and timestep limits | Keep all limits. Use paired, serialized, same-host and same-settings full runs with profiling separate | Existing wall times are not controlled enough to justify changing the 2% limit. |
+
+**2026-11-08 — G0–G2 diagnosis results recorded.** Revised G0 and the coupled-probability
+G1 diagnostics pass on the 20 preregistered development worlds. G2 passes under the
+owner-directed 10-pair amendment merged in [PR #845](https://github.com/adubey/mantle-bloom/pull/845):
+all first 10 frozen pairs completed, zero had `D_s < 0`, and they produced 255 combined actual
+splits. The G2 amendment was made after those ten outcomes were observed, so it is post-result
+evidence with lower precision and supports non-worsening on the evaluated pairs, not positive
+efficacy. Production implementation is tracked in [#846](https://github.com/adubey/mantle-bloom/issues/846). Gate details and compact evidence are in
+[`analysis/issue797/README.md`](../analysis/issue797/README.md). Production implementation,
+implementation-level ledger checks, G3 and the remaining acceptance criteria are still open.
+
+**2026-11-08 — G2 sample-size amendment.** The owner requested reducing the G2 held-out
+sample from 20 pairs to 10 because the graph runs are taking a long time. The first ten
+seeds in the frozen registry are the evaluation set; all ten paired runs are complete. Keep
+the existing non-worsening tolerance at 10% of the sample, rounded to one seed: at most one
+of ten may have `D_s < 0`. Keep the combined 50-actual-split requirement and all other
+simulation settings and outcome definitions unchanged. The ten pairs produced 255 actual
+splits (157 baseline, 98 graph), zero tiny splits in either arm, and `D_s = 0` for every pair.
+Thus the amended criteria pass on these ten pairs.
+
+This is a post-result, owner-directed amendment: the first ten outcomes were observed before
+the sample size was reduced. It is not preregistered or confirmatory, and the smaller sample
+has less precision. The result supports non-worsening on these ten pairs; it does not show
+positive efficacy. The ten-pair results and amendment are recorded in
+[`analysis/issue797/g2-sample-size-amendment.json`](../analysis/issue797/g2-sample-size-amendment.json).
+
+| Gate | Previous criterion | Revised criterion | Reason |
+|---|---|---|---|
+| G2 sample and non-worsening threshold | Complete all 20 frozen held-out pairs; at most two may have `D_s < 0`; at least 50 combined actual split events | Complete the first 10 seeds in the frozen registry; at most one may have `D_s < 0`; at least 50 combined actual split events | The owner requested a shorter evaluation because graph runs take a long time; preserving the 10% tolerance gives a limit of one worsened pair out of ten. The change was made after the first ten outcomes were observed. |
+
+**2026-11-06 — G2 non-worsening criterion amendment.** This revision is proposed in
+[PR #824](https://github.com/adubey/mantle-bloom/pull/824). The owner approved replacing the
+positive-effect requirements after the first four held-out pairs had `D_s = 0` in every pair:
+neither method produced a tiny breakup (66 baseline splits and 38 graph splits, zero tiny
+events in either arm). The previous amendment required a positive mean
+`D_s`, a paired bootstrap interval wholly above zero, and improvement on at least two seeds.
+At that stage, the criterion passed when no more than two of the 20 held-out seeds had `D_s < 0`;
+`D_s = 0` counts as non-worsening. This permits a result with no improvement if the graph
+method also avoids adding tiny breakups. This is an owner-selected tolerance, not a geological
+rate threshold. The seed list and simulation settings remain fixed; all four observed pairs
+remain in the analysis. Because the criterion changed after four outcomes were observed,
+label the result as a second amended G2 analysis, not as preregistered. Continue to report the
+mean `D_s`, its 95% paired seed-bootstrap interval, and the number of seeds with `D_s > 0` as
+descriptive evidence, but they are no longer pass conditions.
+
+| Gate | Previous criterion | Revised criterion | Reason |
+|---|---|---|---|
+| G2 outcome threshold | Mean `D_s > 0`, two-sided 95% paired seed-bootstrap interval above zero, and `D_s > 0` on at least two seeds | No more than two of the 20 held-out seeds have `D_s < 0`; `D_s = 0` is non-worsening. Complete all 20 pairs and meet the existing 50-event requirement. | The first four pairs showed zero tiny events in both methods. Requiring positive improvement and a positive interval would reject ties even though the owner's goal is to avoid making tiny breakups worse. |
+
+**2026-11-06 — G2 tiny-breakup endpoint amendment.** This revision merged in
+[PR #823](https://github.com/adubey/mantle-bloom/pull/823). The owner approved this change after
+the first two held-out seed pairs exposed a zero-baseline failure: both methods had zero tiny
+breakups, so the relative reduction divided by a zero baseline share and was undefined. The
+relative share also conditions on the number of splits, which can differ between methods
+under the same 200 Myr exposure. The two pairs had 42 baseline splits and 19 graph splits,
+with zero tiny breakups in either arm (`S_baseline = 0`, `S_graph = 0`, so the share
+difference is 0 percentage points); their paired tiny-count differences are both zero.
+These are preliminary outcomes from the G2 diagnostic run associated with [#797](https://github.com/adubey/mantle-bloom/issues/797). The seed
+list and simulation protocol remain fixed. Because the endpoint changed after two pairs were
+observed, report the revised result as an amended G2 analysis, retain the originally
+preregistered share-based result as a secondary analysis, and do not describe the revised
+endpoint as preregistered. Keep both completed pairs in all summaries and uncertainty
+calculations.
+
+| Gate | Earlier criterion | Revised criterion | Reason |
+|---|---|---|---|
+| G2 primary outcome | At least one-third relative reduction in the share of actual splits with a smaller daughter under 7% of parent area, and improvement on at least two seeds | For each seed, `D_s = T_baseline,s - T_graph,s`, the difference in tiny-breakup counts over 200 Myr. Pass when the mean paired difference is positive, its two-sided 95% paired seed-bootstrap interval excludes zero in the beneficial direction, and `D_s > 0` for at least two seeds. Use 10,000 resamples of whole seed pairs. | Relative reduction is undefined at a zero baseline share. Paired count differences are defined even when an arm has no splits or no tiny splits, and measure event burden at the fixed world exposure. |
+| G2 supporting measures | Tiny-breakup share and daughter mass distribution | Report the original relative share reduction, percentage-point difference `S_baseline - S_graph`, and smaller-daughter area and mass distributions as secondary measures. | Preserve comparison with #770 while showing conditional split quality and daughter sizes. |
+| G3 timestep comparison | Tiny-breakup share within 20% of the normal-step result | Keep the 20% relative comparison when the normal-step share is nonzero; if it is zero, require zero tiny breakups at half step. Report paired counts and shares. | Avoid dividing by a zero normal-step share. |
+
+The current outcome threshold in the later 2026-11-06 amendment, further amended on
+2026-11-08 for sample size, supersedes the intermediate positive-effect criterion in this
+table. The intermediate endpoint and criterion were both
+changed transparently after held-out outcomes had been observed.
+
+The G2 endpoint is an amended analysis because it was selected after two seed-pair outcomes
+were observed. The original relative-share result remains reported for transparency. The
+seed list and the minimum of 50 actual split events across the seed set, with its frozen
+reserve rule, remain unchanged.
+
+**2026-11-04 — G1 gate review.** This revision proposed [PR #810](https://github.com/adubey/mantle-bloom/pull/810). The previous G1 required at least 10 observed opportunities
+and a usable candidate in at least two thirds of trigger-positive opportunities. The 2/3 rate
+was a project-selected usability cutoff, not a geological estimate. Geological rift systems
+are not independent draws from the simulation's per-trigger opportunities, and observations
+show both successful and failed systems whose outcomes depend on evolving force balance,
+weakening and competition. The literature does not establish a universal success fraction for
+this denominator; the mechanisms separating successful and failed rifts remain debated
+[[Brune et al., 2023]](#ref-brune2023), and mapped failed systems illustrate the variety of
+incomplete rift histories [[Elling et al., 2022]](#ref-elling2022).
+
+The old G1 rate criterion is removed. G1 now checks structural invariants and the stated
+probability model's behavior on controlled cases, while development-world outcome counts are
+reported descriptively with uncertainty. No aggregate per-opportunity fraction is called a
+geological pass threshold. G1 does not claim geological rate calibration; that would need a
+separate mapping between simulated opportunity exposure and geological rift episodes.
 
 ## References
 
