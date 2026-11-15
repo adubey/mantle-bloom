@@ -7,6 +7,7 @@ export interface FailedAnimation {
   total: number;
   unbounded: boolean;
   error: string;
+  partialVideo?: boolean;
 }
 
 interface Props {
@@ -20,17 +21,17 @@ interface Props {
 }
 
 // "Animation stopped" instead of a bare error after a failed recording (#638): the
-// finished video died with the run, but the world kept every completed frame's
-// simulation work, so Recover records just the remaining frames from the last
-// checkpoint rather than redoing hours of compute.
+// world kept completed frames' simulation work, so Recover offers the remaining
+// frames after the user has dealt with any partial video.
 export default function AnimationStoppedModal({ failure, recovery, recovering, onRecover, onClose }: Props) {
   const remaining = recovery ? recovery.total_frames - recovery.completed_frames : 0;
   const canRecover = !recovering && recovery !== null && remaining >= 1;
   return (
     <ModalShell title="Animation stopped" onClose={onClose}>
       <div style={{ fontSize: 12, marginBottom: 10 }}>
-        {failure.frame} of {failure.total} frames finished before the run failed. The finished
-        video was lost with it, but the world kept every completed frame&apos;s simulation
+        {failure.frame} of {failure.total} frames finished before the run failed. {failure.partialVideo
+          ? "The partial video was offered for saving. "
+          : "The video could not be saved. "}The world kept the completed frames&apos; simulation
         work -- {canRecover
           ? `Recover records the remaining ${remaining} frame${remaining === 1 ? "" : "s"} from the last checkpoint.`
           : "There is nothing on the server to resume from."}

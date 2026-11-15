@@ -1759,6 +1759,20 @@ def test_animate_message_line_records_and_clears_recovery(tmp_path, monkeypatch)
     assert store.load_animation_progress() is None
 
 
+
+def test_animate_partial_video_keeps_recovery(tmp_path, monkeypatch):
+    from app import checkpoint
+
+    store = checkpoint.CheckpointStore(tmp_path)
+    store.save_animation_progress({"completed_frames": 2})
+    session = SimpleNamespace(checkpoint_store=store, deleted=False)
+    monkeypatch.setattr(main, "_summary", lambda session, world: {})
+    line, frame, completed = main._animate_message_line(
+        session, object(), ("done", b"mp4", False, "RuntimeError: failed"), 2, {})
+    assert json.loads(line)["error"] == "RuntimeError: failed"
+    assert frame == 2 and completed is False
+    assert store.load_animation_progress() == {"completed_frames": 2}
+
 def test_animate_sidecar_never_passes_a_failed_checkpoint(tmp_path, monkeypatch):
     # Review on PR #647: _checkpoint_world logs and swallows a failed save, so the
     # sidecar must not advance past it -- recovery keeps the older checkpointed

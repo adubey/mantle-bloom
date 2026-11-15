@@ -20,6 +20,7 @@ from __future__ import annotations
 import base64
 import functools
 import io
+import logging
 from collections.abc import Callable
 from contextvars import ContextVar
 from fractions import Fraction
@@ -3216,8 +3217,9 @@ def stream_animation_mp4(
     frame finishes encoding -- `elapsed_years` is `world.elapsed_years` *after* that frame's
     step, so a caller can drive a live elapsed-time counter off the stream instead of it
     sitting frozen until the whole run (and its final world summary) completes -- then a
-    final `("done", mp4_bytes, stopped_early)` carrying the complete video
-    and whether `stop_event` was what ended the run short of `num_frames`. While a
+    final `("done", mp4_bytes, stopped_early, error)` carrying the video, whether
+    `stop_event` ended the run early, and an error string if a step or render failed
+    after at least one frame. While a
     frame's step batch runs, yields `("heartbeat", frame, num_frames, elapsed_years)`
     whenever more than ANIMATION_HEARTBEAT_INTERVAL_S has passed since the last yield:
     a batch of slow steps with no other output tripped the client's idle watchdog
@@ -3244,32 +3246,41 @@ def stream_animation_mp4(
     stream.options = {"crf": ANIMATION_CRF, "movflags": "+faststart"}
 
     stopped_early = False
+    failure = None
+    frames_done = 0
     clock = HeartbeatClock()
     try:
-        for i in range(num_frames):
-            if i > 0:
-                for _ in range(steps_per_frame):
-                    if stop_event is not None and stop_event.is_set():
-                        stopped_early = True
+        try:
+            for i in range(num_frames):
+                if i > 0:
+                    for _ in range(steps_per_frame):
+                        if stop_event is not None and stop_event.is_set():
+                            stopped_early = True
+                            break
+                        step_fn(world, step_years)
+                        if clock.due():
+                            yield ("heartbeat", i + 1, num_frames, world.elapsed_years)
+                    if stopped_early:
                         break
-                    step_fn(world, step_years)
-                    if clock.due():
-                        yield ("heartbeat", i + 1, num_frames, world.elapsed_years)
-                if stopped_early:
-                    break
-            png_bytes = render_png(world, projection, view, width, height, view_rotation)
-            frame_img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
-            if frame_img.size != (enc_w, enc_h):
-                frame_img = frame_img.crop((0, 0, enc_w, enc_h))
-            av_frame = av.VideoFrame.from_ndarray(np.asarray(frame_img), format="rgb24")
-            for packet in stream.encode(av_frame):
-                container.mux(packet)
-            # The frame's own PNG rides along with the progress tick so the frontend can paint it
-            # straight onto the main map -- the animation runs in the background while the world
-            # is locked, so a normal /world/render for the same state would 503 (see main.py).
-            yield ("progress", i + 1, num_frames, png_bytes, world.elapsed_years)
-            # A progress line is itself proof of life for the client's watchdog.
-            clock.stamp()
+                png_bytes = render_png(world, projection, view, width, height, view_rotation)
+                frame_img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+                if frame_img.size != (enc_w, enc_h):
+                    frame_img = frame_img.crop((0, 0, enc_w, enc_h))
+                av_frame = av.VideoFrame.from_ndarray(np.asarray(frame_img), format="rgb24")
+                for packet in stream.encode(av_frame):
+                    container.mux(packet)
+                # The frame's own PNG rides along with the progress tick so the frontend can paint it
+                # straight onto the main map -- the animation runs in the background while the world
+                # is locked, so a normal /world/render for the same state would 503 (see main.py).
+                frames_done = i + 1
+                yield ("progress", i + 1, num_frames, png_bytes, world.elapsed_years)
+                # A progress line is itself proof of life for the client's watchdog.
+                clock.stamp()
+        except Exception as exc:  # noqa: BLE001 -- preserve completed frames on a failed step or render
+            if not frames_done:
+                raise
+            logging.getLogger(__name__).exception("animation failed after frame %s", frames_done)
+            failure = f"{type(exc).__name__}: {exc}"
 
         for packet in stream.encode():  # flush libx264's remaining buffered frames
             container.mux(packet)
@@ -3279,4 +3290,4 @@ def stream_animation_mp4(
         # run leaks a native libx264 context. Closed exactly once -- normal completion
         # reaches this same finally instead of closing inline above.
         container.close()
-    yield ("done", buf.getvalue(), stopped_early)
+    yield ("done", buf.getvalue(), stopped_early, failure)
