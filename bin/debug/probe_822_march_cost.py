@@ -144,6 +144,8 @@ def main() -> None:
 
     if ns.write_save_after is not None and ns.write_save is None:
         raise SystemExit("--write-save-after needs --write-save")
+    if ns.write_save_after is not None and not 1 <= ns.write_save_after <= ns.steps:
+        raise SystemExit(f"--write-save-after {ns.write_save_after} is outside 1..--steps ({ns.steps}); no save would be written")
     if ns.generate:
         if ns.write_save is None:
             raise SystemExit("--generate needs --write-save")

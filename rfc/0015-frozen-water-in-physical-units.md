@@ -1,6 +1,6 @@
 # RFC 0015: Frozen water in physical units: glacier mass balance, ice flow and meltwater, freezing lakes and rivers, ocean ice and polar snow
 
-- **Status:** Accepted (revised 2026-11-13 for the trend-adaptive march, #842, pending round 3; revised 2026-10-31 after G0's drifting-noise runs)
+- **Status:** Accepted (revised 2026-11-13 and 2026-11-15 for the trend-adaptive march, #842, round 3 passes only under post-hoc amendments; revised 2026-10-31 after G0's drifting-noise runs)
 - **Date:** 2026-10-23
 - **Related:** #544 (tracking); #822 and #842 (march cost, trend-adaptive default); #368 (evidence), #353 and #359 (ice-sheet model, decision B), #355 (water units), #503 and #504 (lake freezing at `WATER_TO_ICE`), #297 (balanced lakes), RFC [0014](abandoned/0014-lake-water-volume-and-freezing.md) (lake water volume and seasonal lake ice; its D2(b) and D2(c) are prerequisites here), RFC [0012](0012-physics-first-simulation.md) (physics-first simulation); superseded on acceptance: #197, #203, #358 item 4, #313 Stage E (see "Open issues this RFC supersedes"); design principles 3, 5, 6 and 8
 
@@ -19,11 +19,12 @@
     125 yr moves ice by 7.3%, so 250 yr isn't a converged reference there. #811 found that on
     two saves at 100 kyr and longer the pair test usually fires first, so the trend march
     engaged on 9 of 200 steps and the ledger missed on 183 of 200 for both marches (#852).
-    Round 3 (E1–E6, [`analysis/issue842/`](../analysis/issue842/preregistration.md)) is
-    preregistered and still to run.
+    Round 3 (E1–E6, [`analysis/issue842/`](../analysis/issue842/README.md)) has run. It
+    passes only under owner amendments set after seeing results (below).
   - **New:** the trend march is the production default, with a **1 kyr** longest substep
     (inside #741's 0-of-12-drops range), and the fixed-250 yr march stays selectable as
-    `d2` (module setting, `MANTLE_BLOOM_GLACIER_MARCH=d2`, replay flags, a test fixture)
+    `d2` (the module's `MARCH_COST` setting, the replay probe's `--preset d2`, a test fixture;
+    no environment variable or UI switch)
     and bit-identical to today's. No API or UI change.
   - **Threshold changes, owner's decision of 2026-11-13, made without seeing any round 3
     result.** An earlier round 3 (2026-11-08/09, unscored) had already run, and is scored
@@ -57,7 +58,8 @@
     passing result on ice-age saves (see the preregistration). The ice-age forcing's own
     behaviour, G0's open ice-age rerun and the ice-age sea-ice cap stay with the issues that
     already track them.
-  - **Impact table and round 3 results:** to be added to this PR before review.
+  - **Impact table and round 3 results:** in the description of #870 and in
+    [`analysis/issue842/README.md`](../analysis/issue842/README.md).
 - **2026-11-03 — proposed by the #765 PR after #741's drop-step ensembles and G1 (#766).**
   - **Old:** D2 solved each body implicitly at the end of the step
     (`V(d) = V_open + Δt · B(d)`), substepping only bodies slower than the step at τ/4
@@ -1340,7 +1342,9 @@ The thresholds below were confirmed by the project owner on 2026-10-23.
 - [ ] **Ledgers close:** the glacier ledger residual, as a fraction of the step's
   accumulation and averaged over every step of 10-step replays of the held-out saves, is
   ≤ max(0.1%, the fixed-250 yr `d2` march's mean + 0.01%). Both meltwater sources' ledgers
-  (D8) close to round-off on every step. (The 2026-11-13 revision introduced the comparison
+  (D8) close to round-off on every step. (D8 isn't on main yet. Round 3 checked #789's
+  land-water ledger in its place, preregistration amendment 3, so this half is still open.
+  The 2026-11-13 revision introduced the comparison
   with `d2` and then the averaging. Before it, the limit was 0.1% on every step. #852 owns
   closing the absolute residual at 100 kyr and longer steps.)
 - [ ] **No water deleted:** the three-part partition of precipitation sums to P on every cell;

@@ -141,7 +141,8 @@ def _e3(runs: dict) -> dict:
         positive = rec.get("d2-10k", {}).get("drops")
         rec["drop_step_confirmed"] = positive is not None and positive >= 8
         trend, d2 = rec.get("trend-1k", {}).get("drops"), rec.get("d2", {}).get("drops")
-        rec["pass"] = trend is not None and d2 is not None and trend <= d2 and (d2 > 0 or trend == 0)
+        rec["pass"] = trend is not None and d2 is not None and trend <= d2
+        rec["status"] = "tested" if rec["drop_step_confirmed"] else "untested: the 10 kyr control did not drop"
         out[step] = rec
     return out
 
@@ -240,7 +241,7 @@ def _verdict(e1, e5, e3, substep, e6, which: str, averaged: dict | None = None) 
             "3a_no_substep_move_over_20pct": all(
                 v["after_step_0"] <= SUBSTEP_MOVE_LIMIT
                 for k, v in substep["by_run"].items() if k.split("-")[0] not in ICE_AGE_SAVES),
-            "3b_drops": bool(e3) and all(r["pass"] for r in e3.values() if r["drop_step_confirmed"]),
+            "3b_drops": bool(e3) and all(r["pass"] for r in e3.values() if r["drop_step_confirmed"]),  # vacuous if none is confirmed: see each step's "status"
             "4_runtime_mean": averaged["runtime"]["pass"],
         }
         return {"conditions": conditions, "pass": all(conditions.values())}
@@ -258,8 +259,13 @@ def main() -> None:
     args = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     args.add_argument("directory", type=Path)
     args.add_argument("--json", type=Path)
+    args.add_argument("--allow-partial", action="store_true", help="score even if some of the 24 replays are missing")
     ns = args.parse_args()
     runs = _load(ns.directory)
+    missing = [f"{s}-{a}-{m}" for s in DIAGNOSIS + HELD_OUT for a in ARMS for m in ("0.25", "1")
+               if f"{s}-{a}-{m}" not in runs]
+    if missing and not ns.allow_partial:
+        raise SystemExit(f"missing replays (pass --allow-partial to score what exists): {missing}")
     e1, e5 = _replays(runs, DIAGNOSIS, False), _replays(runs, HELD_OUT, True)
     e3, substep, e4, e6 = _e3(runs), _worst_substep(runs), _e4(runs), _e6(runs)
     averaged = _averaged(e1, e5, e6)

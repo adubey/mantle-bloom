@@ -84,7 +84,7 @@ e3_steps() {  # the step ending at 97.4 Myr (opens after 39 steps) and the large
 import json, sys
 steps = json.load(open(sys.argv[1]))["per_step"]
 vols = [s["ice_closing_km3"] for s in steps]
-losses = sorted(((vols[i - 1] - vols[i]) / vols[i - 1], i) for i in range(8, len(vols)))
+losses = sorted(((vols[i - 1] - vols[i]) / max(vols[i - 1], 1e-9), i) for i in range(8, len(vols)))
 pick = next(i for loss, i in reversed(losses) if i != 39)
 print(39, pick)
 EOF
@@ -92,7 +92,8 @@ EOF
 
 e3() {
   local k base arm scale extra
-  for k in $(e3_steps); do
+  steps="$(e3_steps)" || { echo "e3: could not pick steps from 997271774-d2-0.25.json" >&2; return 1; }
+  for k in $steps; do
     base="$OUT/e3-open-k$k.mbworld"
     if [[ ! -f "$base" ]]; then
       probe "e3-rerun-k$k" untimed "$(save_for 997271774)" --steps "$k" --myr 0.25 \

@@ -105,6 +105,10 @@ can run. Four things changed once the harness was built, before any run of this 
    are out of scope for RFC 0015**, so no acceptance criterion of the RFC gates on a save
    replayed with ice ages. The RFC's acceptance criteria were edited to match.
 
+   **Held-out discipline.** 447276134 is a held-out save. No knob was chosen on it, but
+   amendments 8 and 9 were set after seeing its result, so it shaped the gates. The held-out
+   rule said "never used for gates or knob choices", and that is now true only of the knobs.
+
 ## Arms
 
 | Arm | March |

@@ -808,7 +808,8 @@
     "worst_substep_move": 0.01118
    },
    "drop_step_confirmed": false,
-   "pass": true
+   "pass": true,
+   "status": "untested: the 10 kyr control did not drop"
   },
   "k39": {
    "control_km3": 14000377.493811095,
@@ -873,7 +874,8 @@
     "worst_substep_move": 0.010993
    },
    "drop_step_confirmed": false,
-   "pass": true
+   "pass": true,
+   "status": "untested: the 10 kyr control did not drop"
   }
  },
  "E3_worst_substep": {
