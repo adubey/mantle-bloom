@@ -5,7 +5,7 @@ Usage (repo root, this worktree's venv; follow the compute-budget skill first, o
         [--setting '{"eps_dot0": 8e-8, "k_cap": 1.0}'] [--years 200] [--step-myr 1] [--node-density 1.0] \
         [--shadow-every 10] [--snapshot-every 5] [--max-steps N]
 
-Writes ``<dir>/run.json`` (parameters, seed, timings, counters, ledger closure, the recorder's score and every split
+Writes ``<dir>/recorder.pkl`` (the recorder's candidates and the split events, for pooled scoring) and ``<dir>/run.json`` (parameters, seed, timings, counters, ledger closure, the recorder's score and every split
 event) and, with ``--snapshot-every``, ``<dir>/snapshots/t<Myr>.npz`` of per-cell arrays for the map sequences.
 ``--shadow-every`` solves the thin shell every that many Myr and records proxy C's D0 statistics (stage 2 reporting).
 A held-out or reserve seed from ``analysis/issue797/g2-seed-preregistration.json`` is refused.
@@ -13,6 +13,7 @@ A held-out or reserve seed from ``analysis/issue797/g2-seed-preregistration.json
 
 import argparse
 import json
+import pickle
 import sys
 import time
 from dataclasses import asdict
@@ -115,6 +116,10 @@ def main() -> None:
                         "ever_failed": c.ever_failed, "samples": [[round(s[0] / 1e6, 2), s[1], round(s[4] / 1e3, 1), s[5], round(s[6], 2)] for s in c.samples[::5]]}
                        for c in recorder.candidates.values() if c.max_cells >= rec.MIN_CELLS_TO_COUNT],
     }
+    with open(args.out / "recorder.pkl", "wb") as handle:  # full candidates and events, for scoring several runs together
+        pickle.dump({"candidates": list(recorder.candidates.values()), "events": state.events, "last_years": recorder.last_years,
+                     "super_sea_max_m": recorder.super_sea_max_width_m, "super_sea_violations": recorder.super_sea_violations,
+                     "years_myr": steps * args.step_myr}, handle)
     (args.out / "run.json").write_text(json.dumps(result, indent=1, default=float) + "\n")
     print(json.dumps({"done": True, "targets_passed": score["targets_passed"], "splits": score["splits"]["value"], "step_s": result["step_s"]}))
 
