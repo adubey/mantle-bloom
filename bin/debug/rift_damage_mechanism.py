@@ -5,28 +5,27 @@ D1 driver). ``install(params)`` registers the three damage surface fields in thi
 ``merge_split.apply_topology_changes`` via ``maybe_split_plate`` and the margin-insertion path, and returns
 a ``Mechanism`` whose ``report`` holds what the recorder needs. ``uninstall()`` restores the originals.
 
-The mechanism follows the RFC's Design, steps 1-6:
+The mechanism follows the RFC's Design (2026-11-15 rift-line revision), steps 1-6:
 
-* load: proxy C, ``rift_damage_prototype.cut_tensor`` scaled by ``k_cut`` (plume load added at expiry);
+* load: proxy C, ``rift_damage_prototype.cut_tensor`` scaled by ``k_cut`` (plume load added until expiry), and the
+  section pull across straight sections (``rift_line.section_profile``);
 * strength: ``k_cap N_cap M W`` with non-local softening over a disk of diameter ``w_0``;
-* strain: sub-stepped, with exact exponential healing, capped at ``K_sub``;
-* thinning: flank transfer of the removed volume (``_allocate_stretch``'s rule, run in reverse);
+* rift line and strain (``rift_line``): one line per plate placed from the section pull, growing from a nucleus and
+  its tips, integrated in sub-steps with exact exponential healing;
+* thinning: flank transfer of the removed volume (``_allocate_stretch``'s rule, run in reverse), unlimited reach;
 * the broken latch, with no interior eruption;
-* breakthrough: two Dijkstra legs through the band, the path-normal integrated ligament rule, and a
-  mask-based split.
+* breakthrough: the integrated ligament rule on the line, then a mask-based split.
 
-Readings of the RFC the prototype had to choose (each is a ``Params`` field or marked in the code, and is
-listed in ``analysis/issue888/README.md`` for review):
+Readings of the RFC the prototype had to choose (each is marked in the code and listed in
+``analysis/issue888/README.md`` for review):
 
-* ``live_self_term``: the RFC freezes disk-averaged strains for the step but also sub-steps because "the rate
-  depends nonlinearly on ε through W". Frozen throughout, W would be constant and sub-stepping pointless. So
-  the neighbours' share of each disk average is frozen at the step start and the cell's own share follows its
-  own strain. ``live_self_term=False`` freezes everything.
 * ``N_cap`` is frozen at the step start (the RFC's operator split); thinning enters it at the next step.
 * margin insertion inherits the area-weighted mean of the donors within ``K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION``
   hops times the stretch share, without ``_allocate_stretch``'s craton willingness weights.
 * eruption resets are detected after the fact: a cell whose column became exactly the reference column
   and which was not before.
+* the plume's expiry time differs per cell, so the sub-step grid includes every expiry in the step and each
+  cell switches its plume load and weakening off at its own expiry.
 """
 
 import sys
@@ -54,6 +53,8 @@ MULT_BELT, MULT_VOLCANO, MULT_PLUME, MULT_FAULT = 0.65, 0.65, 0.65, 0.60
 
 @dataclass(frozen=True)
 class Params:
+    """RFC 0018 starting values (2026-11-15 rift-line revision). ``n`` and ``eps_soft`` are fixed by the RFC."""
+
     eps_dot0: float = 8e-8  # 1/yr
     n: float = 1.0
     eps_soft: float = 1.0
@@ -65,14 +66,23 @@ class Params:
     k_cut: float = 1.33
     n_plume: float = 0.5e12  # N/m
     w0_m: float = 125e3
+    lam_grow: float = 0.3
+    l_tip_m: float = 125e3
+    r_max: float = 10.0
+    a_min: float = 0.15
+    a_stray: float = 0.01
+    c_dir: float = 0.8
+    c_corr: float = 0.8
+    f_break: float = 0.5
     eps_cand: float = 0.1
     eps_break: float = 2.0
     t_fail_yr: float = 5e6
     flank_rows: int = 2
-    flank_rows_max: int = 4
-    k_sub: int = 64
+    k_fail: int = 4096
     d_eps_max: float = 0.05
-    live_self_term: bool = True
+    latched_leaves_s: bool = False  # amendment under test: a line cell at its latch strain leaves S inside the step
+    live_ncap: bool = False  # amendment under test: N_cap of the line cells follows their thinning inside the sub-steps
+    crossing_stops: bool = False  # amendment under test in the integration check: end a sub-step when a line cell reaches eps_cand
     oceanic_latch_on_break_only: bool = False  # the predeclared oceanic fallback
     oceanic_k_cap_factor: float = 1.0
 
@@ -161,59 +171,6 @@ def inherited_multiplier(belt, volcano, plume, fault) -> np.ndarray:
     return np.clip(m, MULTIPLIER_FLOOR, 1.0)
 
 
-# --- strain --------------------------------------------------------------------------------------
-
-
-@dataclass
-class StrainResult:
-    eps: np.ndarray
-    warm: np.ndarray
-    capped: np.ndarray  # cells that hit K_sub
-    substeps: int
-
-
-def integrate_strain(load, base, eps, warm, nb_eps, nb_warm, self_weight, duration, latch_eps, p: Params) -> StrainResult:
-    """Advance strain and healing for ``duration`` (yr, per cell) under a frozen load.
-
-    ``base`` is ``k_cap N_cap M`` (N/m), so ``N_eff = base W``. The disk averages seen by a cell are
-    ``nb + self_weight × its own value`` (neighbour part frozen, own part live unless ``live_self_term`` is
-    off, in which case ``self_weight`` is taken as 0 and ``nb`` already holds the whole average). A cell stops at
-    ``latch_eps`` (the strain at which it breaks). Healing is the exact exponential of each sub-step.
-
-    Cells that need more than ``K_sub`` sub-steps are advanced straight to their latch strain and flagged:
-    with ``Δε_max`` per sub-step ``K_sub`` sub-steps cover more than ``ε_break``, so the cap only binds on a
-    runaway rate, which is a cell about to break anyway."""
-    eps, warm = eps.astype(float).copy(), warm.astype(float).copy()
-    remaining = np.maximum(np.broadcast_to(duration, eps.shape).astype(float), 0.0).copy()
-    capped = np.zeros(len(eps), dtype=bool)
-    active = (remaining > 0.0)
-    substeps = 0
-    for substeps in range(1, p.k_sub + 1):
-        idx = np.flatnonzero(active)
-        if not len(idx):
-            substeps -= 1
-            break
-        w = softening(nb_eps[idx] + self_weight[idx] * eps[idx], nb_warm[idx] + self_weight[idx] * warm[idx], p)
-        n_eff = np.maximum(base[idx] * w, 1.0)
-        ratio = np.maximum(load[idx] / n_eff - 1.0, 0.0)
-        rate = p.eps_dot0 * ratio ** p.n
-        at_latch = eps[idx] >= latch_eps[idx] - 1e-12
-        rate = np.where(at_latch, 0.0, rate)
-        dt = np.where(rate > 0.0, np.minimum(remaining[idx], p.d_eps_max / np.maximum(rate, 1e-300)), remaining[idx])
-        d_eps = np.minimum(rate * dt, np.maximum(latch_eps[idx] - eps[idx], 0.0))
-        eps[idx] += d_eps
-        warm[idx] = warm[idx] * np.exp(-dt / p.tau_heal_yr) + d_eps
-        warm[idx] = np.minimum(warm[idx], eps[idx])
-        remaining[idx] -= dt
-        active[idx] = remaining[idx] > 1e-6 * np.maximum(duration if np.ndim(duration) == 0 else duration[idx], 1.0)
-    over = np.flatnonzero(active)
-    if len(over):
-        capped[over] = True
-        warm[over] = np.minimum(warm[over] + np.maximum(latch_eps[over] - eps[over], 0.0), latch_eps[over])
-        eps[over] = latch_eps[over]
-    return StrainResult(eps, warm, capped, substeps)
-
-
 # --- plate graph and disk averages ---------------------------------------------------------------
 
 
@@ -243,32 +200,53 @@ def disk_average_matrix(points, areas, radius_m):
 # --- flank transfer ------------------------------------------------------------------------------
 
 
-def flank_reach(adjacency: csr_matrix, donors: np.ndarray, recipient_ok: np.ndarray, rows: int, rows_max: int):
-    """For each donor the recipients within ``rows`` hops, widening one hop at a time to ``rows_max`` when it
-    has none. Returns (csr donors x cells reach to recipients, boolean per donor: has a recipient)."""
+@dataclass
+class FlankPlan:
+    """Where each band cell's removed volume goes. ``reach`` is (band cells x plate cells) with 1 at the recipients
+    of that donor; ``held`` marks band cells with no recipient anywhere on the plate (they must not strain);
+    ``hops`` is the reach each donor needed (0 for held cells)."""
+
+    band: np.ndarray  # plate indices of the band cells
+    reach: csr_matrix
+    held: np.ndarray  # per band cell
+    hops: np.ndarray  # per band cell
+
+
+def flank_plan(adjacency: csr_matrix, band: np.ndarray, broken: np.ndarray, rows: int) -> FlankPlan:
+    """Recipients are the unbroken plate cells outside the band. Each donor takes those within ``rows`` hops, and
+    widens one hop at a time, with no upper limit, until it has some. A donor in a component with none is held."""
     n = adjacency.shape[0]
+    donors = np.flatnonzero(band)
+    recipient_ok = ~band & ~broken
+    if not len(donors):
+        return FlankPlan(donors, csr_matrix((0, n), dtype=np.int8), np.zeros(0, bool), np.zeros(0, int))
     pattern = (adjacency > 0).astype(np.int8)
     visited = csr_matrix((np.ones(len(donors), dtype=np.int8), (np.arange(len(donors)), donors)), shape=(len(donors), n))
     frontier = visited.copy()
     result = csr_matrix((len(donors), n), dtype=np.int8)
-    settled = np.zeros(len(donors), dtype=bool)
     ok = csr_matrix(np.where(recipient_ok, 1, 0).astype(np.int8)[None, :])
-    for hop in range(1, rows_max + 1):
-        frontier = (frontier @ pattern)
+    settled = np.zeros(len(donors), dtype=bool)
+    hops = np.zeros(len(donors), dtype=int)
+    hop = 0
+    while True:
+        hop += 1
+        frontier = frontier @ pattern
         frontier.data[:] = 1
-        visited = (visited + frontier)
-        visited.data[:] = 1
-        if hop < rows:
-            continue
-        reach = visited.multiply(ok).tocsr()
-        found = np.asarray(reach.sum(axis=1)).ravel() > 0
-        take = found & ~settled
-        if np.any(take):
-            result = result + csr_matrix(reach.multiply(take[:, None].astype(np.int8)))
-            settled |= take
-        if settled.all():
+        grown = visited + frontier
+        grown.data[:] = 1
+        stalled = grown.nnz == visited.nnz
+        visited = grown
+        if hop >= rows:
+            reach = visited.multiply(ok).tocsr()
+            take = (np.asarray(reach.sum(axis=1)).ravel() > 0) & ~settled
+            if take.any():
+                result = result + csr_matrix(reach.multiply(take[:, None].astype(np.int8)))
+                settled |= take
+                hops[take] = hop
+        if settled.all() or stalled:
             break
-    return result.tocsr(), settled
+    result.data[:] = 1
+    return FlankPlan(donors, result.tocsr(), ~settled, hops)
 
 
 @dataclass
@@ -283,45 +261,36 @@ class ThinningOutcome:
     arc: np.ndarray
     moment: np.ndarray
     craton_lost_m3: float
-    withheld: np.ndarray  # donors whose thinning was withheld
 
 
-def thin_with_flank_transfer(areas, adjacency, d_eps, broken, columns: dict, p: Params) -> ThinningOutcome:
-    """Pure-shear thinning of the straining cells by exp(-Δε), floored, with the removed volume moved to the
-    non-straining, unbroken flank cells of the same plate. ``columns`` holds hc, hm, material, craton, cover,
-    cover_material, plateau, arc, moment (per cell, thickness units). Volumes are computed from the post-clamp
-    thicknesses, so a floored donor gives up only what it lost. A donor with no recipient within
-    ``flank_rows_max`` hops is withheld: it neither thins nor gives volume."""
+def thin_with_flank_transfer(areas, plan: FlankPlan, d_eps, columns: dict) -> ThinningOutcome:
+    """Pure-shear thinning of the straining band cells by exp(-Δε), floored, with the removed volume moved to the
+    plan's flank recipients (same plate, outside the band, unbroken) in proportion to their area. ``columns`` holds
+    hc, hm, material, craton, cover, cover_material, plateau, arc, moment (per cell, thickness units). Volumes are
+    computed from the post-clamp thicknesses, so a floored donor gives up only what it lost. Craton crust thins in
+    place and its lost volume is returned for the ``rifted_stretch_m3`` sink."""
     out = {k: v.astype(float).copy() for k, v in columns.items()}
     hc, hm = out["hc"], out["hm"]
-    straining = d_eps > 0.0
-    donors = np.flatnonzero(straining)
-    withheld = np.zeros(len(areas), dtype=bool)
-    craton_lost = 0.0
+    take = (d_eps[plan.band] > 0.0) & ~plan.held
+    donors = plan.band[take]
     if not len(donors):
-        return ThinningOutcome(**out, craton_lost_m3=0.0, withheld=withheld)
+        return ThinningOutcome(**out, craton_lost_m3=0.0)
     ratio = np.exp(-d_eps[donors])
     ratio_c = np.where(hc[donors] > rheology.RIFT_CRITICAL_THICKNESS_M,
                        np.maximum(ratio, rheology.RIFT_CRITICAL_THICKNESS_M / np.maximum(hc[donors], 1.0)), 1.0)
     ratio_m = np.where(hm[donors] > lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M,
                        np.maximum(ratio, lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M / np.maximum(hm[donors], 1.0)), 1.0)
-    recipient_ok = ~straining & ~broken
-    reach, settled = flank_reach(adjacency, donors, recipient_ok, p.flank_rows, p.flank_rows_max)
-    withheld[donors[~settled]] = True
-    ratio_c = np.where(settled, ratio_c, 1.0)
-    ratio_m = np.where(settled, ratio_m, 1.0)
     a_d = areas[donors]
-    share = csr_matrix(reach.multiply(areas[None, :]))
+    share = csr_matrix(plan.reach[take].multiply(areas[None, :]))
     row_total = np.asarray(share.sum(axis=1)).ravel()
     share = csr_matrix(share.multiply((1.0 / np.where(row_total > 0.0, row_total, 1.0))[:, None]))
     received_area = np.maximum(areas, 1.0)
 
-    def move(name: str, ratio_vec: np.ndarray, give_back: bool = True) -> None:
+    def move(name: str, ratio_vec: np.ndarray) -> None:
         values = out[name]
         lost = values[donors] * (1.0 - ratio_vec) * a_d  # volume
         values[donors] = values[donors] * ratio_vec
-        if give_back:
-            values += (share.T @ lost) / received_area
+        values += (share.T @ lost) / received_area
 
     move("hc", ratio_c)
     move("hm", ratio_m)
@@ -329,4 +298,4 @@ def thin_with_flank_transfer(areas, adjacency, d_eps, broken, columns: dict, p: 
         move(name, ratio_c)
     craton_lost = float(np.dot(out["craton"][donors] * (1.0 - ratio_c), a_d))
     out["craton"][donors] *= ratio_c
-    return ThinningOutcome(**out, craton_lost_m3=craton_lost, withheld=withheld)
+    return ThinningOutcome(**out, craton_lost_m3=craton_lost)

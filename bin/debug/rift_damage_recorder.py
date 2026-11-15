@@ -245,8 +245,12 @@ def candidate_stats(cands: list[Candidate], last_years: float) -> dict:
     }
 
 
-def score(candidates: list[Candidate], events: list[dict], last_years: float, super_sea_max_m: float, super_sea_violations: int) -> dict:
-    """The RFC's realism-target table for the pooled runs. Each entry has its value, its pass range, and ``ok``."""
+def score(candidates: list[Candidate], events: list[dict], last_years: float, super_sea_max_m: float, super_sea_violations: int,
+          a_min: float = 0.15, production_splits_per_world_100myr: float | None = None, world_myr: float | None = None) -> dict:
+    """The RFC's realism-target table for the pooled runs. Each entry has its value, its pass range, and ``ok``.
+    ``production_splits_per_world_100myr`` is the production splitter's rate on the same worlds (one run per
+    development world), against which the rift-line rate is judged at half or more; ``world_myr`` is the total
+    simulated time over all pooled worlds in Myr."""
     stats = candidate_stats(candidates, last_years)
     out = {"candidates": {k: v for k, v in stats.items() if not isinstance(v, list)}}
     widths = stats["onset_width_km"]
@@ -277,10 +281,20 @@ def score(candidates: list[Candidate], events: list[dict], last_years: float, su
     bad = [e for e in splits if e["damaged_components"] > LOCALIZATION_COMPONENTS or e["damaged_share"] >= LOCALIZATION_SHARE]
     out["localization"] = {"splits": len(splits), "violations": len(bad), "max_damaged_share": max((e["damaged_share"] for e in splits), default=None),
                            "max_damaged_components": max((e["damaged_components"] for e in splits), default=None), "ok": not bad}
+    small = [e["small_share"] for e in splits]
+    out["no_microplates"] = {"splits": len(splits), "violations": int(sum(x < a_min - 1e-9 for x in small)), "min_small_share": min(small, default=None),
+                             "median_small_share": float(np.median(small)) if small else None, "ok": bool(splits) and all(x >= a_min - 1e-9 for x in small)}
+    ratios = [e["length_ratio"] for e in splits]
+    out["line_shape"] = {"median_length_ratio": float(np.median(ratios)) if ratios else None, "minimum": 1.1, "ok": bool(ratios) and np.median(ratios) >= 1.1}
+    rate = len(splits) / world_myr * 100.0 if world_myr else None
+    out["splits_happen"] = {"rate_per_world_100myr": rate, "production_rate": production_splits_per_world_100myr,
+                            "ok": bool(rate is not None and production_splits_per_world_100myr is not None and rate >= 0.5 * production_splits_per_world_100myr),
+                            "note": "judged on the rift-line arm alone against one production-splitter run per development world"}
     out["plume_link"] = {"share_with_plume_on_path": float(np.mean([e["plume_share"] > 0 for e in splits])) if splits else None, "descriptive": True}
     out["oceanic_share_of_successful"] = {"value": float(np.mean([e["oceanic"] for e in splits])) if splits else None, "fallback_above": 1 / 3}
     out["splits"] = {"value": len(splits)}
-    scored = [k for k in ("onset_width_km", "width_growth", "duration_myr", "transition_ratio", "inherited_weakness", "failed_rifts", "no_super_seas", "localization")]
+    scored = [k for k in ("onset_width_km", "width_growth", "duration_myr", "transition_ratio", "inherited_weakness", "failed_rifts", "no_super_seas", "localization",
+              "no_microplates", "line_shape", "splits_happen")]
     out["targets_passed"] = int(sum(bool(out[k]["ok"]) for k in scored))
     out["targets_scored"] = len(scored)
     return out

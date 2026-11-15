@@ -62,6 +62,7 @@ def main() -> None:
     parser.add_argument("--shadow-every", type=float, default=0.0, help="Myr; 0 = never")
     parser.add_argument("--snapshot-every", type=float, default=0.0, help="Myr; 0 = never")
     parser.add_argument("--max-steps", type=int)
+    parser.add_argument("--production-rate", type=float, help="the production splitter's splits per world per 100 Myr on this world")
     args = parser.parse_args()
     if args.seed in forbidden_seeds():
         sys.exit(f"seed {args.seed} is in the G2 preregistration (held-out or reserve); D1 must not use it")
@@ -99,10 +100,13 @@ def main() -> None:
                               "wall_s": round(time.perf_counter() - stepping, 1)}), flush=True)
     recorder.finish(world)
     score = rec.score(list(recorder.candidates.values()), state.events, recorder.last_years, recorder.super_sea_max_width_m,
-                      recorder.super_sea_violations)
+                      recorder.super_sea_violations, params.a_min, args.production_rate, steps * args.step_myr)
     result = {
         "seed": args.seed, "params": asdict(params), "years_myr": steps * args.step_myr, "step_myr": args.step_myr,
         "node_density": args.node_density, "generate_s": generated_s, "step_s": time.perf_counter() - stepping,
+        "line": {"strain_on_line_share": state.on_line_strain / max(state.total_strain, 1e-30), "growing_samples": len(state.lam_samples),
+                 "open_samples": sum(o for _, o, _ in state.lam_samples),
+                 "lam_quartiles": [float(x) for x in np.percentile([lam for lam, _, _ in state.lam_samples], [25, 50, 75])] if state.lam_samples else None},
         "seconds_damage": state.seconds_damage, "seconds_split_decision": state.seconds_split, "counters": state.counters,
         "ledger_relative_gap_max": state.ledger_gap, "plates_final": len(world.plates), "plate_counts": plate_counts[::10],
         "score": score, "events": [{k: v for k, v in e.items() if k != "path_keys"} for e in state.events], "shadow_shell": shadow,

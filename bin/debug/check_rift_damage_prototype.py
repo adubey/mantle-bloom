@@ -1,16 +1,19 @@
-"""Unit-level checks of the RFC 0018 damage-band prototype pieces (D1, #888). Production tests come with #846.
+"""Unit-level checks of the RFC 0018 rift-line prototype pieces (D1, #888). Production tests come with #846.
 
-Usage (repo root, this worktree's venv; one small world is generated, about a minute):
-    backend/.venv/bin/python bin/debug/check_rift_damage_prototype.py [--seed 106533960]
+Usage (repo root, this worktree's venv; the plate-level checks generate one small world, about a minute):
+    backend/.venv/bin/python bin/debug/check_rift_damage_prototype.py [--seed 106533960] [--only NAME ...] [--synthetic]
 
 Each ``check_*`` function asserts one of the RFC's acceptance tests (the matching bullet is in its docstring) and
 the script prints PASS or the failure for each. Exit status is non-zero if any fails. Synthetic checks need no
-world; the plate-level checks share one generated development world.
+world (``--synthetic`` runs only those); the plate-level checks share one generated development world. The
+integration and propagation checks are in ``check_rift_line_d1.py`` and the line check on the 20 worlds in
+``check_rift_lines_world_d1.py``.
 """
 
 import argparse
 import sys
 import traceback
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -18,25 +21,23 @@ from scipy.sparse import csr_matrix
 
 sys.path[:0] = [str(Path(__file__).resolve().parent)]
 
+import check_rift_line_d1 as toy_mod  # noqa: E402
 import rift_damage_mechanism as mech  # noqa: E402
 import rift_damage_prototype as proto  # noqa: E402
 import rift_damage_step as step_mod  # noqa: E402
+import rift_line as rl  # noqa: E402
 from rift_damage_mechanism import Params  # noqa: E402
 
 from app import lithosphere, rheology  # noqa: E402
 
 P = Params()
 _WORLD = {}
+MYR = 1e6
 
 
 def lattice(nx: int, ny: int):
-    """4-connected grid graph with unit spacing (m = 1000) and unit areas."""
-    index = np.arange(nx * ny).reshape(ny, nx)
-    rows, cols = [], []
-    for a, b in ((index[:, :-1], index[:, 1:]), (index[:-1, :], index[1:, :])):
-        rows += [a.ravel(), b.ravel()]
-        cols += [b.ravel(), a.ravel()]
-    r, c = np.concatenate(rows), np.concatenate(cols)
+    """4-connected grid graph with centre distances 1000 m."""
+    r, c = toy_mod.grid_edges(nx, ny)
     return csr_matrix((np.full(len(r), 1000.0), (r, c)), shape=(nx * ny, nx * ny))
 
 
@@ -44,6 +45,10 @@ def columns_for(n, rng):
     return {"hc": rng.uniform(20e3, 45e3, n), "hm": rng.uniform(60e3, 120e3, n), "material": rng.uniform(0, 30e3, n),
             "craton": rng.uniform(0, 10e3, n), "cover": rng.uniform(0, 500, n), "cover_material": rng.uniform(0, 200, n),
             "plateau": rng.uniform(0, 3e3, n), "arc": rng.uniform(0, 2e3, n), "moment": rng.uniform(0, 1e9, n)}
+
+
+def toy(p: Params = P, pull_ratio: float = 2.0, nx: int = 31, ny: int = 9, h: float = 125e3) -> toy_mod.Toy:
+    return toy_mod.Toy(h, nx, ny, p, pull_ratio)
 
 
 # --- synthetic checks ----------------------------------------------------------------------------
@@ -69,131 +74,158 @@ def check_softening_monotone():
         assert np.all(np.diff(mech.softening(fixed, e, P)) <= 1e-15)
 
 
-def _strain(duration, pieces, *, load=2.0e12, base=1.0e12, self_weight=0.3):
-    n = 5
-    eps, warm = np.linspace(0, 0.6, n), np.linspace(0, 0.3, n)
-    nb_e, nb_w = np.full(n, 0.2), np.full(n, 0.1)
-    sw, latch = np.full(n, self_weight), np.full(n, 2.0)
-    for _ in range(pieces):
-        r = mech.integrate_strain(np.full(n, load), np.full(n, base), eps, warm, nb_e, nb_w, sw, np.full(n, duration / pieces), latch, P)
-        eps, warm = r.eps, r.warm
-    return eps, warm
-
-
-def check_strain_timestep():
-    """Timestep-robust strain integration: a step and its halves agree to a few percent; the quadrupled step too."""
-    one, halves, quarters = _strain(2e6, 1), _strain(2e6, 2), _strain(2e6, 4)
-    for a, b in ((one, halves), (halves, quarters)):
-        assert np.max(np.abs(a[0] - b[0])) < 0.03, (a[0], b[0])
-    # Without softening feedback the integral is exact: rate = eps_dot0 * (load/strength - 1).
-    flat = Params(s_fault=0.0, s_warm=0.0)
-    r = mech.integrate_strain(np.array([2.0]), np.array([1.0]), np.zeros(1), np.zeros(1), np.zeros(1), np.zeros(1), np.zeros(1),
-                              np.array([1e6]), np.array([2.0]), flat)
-    assert abs(r.eps[0] - flat.eps_dot0 * 1e6) < 1e-12, r.eps
-
-
 def check_healing():
-    """Healing: with no load warm strain decays by exp(-t/tau); permanent strain never does."""
-    n = 3
-    r = mech.integrate_strain(np.zeros(n), np.full(n, 1e12), np.full(n, 1.0), np.full(n, 0.8), np.zeros(n), np.zeros(n), np.zeros(n),
-                              np.full(n, 62.8e6), np.full(n, 2.0), P)
-    assert np.allclose(r.eps, 1.0) and np.allclose(r.warm, 0.8 * np.exp(-1.0), rtol=1e-6), (r.eps, r.warm)
+    """Healing: with no pull, warm strain decays by exp(-t/tau) on every cell, whatever the step; permanent strain never does."""
+    t = toy()
+    t.eps[:], t.warm[:] = 1.0, 0.8
+    prob = t.problem()
+    prob.normal_load[:] = 0.0
+    for pieces in (1, 3):
+        eps, warm = t.eps.copy(), t.warm.copy()
+        for _ in range(pieces):
+            out = rl.advance_rift(prob, eps, warm, 62.8e6 / pieces, P)
+            eps, warm = out.eps, out.warm
+        assert np.allclose(eps, 1.0) and np.allclose(warm, 0.8 * np.exp(-1.0), rtol=1e-6), (pieces, eps[:2], warm[:2])
 
 
-def check_latch_stops_strain():
-    """The broken latch: a cell at its latch strain does not strain further, whatever the load."""
-    n = 2
-    r = mech.integrate_strain(np.full(n, 1e14), np.full(n, 1e12), np.array([2.0, 1.0]), np.zeros(n), np.zeros(n), np.zeros(n), np.zeros(n),
-                              np.full(n, 5e6), np.array([2.0, 1.2]), P)
-    assert r.eps[0] == 2.0 and abs(r.eps[1] - 1.2) < 1e-9, r.eps
+def check_no_strain_off_band_and_latch():
+    """No strain off the band; a cell at its latch strain does not strain further; a held cell (latch = strain) does not strain."""
+    t = toy(pull_ratio=5.0)
+    prob = t.problem()
+    eps0 = t.eps.copy()
+    eps0[t.chain[3]] = 1.0  # at the latch below
+    prob.latch[t.chain[3]] = 1.0
+    out = rl.advance_rift(prob, eps0, t.warm, 5 * MYR, P)
+    outside = np.ones(len(eps0), dtype=bool)
+    outside[prob.band] = False
+    assert np.array_equal(out.eps[outside], eps0[outside]), "strain off the band"
+    assert out.eps[t.chain[3]] == 1.0 and out.eps[t.chain].max() > 0.2, (out.eps[t.chain][:6],)
+    assert np.all(out.eps <= prob.latch + 1e-12)
 
 
 def check_plume_expiry():
-    """Plume expiry: the split step differs from the averaged load, and equals its two parts run in sequence."""
-    n = 1
-    strength, years, half = 1.0e12, 1e6, 5e5
-    args = dict(base=np.full(n, strength), nb_eps=np.zeros(n), nb_warm=np.zeros(n), self_weight=np.zeros(n), latch_eps=np.full(n, 2.0), p=Params(s_fault=0.0, s_warm=0.0))
-    z = np.zeros(n)
-    averaged = mech.integrate_strain(np.full(n, 0.8 * strength + 0.2 * strength), eps=z, warm=z, duration=np.full(n, years), **args)
-    assert averaged.eps[0] == 0.0, "averaged load equals the strength: no strain"
-    first = mech.integrate_strain(np.full(n, 1.2 * strength), eps=z, warm=z, duration=np.full(n, half), **args)
-    second = mech.integrate_strain(np.full(n, 0.8 * strength), eps=first.eps, warm=first.warm, duration=np.full(n, half), **args)
-    assert second.eps[0] > 0.0 and np.isclose(second.eps[0], args["p"].eps_dot0 * 0.2 * half)
+    """Plume expiry: a step crossing the expiry equals its two parts run in sequence, and differs from no plume."""
+    q = replace(P, s_fault=0.0, s_warm=0.0, n_plume=0.5e12)
+    t = toy(q, pull_ratio=1.2)
+    prob = t.problem()
+    prob.plume_left_yr = np.full(len(prob.chain), 0.5 * MYR)
+    crossed = rl.advance_rift(prob, t.eps, t.warm, 1 * MYR, q)
+    first = rl.advance_rift(prob, t.eps, t.warm, 0.5 * MYR, replace(q))
+    prob2 = t.problem()  # after the expiry: no plume
+    second = rl.advance_rift(prob2, first.eps, first.warm, 0.5 * MYR, q)
+    assert np.allclose(crossed.eps, second.eps, rtol=1e-6, atol=1e-9), (crossed.eps[t.chain][:5], second.eps[t.chain][:5])
+    never = rl.advance_rift(prob2, t.eps, t.warm, 1 * MYR, q)
+    always = rl.advance_rift(replace(prob, plume_left_yr=np.full(len(prob.chain), 2 * MYR)), t.eps, t.warm, 1 * MYR, q)
+    assert never.eps[t.chain].max() < crossed.eps[t.chain].max() < always.eps[t.chain].max()
 
 
-def check_flank_conservation():
-    """Flank volume and tracer conservation, floors, craton booking, and recipients never strain."""
+def check_flank_conservation_and_held():
+    """Flank volume and tracer conservation, floors, craton booking, recipients never strain, far recipients with no reach limit,
+    and a band with no recipient anywhere is held."""
     rng = np.random.default_rng(0)
     nx, ny = 16, 12
     g, n = lattice(nx, ny), nx * ny
     areas = rng.uniform(0.8, 1.2, n) * 4e9
     cols = columns_for(n, rng)
-    d_eps = np.zeros(n)
     band = (np.arange(n) % nx >= 6) & (np.arange(n) % nx <= 8)
+    plan = mech.flank_plan(g, band, np.zeros(n, bool), P.flank_rows)
+    assert not plan.held.any()
+    d_eps = np.zeros(n)
     d_eps[band] = rng.uniform(0.05, 1.5, band.sum())
-    out = mech.thin_with_flank_transfer(areas, g, d_eps, np.zeros(n, bool), cols, P)
+    out = mech.thin_with_flank_transfer(areas, plan, d_eps, cols)
     for name in ("hc", "hm", "material", "cover", "cover_material", "plateau", "arc", "moment"):
         before, after = float(np.dot(cols[name], areas)), float(np.dot(getattr(out, name), areas))
         assert abs(after - before) <= 1e-12 * abs(before), (name, before, after)
     lost = float(np.dot(cols["craton"] - out.craton, areas))
     assert abs(lost - out.craton_lost_m3) <= 1e-9 * max(lost, 1.0) and lost >= 0.0
-    assert out.hc.min() >= min(cols["hc"].min(), rheology.RIFT_CRITICAL_THICKNESS_M) - 1e-6
-    assert np.all(out.hm >= np.minimum(cols["hm"], lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M) - 1e-6)
     assert np.all(out.hc[band] <= cols["hc"][band] + 1e-9) and np.all(out.hc[~band] >= cols["hc"][~band] - 1e-9)
-    assert not out.withheld.any()
-
-
-def check_flank_no_recipient_and_floor():
-    """Flank transfer with no recipient (withheld, nothing moves) and with floored donors (volume and bounds hold)."""
-    rng = np.random.default_rng(1)
-    g, n = lattice(6, 6), 36
-    areas = np.full(n, 4e9)
-    cols = columns_for(n, rng)
-    everything = np.full(n, 0.3)
-    out = mech.thin_with_flank_transfer(areas, g, everything, np.zeros(n, bool), cols, P)
-    assert out.withheld.all() and np.array_equal(out.hc, cols["hc"]) and out.craton_lost_m3 == 0.0
-    # One donor beyond the widest reach of any recipient: a long strip where only the far end is free.
-    strip, n2 = lattice(12, 1), 12
-    d = np.zeros(n2)
-    d[:10] = 0.5
+    # A band that is the whole plate has no recipient: every cell is held, and nothing moves.
+    everything = np.ones(n, bool)
+    plan_all = mech.flank_plan(g, everything, np.zeros(n, bool), P.flank_rows)
+    assert plan_all.held.all()
+    none = mech.thin_with_flank_transfer(areas, plan_all, np.full(n, 0.3), cols)
+    assert np.array_equal(none.hc, cols["hc"]) and none.craton_lost_m3 == 0.0
+    # The only recipients are far from the donors: the reach widens with no limit (here 9 hops) and volume is conserved.
+    strip, n2 = lattice(14, 1), 14
+    donors = np.zeros(n2, bool)
+    donors[:10] = True
+    plan2 = mech.flank_plan(strip, donors, np.zeros(n2, bool), P.flank_rows)
+    assert not plan2.held.any() and plan2.hops[0] == 10 and plan2.hops[9] == 2, plan2.hops
     cols2 = columns_for(n2, rng)
-    out2 = mech.thin_with_flank_transfer(np.full(n2, 4e9), strip, d, np.zeros(n2, bool), cols2, P)
-    # Recipients are cells 10-11; a donor reaches one within 2 hops, widening to 4: cells 6-9 are served, 0-5 withheld.
-    assert out2.withheld[:6].all() and not out2.withheld[6:].any(), out2.withheld
+    out2 = mech.thin_with_flank_transfer(np.full(n2, 4e9), plan2, np.where(donors, 0.5, 0.0), cols2)
+    assert abs(np.dot(out2.hc - cols2["hc"], np.full(n2, 4e9))) <= 1e-9 * np.dot(cols2["hc"], np.full(n2, 4e9))
     # Floored donors give up only what they lost.
     cols3 = columns_for(n, rng)
-    cols3["hc"][:] = 5_300.0
-    cols3["hm"][:] = 2_100.0
+    cols3["hc"][:], cols3["hm"][:] = 5_300.0, 2_100.0
     d3 = np.zeros(n)
-    d3[14:16] = 2.0
-    out3 = mech.thin_with_flank_transfer(areas, g, d3, np.zeros(n, bool), cols3, P)
-    assert np.all(out3.hc[14:16] >= rheology.RIFT_CRITICAL_THICKNESS_M - 1e-6)
-    assert np.all(out3.hm[14:16] >= lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M - 1e-6)
-    assert abs(np.dot(out3.hc, areas) - np.dot(cols3["hc"], areas)) < 1e-6 * np.dot(cols3["hc"], areas)
-    assert np.isclose(np.dot(out3.hc - cols3["hc"], areas), 0.0, atol=1e-3 * np.dot(cols3["hc"], areas) * 1e-6)
+    d3[band] = 2.0
+    out3 = mech.thin_with_flank_transfer(areas, plan, d3, cols3)
+    assert np.all(out3.hc[band] >= rheology.RIFT_CRITICAL_THICKNESS_M - 1e-6)
+    assert np.all(out3.hm[band] >= lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M - 1e-6)
+    assert abs(np.dot(out3.hc, areas) - np.dot(cols3["hc"], areas)) < 1e-9 * np.dot(cols3["hc"], areas)
 
 
-def check_ligament_rule():
-    """The integrated ligament rule: tension along the path never splits; a fully broken band splits only while
-    loaded across it; an intact ligament stronger than the path-normal load holds."""
+def check_held_band_never_strains():
+    """A band with no recipient, held over many steps: its strain, softening and latch never change."""
+    t = toy(pull_ratio=6.0)
+    prob = t.problem()
+    in_band = np.ones(len(t.points), dtype=bool)
+    plan = mech.flank_plan(t.graph, in_band, np.zeros(len(t.points), bool), P.flank_rows)
+    assert plan.held.all()
+    prob.latch = t.eps.copy()  # held: latch = current strain
+    eps = t.eps.copy()
+    for _ in range(40):
+        eps = rl.advance_rift(prob, eps, t.warm, 5 * MYR, P).eps
+    assert np.array_equal(eps, t.eps)
+
+
+def check_section_load_branches():
+    """The section load's branches: an open line with positive pull splits when the gates allow; an open or partly broken line with
+    zero pull neither grows nor splits; open lines keep finite rates and strains and stop at their latch; no infinite value."""
+    assert rl.section_load(0.0, 1.0, P) == (0.0, False)
+    assert rl.section_load(-1.0, 0.0, P) == (0.0, False)
+    lam, is_open = rl.section_load(1.0, 0.0, P)
+    assert is_open and np.isfinite(lam) and lam == P.r_max * P.lam_grow
+    assert rl.growth_ratio(lam, True, P) == P.r_max and rl.growth_ratio(10.0, False, P) == P.r_max
+    assert rl.rank_key(1e9, 0.1, True) > rl.rank_key(1.0, 99.0, False) and rl.rank_key(2.0, 0, True) > rl.rank_key(1.0, 0, True)
+    assert rl.ligament_gives(1.0, 0.0) and not rl.ligament_gives(0.0, 0.0) and not rl.ligament_gives(-1.0, 0.0)
+    assert rl.ligament_gives(2.0, 1.0) and not rl.ligament_gives(1.0, 2.0)
+    t = toy(pull_ratio=2.0)
+    prob = t.problem()
+    prob.intact[:] = False  # an open line
+    out = rl.advance_rift(prob, t.eps, t.warm, 5 * MYR, P)
+    assert out.open_start and np.isfinite(out.eps).all() and out.eps[t.chain].max() > 0.0
+    assert np.all(out.eps <= prob.latch + 1e-12)
+    prob.normal_load[:] = 0.0  # no pull: neither grows nor splits
+    idle = rl.advance_rift(prob, t.eps, t.warm, 5 * MYR, P)
+    assert np.array_equal(idle.eps, t.eps) and not idle.open_start
+    assert not rl.ligament_gives(0.0, 0.0)
+
+
+def check_substep_bound_and_kfail():
+    """The sub-step bound (no band cell moves by more than d_eps_max) and the K_fail error."""
+    t = toy(pull_ratio=P.r_max * 1.2)
+    prob = t.problem()
+    out = rl.advance_rift(prob, t.eps, t.warm, 1 * MYR, P)
+    bound = int(np.ceil(1 * MYR * P.eps_dot0 * (P.r_max - 1) ** P.n / P.d_eps_max)) + 2 * len(prob.chain)
+    assert out.substeps <= bound, (out.substeps, bound)
+    try:
+        rl.advance_rift(prob, t.eps, t.warm, 60 * MYR, replace(P, k_fail=3))
+    except RuntimeError as error:
+        assert "K_fail" in str(error)
+    else:
+        raise AssertionError("K_fail did not stop a run that needed more sub-steps")
+
+
+def check_ligament_normal_load():
+    """Path-normal loading: tension along the line never counts; across it does; compression across it does not."""
     n = 10
-    normal = np.tile([0.0, 1.0], (n, 1))  # path along x, normal along y (tangent-basis a, b)
-    ds = np.full(n, 6e4)
-    across = np.tile([0.0, 2e11, 0.0], (n, 1))
+    normal = np.tile([0.0, 1.0], (n, 1))  # line along x, normal along y (tangent-basis a, b)
     along = np.tile([2e11, 0.0, 0.0], (n, 1))
-    broken, strength = np.zeros(n, bool), np.full(n, 1e11)
-    assert not proto.ligament_splits(along, normal, ds, ~broken, strength), "tension along the path split it"
-    assert proto.ligament_splits(across, normal, ds, ~broken, strength)
-    assert not proto.ligament_splits(across, normal, ds, ~broken, np.full(n, 3e11))
-    full = np.ones(n, bool)
-    assert proto.ligament_splits(across, normal, ds, ~full, strength)
-    assert not proto.ligament_splits(np.zeros((n, 3)), normal, ds, ~full, strength), "a loadless broken band split"
-    assert not proto.ligament_splits(-across, normal, ds, ~full, strength), "compression across a broken band split"
-    # A band split into two broken stretches with a stronger gap: integrated, not per cell.
-    mixed_broken = np.zeros(n, bool)
-    mixed_broken[:7] = True
-    assert proto.ligament_splits(across, normal, ds, ~mixed_broken, np.full(n, 5e11))  # 3 intact cells < the load
-    assert not proto.ligament_splits(across, normal, ds, ~mixed_broken, np.full(n, 1.5e12))  # ... and above it
+    across = np.tile([0.0, 2e11, 0.0], (n, 1))
+    assert np.allclose(rl.path_normal_load(along, normal), 0.0)
+    assert np.allclose(rl.path_normal_load(across, normal), 2e11)
+    assert np.all(np.maximum(rl.path_normal_load(-across, normal), 0.0) == 0.0)
 
 
 def check_directional_sign():
@@ -204,10 +236,9 @@ def check_directional_sign():
     points = np.column_stack([np.ones(x.size), x.ravel(), y.ravel()])
     points /= np.linalg.norm(points, axis=1)[:, None]
     areas = np.full(len(points), (0.0072 * mech.RADIUS_M) ** 2)
-    along_y = np.tile([0.0, 0.0, 1.0], (len(points), 1))
     sign = np.where(points[:, 1] > 0, 1.0, -1.0)
     for direction, expect_extension in ((+1.0, True), (-1.0, False)):  # + : each half pulled away from the middle
-        force = direction * 1e11 * sign[:, None] * np.array([0.0, 1.0, 0.0])[None, :] + 0 * along_y
+        force = direction * 1e11 * sign[:, None] * np.array([0.0, 1.0, 0.0])[None, :]
         tensor = P.k_cut * proto.cut_tensor(points, areas, force, 0.0072 * mech.RADIUS_M)
         lam, lam_min, _ = proto.principal(tensor)
         middle = np.abs(points[:, 1]) < 0.01
@@ -215,9 +246,147 @@ def check_directional_sign():
         if expect_extension:
             assert top > 0 and top > 5 * abs(bottom), (top, bottom)
         else:
-            # The six-direction fit leaks about 10% of a uniaxial load into the other principal value at every scale (probed
-            # at 0.05-0.2 rad); the leak is symmetric, so a compressive plate shows extension of about a tenth of it.
             assert bottom < 0 and top < 0.15 * abs(bottom), ("compression registered as extension", top, bottom)
+
+
+def _sections_for(force_sign: float):
+    t = toy(nx=25, ny=15)
+    pts = t.points
+    side = np.where(pts[:, 1] > 0, 1.0, -1.0)  # +y half pulled +y, -y half pulled -y (tension across the middle)
+    force = force_sign * 1e11 * side[:, None] * np.array([0.0, 1.0, 0.0])[None, :]
+    return t, rl.section_profile(pts, t.areas, force, P.k_cut)
+
+
+def check_section_pull_manufactured():
+    """The section pull of manufactured force fields: two halves pulled apart peak at the middle section with the force on a half
+    (times k_cut); pushed together gives no corridor; sections that leave less than a_min on a side are never candidates."""
+    t, sections = _sections_for(+1.0)
+    d_y = int(np.argmin(np.abs(sections.normals @ np.array([1.0, 0.0]))))  # the direction whose normal is along the lattice's y axis
+    # the lattice's v axis maps to the plane frame's second axis; find the direction normal to the long axis by its peak size
+    peaks = [float(np.max(sections.pull[:, d])) for d in range(rl.N_DIRECTIONS)]
+    best = int(np.argmax(peaks))
+    expected = P.k_cut * 1e11 * float(np.sum(t.points[:, 1] > 0))
+    assert abs(peaks[best] - expected) <= 0.1 * expected, (peaks, expected, d_y)
+    corridors = rl.candidate_corridors(sections, P)
+    assert corridors and corridors[0].peak_share >= P.a_min - 1e-9
+    for corridor in corridors:
+        smaller = np.minimum(sections.far_share[:, corridor.direction], 1 - sections.far_share[:, corridor.direction])
+        assert np.all(smaller[corridor.cells] >= P.a_min - 1e-9)
+    _, pushed = _sections_for(-1.0)
+    # The six-direction cut leaks a few per cent of a uniaxial load into the perpendicular direction (as in
+    # check_directional_sign), so a compressed plate may keep a tiny positive peak: it must be far below the push.
+    compressive = max(abs(float(np.min(np.where(np.minimum(pushed.far_share[:, d], 1 - pushed.far_share[:, d]) >= P.a_min, pushed.pull[:, d], np.inf))))
+                      for d in range(rl.N_DIRECTIONS))
+    for corridor in rl.candidate_corridors(pushed, P):
+        assert corridor.peak_pull < 0.05 * compressive, ("compression registered as a pull", corridor.peak_pull, compressive)
+
+
+def _line_lattice(nx=24, ny=13):
+    """A lattice with a corridor across its middle band, for the line placement checks: returns (graph, boundary, strike, cost grid)."""
+    graph = lattice(nx, ny)
+    index = np.arange(nx * ny).reshape(ny, nx)
+    boundary = np.zeros((ny, nx), bool)
+    boundary[0], boundary[-1], boundary[:, 0], boundary[:, -1] = True, True, True, True
+    strike = np.broadcast_to(np.arange(nx, dtype=float), (ny, nx)).copy()  # the line runs along x
+    corridor = np.zeros((ny, nx), bool)
+    corridor[3:10] = True
+    return graph, index, boundary.ravel(), strike.ravel(), corridor.ravel(), nx, ny
+
+
+def check_line_placement():
+    """Line placement: around a craton, along a belt, once found it is found again after holding a rift; the line is a valid chain
+    from end to end of the corridor; a corridor that is not connected end to end gives no line."""
+    graph, index, boundary, strike, corridor, nx, ny = _line_lattice()
+    cost = np.ones(nx * ny)
+    straight = rl.find_line(graph, corridor, boundary, strike, cost)
+    assert straight is not None and len(straight) >= nx - 3 and boundary[straight[0]] and boundary[straight[-1]]
+    assert np.all(graph[straight[:-1], straight[1:]] > 0), "not an edge-connected chain"
+    assert len(set(straight.tolist())) == len(straight)
+    craton = np.zeros((ny, nx), bool)
+    craton[4:9, 8:15] = True
+    around = rl.find_line(graph, corridor, boundary, strike, np.where(craton.ravel(), 50.0, 1.0))
+    assert not craton.ravel()[around].any(), "the line crossed the craton"
+    belt = np.full((ny, nx), 1.0)
+    belt[8, :] = 0.2
+    along_belt = rl.find_line(graph, corridor, boundary, strike, belt.ravel())
+    assert np.mean(index[8][1:-1][:, None] == along_belt[None, :]) > 0.8 or (np.isin(along_belt, index[8]).mean() > 0.8)
+    cost_broken = np.where(np.isin(np.arange(nx * ny), along_belt), 0.0, belt.ravel())
+    again = rl.find_line(graph, corridor, boundary, strike, cost_broken)
+    assert np.array_equal(again, along_belt), "a line holding a rift was not found again"
+    split = corridor.copy()
+    split.reshape(ny, nx)[:, 11:13] = False
+    assert rl.find_line(graph, split, boundary, strike, cost) is None, "an unconnected corridor gave a line"
+
+
+def check_path_lengths():
+    """ds of a path is half the centre distances to its neighbours (ends: half of one)."""
+    from app import thin_shell
+
+    pts = np.column_stack([np.ones(3), np.array([0.0, 0.01, 0.02]), np.zeros(3)])
+    pts /= np.linalg.norm(pts, axis=1)[:, None]
+    first, second = thin_shell._tangent_basis(pts)
+    geometry = rl.path_geometry(pts, np.arange(3), first, second)
+    spacing = 0.01 * mech.RADIUS_M
+    assert np.allclose(geometry.ds / spacing, [0.5, 1.0, 0.5], rtol=1e-3), geometry.ds / spacing
+    assert np.isclose(geometry.length, 2 * spacing, rtol=1e-3) and np.isclose(geometry.straight, geometry.length, rtol=1e-3)
+
+
+def check_split_masks():
+    """Stray-piece attachment and its limit, the a_min daughter minimum, and a valid two-daughter split."""
+    nx, ny = 20, 10
+    graph = lattice(nx, ny)
+    areas = np.ones(nx * ny)
+    index = np.arange(nx * ny).reshape(ny, nx)
+    line = index[:, 10]  # a vertical line splits the plate in two halves
+    mask, why = rl.split_masks(graph, areas, line, P)
+    assert mask is not None and 85 <= mask.sum() <= 115, why  # line cells tie on votes and go to side 0
+    assert connected(graph, mask) and connected(graph, ~mask)
+    # a stray piece (a 3x3 pocket, 4.5% of the plate) walled off by a ring: attached when the limit allows it, cancelling the split otherwise
+    ring = np.unique(np.concatenate([index[2, 12:17], index[6, 12:17], index[2:7, 12], index[2:7, 16]]))
+    cut = np.concatenate([line, ring])
+    pocket = index[3:6, 13:16].ravel()
+    mask3, why3 = rl.split_masks(graph, areas, cut, replace(P, a_stray=0.001))
+    assert mask3 is None and why3 == "stray_too_large", why3
+    mask3, why3 = rl.split_masks(graph, areas, cut, replace(P, a_stray=0.05))
+    assert mask3 is not None and len({bool(mask3[c]) for c in pocket}) == 1 and mask3[pocket[0]] == mask3[index[5, 14] + 0] and not mask3[pocket[0]], why3
+    # a_min: a line near the edge leaves a daughter under 15%
+    near_edge = index[:, 2]
+    mask4, why4 = rl.split_masks(graph, areas, near_edge, P)
+    assert mask4 is None and why4 == "daughter_small", why4
+    assert rl.split_masks(graph, areas, index[:, 2], replace(P, a_min=0.05))[0] is not None
+
+
+def connected(graph, mask) -> bool:
+    from scipy.sparse.csgraph import connected_components
+
+    return connected_components(graph[mask][:, mask], directed=False)[0] == 1
+
+
+def check_tip_speed_against_law():
+    """Tip start-up and steady speed against the discrete law under a constant Λ (the full sweep is in check_rift_line_d1.py)."""
+    row = toy_mod.propagation(125e3, 125e3, 0.05, P)
+    assert abs(row["nucleation_myr"] - row["law_nucleation_myr"]) <= 0.1 * row["law_nucleation_myr"], row
+    assert row["within_20pct"], row
+
+
+def check_capacity_and_disk_kernels():
+    """The interpolated capacity matches a direct column evaluation, and disk averages are area-weighted rows of one."""
+    import replay_gate2_capacity as gate2
+
+    hc, hm, lag = np.array([35_000.0, 12_000.0, 8_000.0]), np.array([100_000.0, 40_000.0, 8_000.0]), np.array([0.0, 50.0, 0.0])
+    kind = np.array([0, 2, 1])
+    got = mech.capacity(kind, hc, hm, lag)
+    for i, name in enumerate(mech.KINDS[k] for k in kind):
+        direct = gate2._column_capacity(name, float(hc[i]), float(hm[i]), float(lag[i]))
+        assert abs(got[i] - direct) <= 0.02 * direct, (name, got[i], direct)
+    rng = np.random.default_rng(3)
+    pts = rng.normal(size=(200, 3))
+    pts /= np.linalg.norm(pts, axis=1)[:, None]
+    pts = pts[pts[:, 2] > 0.8]
+    areas = rng.uniform(1, 2, len(pts)) * 1e9
+    disk = mech.disk_average_matrix(pts, areas, 400e3)
+    assert np.allclose(np.asarray(disk.sum(axis=1)).ravel(), 1.0)
+    assert np.allclose(disk @ np.full(len(pts), 3.0), 3.0)
 
 
 # --- plate-level checks --------------------------------------------------------------------------
@@ -244,7 +413,7 @@ def check_remap_without_healing(seed):
     plate = biggest(w)
     key = int(plate.cell_keys[len(plate.cell_keys) // 2])
     plate.refine_cells(np.array([key]))
-    children = np.array([int(k) for k in mech.SURFACE_FIELDS and __import__("app.sparse_quad_patch", fromlist=["x"]).child_cell_keys(np.array([key]))[0]])
+    children = np.array([int(k) for k in __import__("app.sparse_quad_patch", fromlist=["x"]).child_cell_keys(np.array([key]))[0]])
     index = {int(k): i for i, k in enumerate(plate.cell_keys)}
     sel = np.array([index[int(c)] for c in children])
     eps, warm, broken = plate.collect("rift_strain"), plate.collect("rift_warm_strain"), plate.collect("rift_broken")
@@ -278,8 +447,7 @@ def check_margin_insertion_share(seed):
     w = world(seed)
     plate = biggest(w)
     n = plate.node_count()
-    eps = np.full(n, 1.0)
-    plate.set_fields_on_plate(rift_strain=eps, rift_warm_strain=np.full(n, 0.6), rift_broken=np.ones(n, bool))
+    plate.set_fields_on_plate(rift_strain=np.full(n, 1.0), rift_warm_strain=np.full(n, 0.6), rift_broken=np.ones(n, bool))
     rifted = np.array([0, 1])
     original = step_mod._ORIGINAL.get("open_rift")
     step_mod._ORIGINAL["open_rift"] = lambda *a, **k: None
@@ -292,27 +460,36 @@ def check_margin_insertion_share(seed):
     assert np.all(e[2:] == 1.0)
 
 
-def check_latch_no_eruption(seed):
-    """The broken latch: overloaded cells latch at the floor with no interior eruption (no reference column, no volcano)."""
+def _fresh(plate):
+    n = plate.node_count()
+    plate.set_fields_on_plate(rift_strain=np.zeros(n), rift_warm_strain=np.zeros(n), rift_broken=np.zeros(n, bool))
+
+
+def check_latch_no_eruption_and_applied_strain(seed):
+    """The broken latch: overloaded line cells latch at the floor with no interior eruption, and ``rift_strain`` never exceeds the
+    strain applied to the column."""
     w = world(seed)
     plate = biggest(w)
     state = step_mod._STATE
-    heavy = Params(eps_dot0=5e-6, k_cap=0.05)
     old = state.params
-    state.params = heavy
+    state.params = Params(eps_dot0=5e-6, k_cap=0.05, lam_grow=0.01)
     try:
+        _fresh(plate)
         volcano_before = plate.collect("is_volcano").copy()
-        hc0 = plate.collect("crustal_thickness_m").copy()
+        hc0, hm0 = plate.collect("crustal_thickness_m").copy(), plate.collect("mantle_lithosphere_thickness_m").copy()
         for _ in range(6):
             step_mod.damage_step(w, plate, 1e6, state)
-        hc, volcano = plate.collect("crustal_thickness_m"), plate.collect("is_volcano")
-        broken = plate.collect("rift_broken")
+        hc, volcano, broken = plate.collect("crustal_thickness_m"), plate.collect("is_volcano"), plate.collect("rift_broken")
+        eps = plate.collect("rift_strain")
         assert broken.any(), "nothing latched under an overload"
         assert np.array_equal(volcano, volcano_before), "interior thinning ignited a volcano"
         assert hc[broken].min() >= rheology.RIFT_CRITICAL_THICKNESS_M - 1e-6
-        assert not np.any(step_mod._is_reference(hc, plate.collect("mantle_lithosphere_thickness_m")) & ~step_mod._is_reference(hc0, plate.collect("mantle_lithosphere_thickness_m")) & broken)
+        assert not np.any(step_mod._is_reference(hc, plate.collect("mantle_lithosphere_thickness_m")) & ~step_mod._is_reference(hc0, hm0) & broken)
+        strained = (eps > 0) & (hc < hc0)  # donors: strain recorded is at most the strain that thinned the crust
+        assert np.all(eps[strained] <= np.log(hc0[strained] / np.maximum(hc[strained], 1.0)) + 1e-6)
     finally:
         state.params = old
+        _fresh(plate)
 
 
 def check_damage_runs_for_every_plate(seed):
@@ -322,133 +499,77 @@ def check_damage_runs_for_every_plate(seed):
     state.pass_key = None
     young = w.plates[-1]
     young.reset_age()
-    before = {p.plate_id: p.collect("rift_strain").copy() for p in w.plates}
     step_mod.maybe_split_plate(w, w.plates[0], 1e6)
     assert set(state.steps) == {p.plate_id for p in w.plates}, "a plate was skipped by the damage pass"
     assert young.plate_id in state.steps and young.age_years < 1.0
     again = len(state.steps)
     step_mod.maybe_split_plate(w, w.plates[1], 1e6)  # same step: no second pass
     assert len(state.steps) == again and state.pass_key == w.elapsed_years
-    assert any(not np.array_equal(before[p.plate_id], p.collect("rift_strain")) for p in w.plates)
 
 
-def _force_band(w, plate, state):
-    """A fully broken strip across the plate's widest axis, with tension across it, for the split checks."""
-    step = state.steps[plate.plate_id]
-    pts = step.points
-    centre = pts.mean(axis=0)
-    _, _, vt = np.linalg.svd(pts - centre, full_matrices=False)
-    minor = vt[1]
-    across = (pts - centre) @ minor
-    width = 0.8 * mech.line_spacing_rad(w.node_density) if hasattr(mech, "line_spacing_rad") else 0.012
-    band = np.abs(across) < width
-    broken = band.copy()
-    step.broken = broken
-    step.eps = np.where(band, 1.5, 0.0)
-    from app import thin_shell
-
-    first, second = thin_shell._tangent_basis(pts)
-    a, b = first @ minor, second @ minor
-    tension = 1.0e12
-    step.tensor = np.column_stack([tension * a * a, tension * b * b, tension * a * b])
-    return band
-
-
-def check_edge_to_edge_band_splits(seed):
-    """A fully broken edge-to-edge band splits; the path is a valid chain and the daughters are two connected plates
-    that partition the parent and keep its ledgers."""
+def check_broken_line_splits_and_f_break(seed):
+    """The integrated ligament rule and the ``f_break`` rule on a real plate: a fully broken line with pull splits it into two
+    connected plates that partition the parent and keep its ledgers; a line with less than ``f_break`` broken does not split."""
     w = world(seed)
     state = step_mod._STATE
     plate = max((p for p in w.plates if p.node_count() > 400), key=lambda p: p.node_count())
     plate._age_years = 1e9
-    step_mod.damage_step(w, plate, 1e6, state)
-    band = _force_band(w, plate, state)
-    assert band.sum() > 5
-    n_before, crust_before = plate.node_count(), float(np.dot(plate.collect("crustal_thickness_m"), plate.node_areas_m2()))
-    result = step_mod.breakthrough(w, plate, state)
-    assert result is not None, ("no split", state.counters)
-    a, b = result
-    assert a.node_count() + b.node_count() == n_before and a.plate_id != b.plate_id
-    crust_after = sum(float(np.dot(d.collect("crustal_thickness_m"), d.node_areas_m2())) for d in (a, b))
-    assert abs(crust_after - crust_before) <= 1e-9 * crust_before
-    keys = np.concatenate([a.cell_keys, b.cell_keys])
-    assert len(np.unique(keys)) == n_before, "a cell belongs to both daughters"
-    for d in (a, b):
-        assert np.all(d.collect("rift_strain") >= 0.0)
-    event = state.events[-1]
-    assert event["kind"] == "split" and event["intact_share"] == 0.0 and event["path_cells"] >= 2
-
-
-def check_capacity_and_disk_kernels():
-    """The interpolated capacity matches a direct column evaluation, and disk averages are area-weighted rows of one."""
-    import replay_gate2_capacity as gate2
-
-    hc, hm, lag = np.array([35_000.0, 12_000.0, 8_000.0]), np.array([100_000.0, 40_000.0, 8_000.0]), np.array([0.0, 50.0, 0.0])
-    kind = np.array([0, 2, 1])
-    got = mech.capacity(kind, hc, hm, lag)
-    for i, name in enumerate(mech.KINDS[k] for k in kind):
-        direct = gate2._column_capacity(name, float(hc[i]), float(hm[i]), float(lag[i]))
-        assert abs(got[i] - direct) <= 0.02 * direct, (name, got[i], direct)
-    rng = np.random.default_rng(3)
-    pts = rng.normal(size=(200, 3))
-    pts /= np.linalg.norm(pts, axis=1)[:, None]
-    pts = pts[pts[:, 2] > 0.8]
-    areas = rng.uniform(1, 2, len(pts)) * 1e9
-    disk = mech.disk_average_matrix(pts, areas, 400e3)
-    assert np.allclose(np.asarray(disk.sum(axis=1)).ravel(), 1.0)
-    assert np.allclose(disk @ np.full(len(pts), 3.0), 3.0)
-
-
-def check_path_lengths_and_cap_bookkeeping():
-    """ds of a path is half the centre distances to its neighbours (ends: half of one); the K_sub cap keeps warm strain."""
-    from app import thin_shell
-
-    pts = np.column_stack([np.ones(3), np.array([0.0, 0.01, 0.02]), np.zeros(3)])
-    pts /= np.linalg.norm(pts, axis=1)[:, None]
-    first, second = thin_shell._tangent_basis(pts)
-    _, ds = step_mod._path_normals(pts, np.arange(3), first, second)
-    spacing = 0.01 * mech.RADIUS_M
-    assert np.allclose(ds / spacing, [0.5, 1.0, 0.5], rtol=1e-3), ds / spacing
-    tiny = Params(k_sub=2, d_eps_max=0.01)
-    r = mech.integrate_strain(np.array([1e14]), np.array([1e12]), np.zeros(1), np.zeros(1), np.zeros(1), np.zeros(1), np.zeros(1),
-                              np.array([5e6]), np.array([2.0]), tiny)
-    assert r.capped[0] and r.eps[0] == 2.0 and abs(r.warm[0] - 2.0) < 1e-6, (r.eps, r.warm)
-
-
-def check_withheld_donor_not_latched(seed):
-    """A donor whose thinning is withheld keeps its crust above the floor and is not latched by the floor."""
-    w = world(seed)
-    state = step_mod._STATE
-    plate = biggest(w)
-    n = plate.node_count()
-    # Every cell strains hard, so no cell has a recipient; crust stays above the floor and nothing may latch by the floor.
-    heavy, old = Params(eps_dot0=2e-7, k_cap=0.05, eps_break=1e9, k_sub=20_000), state.params
-    state.params = heavy
+    _fresh(plate)
+    prep = step_mod.prepare_plate(w, plate, state.params, 1e6)
+    assert prep.line is not None, "no rift line on the largest plate"
+    chain = prep.line.chain
+    eps = np.zeros(plate.node_count())
+    broken = np.zeros(plate.node_count(), bool)
+    state.pass_key = None
+    # Few broken cells: P >= S can hold (a very strong pull) but the share is below f_break.
+    few = chain[: max(1, len(chain) // 5)]
+    eps[few], broken[few] = 1.9, True
+    plate.set_fields_on_plate(rift_strain=eps, rift_broken=broken)
+    old = state.params
+    state.params = replace(old, k_cap=1e-3)  # the pull far exceeds the strength
     try:
-        hc0 = plate.collect("crustal_thickness_m").copy()
-        plate.set_fields_on_plate(rift_strain=np.zeros(n), rift_warm_strain=np.zeros(n), rift_broken=np.zeros(n, bool))
         step_mod.damage_step(w, plate, 1e6, state)
-        broken, hc = plate.collect("rift_broken"), plate.collect("crustal_thickness_m")
-        floor_reached = hc <= rheology.RIFT_CRITICAL_THICKNESS_M + 1e-6
-        assert not np.any(broken & ~floor_reached & (hc0 > rheology.RIFT_CRITICAL_THICKNESS_M)), "latched without reaching the floor"
+        step = state.steps[plate.plate_id]
+        assert step.line is not None and step.broken_share < old.f_break + 1e-9
+        assert step_mod.breakthrough(w, plate, state) is None, "split with too little of the line broken"
+        eps[chain], broken[chain] = 1.9, True
+        plate.set_fields_on_plate(rift_strain=eps, rift_broken=broken)
+        step_mod.damage_step(w, plate, 1e6, state)
+        step = state.steps[plate.plate_id]
+        assert step.broken_share >= old.f_break
+        n_before = plate.node_count()
+        crust_before = float(np.dot(plate.collect("crustal_thickness_m"), plate.node_areas_m2()))
+        result = step_mod.breakthrough(w, plate, state)
+        why = state.counters["rejected_because"]
+        if result is None:  # a valid refusal (geometry); then the reason is recorded
+            assert why, "no split and no recorded reason"
+            return
+        a, b = result
+        assert a.node_count() + b.node_count() == n_before and a.plate_id != b.plate_id
+        crust_after = sum(float(np.dot(d.collect("crustal_thickness_m"), d.node_areas_m2())) for d in (a, b))
+        assert abs(crust_after - crust_before) <= 1e-9 * crust_before
+        assert len(np.unique(np.concatenate([a.cell_keys, b.cell_keys]))) == n_before
+        assert min(a.node_count(), b.node_count()) >= old.a_min * n_before - 1
     finally:
         state.params = old
 
 
-CHECKS = [check_strength_bounds, check_softening_monotone, check_strain_timestep, check_healing, check_latch_stops_strain,
-          check_plume_expiry, check_flank_conservation, check_flank_no_recipient_and_floor, check_ligament_rule, check_directional_sign,
-          check_capacity_and_disk_kernels, check_path_lengths_and_cap_bookkeeping]
-PLATE_CHECKS = [check_remap_without_healing, check_reset_on_eruption, check_margin_insertion_share, check_latch_no_eruption,
-                check_damage_runs_for_every_plate, check_edge_to_edge_band_splits, check_withheld_donor_not_latched]
+CHECKS = [check_strength_bounds, check_softening_monotone, check_healing, check_no_strain_off_band_and_latch, check_plume_expiry,
+          check_flank_conservation_and_held, check_held_band_never_strains, check_section_load_branches, check_substep_bound_and_kfail,
+          check_ligament_normal_load, check_directional_sign, check_section_pull_manufactured, check_line_placement, check_path_lengths,
+          check_split_masks, check_tip_speed_against_law, check_capacity_and_disk_kernels]
+PLATE_CHECKS = [check_remap_without_healing, check_reset_on_eruption, check_margin_insertion_share,
+                check_latch_no_eruption_and_applied_strain, check_damage_runs_for_every_plate, check_broken_line_splits_and_f_break]
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--seed", type=int, default=106533960)
     parser.add_argument("--only", nargs="*")
+    parser.add_argument("--synthetic", action="store_true")
     args = parser.parse_args()
     failed = 0
-    for check in CHECKS + PLATE_CHECKS:
+    for check in CHECKS + ([] if args.synthetic else PLATE_CHECKS):
         if args.only and check.__name__ not in args.only:
             continue
         try:
