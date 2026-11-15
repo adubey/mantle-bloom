@@ -69,7 +69,7 @@ export type { CrossSectionResponse } from "./crossSectionApi";
 // the packaged single-process app, where FastAPI serves this bundle itself (see
 // backend/app/main.py's mount_frontend). A dev build with no override still points at :8000.
 const API_ROOT =
-  import.meta.env.VITE_API_BASE ?? (import.meta.env.PROD ? "" : "http://localhost:8000");
+  import.meta.env?.VITE_API_BASE ?? (import.meta.env?.PROD ? "" : "http://localhost:8000");
 
 export const API_BASE = API_ROOT;
 
