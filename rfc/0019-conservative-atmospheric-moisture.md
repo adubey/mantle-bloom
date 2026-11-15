@@ -1,7 +1,8 @@
 # RFC 0019: Conserve atmospheric moisture in diagnostic rain and transport
 
-**Status:** Accepted (owner confirmation 2026-11-14)
+**Status:** Accepted (revised 2026-11-14 after G0; owner confirmation 2026-11-14)
 **Date:** 2026-11-03
+**Revisions:** See [Revision note](#revision-note).
 **Related:** [tracking #898](https://github.com/adubey/mantle-bloom/issues/898), [#771](https://github.com/adubey/mantle-bloom/issues/771), RFC 0015, RFC 0016; issues #522, #526, #530, #358
 
 ## Problem
@@ -69,7 +70,7 @@ Orographic lift may increase the precipitation sink on windward slopes only when
 - **Vegetation:** express transpiration as a mass flux. RFC 0016's current 0.16 recycling fraction of prior precipitation may be a starting calibration hypothesis, but it is not a measured ET law. Convert the prior rain from mm/yr to kg/m²/s, apply the biome coefficient once, and ensure RFC 0016's land-water store or another explicit surface reservoir owns the debit. When its water source is not available, transpiration is zero rather than an unbooked input.
 - **Background vapour:** remove `MIN_BACKGROUND_HUMIDITY_G_KG` as an independent source. If a trace precipitation floor is still required for ice accumulation, make it an explicit transfer from a named surface reservoir or retain no floor and measure the glaciation impact.
 
-[[Oki & Kanae, 2006]](#ref-okikanae2006) report that the ocean supplies about 86% of global evaporation and receives about 78% of global precipitation. Use these as broad Earthlike scale checks alongside land/ocean rain share; do not force local cells or each synthetic world to those fractions. [[van der Ent et al., 2010]](#ref-vanderent2010) estimate 40% of terrestrial precipitation originates from land evaporation in their ERA-Interim accounting. This supports source-tagged recycling diagnostics, not an exact per-cell transpiration fraction.
+[[Oki & Kanae, 2006]](#ref-okikanae2006) report that the ocean supplies about 87% of global evaporation and receives about 78% of global precipitation. Use these as broad Earthlike scale checks alongside land/ocean rain share; do not force local cells or each synthetic world to those fractions. [[van der Ent et al., 2010]](#ref-vanderent2010) estimate 40% of terrestrial precipitation originates from land evaporation in their ERA-Interim accounting. This supports source-tagged recycling diagnostics, not an exact per-cell transpiration fraction.
 
 ### Scales, outputs, and compatibility
 
@@ -96,7 +97,7 @@ Use windows A, D, and E and the second, colder source world listed in #771 for d
 Run these only after the project owner accepts this Draft RFC. Record scripts, source commit, input hashes, outputs, and decisions in `analysis/rfc0017/README.md`; keep saves and full outputs in private captures.
 
 1. **G0 — Reproduce and inventory.** On the exact #771 source worlds/checkpoints, reproduce current `measure_climate_fields.py` outputs and the RFC 0016 G1b result where its inputs and pinned code permit. Trace every humidity, rain, evaporation, and runoff writer from climate through hydrology, vegetation, ice, and RFC 0016. Establish area-weighted source/sink totals by ocean, lake/river, and vegetation, and verify the reported 38–51% land-rain rise. If it does not reproduce, stop and revise the premise before choosing parameters.
-   **G0 result, 2026-11-14:** The pinned G1b rain increases reproduce on the converted checkpoints, and the current-source inventory is recorded in [the G0 report](../analysis/rfc0017/README.md#g0-assessment). Exact legacy bytes, one unmodified climate snapshot, and physical atmospheric source/closure totals remain unavailable; the report does not treat those gaps as a passed gate.
+   **G0 result, 2026-11-14:** The pinned G1b rain increases reproduce on the converted checkpoints, and the current-source inventory is recorded in [the G0 report](../analysis/rfc0017/README.md#g0-assessment). The owner accepted the documented limitations on 2026-11-14: converted inputs with matching checked outputs, the source snapshot without its incompatible cached land/ice summary, and unavailable physical atmospheric source/closure totals satisfy G0 for proceeding to G1 and G2. These limits do not establish atmospheric closure.
 2. **G1 — Literature and unit screen.** Verify reference equations and units from the papers, obtain ERA5 column water, surface humidity, surface wind, vertically integrated vapour transport and precipitation at a documented period/resolution, and compare them on the same grid. Select the mixing-depth and wind-flux mapping ranges. If ERA5 cannot distinguish them, retain the ranges as calibration uncertainties; do not present them as observed constants.
 3. **G2 — Conservative offline prototype.** Implement only a diagnostic script or isolated prototype first. On analytic source/transport cases, test closed-sphere global closure, local availability, source attribution, orographic removal, zero sources, cap behavior, pole/seam handling, and climate-density convergence. For option B, verify that transitions follow local arrows and test convergence, divergence, calm cells, closed loops with rainout, and closed classes without a sink. Compare option A with option B for runtime and closure. If neither can close to `1e-8` relative to total source in double precision and remain positive, revise the discretization before production code.
 4. **G3 — Climate impact and runtime.** After owner review of G2, run climate-only comparisons on the registered windows and held-out saves with both wind modes and climate densities 1 and 4. Report area-weighted ocean/land rain shares, latitude-band means, Köppen shares, precipitation rel-RMS to current source, surface-source amounts, wind transport, per-update closure, and median step-time cost. If held-out acceptance thresholds cannot be met without violating closure or exceeding the runtime budget, return to the RFC for a design choice before implementation.
@@ -141,6 +142,17 @@ Run these only after the project owner accepts this Draft RFC. Record scripts, s
 - If the only parameters that pass the ledger make precipitation patterns or downstream hydrology unusable on held-out worlds, the assumption that a steady diagnostic is sufficient is falsified. Reopen the choice between a more complete prognostic atmosphere and a simpler explicitly calibrated proxy.
 - If the diagnostic and CFD winds imply irreconcilable transport mappings, do not share one fitted multiplier; revise the design to mode-specific transport or narrow the supported wind modes.
 - If plausible rainout and transport sensitivities produce order-of-magnitude differences in land rain or lake supply, the current literature and diagnostics do not constrain this design enough for implementation; gather new evidence or withdraw the recommendation.
+
+## Revision note
+
+**2026-11-14 — G0 interpretation.** The original gate required the exact #771 source
+worlds, current climate-field output and area-weighted physical source/sink totals.
+The owner accepted G0 on the documented evidence: the converted checkpoints reproduce
+the checked G1b quantities exactly; the source snapshot omits an incompatible cached
+land/ice summary; and current atmospheric source/closure volumes cannot be computed
+from the humidity proxies. The [G0 report](../analysis/rfc0017/README.md#g0-assessment)
+preserves those limits. G1 and G2 may proceed; this does not establish atmospheric
+closure or change the later gate thresholds.
 
 ## References
 

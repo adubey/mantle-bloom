@@ -180,17 +180,53 @@ The 38–51% premise reproduces for A, D and E on the pinned backend and convert
 checkpoints; the writer inventory and available source/sink and proxy totals are above.
 The exact legacy input bytes were not available through B2, the original measurement
 script fails on one source cache, and physical atmospheric evaporation/transpiration
-fluxes and closure totals are not defined in the current model. These gaps prevent
-claiming literal completion of every G0 requirement. The proxy totals do not replace
-the missing physical quantities. Owner decision is needed before treating these
-documented limitations as satisfying that gate or changing its criterion.
+fluxes and closure totals are not defined in the current model. The proxy totals do not replace the missing physical quantities. On 2026-11-14 the owner
+accepted these documented limitations as satisfying G0 and authorized G1. This decision
+does not establish atmospheric closure.
 
-**Proposed owner decision (not applied):** Treat G0's input reproduction requirement as
+**Owner decision (accepted 2026-11-14):** Treat G0's input reproduction requirement as
 satisfied by the recorded converted-file hashes plus the exact match of the five checked
 ledger terms in both arms across A, D and E, and accept the source snapshot with its
 cached land/ice summary omitted. Treat the area-weighted physical atmosphere source
 and closure totals as unavailable in the current implementation, with the separately
 reported proxy integrals and physical hydrology losses completing the inventory. This
 would permit G1 and G2 to proceed without claiming atmospheric closure; the unmodified
-script failure and missing original bytes remain open limitations. The current G0
-criterion remains unchanged until the owner decides.
+script failure and missing original bytes remain open limitations. This interpretation is accepted for G0; the limitations remain.
+
+## G1: literature and units (in progress)
+
+Crossref resolves all three RFC references with the expected authors, titles and years.
+The following checks use the sources themselves; they constrain scales, not synthetic
+world calibration targets.
+
+- [Trenberth (1998), Table I](https://staff.cgd.ucar.edu/trenbert/trenberth.papers/ClilmChg39_667-694.pdf),
+  reports global-mean precipitable water 24.6 mm and precipitation 2.69 mm/day, so
+  their ratio is 9.14 days. The same paper calculates 8.1 days from the inverse of
+  the area-mean local depletion rate, and distinguishes it from the ratio of global
+  means. Neither number implies a universal local rainout time. As liquid water
+  equivalent, 1 mm of column water is 1 kg/m²; 1 mm/day is 1/86,400 kg/m²/s.
+- [van der Ent et al. (2010)](https://doi.org/10.1029/2010WR009127), Table 1,
+  reports a 40% continental-origin share of terrestrial precipitation for 1999–2008,
+  and 57% of terrestrial evaporation returning to continental precipitation. Those
+  are distinct source fractions, not local plant transpiration fractions.
+- Oki and Kanae's 2006 water-cycle figure gives 436.5 and 65.5 thousand km³/yr for
+  ocean evaporation and terrestrial evapotranspiration, respectively, and 391 and
+  111 thousand km³/yr for ocean and land precipitation. These imply 86.95% and
+  77.89% ocean shares, respectively; Antarctica is omitted in the land figure.
+  See the figure reproduced by its author in [Oki (2016), slide 2](https://gewexevents.org/wp-content/uploads/Day3_Oki_IWMinLSMs.pdf).
+- [ECMWF's ERA5 documentation](https://confluence.ecmwf.int/pages/viewpage.action?pageId=611555221)
+  says to derive 2 m specific humidity from 2 m dew point and surface pressure,
+  using saturation over water even for subfreezing dew points. Column vapour is
+  kg/m²; vertically integrated q·wind·dp/g is kg/(m·s). Precipitation in the
+  selected six-hour accumulation is metres of water equivalent per six hours, not
+  an instantaneous rate; multiplying by 4,000 gives mm/day.
+
+The WeatherBench2 1990–2019 climatology contains near-surface and column variables,
+but not a native vertically integrated vapour flux. The planned same-time 2000 ERA5
+sample instead integrates q·u and q·v over its 13 available pressure levels, excludes
+below-ground levels and approximates the unobserved top and near-surface layers. It will
+also integrate q alone and compare the result against ERA5's total-column vapour to
+show the effect of that vertical approximation. A 12-month sample of 48-hour windows
+is not a 30-year climatology and cannot by itself establish a precise universal
+transport multiplier or mixing depth. The raw pressure-level probe is queued until
+compute capacity is available.
