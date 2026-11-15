@@ -926,7 +926,9 @@ def _bracketed_root(f, lo: float, hi: float, f_lo: float, f_hi: float, tolerance
     return lo, hi
 
 
-def _solve_plastic_body(dom: _Domain, opening_m3: float, dt_myr: float, sea_level_m: float, step_m: float):
+def _solve_plastic_body(
+    dom: _Domain, opening_m3: float, dt_myr: float, sea_level_m: float, step_m: float, extent_hint: float | None = None
+):
     """Backward-Euler volume update for one body. Returns (shape, accumulation, surface melt,
     basal melt, saturation excess, saturated) with volumes in m^3, the shape already scaled to
     the closing volume.
@@ -934,7 +936,8 @@ def _solve_plastic_body(dom: _Domain, opening_m3: float, dt_myr: float, sea_leve
     Last step's extent is the one whose profile holds the opening volume, V(d_prev) = V_open
     (V is nondecreasing in d, so bisection finds it). Where the ice actually sits is a poor
     guide: snow builds ice on any cold node, often far beyond a body's sheet (and before #539,
-    frozen river and lake ice joined a body wherever they froze)."""
+    frozen river and lake ice joined a body wherever they froze). `extent_hint` is where to
+    look for it first (`_volume_extent`); it never changes the extent found."""
     cache: dict[float, _Shape] = {}
 
     def shape(d: float) -> _Shape:
@@ -951,7 +954,7 @@ def _solve_plastic_body(dom: _Domain, opening_m3: float, dt_myr: float, sea_leve
     # when the domain has no wall, since with every node in nothing would seed a margin.
     d_min = float(dom.phi.min()) - 1.0
     d_max = max(float(dom.phi.max()) - (0.0 if np.any(dom.nbr < 0) else 1.0), d_min)
-    d0 = _volume_extent(shape, opening_m3, d_min, d_max, step_m)
+    d0 = _volume_extent(shape, opening_m3, d_min, d_max, step_m, extent_hint)
     f0 = f(d0)
     saturated = False
     # Walk outward from last step's extent one edge at a time, so the bracket holds the root
@@ -1001,21 +1004,111 @@ def _solve_plastic_body(dom: _Domain, opening_m3: float, dt_myr: float, sea_leve
     return final, acc, sm, bm, excess, saturated
 
 
-def _volume_extent(shape, volume_m3: float, d_min: float, d_max: float, tolerance: float) -> float:
+class _VolumeShortfall:
+    """Is the profile at extent d short of a volume? V(d) is nondecreasing, so an extent at
+    or below one known to be short is short, and one at or above one known to hold the
+    volume holds it; only extents between the two build a profile. The empty extent `d_min`
+    is short of any positive volume."""
+
+    def __init__(self, shape, volume_m3: float, d_min: float):
+        self._shape = shape
+        self._volume_m3 = volume_m3
+        self._short_up_to = d_min
+        self._holds_from = np.inf
+
+    def __call__(self, d: float) -> bool:
+        if d <= self._short_up_to:
+            return True
+        if d >= self._holds_from:
+            return False
+        short = self._shape(d).volume < self._volume_m3
+        if short:
+            self._short_up_to = d
+        else:
+            self._holds_from = d
+        return short
+
+
+def _bisection_cell(target: float, d_min: float, d_max: float, tolerance: float) -> tuple[float, float]:
+    """The final (lo, hi] of `_volume_extent`'s bisection if its answer lay at `target`:
+    the same midpoints in the same arithmetic, so `hi` is a value that bisection can return."""
+    lo, hi = d_min, d_max
+    while hi - lo > tolerance:
+        mid = 0.5 * (lo + hi)
+        if mid < target:
+            lo = mid
+        else:
+            hi = mid
+    return lo, hi
+
+
+def _probe_near(short: _VolumeShortfall, hint: float, d_min: float, d_max: float, tolerance: float) -> None:
+    """Teach `short` where the answer is by testing the bisection's own cell around `hint`,
+    then cells twice as far each time on the side the answer turns out to lie. A good hint
+    costs two profiles, the cell's two ends; a bad one costs a few more and still brackets."""
+    lo, hi = _bisection_cell(min(max(hint, d_min), d_max), d_min, d_max, tolerance)
+    reach = max(hi - lo, tolerance)
+    if short(hi):
+        probe = hi
+        while probe < d_max and short(probe):
+            probe = _bisection_cell(min(probe + reach, d_max), d_min, d_max, tolerance)[1]
+            reach *= 2.0
+        return
+    probe = lo
+    while probe > d_min and not short(probe):
+        target = probe - reach
+        reach *= 2.0
+        if target <= d_min:
+            return
+        probe = _bisection_cell(target, d_min, d_max, tolerance)[1]
+
+
+def _volume_extent(
+    shape, volume_m3: float, d_min: float, d_max: float, tolerance: float, hint: float | None = None
+) -> float:
     """The smallest extent d whose profile holds `volume_m3` (or d_max if none does), to
-    within `tolerance`."""
+    within `tolerance`.
+
+    `hint` is where the answer is expected, the body's margin after the previous march
+    substep (#147). It changes which profiles are built, not the answer: the bisection
+    below runs unchanged, and the probes around the hint let most of its tests be answered
+    from V's order instead of a new profile (about 2 profiles in place of 13 on a mature
+    world)."""
     if volume_m3 <= 0.0:
         return d_min
-    if shape(d_max).volume < volume_m3:
+    short = _VolumeShortfall(shape, volume_m3, d_min)
+    if hint is not None and np.isfinite(hint):
+        _probe_near(short, hint, d_min, d_max, tolerance)
+    if short(d_max):
         return d_max
     lo, hi = d_min, d_max
     while hi - lo > tolerance:
         mid = 0.5 * (lo + hi)
-        if shape(mid).volume < volume_m3:
+        if short(mid):
             lo = mid
         else:
             hi = mid
     return hi
+
+
+def margin_hints(n: int, bodies: list[BodyBalance]) -> np.ndarray:
+    """Per node, the margin extent (`BodyBalance.margin_m`) of the plastic body that held it
+    in a solve, NaN elsewhere: the next march substep's `margin_hint_m` (#147)."""
+    hints = np.full(n, np.nan)
+    for body in bodies:
+        if len(body.domain_nodes) >= ICE_BODY_MIN_NODES:
+            hints[body.nodes] = body.margin_m
+    return hints
+
+
+def _body_margin_hint(margin_hint_m: np.ndarray | None, body_nodes: np.ndarray) -> float | None:
+    """The body's hint from its nodes' (None without one). A body made of several earlier
+    ones takes their median."""
+    if margin_hint_m is None:
+        return None
+    known = margin_hint_m[body_nodes]
+    known = known[np.isfinite(known)]
+    return float(np.median(known)) if len(known) else None
 
 
 def _solve_uniform_body(nodes, opening_m3, area, climate: SurfaceClimate, dt_myr):
@@ -1114,6 +1207,7 @@ def step_ice(
     *,
     graph: csr_matrix | None = None,
     graph_step_m: float | None = None,
+    margin_hint_m: np.ndarray | None = None,
     cost: MarchCost | None = None,
 ) -> tuple[np.ndarray, np.ndarray, IceStep]:
     """One glacier step over the whole node cloud. See the module docstring for the method.
@@ -1135,7 +1229,9 @@ def step_ice(
 
     `cost` selects the march's #822 distance-search restrictions (MarchCost); None, as
     every non-march caller passes, is the full search. `graph_step_m` is the median edge
-    length of a prebuilt `graph` (`median_edge_m`), which the march finds once (#147)."""
+    length of a prebuilt `graph` (`median_edge_m`), which the march finds once (#147).
+    `margin_hint_m` is `margin_hints` of the previous march substep's bodies: it speeds
+    the search for each body's opening extent and never changes what is found (#147)."""
     n = len(points)
     area = np.asarray(area_m2, dtype=float)
     dt_myr = years / 1_000_000.0
@@ -1226,7 +1322,8 @@ def step_ice(
                 ledger.snow_melted_m3 += _melt_bare_snow(out, rest, bare_acc, area, dt_myr)
             else:
                 dom = _build_domain(graph, dom_nodes, phi, bed, c, area, sea_level_m, is_ocean, climate)
-                body = _plastic_body(out, dom, body_nodes, opening, area, dt_myr, sea_level_m, step_m, ledger)
+                hint = _body_margin_hint(margin_hint_m, body_nodes)
+                body = _plastic_body(out, dom, body_nodes, opening, area, dt_myr, sea_level_m, step_m, ledger, hint)
             _guard_body(out, body, bed, area, sea_level_m, is_ocean)
             bodies.append(body)
 
@@ -1326,9 +1423,11 @@ def _uniform_body(out: _Output, nodes, opening, area, bed, climate, is_ocean, dt
     return body
 
 
-def _plastic_body(out: _Output, dom: _Domain, body_nodes, opening, area, dt_myr, sea_level_m, step_m, ledger) -> BodyBalance:
+def _plastic_body(
+    out: _Output, dom: _Domain, body_nodes, opening, area, dt_myr, sea_level_m, step_m, ledger, extent_hint=None
+) -> BodyBalance:
     nodes = dom.nodes
-    shape, acc, sm, bm, excess, saturated = _solve_plastic_body(dom, opening, dt_myr, sea_level_m, step_m)
+    shape, acc, sm, bm, excess, saturated = _solve_plastic_body(dom, opening, dt_myr, sea_level_m, step_m, extent_hint)
     cov = np.minimum(shape.cover, 1.0)
     out.thickness[nodes] = shape.thickness
     out.covered[nodes] = cov

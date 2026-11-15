@@ -2355,7 +2355,7 @@ def _march_glacier(
         total_water = eustasy.water_volume_for_sea_level(world, sea_level) + eustasy.trapped_water_volume_m3(world)
     total_water = float(total_water)
 
-    def solve_once(sub_years: float, ref_depth: np.ndarray, ref_heat: np.ndarray):
+    def solve_once(sub_years: float, ref_depth: np.ndarray, ref_heat: np.ndarray, margin_hint_m: np.ndarray | None = None):
         load = lithosphere.grounded_ice_load_kg_m2(ref_depth, unloaded_bed, sea_level, ocean_mask)
         target = lithosphere.ice_load_deflection(crust_h_m, mantle_h_m, rho_crust, load)
         temperature = np.asarray(temperature_at_nodes, dtype=float) - ice_sheet.LAPSE_RATE_C_PER_KM * (target - deflection_m) / 1000.0
@@ -2368,7 +2368,7 @@ def _march_glacier(
         return ice_sheet.step_ice(
             points, neighbor_idx, areas, elevation, deflection_m, sea_level, depth,
             climate, np.asarray(mobile_cover_m, dtype=float), ocean_mask, no_ice_cap, sub_years,
-            warn=False, graph=march_graph, graph_step_m=march_step_m,
+            warn=False, graph=march_graph, graph_step_m=march_step_m, margin_hint_m=margin_hint_m,
         )
 
     if years <= 1e-6:
@@ -2426,7 +2426,10 @@ def _march_glacier(
         ref_heat = 0.5 * (heat + prev_heat)
         max_dt = max(max_dt, dt)
         with _phase("Solving march ice"):
-            new_depth, melt, ice = solve_once(dt, ref_depth, ref_heat)
+            # Each body's margin barely moves in a substep, so the last solve's margins
+            # tell this one where to look for its opening extent (#147, same answer).
+            hints = None if ice is None else ice_sheet.margin_hints(n, ice.bodies)
+            new_depth, melt, ice = solve_once(dt, ref_depth, ref_heat, hints)
         substeps += 1
         elapsed += dt
         melt_total += melt

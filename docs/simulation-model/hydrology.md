@@ -825,6 +825,10 @@ since climate.py runs *before* this module each step).
   at a time from last step's extent, and the one nearest it is kept: a higher sheet is
   colder, so B can change sign more than once, and the nearest root preserves Weertman
   (1961) hysteresis (a plateau that is bare stays bare; a covered one keeps its sheet).
+  Last step's extent is the smallest one whose profile holds the opening volume, found by
+  bisection over the domain. In the march it is looked for first around the body's margin
+  from the previous substep (`margin_hints`), which finds the same extent with fewer
+  profiles because V(d) is nondecreasing (#147).
 - **End-of-step march** (RFC 0015 D2). Fast ice reaches balance within a step, so each step
   marches the ice there in substeps of 250 yr to 1 kyr (`hydrology._march_glacier`, each one an
   ordinary `step_ice` solve from the current ice). Between substeps the fast inputs are

@@ -795,3 +795,87 @@ def test_limited_outside_distance_falls_back_when_it_cuts_off_a_member():
     phi_far, src_far = ice_sheet._signed_distance(graph, eligible, positive, cost=limited, members=far)
     np.testing.assert_array_equal(phi_far, phi_full)
     np.testing.assert_array_equal(src_far, src_full)
+
+
+class _CountedProfiles:
+    """A stand-in for `_solve_plastic_body`'s cached shape builder over a nondecreasing
+    V(d), counting the distinct extents built."""
+
+    def __init__(self, volume_of):
+        self.volume_of = volume_of
+        self.built: set[float] = set()
+
+    def __call__(self, d):
+        self.built.add(d)
+        return type("Profile", (), {"volume": self.volume_of(d)})()
+
+
+def test_volume_extent_hint_changes_the_work_not_the_answer():
+    # #147: with any hint (good, far off, outside the range, not finite) the bisection
+    # returns the very same float as without one; a hint near the answer builds two or
+    # three profiles where the full bisection builds over a dozen.
+    def volume_of(d):
+        return max(d + 300e3, 0.0) ** 2.5  # empty below -300 km, growing like a dome
+
+    d_min, d_max, tolerance = -400e3 - 1.0, 2_750e3, 62e3
+    rng = np.random.default_rng(147)
+    for answer in rng.uniform(-290e3, 2_700e3, 40):
+        volume = volume_of(answer)
+        plain = _CountedProfiles(volume_of)
+        expected = ice_sheet._volume_extent(plain, volume, d_min, d_max, tolerance)
+        assert expected - tolerance < answer <= expected
+        for hint in (answer, answer + 100.0, answer - 100.0, answer + 5 * tolerance, answer - 5 * tolerance,
+                     d_min - 1e6, d_max + 1e6, d_min, d_max, np.nan, np.inf):
+            hinted = _CountedProfiles(volume_of)
+            assert ice_sheet._volume_extent(hinted, volume, d_min, d_max, tolerance, hint) == expected
+            assert expected in hinted.built or expected == d_max  # the walk from d0 reuses it
+        near = _CountedProfiles(volume_of)
+        ice_sheet._volume_extent(near, volume, d_min, d_max, tolerance, answer + 100.0)
+        assert len(near.built) <= 3 < len(plain.built)
+    # Volumes no extent holds, and none at all, are the same with a hint.
+    for volume in (volume_of(d_max) * 2.0, 0.0):
+        expected = ice_sheet._volume_extent(_CountedProfiles(volume_of), volume, d_min, d_max, tolerance)
+        assert ice_sheet._volume_extent(_CountedProfiles(volume_of), volume, d_min, d_max, tolerance, 0.0) == expected
+    # A domain narrower than the tolerance, and an empty one.
+    for lo, hi in ((0.0, 10e3), (5.0, 5.0)):
+        expected = ice_sheet._volume_extent(_CountedProfiles(volume_of), 1.0, lo, hi, tolerance)
+        assert ice_sheet._volume_extent(_CountedProfiles(volume_of), 1.0, lo, hi, tolerance, 3.0) == expected
+
+
+def test_margin_hints_leave_a_marched_ice_step_bit_identical(monkeypatch):
+    # #147: stepping a growing dome with the previous step's margins as hints gives the
+    # same ice as stepping it without, with fewer profiles built.
+    points, x, y, cell = _lattice(125.0, 1500.0, "hex")
+    n = len(points)
+    neighbors = _neighbors(points)
+    area = np.full(n, cell)
+    r = np.hypot(x, y)
+    climate = _cold(n, precipitation=400.0, temperature=np.where(r < 500e3, -25.0, 8.0), amplitude=10.0)
+    no = np.zeros(n, dtype=bool)
+    built = []
+    real_shape = ice_sheet._shape
+    monkeypatch.setattr(ice_sheet, "_shape", lambda *a: built.append(1) or real_shape(*a))
+
+    def march(hinted):
+        depth, bodies, history = np.zeros(n), None, []
+        for _ in range(6):
+            hints = ice_sheet.margin_hints(n, bodies) if hinted and bodies is not None else None
+            depth, melt, ice = ice_sheet.step_ice(
+                points, neighbors, area, np.zeros(n), np.zeros(n), -1e4, depth, climate, np.zeros(n), no, no, 2_000.0,
+                margin_hint_m=hints,
+            )
+            bodies = ice.bodies
+            history.append((depth, melt, ice.thickness, [b.margin_m for b in bodies]))
+        return history
+
+    plain = march(False)
+    plain_built = len(built)
+    built.clear()
+    hinted = march(True)
+    assert plain[-1][0].max() > 100.0
+    for (d0, m0, t0, g0), (d1, m1, t1, g1) in zip(plain, hinted):
+        np.testing.assert_array_equal(d1, d0)
+        np.testing.assert_array_equal(m1, m0)
+        np.testing.assert_array_equal(t1, t0)
+        assert g1 == g0
+    assert len(built) < plain_built
