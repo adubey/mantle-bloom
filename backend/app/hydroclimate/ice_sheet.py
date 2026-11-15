@@ -119,7 +119,8 @@ class MarchCost:
        debit has moved less than that many metres of sea level over the ocean since the
        last re-solve (0 re-solves every substep). `local_dijkstra` computes the inside
        distance on the positive set and its boundary only, which is exact (any shortest
-       path from outside S into S can be cut at its last outside node).
+       path from outside S into S can be cut at its last outside node); being exact, it
+       is what every search does since #147, and the flag no longer selects anything.
        `dijkstra_limit_m` caps the outside distance's reach; a member it would cut off,
        or one past half the limit, falls back to the unlimited search.
 
@@ -373,11 +374,46 @@ def symmetric_graph(points: np.ndarray, neighbor_idx: np.ndarray) -> csr_matrix:
     return graph.tocsr()
 
 
+@njit(cache=True)
+def _restrict_kernel(indptr, indices, data, keep):
+    """CSR arrays of the edges whose two ends are both in `keep`, in their stored order."""
+    n = indptr.shape[0] - 1
+    out_indptr = np.zeros(n + 1, dtype=indptr.dtype)
+    out_indices = np.empty(indices.shape[0], dtype=indices.dtype)
+    out_data = np.empty(data.shape[0], dtype=data.dtype)
+    m = 0
+    for i in range(n):
+        if keep[i]:
+            for e in range(indptr[i], indptr[i + 1]):
+                j = indices[e]
+                if keep[j]:
+                    out_indices[m] = j
+                    out_data[m] = data[e]
+                    m += 1
+        out_indptr[i + 1] = m
+    return out_indptr, out_indices[:m].copy(), out_data[:m].copy()
+
+
+def median_edge_m(graph: csr_matrix) -> float:
+    """The graph's typical edge length in metres: the step the margin root find resolves to."""
+    return float(np.median(graph.data)) if graph.nnz else 1.0
+
+
 def _restrict(graph: csr_matrix, keep: np.ndarray) -> csr_matrix:
-    """`graph` with every edge touching a node outside `keep` removed (same shape)."""
-    coo = graph.tocoo()
-    ok = keep[coo.row] & keep[coo.col]
-    return csr_matrix((coo.data[ok], (coo.row[ok], coo.col[ok])), shape=graph.shape)
+    """`graph` with every edge touching a node outside `keep` removed (same shape).
+
+    Filters the CSR rows directly (#147): the march calls this twice a substep, and the
+    round trip through COO and back re-sorted every surviving edge each time. The stored
+    edge order is the one that round trip gave, so searches over the result break ties
+    the same way."""
+    graph = graph.tocsr()
+    if not graph.has_canonical_format:
+        graph = graph.copy()
+        graph.sum_duplicates()
+    indptr, indices, data = _restrict_kernel(
+        graph.indptr, graph.indices, graph.data, np.ascontiguousarray(keep, dtype=np.bool_)
+    )
+    return csr_matrix((data, indices, indptr), shape=graph.shape)
 
 
 @njit(cache=True)
@@ -1018,16 +1054,10 @@ def _inside_distance_local(graph: csr_matrix, positive: np.ndarray) -> np.ndarra
     (#822). Exact: a shortest path into S can be cut at its last node outside S, which is
     a boundary node, and the cut path is no longer. Nodes outside that set get inf (the
     caller zeroes everything outside S)."""
-    n = graph.shape[0]
     boundary = ~positive & (graph @ positive.astype(float) > 0.0)
-    keep = np.flatnonzero(positive | boundary)
-    d_in = np.full(n, np.inf)
     if not boundary.any():
-        return d_in
-    sub = graph[keep][:, keep]
-    local_sources = np.flatnonzero(boundary[keep])
-    d_in[keep] = dijkstra(sub, indices=local_sources, min_only=True)
-    return d_in
+        return np.full(graph.shape[0], np.inf)
+    return dijkstra(_restrict(graph, positive | boundary), indices=np.flatnonzero(boundary), min_only=True)
 
 
 def _outside_distance(eligible_graph, s_idx: np.ndarray, members: np.ndarray | None, limit_m: float | None):
@@ -1054,18 +1084,12 @@ def _signed_distance(
     outside distance runs over the eligible graph only. Also returns, per node, the S node
     nearest to it there (-1 if unreachable). `cost` selects the #822 search
     restrictions (see MarchCost); None is the full-graph search."""
-    n = graph.shape[0]
     s_idx = np.flatnonzero(positive)
     limit = cost.dijkstra_limit_m if cost is not None else None
     d_out, sources = _outside_distance(eligible_graph, s_idx, members, limit)
-    not_s = np.flatnonzero(~positive)
-    if not len(not_s):
-        d_in = np.full(n, np.inf)
-    elif cost is not None and cost.local_dijkstra:
-        d_in = _inside_distance_local(graph, positive)
-    else:
-        d_in = dijkstra(graph, indices=not_s, min_only=True)
-    d_in = np.where(positive, d_in, 0.0)
+    # Always the local search (#147): it is the full one exactly, and the full one starts
+    # from every node outside S, most of the planet, on each march substep.
+    d_in = np.where(positive, _inside_distance_local(graph, positive), 0.0)
     d_out = np.where(positive, 0.0, d_out)
     return 0.5 * (d_out - d_in), sources
 
@@ -1087,6 +1111,7 @@ def step_ice(
     warn: bool = True,
     *,
     graph: csr_matrix | None = None,
+    graph_step_m: float | None = None,
     cost: MarchCost | None = None,
 ) -> tuple[np.ndarray, np.ndarray, IceStep]:
     """One glacier step over the whole node cloud. See the module docstring for the method.
@@ -1107,7 +1132,8 @@ def step_ice(
     calves.
 
     `cost` selects the march's #822 distance-search restrictions (MarchCost); None, as
-    every non-march caller passes, is the full search."""
+    every non-march caller passes, is the full search. `graph_step_m` is the median edge
+    length of a prebuilt `graph` (`median_edge_m`), which the march finds once (#147)."""
     n = len(points)
     area = np.asarray(area_m2, dtype=float)
     dt_myr = years / 1_000_000.0
@@ -1181,7 +1207,7 @@ def step_ice(
             h0, climate.temperature_c - LAPSE_RATE_C_PER_KM * h0 / 1000.0, climate.frictional_heat_w_m2,
         )
         c = yield_stress_pa(mobile_cover_m, is_warm0) / (RHO_ICE * GRAVITY_M_S2)
-        step_m = float(np.median(graph.data)) if graph.nnz else 1.0
+        step_m = median_edge_m(graph) if graph_step_m is None else graph_step_m
 
         order = np.argsort(label, kind="stable")
         sorted_labels = label[order]

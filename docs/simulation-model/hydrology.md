@@ -868,7 +868,8 @@ since climate.py runs *before* this module each step).
   - Cheaper substeps. `sea_level_skip_m` skips the sea-level re-solve while the ice
     debit has moved less than that many metres of sea level. `local_dijkstra` searches
     the inside distance on the positive set and its boundary only, which gives the
-    same result as the full search. `dijkstra_limit_m` caps the outside distance's
+    same result as the full search; since #147 every search runs that way and the
+    flag selects nothing. `dijkstra_limit_m` caps the outside distance's
     reach, and falls back to the full search when the cap would cut off a body member.
   - Two extra settle tests, run beside the pair test. `recurrence` settles once the
     depth field repeats the one p substeps back (p <= 64), which catches the exact

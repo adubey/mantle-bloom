@@ -730,6 +730,30 @@ def _patchy_positive(points, seed=822):
     return (points @ centres.T > np.cos(250e3 / _R_M)).any(axis=1)
 
 
+def test_restrict_matches_the_coo_round_trip_exactly():
+    # #147: filtering the CSR rows in place must give the matrix the old COO round trip
+    # built, stored order included (the distance searches break ties by it).
+    from scipy.sparse import csr_matrix
+
+    points, _, _, _ = _lattice(50.0, 1000.0, kind="hex")
+    graph = ice_sheet.symmetric_graph(points, _neighbors(points))
+    rng = np.random.default_rng(147)
+    # The same matrix with each row's edges stored in reverse.
+    flip = np.concatenate([np.arange(b - 1, a - 1, -1) for a, b in zip(graph.indptr[:-1], graph.indptr[1:])])
+    unsorted = csr_matrix((graph.data[flip], graph.indices[flip], graph.indptr), shape=graph.shape)
+    assert not unsorted.has_canonical_format
+    for source in (graph, unsorted):
+        for share in (0.0, 0.4, 1.0):
+            keep = rng.random(len(points)) < share
+            coo = source.tocoo()
+            ok = keep[coo.row] & keep[coo.col]
+            expected = csr_matrix((coo.data[ok], (coo.row[ok], coo.col[ok])), shape=source.shape)
+            got = ice_sheet._restrict(source, keep)
+            np.testing.assert_array_equal(got.indptr, expected.indptr)
+            np.testing.assert_array_equal(got.indices, expected.indices)
+            np.testing.assert_array_equal(got.data, expected.data)
+
+
 def test_local_inside_distance_matches_the_full_search_exactly():
     # #822 option 3: the inside distance searched on S plus its boundary is the full
     # search exactly (a shortest path into S can be cut at its last outside node), so
@@ -737,13 +761,18 @@ def test_local_inside_distance_matches_the_full_search_exactly():
     points, _, _, _ = _lattice(50.0, 1000.0, kind="hex")
     graph = ice_sheet.symmetric_graph(points, _neighbors(points))
     positive = _patchy_positive(points)
+    # Since #147 every search is the local one, so the full search is spelled out here.
+    from scipy.sparse.csgraph import dijkstra
+
     eligible = ice_sheet._restrict(graph, np.ones(len(points), dtype=bool))
-    phi_full, src_full = ice_sheet._signed_distance(graph, eligible, positive)
-    local = ice_sheet.MarchCost(local_dijkstra=True)
-    phi_local, src_local = ice_sheet._signed_distance(graph, eligible, positive, cost=local)
+    phi_local, _ = ice_sheet._signed_distance(graph, eligible, positive)
+    d_in = dijkstra(graph, indices=np.flatnonzero(~positive), min_only=True)
+    d_out = dijkstra(eligible, indices=np.flatnonzero(positive), min_only=True)
+    phi_full = 0.5 * (np.where(positive, 0.0, d_out) - np.where(positive, d_in, 0.0))
     assert 0 < positive.sum() < len(points)
     np.testing.assert_array_equal(phi_local, phi_full)
-    np.testing.assert_array_equal(src_local, src_full)
+    everywhere = np.ones(len(points), dtype=bool)
+    assert np.all(ice_sheet._signed_distance(graph, eligible, everywhere)[0] == -np.inf)
 
 
 def test_limited_outside_distance_falls_back_when_it_cuts_off_a_member():

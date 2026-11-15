@@ -95,7 +95,6 @@ if TYPE_CHECKING:
 import numpy as np
 from numba import njit
 from scipy.sparse import coo_matrix
-from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 from .. import cratons, geometry, healpix_grid, trace
@@ -665,17 +664,56 @@ def _build_neighbor_graph(points: np.ndarray, world: "World | None" = None) -> n
     return neighbor_idx[:, 1:]  # column 0 is always the point itself, at distance 0
 
 
+@njit(cache=True)
+def _below_sea_components_kernel(below: np.ndarray, neighbor_idx: np.ndarray) -> np.ndarray:
+    """Union-find over the `neighbor_idx` edges joining two `below` nodes, labelled in
+    order of each component's lowest node index."""
+    n, k = neighbor_idx.shape
+    parent = np.arange(n)
+    for i in range(n):
+        if not below[i]:
+            continue
+        for j in range(k):
+            nb = neighbor_idx[i, j]
+            if not below[nb]:
+                continue
+            ri = i
+            while parent[ri] != ri:
+                parent[ri] = parent[parent[ri]]
+                ri = parent[ri]
+            rj = nb
+            while parent[rj] != rj:
+                parent[rj] = parent[parent[rj]]
+                rj = parent[rj]
+            if ri != rj:
+                parent[ri] = rj
+    labels = np.empty(n, dtype=np.int32)
+    root_label = np.full(n, -1, dtype=np.int32)
+    count = 0
+    for i in range(n):
+        r = i
+        while parent[r] != r:
+            parent[r] = parent[parent[r]]
+            r = parent[r]
+        if root_label[r] < 0:
+            root_label[r] = count
+            count += 1
+        labels[i] = root_label[r]
+    return labels
+
+
 def _below_sea_components(below: np.ndarray, neighbor_idx: np.ndarray) -> np.ndarray:
     """Connected-component label per node over the `neighbor_idx` edges joining two
     below-sea-level nodes. Shared by `connected_ocean_mask` and
-    `force_earth_strait_connections`, which must agree on the components."""
-    n, k = neighbor_idx.shape
-    rows = np.repeat(np.arange(n), k)
-    cols = neighbor_idx.ravel()
-    keep = below[rows] & below[cols]
-    graph = coo_matrix((np.ones(keep.sum()), (rows[keep], cols[keep])), shape=(n, n))
-    _, labels = connected_components(graph, directed=False)
-    return labels
+    `force_earth_strait_connections`, which must agree on the components.
+
+    A union-find over the neighbor table (#147: the glacier march asks once per substep,
+    and building a sparse graph for `scipy.sparse.csgraph.connected_components` each time
+    cost more than the labelling). Labels are numbered by each component's lowest node,
+    as scipy numbers them, so callers that pick a component by label see no change."""
+    return _below_sea_components_kernel(
+        np.ascontiguousarray(below, dtype=np.bool_), np.ascontiguousarray(neighbor_idx, dtype=np.int64)
+    )
 
 
 def connected_ocean_mask(
@@ -2013,13 +2051,15 @@ def _march_sea_level(
     points: np.ndarray,
     elevation: np.ndarray,
     warm_half_width_m: float,
+    flood_adjacency: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> tuple[float, np.ndarray]:
     """One march substep's sea-level re-solve from the current ice debit, with the
     ocean mask (review of #806): the re-solve anchors on the march's own current-step
     mask and graph, not last step's cache (which also degrades to the
     connectivity-blind mask on a changed node cloud), and the mask keeps Earth's
     forced straits connected. The bisection warm-starts around the last level
-    (validated, same converged value). Returns the new (sea level, ocean mask)."""
+    (validated, same converged value). `flood_adjacency` is the march's once-built
+    `eustasy.flood_adjacency(neighbor_idx)` (#147). Returns the new (sea level, ocean mask)."""
     from . import eustasy
 
     debit = to_water * float(np.dot(areas, depth))
@@ -2027,6 +2067,7 @@ def _march_sea_level(
         world, elevations, hyps_areas, max(0.0, total_water - lakes_trapped - debit),
         seed_is_ocean=ocean_mask, seed_neighbor_idx=neighbor_idx,
         bracket=(sea_level - warm_half_width_m, sea_level + warm_half_width_m),
+        seed_adjacency=flood_adjacency,
     )
     ocean_mask = connected_ocean_mask(points, elevation, sea_level, neighbor_idx, areas_m2=areas, prior_ocean=ocean_mask)
     if getattr(world, "premade_world_id", None) == "earth":
@@ -2282,6 +2323,7 @@ def _march_glacier(
     # step_ice (which otherwise rebuilds it twice per call, ~19% of a long march).
     with _phase("Building the glacier-march graph"):
         march_graph = ice_sheet.symmetric_graph(np.asarray(points), np.asarray(neighbor_idx))
+        march_step_m = ice_sheet.median_edge_m(march_graph)
     depth = np.clip(np.asarray(prev_glacier_depth, dtype=float), 0.0, None).copy()
     heat = np.asarray(opening_heat_w_m2, dtype=float)
     if heat.shape != (n,):
@@ -2293,6 +2335,10 @@ def _march_glacier(
     # synthetic world); freezing sea level there keeps the march from drowning the land it
     # is relaxing. Eustasy still resolves the budget after the step.
     has_ocean = bool(ocean_mask.any())
+    # Like the graph above, the flood's edge lists are fixed for the march: built once
+    # here instead of inside every re-solve (#147).
+    neighbor_idx = np.asarray(neighbor_idx)
+    flood_adjacency = eustasy.flood_adjacency(neighbor_idx) if has_ocean else None
     crust_h_m = collect_all_crustal_thickness(plates_in_order)
     mantle_h_m = collect_all_mantle_lithosphere_thickness(plates_in_order)
     rho_crust = np.concatenate([lithosphere.node_crust_density(p.collect("crust_type_code"), p.crust_type) for p in plates_in_order])
@@ -2320,7 +2366,7 @@ def _march_glacier(
         return ice_sheet.step_ice(
             points, neighbor_idx, areas, elevation, deflection_m, sea_level, depth,
             climate, np.asarray(mobile_cover_m, dtype=float), ocean_mask, no_ice_cap, sub_years,
-            warn=False, graph=march_graph,
+            warn=False, graph=march_graph, graph_step_m=march_step_m,
         )
 
     if years <= 1e-6:
@@ -2409,7 +2455,7 @@ def _march_glacier(
                     sea_level, ocean_mask = _march_sea_level(
                         world, elevations, hyps_areas, total_water, lakes_trapped, to_water,
                         areas, depth, sea_level, ocean_mask, neighbor_idx, points, elevation,
-                        warm_half_width_m,
+                        warm_half_width_m, flood_adjacency,
                     )
                 resolved_debit = debit
                 resolves += 1

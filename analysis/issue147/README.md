@@ -42,11 +42,41 @@ the last bit at each step. The same holds for one step of a seed-0 world at node
 and for sea level over four steps at density 2. The flood is also checked against the
 union-find mask in `test_flood_levels_reproduce_the_seeded_mask_at_every_level`.
 
+## Second pass: march bookkeeping (after #904)
+
+Five more changes, again with the same results. Function times are cProfile cumulative
+seconds over the same three steps of the 67.4 Myr save (222 s profiled in total before),
+so they carry profiler overhead; the last row is unprofiled.
+
+| Change | Before | After |
+|---|---:|---:|
+| Inside distance of the signed-distance field: searched on the positive set and its boundary instead of from every node outside it (`ice_sheet._inside_distance_local`, already proven exact in #822, now the only path) | 8.7 s | 3.7 s |
+| Below-sea components: a union-find over the neighbor table instead of a sparse graph built per call (`hydrology._below_sea_components`) | 9.1 s | 3.8 s |
+| Graph restriction: CSR rows filtered directly instead of a round trip through COO (`ice_sheet._restrict`; one more call per substep than before, for the inside distance) | 5.5 s | 0.6 s |
+| Median edge length: found once per march instead of once per substep (`ice_sheet.median_edge_m`) | 2.5 s | 0.0 s |
+| Sea-level flood: the undirected edge lists are built once per march (`eustasy.flood_adjacency`) | 12.0 s | 9.8 s |
+| **Three steps from the 67.4 Myr save, unprofiled, old and new back to back** | **172.1 s** | **161.8 s** |
+
+The per-step times were 28.6, 20.3 and 123.2 s before and 29.2, 21.4 and 111.2 s after, so
+the gain is in the long march and within machine noise on the short ones.
+
+Equivalence, checked with [`bin/debug/exact_step_ab.py`](../../bin/debug/exact_step_ab.py):
+after those three steps all 2,961 arrays and 320,735 scalars of the exact save are equal
+between `origin/main` (`849e30c1`) and this branch, as are the 1,450 arrays of a seed-0
+world at density 1 after two steps. Only the stored wall-clock timer
+`collision_polarity_stats.prepass_seconds` differs. Compare fields by name, as that script
+does: the numbering of a save's `.npy` members changes from one process to the next, so
+two runs of the same code differ in hundreds of members when paired by file name.
+
+Tried and dropped: `np.unique` in `lakes._body_leaf_mapping` in place of the Python set.
+Most bodies have a handful of members, where `np.unique` costs more than the loop (3.8 s
+became 8.9 s).
+
 ## What is left, largest first
 
-Shares are estimates of a mature step after these changes, scaled from the profile above.
+Shares are of the profiled three steps after the second pass (192 s).
 
-1. **Ice shape solve (roughly half).** 83% of it is the
+1. **Ice shape solve (about half).** 83% of it is the
    ordered sweep, `_plastic_sweep`, which is already close to what the hardware allows: an
    indexed heap in place of `heapq` tuples bought 15%, and solving bodies on threads topped
    out at 1.5x. The cost is how many sweeps run. Each body takes about 16 shape evaluations
@@ -54,14 +84,17 @@ Shares are estimates of a mature step after these changes, scaled from the profi
    substep's extent from the opening volume, and each evaluation sweeps about 3 times while
    it drops floating cells. Cutting the evaluations (a bracket carried from the previous
    substep, or a secant search) would move results within the existing tolerances, so it
-   needs a replay comparison and belongs with the march-cost work (#822, #842).
-2. **Lake march (roughly 10%).** `_settle_prognostic_slice` is Python loops over small numpy
-   arrays: `budget` (0.5 M calls), `mean_depth` (0.7 M), `_body_leaf_mapping`, and a full
-   walk of the lake forest in `governing_bodies` several times a slice.
-3. **March bookkeeping (roughly 14%).** `_signed_distance`, two `_restrict` calls per substep
-   that round-trip the graph through COO, and `hydrology._below_sea_components`.
-4. **Sea-level flood (7%, measured).** The symmetric adjacency is rebuilt for every solve
-   although the node graph is fixed for the whole march.
+   needs a replay comparison and belongs with the march-cost work (#822, #842). The mass
+   balance inside each evaluation (`SurfaceClimate.rates`, 19 s) is numpy on small arrays;
+   its `arcsin` rules out a bit-identical numba port.
+2. **Lake march (about 17%).** `_settle_prognostic_slice` is Python loops over small numpy
+   arrays: `budget` (0.3 M calls, 7 s), `mean_depth` (0.4 M), `_body_leaf_mapping` (4 s),
+   and a full walk of the lake forest in `governing_bodies` several times a slice. A body's
+   leaf ids never change within a solve, so `_body_leaf_mapping` could cache them per body.
+3. **Sea-level flood (5%).** What remains is the flood itself, 17 ms per solve at 128 k
+   nodes: about 70% of the nodes are seeds and all go through a heap of tuples.
+4. **Outside distance (under 2%).** `_outside_distance` is one scipy Dijkstra over the
+   eligible graph per substep, and it needs the predecessors.
 
 ## Reproduce
 
