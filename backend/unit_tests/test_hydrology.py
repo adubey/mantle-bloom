@@ -2645,15 +2645,36 @@ def test_march_sea_level_resolve_uses_the_seeded_mask(monkeypatch):
     calls = []
     real = eustasy._seeded_flood_levels
 
-    def spy(elevations, neighbor_idx, seed):
+
+    def spy(elevations, neighbor_idx, seed, adjacency=None):
         calls.append((len(elevations), len(seed)))
-        return real(elevations, neighbor_idx, seed)
+        return real(elevations, neighbor_idx, seed, adjacency)
 
     monkeypatch.setattr(eustasy, "_seeded_flood_levels", spy)
     world = generate_world(seed=42, num_plates=2, node_density=0.25, climate_density=0.25, fluid_density=0.25)
     step_world(world, 5_000)
     assert calls, "no re-solve reached the seeded mask"
     assert all(n == s for n, s in calls)
+
+
+def test_below_sea_components_labels_match_scipy():
+    # #147: the union-find must number components as scipy's connected_components did
+    # (by lowest node), since callers pick the ocean by label.
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    rng = np.random.default_rng(147)
+    for n, k, share in ((1, 1, 1.0), (40, 3, 0.5), (400, 6, 0.6), (400, 4, 0.0), (400, 5, 1.0)):
+        neighbor_idx = rng.integers(0, n, size=(n, k))
+        below = rng.random(n) < share
+        rows = np.repeat(np.arange(n), k)
+        cols = neighbor_idx.ravel()
+        keep = below[rows] & below[cols]
+        graph = coo_matrix((np.ones(keep.sum()), (rows[keep], cols[keep])), shape=(n, n))
+        _, expected = connected_components(graph, directed=False)
+        labels = hydrology._below_sea_components(below, neighbor_idx)
+        assert labels.dtype == expected.dtype
+        np.testing.assert_array_equal(labels, expected)
 
 
 @pytest.mark.usefixtures("march_glaciers")
@@ -2666,12 +2687,14 @@ def test_march_skips_the_final_sea_level_resolve(monkeypatch):
 
     def spy(world, elevations, areas, budget, **kwargs):
         if kwargs.get("seed_is_ocean") is not None:
-            calls.append(1)
+            calls.append(kwargs.get("seed_adjacency"))
         return real(world, elevations, areas, budget, **kwargs)
 
     monkeypatch.setattr(eustasy, "_solve_sea_level_connected", spy)
     hydrology.compute_hydrology(_flow_line_march_world(), np.full(12, 800.0), np.full(12, -3.0), years=500)
     assert len(calls) == 1
+    # #147: the re-solve floods over the edge lists the march built once.
+    assert calls[0] is not None
 
 
 @pytest.mark.usefixtures("march_glaciers")

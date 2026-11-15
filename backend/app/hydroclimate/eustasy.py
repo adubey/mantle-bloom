@@ -203,15 +203,11 @@ def _seeded_connected_mask(
 
 
 @njit(cache=True)
-def _seeded_flood_level_kernel(neighbor_idx: np.ndarray, elevations: np.ndarray, seed: np.ndarray) -> np.ndarray:
-    """Per node, the lowest level `h` at which `_seeded_connected_mask_kernel` would mark it:
-    the minimum over seed nodes and paths from one of the highest elevation on the path, ends
-    included (inf where no seed reaches). A priority flood from every seed at its own
-    elevation, over the same undirected edges the union-find joins (`neighbor_idx` rows are
-    not symmetric, so the reverse edges are added here). NaN elevations are never below any
-    level, so they are never entered."""
-    n = elevations.shape[0]
-    k = neighbor_idx.shape[1]
+def _flood_adjacency_kernel(neighbor_idx: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The undirected edges of a `neighbor_idx` table as CSR `(indptr, adjacency)`: every
+    row's neighbors plus the reverse edges (`neighbor_idx` rows are not symmetric). A -1
+    entry is padding, not an edge."""
+    n, k = neighbor_idx.shape
     degree = np.zeros(n + 1, dtype=np.int64)
     for i in range(n):
         for j in range(k):
@@ -230,6 +226,26 @@ def _seeded_flood_level_kernel(neighbor_idx: np.ndarray, elevations: np.ndarray,
                 fill[i] += 1
                 adjacency[fill[nb]] = i
                 fill[nb] += 1
+    return indptr, adjacency
+
+
+def flood_adjacency(neighbor_idx: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The undirected edge lists `_seeded_flood_levels` floods over. They depend on the
+    node graph alone, so a caller that re-solves sea level many times on one graph (the
+    glacier march) builds them once and passes them to each solve (#147)."""
+    return _flood_adjacency_kernel(np.ascontiguousarray(neighbor_idx, dtype=np.int64))
+
+
+@njit(cache=True)
+def _seeded_flood_level_kernel(
+    indptr: np.ndarray, adjacency: np.ndarray, elevations: np.ndarray, seed: np.ndarray
+) -> np.ndarray:
+    """Per node, the lowest level `h` at which `_seeded_connected_mask_kernel` would mark it:
+    the minimum over seed nodes and paths from one of the highest elevation on the path, ends
+    included (inf where no seed reaches). A priority flood from every seed at its own
+    elevation, over the same undirected edges the union-find joins (`flood_adjacency`). NaN
+    elevations are never below any level, so they are never entered."""
+    n = elevations.shape[0]
     level = np.full(n, np.inf)
     heap = [(0.0, np.int64(0))]
     heap.pop()
@@ -254,14 +270,19 @@ def _seeded_flood_level_kernel(neighbor_idx: np.ndarray, elevations: np.ndarray,
     return level
 
 
-def _seeded_flood_levels(elevations: np.ndarray, neighbor_idx: np.ndarray, seed: np.ndarray) -> np.ndarray:
+def _seeded_flood_levels(
+    elevations: np.ndarray, neighbor_idx: np.ndarray, seed: np.ndarray,
+    adjacency: tuple[np.ndarray, np.ndarray] | None = None,
+) -> np.ndarray:
     """Every candidate level's `_seeded_connected_mask` at once: the mask at `h` is exactly
     `levels <= h`. Raising `h` only ever merges nodes into the seed's component, so each node
     has one level at which it joins, and a bisection can find it once instead of re-running
     the union-find at every candidate (#147: the glacier march re-solves sea level some 24
-    times a step, about 20 candidates each)."""
+    times a step, about 20 candidates each). `adjacency` is `flood_adjacency(neighbor_idx)`
+    when the caller already holds it, else it is built here."""
+    indptr, edges = flood_adjacency(neighbor_idx) if adjacency is None else adjacency
     return _seeded_flood_level_kernel(
-        np.ascontiguousarray(neighbor_idx, dtype=np.int64),
+        indptr, edges,
         np.ascontiguousarray(elevations, dtype=np.float64),
         np.ascontiguousarray(seed, dtype=np.bool_),
     )
@@ -392,6 +413,7 @@ def _solve_sea_level_connected(
     world: "World", elevations: np.ndarray, areas_m2: np.ndarray, water_volume_m3: float,
     *, seed_is_ocean: np.ndarray | None = None, seed_neighbor_idx: np.ndarray | None = None,
     bracket: tuple[float, float] | None = None,
+    seed_adjacency: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> float:
     """`solve_sea_level`, but bisecting against `ocean_water_volume_m3` (connectivity-restricted)
     rather than the bare `total_water_volume_m3` -- see this module's own docstring for why a
@@ -399,8 +421,12 @@ def _solve_sea_level_connected(
     the connected-ocean mask at every candidate `h` (connectivity is itself a function of `h`:
     raising it can only ever merge components, never split one -- see `connected_ocean_mask`'s
     own docstring -- so `ocean_water_volume_m3(h)` stays strictly increasing and bisection stays
-    valid), which is why this isn't simply `total_water_volume_m3` over one fixed mask."""
+    valid), which is why this isn't simply `total_water_volume_m3` over one fixed mask.
+    `seed_adjacency` is `flood_adjacency(seed_neighbor_idx)` from a caller that solves
+    repeatedly on one graph; it is only read alongside an explicit seed pair."""
     anchor = _seed_anchor(world, elevations, seed_is_ocean, seed_neighbor_idx)
+    explicit_seed = anchor is not None and anchor[0] is seed_neighbor_idx
+    adjacency = seed_adjacency if explicit_seed else None
     if anchor is None:
         return _bisect_sea_level(
             elevations, areas_m2, water_volume_m3,
@@ -413,7 +439,7 @@ def _solve_sea_level_connected(
 
     def volume_at(h: float) -> float:
         if not levels:
-            levels.append(_seeded_flood_levels(elevations, *anchor))
+            levels.append(_seeded_flood_levels(elevations, *anchor, adjacency=adjacency))
         mask = levels[0] <= h
         return total_water_volume_m3(elevations[mask], areas_m2[mask], h)
 

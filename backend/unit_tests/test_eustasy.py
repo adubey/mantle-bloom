@@ -187,6 +187,9 @@ def test_flood_levels_reproduce_the_seeded_mask_at_every_level():
         for h in (-1e9, *np.unique(elevations)[::7], 12.5, 1e9):
             expected = eustasy._seeded_connected_mask(elevations, h, neighbor_idx, seed)
             assert np.array_equal(levels <= h, expected)
+        # A caller's prebuilt edge lists (the glacier march's) give the same flood.
+        prebuilt = eustasy.flood_adjacency(neighbor_idx)
+        assert np.array_equal(eustasy._seeded_flood_levels(elevations, neighbor_idx, seed, prebuilt), levels)
 
 
 def _pile_ice_everywhere(world, depth_m):
