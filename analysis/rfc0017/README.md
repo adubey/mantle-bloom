@@ -243,13 +243,15 @@ check covers native-grid alignment and constant-humidity/wind integration. The s
 sample footprint is recorded per class because polar land has relatively few cells
 passing the proxy-wind threshold.
 
-| Class | Column water (kg/m²) | Precipitation (mm/day) | Ratio of means (days) | Effective depth p10–p90 (km) | Signed IVT/proxy fit |
-|---|---:|---:|---:|---:|---:|
-| Global | 23.69 | 2.93 | 8.10 | 1.69–2.45 | 1.06 |
-| Land | 18.32 | 2.21 | 8.28 | 1.90–2.63 | 1.36 |
-| Ocean | 25.86 | 3.21 | 8.05 | 1.65–2.38 | 1.05 |
+| Class | Column water (kg/m²) | Pressure-integrated water (kg/m²) | Precipitation (mm/day) | Ratio of means (days) | Effective depth p10–p90 (km) | Signed IVT/proxy fit |
+|---|---:|---:|---:|---:|---:|---:|
+| Global | 23.69 | 23.98 | 2.93 | 8.10 | 1.69–2.45 | 1.06 |
+| Land | 18.32 | 18.49 | 2.21 | 8.28 | 1.90–2.63 | 1.36 |
+| Ocean | 25.86 | 26.19 | 3.21 | 8.05 | 1.65–2.38 | 1.05 |
 
-The signed fit regresses approximate integrated vapour transport on column water
+The pressure-integrated water agrees with the supplied total-column water to within
+1.3% in the global, land and ocean means, a useful check on the vertical approximation
+for this sample. The signed fit regresses approximate integrated vapour transport on column water
 times the 10 m wind vector. Its latitude-band values range 0.72–2.83; land and ocean
 do not support one precise common mapping. Cell-level parallel ratios are broader and
 can be negative where vectors oppose, so they are not interpreted as a positive local
@@ -264,3 +266,32 @@ column water and precipitation are within a plausible global scale. This is a un
 scale sanity check only. Full per-band metrics and compressed-chunk hashes are in
 [`g1-era5.json`](g1-era5.json). The earlier failed runs remain private diagnostic
 artifacts; empty-bin and non-finite guards are retained in the script.
+
+### G2: preliminary analytic prototype screen
+
+`backend/.venv/bin/python bin/debug/rfc0019_transport_prototypes.py` compares two
+diagnostic formulations on an equal-area lat/lon sphere: an upwind finite-volume
+face-flux generator, and local wind-arrow transitions. Both solve the same absolute
+stationary mass balance with a positive rain sink using a sparse direct solve. It
+asserts nonnegative mass and per-cell and global closure below `1e-8` relative to
+source. This is an isolated script; it does not change `World` or production climate.
+
+On the 8×16 ocean-source case, both options close globally to below `1.3e-16`, with
+maximum cell residual below `1.6e-17`; minimum column water is positive. Ocean-only
+source tags produce nonzero rain over land, and ocean/land source superposition error
+is below `2.3e-16`. An enhanced local sink increases rain at its target cell while
+retaining global closure below `5.7e-16`. A separate 18-day single-cell availability
+check caps requested rain of 1.98 kg to the 1.0 kg opening inventory. The script also
+checks zero sources, calm cells, convergence/divergence, a closed wind loop with rain,
+longitude wrap, equal-area pole boundaries, sinkless closed-class detection, and a
+uniform-source resolution sweep. Uniform-source column water is 23.5872 kg/m² at
+4×8, 8×16, and 16×32 for both schemes.
+
+The solve times on grids no larger than 16×32 are sub-millisecond to about 1 ms and
+are not representative of production. The default climate grid is 90×180 at density
+1 and 360×720 at density 4. The direct sparse solver's memory, scaling, and convergence
+on that grid remain unmeasured; runtime comparison is therefore incomplete. The cap
+check is a one-cell availability identity, not a time-integrated transport update.
+G2 remains in progress until both options are assessed at representative climate
+resolutions and the full analytic suite, including seam/pole and cap semantics, is
+reviewed. Full run output is in [`g2-prototype.json`](g2-prototype.json).

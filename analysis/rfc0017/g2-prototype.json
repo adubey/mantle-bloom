@@ -1,0 +1,180 @@
+{
+  "cases": {
+    "ocean_source": {
+      "finite_volume": {
+        "global_closure_relative": 1.2464755195037646e-16,
+        "max_cell_residual_relative": 1.5580943993797057e-17,
+        "solve_seconds": 0.0005896250368095934,
+        "minimum_column_water_kg_m2": 0.4089941456945239,
+        "rain_over_land_fraction": 0.24593355807602954
+      },
+      "wind_arrows": {
+        "global_closure_relative": 0.0,
+        "max_cell_residual_relative": 1.1685707995347793e-17,
+        "solve_seconds": 0.00034533400321379304,
+        "minimum_column_water_kg_m2": 0.4315911936783536,
+        "rain_over_land_fraction": 0.24027580105032584
+      }
+    },
+    "zero_source": {
+      "finite_volume": {
+        "global_closure_relative": 0.0,
+        "max_cell_residual_relative": 0.0,
+        "solve_seconds": 0.0003054580301977694,
+        "minimum_column_water_kg_m2": 0.0,
+        "rain_over_land_fraction": 0.0
+      },
+      "wind_arrows": {
+        "global_closure_relative": 0.0,
+        "max_cell_residual_relative": 0.0,
+        "solve_seconds": 0.0002934579970315099,
+        "minimum_column_water_kg_m2": 0.0,
+        "rain_over_land_fraction": 0.0
+      }
+    },
+    "calm": {
+      "finite_volume": {
+        "global_closure_relative": 0.0,
+        "max_cell_residual_relative": 1.947617999224632e-18,
+        "solve_seconds": 0.0003237920464016497,
+        "minimum_column_water_kg_m2": 0.0,
+        "rain_over_land_fraction": 0.0
+      },
+      "wind_arrows": {
+        "global_closure_relative": 0.0,
+        "max_cell_residual_relative": 1.947617999224632e-18,
+        "solve_seconds": 0.0003160419873893261,
+        "minimum_column_water_kg_m2": 0.0,
+        "rain_over_land_fraction": 0.0
+      }
+    },
+    "convergent_wind": {
+      "finite_volume": {
+        "global_closure_relative": 0.0,
+        "max_cell_residual_relative": 1.1685707995347793e-17,
+        "solve_seconds": 0.0002997079864144325,
+        "minimum_column_water_kg_m2": 0.025221046319266853,
+        "rain_over_land_fraction": 0.1138766872662339
+      },
+      "wind_arrows": {
+        "global_closure_relative": 0.0,
+        "max_cell_residual_relative": 1.9476179992246322e-17,
+        "solve_seconds": 0.0003499999875202775,
+        "minimum_column_water_kg_m2": 0.022115240976813028,
+        "rain_over_land_fraction": 0.10784055702848105
+      }
+    },
+    "divergent_wind": {
+      "finite_volume": {
+        "global_closure_relative": 0.0,
+        "max_cell_residual_relative": 1.1685707995347793e-17,
+        "solve_seconds": 0.00028416700661182404,
+        "minimum_column_water_kg_m2": 0.007916805947194438,
+        "rain_over_land_fraction": 0.12022023056978882
+      },
+      "wind_arrows": {
+        "global_closure_relative": 0.0,
+        "max_cell_residual_relative": 1.9476179992246322e-17,
+        "solve_seconds": 0.00028354203095659614,
+        "minimum_column_water_kg_m2": 0.00734185628772978,
+        "rain_over_land_fraction": 0.11386700766438333
+      }
+    },
+    "closed_loop": {
+      "finite_volume": {
+        "global_closure_relative": 0.0,
+        "max_cell_residual_relative": 2.3371415990695586e-17,
+        "solve_seconds": 0.00011950003681704402,
+        "minimum_column_water_kg_m2": 23.587199999999996,
+        "rain_over_land_fraction": 0.49999999999999994
+      },
+      "wind_arrows": {
+        "global_closure_relative": 0.0,
+        "max_cell_residual_relative": 2.3371415990695586e-17,
+        "solve_seconds": 0.00010600005043670535,
+        "minimum_column_water_kg_m2": 23.587199999999996,
+        "rain_over_land_fraction": 0.49999999999999994
+      }
+    }
+  },
+  "source_tag_linearity": {
+    "finite_volume": {
+      "mass_tag_sum_relative_error": 2.202279036638742e-16,
+      "ocean_origin_rain_on_land_kg_s": 1866122602.4579825,
+      "global_closure_relative": 7.47885311702259e-16
+    },
+    "wind_arrows": {
+      "mass_tag_sum_relative_error": 2.201622943763869e-16,
+      "ocean_origin_rain_on_land_kg_s": 1821868123.2194657,
+      "global_closure_relative": 3.739426558511295e-16
+    }
+  },
+  "enhanced_rain_sink": {
+    "finite_volume": {
+      "target_cell_rain_increase_fraction": 1.3808261097585355,
+      "global_closure_relative": 5.609139837766942e-16
+    },
+    "wind_arrows": {
+      "target_cell_rain_increase_fraction": 1.2710618919250227,
+      "global_closure_relative": 3.739426558511295e-16
+    }
+  },
+  "finite_interval_rain_cap": {
+    "opening_mass_kg": 1.0,
+    "requested_rain_kg_over_18_days": 1.978021978021978,
+    "actual_rain_kg": 1.0,
+    "remaining_mass_kg": 0.0
+  },
+  "uniform_source_resolution_sensitivity": {
+    "4x8": {
+      "finite_volume": {
+        "global_closure_relative": 0.0,
+        "max_cell_residual_relative": 0.0,
+        "solve_seconds": 0.0001425000373274088,
+        "minimum_column_water_kg_m2": 23.5872,
+        "rain_over_land_fraction": 0.5
+      },
+      "wind_arrows": {
+        "global_closure_relative": 0.0,
+        "max_cell_residual_relative": 0.0,
+        "solve_seconds": 0.00013699999544769526,
+        "minimum_column_water_kg_m2": 23.5872,
+        "rain_over_land_fraction": 0.5
+      }
+    },
+    "8x16": {
+      "finite_volume": {
+        "global_closure_relative": 0.0,
+        "max_cell_residual_relative": 9.738089996123163e-19,
+        "solve_seconds": 0.0003028750070370734,
+        "minimum_column_water_kg_m2": 23.587199999999996,
+        "rain_over_land_fraction": 0.5000000000000001
+      },
+      "wind_arrows": {
+        "global_closure_relative": 0.0,
+        "max_cell_residual_relative": 9.738089996123163e-19,
+        "solve_seconds": 0.00030095799593254924,
+        "minimum_column_water_kg_m2": 23.587199999999996,
+        "rain_over_land_fraction": 0.5000000000000001
+      }
+    },
+    "16x32": {
+      "finite_volume": {
+        "global_closure_relative": 0.0,
+        "max_cell_residual_relative": 4.86904499806158e-19,
+        "solve_seconds": 0.0011521659907884896,
+        "minimum_column_water_kg_m2": 23.587199999999996,
+        "rain_over_land_fraction": 0.5
+      },
+      "wind_arrows": {
+        "global_closure_relative": 0.0,
+        "max_cell_residual_relative": 4.86904499806158e-19,
+        "solve_seconds": 0.0010501670185476542,
+        "minimum_column_water_kg_m2": 23.587199999999996,
+        "rain_over_land_fraction": 0.5
+      }
+    }
+  },
+  "sinkless_closed_class": "detected and rejected",
+  "interpretation": "toy-grid analytic screen only; no production climate or performance claim"
+}
