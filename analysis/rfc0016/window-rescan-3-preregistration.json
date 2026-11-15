@@ -1,0 +1,129 @@
+{
+  "issue": 871,
+  "protocol": "analysis/rfc0016/README.md#expanded-window-rescan-871",
+  "preregistered_before_scan": true,
+  "preregistered_date": "2026-11-13",
+  "source_commit": "5912a7d8be999e4148ce956be060932b77241614",
+  "catalog_snapshot": "B2 save catalog on 2026-11-13",
+  "eligibility": {
+    "candidate_file_pattern": "canonical mantle-bloom-seed*.bloom catalog saves; excludes issue-specific seed<id>-... checkpoint exports",
+    "minimum_saved_age_years": 100000000,
+    "one_save_per_seed": "greatest saved age; for equal-age duplicates, choose the name without a numeric suffix",
+    "excluded_seed_sets": {
+      "rfc0015_held_out": [
+        447276134,
+        628977350,
+        295569319
+      ],
+      "rfc0016_acceptance_reserved": []
+    },
+    "rfc0016_acceptance_reservation_check": "No additional reserved acceptance save is named in issue #723, RFC 0016, or analysis/rfc0016 as of preregistration."
+  },
+  "scan": {
+    "tool": "bin/debug/measure_lake_step_budget.py",
+    "step_years": 100000,
+    "horizon_years": 5000000,
+    "startup_exclusion_steps": 4,
+    "ice_age_cycle": "disabled by the diagnostic before stepping",
+    "detector": "matched component >10000 km^2; successive volume-change signs reverse; both changes exceed 50% of prior volume"
+  },
+  "candidate_windows": {
+    "window_steps": 4,
+    "start_relative_to_reversal": "two steps before reversal",
+    "rank": "descending absolute target volume change",
+    "screens": [
+      "source-world reload reproduces before, after and delta volume",
+      "frozen precipitation <=10% across the four-step window",
+      "routed target supply is nonzero in every step",
+      "normalized liquid-ledger residual <=0.1% in every step",
+      "lake-ice-sublimation knockout retains >=50% of control absolute delta volume"
+    ],
+    "selection": "At most three highest-ranked individual passers; no overlap, target-node sets disjoint and anchors >=1000 km apart; stop if fewer than three pass.",
+    "alternate_step_years": 10000,
+    "alternate_schedule": "Replay each selected 0.4 Myr interval from its same checkpoint; report same-anchor lake-volume and connectivity sensitivity descriptively, without using it to select or reject a window."
+  },
+  "capture_label": "rfc0016/issue871-window-rescan-3",
+  "candidate_saves": [
+    {
+      "name": "mantle-bloom-seed910211954-220200000y.bloom",
+      "seed": 910211954,
+      "saved_age_years": 220200000,
+      "catalog_sha1": "4d41788b4c50468f0af34703fba9b475d5048e3f",
+      "sha256": "8a51374c6b95335db7642be356b064d8237b2262909c3b4771fffa5cb8de43ed",
+      "role": "#680 diagnosis world"
+    },
+    {
+      "name": "mantle-bloom-seed317739385-200800000y.bloom",
+      "seed": 317739385,
+      "saved_age_years": 200800000,
+      "catalog_sha1": "41075064222d1aa32a6aee9c5e032aa094dbaa71",
+      "sha256": "c7e8c4094376b2b57158e36b1066cf529eb475ac0bbf54a6b888b391f294d344",
+      "role": "#680 diagnosis world"
+    },
+    {
+      "name": "mantle-bloom-seed308161711-121500000y.bloom",
+      "seed": 308161711,
+      "saved_age_years": 121500000,
+      "catalog_sha1": "5c19cada9e8a70a80b6f7c569a57176a8fc40c8b",
+      "sha256": "745fa15299fb940d5130f9bf4a7fcf9ad0079156e6d354bccb81b71e11fabf79"
+    },
+    {
+      "name": "mantle-bloom-seed373936961-244400000y.bloom",
+      "seed": 373936961,
+      "saved_age_years": 244400000,
+      "catalog_sha1": "a3c2215fe0eb3f76872adbb5e3db3aa45ad806a6",
+      "sha256": "def0a208089a32e25df7cd4ea8320804b360761a585b5ef3b226a922f44fdbb9"
+    },
+    {
+      "name": "mantle-bloom-seed374464662-132600000y.bloom",
+      "seed": 374464662,
+      "saved_age_years": 132600000,
+      "catalog_sha1": "18b402afb3a56d2e0d20b2bf0337badfb2054905",
+      "sha256": "a9eed5dae3b685c3ed0350a1035bf3adbc66afbe958b64e639139583da52801a"
+    },
+    {
+      "name": "mantle-bloom-seed456862899-19191800000y.bloom",
+      "seed": 456862899,
+      "saved_age_years": 19191800000,
+      "catalog_sha1": "364a9fcaf38f2a08cb4e0bad92efc4c89b0443f2",
+      "sha256": "de04d21ec8536001afe18662fdde1e964e8db8bee49967336abd192bf4a8474a"
+    },
+    {
+      "name": "mantle-bloom-seed507012855-479000000y.bloom",
+      "seed": 507012855,
+      "saved_age_years": 479000000,
+      "catalog_sha1": "a249a559fac44e3f2b9d2dc76a1a26ca2711b659",
+      "sha256": "1605dc268a4c873516306db5c8380a344821b4ceffb08495af3dee0d34de9f9a"
+    },
+    {
+      "name": "mantle-bloom-seed544349906-422900000y.bloom",
+      "seed": 544349906,
+      "saved_age_years": 422900000,
+      "catalog_sha1": "584ca71983ac95555eaf7544a774af07aa52fc3f",
+      "sha256": "10a127f99d79cf1d2d2272661ea5410613a0aaa6d5c3da6d6639411991a4fbde",
+      "role": "local B2 catalog save"
+    },
+    {
+      "name": "mantle-bloom-seed635056485-452800000y.bloom",
+      "seed": 635056485,
+      "saved_age_years": 452800000,
+      "catalog_sha1": "bf9b8d5aa4a22f4fce55376be3a3c3e031a114d3",
+      "sha256": "57860411db4ecd21f98882bd0507158307250a64c5f10cb1cff40e1b39d7daca"
+    },
+    {
+      "name": "mantle-bloom-seed762517225-135200000y.bloom",
+      "seed": 762517225,
+      "saved_age_years": 135200000,
+      "catalog_sha1": "fe140dd3e8b458fe99a4aaefefc894b6647d3200",
+      "sha256": "3e8bc5f4e99452d17e17b98db1f0fa8127b1d92d0189952e7e58e422e046e9fd",
+      "selection_note": "Equal-age duplicate uses the catalogued filename without a numeric suffix."
+    },
+    {
+      "name": "mantle-bloom-seed997271774-130500000y.bloom",
+      "seed": 997271774,
+      "saved_age_years": 130500000,
+      "catalog_sha1": "071f39773080b55ceb9cc23eb0bbce80d02b21a3",
+      "sha256": "0ffa25025b65c0daa7444a57511a8a91b4ab21dea9bf55bd14e8899cbf6d1135"
+    }
+  ]
+}
