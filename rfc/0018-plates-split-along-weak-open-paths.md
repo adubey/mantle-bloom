@@ -1,6 +1,6 @@
 # RFC 0018: Plates split along weak paths that are pulling apart
 
-- **Status:** Accepted (revised 2026-11-14 after the #894 exploration of the D1 prototype; revised 2026-11-14 after #848 runtime evidence and #876 rift-candidate exploration; revised 2026-11-09 after spectral-weighting, runtime and failed-rift review; revised 2026-11-08 after G2 sample-size review; revised 2026-11-06 after G2 non-worsening criterion review; revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
+- **Status:** Accepted (revised 2026-11-15 after the #888 D1 integration and propagation checks; revised 2026-11-14 after the #894 exploration of the D1 prototype; revised 2026-11-14 after #848 runtime evidence and #876 rift-candidate exploration; revised 2026-11-09 after spectral-weighting, runtime and failed-rift review; revised 2026-11-08 after G2 sample-size review; revised 2026-11-06 after G2 non-worsening criterion review; revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
 - **Date:** 2026-11-03
 - **Revisions:** dated entries, newest first, are in the [Revision note](#revision-note) near the end.
 - **Related:** #487, #699, #770, #797, #802, #836, #846, #848, #850, #851, #866, #876, #888, #894; RFC [0007](0007-mantle-plumes-and-plateaus.md) (plumes); RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (accepted predecessor; withdrawal follows gates)
@@ -207,11 +207,14 @@ would stop straining and healing on those plates. Only the breakthrough decision
 gated by minimum age and cooldown. Daughters inherit their cells' damage fields through the
 mask-based split.
 
-Within the update, the loads, the column capacities `N_cap`, the plate's rift line and the
-membership of its band (step 3) are frozen at the start of the step. The band's cells then
-sub-step their strain, healing and softening together, and all advance synchronously, so the result does not depend on cell order. The line's
-position and the coupling to thinning (through `N_cap`) are operator-split at the step, so
-results depend on step length only within the tolerance D3 measures.
+Within the update, the loads, the plate's rift line, the membership of its band and each cell's
+latch strain (step 3) are frozen at the start of the step. The band's cells then sub-step their
+strain, healing and softening together, and all advance synchronously, so the result does not
+depend on cell order. The line's cells recompute their capacity `N_cap` inside the sub-steps from
+the thinning their strain has applied so far (`Hc` and `Hm` scaled by `exp(-(ε - ε_start))`, never
+below their floors); every other cell's `N_cap` is read at the step start. The line's position and
+the band's membership are operator-split at the step, so results depend on step length only within
+the tolerance D3 measures.
 
 **1. Load, `N` (N/m, extensional, depth-integrated).** Each cell carries a symmetric 2×2
 membrane-resultant tensor `𝐍` in its tangent plane. Tension is positive. The extensional load is
@@ -342,7 +345,9 @@ only on the plate's rift line.
     and 0.77 at `x = 0.5`, and tends to 1 as the mesh is refined.
   - **Resolution.** Halving the node density multiplies `h` by `√2`. With `ℓ_tip = h` that
     changes the mesh factor from 0.58 to 0.45, a 22% slower tip. With `ℓ_tip = 2h` it changes
-    from 0.77 to 0.69, an 11% slower tip. The starting value is therefore `ℓ_tip = 125 km`.
+    from 0.77 to 0.69, an 11% slower tip. The default spacing is `h = 125 km` (see Starting values),
+    so the starting value is `ℓ_tip = 250 km`. The D1 propagation check measured the half-density
+    speed at 0.58, 0.83 and 0.94 of the default speed for `ℓ_tip` of 60, 125 and 250 km.
   - D1's propagation check measures start-up and steady speed numerically at both densities
     before the search (Diagnosis gates).
 - **Width.** Cells within `w_i / 2` of line cell `i` strain at its rate (the largest rate among
@@ -367,31 +372,36 @@ denominator, so `Λ` and the rate rise. This is the slow-to-fast transition. The
 depends nonlinearly on the strains, so each part of the step is integrated in explicit
 sub-steps:
 
-- Each sub-step lasts `δt = min(t_left, Δε_max / max_i rate_i)`, so no band cell moves by more
-  than `Δε_max`. A cell's increment is `min(rate_i δt, latch_i - ε_i)`: it reaches its latch
+- Each sub-step lasts `δt = min(t_left, Δε_max / max_i rate_i, t_cross)`, so no band cell moves by
+  more than `Δε_max`, and a sub-step ends exactly when a line cell reaches `ε_cand` (`t_cross`),
+  because that changes the distance `d_j` and so the rate of the cells near it. The sub-step also
+  ends at a plume expiry. A cell's increment is `min(rate_i δt, latch_i - ε_i)`: it reaches its latch
   strain only when its own rate over the elapsed time carries it there.
-- `Λ`, `d_i` and `W` are recomputed from the current strains at the start of every sub-step,
-  and the decay uses its exact exponential.
+- `Λ`, `d_i`, `W` and the line cells' `N_cap` are recomputed from the current strains at the
+  start of every sub-step, and the decay uses its exact exponential.
 - Sub-steps continue until the step's time is used. No count limit converts remaining time into
   strain.
-- The count is bounded: every rate is at most `ε̇_0 (r_max - 1)^n`, so each sub-step except the
-  last lasts at least `Δε_max / (ε̇_0 (r_max - 1)^n)`. At the starting values that is at most
-  15 sub-steps per 1 Myr step, and at most 54 at the top of D1's `ε̇_0` range. A part that would
+- The count is bounded: every rate is at most `ε̇_0 (r_max - 1)^n`, so the `Δε_max` limit allows at
+  most `ε̇_0 (r_max - 1)^n / Δε_max` sub-steps per Myr, 36 at the starting values and 135 at the top
+  of D1's `ε̇_0` range, plus at most one stop per line cell reaching `ε_cand`. The D1 integration check
+  measured at most 37 sub-steps per 1 Myr step at the starting values (139 for a 5 Myr step). A part that would
   exceed `K_fail = 4096` sub-steps stops the run with an error, which can happen only through
   a defect. D3 reports the sub-step counts.
 
 D1's integration check compares long steps with a converged fine-step reference (Diagnosis
 gates).
 
-Scale check, at constant `Λ = 2 Λ_grow` (so `A = ε̇_0 = 8e-8 /yr`), `ℓ_tip = 125 km` and the
-default spacing `h = 62.5 km`:
+Scale check, at constant `Λ = 2 Λ_grow` (so `A = ε̇_0 = 8e-8 /yr`), `ℓ_tip = 250 km` and the
+default spacing `h = 125 km` (`x = 0.5`):
 
 - A rift cell strains at Brune et al.'s slow phase (under 10 mm/yr full rate) over a 125 km
   band and reaches `ε_break` in 25 Myr without softening.
 - The nucleus reaches `ε_cand` after 1.25 Myr, and the first cell ahead after 2.1 Myr. Pre-strain
   then builds up, and within a few cells the advance settles at `T = 0.81 Myr` per cell, or
-  77 km/Myr.
-- Two tips cross a 5,000 km line in about 34 Myr at this constant rate, sooner as `Λ` rises.
+  154 km/Myr. D1's propagation check measured 154 km/Myr with `Δε_max = 0.005` and 125 km/Myr with `Δε_max = 0.05` (the sub-step
+  limit slows the tip; the amended integrator below recovers the law).
+- Two tips cross a 5,000 km line in about 18 Myr at this constant rate, sooner as `Λ` rises. With
+  `ℓ_tip = 125 km` (`x = 1`) the same numbers are 58 km/Myr, 2.15 Myr per cell and about 45 Myr.
 
 These are within the tens of Myr that Earth's rifts take [[Brune et al., 2016]](#ref-brune2016).
 They are first guesses at constant load, not a validated propagation law. D1 measures the
@@ -493,7 +503,7 @@ only for exogenous ones.
 | `n` | `1` | Design choice | Fixed; sensitivity at 2 |
 | `ε_soft` | `1.0` | Design choice; linear softening form of Huismans & Beaumont 2003 | Fixed; sensitivity at 0.5 and 2 |
 | `Λ_grow` | `0.3` | Design choice. Intact interior sections carry a median 0.10–0.40 of their strength on five development worlds (#894) | D1 search over 0.1–0.6 |
-| `ℓ_tip` | `125 km` | Design choice; twice the default spacing keeps the mesh factor of the tip speed within 11% between default and half density (step 3) | D1 search over 60–250 km; D1 propagation and resolution checks |
+| `ℓ_tip` | `250 km` | Design choice; twice the default spacing (125 km) keeps the mesh factor of the tip speed within 11% between default and half density (step 3) | D1 search over 125–500 km; D1 propagation and resolution checks |
 | `r_max` | `10` | Design choice; bounds the rate at 9 `ε̇_0` (with `n = 1`), above the 3× slow-to-fast target | Fixed; sensitivity at 5 and 20 |
 | `a_min` | `0.15` | Owner decision; above the accepted 7% tiny-breakup limit | Fixed |
 | `a_stray` | `0.01` | Design choice; #894's stray pieces were 1–27 cells | Fixed; D1 reports splits it cancels |
@@ -509,15 +519,18 @@ only for exogenous ones.
 | `ε_break` | `2.0` | Design choice; about `β = 7.4`, which takes 35 km crust below 5 km | Fixed |
 | `t_fail` | `5 Myr` | Design choice | Diagnostic only |
 | `RIFT_FLANK_ROWS` | `2` | Matches `K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION` | Fixed |
-| `K_fail` | `4096` | Defect guard, far above the bound of 54 sub-steps per 1 Myr step (step 3) | Fixed |
-| `Δε_max` | `0.05` | Design choice | D3 timestep check |
+| `K_fail` | `4096` | Defect guard, far above the bound of 135 sub-steps per 1 Myr step (step 3) | Fixed |
+| `Δε_max` | `0.02` | Design choice; with the amended integrator the D1 integration check passes at 0.02 and fails at 0.05 | D3 timestep check |
 | Inherited multipliers | accepted RFC 0018 values | Accepted design choices | Fixed |
 
-At the default node density the cell spacing is 62.5 km, so a band at the `w_0 = 125 km` scale
-is about two cells wide. That is the owner's chosen onset width
-([#876 decisions](https://github.com/adubey/mantle-bloom/issues/876#issuecomment-6874579897)),
-set by the strip around the line and the non-local softening average, not by the grid. The band
-widens with its strain (step 3). D1 checks the width at two node densities.
+At the default node density the cell spacing is 125 km (`line_spacing_rad(1.0)`), equal to `w_0`.
+A band at the `w_0 = 125 km` scale is therefore one cell wide: the strip around the line holds
+only the line's own cells, and the non-local softening disk (radius `w_0 / 2`) holds only the cell
+itself. The band widens with its strain (step 3) and reaches the neighbouring cells once
+`w_i / 2 ≥ 125 km`, at `ε ≥ 1`. The owner's onset width (100–150 km) is therefore met at default
+density by the mesh. At half density the spacing is 177 km, so a one-cell band is 177 km wide and
+the onset width follows the grid: D1's half-density check (onset width within 25%) reports this and
+the owner decides whether the width target or the check changes (#888).
 
 ### Runtime and saves
 
@@ -580,7 +593,7 @@ No held-out seed is used for calibration or tuning.
      A failure means the integration or the operator split is revised before any search.
    - **Propagation check (before the search).** On a manufactured straight line at constant
      `Λ`, measure the nucleation time, the first advance and the steady tip speed at the default
-     and half node density, for `ℓ_tip` at 60, 125 and 250 km. Report them against step 3's
+     and half node density, for `ℓ_tip` at 60, 125, 250 and 500 km. Report them against step 3's
      discrete law. If the measured steady speed differs from the law by more than 20%, the scale
      check and `ℓ_tip`'s range are corrected before the stage 1 predeclaration.
    - **Search.** Run 200 Myr with plates-only stepping (`simulate_climate_biomes = False`) at
@@ -824,6 +837,36 @@ in a shared projection and legend.
   not calibrated rift-frequency estimates.
 
 ## Revision note
+
+**2026-11-15 — integrator and mesh-spacing corrections (revision after the #888 D1 checks).** D1's
+integration and propagation checks ([`analysis/issue888/`](../analysis/issue888/README.md),
+[PR #890](https://github.com/adubey/mantle-bloom/pull/890)) found:
+
+- **The integrator as written fails the integration check.** At the starting rate, steps of 0.5
+  to 5 Myr differ from the 0.01 Myr reference by 0.40 to 0.82 in strain (limit 0.05). The error is
+  first-order: a line cell reaching `ε_cand` changes its neighbours' rate only at the next
+  sub-step, and `N_cap` follows thinning only at the next step. Stopping sub-steps at `ε_cand`
+  crossings gives 0.11 to 0.42; also letting the line cells' `N_cap` follow their thinning inside
+  the sub-steps gives 0.079 to 0.089; also `Δε_max = 0.02` gives 0.035 to 0.038 (at most 37
+  sub-steps per 1 Myr step), which passes every criterion.
+- **The default cell spacing is 125 km, not 62.5 km.** The band at `w_0 = 125 km` is one cell
+  wide at default density, the softening disk holds only the cell itself, and the tip's mesh
+  factor is 0.58 at `ℓ_tip = 125 km` (not 0.77). With `ℓ_tip = 250 km` the mesh factor, the
+  11% half-density sensitivity and the 0.81 Myr per cell of the scale check are those the RFC
+  intended.
+- **The tip law holds.** Measured steady speed matches the discrete law within 20% at all six
+  tested settings (within 2% with `Δε_max = 0.005`).
+
+These corrections are proposed on 2026-11-15; the owner's merge of this PR is the decision. Step 3's integrator gains the crossing stop and the live line
+`N_cap`; `Δε_max` becomes 0.02; `ℓ_tip` starts at 250 km and is searched over 125–500 km; and the spacing
+statements are corrected.
+
+| Gate | Previous criterion | Revised criterion | Reason |
+|---|---|---|---|
+| D1 integration check | Unchanged (strain within 0.05, tips within one cell, split time within one coarse step) | Unchanged, run on the amended integrator | The check found the failure; the integrator changed, not the criterion |
+| D1 propagation check | Tip lengths 60, 125 and 250 km | Adds 500 km | The `ℓ_tip` search range moves to 125–500 km |
+| `ℓ_tip` | Start 125 km, search 60–250 km | Start 250 km, search 125–500 km | With the true spacing `h = 125 km`, `2h` is 250 km |
+| `Δε_max` | 0.05 | 0.02 | The integration check fails at 0.05 and passes at 0.02 |
 
 **2026-11-14 — rift lines replace cell-by-cell damage bands (revision after #894).** The
 previous version strained every cell whose own load exceeded its own softened strength, and
