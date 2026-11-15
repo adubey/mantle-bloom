@@ -8,6 +8,7 @@ and reports steady-solve residuals and wall time. No World or production code is
 from __future__ import annotations
 
 import json
+import argparse
 import time
 import warnings
 
@@ -195,6 +196,10 @@ def run_case(nlat=8, nlon=16, source_mode="ocean", wind_mode="circulation", rain
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--benchmark-90x180", action="store_true",
+                        help="include the climate-density 1.0 prototype-size benchmark")
+    args = parser.parse_args()
     base = run_case()
     assert max(x["global_closure_relative"] for x in base.values()) < 1e-8
     assert max(x["max_cell_residual_relative"] for x in base.values()) < 1e-8
@@ -280,6 +285,10 @@ def main():
         f"{nlat}x{nlon}": run_case(nlat=nlat, nlon=nlon, source_mode="uniform", wind_mode="calm")
         for nlat, nlon in ((4, 8), (8, 16), (16, 32))
     }
+    scale_benchmark = (
+        run_case(nlat=90, nlon=180, source_mode="uniform", wind_mode="circulation")
+        if args.benchmark_90x180 else None
+    )
     result = {"cases": {"ocean_source": base, "zero_source": zero, "calm": calm,
                          "convergent_wind": convergence, "divergent_wind": divergence,
                          "closed_loop": loop},
@@ -292,6 +301,7 @@ def main():
                   "remaining_mass_kg": opening,
               },
               "uniform_source_resolution_sensitivity": resolutions,
+              "climate_density_1_scale_benchmark": scale_benchmark,
               "sinkless_closed_class": "detected and rejected",
               "interpretation": "toy-grid analytic screen only; no production climate or performance claim"}
     print(json.dumps(result, indent=2, allow_nan=False))
