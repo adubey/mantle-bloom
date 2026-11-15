@@ -195,13 +195,31 @@ def _e6(runs: dict) -> dict:
             "pass": bool(out) and all(v["ratio"] <= RUNTIME_LIMIT for v in out.values())}
 
 
+def _no_ice_age(e1: dict, e5: dict) -> list[dict]:
+    """Amendment 9: the ice-age saves (8 Myr cycle) are reported separately and don't gate."""
+    return [r for group in (e1, e5) for seed, r in group.items() if seed not in ICE_AGE_SAVES]
+
+
+def _ice_age_report(e1: dict, e5: dict, e6: dict, substep: dict) -> dict:
+    out = {}
+    for seed in ICE_AGE_SAVES:
+        rec = (e1.get(seed) or e5.get(seed))
+        out[seed] = {
+            "gap": rec["gap"], "ledger_closures": {m: l["closures"] for m, l in rec["ledger"].items()},
+            "agreement_vs_d2": rec["agreement_vs_d2"],
+            "runtime_ratio": {k: v["ratio"] for k, v in e6["by_save"].items() if k.startswith(seed)},
+            "worst_substep_move": {k: v for k, v in substep["by_run"].items() if k.startswith(seed)},
+        }
+    return out
+
+
 def _averaged(e1: dict, e5: dict, e6: dict) -> dict:
     """Amendment 6's averaged gates: ledger mean over every checked step, runtime mean ratio."""
-    replays = list(e1.values()) + list(e5.values())
+    replays = _no_ice_age(e1, e5)
     pooled = {arm: [c for r in replays for led in r["ledger"].values() for c in led["closures"][arm]] for arm in ARMS}
     mean = {arm: statistics.mean(v) if v else None for arm, v in pooled.items()}
     limit = None if mean["d2"] is None else max(LEDGER_TOL, mean["d2"] + 1.0e-4)
-    ratios = [v["ratio"] for v in e6["by_save"].values()]
+    ratios = [v["ratio"] for k, v in e6["by_save"].items() if k.split("-")[0] not in ICE_AGE_SAVES]
     ratio = statistics.mean(ratios) if ratios else None
     return {
         "ledger": {"mean_closure": mean, "limit": limit, "steps": len(pooled["trend-1k"]),
@@ -212,13 +230,16 @@ def _averaged(e1: dict, e5: dict, e6: dict) -> dict:
 
 def _verdict(e1, e5, e3, substep, e6, which: str, averaged: dict | None = None) -> dict:
     replays = list(e1.values()) + list(e5.values())
-    if averaged is not None:  # amendment 6
+    if averaged is not None:  # amendments 6-9
+        gating = _no_ice_age(e1, e5)
         land_and_swings = all(all(v["land_ledger_ok"] for v in r["ledger"].values()) and r["gates"]["swing"]
-                              for r in replays)
+                              for r in gating)
         conditions = {
             "1_ledger_mean_and_swings": averaged["ledger"]["pass"] and land_and_swings,
-            "2_step_gap": all(r["gates"]["gap"]["new_pass"] for r in replays),
-            "3a_no_substep_move_over_20pct": substep["pass"],
+            "2_step_gap": all(r["gates"]["gap"]["new_pass"] for r in gating),
+            "3a_no_substep_move_over_20pct": all(
+                v["after_step_0"] <= SUBSTEP_MOVE_LIMIT
+                for k, v in substep["by_run"].items() if k.split("-")[0] not in ICE_AGE_SAVES),
             "3b_drops": bool(e3) and all(r["pass"] for r in e3.values() if r["drop_step_confirmed"]),
             "4_runtime_mean": averaged["runtime"]["pass"],
         }
@@ -245,6 +266,7 @@ def main() -> None:
     result = {
         "E1_E2_diagnosis": e1, "E5_held_out": e5, "E3_ensemble": e3, "E3_worst_substep": substep,
         "E4_convergence": e4, "E6_runtime": e6, "amendment6_averaged": averaged,
+        "ice_age_saves_reported_separately": _ice_age_report(e1, e5, e6, substep),
         "verdict_amendment6_averaged": _verdict(e1, e5, e3, substep, e6, "new", averaged),
         "verdict_new_thresholds": _verdict(e1, e5, e3, substep, e6, "new"),
         "verdict_old_thresholds": _verdict(e1, e5, e3, substep, e6, "old"),

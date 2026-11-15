@@ -89,6 +89,18 @@ can run. Four things changed once the harness was built, before any run of this 
    now reads steps 1 and later. The all-steps result is reported beside it. This is post
    hoc for this plan.
 
+9. **Ice-age saves are reported separately and don't gate (2026-11-15), set by the owner
+   after seeing all of this plan's results.** They are seeds 374464662 and 447276134 (8 Myr
+   ice-age cycle). The no-swings gate already left them out. Without amendment 9, round 3b
+   failed on two gates, both on these saves: the step gap on 374464662 (trend 27.5%,
+   `d2` 18.8%) and a single substep moving ice 23.9% on 447276134 at 1 Myr steps, step 2
+   (`d2` 24.7%). Amendment 9 takes them out of every averaged gate (ledger mean, runtime
+   mean, step gap, substep move), so those means now cover four saves. Their numbers are in
+   `round3.json` under `ice_age_saves_reported_separately`. This is post hoc for this plan:
+   **round 3b passes under amendments 6–9 and fails under 6–8.** Ice-age behaviour of the
+   trend march therefore has no passing evidence here: on 374464662 it was less step-size
+   robust than `d2` at 10 Myr, and 1.37× slower at 1 Myr steps.
+
 ## Arms
 
 | Arm | March |
@@ -200,6 +212,6 @@ thresholds from the run JSONs. Under the old thresholds, row 5 uses the estimate
   new threshold, including every case where the old one would have failed and the new one
   passes.
 - Whether the result would change if the owner kept the old thresholds.
-- The eight amendments above, and for E3 whether either step was a drop step.
+- The nine amendments above, and for E3 whether either step was a drop step.
 - Amendment 6's averaged verdict beside the per-step verdicts, with each place where
   averaging turns a per-step failure into a pass (which saves or steps failed per step).

@@ -48,6 +48,10 @@
   - **Freshly generated worlds don't gate, owner's decision of 2026-11-13** (preregistration
     amendment 7). A world at year 0 hasn't brought its ice close to its climate yet, so its
     warm-up noise is reported only. This drops gen30 from the earlier round 3's flip count.
+  - **Ice-age saves don't gate, owner's decision of 2026-11-15** (amendment 9), made after
+    all round 3 results were in. They are reported separately. Round 3 passes with this
+    and fails without it, so the evidence has no passing result on ice-age saves (see the
+    preregistration).
   - **Impact table and round 3 results:** to be added to this PR before review.
 - **2026-11-03 — proposed by the #765 PR after #741's drop-step ensembles and G1 (#766).**
   - **Old:** D2 solved each body implicitly at the end of the step
