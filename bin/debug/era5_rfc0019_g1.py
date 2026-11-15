@@ -3,8 +3,10 @@
 
 Usage: /path/to/python bin/debug/era5_rfc0019_g1.py --out analysis/rfc0017/g1-era5.json
 Requires numpy and numcodecs; reads public ERA5 Zarr chunks via HTTPS. Samples two days
-near the start of each month of 2000, not a climatology. Flux is a 13-pressure-level
-approximation, with surface extrapolation; this is not ERA5's native integrated flux.
+near the start of each month of 2000, not a climatology. The matching native 0.25°
+dewpoint is sampled at 1.5° cell centers; the other fields are conservative regrids.
+Flux is a 13-pressure-level approximation, with surface extrapolation; this is not
+ERA5's native integrated flux.
 """
 from __future__ import annotations
 
@@ -19,6 +21,7 @@ import numpy as np
 from numcodecs import Blosc
 
 STORE = 'https://storage.googleapis.com/weatherbench2/datasets/era5/1959-2023_01_10-6h-240x121_equiangular_with_poles_conservative.zarr'
+NATIVE_STORE = 'https://storage.googleapis.com/weatherbench2/datasets/era5/1959-2023_01_10-full_37-1h-0p25deg-chunk-1.zarr'
 SURFACE = ('2m_dewpoint_temperature', '2m_temperature', 'surface_pressure', 'total_column_water_vapour', 'total_precipitation_6hr', '10m_u_component_of_wind', '10m_v_component_of_wind')
 LEVEL_FIELDS = ('specific_humidity', 'u_component_of_wind', 'v_component_of_wind')
 G = 9.80665
@@ -37,6 +40,19 @@ def read(name: str, key: str, metadata: dict, hashes: dict) -> np.ndarray:
     raw = fetch(f'{name}/{key}')
     hashes[f'{name}/{key}'] = hashlib.sha256(raw).hexdigest()
     return np.frombuffer(Blosc().decode(raw), dtype=np.dtype(metadata['dtype'])).reshape(metadata['chunks'])
+
+
+def read_native_dewpoint(time_chunk: int, hashes: dict) -> np.ndarray:
+    """Sample native 0.25° dewpoint at the identical 1.5° grid centers."""
+    samples = []
+    for hour in range(time_chunk * 48, time_chunk * 48 + 48, 6):
+        key = f'2m_dewpoint_temperature/{hour}.0.0'
+        with urllib.request.urlopen(f'{NATIVE_STORE}/{key}', timeout=120) as response:
+            raw = response.read()
+        hashes[f'native/{key}'] = hashlib.sha256(raw).hexdigest()
+        values = np.frombuffer(Blosc().decode(raw), dtype='<f4').reshape(721, 1440)
+        samples.append(values[::-6, ::6].T)
+    return np.asarray(samples, dtype=np.float64)
 
 
 def humidity_and_density(dewpoint, temperature, pressure):
@@ -130,7 +146,8 @@ def main():
         steps = int((first - dt.datetime(1959, 1, 1)).total_seconds() / 21600)
         chunk = steps // 8
         starts.append((dt.datetime(1959, 1, 1) + dt.timedelta(hours=chunk * 48)).isoformat() + 'Z')
-        surface = {name: read(name, f'{chunk}.0.0', metadata[name], hashes).astype(np.float64) for name in SURFACE}
+        surface = {name: read(name, f'{chunk}.0.0', metadata[name], hashes).astype(np.float64) for name in SURFACE[1:]}
+        surface[SURFACE[0]] = read_native_dewpoint(chunk, hashes)
         q, u, v = (read(name, f'{chunk}.0.0.0', metadata[name], hashes) for name in LEVEL_FIELDS)
         humidity, density = humidity_and_density(surface[SURFACE[0]], surface[SURFACE[1]], surface[SURFACE[2]])
         fx, fy, integrated_water = integrated_flux(q, u, v, levels, surface[SURFACE[2]], humidity, surface[SURFACE[5]], surface[SURFACE[6]])
@@ -147,7 +164,7 @@ def main():
         band = (np.abs(lat_grid) >= lo) & (np.abs(lat_grid) < lo + 15 if lo < 75 else np.abs(lat_grid) <= 90)
         classes[f'abs_lat_{lo}_{lo+15}_land'] = band & land
         classes[f'abs_lat_{lo}_{lo+15}_ocean'] = band & ~land
-    result = {'source': STORE, 'sampling': {'year': 2000, 'months': args.months, 'block_starts_utc': starts, 'samples_per_block': 8, 'spacing_hours': 6, 'grid_degrees': 1.5}, 'method': {'specific_humidity': 'Magnus water saturation from 2m dew point and surface pressure; below-freezing approximation', 'precipitation': '6-hour accumulation multiplied by 4, m to mm/day', 'ivt': '13 pressure levels 50-1000 hPa; trapezoidal q*u/g and q*v/g; below-ground levels excluded; top held constant to 0 hPa; surface interpolated from 2m humidity and 10m wind', 'depth': 'ratio of sample-mean column vapour to sample-mean near-surface vapour density, not measured mixing depth', 'transport': 'signed vector projection of mean pressure-integrated IVT onto mean instantaneous W times 10m vector; mean ratios use proxy norm >5 kg m-1 s-1; sample is not a climatology'}, 'compressed_chunk_sha256': hashes, 'classes': {name: summarize(fields, weights, mask) for name, mask in classes.items()}}
+    result = {'source': STORE, 'dewpoint_source': NATIVE_STORE, 'sampling': {'year': 2000, 'months': args.months, 'block_starts_utc': starts, 'samples_per_block': 8, 'spacing_hours': 6, 'grid_degrees': 1.5}, 'method': {'specific_humidity': 'Magnus water saturation from native 0.25-degree 2m dewpoint sampled at 1.5-degree centers and 1.5-degree surface pressure; other fields are conservative regrids', 'precipitation': '6-hour accumulation multiplied by 4, m to mm/day', 'ivt': '13 pressure levels 50-1000 hPa; trapezoidal q*u/g and q*v/g; below-ground levels excluded; top held constant to 0 hPa; surface interpolated from 2m humidity and 10m wind', 'depth': 'ratio of sample-mean column vapour to sample-mean near-surface vapour density, not measured mixing depth', 'transport': 'signed vector projection of mean pressure-integrated IVT onto mean instantaneous W times 10m vector; mean ratios use proxy norm >5 kg m-1 s-1; sample is not a climatology'}, 'compressed_chunk_sha256': hashes, 'classes': {name: summarize(fields, weights, mask) for name, mask in classes.items()}}
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, indent=2, allow_nan=False) + '\n')
     print(f'wrote {args.out}', flush=True)

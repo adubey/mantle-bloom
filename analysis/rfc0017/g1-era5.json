@@ -1,0 +1,661 @@
+{
+  "source": "https://storage.googleapis.com/weatherbench2/datasets/era5/1959-2023_01_10-6h-240x121_equiangular_with_poles_conservative.zarr",
+  "dewpoint_source": "https://storage.googleapis.com/weatherbench2/datasets/era5/1959-2023_01_10-full_37-1h-0p25deg-chunk-1.zarr",
+  "sampling": {
+    "year": 2000,
+    "months": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "block_starts_utc": [
+      "1999-12-31T00:00:00Z",
+      "2000-02-01T00:00:00Z",
+      "2000-02-29T00:00:00Z",
+      "2000-04-01T00:00:00Z",
+      "2000-05-01T00:00:00Z",
+      "2000-05-31T00:00:00Z",
+      "2000-06-30T00:00:00Z",
+      "2000-08-01T00:00:00Z",
+      "2000-08-31T00:00:00Z",
+      "2000-09-30T00:00:00Z",
+      "2000-11-01T00:00:00Z",
+      "2000-12-01T00:00:00Z"
+    ],
+    "samples_per_block": 8,
+    "spacing_hours": 6,
+    "grid_degrees": 1.5
+  },
+  "method": {
+    "specific_humidity": "Magnus water saturation from native 0.25-degree 2m dewpoint sampled at 1.5-degree centers and 1.5-degree surface pressure; other fields are conservative regrids",
+    "precipitation": "6-hour accumulation multiplied by 4, m to mm/day",
+    "ivt": "13 pressure levels 50-1000 hPa; trapezoidal q*u/g and q*v/g; below-ground levels excluded; top held constant to 0 hPa; surface interpolated from 2m humidity and 10m wind",
+    "depth": "ratio of sample-mean column vapour to sample-mean near-surface vapour density, not measured mixing depth",
+    "transport": "signed vector projection of mean pressure-integrated IVT onto mean instantaneous W times 10m vector; mean ratios use proxy norm >5 kg m-1 s-1; sample is not a climatology"
+  },
+  "compressed_chunk_sha256": {
+    "latitude/0": "0099a8a0cfec2eb3e7d3c1a5a0b00b063c86ba0fe98bdc379bfe269af0207875",
+    "level/0": "defe6a82a653349d9bdc64bbb6cf092e3d680d913a7f5ae7a584289df37edb79",
+    "land_sea_mask/0.0": "dcd229c9d152d5cdf422defe2bb1d2c425cfc52832078cb1b0600875f9d9a5ef",
+    "2m_temperature/7487.0.0": "9b753bf80680b4a40614879346cec8839efe86f4e0539550385759a236c536bd",
+    "surface_pressure/7487.0.0": "85ed894201773423d76d76855f231322f44b6e72daed840139ba61e48dd19d17",
+    "total_column_water_vapour/7487.0.0": "10760ac7341ba7a54a11898d49bcd026d08253e2239b11d1c30fffae85418b26",
+    "total_precipitation_6hr/7487.0.0": "9b49603cf07948d38837d64290750d175c1314e352ecc7e79232db8535f70b25",
+    "10m_u_component_of_wind/7487.0.0": "3c29e106299807111e09012f093eed6f529defe08ff2fd69fdc98e4b17408399",
+    "10m_v_component_of_wind/7487.0.0": "52a9ac1ef707fbe8e66f587cafde1ffdc030bd80f5aadcf3ba5e61f87dafcd0e",
+    "native/2m_dewpoint_temperature/359376.0.0": "45a34a37728343abfdcf8e98ea013ae7f09e033382ea47c74c30bdd16ad4fb40",
+    "native/2m_dewpoint_temperature/359382.0.0": "1bd81d3019f6be7402f066727e1e449ff8d841592aa475b0144dc71d26f0ab1b",
+    "native/2m_dewpoint_temperature/359388.0.0": "9415e2d8de8ce6f974e97912178709cc0b26f57435fe44642ba862e6c822d64c",
+    "native/2m_dewpoint_temperature/359394.0.0": "52f0bdc79ef0bacb1dd31f8ae39fd53f1f8a93bffa86adafdf5aea184640134c",
+    "native/2m_dewpoint_temperature/359400.0.0": "0f60329803842ed9c25cfdda07167f4a5887558abae0919a4ffac2002ede992d",
+    "native/2m_dewpoint_temperature/359406.0.0": "17c00b7a3203cc9a3a4c394518c1be6507102d566aa3dd29cc4fe37c3a2a2992",
+    "native/2m_dewpoint_temperature/359412.0.0": "0b096e0d4263cc67caa03ef7f88ee8f1ab5387964152838975f7d6f89693b691",
+    "native/2m_dewpoint_temperature/359418.0.0": "f6e99dd2aa07808df488f54e64ef01417978578fbf22867e6646fce7e849bedd",
+    "specific_humidity/7487.0.0.0": "4b4b4d4239a1ef660c94f4b2b1bd75420050979f24311ef272c4a6431cc3b007",
+    "u_component_of_wind/7487.0.0.0": "e04d43ac290dedaba2dae21f0c546488ce4e605b7685e7834a399f75213956cd",
+    "v_component_of_wind/7487.0.0.0": "39c1161406a92aeded062ebbe53cf26e93f489cd20c8f6a6e71fe3c17f0af0e5",
+    "2m_temperature/7503.0.0": "3762dc790e462c456d239cfcf00a237b9ea6f630a60dee1c81bc5234ce1688bb",
+    "surface_pressure/7503.0.0": "3e33615c4d6e74464b95a5b7dc3a8236415b910631a89615741c8744c498c598",
+    "total_column_water_vapour/7503.0.0": "38ea3a47bb3bff4b266bd44b05511703ca4fbd28567ea14c71b00b980022b612",
+    "total_precipitation_6hr/7503.0.0": "1192c2d4d369e9dcef48d2b4a31a1efd5a6f408c7f9251ac91f5cbdbb3615341",
+    "10m_u_component_of_wind/7503.0.0": "279c28dfd1396ad58e712ad80f4ab06d07e249def2483787b528b4fbaf42c31f",
+    "10m_v_component_of_wind/7503.0.0": "f60083a4382f52346558fc2b805c7f5fb027edbcd6174f60227f906da2e56d3b",
+    "native/2m_dewpoint_temperature/360144.0.0": "4369f11d085efe3261514593d68b53f3bae0182d873935e55caf2563a8069960",
+    "native/2m_dewpoint_temperature/360150.0.0": "4a1d60b6d511e4cdec73f3582da6ed18ca7038e576e021340627b3ca4f703b29",
+    "native/2m_dewpoint_temperature/360156.0.0": "e6122c34fbe4fdc5c905c9678a409c9f3b2c751058d0bfaa2515174c6083915b",
+    "native/2m_dewpoint_temperature/360162.0.0": "34b42629fc26cabcd7296bf4552f01e9f8aa865ea2e17dbb1f53fb123c97a69e",
+    "native/2m_dewpoint_temperature/360168.0.0": "e6ca91738c4858975489a7f212101c8516378c7e00da5392f7adddfef50a6fb7",
+    "native/2m_dewpoint_temperature/360174.0.0": "09e9987875e1be369f29981c2ec673c26ce15963cfc0a8a0e693507fc068e99b",
+    "native/2m_dewpoint_temperature/360180.0.0": "8a6fccd7ca21ff18a59de63bc648dbbee4cb94c22237a125a015022fae7cab9f",
+    "native/2m_dewpoint_temperature/360186.0.0": "1919de7e56282d4126dfa24a687ab63f03dd249fdf7e405dbbfee16d07a12337",
+    "specific_humidity/7503.0.0.0": "d3c267f87827805ad5d1eb3c9b5470f20dd8a943f831a5d797cd104ef2729558",
+    "u_component_of_wind/7503.0.0.0": "f20a8bf4752d5ee7fcd7b3dd713b2c42bf39e59e0692e9f26add1161d39bb551",
+    "v_component_of_wind/7503.0.0.0": "9fdd26e4e9c288ffc79d2d23ab86728e656c9df8849f5f3f6041036418f2d946",
+    "2m_temperature/7517.0.0": "824546f4552c51b7d76d1a92a9df9cb34ab149ca05e6f3c63f95a43970bcfcac",
+    "surface_pressure/7517.0.0": "1b0fbc321d15c5eb9bb0f033ffbfc6220d09e483b2b68d721629d3e6ba349884",
+    "total_column_water_vapour/7517.0.0": "1ac322c16dcb66467a52adc2acbcf9811b5fca2bd4fff7ed058527da8d9b22a9",
+    "total_precipitation_6hr/7517.0.0": "968caddef7f00c86b147cfad087aea8b176e75b25c73e6c9de05c6e76db136c3",
+    "10m_u_component_of_wind/7517.0.0": "3918664997d385283ecb0e09f0242f5731d518d5201cda35f77c61c8b6d41614",
+    "10m_v_component_of_wind/7517.0.0": "4a0335feef0971a686b7c0d9cf6faaea5b885537df626ef80695fb75fff57ef0",
+    "native/2m_dewpoint_temperature/360816.0.0": "24a27ee418b7c3ad3260d513639e8d083f0144267f0172d952e436dda762b81d",
+    "native/2m_dewpoint_temperature/360822.0.0": "adf0b215eddf531eb5d1a338b9b572fc57ad27e6a2cf721f5b927d4a091402d9",
+    "native/2m_dewpoint_temperature/360828.0.0": "2203d552ff9946159d2faf178afcaa8fb72839f28d480f14ce77ba4973ebdf35",
+    "native/2m_dewpoint_temperature/360834.0.0": "5b178ba789fd5a6f436dc90067475b47fea1ca1462fa59158841822aab1a1c81",
+    "native/2m_dewpoint_temperature/360840.0.0": "8ead61afa11579f9030085ebe06b00a87421bfe834ed8e6f909b8396b074485e",
+    "native/2m_dewpoint_temperature/360846.0.0": "624425a8d55b28b6f72bf3e8aca4a48035dc88b51002717b86b2c129c2859aa7",
+    "native/2m_dewpoint_temperature/360852.0.0": "f60956b6624bf9a629163641f1027a0f826cec82d53e66b3317fbc0f63e2c6f2",
+    "native/2m_dewpoint_temperature/360858.0.0": "b8a9fc42b3ba83968890778849a7cb9e15d76e9decb92e0232d787b388f42e8b",
+    "specific_humidity/7517.0.0.0": "8cba01dd768920a0d58904190a4d4813410b7139fd58b6d1f6ecd74e3f8db26f",
+    "u_component_of_wind/7517.0.0.0": "89f53f359b649eeda589f7fefd3e4cadfef5f7623b6997f1d142ffecee83df32",
+    "v_component_of_wind/7517.0.0.0": "e4ab46264a910933e40daff3c3393088adea3a052644324fa33f2124efd17b20",
+    "2m_temperature/7533.0.0": "ae84c7491b258fa9bde5778e32b752686f597d6e4e1efe4bdfdeaee74b21f6bb",
+    "surface_pressure/7533.0.0": "28ce63ecdb39e19f190c03f5b38b98bd20565dcaa100e25fadf58ba519fb627f",
+    "total_column_water_vapour/7533.0.0": "ea9c9ea90022815af60f610cf530f5eba84cf53ee80f860baa8d96b0fab4145c",
+    "total_precipitation_6hr/7533.0.0": "84e8d992f1c25d1017bacfe8f15a35f94bb9cf38747aad54f4516543e2dc75ca",
+    "10m_u_component_of_wind/7533.0.0": "a3b3f0ccc72a712f540036329f94b16497935019ee08365de183dae7522a4965",
+    "10m_v_component_of_wind/7533.0.0": "5926951750e4c313bb07de5163f9bbd35c05f5ef5a1bd5369d5a1d6aefc5da11",
+    "native/2m_dewpoint_temperature/361584.0.0": "ffd4746c2953a8f8afbf2aeeb12ef867cb70a8ddef00d26a74ade6c5fff169d4",
+    "native/2m_dewpoint_temperature/361590.0.0": "722e3ac50e79e57a59201fa2a05fa4d72eec29de28581f1e72c668102858e992",
+    "native/2m_dewpoint_temperature/361596.0.0": "2cf26215c4c96cf5bb0fc356a38be42eb284e483ca5753276cb36bb7421c133a",
+    "native/2m_dewpoint_temperature/361602.0.0": "e730486ede24020ed8928beecbca8bff9cadabfb016fc665b29def241d55b3c9",
+    "native/2m_dewpoint_temperature/361608.0.0": "6661038d9d05c98d3cce5339f86af61d52cfabffb91155577d19223229c88980",
+    "native/2m_dewpoint_temperature/361614.0.0": "ce4ec31234687418b459a1425f3eb06e31acc8a2a467d2d767ab93b02aa1b28b",
+    "native/2m_dewpoint_temperature/361620.0.0": "ac03c606224738efdce0e37615e346ccee449fb6858b35736ecbfbb704c96db5",
+    "native/2m_dewpoint_temperature/361626.0.0": "b2b04545c887bcddd362a8adbac112e7141310159d777e269b50ab5f0490f776",
+    "specific_humidity/7533.0.0.0": "501fe909e4cea2342ae187adfb54f1d2f884f2c4b2f447c2046cd3fec6769b46",
+    "u_component_of_wind/7533.0.0.0": "fe7d34f756cc2428ab36edb2ea7fac268ad55348d8a7c314bd6137949c492cb1",
+    "v_component_of_wind/7533.0.0.0": "fd01a33903e7434d8f12f7163ff82911589aa6625ce3c8b2748ec4a362d6168e",
+    "2m_temperature/7548.0.0": "3cf58a9c63d2b32f493d426a2ee5d2e08ac3705e2ab6715f28018e66a5709da8",
+    "surface_pressure/7548.0.0": "e935d47aba238b288e6c02e6960e00f2cf49cd67d687e2108b08e9002a9d36a1",
+    "total_column_water_vapour/7548.0.0": "a4524cc89ba8d798cfed03930863fe183d175b2cdda903bb1bacba99e4cea71c",
+    "total_precipitation_6hr/7548.0.0": "56abb9179a3ca6cfa5b7fcbbf2b95efd832b4f8bb4fd77f085d7034b15ffd102",
+    "10m_u_component_of_wind/7548.0.0": "af5d697ee4b5f195364801312a1683f995bcf89ccef0baffa8dfe8b8858371c3",
+    "10m_v_component_of_wind/7548.0.0": "c5e6b51ca085a80a02bcea74cd97e1e85fb20231b33a3c451158bb5f98dd046e",
+    "native/2m_dewpoint_temperature/362304.0.0": "f306ccca5eb9626861d2e6c1dd4896b5db0a13f1293102c80bba3b80777b3d03",
+    "native/2m_dewpoint_temperature/362310.0.0": "5ae1767494112f97fdd71bd78468b97273ae267b526b93526f15ca19f411cc18",
+    "native/2m_dewpoint_temperature/362316.0.0": "d49bf509d72ecb789073c1732f77deb202358ccefcca3bc53524ae6d8b93cf05",
+    "native/2m_dewpoint_temperature/362322.0.0": "dfb468de7589ff249b6a0c5dc539f856a413ab52a5881821dc856dc27479616a",
+    "native/2m_dewpoint_temperature/362328.0.0": "8a69e0358b629d2bd88fe40193f32d31188c9053e388c7a9558fc0285f77e47a",
+    "native/2m_dewpoint_temperature/362334.0.0": "97c348cc6100f4ab7e35103804a7424645f946eeafc2c38c33b0065dc471d54b",
+    "native/2m_dewpoint_temperature/362340.0.0": "dd95a35a7eb1bbe025e05742de7b4d51fa68795f5003d132ee78b3ef4d14b829",
+    "native/2m_dewpoint_temperature/362346.0.0": "d596da8b4578e6c0e11a368482fd6a83ff6ecbba4f185c44f394866c424edbbf",
+    "specific_humidity/7548.0.0.0": "9bddaa429398059c8ff50546907e09a34dc0c416009bc480d1ceb8f07b22349e",
+    "u_component_of_wind/7548.0.0.0": "a892e79deb668f534ea158c9515f280c7fb7761cd6319f6965bdabd4fe50f185",
+    "v_component_of_wind/7548.0.0.0": "1f208b2cff248085dba5c35c7db5934b31913f8e4ab6062a9856e00a2448e89f",
+    "2m_temperature/7563.0.0": "1676fb11109932df581a127875907d6930676c119cd9d88b44ccfc0470a39682",
+    "surface_pressure/7563.0.0": "e2bc70041d70384e89b64d4abad44ef63178fd6737908aec4c1405be63834cf0",
+    "total_column_water_vapour/7563.0.0": "b53469528f7838ae4cbb8b0dfc29266702472a75eff380debfcbf454f47979bb",
+    "total_precipitation_6hr/7563.0.0": "bcca859cf4f4882a400b28cfff6032f202e88c621dc2b935d0e4ac11fe48d01a",
+    "10m_u_component_of_wind/7563.0.0": "ced974a76440e40e23ae9c9dd745370743634a24b5e4139f1928a38c24e81e80",
+    "10m_v_component_of_wind/7563.0.0": "520899a5237bc7de06ac5e61963f1a573cffe17aac91b954083a48aa2f3fc7c8",
+    "native/2m_dewpoint_temperature/363024.0.0": "d4731e010e792cd3c5c353fbbba2b0e688486c7bdf8582ea68bfc3b24b510e68",
+    "native/2m_dewpoint_temperature/363030.0.0": "161546147527b0c557eefcb97df31cf561d720e1c63e28d9db286043ec76d89a",
+    "native/2m_dewpoint_temperature/363036.0.0": "05a4ab7ddc51e41fd011ca17fe975ec985d5b5053d0bf3c909a2564185d4f877",
+    "native/2m_dewpoint_temperature/363042.0.0": "6cc915c68bf586cee4c96d1f6d168eb3dbcc1aae94ad85d37e2e901909a6790e",
+    "native/2m_dewpoint_temperature/363048.0.0": "acf04eaa81f43a39c7f07ca4a228d6f181e3fb8d1319e49449fdb610b209138e",
+    "native/2m_dewpoint_temperature/363054.0.0": "8702e52396dce3af05510e70ee71e4080e03351c2d30984160decafcedd94523",
+    "native/2m_dewpoint_temperature/363060.0.0": "ea36065bc4bb9f6fe41e8487d02f4ff0feb8fe9a99c4108891a5c28c52046758",
+    "native/2m_dewpoint_temperature/363066.0.0": "f337f29c1f0ef7fee4fc0451fd01eb47544966c79ac29e82e200b8c4c6670eb8",
+    "specific_humidity/7563.0.0.0": "03f249afc015ca4162046d12dd112a708376a49be12319c0512092cfc8263120",
+    "u_component_of_wind/7563.0.0.0": "e9b67f8fa317ad07eccaa7a5a3b7976bda81eef65e93d8efb889bdf5d00f884f",
+    "v_component_of_wind/7563.0.0.0": "3835cfaa5be0c5316abd29ecae0d45e23302867cfa8e2bd891d54efdf374c24f",
+    "2m_temperature/7578.0.0": "30d5827adf79d3f7bcca6243563175f93fdda008f6b605c3a8a3a2cde68aad63",
+    "surface_pressure/7578.0.0": "11adaf01e4c84aeb97af9a238d67478fbc7e1dc317a0201112591483f5bfa342",
+    "total_column_water_vapour/7578.0.0": "b3ec9443d7c0e03955fb2026eacb52d68a75fd1bc7162d0f7004fc824da874e0",
+    "total_precipitation_6hr/7578.0.0": "61246ffdbb002f72f10d71d9969d013948ff3fb640b4583f211a0b0e94659fbb",
+    "10m_u_component_of_wind/7578.0.0": "3f3997aa70676111dda3d5fd95ecb2291319764e6361e3395effe64126de218f",
+    "10m_v_component_of_wind/7578.0.0": "063cff193b06b612009c4eb6a1ee5aa31095cd06bbd5f52e665b68363220409c",
+    "native/2m_dewpoint_temperature/363744.0.0": "f44e71eca687a7e211567c6919f4b7519712e3c07ad34b17ee8e55ffc0c92641",
+    "native/2m_dewpoint_temperature/363750.0.0": "3175ea90386edb20e202c4e771fc637f323060698f48ae9d3d44deb49de4b869",
+    "native/2m_dewpoint_temperature/363756.0.0": "b285122f009ea84f0bcfe1043d9efea17fdc4876af31ba4d679dc59c1cef5ccf",
+    "native/2m_dewpoint_temperature/363762.0.0": "461722f6bf53caa837598df0ed8cdced511f383a8cb385c456ce05a51235a2eb",
+    "native/2m_dewpoint_temperature/363768.0.0": "36e363ab8d7beb0f79926a28b03697b27a4278afd44fcd5b2ac7d2d67dbac490",
+    "native/2m_dewpoint_temperature/363774.0.0": "7613342321cfc4e8bf1dbd13ee21f8ae2ec347b730ade3b8d70fc6710c8f7f80",
+    "native/2m_dewpoint_temperature/363780.0.0": "e86ddcc6cf99d4b379e80f9560169659ac4795a2d26fa02b5fca2da723bdb2c8",
+    "native/2m_dewpoint_temperature/363786.0.0": "973c0ce7cd003960e9dfc80ed49413b7748b965db41071de1ec01f2350a503a2",
+    "specific_humidity/7578.0.0.0": "86149fd33006361adfea935831db9363d157135e1cf7ada19a6c06858181f080",
+    "u_component_of_wind/7578.0.0.0": "7a60d26bfacbe1ab4da21941589ee023739a6dbc092b36fc0642eeacb2898608",
+    "v_component_of_wind/7578.0.0.0": "aa2e06471dbb84e7efd5b6b43d26e824f5f55a5a1819b265715192c51824089c",
+    "2m_temperature/7594.0.0": "8877a78a84d315efc0b8f5894599b85fcac4bccd93fffbe050c49168797d1a08",
+    "surface_pressure/7594.0.0": "802afd1fa06f84de41d970a1a7de3ad8c671513608e37f41b9f7b3f9a171441f",
+    "total_column_water_vapour/7594.0.0": "e47259e7884fe13197501ce7dd226dcd237eb78151f444daa2ef75b2c6d35e51",
+    "total_precipitation_6hr/7594.0.0": "088ffed99349f3378197bd409593b7de144ff1a54947eef8c4cfbbc70c35c8b4",
+    "10m_u_component_of_wind/7594.0.0": "28a4697ec13559de9517786171c6d24b03eea204e5ad494ab73bfc046926d487",
+    "10m_v_component_of_wind/7594.0.0": "1c759485a76fdefaae0013924382acade54be0cf9a74b0430799d35a222be6a5",
+    "native/2m_dewpoint_temperature/364512.0.0": "19d06a1d843bdc72736fe55b6da5ba1b8613f965a970453ae373df854dbf2d9a",
+    "native/2m_dewpoint_temperature/364518.0.0": "2ebcc80502b880ed7158bc8cb5c2323e89d576c830b0ee2a9a5fa34e480ac295",
+    "native/2m_dewpoint_temperature/364524.0.0": "e5bce0f1d91e08c02e210497309f8a2e8252cd804e7619129713656e99270f3b",
+    "native/2m_dewpoint_temperature/364530.0.0": "fbaf6df7a2e8773bbae95b36d92ac1fd19be9bdebeaa3d2a482d86eb20b313f3",
+    "native/2m_dewpoint_temperature/364536.0.0": "b4c9af8d1cac05af3207892adf40f87eb1c295e12291071021d6b406026fcc67",
+    "native/2m_dewpoint_temperature/364542.0.0": "20f22932b04e43f1437fb90c7c6419b1f1e2f148fff7b881f34efc545cc6da35",
+    "native/2m_dewpoint_temperature/364548.0.0": "4b85e9cdc82f6c1a7f7c654de0d07fbb848659fc054cf49bc29ffa97401b9de3",
+    "native/2m_dewpoint_temperature/364554.0.0": "3aab5d96b371f4cac35b68534a82d8d8bfb7778f64e270855a86d7b3dff3c587",
+    "specific_humidity/7594.0.0.0": "e0551afed81e87a1f9c7496e2abbe0834c76d8d1ced5697bbe2579828ef7fed7",
+    "u_component_of_wind/7594.0.0.0": "07c27ab4a13342499334534106993b2d0f4a060ee4bb75bffbaefbcfa487aadc",
+    "v_component_of_wind/7594.0.0.0": "5911866ee1b0a87e6ca9298ec7d30ac790212dfb22ac82d4deea6d1f8a2826ef",
+    "2m_temperature/7609.0.0": "331286c558eb48908cf2f4f95b42019264d9eb3b8349d391a4abc48011c51fb7",
+    "surface_pressure/7609.0.0": "3bec77974037d0c31062483e179a4c45aacfcb47057cdb9ba0378b590bc25b6f",
+    "total_column_water_vapour/7609.0.0": "4228b09d3ec8c152e5dec6907c1a9757b7287918b87a284e792a5cbd5734ed64",
+    "total_precipitation_6hr/7609.0.0": "7da63c2b7b5045f4a745973daab0b58299f2f6a3ebf2c0a074c440d408f12ba9",
+    "10m_u_component_of_wind/7609.0.0": "17649c407953a8ac577ae5914c4d1afe1b46ed9c31afa43b5a4c0ee7841ddcce",
+    "10m_v_component_of_wind/7609.0.0": "12d72ef3e4a7cb0ccd547096d1acf71aafd0d08dfa1d4bcc60337dcafedc85b5",
+    "native/2m_dewpoint_temperature/365232.0.0": "f8a717ea8eb0378205def057d797d0ab95d143298901f4591f608647dc7b4d11",
+    "native/2m_dewpoint_temperature/365238.0.0": "7cbfd8cefcc48f7f8f5d68a3bfe6eadbfe8adfad71e9abef14cb7aa750fd588b",
+    "native/2m_dewpoint_temperature/365244.0.0": "4b4fa65394c77bedffac507a09cce5bf110095bc5b99c066761f8efbe7d5e18a",
+    "native/2m_dewpoint_temperature/365250.0.0": "17e9bf1134cce791d5a36ea8a89436d3ee1fb78823e748412d936658db60c811",
+    "native/2m_dewpoint_temperature/365256.0.0": "954b1bd04f551d01c30c66171ce5ed7779c21fdcd9a9c09d66457cd6d36eeda5",
+    "native/2m_dewpoint_temperature/365262.0.0": "bf1a153063807b35b107e9b24bba8e228ca9ac6d358cc425d9e1bad1240ea46f",
+    "native/2m_dewpoint_temperature/365268.0.0": "07051fbacbbe02e5559a18d0f9c81eb490c88b669eeb7143217666cf62303fba",
+    "native/2m_dewpoint_temperature/365274.0.0": "3b14ccabbcf15f66e5d48c1fc30457b706d47c3d3086e64175637a38451a4a7f",
+    "specific_humidity/7609.0.0.0": "c73a6ade3d8dd5093d266829e27363587cf09ec6163f54587bd13f4a6e576f63",
+    "u_component_of_wind/7609.0.0.0": "bf233e9bbb49f04ff730ca10da7e9902ed2b5737aa8a0603e4888a23baba11c7",
+    "v_component_of_wind/7609.0.0.0": "b8dd2304ec0149d1da119e8162193cf3c78f0a5d81b82e3b954d1433b77f8f93",
+    "2m_temperature/7624.0.0": "8751690442e0c4f68b982901d924714fe3615c773753c1442e1deedc2d801ef1",
+    "surface_pressure/7624.0.0": "ee46b5d5eab0bacade1da8e3af8accde68067e8c09bfe1da1e2fa122c1d2aa22",
+    "total_column_water_vapour/7624.0.0": "2fe80657ebf536b9b7c4e281d905e4a7fc2e809071426a88a9cf8baa6308ad3e",
+    "total_precipitation_6hr/7624.0.0": "d7218e6200fc8aacd0ec82bddcdd99ba5f3b32e840f3173a78875739bc035be6",
+    "10m_u_component_of_wind/7624.0.0": "3700556a3a529bd26f073144825ccbe8cad59128dc3c0da69e334439e7095b69",
+    "10m_v_component_of_wind/7624.0.0": "05afb0de3bd24c84fcf23dd027eb67856313920def74e857de4fab1a1e2d023d",
+    "native/2m_dewpoint_temperature/365952.0.0": "7fad54c145bef5e34cb662ea076248f03dbe387cdd80dacf501eb44286ccdf1e",
+    "native/2m_dewpoint_temperature/365958.0.0": "f21b0f9ad7c240185acaf5a2fb58d9cd00c82f9a50ddb53f93de88ad195ac46e",
+    "native/2m_dewpoint_temperature/365964.0.0": "14e898a8627649a5a94341cd006fb3ba1ca457abb08779c08394ae030e4072b8",
+    "native/2m_dewpoint_temperature/365970.0.0": "4d9bd14360fcda2ec02da5449b58b5ac4248e0a74a70a8dd5dc8c509823243fa",
+    "native/2m_dewpoint_temperature/365976.0.0": "4730f3cc158627ed9759b8f7eb182dca34fb56ff8d7928d89604e28ad76054d5",
+    "native/2m_dewpoint_temperature/365982.0.0": "9efd5ab750466c087889f0fffb78d79e3d38615641f7c6316eb07c2fa4e110ff",
+    "native/2m_dewpoint_temperature/365988.0.0": "2965ed4225d37fb51cb57a89c0c3f25cdd163ee851d55b3e0703924178622267",
+    "native/2m_dewpoint_temperature/365994.0.0": "130060a45d12d5e0673015c504a8b5bb5437159f09c6575cd5af00d4a743dc8e",
+    "specific_humidity/7624.0.0.0": "5f4b57ce43d27b3e5e9cc1c54017063acd7818b70bf0facfa4114081040005ab",
+    "u_component_of_wind/7624.0.0.0": "e675cda6df30d780bcd729b34cd2b1386a230be32b12e85b26c661b0f8813ed4",
+    "v_component_of_wind/7624.0.0.0": "c2cf946aff84be50bfde160e6ef9d8c224a2a1d9595d1c11020a7689a0e09024",
+    "2m_temperature/7640.0.0": "0438748bc132ca319638482507eae608521c7b8d214bc369582ee7a43ff8eec1",
+    "surface_pressure/7640.0.0": "fe9a7be03a70e83207d4375f8a371c6ee0690cdb2968b0e07fc162326f1ecb95",
+    "total_column_water_vapour/7640.0.0": "57b4dd8b75a5deef7098cea31baaf7066ac30124772389f41c2c741075e5ca06",
+    "total_precipitation_6hr/7640.0.0": "cf600b790c317b75daa878dc0862c5298c61802f62ae25de731da8e2347c1aba",
+    "10m_u_component_of_wind/7640.0.0": "aae9a42e00ed9f5d98694334f7b70934b37ed880261579eb2821c35b2baab9a2",
+    "10m_v_component_of_wind/7640.0.0": "181b3724f032b845c46d7a0383629107a2c892bceaccf7c8aefa26ff87e7a52c",
+    "native/2m_dewpoint_temperature/366720.0.0": "2e826c090365e63ae88c67dc956b5b50af4eaa0dc04f2ad2e563716b058cab89",
+    "native/2m_dewpoint_temperature/366726.0.0": "e3d01cfc4431b00bd89e32623ae3d60d8691769b3d6bd2cfe80ac20565dd18bc",
+    "native/2m_dewpoint_temperature/366732.0.0": "3573e45edbb77788b0876619ba4ba3f1ccb7131a24a8f24e1a652d8ab8d9cec0",
+    "native/2m_dewpoint_temperature/366738.0.0": "b760c06da5b517392f78c52044dbb0c75017c1d8fbe7b456981ed558353b8bb2",
+    "native/2m_dewpoint_temperature/366744.0.0": "43dae7dbd07524329e582fc07c394b63dc65b69d00f8517173dad6ff1db78e5d",
+    "native/2m_dewpoint_temperature/366750.0.0": "ce414e931daaa7b8aefc33954aa055493e3183fb3bb17ce5176e371c87d69f50",
+    "native/2m_dewpoint_temperature/366756.0.0": "0de46468144078be183d751d7be72ebbb6c8570dd90edbd705108d6276d80dd6",
+    "native/2m_dewpoint_temperature/366762.0.0": "151205ea0a0397d37f6f0ec442be453e6573c0154cb7d00f2b450ffcc2d94329",
+    "specific_humidity/7640.0.0.0": "b757d30a212cfd1627285ced2834e4c7289f864bb578bda007331562dc562452",
+    "u_component_of_wind/7640.0.0.0": "415b38c8dcbc402fb611fc62e8b1dd711143e2091a456eb5fe6b48db51c3f2ec",
+    "v_component_of_wind/7640.0.0.0": "9850ec4a9575356b30c16b1e2241af7d255684ef97809e8d8bc05c9e5a3e36e6",
+    "2m_temperature/7655.0.0": "c6277eb5ac5f7b99574cd0c7f3659cdf109db5cfff1a9bfcf2c9b03f8b573286",
+    "surface_pressure/7655.0.0": "858666c35caa7b9bfc45213f6217e464f641a0ff65227ceeb55f1884d1b9670c",
+    "total_column_water_vapour/7655.0.0": "97498a1b653c868101ed91e7482793605fc84916ed36daabc9b06f034766a015",
+    "total_precipitation_6hr/7655.0.0": "54ee8de77130f5691cf4bce7d4c8128ad8eac11b0da5c7ffb331c359b82cee64",
+    "10m_u_component_of_wind/7655.0.0": "767535d642f6a8e2cce240efd5b059710f054c0d15fda0bd5364af4db7e756b4",
+    "10m_v_component_of_wind/7655.0.0": "6f8093a71481d73b61fd68ad5be3d38db82e0f519bb492af00e97e569cda8ce9",
+    "native/2m_dewpoint_temperature/367440.0.0": "19899b21b904497e99cefe6a93d0a33618e7b9b01935e9d70a5344e8b9931a0a",
+    "native/2m_dewpoint_temperature/367446.0.0": "8a45ae561289a64529333d595eb5fa67a5eb8b1d22103a8858cde938b799c210",
+    "native/2m_dewpoint_temperature/367452.0.0": "70c6bfa67d449a78a94797b39b237b3290b6b448cc51919f3fb57544a281782b",
+    "native/2m_dewpoint_temperature/367458.0.0": "926612d17bf83e5967f438b084cb12b6ca10fb4ae86931852371f412bda9a8e9",
+    "native/2m_dewpoint_temperature/367464.0.0": "45290517760c9509fb34def251b26227e016cb81cf1197cde158a82fc25ed60d",
+    "native/2m_dewpoint_temperature/367470.0.0": "bb61d47a661f71a8345e5603fb35af0d24376ebbcdd952c08b5bded735dddb10",
+    "native/2m_dewpoint_temperature/367476.0.0": "c9630308c976c32871865906b18af6778baeaa6c5655777a3ed94a6ef68be5b9",
+    "native/2m_dewpoint_temperature/367482.0.0": "ab88c22fb0dc4d0cbc3cae3fc2036722c944e3abfadc274b1240c946ab85af45",
+    "specific_humidity/7655.0.0.0": "6aa5bf7836665e97e4508d9658a98eb48f8f50cb007b1cf1797692741d27dfee",
+    "u_component_of_wind/7655.0.0.0": "c313000f77de449b01a9e56ba055033ef168d287dc0ffd96566c2c921ba68d7c",
+    "v_component_of_wind/7655.0.0.0": "39501db9d3c9788647b24ae598bed1d10457275d491e8e05715ca80ddcfb6c97"
+  },
+  "classes": {
+    "global": {
+      "area_fraction": 1.0,
+      "column_water_kg_m2": 23.689763256604007,
+      "pressure_integrated_water_kg_m2": 23.97687255685598,
+      "surface_specific_humidity_g_kg": 9.864621986550231,
+      "surface_wind_vector_m_s": [
+        -0.44992330902418526,
+        0.17104104209351087
+      ],
+      "precipitation_mm_day": 2.925589305028217,
+      "ivt_vector_kg_m_s": [
+        -8.787662272349523,
+        1.697406101919633
+      ],
+      "effective_depth_m_quantiles_10_50_90": [
+        1685.0558986546964,
+        2026.0475343218736,
+        2451.4555353578003
+      ],
+      "parallel_transport_ratio_quantiles_10_50_90": [
+        -0.12412404774786615,
+        1.182994150542946,
+        2.9533941516003233
+      ],
+      "signed_vector_regression_multiplier": 1.0594329141140657,
+      "selected_fraction_of_class_area": 0.9380368372973926
+    },
+    "land": {
+      "area_fraction": 0.28756499848381006,
+      "column_water_kg_m2": 18.32191886210813,
+      "pressure_integrated_water_kg_m2": 18.48711311679071,
+      "surface_specific_humidity_g_kg": 7.361121875638763,
+      "surface_wind_vector_m_s": [
+        -0.36016269221865654,
+        0.20983763774253694
+      ],
+      "precipitation_mm_day": 2.2130622776387994,
+      "ivt_vector_kg_m_s": [
+        3.7631414079901035,
+        -0.1775884953647878
+      ],
+      "effective_depth_m_quantiles_10_50_90": [
+        1904.739428535753,
+        2242.664696205958,
+        2627.126065493193
+      ],
+      "parallel_transport_ratio_quantiles_10_50_90": [
+        -1.6394386179953315,
+        1.2266336937978952,
+        4.9507159288702764
+      ],
+      "signed_vector_regression_multiplier": 1.3597795029581008,
+      "selected_fraction_of_class_area": 0.8234918191613546
+    },
+    "ocean": {
+      "area_fraction": 0.7124350015161901,
+      "column_water_kg_m2": 25.856422898367057,
+      "pressure_integrated_water_kg_m2": 26.192741599925412,
+      "surface_specific_humidity_g_kg": 10.875126810241314,
+      "surface_wind_vector_m_s": [
+        -0.48615399895471234,
+        0.15538130759808877
+      ],
+      "precipitation_mm_day": 3.213191448542855,
+      "ivt_vector_kg_m_s": [
+        -13.85362875859247,
+        2.4542229587244893
+      ],
+      "effective_depth_m_quantiles_10_50_90": [
+        1649.7358789252964,
+        1957.3124643559408,
+        2383.7485081705513
+      ],
+      "parallel_transport_ratio_quantiles_10_50_90": [
+        0.27953439508722444,
+        1.1758077896486276,
+        2.4230200225169
+      ],
+      "signed_vector_regression_multiplier": 1.052486985975612,
+      "selected_fraction_of_class_area": 0.9842714241670961
+    },
+    "abs_lat_0_15_land": {
+      "area_fraction": 0.05747714887752847,
+      "column_water_kg_m2": 37.61089397894163,
+      "pressure_integrated_water_kg_m2": 37.89105697495708,
+      "surface_specific_humidity_g_kg": 14.401388615336938,
+      "surface_wind_vector_m_s": [
+        -0.49417272164936743,
+        0.04395864036447193
+      ],
+      "precipitation_mm_day": 4.629957335367544,
+      "ivt_vector_kg_m_s": [
+        -92.48575078528647,
+        -12.888779879505874
+      ],
+      "effective_depth_m_quantiles_10_50_90": [
+        2175.378432921463,
+        2349.7872544928364,
+        2537.7997661358154
+      ],
+      "parallel_transport_ratio_quantiles_10_50_90": [
+        -2.2832070996442946,
+        1.7379529071262005,
+        6.243824840414715
+      ],
+      "signed_vector_regression_multiplier": 1.7201315932725865,
+      "selected_fraction_of_class_area": 0.9493343331692531
+    },
+    "abs_lat_0_15_ocean": {
+      "area_fraction": 0.2013418962249923,
+      "column_water_kg_m2": 42.30610839491842,
+      "pressure_integrated_water_kg_m2": 42.636702382790055,
+      "surface_specific_humidity_g_kg": 16.746508215104452,
+      "surface_wind_vector_m_s": [
+        -3.19691824560943,
+        0.6870082910603386
+      ],
+      "precipitation_mm_day": 4.659250733893025,
+      "ivt_vector_kg_m_s": [
+        -155.36958069774508,
+        15.059054921212901
+      ],
+      "effective_depth_m_quantiles_10_50_90": [
+        1756.386070909505,
+        2183.5237551569962,
+        2504.3478247153257
+      ],
+      "parallel_transport_ratio_quantiles_10_50_90": [
+        0.5033004689304,
+        1.0912284435900832,
+        1.4924841642120217
+      ],
+      "signed_vector_regression_multiplier": 1.0622583991876244,
+      "selected_fraction_of_class_area": 0.9989387517307561
+    },
+    "abs_lat_15_30_land": {
+      "area_fraction": 0.07103612442521699,
+      "column_water_kg_m2": 21.988239392771263,
+      "pressure_integrated_water_kg_m2": 22.199316889907482,
+      "surface_specific_humidity_g_kg": 9.172800880208676,
+      "surface_wind_vector_m_s": [
+        -0.8156237572434074,
+        -0.2548949007442238
+      ],
+      "precipitation_mm_day": 1.9018201132136914,
+      "ivt_vector_kg_m_s": [
+        9.286067058416815,
+        -3.010030751583546
+      ],
+      "effective_depth_m_quantiles_10_50_90": [
+        1809.4050527196155,
+        2206.646113688706,
+        2630.2419316626588
+      ],
+      "parallel_transport_ratio_quantiles_10_50_90": [
+        -1.2933862450842308,
+        0.9055975061864571,
+        2.7560692240732183
+      ],
+      "signed_vector_regression_multiplier": 0.9385905027008739,
+      "selected_fraction_of_class_area": 0.9678707242568534
+    },
+    "abs_lat_15_30_ocean": {
+      "area_fraction": 0.17014483047226223,
+      "column_water_kg_m2": 29.745277516255918,
+      "pressure_integrated_water_kg_m2": 30.25954042121654,
+      "surface_specific_humidity_g_kg": 13.665021936990344,
+      "surface_wind_vector_m_s": [
+        -3.7542772517878644,
+        0.3688856709066587
+      ],
+      "precipitation_mm_day": 2.350555204233605,
+      "ivt_vector_kg_m_s": [
+        -72.44996366058533,
+        7.101941811742653
+      ],
+      "effective_depth_m_quantiles_10_50_90": [
+        1502.3443808002132,
+        1814.5516921309975,
+        2163.5925522904117
+      ],
+      "parallel_transport_ratio_quantiles_10_50_90": [
+        -0.03367756413932413,
+        0.7521057859169601,
+        1.036913221107908
+      ],
+      "signed_vector_regression_multiplier": 0.76820717108733,
+      "selected_fraction_of_class_area": 0.9996926236839501
+    },
+    "abs_lat_30_45_land": {
+      "area_fraction": 0.055197686746068744,
+      "column_water_kg_m2": 13.912904825088194,
+      "pressure_integrated_water_kg_m2": 14.102270582194505,
+      "surface_specific_humidity_g_kg": 6.188424083029345,
+      "surface_wind_vector_m_s": [
+        0.2617438535715051,
+        0.06260142562355264
+      ],
+      "precipitation_mm_day": 1.5834483187415265,
+      "ivt_vector_kg_m_s": [
+        51.388780648413906,
+        6.734898805528662
+      ],
+      "effective_depth_m_quantiles_10_50_90": [
+        1735.7059008005547,
+        2058.2747828707725,
+        2379.782372509148
+      ],
+      "parallel_transport_ratio_quantiles_10_50_90": [
+        -2.0079377194647954,
+        1.5208040428675877,
+        5.261552443965234
+      ],
+      "signed_vector_regression_multiplier": 0.9830926720599618,
+      "selected_fraction_of_class_area": 0.8129275482477193
+    },
+    "abs_lat_30_45_ocean": {
+      "area_fraction": 0.16116562926176028,
+      "column_water_kg_m2": 19.594413683624982,
+      "pressure_integrated_water_kg_m2": 19.981194703615746,
+      "surface_specific_humidity_g_kg": 8.619319231872904,
+      "surface_wind_vector_m_s": [
+        2.168156003383448,
+        -0.10827447549094603
+      ],
+      "precipitation_mm_day": 3.1500724167064678,
+      "ivt_vector_kg_m_s": [
+        125.4230646206645,
+        -7.001594085235728
+      ],
+      "effective_depth_m_quantiles_10_50_90": [
+        1624.396969468133,
+        1881.051958395491,
+        2141.6796810525066
+      ],
+      "parallel_transport_ratio_quantiles_10_50_90": [
+        0.2662420566345554,
+        2.1311452524981918,
+        3.3032249864547403
+      ],
+      "signed_vector_regression_multiplier": 1.947526676563295,
+      "selected_fraction_of_class_area": 0.9975601011164111
+    },
+    "abs_lat_45_60_land": {
+      "area_fraction": 0.044941912348625726,
+      "column_water_kg_m2": 11.458948708219506,
+      "pressure_integrated_water_kg_m2": 11.58193889593173,
+      "surface_specific_humidity_g_kg": 4.54868578047256,
+      "surface_wind_vector_m_s": [
+        0.7679884802104144,
+        0.3358830589932008
+      ],
+      "precipitation_mm_day": 2.043629051187815,
+      "ivt_vector_kg_m_s": [
+        54.19394042814012,
+        8.960592267293377
+      ],
+      "effective_depth_m_quantiles_10_50_90": [
+        1959.624359252888,
+        2155.723496246997,
+        2336.482250747049
+      ],
+      "parallel_transport_ratio_quantiles_10_50_90": [
+        -1.0023865858818004,
+        3.37092846126669,
+        6.170765662135959
+      ],
+      "signed_vector_regression_multiplier": 2.832544908956474,
+      "selected_fraction_of_class_area": 0.7869223428384359
+    },
+    "abs_lat_45_60_ocean": {
+      "area_fraction": 0.10472017542798394,
+      "column_water_kg_m2": 11.417681253341337,
+      "pressure_integrated_water_kg_m2": 11.588795965419225,
+      "surface_specific_humidity_g_kg": 4.594275844889582,
+      "surface_wind_vector_m_s": [
+        4.984309351813428,
+        -0.6515539865760132
+      ],
+      "precipitation_mm_day": 2.9753094214922817,
+      "ivt_vector_kg_m_s": [
+        113.13641298147947,
+        -9.630403273678903
+      ],
+      "effective_depth_m_quantiles_10_50_90": [
+        1814.9923528948732,
+        1948.37572188933,
+        2228.5499883336543
+      ],
+      "parallel_transport_ratio_quantiles_10_50_90": [
+        1.660721832153755,
+        1.9642081303156684,
+        2.4702676713803973
+      ],
+      "signed_vector_regression_multiplier": 1.9527893230432125,
+      "selected_fraction_of_class_area": 0.9906622530427805
+    },
+    "abs_lat_60_75_land": {
+      "area_fraction": 0.03939293244189421,
+      "column_water_kg_m2": 5.864213339555323,
+      "pressure_integrated_water_kg_m2": 5.890670805571333,
+      "surface_specific_humidity_g_kg": 2.098918573315052,
+      "surface_wind_vector_m_s": [
+        -1.1981982840430556,
+        1.0924377266162075
+      ],
+      "precipitation_mm_day": 1.211991659947244,
+      "ivt_vector_kg_m_s": [
+        12.06106264475514,
+        4.059468574491769
+      ],
+      "effective_depth_m_quantiles_10_50_90": [
+        2104.420282923096,
+        2378.471551524873,
+        2975.101024828822
+      ],
+      "parallel_transport_ratio_quantiles_10_50_90": [
+        -0.9679133341950601,
+        0.7685382199436298,
+        3.32053620331008
+      ],
+      "signed_vector_regression_multiplier": 0.8762072475242128,
+      "selected_fraction_of_class_area": 0.6246679151633131
+    },
+    "abs_lat_60_75_ocean": {
+      "area_fraction": 0.06050749006273545,
+      "column_water_kg_m2": 6.804895859460635,
+      "pressure_integrated_water_kg_m2": 6.887406016320786,
+      "surface_specific_humidity_g_kg": 2.5872098995825232,
+      "surface_wind_vector_m_s": [
+        1.119056876855521,
+        -0.06536305585842592
+      ],
+      "precipitation_mm_day": 1.9641537945938596,
+      "ivt_vector_kg_m_s": [
+        25.68882016218041,
+        -6.490380053628504
+      ],
+      "effective_depth_m_quantiles_10_50_90": [
+        1818.5833540003578,
+        2026.4079223816614,
+        2453.056131738362
+      ],
+      "parallel_transport_ratio_quantiles_10_50_90": [
+        -0.027598871668609803,
+        1.6193561079716532,
+        2.4371273089687926
+      ],
+      "signed_vector_regression_multiplier": 1.5466537652062569,
+      "selected_fraction_of_class_area": 0.9216414341921614
+    },
+    "abs_lat_75_90_land": {
+      "area_fraction": 0.019519193644475942,
+      "column_water_kg_m2": 1.591280751766037,
+      "pressure_integrated_water_kg_m2": 1.5597622810646032,
+      "surface_specific_humidity_g_kg": 0.4484882844847941,
+      "surface_wind_vector_m_s": [
+        -0.9728770939374981,
+        0.7345120074475147
+      ],
+      "precipitation_mm_day": 0.4197604602089245,
+      "ivt_vector_kg_m_s": [
+        -0.45713762106094746,
+        -1.5783620518170445
+      ],
+      "effective_depth_m_quantiles_10_50_90": [
+        2477.953052199068,
+        2891.7666158981106,
+        3793.724614279634
+      ],
+      "parallel_transport_ratio_quantiles_10_50_90": [
+        -0.06858929323082523,
+        0.59997764447361,
+        1.2149652937241
+      ],
+      "signed_vector_regression_multiplier": 0.7240164981199285,
+      "selected_fraction_of_class_area": 0.4428252413983942
+    },
+    "abs_lat_75_90_ocean": {
+      "area_fraction": 0.01455498006645584,
+      "column_water_kg_m2": 5.267519172338,
+      "pressure_integrated_water_kg_m2": 5.2878673854735405,
+      "surface_specific_humidity_g_kg": 1.6638612930814698,
+      "surface_wind_vector_m_s": [
+        -0.20680041870448243,
+        -0.05170283046907349
+      ],
+      "precipitation_mm_day": 0.8964983756241808,
+      "ivt_vector_kg_m_s": [
+        8.496375329467579,
+        2.592062772616876
+      ],
+      "effective_depth_m_quantiles_10_50_90": [
+        2051.159185749524,
+        2426.0347604372187,
+        2651.7749316428253
+      ],
+      "parallel_transport_ratio_quantiles_10_50_90": [
+        0.028258564392623885,
+        1.0904220566440097,
+        2.1539299533882117
+      ],
+      "signed_vector_regression_multiplier": 0.9495303447862126,
+      "selected_fraction_of_class_area": 0.668343260181569
+    }
+  }
+}

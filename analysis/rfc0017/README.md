@@ -221,18 +221,46 @@ world calibration targets.
   selected six-hour accumulation is metres of water equivalent per six hours, not
   an instantaneous rate; multiplying by 4,000 gives mm/day.
 
-The WeatherBench2 1990–2019 climatology contains near-surface and column variables,
-but not a native vertically integrated vapour flux. The planned same-time 2000 ERA5
-sample instead integrates q·u and q·v over its 13 available pressure levels, excludes
-below-ground levels and approximates the unobserved top and near-surface layers. It will
-also integrate q alone and compare the result against ERA5's total-column vapour to
-show the effect of that vertical approximation. The 12 48-hour windows straddle the start of each month in 2000; the January
-window begins on 1999-12-31. This sample is not a 30-year climatology and cannot by itself establish a precise universal
-transport multiplier or mixing depth. The raw pressure-level probe is queued until
-compute capacity is available.
+### G1: ERA5 sample and calibration screen
 
-The first 12-window fetch on 2026-11-15 completed its downloads but failed in the
-summary when a latitude/surface bin had no cells above the transport threshold; no
-result was written. The diagnostic now reports empty-bin quantiles and regression as
-`null` and filters non-finite values. The corrected probe has not yet completed; its
-first run must not be interpreted as a G1 result.
+The WeatherBench2 1990–2019 climatology has near-surface and column variables but no
+native vertically integrated vapour flux. The completed probe instead samples twelve
+48-hour windows around the start of each month in 2000 at 1.5° resolution (24 days,
+eight six-hourly samples per window). The January window begins on 1999-12-31. The
+main fields are WeatherBench2 conservative regrids; its sampled 1.5° dewpoint is all
+non-finite, so specific humidity is derived from valid native 0.25° hourly dewpoint
+sampled at the exact 1.5° grid centers. This point sample does not match the area
+averaging of the other fields.
+
+Reproduce with `python bin/debug/era5_rfc0019_g1.py --out
+analysis/rfc0017/g1-era5.json` in an environment with numpy and numcodecs. The script
+records source URLs, the sampling schedule, method and SHA-256 of each compressed
+source chunk. `g1-era5.json` is the compact checked-in output; it contains no saves or
+full downloaded arrays. The integrated flux is an approximation from 13 pressure
+levels (50–1000 hPa), omitting below-ground levels, holding the top value to 0 hPa,
+and interpolating the surface layer from 2 m humidity and 10 m winds. A synthetic
+check covers native-grid alignment and constant-humidity/wind integration. The selected
+sample footprint is recorded per class because polar land has relatively few cells
+passing the proxy-wind threshold.
+
+| Class | Column water (kg/m²) | Precipitation (mm/day) | Ratio of means (days) | Effective depth p10–p90 (km) | Signed IVT/proxy fit |
+|---|---:|---:|---:|---:|---:|
+| Global | 23.69 | 2.93 | 8.10 | 1.69–2.45 | 1.06 |
+| Land | 18.32 | 2.21 | 8.28 | 1.90–2.63 | 1.36 |
+| Ocean | 25.86 | 3.21 | 8.05 | 1.65–2.38 | 1.05 |
+
+The signed fit regresses approximate integrated vapour transport on column water
+times the 10 m wind vector. Its latitude-band values range 0.72–2.83; land and ocean
+do not support one precise common mapping. Cell-level parallel ratios are broader and
+can be negative where vectors oppose, so they are not interpreted as a positive local
+constant. The 1.5–3.0 km effective-depth range and 0.5/1/2 wind-multiplier sensitivity
+are provisional calibration ranges, not measured physical constants. Effective depth
+is a column-to-near-surface conversion, not boundary-layer depth. The 24 days are not
+a climatology and cannot establish interannual or seasonal uncertainty.
+
+As a comparison, Trenberth's global means give 9.14 days; the ERA5 sample's 8.10-day
+ratio is a same-grid sample ratio, not an annual estimate or a local rainout time. Its
+column water and precipitation are within a plausible global scale. This is a unit and
+scale sanity check only. Full per-band metrics and compressed-chunk hashes are in
+[`g1-era5.json`](g1-era5.json). The earlier failed runs remain private diagnostic
+artifacts; empty-bin and non-finite guards are retained in the script.
