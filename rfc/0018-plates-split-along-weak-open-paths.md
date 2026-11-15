@@ -1,9 +1,9 @@
 # RFC 0018: Plates split along weak paths that are pulling apart
 
-- **Status:** Accepted (revised 2026-11-14 after #848 runtime evidence and #876 rift-candidate exploration; revised 2026-11-09 after spectral-weighting, runtime and failed-rift review; revised 2026-11-08 after G2 sample-size review; revised 2026-11-06 after G2 non-worsening criterion review; revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
+- **Status:** Accepted (revised 2026-11-14 after the #894 exploration of the D1 prototype; revised 2026-11-14 after #848 runtime evidence and #876 rift-candidate exploration; revised 2026-11-09 after spectral-weighting, runtime and failed-rift review; revised 2026-11-08 after G2 sample-size review; revised 2026-11-06 after G2 non-worsening criterion review; revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
 - **Date:** 2026-11-03
 - **Revisions:** dated entries, newest first, are in the [Revision note](#revision-note) near the end.
-- **Related:** #487, #699, #770, #797, #802, #836, #846, #848, #850, #851, #866, #876; RFC [0007](0007-mantle-plumes-and-plateaus.md) (plumes); RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (accepted predecessor; withdrawal follows gates)
+- **Related:** #487, #699, #770, #797, #802, #836, #846, #848, #850, #851, #866, #876, #888, #894; RFC [0007](0007-mantle-plumes-and-plateaus.md) (plumes); RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (accepted predecessor; withdrawal follows gates)
 
 ## Problem
 
@@ -49,6 +49,26 @@ did not weaken, so a crack could not concentrate load; failures that were not ke
 Issue [#866](https://github.com/adubey/mantle-bloom/issues/866)'s wide below-sea-level basins,
 which #836 traces to margin thinning, show the same missing feedback from the other side:
 extension spread too wide.
+
+The first prototype of this RFC's damage bands tested each cell against its own strength. On
+development worlds it made no split in 60 Myr and nibbled at plate edges
+([#894](https://github.com/adubey/mantle-bloom/issues/894),
+[`analysis/issue894/README.md`](../analysis/issue894/README.md)):
+
+- **The load is flat and weak rock is at the edges.** The median extensional load is 0.50 TN/m
+  at a plate's edge and 0.58 TN/m ten cells in, about a tenth of strength. Median strength is
+  4.3 TN/m at the edge and 9.7 TN/m ten cells in. Only 3–6% of cells are loaded past their
+  strength, and 66% of straining cell-steps are oceanic.
+- **Softened damage spreads into patches.** Bands of 50 or more cells are a median 3 times
+  longer than wide, lie a median 31° from the tension direction, and reach about 900 by 500 km.
+  A cell's load does not fall when its neighbour yields, so softening widens the patch.
+- **Whole sections are pulled hardest across the middle.** The straight section carrying the
+  largest total pull leaves at least 20% of the plate on its smaller side in 67–80% of plates
+  on five development worlds. Between snapshots 10 Myr apart the pull direction stayed within
+  30° in 47 of 56 cases.
+- **The kept daughter minimum excludes most large splits.** `SPLIT_MIN_NODES = 700` applies to
+  each daughter, so a 70/30 split needs a parent of at least 2,333 cells. The median plate has
+  about 1,700.
 
 **Design principles:** the great-circle cut and the instantaneous graph cut are geometry
 shortcuts that do not let rifting follow its own physics (principle 8). The graph cut's runtime
@@ -99,17 +119,24 @@ defaults where they exist and a tuning search against Earth targets.
 3. **The graph-cut candidate search this RFC first proposed.** It chooses a well-formed cut, but
    its validity checks measure geometry, its eigensolves cost several times the step budget, and
    no exact shortcut brings it within G3 (#848).
-4. **Damage bands that grow, localize, fail or break through (recommended).** Every cell carries
-   accumulated rift strain. Loads from mantle drag, slab pull and plumes strain cells whose load
-   exceeds their strength. Strain weakens the rock, so extension concentrates into narrow bands
-   that thin, subside and widen over time. A band whose remaining intact ligament fails under the
-   concentrated load splits the plate along the cheapest path through the remaining strength.
-   A band whose load stops leaves a scar that heals partly and can reopen. All operations are
-   local or a single path search, so no eigensolve is needed.
+4. **Damage bands grown cell by cell.** Every cell carries accumulated rift strain and strains
+   when its own load exceeds its own softened strength; a band that happens to cross the plate
+   splits it. This was the 2026-11-14 design. Its prototype strained the weakest rock, spread
+   into patches and never split a plate (#894).
+5. **Rift lines (recommended).** Each plate's forces already say where it is being pulled apart
+   as a whole: the section carrying the largest total pull. Within a strip around that section,
+   the cheapest path through the rock's strength is the plate's rift line. A rift nucleates at
+   the line's weakest point and its tips grow along the line, straining, thinning and softening
+   only the line's cells. The plate splits when the intact remainder of the line can no longer
+   carry the pull. A line whose pull drops stops growing and leaves a scar that heals partly
+   and can reopen. The rock still carries all the memory, and the cost is one path search on a
+   strip.
 
-Alternative 4 matches the documented behavior: slow then fast, along inherited weakness, often
-failing, aided by plumes. It turns the #699 lesson into the central design choice: damage must
-soften rock so that bands localize. It also addresses principle 2's runtime constraint.
+Alternative 5 matches the documented behavior: slow then fast, along inherited weakness, often
+failing, aided by plumes. It keeps the #699 lesson that damage must soften rock, and adds the
+#894 lesson: failure has to be judged for a whole section, and strain has to be confined to
+one line, or damage follows the weakest rock and spreads. It also addresses principle 2's
+runtime constraint.
 
 ## Design
 
@@ -118,6 +145,16 @@ soften rock so that bands localize. It also addresses principle 2's runtime cons
 - Minimum plate age (`SPLIT_MIN_AGE_YEARS`) and split cooldown remain hard gates.
 - Every applied split goes through a mask-based split helper that calls
   `_plates_from_node_masks()`, validates daughter sizes and ownership, and resets daughter ages.
+- A plate must still have at least `SPLIT_MIN_NODES` cells (scaled by node density) to split.
+
+Two production rules change (owner decision, 2026-11-14, recorded in the Revision note):
+
+- **Daughter minimum.** The smaller daughter must hold at least `a_min = 15%` of the parent's
+  area. This replaces the requirement that each daughter have `SPLIT_MIN_NODES` cells, which
+  allowed only near-even splits on typical plates.
+- **Stray pieces.** A wiggly line can cut off small pieces that touch neither end of the plate.
+  Pieces of at most `a_stray = 1%` of the parent's area each join the daughter they share the
+  most edge length with. A larger extra piece still cancels the split.
 - The success path's craton-loss diagnostic (`cratons.record_rift_cut`) and belt marking use one
   trace-derived band around the split path. No great-circle band remains in the split path.
 - The generated starting world is not changed.
@@ -170,11 +207,11 @@ would stop straining and healing on those plates. Only the breakthrough decision
 gated by minimum age and cooldown. Daughters inherit their cells' damage fields through the
 mask-based split.
 
-Within the update, loads, strengths and the disk-averaged strains `ε̄` are frozen at the start of
-the step. Each cell's strain, healing and thinning are then sub-stepped together, and all cells
-advance synchronously, so the result does not depend on cell order. The coupling to neighbours
-(through `ε̄`) and to thinning (through `N_cap`) is operator-split at the step, so results depend
-on step length only within the tolerance D3 measures.
+Within the update, the loads, the column capacities `N_cap` and the plate's rift line are frozen
+at the start of the step. The line's cells then sub-step their strain, healing and softening
+together, and all advance synchronously, so the result does not depend on cell order. The line's
+position and the coupling to thinning (through `N_cap`) are operator-split at the step, so
+results depend on step length only within the tolerance D3 measures.
 
 **1. Load, `N` (N/m, extensional, depth-integrated).** Each cell carries a symmetric 2×2
 membrane-resultant tensor `𝐍` in its tangent plane. Tension is positive. The extensional load is
@@ -196,6 +233,10 @@ balanced load (proxy C, adopted after D0; see the Revision note):
   divided by the spacing. A running sum over the sorted cells gives every line in `O(N log N)`.
 - **Tensor.** Fit `n̂ᵀ𝐍n̂ = N_n̂` over the six directions by least squares, rotate the result into
   each cell's tangent basis, and multiply by `k_cut`.
+- **Section pull.** The same running sums give the total pull across each straight section,
+  `P_n̂(s) = k_cut × (balanced force on the far side) · n̂` (N), before division by the width. It
+  is the force trying to separate the two sides of the plate along that section. Step 3 uses it
+  to place the rift line.
 - **Plumes:** while a cell has plume heat it adds an isotropic tension `N_plume 𝐈`, standing in
   for spreading above a plume head. The heat ends partway through a step at
   `t_exp = plume_heat_myr`. Averaging the load over the step before applying the nonlinear strain
@@ -231,29 +272,81 @@ at about 2 ms per plate. The shell solve is not on the step path; D1 runs it in 
   accepted fault multiplier 0.60. At the defaults `s_fault + s_warm = 0.80 < s_max = 0.88`, so the
   cap does not bind; it guards the D1 search once `s_warm > 0.48`.
 
-**3. Strain.** A cell strains where its load exceeds its strength:
+**3. Rift line and strain.** Break-up is decided for a whole line across the plate. Testing each
+cell against its own strength strains the weakest rock wherever it is (#894), so cells strain
+only on the plate's rift line.
 
-```text
-dε/dt = ε̇_0 · max(0, N / N_eff - 1)^n        [1/yr]
-```
+- **Pull axis.** For each of the six directions, take the section with the largest `P_n̂(s)`
+  among sections that leave at least `a_min` of the plate's area on each side. Directions whose
+  peak is positive and at least `c_dir` of the largest peak are candidates. A plate with no
+  positive peak has no line this step.
+- **Corridor.** For a candidate direction, the corridor is the contiguous run of sections around
+  the peak whose pull is at least `c_corr` of the peak, again leaving `a_min` on each side. It is
+  a strip across the plate, normal to the pull.
+- **Line.** One Dijkstra search (`scipy.sparse.csgraph`) inside the corridor finds the cheapest
+  edge-connected chain from the plate-boundary cells at one end of the strip to those at the
+  other. The ends are the corridor's plate-boundary cells in the lowest and highest tenth of
+  the coordinate along the strip. Intact cells cost `N_eff × ds` and broken cells cost zero, so
+  the line follows belts, old rift strain, plume-heated and thin rock, and passes around
+  cratons. A single shortest path cannot revisit a cell. A direction whose corridor is not
+  connected from end to end is dropped.
+- **Section load.** With `n̂ᵢ` the in-plane unit normal to the line at cell `i` and `ds_i` the
+  line's length through the cell (half the centre-to-centre distances to its two line
+  neighbours, so adaptive resolution does not bias the sum), the pull across the line uses the
+  path-normal component `N⊥,i = max(0, n̂ᵢᵀ 𝐍ᵢ n̂ᵢ)`, not the largest principal value, which may
+  point along the line:
 
-`ε̇_0` sets the slow-phase rate. With a band about 125 km wide and Brune et al.'s slow phase
-under 10 mm/yr full rate, `ε̇ ≈ 0.01 m/yr / 1.25e5 m = 8e-8 /yr`. As strain softens a cell,
-`N_eff` falls and `dε/dt` rises, which is the slow-to-fast transition. Strain increments
-`rift_strain` and `rift_warm_strain` equally; `rift_warm_strain` then decays as
+  ```text
+  Λ = Σ_line N⊥,i ds_i  /  Σ_intact N_eff,i ds_i        [dimensionless]
+  ```
+
+  The candidate with the largest `Λ` is the plate's rift line for the step. No line is stored.
+  Strained cells are softer and broken cells cost nothing, so a line that already holds a rift
+  has a larger `Λ` and is found again. The memory is in the rock.
+- **Nucleus and tips.** Let `d_i` be the distance along the line from cell `i` to the nearest
+  line cell with `rift_strain ≥ ε_cand`. If the line has none, the nucleus is the line cell with
+  the largest `N⊥ / N_eff`, typically a plume-heated cell or a belt, and `d_i` is measured from
+  it.
+- **Rate.** Line cells strain when the section load passes the growth threshold:
+
+  ```text
+  dε_i/dt = ε̇_0 · max(0, Λ / Λ_grow - 1)^n · exp(-d_i / ℓ_tip)        [1/yr]
+  ```
+
+  Cells inside the rift strain at the full rate. Cells ahead of a tip strain more slowly until
+  they reach `ε_cand` and join it, so each tip advances at about
+  `v = ε̇_0 (Λ/Λ_grow - 1)^n ℓ_tip / ε_cand`.
+- **Width.** Cells within `w_i / 2` of line cell `i` strain at its rate (the largest rate among
+  the line cells in reach), with `w_i = min(3 w_0, w_0 (1 + ε_i))`. The band starts `w_0` wide
+  and widens as it stretches, up to the super-sea limit in the realism targets.
+- **Failure.** When `Λ` falls below `Λ_grow`, because the pull dropped, turned, or the warm
+  part healed, nothing strains. The rift is a scar that keeps its `rift_strain`.
+
+Strain increments `rift_strain` and `rift_warm_strain` equally; `rift_warm_strain` then decays as
 `d(warm)/dt = -warm / τ_heal`.
 
-The rate depends nonlinearly on `ε` through `W`, so each part of the step is sub-stepped with
-`Δε ≤ Δε_max` per sub-step, and the decay uses its exact exponential. Softening raises the rate,
-so the sub-step count is capped at `K_sub`. A cell that would need more is advanced until it
-breaks (step 4) and latched there, and the event is counted for D3.
+As the rift strains, softening lowers `N_eff` on the line, and broken cells leave the
+denominator, so `Λ` and the rate rise. This is the slow-to-fast transition. The rate therefore
+depends nonlinearly on the strains, so each part of the step is sub-stepped with
+`Δε ≤ Δε_max` per sub-step. `Λ`, `d_i` and `W` on the line are recomputed in every sub-step from
+the current strains, and the decay uses its exact exponential. The sub-step count is capped at
+`K_sub`. A step that would need more advances its cells until they break (step 4) and latches
+them there, and the event is counted for D3.
+
+Scale check: with `Λ = 2 Λ_grow` and the starting values, a rift cell strains at
+`ε̇_0 = 8e-8 /yr`, which is Brune et al.'s slow phase (under 10 mm/yr full rate) over a 125 km
+band, and reaches `ε_break` in 25 Myr without softening. Each tip advances at
+`8e-8 /yr × 62.5 km / 0.1 = 50 km/Myr`, so two tips cross a 5,000 km line in 50 Myr at the slow
+rate and sooner as `Λ` rises. Both are within the tens of Myr that Earth's rifts take
+[[Brune et al., 2016]](#ref-brune2016). D1 tunes the knobs; these first guesses are not
+validated.
 
 **4. Thinning, subsidence and relief.** Pure-shear thinning over the step scales the cell's Hc
 and Hm by `exp(-Δε)` [[McKenzie, 1978]](#ref-mckenzie1978), so the band subsides isostatically
 into a rift valley. The model's cells cannot gain area inside a plate, so the removed volume
 moves to the band's flanks. The flank-transfer helper adapts `_allocate_stretch`'s volume and
 tracer rule in reverse. At margins, `_open_rift` thins pre-existing donors and gives their volume
-to newly inserted cells. Here the straining cells are the donors, and the recipients are cells
+to newly inserted cells. Here the straining cells of the band are the donors, and the recipients are cells
 of the **same plate** within `RIFT_FLANK_ROWS` hops that did not strain this step, in proportion
 to their area. Straining cells never receive, so volume is not shuffled within the band.
 
@@ -266,7 +359,7 @@ to their area. Straining cells never receive, so volume is not shuffled within t
   craton-loss limit.
 - **No recipient.** If a donor has no non-straining recipient within `RIFT_FLANK_ROWS`, the reach
   widens one hop at a time up to `RIFT_FLANK_ROWS_MAX`. If there is still none (a band wider than
-  the reach, or a plate straining everywhere), that donor's thinning is withheld for the step: its
+  the reach), that donor's thinning is withheld for the step: its
   strain still accumulates, but no volume moves. Withheld events are counted for D1.
 
 Donor and recipient elevations are then recomputed isostatically. Volumes are conserved exactly,
@@ -306,46 +399,47 @@ scripts therefore tracks candidates, outside saved state:
 
 Production code needs only the three damage fields; the recorder runs in the D1–D3 harness.
 
-**6. Breakthrough and split.** A cell is *broken* when `rift_broken` is set (step 4). For a physical candidate with broken cells,
-find the cheapest path that runs from the plate boundary through the band and back to the
-boundary on the far side: two Dijkstra searches (`scipy.sparse.csgraph`) from the band's broken
-cells, one toward each end of the band's long axis. Broken cells cost zero and intact cells cost
-`N_eff × ds`, so the path runs through the band and bridges gaps through the weakest intact rock. Another band's
-broken cells also cost zero, so rifts can link. The intact part of the path, the ligament, must
-carry the load that pulls the two sides apart across the path. That is the path-normal component
-`N⊥,i = max(0, n̂ᵢᵀ 𝐍ᵢ n̂ᵢ)`, with `n̂ᵢ` the in-plane unit normal to the path at cell `i`, not the
-largest principal value, which may point along the path. In integrated force form, with `ds_i`
-the path length through cell `i` (half the centre-to-centre distances to its two path neighbours,
-so adaptive resolution does not bias the sum), the plate splits when
+**6. Breakthrough and split.** The rift line from step 3 is already an ordered chain of cells,
+each sharing an edge with the next, whose two ends are plate-boundary cells. The plate splits
+when the intact part of the line, the ligament, can no longer carry the pull across it:
 
 ```text
-Σ_path N⊥,i ds_i  ≥  Σ_intact N_eff,i ds_i
+Σ_line N⊥,i ds_i  ≥  Σ_intact N_eff,i ds_i        (Λ ≥ 1)
 ```
 
-A fully broken path has an empty right-hand side, so it splits whenever the band still carries
-path-normal load (`Σ_path N⊥,i ds_i > 0`). Tension parallel to the path never splits it. A fully broken band whose load has stopped stays an unsplit, failed
-rift.
+and at least `f_break` of the line's length is broken (step 4), so a line never splits before a
+rift has grown along it. Another rift's broken cells also cost zero, so a line can link rifts. A
+fully broken line has an empty right-hand side and splits whenever it still carries path-normal
+pull. Tension parallel to the line never splits it. A broken line whose pull has stopped stays an
+unsplit, failed rift.
 
-The path is an ordered chain of cells, each sharing an edge with the next, whose two ends are
-plate-boundary cells. Remove the path cells from the plate's adjacency graph; the remaining
-cells must form exactly two connected components. Each path cell then joins the component with
-which it shares the most edge length, with ties going to the side whose fitted rotation it
-matches best. The split is applied only if both daughters are connected after that assignment
-and pass the existing hard daughter-size and ownership checks. Otherwise the band keeps
-growing. The rule is deterministic. Randomness enters through the model's sampled plume events and stochastic faults,
-consistent with the owner's rule to threshold endogenous causes and use probability only for
-exogenous ones.
+Remove the line's cells from the plate's adjacency graph. The two largest remaining components
+are the daughters. Any other component is a stray piece: if it holds at most `a_stray` of the
+parent's area it joins the daughter it shares the most edge length with, and otherwise the split
+is not applied. Each line cell then joins the daughter with which it shares the most edge
+length, with ties going to the side whose fitted rotation it matches best. The split is applied
+only if both daughters are connected after that assignment, the smaller holds at least `a_min`
+of the parent's area, and the ownership checks pass. Otherwise the rift keeps growing. The rule
+is deterministic. Randomness enters through the model's sampled plume events and stochastic
+faults, consistent with the owner's rule to threshold endogenous causes and use probability
+only for exogenous ones.
 
 ### Starting values
 
 | Knob | Start | Source | Tuning |
 |---|---:|---|---|
 | `ε̇_0` | `8e-8 /yr` | Brune et al. 2016's slow phase (< 10 mm/yr) over a 125 km band | D1 search |
-| `n` | `1` | Design choice | D1 search over 1–3 |
-| `ε_soft` | `1.0` | Design choice; linear softening form of Huismans & Beaumont 2003 | D1 search over 0.5–2 |
+| `n` | `1` | Design choice | Fixed; sensitivity at 2 |
+| `ε_soft` | `1.0` | Design choice; linear softening form of Huismans & Beaumont 2003 | Fixed; sensitivity at 0.5 and 2 |
+| `Λ_grow` | `0.3` | Design choice. Intact interior sections carry a median 0.10–0.40 of their strength on five development worlds (#894) | D1 search over 0.1–0.6 |
+| `ℓ_tip` | `62.5 km` | Design choice; one cell at default density, giving 50 km/Myr tips at the slow rate | D1 search over 30–250 km; D1 resolution check |
+| `a_min` | `0.15` | Owner decision; above the accepted 7% tiny-breakup limit | Fixed |
+| `a_stray` | `0.01` | Design choice; #894's stray pieces were 1–27 cells | Fixed; D1 reports splits it cancels |
+| `c_dir`, `c_corr` | `0.8`, `0.8` | Design choices | Fixed; D1 line check reports sensitivity at 0.6 and 0.9 |
+| `f_break` | `0.5` | Design choice | Fixed; sensitivity at 0.25 and 0.75 |
 | `s_fault`, `s_warm`, `s_max` | `0.40`, `0.40`, `0.88` | `s_fault` matches the accepted fault reduction; `s_max` matches the accepted 0.12 clamp | D1 search on `s_warm` |
 | `τ_heal` | `62.8 Myr` | McKenzie 1978 thermal time constant | Fixed; sensitivity at 30 and 120 Myr |
-| `k_cap` | `1.0` | #487 reference envelope | D1 search over 0.3–3 (the `K0` bracket) |
+| `k_cap` | `1.0` | #487 reference envelope | D1 search over 0.3–3 (the `K0` bracket). Only the ratio `k_cap Λ_grow` sets growth onset; `k_cap` alone sets break-up |
 | `k_cut` | `1.33` | D0 fit to thin-shell `N_ext` on 451 development plates | Fixed after D0 |
 | `N_plume` | `0.5 TN/m` | Design choice, under a tenth of the 100 km continental capacity (6.28 TN/m) | D1 search over 0–2 TN/m |
 | `w_0` | `125 km` | Owner's onset width (100–150 km) | D1 resolution check |
@@ -358,24 +452,19 @@ exogenous ones.
 | `Δε_max` | `0.05` | Design choice | D3 timestep check |
 | Inherited multipliers | accepted RFC 0018 values | Accepted design choices | Fixed |
 
-At the default node density the line spacing is 62.5 km, so a band at the `w_0 = 125 km` scale
+At the default node density the cell spacing is 62.5 km, so a band at the `w_0 = 125 km` scale
 is about two cells wide. That is the owner's chosen onset width
 ([#876 decisions](https://github.com/adubey/mantle-bloom/issues/876#issuecomment-6874579897)),
-set by the non-local softening average rather than by the grid. Bands widen as softened flank
-cells reach their own threshold. D1 checks the width at two node densities.
-
-Scale check: with load at twice strength and no softening, `dε/dt = ε̇_0` and reaching `ε_break`
-takes 25 Myr. Softening shortens this, so
-first-guess durations fall within the tens of Myr that Earth's rifts take
-[[Brune et al., 2016]](#ref-brune2016). D1 tunes the knobs against the targets below; it does not
-treat these first guesses as validated.
+set by the strip around the line and the non-local softening average, not by the grid. The band
+widens with its strain (step 3). D1 checks the width at two node densities.
 
 ### Runtime and saves
 
 Production runs, per plate per step: the line-cut load tensor from existing per-node forces
 (about 2 ms per plate in D0, six sorts plus a 3×3 rigid-rotation fit); a table interpolation for
-strength; the disk average; and the per-cell strain update. The
-connected-component and path search runs only for plates with broken cells. The candidate
+strength; and up to six corridor path searches, usually one to three, each on a strip of the
+plate. The disk average and the strain update touch only the line's band. The connected-component
+check runs only when a line passes the breakthrough test. The candidate
 recorder runs only in the D1–D3 harness. The hypothesis is milliseconds per plate, small against
 a production step, though under plates-only stepping it could be a noticeable share. This is not
 yet measured; D3 measures it on production settings. The thin-shell solve is not
@@ -411,27 +500,43 @@ No held-out seed is used for calibration or tuning.
    sign 82.4%, direction 71.9%, Spearman 0.69, ratios 0.57 continental and 0.54 oceanic, and 4 of 4
    manufactured cases, with `k_cut = 1.33`. The owner adopted C, so alternative B is not used
    ([`analysis/issue797/`](../analysis/issue797/README.md), [PR #887](https://github.com/adubey/mantle-bloom/pull/887)).
-2. **D1: tune the mechanism on development worlds.** Run 200 Myr with plates-only stepping
-   (`simulate_climate_biomes = False`) at 1 Myr steps, as G2 did, across a predeclared parameter
-   search (Latin hypercube over the D1 knobs, as in #313). Score each setting against the realism
-   targets below. The search runs in two stages (owner decision, 2026-11-14):
-   - **Stage 1:** a coarse search on 5 of the 20 development worlds, with the settings and the
-     five seeds predeclared before the first run.
-   - **Stage 2:** the best few stage-1 settings on all 20 development worlds. Freeze the best
-     before D2. Repeat the frozen setting at 0.5 Myr steps on three development seeds and report
-     the realism targets; D3's half-step comparison is the binding timestep check. Also record the #699 failure mode for every run: the largest
-   damaged share of a plate and the number of damaged components at the time of each split.
-   Record successful rifts by crust kind: a rift is *oceanic* when more than half its path length
-   runs through oceanic crust. If more than one third of successful rifts in the frozen setting
-   are oceanic, apply the predeclared fallback: oceanic cells latch only on `ε_break`, and
-   `k_cap` gains a separate oceanic factor searched over 1–5. Then repeat D1. Also report
-   withheld-thinning events (step 4).
-   On the stage-2 runs, solve the thin shell every 10 Myr in shadow and report D0's statistics
-   for C on the evolving worlds; this is reporting, not a pass condition.
-   Repeat the frozen setting on five development seeds at half the default node density. Onset
-   width and median onset-to-breakup duration must stay within 25% of the default-density
-   values, or band width is following the grid.
-3. **D2: realism on held-out worlds.** With the frozen knobs, compare the damage-band method with
+2. **D1: check the lines, then tune the mechanism on development worlds.**
+   - **Line check (before any stepping search).** On the 20 development worlds at 0 Myr, and
+     after 50 Myr of plates-only stepping with the production splitter at 1 Myr steps, compute
+     every eligible plate's rift line (step 3) without straining anything. Report the smaller
+     side's area share, the line's length over the straight distance between its ends, the
+     craton and oceanic shares of its length, `Λ`, and whether cutting along it would give a
+     valid two-daughter split. Repeat the 50 Myr worlds from 0.5 Myr steps on three seeds. Pass
+     when at least 90% of lines give a valid split, the median smaller-side share is at least
+     25%, and the line crosses less craton than the straight chord between its ends on at least
+     two thirds of plates that have cratons in the corridor. If this fails, the line placement
+     is revised before any search is run.
+   - **Search.** Run 200 Myr with plates-only stepping (`simulate_climate_biomes = False`) at
+     1 Myr steps, as G2 did, across a predeclared parameter search: a Latin hypercube over
+     `ε̇_0`, `s_warm`, `k_cap`, `N_plume`, `Λ_grow` and `ℓ_tip`, as in #313. Score each setting
+     against the realism targets below. The search runs in two stages (owner decision,
+     2026-11-14):
+     - **Stage 1:** a coarse search on 5 of the 20 development worlds, with the settings and the
+       five seeds predeclared before the first run.
+     - **Stage 2:** the best few stage-1 settings on all 20 development worlds. Freeze the best
+       before D2.
+   - **Timestep.** Repeat the frozen setting at 0.5 Myr steps on three development seeds and
+     report the realism targets. D3's half-step comparison is the binding timestep check.
+   - **Fragmentation.** Record the #699 failure mode for every run: the largest damaged share of
+     a plate and the number of damaged components at the time of each split.
+   - **Oceanic rifts.** Record successful rifts by crust kind: a rift is *oceanic* when more than
+     half its line length runs through oceanic crust. If more than one third of successful rifts
+     in the frozen setting are oceanic, apply the predeclared fallback: oceanic cells latch only
+     on `ε_break`, and `k_cap` gains a separate oceanic factor searched over 1–5. Then repeat D1.
+   - **Also reported:** withheld-thinning events (step 4), splits cancelled by the stray-piece
+     limit, and the share of rift strain left off the final line.
+   - **Shadow shell.** On the stage-2 runs, solve the thin shell every 10 Myr in shadow and
+     report D0's statistics for C on the evolving worlds. This is reporting, not a pass
+     condition.
+   - **Resolution.** Repeat the frozen setting on five development seeds at half the default
+     node density. Onset width and median onset-to-breakup duration must stay within 25% of the
+     default-density values, or band width or tip speed is following the grid.
+3. **D2: realism on held-out worlds.** With the frozen knobs, compare the rift-line method with
    the production great-circle method on the ten held-out seeds for 200 Myr at 1 Myr steps, from identical
    generated worlds, settings and step schedules. The method passes when it meets every realism
    target, and no more than one of ten pairs has more tiny breakups than its baseline
@@ -441,6 +546,8 @@ No held-out seed is used for calibration or tuning.
    excluding `1479220500`, until they do. With `n` pairs in the enlarged sample, at most
    `max(1, floor(0.1 n))` may have `D_s < 0`, keeping the accepted 10% tolerance. Realism targets
    and intervals are computed over all `n` pairs. Report all target values with seed-bootstrap intervals.
+   With `a_min = 15%` the method cannot make a tiny breakup, so the tiny-breakup limit is met by
+   construction and the realism targets carry this gate.
 4. **D3: runtime and timestep.** Keep the accepted G3 limits: median runtime within 2% of the
    paired production baseline on three held-out seeds, from controlled serial runs with profiling
    kept separate; craton loss at most 2% per Gyr; and 10–40 plates at every output. Repeat at half
@@ -461,6 +568,8 @@ No held-out seed is used for calibration or tuning.
 | Failed rifts | Between 20% and 80% of physical candidates fail | Failure is common [[Brune et al., 2023]](#ref-brune2023) [[Elling et al., 2022]](#ref-elling2022); range is a design choice |
 | No super seas | No below-sea-level basin made by interior rift thinning is wider than three onset band widths (about 375 km) across its narrow axis, outside crust thicker and hotter than the plate median | Narrow rifts dominate; wide rifts need thick, hot crust [[Buck, 1991]](#ref-buck1991); #866 |
 | Localization | At each split, damaged cells form at most three components above 1% of plate area, and the damaged share stays under 30% of plate area | #699's fragmentation failure mode; thresholds are design choices |
+| Split size | Median smaller-daughter area share of at least 25% | Owner's aim of large splits such as 70/30 (#894); threshold is a design choice |
+| Line shape | Median line length at least 1.1 times the straight distance between its ends | Owner's aim that rifts are not straight lines (#894); threshold is a design choice |
 | Plume link | Reported: share of breakups with plume heat on the path | 12 of 18 margins [[Buiter & Torsvik, 2014]](#ref-buiter2014); descriptive only |
 | Splits happen | At least 50 actual splits across both arms combined, with the frozen reserve-list fallback | Accepted event-count rule |
 
@@ -472,8 +581,8 @@ in a shared projection and legend.
 
 - [x] D0 records the fitted load proxy with its agreement statistics: C passed with
       `k_cut = 1.33` and was adopted (2026-11-14).
-- [ ] D1 records the parameter search, the scores and the frozen knob values, using development
-      seeds only.
+- [ ] D1 records the line check, the parameter search, the scores and the frozen knob values,
+      using development seeds only.
 - [ ] D2 passes on the ten held-out seeds: every realism target is met, no more than one pair
       has `D_s < 0`, and both arms together have at least 50 actual splits, with the reserve-list
       fallback.
@@ -491,20 +600,29 @@ in a shared projection and legend.
       insertion inheriting only its stretched share, plume expiry (a crossing step matches the
       step split at expiry), flank transfer with no recipient and with floored donors (volume
       and thickness bounds hold), the damage update on a plate after another plate splits and on a
-      daughter in cooldown, path-normal loading (tension along the path never splits), directional
+      daughter in cooldown, path-normal loading (tension along the line never splits), directional
       load signs (compression never
-      registers as extension), the integrated ligament rule, a fully broken edge-to-edge band that
-      splits, path validity and two-daughter splits.
+      registers as extension), the section pull of manufactured force fields, line placement
+      (around a craton, along a belt, and inside the `a_min` limits), the same line found again
+      once it holds a rift, tip advance at the stated speed under a constant `Λ`, no strain off
+      the line, the integrated ligament rule, a fully broken edge-to-edge line that
+      splits, the `f_break` rule, stray-piece attachment and its limit, the `a_min` daughter
+      minimum, line validity and two-daughter splits.
 - [ ] The pictures above are in the gate report.
 - [ ] `docs/simulation-model/tectonics.md` documents rift damage, bands and breakup, and
       `docs/architecture.md` lists any new module.
 
 ### Falsification criteria
 
-- **Softening does not localize.** If, across the D1 search, damage still fragments plates (the
-  localization target fails in most runs at every softening setting), the premise that softening
-  alone localizes bands is wrong. Add a tip-growth rule (strain concentrated at band ends, as in
-  RFC 0010 Gate 3a) before D2, or reject the method.
+- **Whole-plate pull does not place good lines.** If D1's line check fails (lines are invalid,
+  small-sided, or cross cratons as often as straight chords), the premise that the section of
+  largest pull marks where a plate should break is wrong for this model's forces. Revise the
+  placement or add an interior load, such as plume uplift, before any search.
+- **Lines do not persist.** If rifts are abandoned because the chosen line jumps between steps
+  (most rift strain ends up off the final line in most runs), memory in the rock is not enough
+  to hold a line. Store the line, or reject the method.
+- **Damage still spreads.** If the localization target fails in most D1 runs, confining strain
+  to the line's band has not fixed #699's failure mode. Diagnose before D2.
 - **The cheap load stops standing in for stress.** C passed D0 on development snapshots. If D1's
   shadow shell solves on evolving worlds fall below D0's thresholds, revise the load model before
   D2; alternative B (periodic shell solves) remains the fallback.
@@ -520,8 +638,9 @@ in a shared projection and legend.
 
 ## Detailed design (provisional touchpoints)
 
-- `backend/app/rift_damage.py` (new): load proxy, strength table, strain update, healing,
-  flank transfer, physical-candidate diagnostics, breakthrough path and ligament rule.
+- `backend/app/rift_damage.py` (new): load proxy and section pull, strength table, rift-line
+  placement, strain update, healing, flank transfer, physical-candidate diagnostics and the
+  breakthrough rule.
 - `backend/app/surface_fields.py`: add `rift_strain`, `rift_warm_strain` (float, zero default)
   and `rift_broken` (`BOOLEAN_PROVENANCE`) to `SURFACE_FIELDS`.
 - `backend/app/sparse_quad_patch.py` coarsening and `backend/app/quad_merge.py`: add
@@ -536,7 +655,9 @@ in a shared projection and legend.
   gates and the 0.55 success roll. Remove its `apply_failed_rift` call: failed rifts are bands
   that stop growing.
 - `backend/app/plates.py` and `backend/app/sparse_quad_patch.py`: the mask-based split helper
-  around `_plates_from_node_masks()`, as in the accepted design.
+  around `_plates_from_node_masks()`, as in the accepted design, with the `a_min` daughter
+  minimum and stray-piece attachment. The great-circle `plate.split` and its per-daughter
+  `SPLIT_MIN_NODES` check are no longer on the split path.
 - `backend/app/quad_tectonics.py`: reuse the `_allocate_stretch` volume rule for flank transfer.
   Interior band cells do not call `lithosphere_plate._erupt_melted_nodes` (see step 4).
 - `backend/app/torque.py`: reuse `gather_per_node_force_field` for the balanced load; no change
@@ -548,8 +669,11 @@ in a shared projection and legend.
   (`mark_belt`) already accepts a mask.
 - Strength table: precomputed from the Gate 2 envelope (`bin/debug/diagnose_gate2_column_envelope.py`)
   as a small checked-in data file, or computed at import; decide in implementation.
-- `bin/debug/` (new scripts): D0 calibration against `thin_shell`, D1 search driver, realism-target
-  scorer and map sequences. `bin/debug/compare_rift_load_maps.py` is the starting point for D0.
+- `bin/debug/` (new scripts): D0 calibration against `thin_shell`, D1 line check and search
+  driver, realism-target scorer and map sequences. `bin/debug/compare_rift_load_maps.py` is the
+  starting point for D0. The #888 prototype (`rift_damage_mechanism.py`, `rift_damage_step.py`,
+  PR #890) keeps its kernels for strength, softening, healing, flank transfer and the recorder;
+  its per-cell strain test and band-first path search are replaced.
 - Tests: `test_rift_damage.py` (new), `test_merge_split.py`, `test_sparse_quad_patch.py`,
   `test_cratons.py`, `test_faults.py`, `test_persistence.py`.
 - Docs: `docs/simulation-model/tectonics.md`, `docs/architecture.md`.
@@ -585,10 +709,67 @@ in a shared projection and legend.
   D1's shadow shell solves check it on evolving worlds.
 - **Width scale.** The non-local softening disk `w_0` sets band width directly, which is a
   regularization choice, not a prediction. D1 checks that width does not follow the node spacing.
+- **One line per plate.** A plate grows one rift at a time, along straight-section pull in six
+  directions. Triple junctions, branching rifts and curved pull on very large plates are not
+  represented. In #894, 20–33% of plates had their largest pull at an edge; with `a_min` those
+  plates use their best interior section, which may carry little pull and never rift.
+- **Whole-section failure.** Using one `Λ` for the line assumes the plate transmits the pull
+  along the whole section. It replaces a stress solve around a growing crack with a ratio and a
+  tip decay length `ℓ_tip`, which is a regularization choice like `w_0`.
+- **Small daughters.** With `a_min = 15%`, a plate at the `SPLIT_MIN_NODES` floor can shed a
+  daughter of about 105 cells. D3's 10–40 plate limit and the merge rules are the check on
+  small-plate build-up.
+- **No uplift load.** The model has no buoyancy force from plume uplift. Plumes act through
+  `N_plume` and weakening only.
 - **Not geological rates.** Realism targets judge appearance and timing on model worlds. They are
   not calibrated rift-frequency estimates.
 
 ## Revision note
+
+**2026-11-14 — rift lines replace cell-by-cell damage bands (revision after #894).** The
+previous version strained every cell whose own load exceeded its own softened strength, and
+split a plate when a broken band's cheapest path reached the boundary at both ends. The #888
+prototype of it ([PR #890](https://github.com/adubey/mantle-bloom/pull/890)) made no split in
+60 Myr on development seed 106533960. The exploration in
+[#894](https://github.com/adubey/mantle-bloom/issues/894)
+([`analysis/issue894/README.md`](../analysis/issue894/README.md)) found:
+
+- **Load is flat; strength is low at edges.** Median load 0.50 TN/m at the edge against
+  0.58 TN/m ten cells in; median strength 4.3 against 9.7 TN/m. The cells that pass a per-cell
+  test are the weakest rock: margins and oceanic crust (66% of straining cell-steps).
+- **Damage spreads.** Large bands were patches a median 3 times longer than wide, not oriented
+  across the pull.
+- **Path and split rules rejected the usable cuts.** 34% of path searches were dropped for
+  overlapping legs. 42 ligament-passing paths that would have split a plate between 67/33 and
+  80/20 were rejected for stray pieces of 1–27 cells and for the 700-cell daughter minimum.
+- **Total pull peaks across plate interiors** in 67–80% of plates on five development worlds,
+  and its direction is stable over 10 Myr in 47 of 56 cases.
+
+The owner chose to revise to rift lines and to change two kept production rules: the daughter
+minimum becomes 15% of the parent's area, and stray pieces of at most 1% of the parent's area
+join the adjacent daughter. Step 3 now places one line per plate from the section pull and
+strains only that line's band, with tips that grow along it. Step 6 splits along the same line.
+The damage fields, load proxy C, strength, softening, healing, thinning, the broken latch, the
+recorder and the path-normal ligament rule are kept. D0's result stands, because the section
+pull comes from the same sums as proxy C.
+
+| Gate | Previous criterion | Revised criterion | Reason |
+|---|---|---|---|
+| D1 | Two-stage Latin-hypercube search over `ε̇_0`, `n`, `ε_soft`, `s_warm`, `k_cap` and `N_plume` | A line check on the 20 development worlds first (valid splits on at least 90% of lines, median smaller side at least 25%, less craton than the straight chord on two thirds of plates). Then the same two-stage search over `ε̇_0`, `s_warm`, `k_cap`, `N_plume`, `Λ_grow` and `ℓ_tip`, with `n` and `ε_soft` fixed | The line placement is the new uncertain step and can be checked without stepping. Two new knobs replace two that only shaped the per-cell law, keeping six searched knobs for 15 settings |
+| D1 half-density check | Onset width and duration within 25% | Unchanged; now also guards tip speed | `ℓ_tip` is a length scale that must not follow the grid |
+| Realism targets | Ten targets | Two added: median smaller-daughter share at least 25%, and median line length at least 1.1 times the straight distance | The owner's aims for this revision: large splits that are not straight lines |
+| D2 | At most one of ten pairs with more tiny breakups than baseline; 50 combined splits; every realism target | Unchanged. With `a_min = 15%` the method cannot make a tiny breakup (under 7%), so the tiny-breakup limit is met by construction and the realism targets carry the test | The daughter minimum changed |
+| D3 | Runtime, craton loss, plate count and half-step limits | Unchanged | |
+
+| Item | Verdict | Reason |
+|---|---|---|
+| D0 | Stands | Proxy C and `k_cut` are unchanged |
+| [#888](https://github.com/adubey/mantle-bloom/issues/888) D1 | Re-scope | Replace the prototype's strain test and path search with steps 3 and 6 here, add the line check, then post the stage 1 predeclaration |
+| [PR #890](https://github.com/adubey/mantle-bloom/pull/890), [PR #896](https://github.com/adubey/mantle-bloom/pull/896) | Keep as the base | Their kernels, recorder and rejection log are reused |
+| [#894](https://github.com/adubey/mantle-bloom/issues/894) | Complete when this revision is accepted | Its summary became this revision |
+| [#846](https://github.com/adubey/mantle-bloom/issues/846) production implementation | Blocked | Waits for D1 |
+| [#797](https://github.com/adubey/mantle-bloom/issues/797) tracking | Update | D1 gains the line check |
+| Production great-circle splitter | Unchanged | It remains the D2 baseline with its own daughter rule |
 
 **2026-11-14 — load proxy C adopted after D0.** D0 ([PR #887](https://github.com/adubey/mantle-bloom/pull/887))
 showed that the specified local load proxy failed three of its four statistical criteria and one
