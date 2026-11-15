@@ -2369,6 +2369,7 @@ def _march_glacier(
             points, neighbor_idx, areas, elevation, deflection_m, sea_level, depth,
             climate, np.asarray(mobile_cover_m, dtype=float), ocean_mask, no_ice_cap, sub_years,
             warn=False, graph=march_graph, graph_step_m=march_step_m, margin_hint_m=margin_hint_m,
+            margin_start=ice_sheet.MARCH_COST.margin_start,
         )
 
     if years <= 1e-6:

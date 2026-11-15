@@ -140,6 +140,12 @@ class MarchCost:
       `trend_max_substep_years` (when `trend_grow`); a ratio above `trend_shrink_ratio`
       drops it back to MARCH_SUBSTEP_YEARS. A window that is a whole number of cycle
       periods cancels the cycle.
+
+    `margin_start` (#147) starts each body's margin root find at the margin its previous
+    substep ended on, stepping out from 100 m and doubling, where the default starts at
+    the opening extent to the nearest edge length (about 60 km) and steps a whole edge.
+    The root is the same one to within ICE_ROOT_TOLERANCE_M, on a different final
+    bracket, so results move within that tolerance; it roughly halves the profiles built.
     """
 
     max_substeps: int | None = None
@@ -161,6 +167,7 @@ class MarchCost:
     trend_grow: bool = True
     trend_max_substep_years: float = 4_000.0
     trend_shrink_ratio: float = 1.5
+    margin_start: bool = False
 
     def __post_init__(self):
         if self.trend and self.adaptive:
@@ -191,6 +198,8 @@ MARCH_COST_PRESETS: dict[str, MarchCost] = {
     # The production default (#842): the trend march with a 1 kyr longest substep, as the
     # RFC 0015 D2 revision decided (inside #741's 0-of-12-drops range).
     "trend-1k": MarchCost(trend=True, trend_max_substep_years=1_000.0),
+    # #147's candidate: the default with each margin root find started at the last margin.
+    "trend-1k-margin": MarchCost(trend=True, trend_max_substep_years=1_000.0, margin_start=True),
 }
 MARCH_COST = MARCH_COST_PRESETS["trend-1k"]
 
@@ -927,7 +936,8 @@ def _bracketed_root(f, lo: float, hi: float, f_lo: float, f_hi: float, tolerance
 
 
 def _solve_plastic_body(
-    dom: _Domain, opening_m3: float, dt_myr: float, sea_level_m: float, step_m: float, extent_hint: float | None = None
+    dom: _Domain, opening_m3: float, dt_myr: float, sea_level_m: float, step_m: float, extent_hint: float | None = None,
+    margin_start: bool = False,
 ):
     """Backward-Euler volume update for one body. Returns (shape, accumulation, surface melt,
     basal melt, saturation excess, saturated) with volumes in m^3, the shape already scaled to
@@ -937,7 +947,9 @@ def _solve_plastic_body(
     (V is nondecreasing in d, so bisection finds it). Where the ice actually sits is a poor
     guide: snow builds ice on any cold node, often far beyond a body's sheet (and before #539,
     frozen river and lake ice joined a body wherever they froze). `extent_hint` is where to
-    look for it first (`_volume_extent`); it never changes the extent found."""
+    look for it first (`_volume_extent`); it never changes the extent found. With
+    `margin_start` (MarchCost) the root find also starts there, which does move the result
+    within ICE_ROOT_TOLERANCE_M."""
     cache: dict[float, _Shape] = {}
 
     def shape(d: float) -> _Shape:
@@ -955,6 +967,13 @@ def _solve_plastic_body(
     d_min = float(dom.phi.min()) - 1.0
     d_max = max(float(dom.phi.max()) - (0.0 if np.any(dom.nbr < 0) else 1.0), d_min)
     d0 = _volume_extent(shape, opening_m3, d_min, d_max, step_m, extent_hint)
+    # d0 is last step's extent only to the nearest edge length. With `margin_start`, a hint
+    # within an edge of it is that extent to ICE_ROOT_TOLERANCE_M (the last margin, whose
+    # scaled profile held this opening volume), so the walk starts there with a stride
+    # that small, doubling up to an edge: a margin that barely moved is bracketed at once.
+    stride = step_m
+    if margin_start and extent_hint is not None and abs(extent_hint - d0) <= step_m and d_min <= extent_hint <= d_max:
+        d0, stride = extent_hint, min(ICE_ROOT_TOLERANCE_M, step_m)
     f0 = f(d0)
     saturated = False
     # Walk outward from last step's extent one edge at a time, so the bracket holds the root
@@ -963,7 +982,7 @@ def _solve_plastic_body(
     if f0 <= 0.0:
         lo, f_lo = d0, f0
         while True:
-            hi = min(lo + step_m, d_max)
+            hi = min(lo + stride, d_max)
             f_hi = f(hi)
             if f_hi > 0.0:
                 break
@@ -971,14 +990,16 @@ def _solve_plastic_body(
             if hi >= d_max:
                 saturated = True
                 break
+            stride = min(2.0 * stride, step_m)
     else:
         hi, f_hi = d0, f0
         while True:
-            lo = max(hi - step_m, d_min)
+            lo = max(hi - stride, d_min)
             f_lo = f(lo)
             if f_lo <= 0.0:
                 break
             hi, f_hi = lo, f_lo
+            stride = min(2.0 * stride, step_m)
     if saturated:
         final = shape(d_max)
     else:
@@ -1208,6 +1229,7 @@ def step_ice(
     graph: csr_matrix | None = None,
     graph_step_m: float | None = None,
     margin_hint_m: np.ndarray | None = None,
+    margin_start: bool = False,
     cost: MarchCost | None = None,
 ) -> tuple[np.ndarray, np.ndarray, IceStep]:
     """One glacier step over the whole node cloud. See the module docstring for the method.
@@ -1231,7 +1253,8 @@ def step_ice(
     every non-march caller passes, is the full search. `graph_step_m` is the median edge
     length of a prebuilt `graph` (`median_edge_m`), which the march finds once (#147).
     `margin_hint_m` is `margin_hints` of the previous march substep's bodies: it speeds
-    the search for each body's opening extent and never changes what is found (#147)."""
+    the search for each body's opening extent and never changes what is found (#147).
+    `margin_start` is MarchCost's option of that name, which does move results."""
     n = len(points)
     area = np.asarray(area_m2, dtype=float)
     dt_myr = years / 1_000_000.0
@@ -1323,7 +1346,9 @@ def step_ice(
             else:
                 dom = _build_domain(graph, dom_nodes, phi, bed, c, area, sea_level_m, is_ocean, climate)
                 hint = _body_margin_hint(margin_hint_m, body_nodes)
-                body = _plastic_body(out, dom, body_nodes, opening, area, dt_myr, sea_level_m, step_m, ledger, hint)
+                body = _plastic_body(
+                    out, dom, body_nodes, opening, area, dt_myr, sea_level_m, step_m, ledger, hint, margin_start
+                )
             _guard_body(out, body, bed, area, sea_level_m, is_ocean)
             bodies.append(body)
 
@@ -1424,10 +1449,13 @@ def _uniform_body(out: _Output, nodes, opening, area, bed, climate, is_ocean, dt
 
 
 def _plastic_body(
-    out: _Output, dom: _Domain, body_nodes, opening, area, dt_myr, sea_level_m, step_m, ledger, extent_hint=None
+    out: _Output, dom: _Domain, body_nodes, opening, area, dt_myr, sea_level_m, step_m, ledger, extent_hint=None,
+    margin_start=False,
 ) -> BodyBalance:
     nodes = dom.nodes
-    shape, acc, sm, bm, excess, saturated = _solve_plastic_body(dom, opening, dt_myr, sea_level_m, step_m, extent_hint)
+    shape, acc, sm, bm, excess, saturated = _solve_plastic_body(
+        dom, opening, dt_myr, sea_level_m, step_m, extent_hint, margin_start
+    )
     cov = np.minimum(shape.cover, 1.0)
     out.thickness[nodes] = shape.thickness
     out.covered[nodes] = cov

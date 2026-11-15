@@ -105,6 +105,32 @@ construction, but summing a volume in floating point can break it by about 1e-9 
 volume, so an opening volume that falls inside that gap could in principle send the
 hinted search one cell away from the full bisection. None did in these 3,109 solves.
 
+## Fourth pass (not merged): starting the root find at the last margin
+
+`MarchCost.margin_start` (preset `trend-1k-margin`, off by default) starts each body's
+margin root find at the margin its previous substep ended on, stepping out from 100 m and
+doubling, in place of the opening extent rounded to an edge length and a whole-edge
+stride. Three steps of the 67.4 Myr save, one run per arm:
+
+| Arm | Profiles per body solve | Body solves | Substeps per step | Closing ice, km^3 |
+|---|---:|---:|---|---:|
+| `trend-1k` (default) | 12.5 | 3,109 | 24, 18, 90 | 163,201 |
+| `trend-1k-margin` | 5.9 | 6,799 | 24, 70, 90 | 178,483 |
+| `trend-1k`, `ICE_ROOT_TOLERANCE_M` 90 in place of 100 | 15.0 | not recorded | 24, 90, 90 | 176,623 |
+
+The option does build fewer profiles per solve, but it is not a change "within the
+existing tolerance": the ice closes 9.4% larger, and the second step takes 70 substeps to
+settle where the default took 18, so the three steps were no faster (93 s against 84 s).
+
+The third row is the control that explains it. Tightening the root tolerance from 100 m to
+90 m, with nothing else changed, moves the closing ice by 8.2% and one node by 1.9 km of
+ice. On this world the march's result depends on which of several sign changes of the
+budget function a body's root find lands on, so any change to the search, however small,
+gives a different trajectory of about this size. A single three-step comparison therefore
+cannot say whether `margin_start` is better, worse or the same. It needs the kind of
+evidence #842's round 3 used: many steps on several saves, both arms, judged by ledger
+closure, step robustness and swings.
+
 ## What is left, largest first
 
 Shares are of the profiled three steps after the second pass (192 s), before the third
