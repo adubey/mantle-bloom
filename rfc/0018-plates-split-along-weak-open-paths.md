@@ -1,6 +1,6 @@
 # RFC 0018: Plates split along weak paths that are pulling apart
 
-- **Status:** Accepted (revised 2026-11-15 after the #888 D1 integration and propagation checks; revised 2026-11-14 after the #894 exploration of the D1 prototype; revised 2026-11-14 after #848 runtime evidence and #876 rift-candidate exploration; revised 2026-11-09 after spectral-weighting, runtime and failed-rift review; revised 2026-11-08 after G2 sample-size review; revised 2026-11-06 after G2 non-worsening criterion review; revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
+- **Status:** Accepted (revised 2026-11-15 after the one-cell band finding, for the half-density check; revised 2026-11-15 after the #888 D1 integration and propagation checks; revised 2026-11-14 after the #894 exploration of the D1 prototype; revised 2026-11-14 after #848 runtime evidence and #876 rift-candidate exploration; revised 2026-11-09 after spectral-weighting, runtime and failed-rift review; revised 2026-11-08 after G2 sample-size review; revised 2026-11-06 after G2 non-worsening criterion review; revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
 - **Date:** 2026-11-03
 - **Revisions:** dated entries, newest first, are in the [Revision note](#revision-note) near the end.
 - **Related:** #487, #699, #770, #797, #802, #836, #846, #848, #850, #851, #866, #876, #888, #894; RFC [0007](0007-mantle-plumes-and-plateaus.md) (plumes); RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (accepted predecessor; withdrawal follows gates)
@@ -529,8 +529,8 @@ only the line's own cells, and the non-local softening disk (radius `w_0 / 2`) h
 itself. The band widens with its strain (step 3) and reaches the neighbouring cells once
 `w_i / 2 ≥ 125 km`, at `ε ≥ 1`. The owner's onset width (100–150 km) is therefore met at default
 density by the mesh. At half density the spacing is 177 km, so a one-cell band is 177 km wide and
-the onset width follows the grid: D1's half-density check (onset width within 25%) reports this and
-the owner decides whether the width target or the check changes (#888).
+the onset width follows the grid. D1's half-density check therefore compares duration, not
+width, and reports the width at both densities (revision note, 2026-11-15).
 
 ### Runtime and saves
 
@@ -622,8 +622,11 @@ No held-out seed is used for calibration or tuning.
      report D0's statistics for C on the evolving worlds. This is reporting, not a pass
      condition.
    - **Resolution.** Repeat the frozen setting on five development seeds at half the default
-     node density. Onset width and median onset-to-breakup duration must stay within 25% of the
-     default-density values, or band width or tip speed is following the grid.
+     node density. Median onset-to-breakup duration must stay within 25% of the default-density
+     value, or tip speed is following the grid. Onset width is not compared: a band cannot be
+     narrower than a cell, so it is 125 km at default density and 177 km at half density by
+     construction (see Starting values). It is reported at both densities and scored against its
+     realism target at default density only.
 3. **D2: realism on held-out worlds.** With the frozen knobs, compare the rift-line method with
    the production great-circle method on the ten held-out seeds for 200 Myr at 1 Myr steps, from identical
    generated worlds, settings and step schedules. The method passes when it meets every realism
@@ -662,7 +665,7 @@ No held-out seed is used for calibration or tuning.
 
 | Target | Pass range | Basis |
 |---|---|---|
-| Onset width (first time `ε ≥ ε_cand`) | 100–150 km | Owner design choice |
+| Onset width (first time `ε ≥ ε_cand`) | 100–150 km, scored at default node density; reported at half density | Owner design choice; a one-cell band follows the grid |
 | Width growth | Successful bands are wider at breakup than at onset | Owner design choice |
 | Onset-to-breakup duration | 10–50 Myr | Tens of Myr [[Brune et al., 2016]](#ref-brune2016); range is a design choice |
 | Slow-to-fast transition | Strain rate in the last quarter before breakup at least 3 times the first quarter | Abrupt acceleration [[Brune et al., 2016]](#ref-brune2016); factor is a design choice |
@@ -838,6 +841,20 @@ in a shared projection and legend.
 
 ## Revision note
 
+**2026-11-15 — the half-density check drops onset width (revision after the one-cell band finding).**
+The mesh-spacing correction in the entry below showed that the spacing equals `w_0`, so a band is
+one cell wide and its onset width is the cell size: 125 km at default density, 177 km at half
+density (41% wider, outside the 100–150 km target). D1's half-density check required onset width
+and duration to stay within 25% of the default-density values, so the width part cannot pass
+whatever the parameters are. The owner chose to drop width from the comparison (option 2 of 3 in
+[#888](https://github.com/adubey/mantle-bloom/issues/888)); the other options were to expect
+`max(w_0, h)` and to scale a one-cell band's strain by `w_0 / h`.
+
+| Gate | Previous criterion | Revised criterion | Reason |
+|---|---|---|---|
+| D1 half-density check | Onset width and median onset-to-breakup duration within 25% of the default-density values | Duration within 25%; onset width reported at both densities | The width follows the grid by construction |
+| Realism target: onset width | 100–150 km | 100–150 km at default node density; reported at half density | Same |
+
 **2026-11-15 — integrator and mesh-spacing corrections (revision after the #888 D1 checks).** D1's
 integration and propagation checks ([`analysis/issue888/`](../analysis/issue888/README.md),
 [PR #890](https://github.com/adubey/mantle-bloom/pull/890)) found:
@@ -905,6 +922,7 @@ pull comes from the same sums as proxy C.
 |---|---|---|---|
 | D1 | Two-stage Latin-hypercube search over `ε̇_0`, `n`, `ε_soft`, `s_warm`, `k_cap` and `N_plume` | An integration check (long steps against a 0.01 Myr reference, including a rate at the cap) and a propagation check (tip speed against the discrete law at two densities) on manufactured plates; a line check on the 20 development worlds first (valid splits on at least 90% of lines, less craton than the straight chord on two thirds of plates; smaller-side share reported). Then the same two-stage search over `ε̇_0`, `s_warm`, `k_cap`, `N_plume`, `Λ_grow` and `ℓ_tip`, with `n` and `ε_soft` fixed | The line placement is the new uncertain step and can be checked without stepping. Two new knobs replace two that only shaped the per-cell law, keeping six searched knobs for 15 settings |
 | D1 half-density check | Onset width and duration within 25% | Unchanged; now also guards tip speed | `ℓ_tip` is a length scale that must not follow the grid |
+| D1 half-density check (2026-11-15) | Onset width and duration within 25% | Duration within 25%; onset width reported at both densities, not compared | A band is one cell wide, so its width is 125 km at default density and 177 km at half density whatever the parameters |
 | Integration | Sub-steps capped at `K_sub = 64`; a cell needing more was latched broken | No count cap; sub-steps are bounded by the capped rate (at most 54 per 1 Myr step in D1's range); a defect guard stops the run at 4096 | A count cap that forces a latch can create a rupture from the step length alone (PR #897 review) |
 | Withheld thinning | A donor with no recipient within four hops kept accumulating `rift_strain` without thinning | Recipients are searched without a hop limit; a band cell with none anywhere is held and does not strain; `rift_strain` counts only applied strain | A cell could break without ever thinning (PR #897 review) |
 | D1 oceanic fallback | Oceanic cells latch only on `ε_break` | Oceanic cells latch when both layers reach their floors or at `ε_break` | Strain past the crust floor must still thin a layer to count |
