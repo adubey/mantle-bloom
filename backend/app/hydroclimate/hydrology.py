@@ -2228,8 +2228,10 @@ def _march_glacier(
     the equilibrium target each substep.
 
     `ice_sheet.MARCH_COST` selects the #822 cost options (substep cap, adaptive
-    substeps, sea-level skip, restricted distance search); its default is this D2
-    march exactly. A capped march with cap_fill="endpoint" runs one last substep over
+    substeps, sea-level skip, restricted distance search, trend settling). Its default is
+    the "trend-1k" preset (#842): the march below with the trend settle test added and a
+    1 kyr longest substep. The "d2" preset is this march exactly (fixed 250 yr substeps,
+    pair test only). A capped march with cap_fill="endpoint" runs one last substep over
     the whole remainder instead of holding it.
 
     Settle checks run on non-overlapping substep pairs ("after each pair"): when the last

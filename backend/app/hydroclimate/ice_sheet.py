@@ -97,8 +97,8 @@ class MarchCost:
     """Selectable cost reductions for the end-of-step march (#822).
 
     The defaults are the fixed-250-yr D2 march exactly (RFC 0015, #789). Every other value
-    changes results or the cost structure and is an owner decision, so the production
-    default stays D2 and the alternatives are selected by preset (`MARCH_COST_PRESETS`)
+    changes results or the cost structure and is an owner decision. The production default is
+    the "trend-1k" preset (#842) and the alternatives are selected by preset (`MARCH_COST_PRESETS`)
     or by replacing `MARCH_COST`. They compose: a preset is just one combination.
 
     1. Substep cap with hold-extrapolation (#806 review item 12): after `max_substeps`
@@ -174,7 +174,9 @@ class MarchCost:
             raise ValueError("max_substeps must leave room for at least one settle pair")
 
 
-# Named combinations for probes and A/B runs (#822). "d2" is the production default.
+# Named combinations for probes and A/B runs (#822). "trend-1k" is the production default
+# (#842, RFC 0015 D2); "d2" is the fixed-250 yr march, kept selectable and bit-identical for
+# accuracy and correctness checks.
 MARCH_COST_PRESETS: dict[str, MarchCost] = {
     "d2": MarchCost(),
     "cap-hold": MarchCost(max_substeps=200),
@@ -185,11 +187,11 @@ MARCH_COST_PRESETS: dict[str, MarchCost] = {
     "cap-hold-recur": MarchCost(max_substeps=200, recurrence=True),
     "trend-adapt": MarchCost(trend=True),
     "trend-hold": MarchCost(trend=True, trend_grow=False),
-    # #842 round 3's arm: the trend march with the 1 kyr longest substep the RFC 0015 D2
-    # revision proposes (inside #741's 0-of-12-drops range).
+    # The production default (#842): the trend march with a 1 kyr longest substep, as the
+    # RFC 0015 D2 revision decided (inside #741's 0-of-12-drops range).
     "trend-1k": MarchCost(trend=True, trend_max_substep_years=1_000.0),
 }
-MARCH_COST = MARCH_COST_PRESETS["d2"]
+MARCH_COST = MARCH_COST_PRESETS["trend-1k"]
 
 
 def march_cost(preset: str) -> MarchCost:
