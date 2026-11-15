@@ -331,9 +331,19 @@ discharge, channel-width growth, deposition, geology or lake silt.
   the same slice duration. Its new evaporation and sublimation replace the earlier charges;
   external supply is added only once. These transfer passes advance no additional time,
   but their receiving bodies still face the slice's full implicit loss balance. A bounded
-  pass count exposes unresolved transfers or topology rather than accepting a partial solve.
+  pass count exposes unresolved transfers or topology rather than accepting a partial solve;
+  its error names the bodies entering and leaving the active set and the deferred leaves.
   Promotion also requires enough stored volume to support a common surface at the saddle;
   checking the floor cells alone can otherwise alternate between a merge and a split.
+  That storage test has a relative tolerance of 1e-10, so each body's implicit level solve
+  (`_integrate_body_volume`) converges until its storage error (level error times wet area)
+  is 1e-13 of its stored volume, or its level is within a few float ulps, not until its
+  budget residual is small against the water available. Over a long slice the available water
+  is mostly the slice's losses, and a tolerance on it lets a body at its saddle pass the test
+  as children but fail it as the merged body (#905). Whatever residual remains is booked as loss, so storage plus loss is
+  the body's available water. As a backstop, a flush pass that ends with no transfers in
+  flight, in a state an earlier pass of the slice ended in (active bodies, depths and
+  charged losses), can only repeat. The slice ends on that state and logs a warning.
 - **Flow direction** (`_compute_flow_direction`): among each node's k nearest neighbors
   strictly below its own elevation (a downhill candidate), prefers whichever one already has
   the deepest established channel (`channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`),
