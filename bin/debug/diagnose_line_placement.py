@@ -38,8 +38,7 @@ def bfs_sides(graph, chain, side):
     while open_cells:
         assigned = {}
         for cell in open_cells:
-            row = pattern.indices[pattern.indptr[cell]:pattern.indptr[cell + 1]]
-            votes = np.bincount(side[row][side[row] >= 0], minlength=2)
+            votes = rl.side_votes(pattern, side, cell)
             if votes.sum():
                 assigned[cell] = int(np.argmax(votes))
         if not assigned:
@@ -73,11 +72,7 @@ def alternative(graph, areas, chain, limit, p):
     pattern = (graph > 0).astype(np.int8).tocsr()
     for comp in order[2:]:
         members = np.flatnonzero(full == comp)
-        votes = np.zeros(2)
-        for cell in members:
-            row = pattern.indices[pattern.indptr[cell]:pattern.indptr[cell + 1]]
-            votes += np.bincount(side[row][side[row] >= 0], minlength=2)
-        side[members] = int(np.argmax(votes))
+        side[members] = int(np.argmax(rl.side_votes(pattern, side, members)))
     mask = side == 0
     for part in (mask, ~mask):
         if connected_components(graph[part][:, part], directed=False)[0] != 1:

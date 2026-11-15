@@ -380,6 +380,15 @@ def _components_without(graph: csr_matrix, removed: np.ndarray):
     return count, full
 
 
+def side_votes(pattern: csr_matrix, side: np.ndarray, cells) -> np.ndarray:
+    """Edges from ``cells`` to cells already on side 0 and on side 1 (adjacency counted once per edge)."""
+    votes = np.zeros(2)
+    for cell in np.atleast_1d(cells):
+        row = pattern.indices[pattern.indptr[cell]:pattern.indptr[cell + 1]]
+        votes += np.bincount(side[row][side[row] >= 0], minlength=2)
+    return votes
+
+
 def split_masks(graph: csr_matrix, areas: np.ndarray, chain: np.ndarray, p: Params, tie_break=None, points: np.ndarray | None = None):
     """Step 6's split. Remove the line, take the two largest remaining components as the daughters, give each line
     cell to the daughter it shares the most edges with (in rounds, so a cell with no labelled neighbour waits for one; ties through ``tie_break(side, cell)``, default side 0), give
@@ -415,8 +424,7 @@ def split_masks(graph: csr_matrix, areas: np.ndarray, chain: np.ndarray, p: Para
     while waiting:
         assigned = {}
         for cell in waiting:
-            row = pattern.indices[pattern.indptr[cell]:pattern.indptr[cell + 1]]
-            votes = np.bincount(side[row][side[row] >= 0], minlength=2)
+            votes = side_votes(pattern, side, cell)
             if votes.sum():
                 assigned[cell] = int(np.argmax(votes)) if votes[0] != votes[1] else (tie_break(side, cell) if tie_break else 0)
         if not assigned:
@@ -426,10 +434,7 @@ def split_masks(graph: csr_matrix, areas: np.ndarray, chain: np.ndarray, p: Para
         waiting = [cell for cell in waiting if cell not in assigned]
     for comp in order[2:]:
         members = np.flatnonzero(labels == comp)
-        votes = np.zeros(2)
-        for cell in members:
-            row = pattern.indices[pattern.indptr[cell]:pattern.indptr[cell + 1]]
-            votes += np.bincount(side[row][side[row] >= 0], minlength=2)
+        votes = side_votes(pattern, side, members)
         side[members] = int(np.argmax(votes)) if votes[0] != votes[1] else 0
     if islands.any():
         placed = np.flatnonzero(side >= 0)
