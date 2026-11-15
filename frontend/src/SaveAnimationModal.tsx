@@ -28,11 +28,16 @@ export default function SaveAnimationModal({ result, onSave, onDiscard }: Props)
           boxShadow: "0 8px 32px rgba(0, 0, 0, 0.6)",
         }}
       >
-        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>⏺ Recording {result.stoppedEarly ? "stopped" : "finished"}</div>
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>⏺ Recording {result.error ? "stopped after an error" : result.stoppedEarly ? "stopped" : "finished"}</div>
         <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 16 }}>
           The world is now at {myr} Myr -- it advanced permanently while recording, whether or
           not you keep the video. Save it as an MP4, or discard it.
         </div>
+        {result.error && (
+          <div style={{ fontSize: 11, marginBottom: 16, overflowWrap: "anywhere" }}>
+            The recording contains the completed frames. Error: {result.error}
+          </div>
+        )}
         <div style={{ display: "flex", gap: 6 }}>
           <button onClick={onSave} style={{ flex: 1, fontSize: 12 }}>
             Save

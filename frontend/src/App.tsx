@@ -1052,6 +1052,14 @@ export default function App() {
         // handleWorldAdvanced drops a stale world on its own, but skip setting the
         // video result too when the selection moved on mid-run.
         if (worldIdRef.current !== id) return;
+        if (result.error) {
+          const recovery = await fetchAnimationRecovery(id!).catch(() => null);
+          if (worldIdRef.current !== id) return;
+          setAnimationFailure({
+            failure: { frame: animationFrameRef.current, total: numFrames, unbounded, error: result.error, partialVideo: true },
+            recovery,
+          });
+        }
         setAnimationResult(result);
         await handleWorldAdvanced(result);
       } catch (e) {
@@ -2926,7 +2934,7 @@ export default function App() {
         />
       )}
 
-      {animationFailure && (
+      {animationFailure && !animationResult && (
         <AnimationStoppedModal
           failure={animationFailure.failure}
           recovery={animationFailure.recovery}
