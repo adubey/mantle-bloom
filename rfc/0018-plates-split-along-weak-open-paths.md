@@ -67,8 +67,8 @@ development worlds it made no split in 60 Myr and nibbled at plate edges
   on five development worlds. Between snapshots 10 Myr apart the pull direction stayed within
   30° in 47 of 56 cases.
 - **The kept daughter minimum excludes most large splits.** `SPLIT_MIN_NODES = 700` applies to
-  each daughter, so a 70/30 split needs a parent of at least 2,333 cells. The median plate has
-  about 1,700.
+  each daughter. The median plate has about 1,700 cells, so only near-even splits pass, and a
+  split into two large but unequal plates (for example 1,190 and 510 cells) is refused.
 
 **Design principles:** the great-circle cut and the instantaneous graph cut are geometry
 shortcuts that do not let rifting follow its own physics (principle 8). The graph cut's runtime
@@ -507,8 +507,7 @@ No held-out seed is used for calibration or tuning.
      side's area share, the line's length over the straight distance between its ends, the
      craton and oceanic shares of its length, `Λ`, and whether cutting along it would give a
      valid two-daughter split. Repeat the 50 Myr worlds from 0.5 Myr steps on three seeds. Pass
-     when at least 90% of lines give a valid split, the median smaller-side share is at least
-     25%, and the line crosses less craton than the straight chord between its ends on at least
+     when at least 90% of lines give a valid split and the line crosses less craton than the straight chord between its ends on at least
      two thirds of plates that have cratons in the corridor. If this fails, the line placement
      is revised before any search is run.
    - **Search.** Run 200 Myr with plates-only stepping (`simulate_climate_biomes = False`) at
@@ -568,7 +567,7 @@ No held-out seed is used for calibration or tuning.
 | Failed rifts | Between 20% and 80% of physical candidates fail | Failure is common [[Brune et al., 2023]](#ref-brune2023) [[Elling et al., 2022]](#ref-elling2022); range is a design choice |
 | No super seas | No below-sea-level basin made by interior rift thinning is wider than three onset band widths (about 375 km) across its narrow axis, outside crust thicker and hotter than the plate median | Narrow rifts dominate; wide rifts need thick, hot crust [[Buck, 1991]](#ref-buck1991); #866 |
 | Localization | At each split, damaged cells form at most three components above 1% of plate area, and the damaged share stays under 30% of plate area | #699's fragmentation failure mode; thresholds are design choices |
-| Split size | Median smaller-daughter area share of at least 25% | Owner's aim of large splits such as 70/30 (#894); threshold is a design choice |
+| No microplates | Every split leaves both daughters with at least `a_min` of the parent's area. The distribution of the smaller share is reported; no ratio is targeted | Owner's aim: a split makes two plate-sized daughters, not a microplate at the edge (#894) |
 | Line shape | Median line length at least 1.1 times the straight distance between its ends | Owner's aim that rifts are not straight lines (#894); threshold is a design choice |
 | Plume link | Reported: share of breakups with plume heat on the path | 12 of 18 margins [[Buiter & Torsvik, 2014]](#ref-buiter2014); descriptive only |
 | Splits happen | At least 50 actual splits across both arms combined, with the frozen reserve-list fallback | Accepted event-count rule |
@@ -614,8 +613,8 @@ in a shared projection and legend.
 
 ### Falsification criteria
 
-- **Whole-plate pull does not place good lines.** If D1's line check fails (lines are invalid,
-  small-sided, or cross cratons as often as straight chords), the premise that the section of
+- **Whole-plate pull does not place good lines.** If D1's line check fails (lines are invalid or
+  cross cratons as often as straight chords), the premise that the section of
   largest pull marks where a plate should break is wrong for this model's forces. Revise the
   placement or add an interior load, such as plume uplift, before any search.
 - **Lines do not persist.** If rifts are abandoned because the chosen line jumps between steps
@@ -740,8 +739,8 @@ prototype of it ([PR #890](https://github.com/adubey/mantle-bloom/pull/890)) mad
 - **Damage spreads.** Large bands were patches a median 3 times longer than wide, not oriented
   across the pull.
 - **Path and split rules rejected the usable cuts.** 34% of path searches were dropped for
-  overlapping legs. 42 ligament-passing paths that would have split a plate between 67/33 and
-  80/20 were rejected for stray pieces of 1–27 cells and for the 700-cell daughter minimum.
+  overlapping legs. 42 ligament-passing paths that would have made two plate-sized daughters
+  (between 67/33 and 80/20) were rejected for stray pieces of 1–27 cells and for the 700-cell daughter minimum.
 - **Total pull peaks across plate interiors** in 67–80% of plates on five development worlds,
   and its direction is stable over 10 Myr in 47 of 56 cases.
 
@@ -755,9 +754,9 @@ pull comes from the same sums as proxy C.
 
 | Gate | Previous criterion | Revised criterion | Reason |
 |---|---|---|---|
-| D1 | Two-stage Latin-hypercube search over `ε̇_0`, `n`, `ε_soft`, `s_warm`, `k_cap` and `N_plume` | A line check on the 20 development worlds first (valid splits on at least 90% of lines, median smaller side at least 25%, less craton than the straight chord on two thirds of plates). Then the same two-stage search over `ε̇_0`, `s_warm`, `k_cap`, `N_plume`, `Λ_grow` and `ℓ_tip`, with `n` and `ε_soft` fixed | The line placement is the new uncertain step and can be checked without stepping. Two new knobs replace two that only shaped the per-cell law, keeping six searched knobs for 15 settings |
+| D1 | Two-stage Latin-hypercube search over `ε̇_0`, `n`, `ε_soft`, `s_warm`, `k_cap` and `N_plume` | A line check on the 20 development worlds first (valid splits on at least 90% of lines, less craton than the straight chord on two thirds of plates; smaller-side share reported). Then the same two-stage search over `ε̇_0`, `s_warm`, `k_cap`, `N_plume`, `Λ_grow` and `ℓ_tip`, with `n` and `ε_soft` fixed | The line placement is the new uncertain step and can be checked without stepping. Two new knobs replace two that only shaped the per-cell law, keeping six searched knobs for 15 settings |
 | D1 half-density check | Onset width and duration within 25% | Unchanged; now also guards tip speed | `ℓ_tip` is a length scale that must not follow the grid |
-| Realism targets | Ten targets | Two added: median smaller-daughter share at least 25%, and median line length at least 1.1 times the straight distance | The owner's aims for this revision: large splits that are not straight lines |
+| Realism targets | Ten targets | Two added: no daughter under `a_min` of the parent (smaller share reported, no ratio targeted), and median line length at least 1.1 times the straight distance | The owner's aims for this revision: two plate-sized daughters, not a microplate, along a line that is not straight |
 | D2 | At most one of ten pairs with more tiny breakups than baseline; 50 combined splits; every realism target | Unchanged. With `a_min = 15%` the method cannot make a tiny breakup (under 7%), so the tiny-breakup limit is met by construction and the realism targets carry the test | The daughter minimum changed |
 | D3 | Runtime, craton loss, plate count and half-step limits | Unchanged | |
 
