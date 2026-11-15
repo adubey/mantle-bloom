@@ -72,6 +72,7 @@ already-persisted array sidesteps needing that judgment call at all.
 
 from __future__ import annotations
 
+import heapq
 import logging
 from dataclasses import dataclass, field
 
@@ -335,21 +336,26 @@ def _ordered_spill_bodies(bodies, leaf_of_node, body_for_leaf, body_by_id, node_
         if receiver is not None and id(receiver) != id(body) and id(receiver) in active_ids:
             outgoing[id(body)] = id(receiver)
             indegree[id(receiver)] += 1
-    ready = sorted(
-        (body for body in bodies if indegree[id(body)] == 0),
-        key=lambda body: (-body.floor_elevation, body.lake_id),
-    )
+    # A heap keyed by floor order, then arrival: the order a stable re-sort of the ready list
+    # after every release would give, without re-sorting thousands of bodies each time (#147).
+    ready = [
+        (-body.floor_elevation, body.lake_id, arrival, body)
+        for arrival, body in enumerate(body for body in bodies if indegree[id(body)] == 0)
+    ]
+    heapq.heapify(ready)
+    arrivals = len(ready)
     ordered = []
     while ready:
-        body = ready.pop(0)
+        body = heapq.heappop(ready)[3]
         ordered.append(body)
         receiver_id = outgoing.get(id(body))
         if receiver_id is None:
             continue
         indegree[receiver_id] -= 1
         if indegree[receiver_id] == 0:
-            ready.append(body_by_id[receiver_id])
-            ready.sort(key=lambda item: (-item.floor_elevation, item.lake_id))
+            receiver = body_by_id[receiver_id]
+            heapq.heappush(ready, (-receiver.floor_elevation, receiver.lake_id, arrivals, receiver))
+            arrivals += 1
     if len(ordered) != len(bodies):
         ordered_ids = {id(body) for body in ordered}
         ordered.extend(sorted(
@@ -1961,19 +1967,25 @@ def _already_merged(
     if not lake.children:
         return True
     hyps = hypsometry if hypsometry is not None else CellHypsometry.whole_cells(elevation)
-    reached_saddle: list[bool] = []
+    saddle = lake.min_depth - 1e-6
     for child in lake.children:
         floor_idx = child.sink_node_idx
         if floor_idx < 0:
             floor_idx = int(child.members[np.argmin(elevation[child.members])])
-        floor_cell = np.array([floor_idx])
-        depth = float(lake_depth[floor_idx])
+        # One cell's `dry_level` / `level_from_depth`, on scalars: the lake march asks this
+        # of every hierarchy node several times a slice (#147).
+        z = hyps.elevation[floor_idx]
+        r = hyps.relief_m[floor_idx]
+        depth = np.float64(lake_depth[floor_idx])
         if depth <= 0.0:
-            level = hyps.dry_level(floor_cell)
+            level = float(z - r)
+        elif depth >= r:
+            level = float(z + depth)
         else:
-            level = float(hyps.level_from_depth(np.array([depth]), floor_cell)[0])
-        reached_saddle.append(level >= lake.min_depth - 1e-6)
-    return all(reached_saddle)
+            level = float(z - r + np.sqrt(4.0 * r * depth))
+        if not level >= saddle:
+            return False
+    return True
 
 
 def compute_spill_routing(
