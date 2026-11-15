@@ -1,6 +1,6 @@
 # RFC 0018: Plates split along weak paths that are pulling apart
 
-- **Status:** Accepted (revised 2026-11-15 after the one-cell band finding, for the half-density check; revised 2026-11-15 after the #888 D1 integration and propagation checks; revised 2026-11-14 after the #894 exploration of the D1 prototype; revised 2026-11-14 after #848 runtime evidence and #876 rift-candidate exploration; revised 2026-11-09 after spectral-weighting, runtime and failed-rift review; revised 2026-11-08 after G2 sample-size review; revised 2026-11-06 after G2 non-worsening criterion review; revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
+- **Status:** Accepted (revised 2026-11-15 after the #888 line check, for the `k_cap` range; revised 2026-11-15 after the one-cell band finding, for the half-density check; revised 2026-11-15 after the #888 D1 integration and propagation checks; revised 2026-11-14 after the #894 exploration of the D1 prototype; revised 2026-11-14 after #848 runtime evidence and #876 rift-candidate exploration; revised 2026-11-09 after spectral-weighting, runtime and failed-rift review; revised 2026-11-08 after G2 sample-size review; revised 2026-11-06 after G2 non-worsening criterion review; revised 2026-11-06 after G2 metric review; revised 2026-11-04 after G1 gate review; owner confirmed 2026-11-03)
 - **Date:** 2026-11-03
 - **Revisions:** dated entries, newest first, are in the [Revision note](#revision-note) near the end.
 - **Related:** #487, #699, #770, #797, #802, #836, #846, #848, #850, #851, #866, #876, #888, #894; RFC [0007](0007-mantle-plumes-and-plateaus.md) (plumes); RFCs [0009](0009-craton-mosaic.md) (cratons-first worlds), [0010](0010-rifts-follow-weak-lithosphere.md) (accepted predecessor; withdrawal follows gates)
@@ -511,7 +511,7 @@ only for exogenous ones.
 | `f_break` | `0.5` | Design choice | Fixed; sensitivity at 0.25 and 0.75 |
 | `s_fault`, `s_warm`, `s_max` | `0.40`, `0.40`, `0.88` | `s_fault` matches the accepted fault reduction; `s_max` matches the accepted 0.12 clamp | D1 search on `s_warm` |
 | `τ_heal` | `62.8 Myr` | McKenzie 1978 thermal time constant | Fixed; sensitivity at 30 and 120 Myr |
-| `k_cap` | `1.0` | #487 reference envelope | D1 search over 0.3–3 (the `K0` bracket). Only the ratio `k_cap Λ_grow` sets growth onset; `k_cap` alone sets break-up |
+| `k_cap` | `1.0` | #487 reference envelope | D1 search over 0.1–3 (0.3–3 is the `K0` bracket; the lower decade is added because the median continental line starts at `Λ` = 0.04, see the revision note). Only the ratio `k_cap Λ_grow` sets growth onset; `k_cap` alone sets break-up |
 | `k_cut` | `1.33` | D0 fit to thin-shell `N_ext` on 451 development plates | Fixed after D0 |
 | `N_plume` | `0.5 TN/m` | Design choice, under a tenth of the 100 km continental capacity (6.28 TN/m) | D1 search over 0–2 TN/m |
 | `w_0` | `125 km` | Owner's onset width (100–150 km) | D1 resolution check |
@@ -840,6 +840,18 @@ in a shared projection and legend.
   not calibrated rift-frequency estimates.
 
 ## Revision note
+
+**2026-11-15 — the `k_cap` search range extends down to 0.1 (revision after the #888 line check).** D1's line check on the 20
+development worlds ([`analysis/issue888/`](../analysis/issue888/README.md)) measured the section load `Λ`
+on 581 rift lines at 0 and 50 Myr: median 0.08, with 4% of continental lines and 28% of oceanic lines at or above
+`Λ_grow = 0.3`; the median continental line is at 0.04. Growth starts when `Λ / Λ_grow` passes 1 and `Λ` scales as
+`1 / k_cap`, so the median continental line starts only if `k_cap × Λ_grow` is below about 0.04. The RFC's ranges
+(`k_cap` 0.3–3, `Λ_grow` 0.1–0.6) reach that only at one corner (0.3 × 0.1 = 0.03). The owner chose to extend the
+`k_cap` range to 0.1–3 so continental rifts can start inside the search.
+
+| Gate | Previous criterion | Revised criterion | Reason |
+|---|---|---|---|
+| D1 search range | `k_cap` over 0.3–3 | `k_cap` over 0.1–3 | The median continental line carries 4% of the load it needs to grow |
 
 **2026-11-15 — the half-density check drops onset width (revision after the one-cell band finding).**
 The mesh-spacing correction in the entry below showed that the spacing equals `w_0`, so a band is
