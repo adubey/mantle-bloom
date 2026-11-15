@@ -347,7 +347,7 @@ only on the plate's rift line.
     changes the mesh factor from 0.58 to 0.45, a 22% slower tip. With `ℓ_tip = 2h` it changes
     from 0.77 to 0.69, an 11% slower tip. The default spacing is `h = 125 km` (see Starting values),
     so the starting value is `ℓ_tip = 250 km`. The D1 propagation check measured the half-density
-    speed at 0.58, 0.83 and 0.94 of the default speed for `ℓ_tip` of 60, 125 and 250 km.
+    speed at 0.56, 0.78, 0.89 and 0.95 of the default speed for `ℓ_tip` of 60, 125, 250 and 500 km.
   - D1's propagation check measures start-up and steady speed numerically at both densities
     before the search (Diagnosis gates).
 - **Width.** Cells within `w_i / 2` of line cell `i` strain at its rate (the largest rate among
@@ -384,7 +384,7 @@ sub-steps:
 - The count is bounded: every rate is at most `ε̇_0 (r_max - 1)^n`, so the `Δε_max` limit allows at
   most `ε̇_0 (r_max - 1)^n / Δε_max` sub-steps per Myr, 36 at the starting values and 135 at the top
   of D1's `ε̇_0` range, plus at most one stop per line cell reaching `ε_cand`. The D1 integration check
-  measured at most 37 sub-steps per 1 Myr step at the starting values (139 for a 5 Myr step). A part that would
+  measured at most 36 sub-steps per 1 Myr step at the starting values (103 for a 5 Myr step). A part that would
   exceed `K_fail = 4096` sub-steps stops the run with an error, which can happen only through
   a defect. D3 reports the sub-step counts.
 
@@ -398,8 +398,8 @@ default spacing `h = 125 km` (`x = 0.5`):
   band and reaches `ε_break` in 25 Myr without softening.
 - The nucleus reaches `ε_cand` after 1.25 Myr, and the first cell ahead after 2.1 Myr. Pre-strain
   then builds up, and within a few cells the advance settles at `T = 0.81 Myr` per cell, or
-  154 km/Myr. D1's propagation check measured 154 km/Myr with `Δε_max = 0.005` and 125 km/Myr with `Δε_max = 0.05` (the sub-step
-  limit slows the tip; the amended integrator below recovers the law).
+  154 km/Myr. D1's propagation check measured 154.3 km/Myr with the amended integrator (the sub-step
+  limit alone, without the crossing stop, had slowed the tip to 125 km/Myr).
 - Two tips cross a 5,000 km line in about 18 Myr at this constant rate, sooner as `Λ` rises. With
   `ℓ_tip = 125 km` (`x = 1`) the same numbers are 58 km/Myr, 2.15 Myr per cell and about 45 Myr.
 
@@ -843,12 +843,13 @@ integration and propagation checks ([`analysis/issue888/`](../analysis/issue888/
 [PR #890](https://github.com/adubey/mantle-bloom/pull/890)) found:
 
 - **The integrator as written fails the integration check.** At the starting rate, steps of 0.5
-  to 5 Myr differ from the 0.01 Myr reference by 0.40 to 0.82 in strain (limit 0.05). The error is
-  first-order: a line cell reaching `ε_cand` changes its neighbours' rate only at the next
-  sub-step, and `N_cap` follows thinning only at the next step. Stopping sub-steps at `ε_cand`
-  crossings gives 0.11 to 0.42; also letting the line cells' `N_cap` follow their thinning inside
-  the sub-steps gives 0.079 to 0.089; also `Δε_max = 0.02` gives 0.035 to 0.038 (at most 37
-  sub-steps per 1 Myr step), which passes every criterion.
+  to 5 Myr differ from the 0.01 Myr reference by 0.29 to 0.41 in strain (limit 0.05; 0.40 to 0.82
+  at `ℓ_tip = 125 km`). The error is first-order: a line cell reaching `ε_cand` changes its
+  neighbours' rate only at the next sub-step, and `N_cap` follows thinning only at the next step.
+  Stopping sub-steps at `ε_cand` crossings gives 0.10 to 0.30; also letting the line cells'
+  `N_cap` follow their thinning inside the sub-steps gives 0.068 to 0.078; also `Δε_max = 0.02`
+  gives 0.035 (at most 36 sub-steps per 1 Myr step, 103 for a 5 Myr step), which passes every
+  criterion.
 - **The default cell spacing is 125 km, not 62.5 km.** The band at `w_0 = 125 km` is one cell
   wide at default density, the softening disk holds only the cell itself, and the tip's mesh
   factor is 0.58 at `ℓ_tip = 125 km` (not 0.77). With `ℓ_tip = 250 km` the mesh factor, the
