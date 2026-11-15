@@ -356,6 +356,24 @@ def check_split_masks():
     assert rl.split_masks(graph, areas, index[:, 2], replace(P, a_min=0.05))[0] is not None
 
 
+def check_split_islands_and_deep_line():
+    """Isolated cells of the plate (islands) are left out of the stray and connectivity tests and join the nearest daughter; a line
+    three cells thick (its middle cells touch no daughter) still gives two connected daughters."""
+    nx, ny = 20, 10
+    graph = lattice(nx, ny)
+    n = nx * ny
+    index = np.arange(n).reshape(ny, nx)
+    coo = graph.tocoo()
+    padded = csr_matrix((coo.data, (coo.row, coo.col)), shape=(n + 1, n + 1))  # one extra cell with no edges
+    areas = np.ones(n + 1)
+    points = np.column_stack([np.arange(n + 1) % nx, np.arange(n + 1) // nx, np.zeros(n + 1)]).astype(float)
+    points[n] = [2.0, 5.0, 0.0]  # next to the left half
+    thick = index[:, 9:12].ravel()
+    mask, why = rl.split_masks(padded, areas, thick, P, points=points)
+    assert mask is not None, why
+    assert mask[n] == mask[index[5, 2]] and connected(padded[:n, :n], mask[:n]) and connected(padded[:n, :n], ~mask[:n])
+
+
 def connected(graph, mask) -> bool:
     from scipy.sparse.csgraph import connected_components
 
@@ -558,7 +576,7 @@ def check_broken_line_splits_and_f_break(seed):
 CHECKS = [check_strength_bounds, check_softening_monotone, check_healing, check_no_strain_off_band_and_latch, check_plume_expiry,
           check_flank_conservation_and_held, check_held_band_never_strains, check_section_load_branches, check_substep_bound_and_kfail,
           check_ligament_normal_load, check_directional_sign, check_section_pull_manufactured, check_line_placement, check_path_lengths,
-          check_split_masks, check_tip_speed_against_law, check_capacity_and_disk_kernels]
+          check_split_masks, check_split_islands_and_deep_line, check_tip_speed_against_law, check_capacity_and_disk_kernels]
 PLATE_CHECKS = [check_remap_without_healing, check_reset_on_eruption, check_margin_insertion_share,
                 check_latch_no_eruption_and_applied_strain, check_damage_runs_for_every_plate, check_broken_line_splits_and_f_break]
 

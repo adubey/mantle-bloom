@@ -380,18 +380,28 @@ def _components_without(graph: csr_matrix, removed: np.ndarray):
     return count, full
 
 
-def split_masks(graph: csr_matrix, areas: np.ndarray, chain: np.ndarray, p: Params, tie_break=None):
+def split_masks(graph: csr_matrix, areas: np.ndarray, chain: np.ndarray, p: Params, tie_break=None, points: np.ndarray | None = None):
     """Step 6's split. Remove the line, take the two largest remaining components as the daughters, give each line
-    cell to the daughter it shares the most edges with (ties through ``tie_break(side, cell)``, default side 0), give
+    cell to the daughter it shares the most edges with (in rounds, so a cell with no labelled neighbour waits for one; ties through ``tie_break(side, cell)``, default side 0), give
     each other component of at most ``a_stray`` of the area to the daughter it shares the most edges with, and
     require both daughters connected and the smaller at least ``a_min`` of the area. Returns (mask of side A, None) or
-    (None, reason)."""
+    (None, reason).
+
+    Reading of the RFC (flagged in #888): cells that were already cut off from the plate's main body before the line
+    (isolated cells in the plate's own adjacency, 5 of 9 invalid lines on one development world) are islands, not
+    pieces made by the line. They are left out of the stray and connectivity tests and go to the daughter of their
+    nearest cell (by ``points``; side 0 without them)."""
     n = graph.shape[0]
+    whole, whole_labels = connected_components(graph, directed=False)
+    body = whole_labels == int(np.argmax(np.bincount(whole_labels))) if whole > 1 else np.ones(n, bool)
+    islands = ~body
     count, labels = _components_without(graph, chain)
-    if count < 2:
+    labels = np.where(islands, -1, labels)
+    live = np.unique(labels[labels >= 0])
+    if len(live) < 2:
         return None, "no_separation"
     sizes = np.bincount(labels[labels >= 0], weights=areas[labels >= 0], minlength=count)
-    order = np.argsort(-sizes)
+    order = [c for c in np.argsort(-sizes) if c in set(live.tolist())]
     main = order[:2]
     side = np.full(n, -1)
     for k, comp in enumerate(main):
@@ -401,10 +411,19 @@ def split_masks(graph: csr_matrix, areas: np.ndarray, chain: np.ndarray, p: Para
     for comp in order[2:]:
         if sizes[comp] > p.a_stray * total:
             return None, "stray_too_large"
-    for cell in chain:
-        row = pattern.indices[pattern.indptr[cell]:pattern.indptr[cell + 1]]
-        votes = np.bincount(side[row][side[row] >= 0], minlength=2)
-        side[cell] = int(np.argmax(votes)) if votes[0] != votes[1] else (tie_break(side, cell) if tie_break else 0)
+    waiting = list(chain)  # line cells in rounds: a cell with no labelled neighbour yet waits, so each side stays connected
+    while waiting:
+        assigned = {}
+        for cell in waiting:
+            row = pattern.indices[pattern.indptr[cell]:pattern.indptr[cell + 1]]
+            votes = np.bincount(side[row][side[row] >= 0], minlength=2)
+            if votes.sum():
+                assigned[cell] = int(np.argmax(votes)) if votes[0] != votes[1] else (tie_break(side, cell) if tie_break else 0)
+        if not assigned:
+            return None, "daughter_disconnected"
+        for cell, label in assigned.items():
+            side[cell] = label
+        waiting = [cell for cell in waiting if cell not in assigned]
     for comp in order[2:]:
         members = np.flatnonzero(labels == comp)
         votes = np.zeros(2)
@@ -412,8 +431,15 @@ def split_masks(graph: csr_matrix, areas: np.ndarray, chain: np.ndarray, p: Para
             row = pattern.indices[pattern.indptr[cell]:pattern.indptr[cell + 1]]
             votes += np.bincount(side[row][side[row] >= 0], minlength=2)
         side[members] = int(np.argmax(votes)) if votes[0] != votes[1] else 0
+    if islands.any():
+        placed = np.flatnonzero(side >= 0)
+        if points is not None and len(placed):
+            nearest = placed[cKDTree(points[placed]).query(points[islands])[1]]
+            side[islands] = side[nearest]
+        else:
+            side[islands] = 0
     mask = side == 0
-    for part in (mask, ~mask):
+    for part in (mask & ~islands, ~mask & ~islands):
         if not part.any() or connected_components(graph[part][:, part], directed=False)[0] != 1:
             return None, "daughter_disconnected"
     if min(areas[mask].sum(), areas[~mask].sum()) < p.a_min * total:

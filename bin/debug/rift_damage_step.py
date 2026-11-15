@@ -256,7 +256,7 @@ def plate_line(world, plate, p: Params | None = None) -> dict:
     if line is None:
         return {"plate": int(plate.plate_id), "cells": len(prep.points), "line": False, "corridors": prep.candidates}
     chain, geometry = line.chain, line.geometry
-    mask, why = rl.split_masks(prep.graph, prep.areas, chain, p)
+    mask, why = rl.split_masks(prep.graph, prep.areas, chain, p, points=prep.points)
     craton = plate.collect("craton_crust_m") > 0.0
     oceanic = ~prep.continental
     share = lambda flag: float(geometry.ds[flag[chain]].sum() / max(geometry.ds.sum(), 1e-9))  # noqa: E731
@@ -470,7 +470,7 @@ def breakthrough(world, plate, state: Mechanism):
         return None
     state.counters["break_tests"] += 1
     path = step.line.chain
-    mask_a, why = rl.split_masks(step.graph, step.areas, path, p, _tie_side_factory(world, step))
+    mask_a, why = rl.split_masks(step.graph, step.areas, path, p, _tie_side_factory(world, step), step.points)
     if mask_a is None:
         state.counters["split_rejected"] += 1
         reasons = state.counters["rejected_because"]
