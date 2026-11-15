@@ -67,7 +67,7 @@ class Params:
     n_plume: float = 0.5e12  # N/m
     w0_m: float = 125e3
     lam_grow: float = 0.3
-    l_tip_m: float = 125e3
+    l_tip_m: float = 250e3
     r_max: float = 10.0
     a_min: float = 0.15
     a_stray: float = 0.01
@@ -79,10 +79,9 @@ class Params:
     t_fail_yr: float = 5e6
     flank_rows: int = 2
     k_fail: int = 4096
-    d_eps_max: float = 0.05
-    latched_leaves_s: bool = False  # amendment under test: a line cell at its latch strain leaves S inside the step
-    live_ncap: bool = False  # amendment under test: N_cap of the line cells follows their thinning inside the sub-steps
-    crossing_stops: bool = False  # amendment under test in the integration check: end a sub-step when a line cell reaches eps_cand
+    d_eps_max: float = 0.02
+    live_ncap: bool = True  # the line cells' N_cap follows their thinning inside the sub-steps (RFC revision 2026-11-15)
+    crossing_stops: bool = True  # a sub-step ends when a line cell reaches eps_cand (RFC revision 2026-11-15)
     oceanic_latch_on_break_only: bool = False  # the predeclared oceanic fallback
     oceanic_k_cap_factor: float = 1.0
 

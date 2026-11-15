@@ -332,8 +332,7 @@ def advance_rift(prob: LineProblem, eps: np.ndarray, warm: np.ndarray, years: fl
             raise RuntimeError(f"rift integration needed more than K_fail = {p.k_fail} sub-steps")
         n_eff, load, plume_on = line_state(prob, eps, warm, t, p)
         pull = float(np.sum(load * prob.ds))
-        intact = prob.intact & (eps[chain] < prob.latch[chain] - 1e-9) if p.latched_leaves_s else prob.intact
-        strength = float(np.sum((n_eff * prob.ds)[intact]))
+        strength = float(np.sum((n_eff * prob.ds)[prob.intact]))
         lam, is_open = section_load(pull, strength, p)
         ratio = growth_ratio(lam, is_open, p) if pull > 0.0 else 0.0
         amplitude = fixed_amplitude if fixed_amplitude is not None else p.eps_dot0 * max(0.0, ratio - 1.0) ** p.n

@@ -11,10 +11,10 @@ common output time (every 10 Myr), accumulated ``rift_strain`` on the band is wi
 sets differ by at most one cell at each tip, and the split time is within one coarse step of the reference.
 
 *Propagation check.* A straight line at constant ``Λ`` (the amplitude ``A`` fixed at ``ε̇_0``, i.e. ``Λ = 2 Λ_grow``)
-is run at the default and at half node density (spacing ``h`` and ``√2 h``) for ``ℓ_tip`` of 60, 125 and 250 km.
+is run at the default and at half node density (spacing ``h`` and ``√2 h``) for ``ℓ_tip`` of 60, 125, 250 and 500 km.
 Nucleation time, first advance and steady tip speed are measured and set against the RFC's discrete law
 (``ε_cand / A``, ``ε_cand e^x / A``, ``v = (A ℓ_tip / ε_cand) x / (e^x - 1)`` with ``x = h / ℓ_tip``). It is run
-with ``Δε_max`` 0.05 (the RFC's value) and 0.005 to separate the law from the sub-step resolution. Pass when the
+with ``Δε_max`` at the RFC's value (0.02) and 0.005 to separate the law from the sub-step resolution. Pass when the
 measured steady speed is within 20% of the law.
 """
 
@@ -229,20 +229,20 @@ def propagation(h_m: float, l_tip_m: float, d_eps_max: float, p: Params, nx: int
 def propagation_check(p: Params) -> dict:
     rows = []
     for density, h in (("default", 125e3), ("half", 125e3 * np.sqrt(2.0))):
-        for l_tip in (60e3, 125e3, 250e3):
-            for d_max in (0.05, 0.005):
+        for l_tip in (60e3, 125e3, 250e3, 500e3):
+            for d_max in (p.d_eps_max, 0.005):
                 row = propagation(h, l_tip, d_max, p)
                 rows.append({"density": density, **row})
                 print(json.dumps(rows[-1]), flush=True)
     by = {(r["density"], r["l_tip_km"], r["d_eps_max"]): r for r in rows}
     # the falsification test: half-density speed differs from the default's by more than 25% at every tested l_tip
     grid = {}
-    for l_tip in (60.0, 125.0, 250.0):
-        a, b = by[("default", l_tip, 0.05)]["speed_km_per_myr"], by[("half", l_tip, 0.05)]["speed_km_per_myr"]
+    for l_tip in (60.0, 125.0, 250.0, 500.0):
+        a, b = by[("default", l_tip, p.d_eps_max)]["speed_km_per_myr"], by[("half", l_tip, p.d_eps_max)]["speed_km_per_myr"]
         grid[str(l_tip)] = None if a is None or b is None else float(b / a)
     return {"rows": rows, "half_over_default_speed": grid,
             "grid_artifact": all(v is not None and abs(v - 1.0) > 0.25 for v in grid.values()),
-            "pass": all(r["within_20pct"] for r in rows if r["d_eps_max"] == 0.05)}
+            "pass": all(r["within_20pct"] for r in rows if r["d_eps_max"] == p.d_eps_max)}
 
 
 def summarize(check: dict) -> str:
@@ -262,10 +262,10 @@ def main() -> None:
     result = {"params": {k: v for k, v in p.__dict__.items()}, "cell_spacing_km_default": 125.0}
     if args.only != "propagation":
         result["integration"] = {}
-        for name, q in (("rfc", p), ("crossing_stops", replace(p, crossing_stops=True)),
-                        ("live_ncap+crossing_stops", replace(p, live_ncap=True, crossing_stops=True)),
-                        ("live_ncap+crossing_stops+d_eps_max_0.02", replace(p, live_ncap=True, crossing_stops=True, d_eps_max=0.02)),
-                        ("live_ncap+crossing_stops+d_eps_max_0.01", replace(p, live_ncap=True, crossing_stops=True, d_eps_max=0.01))):
+        as_written = replace(p, crossing_stops=False, live_ncap=False, d_eps_max=0.05)
+        for name, q in (("rfc_as_written", as_written), ("crossing_stops", replace(as_written, crossing_stops=True)),
+                        ("crossing_stops+live_ncap", replace(as_written, crossing_stops=True, live_ncap=True)),
+                        ("amended_d_eps_max_0.02", p), ("amended_d_eps_max_0.01", replace(p, d_eps_max=0.01))):
             result["integration"][name] = integration_check(q)
             print(name, summarize(result["integration"][name]), flush=True)
     if args.only != "integration":

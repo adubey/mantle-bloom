@@ -7,8 +7,8 @@ run: the RFC requires the three checks below to pass first. Development seeds on
 
 | Check | Command | Result |
 |---|---|---|
-| Propagation | `check_rift_line_d1.py --only propagation` | **Pass.** Steady tip speed within 20% of the discrete law at all 6 settings (default and half density, tip length 60/125/250 km). Within 2% at `Δε_max` 0.005 |
-| Integration | `check_rift_line_d1.py --only integration` | **Fails as specified** (strain error 0.40–0.82 against 0.05). Passes with three amendments, see below |
+| Propagation | `check_rift_line_d1.py --only propagation` | **Pass.** With the amended integrator the steady tip speed is within 2% of the discrete law at all 8 settings (default and half density, tip length 60/125/250/500 km) |
+| Integration | `check_rift_line_d1.py --only integration` | **Fails as specified** (strain error 0.29–0.41 against 0.05). **Passes with the amended integrator** (0.035), see below |
 | Line (20 worlds, 0 and 50 Myr) | `check_rift_lines_world_d1.py` | **Fails the validity part:** 66% of eligible plates give a valid split (need 90%). Craton part passes (89% of plates with craton) |
 
 Compact results: `integration-propagation.json`, `line-check-summary.json`. Per-plate rows and
@@ -20,27 +20,28 @@ The RFC says the default cell spacing is 62.5 km. It is 125 km (`line_spacing_ra
 `w_0`. Consequences at default density: the band is one cell (the line); the non-local softening
 disk (radius `w_0/2`) holds only the cell itself; the tip mesh factor is 0.58 (`x = 1` at
 `ℓ_tip = 125 km`), not 0.77. With `ℓ_tip = 125 km` the steady speed is 58 km/Myr, not 77, and two
-tips cross a 5,000 km line in about 45 Myr, not 34. Half-density tip speed relative to default:
-0.58, 0.83, 0.94 for `ℓ_tip` 60, 125, 250 km.
+tips cross a 5,000 km line in about 45 Myr, not 34. With `ℓ_tip = 250 km` (now the starting value) the
+speed is 154 km/Myr, 18 Myr to cross. Half-density tip speed relative to default: 0.56, 0.78, 0.89, 0.95
+for `ℓ_tip` 60, 125, 250, 500 km.
 
 ## Integration check
 
-Manufactured plate, fixed pull, straight line, steps 0.01 (reference), 0.5, 1, 2, 5 Myr. The RFC
-integrator (frozen `N_cap` per step, sub-steps of `Δε_max = 0.05`) is first-order in the
-sub-step, because a line cell reaching `ε_cand` changes its neighbours' rate only at the next
-sub-step, and `N_cap` follows thinning only at the next step. Worst strain error by variant at
-the starting rate:
+Manufactured plate, fixed pull, straight line, steps 0.01 (reference), 0.5, 1, 2, 5 Myr, `ℓ_tip = 250 km`.
+The integrator as written (frozen `N_cap` per step, sub-steps of `Δε_max = 0.05`) is first-order,
+because a line cell reaching `ε_cand` changes its neighbours' rate only at the next sub-step, and
+`N_cap` follows thinning only at the next step. Worst strain error by variant at the starting rate:
 
 | Variant | 0.5 Myr | 1 | 2 | 5 |
 |---|---:|---:|---:|---:|
-| RFC as written | 0.40 | 0.44 | 0.55 | 0.82 |
-| + stop sub-steps at `ε_cand` crossings | 0.11 | 0.17 | 0.26 | 0.42 |
-| + `N_cap` of line cells follows thinning in the sub-steps | 0.079 | 0.084 | 0.088 | 0.089 |
-| + `Δε_max = 0.02` | 0.035 | 0.036 | 0.038 | 0.038 |
+| RFC as written | 0.29 | 0.34 | 0.36 | 0.41 |
+| + stop sub-steps at `ε_cand` crossings | 0.10 | 0.14 | 0.20 | 0.30 |
+| + `N_cap` of line cells follows thinning in the sub-steps | 0.068 | 0.073 | 0.076 | 0.078 |
+| + `Δε_max = 0.02` (the amended integrator, now the default) | 0.035 | 0.035 | 0.035 | 0.036 |
 
-The last variant passes every criterion (strain within 0.05, broken sets within one cell per tip,
-split time within one coarse step) with at most 37 sub-steps per 1 Myr step at the starting rate
-(139 at 5 Myr). The remaining error depends on `Δε_max`, not on the step.
+The amended integrator passes every criterion (strain within 0.05, broken sets within one cell per
+tip, split time within one coarse step), with at most 36 sub-steps per 1 Myr step at the starting
+rate (103 at 5 Myr). The remaining error depends on `Δε_max`, not on the step. The amendments are
+proposed in the RFC PR for #888.
 
 ## Line check
 
