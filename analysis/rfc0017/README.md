@@ -226,8 +226,8 @@ but not a native vertically integrated vapour flux. The planned same-time 2000 E
 sample instead integrates q·u and q·v over its 13 available pressure levels, excludes
 below-ground levels and approximates the unobserved top and near-surface layers. It will
 also integrate q alone and compare the result against ERA5's total-column vapour to
-show the effect of that vertical approximation. A 12-month sample of 48-hour windows
-is not a 30-year climatology and cannot by itself establish a precise universal
+show the effect of that vertical approximation. The 12 48-hour windows straddle the start of each month in 2000; the January
+window begins on 1999-12-31. This sample is not a 30-year climatology and cannot by itself establish a precise universal
 transport multiplier or mixing depth. The raw pressure-level probe is queued until
 compute capacity is available.
 
