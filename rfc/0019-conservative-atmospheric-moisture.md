@@ -1,8 +1,8 @@
 # RFC 0019: Conserve atmospheric moisture in diagnostic rain and transport
 
-**Status:** Draft
+**Status:** Accepted (owner confirmation 2026-11-14)
 **Date:** 2026-11-03
-**Related:** [#771](https://github.com/adubey/mantle-bloom/issues/771), RFC 0015, RFC 0016; issues #522, #526, #530, #358
+**Related:** [tracking #898](https://github.com/adubey/mantle-bloom/issues/898), [#771](https://github.com/adubey/mantle-bloom/issues/771), RFC 0015, RFC 0016; issues #522, #526, #530, #358
 
 ## Problem
 
@@ -96,6 +96,7 @@ Use windows A, D, and E and the second, colder source world listed in #771 for d
 Run these only after the project owner accepts this Draft RFC. Record scripts, source commit, input hashes, outputs, and decisions in `analysis/rfc0017/README.md`; keep saves and full outputs in private captures.
 
 1. **G0 — Reproduce and inventory.** On the exact #771 source worlds/checkpoints, reproduce current `measure_climate_fields.py` outputs and the RFC 0016 G1b result where its inputs and pinned code permit. Trace every humidity, rain, evaporation, and runoff writer from climate through hydrology, vegetation, ice, and RFC 0016. Establish area-weighted source/sink totals by ocean, lake/river, and vegetation, and verify the reported 38–51% land-rain rise. If it does not reproduce, stop and revise the premise before choosing parameters.
+   **G0 result, 2026-11-14:** The pinned G1b rain increases reproduce on the converted checkpoints, and the current-source inventory is recorded in [the G0 report](../analysis/rfc0017/README.md#g0-assessment). Exact legacy bytes, one unmodified climate snapshot, and physical atmospheric source/closure totals remain unavailable; the report does not treat those gaps as a passed gate.
 2. **G1 — Literature and unit screen.** Verify reference equations and units from the papers, obtain ERA5 column water, surface humidity, surface wind, vertically integrated vapour transport and precipitation at a documented period/resolution, and compare them on the same grid. Select the mixing-depth and wind-flux mapping ranges. If ERA5 cannot distinguish them, retain the ranges as calibration uncertainties; do not present them as observed constants.
 3. **G2 — Conservative offline prototype.** Implement only a diagnostic script or isolated prototype first. On analytic source/transport cases, test closed-sphere global closure, local availability, source attribution, orographic removal, zero sources, cap behavior, pole/seam handling, and climate-density convergence. For option B, verify that transitions follow local arrows and test convergence, divergence, calm cells, closed loops with rainout, and closed classes without a sink. Compare option A with option B for runtime and closure. If neither can close to `1e-8` relative to total source in double precision and remain positive, revise the discretization before production code.
 4. **G3 — Climate impact and runtime.** After owner review of G2, run climate-only comparisons on the registered windows and held-out saves with both wind modes and climate densities 1 and 4. Report area-weighted ocean/land rain shares, latitude-band means, Köppen shares, precipitation rel-RMS to current source, surface-source amounts, wind transport, per-update closure, and median step-time cost. If held-out acceptance thresholds cannot be met without violating closure or exceeding the runtime budget, return to the RFC for a design choice before implementation.
