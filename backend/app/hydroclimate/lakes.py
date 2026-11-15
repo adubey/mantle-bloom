@@ -856,8 +856,12 @@ def _integrate_body_volume(available, members, cap_level, dry_level, dt_step, ev
         candidate = level - residual / slope if slope > 0.0 and iteration < _NEWTON_ITERATIONS else np.nan
         level = candidate if low < candidate < high else 0.5 * (low + high)
         volume, evaporated, slope, wet_area = budget(level)
-    # Book what the converged level leaves over as loss, so storage plus loss is exactly the
-    # water the body had (#905). It is at most the residual left by the tolerance above.
+    # Book what the converged level leaves over as loss, so storage plus loss is the water the
+    # body had (#905). That residual is at most the larger of the storage tolerance and what
+    # the float floor on the level leaves. A body that stops on the floor (shallow, high above
+    # sea level) can store slightly more than `available`, ~1e-4 m^3 at 5000 m; its loss is
+    # then clamped to zero. In that regime the 1000x margin over the saddle test isn't
+    # guaranteed, and `_first_visit`'s repeat-state backstop is what keeps a flicker bounded.
     return volume, min(max(available - volume, 0.0), available), 0.0, level
 
 
@@ -1225,7 +1229,9 @@ def _settle_prognostic_slice(
         _release_broken_cycles(accounting, next_bodies)
         changed = {id(body) for body in next_bodies} != set(body_by_id)
         if changed and not accounting.deferred:
-            changed = not _first_visit(seen_states, next_bodies, refreshed, depth, accounting)
+            changed = not _first_visit(
+                seen_states, next_bodies, refreshed, depth, accounting, routed_surplus_sources,
+            )
         if not changed and not accounting.deferred and accounting.cycle_surplus:
             owners, _ = _body_leaf_mapping(next_bodies, leaf_of_node)
             _reroute_final_surplus(
@@ -1244,13 +1250,17 @@ def _settle_prognostic_slice(
     )
 
 
-def _first_visit(seen_states, next_bodies, refreshed, depth, accounting):
+def _first_visit(seen_states, next_bodies, refreshed, depth, accounting, routed_surplus_sources):
     """Record this flush state; False when an earlier pass of the slice ended in it exactly.
 
     With no transfer in flight, a pass is a deterministic function of this state, so a repeat
     can only cycle until the pass bound. That is a body alternating between its merged and
     child forms at its saddle, each within the merge test of the other (#905). Either form
     holds the same water and has booked its losses, so the slice ends on the current one.
+    The state is everything a later pass reads: depths and charged losses, the active and
+    refreshed bodies, held surplus, the capped (spilling) bodies, owner handoffs and the
+    sources already rerouted. A body's `current_water_elevation` is not in it, because a
+    pass only writes that, after solving the body from depth.
     """
     # A digest, not the arrays: a long merge ladder records one state per pass.
     digest = hashlib.blake2b(digest_size=16)
@@ -1261,6 +1271,12 @@ def _first_visit(seen_states, next_bodies, refreshed, depth, accounting):
         frozenset(refreshed),
         digest.digest(),
         tuple(sorted((leaf_id, held.volume) for leaf_id, held in accounting.cycle_surplus.items())),
+        frozenset(accounting.final_spilling_ids),
+        frozenset(
+            (leaf_id, frozenset(sources)) for leaf_id, sources in accounting.pending_owner_handoffs.items()
+        ),
+        frozenset(accounting.completed_owner_handoffs),
+        frozenset(routed_surplus_sources),
     )
     if state in seen_states:
         _logger.warning(

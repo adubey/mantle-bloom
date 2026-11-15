@@ -1789,12 +1789,14 @@ def test_reroute_reuses_a_parent_owner_with_room_but_not_a_full_one(owner_full):
         assert not accounting.cycle_surplus
 
 
-def _saddle_pair(relief_m=1.0, years=1000.0, evaporation_m_per_yr=1.0, supply_share=1.0 - 1e-10):
-    """The `_MERGE_ELEVATION` pair, fed `supply_share` of what holds the merged lake at its saddle
-    over one slice. Most of that supply is the slice's evaporation, not storage (#905)."""
-    area = np.full(len(_MERGE_ELEVATION), 1.0e10)
-    hyps = lakes.CellHypsometry(_MERGE_ELEVATION, area, np.full(len(_MERGE_ELEVATION), relief_m), 1.0e10)
-    forest = lakes.build_lake_hierarchy(_MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS)
+def _saddle_pair(relief_m=1.0, years=1000.0, evaporation_m_per_yr=1.0, supply_share=1.0 - 1e-10, raise_m=0.0):
+    """The `_MERGE_ELEVATION` pair, its land raised `raise_m`, fed `supply_share` of what holds the
+    merged lake at its saddle over one slice. Most of that supply is the slice's evaporation, not
+    storage (#905). Returns the elevation too."""
+    elevation = np.where(_MERGE_IS_OCEAN, _MERGE_ELEVATION, _MERGE_ELEVATION + raise_m)
+    area = np.full(len(elevation), 1.0e10)
+    hyps = lakes.CellHypsometry(elevation, area, np.full(len(elevation), relief_m), 1.0e10)
+    forest = lakes.build_lake_hierarchy(elevation, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS)
     parent = forest[0]
     evaporation = np.full(len(_MERGE_ELEVATION), evaporation_m_per_yr)
     wet = hyps.wet_fraction(parent.min_depth, parent.members)
@@ -1807,17 +1809,19 @@ def _saddle_pair(relief_m=1.0, years=1000.0, evaporation_m_per_yr=1.0, supply_sh
     supply[0] = 0.1 * need * supply_share / years
     supply[3] = 0.9 * need * supply_share / years
     climate = lakes.LakeClimate(np.zeros(len(_MERGE_ELEVATION)), evaporation, supply)
-    return forest, hyps, climate, years
+    return forest, hyps, climate, years, elevation
 
 
-def test_a_pair_fed_to_its_saddle_settles_its_slice():
+@pytest.mark.parametrize("raise_m", [0.0, 5000.0])
+def test_a_pair_fed_to_its_saddle_settles_its_slice(raise_m):
     # #905: as children the pair held its saddle storage within the merge test; solved as the
     # merged body, the same water landed outside it. The flush alternated merge and split
-    # until the pass bound raised and stopped a 0.1 Myr animation.
-    forest, hyps, climate, years = _saddle_pair()
+    # until the pass bound raised and stopped a 0.1 Myr animation. At 5000 m a level ulp is
+    # 1e-12 m, the regime where the level's float floor, not the storage tolerance, stops.
+    forest, hyps, climate, years, elevation = _saddle_pair(raise_m=raise_m)
 
     result = lakes.solve_lakes_prognostic(
-        forest, _MERGE_ELEVATION, np.zeros(len(_MERGE_ELEVATION)), years, climate, hyps,
+        forest, elevation, np.zeros(len(elevation)), years, climate, hyps,
         substeps=1, is_ocean=_MERGE_IS_OCEAN,
     )
 
@@ -1829,7 +1833,7 @@ def test_a_pair_fed_to_its_saddle_settles_its_slice():
 def test_level_solve_converges_on_storage_and_closes_the_water_it_was_given():
     # #905: over a long slice the water available is mostly the slice's evaporation. The level
     # must still be exact against the stored volume, and storage plus loss must be all of it.
-    forest, hyps, climate, years = _saddle_pair()
+    forest, hyps, climate, years, _ = _saddle_pair()
     parent = forest[0]
     members = parent.members
     saddle_storage = hyps.volume(parent.min_depth, members)
@@ -1851,7 +1855,7 @@ def test_level_solve_converges_on_storage_and_closes_the_water_it_was_given():
 def test_a_slice_flickering_between_merged_and_child_forms_settles(monkeypatch):
     # Backstop for #905: a body that keeps alternating between its forms with nothing in
     # flight repeats a state exactly, and the slice ends there instead of raising.
-    forest, hyps, climate, years = _saddle_pair(supply_share=1.0)
+    forest, hyps, climate, years, elevation = _saddle_pair(supply_share=1.0)
     parent = forest[0]
     calls = {"n": 0}
 
@@ -1861,7 +1865,7 @@ def test_a_slice_flickering_between_merged_and_child_forms_settles(monkeypatch):
 
     monkeypatch.setattr(lakes, "_active_bodies", alternating)
     result = lakes.solve_lakes_prognostic(
-        forest, _MERGE_ELEVATION, np.zeros(len(_MERGE_ELEVATION)), years, climate, hyps,
+        forest, elevation, np.zeros(len(elevation)), years, climate, hyps,
         substeps=1, is_ocean=_MERGE_IS_OCEAN,
     )
 

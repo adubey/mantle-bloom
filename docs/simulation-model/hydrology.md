@@ -340,10 +340,15 @@ discharge, channel-width growth, deposition, geology or lake silt.
   is 1e-13 of its stored volume, or its level is within a few float ulps, not until its
   budget residual is small against the water available. Over a long slice the available water
   is mostly the slice's losses, and a tolerance on it lets a body at its saddle pass the test
-  as children but fail it as the merged body (#905). Whatever residual remains is booked as loss, so storage plus loss is
-  the body's available water. As a backstop, a flush pass that ends with no transfers in
-  flight, in a state an earlier pass of the slice ended in (active bodies, depths and
-  charged losses), can only repeat. The slice ends on that state and logs a warning.
+  as children but fail it as the merged body (#905). The residual left over is booked as
+  loss, so storage plus loss is the body's available water. It is at most the larger of the
+  storage tolerance and what the level's float floor leaves. A shallow body far above sea level
+  can stop on that floor holding slightly more than its available water (about 1e-4 m³ at
+  5,000 m), with its loss clamped to zero. There, the tolerance's margin over the saddle test
+  isn't guaranteed. As a backstop, a flush pass that ends with no transfers in flight, in a
+  state an earlier pass of the slice ended in, can only repeat. That state covers active and
+  refreshed bodies, depths and charged losses, held surplus, capped bodies, owner handoffs and
+  rerouted sources. The slice ends on that state and logs a warning.
 - **Flow direction** (`_compute_flow_direction`): among each node's k nearest neighbors
   strictly below its own elevation (a downhill candidate), prefers whichever one already has
   the deepest established channel (`channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`),
