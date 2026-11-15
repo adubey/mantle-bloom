@@ -477,16 +477,17 @@ def check_latch_no_eruption_and_applied_strain(seed):
         _fresh(plate)
         volcano_before = plate.collect("is_volcano").copy()
         hc0, hm0 = plate.collect("crustal_thickness_m").copy(), plate.collect("mantle_lithosphere_thickness_m").copy()
-        for _ in range(6):
+        step_mod.damage_step(w, plate, 1e6, state)
+        one_eps, one_hc = plate.collect("rift_strain"), plate.collect("crustal_thickness_m")
+        donors = one_eps > 0  # after one step no donor has received volume yet: its strain is what thinned its crust
+        assert donors.any() and np.all(one_eps[donors] <= np.log(hc0[donors] / np.maximum(one_hc[donors], 1.0)) + 1e-6)
+        for _ in range(5):
             step_mod.damage_step(w, plate, 1e6, state)
         hc, volcano, broken = plate.collect("crustal_thickness_m"), plate.collect("is_volcano"), plate.collect("rift_broken")
-        eps = plate.collect("rift_strain")
         assert broken.any(), "nothing latched under an overload"
         assert np.array_equal(volcano, volcano_before), "interior thinning ignited a volcano"
         assert hc[broken].min() >= rheology.RIFT_CRITICAL_THICKNESS_M - 1e-6
         assert not np.any(step_mod._is_reference(hc, plate.collect("mantle_lithosphere_thickness_m")) & ~step_mod._is_reference(hc0, hm0) & broken)
-        strained = (eps > 0) & (hc < hc0)  # donors: strain recorded is at most the strain that thinned the crust
-        assert np.all(eps[strained] <= np.log(hc0[strained] / np.maximum(hc[strained], 1.0)) + 1e-6)
     finally:
         state.params = old
         _fresh(plate)
