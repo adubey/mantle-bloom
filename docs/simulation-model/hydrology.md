@@ -826,17 +826,24 @@ since climate.py runs *before* this module each step).
   colder, so B can change sign more than once, and the nearest root preserves Weertman
   (1961) hysteresis (a plateau that is bare stays bare; a covered one keeps its sheet).
 - **End-of-step march** (RFC 0015 D2). Fast ice reaches balance within a step, so each step
-  marches the ice there in fixed 250 yr substeps (`hydrology._march_glacier`, each one an
+  marches the ice there in substeps of 250 yr to 1 kyr (`hydrology._march_glacier`, each one an
   ordinary `step_ice` solve from the current ice). Between substeps the fast inputs are
   recomputed from it: frictional heat (damped: the mean of the last two substeps' heat),
   the mass-balance lapse surface (on the load-equilibrium deflection of the current ice),
   and sea level (re-solved from the current ice debit, with the ocean mask, anchored on
   the march's own current-step mask rather than last step's cache; Earth's forced straits
   stay connected). Grounding and flotation keep the opening bed, a one-step lag on the
-  deflection; only the lapse correction sees the equilibrium target. Settle checks run on
-  non-overlapping substep pairs; when the last two pair-means differ by less than 0.1%
-  three checks in a row the ice has settled and the rest of the step is held, keeping the
-  mean rates (melt, calving, ledger flows) of the last 6 substeps. Held losses can never
+  deflection; only the lapse correction sees the equilibrium target. Two settle tests run
+  side by side, and either ends the march (#842; `settle_test` in the log says which).
+  The pair test runs on non-overlapping substep pairs: when the last two pair-means differ
+  by less than 0.1% three checks in a row the ice has settled and the rest of the step is
+  held, keeping the mean rates (melt, calving, ledger flows) of the last 6 substeps. The
+  trend test, added because pair-means of an exact limit cycle never coincide (#822),
+  compares 30-substep window-mean depth fields. It holds once the change still to come
+  (projected from the ratio of successive changes, and never more than the change times the
+  windows left) is under 0.1%, keeping the last window's mean rates. While the change
+  shrinks it doubles the substep, up to 1 kyr, and it drops back to 250 yr when the change
+  jumps. Held losses can never
   exceed the available ice: the hold scaling clamps to fit, so a sheet that melts away
   holds ~zero loss instead of booking a transient's mean melt. A body of ice that never
   settles marches the whole step. Every step logs substeps, marched/held years,
@@ -844,7 +851,11 @@ since climate.py runs *before* this module each step).
   `ice_sheet.MARCH_LOG`, last 64 entries). Each marched step warns about the depth guard
   at most once, on the summed ledger. A settled march costs ~13-32 ice solves against the
   endpoint solve's one, which is why steps run over the +15% budget on the diagnosis
-  replays. `World.simulate_glacier_march` (`false` in the UI's Controls, off by default
+  replays. The trend test cut the median step time to 0.35-0.98x of the fixed-250 yr march
+  on the diagnosis saves without ice ages (round 3, #842). Ice at 10 Myr differs from the
+  fixed-250 yr march by up to 17% on a world where that march never settles; neither is a
+  converged reference there (#822). Saves replayed with ice ages have no passing evidence
+  (ice ages are out of scope for RFC 0015). `World.simulate_glacier_march` (`false` in the UI's Controls, off by default
   for UI-created worlds) skips the march: the ice is solved once per step and frozen
   there, the same zero-length path the `MARCH_GLACIERS` test knob takes. A world with
   no ice and no snowfall takes the same one-solve fast path automatically (an
@@ -854,10 +865,13 @@ since climate.py runs *before* this module each step).
   profiler, steps of `MARCH_PROFILE_MIN_YEARS` (5 kyr) or more record the march's
   discrete phases -- graph build, ice solves, sea-level re-solves -- as spans;
   shorter marches record none.
-- **March cost options** (#822, experimental, off by default). `ice_sheet.MARCH_COST`
-  (a `MarchCost`, chosen by name from `ice_sheet.MARCH_COST_PRESETS`) selects
-  cheaper marches for comparison. The production default, `d2`, is the march above
-  unchanged. The options compose:
+- **March cost options** (#822; all but the default are experimental). `ice_sheet.MARCH_COST`
+  (a `MarchCost`, chosen by name from `ice_sheet.MARCH_COST_PRESETS`) selects the march.
+  The production default, `trend-1k` (#842), is the march above with the trend settle test
+  and a 1 kyr longest substep. The `d2` preset is the fixed-250 yr march with the pair test
+  only, bit-identical to the march before #842, and is what accuracy and correctness
+  checks select (the replay probe's `--preset d2`, or a test setting `MARCH_COST`). There
+  is no environment variable or UI switch. The options compose:
   - A substep cap (`max_substeps`). After the cap, an unsettled march fills the rest
     of the step with the settled hold (`cap_fill="hold"`, which leaves a still-moving
     sheet's net drift in the ledger residual) or with one backward-Euler substep over
@@ -875,8 +889,9 @@ since climate.py runs *before* this module each step).
     limit cycles that pair means never settle; the hold then averages whole periods.
     `trend` compares 30-substep window-mean depth fields. It holds once the change
     still to come (projected from the ratio of successive changes) is under 0.1%. While
-    the change shrinks it can also double the substep (`trend_grow`, up to 4 kyr), and
-    it drops back to 250 yr when the change jumps.
+    the change shrinks it can also double the substep (`trend_grow`, up to
+    `trend_max_substep_years`: 1 kyr in the default, 4 kyr in `trend-adapt`), and it drops
+    back to 250 yr when the change jumps.
 
   Every march log entry also records `capped`, `max_substep_years`, the sea-level
   re-solve/skip counts, and which test settled it (`settle_test`, with the cycle

@@ -708,10 +708,12 @@ def test_d1_frictional_melt_reads_last_step_heat_inside_the_root():
     assert melts[1] - melts[0] >= melts[2] - melts[1] - 1e-9
 
 
-def test_march_cost_default_is_the_d2_march():
-    # #822: the production default changes nothing; every cost option is opt-in.
+def test_march_cost_default_is_the_trend_1k_march():
+    # #842: the production default is the trend march with a 1 kyr longest substep. The
+    # fixed-250 yr "d2" march stays selectable, and is still the bare MarchCost().
+    assert ice_sheet.MARCH_COST is ice_sheet.march_cost("trend-1k")
+    assert ice_sheet.MARCH_COST.trend and ice_sheet.MARCH_COST.trend_max_substep_years == 1_000.0
     d2 = ice_sheet.MarchCost()
-    assert ice_sheet.MARCH_COST == d2
     assert ice_sheet.march_cost("d2") == d2
     assert d2.max_substeps is None and not d2.adaptive
     assert d2.sea_level_skip_m == 0.0 and not d2.local_dijkstra and d2.dijkstra_limit_m is None
