@@ -46,8 +46,26 @@ proposed in the RFC PR for #888.
 ## Line check
 
 At 0 Myr (277 eligible plates) and 50 Myr (387), production splitter, 1 Myr steps; 0.5 Myr steps on
-three seeds give the same picture. Of 664 plates, 83 have no line (no positive pull peak), 439 give
-a valid split. Rejections among the 581 lines: 89 daughter disconnected after the line cells vote,
-51 stray piece above 1%, 1 daughter under 15%, 1 no separation. Valid lines split off a median 33%
-of the plate (quartiles 25–42%), are 1.30 times the straight distance between their ends, and run
-65% over oceanic crust; median `Λ` is 0.08, against `Λ_grow = 0.3`.
+three seeds (115 plates) give the same picture. Two runs, both with the amended integrator unused
+(no straining):
+
+| | Valid share of lines | Valid share of eligible plates | Craton: line beats chord |
+|---|---:|---:|---:|
+| First run (vote rule, islands counted) | 75.6% | 66.1% | 88.8% |
+| After the fixes below | **91.0%** | 79.7% | 88.8% |
+
+The RFC's pass rule is 90% of lines (plates that have a line) and two thirds on craton, so the
+second run passes both. 83 of 664 eligible plates (12.5%) have no line, because no direction has a
+positive pull peak; the share of all eligible plates is reported alongside.
+
+Fixes to the split (readings of the RFC, in `rift_line.split_masks`): cells isolated in the
+plate's own adjacency (islands) are left out of the stray and connectivity tests and go to the
+nearest daughter; line cells with no labelled neighbour wait for one, so each daughter stays
+connected. The diagnosis (`diagnose_line_placement.py`, 8 worlds) found 5 of 9 invalid lines on one
+world were islands and the breadth-first rule alone rescued 2 of 28 disconnections.
+
+Remaining rejections: 50 of 52 are a stray piece above the 1% limit (median 3.4% of the plate),
+1 no separation, 1 daughter under 15%. At 0.5 Myr steps 93–95% of lines are valid. Valid lines
+split off a median 33% of the plate, are 1.30 times the straight distance between their ends, and
+run 66% over oceanic crust; median `Λ` is 0.08 against `Λ_grow = 0.3` (4% of continental lines
+reach it).

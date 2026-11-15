@@ -13,7 +13,7 @@ shares of the line, ``Λ``, and whether cutting along it gives a valid two-daugh
 ``a_stray`` rules). Writes ``<out>/<seed>-<step>.json`` per world (existing files are kept, so a run resumes) and
 ``summary.json``.
 
-Pass: at least 90% of lines give a valid split, and the line crosses less craton than the straight chord between its
+Pass: at least 90% of lines (plates that have one) give a valid split (the share of all eligible plates is reported too), and the line crosses less craton than the straight chord between its
 ends on at least two thirds of the plates that have craton on the line or on the chord.
 A held-out or reserve seed from ``analysis/issue797/g2-seed-preregistration.json`` is refused.
 """
@@ -120,7 +120,7 @@ def main() -> None:
     both = [r for res in results if res["step_myr"] == 1.0 for key in ("t0", "t_end") for r in res[key]]
     summary["pooled_step1"] = aggregate(both)
     pooled = summary["pooled_step1"]
-    summary["pass"] = {"valid_share": pooled["valid_share_of_eligible"] >= 0.9,
+    summary["pass"] = {"valid_share_of_lines": pooled["valid_share_of_lines"] >= 0.9, "valid_share_of_eligible_plates_reported": pooled["valid_share_of_eligible"],
                        "craton_share": pooled["line_less_craton_share"] is not None and pooled["line_less_craton_share"] >= 2 / 3}
     (args.out / "summary.json").write_text(json.dumps(summary, indent=1, default=float) + "\n")
     print(json.dumps(summary["pooled_step1"], indent=1, default=float))
