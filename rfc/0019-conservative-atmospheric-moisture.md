@@ -1,8 +1,8 @@
 # RFC 0019: Conserve atmospheric moisture in diagnostic rain and transport
 
-**Status:** Draft
+**Status:** Accepted (owner confirmation 2026-11-14)
 **Date:** 2026-11-03
-**Related:** [#771](https://github.com/adubey/mantle-bloom/issues/771), RFC 0015, RFC 0016; issues #522, #526, #530, #358
+**Related:** [tracking #898](https://github.com/adubey/mantle-bloom/issues/898), [#771](https://github.com/adubey/mantle-bloom/issues/771), RFC 0015, RFC 0016; issues #522, #526, #530, #358
 
 ## Problem
 
