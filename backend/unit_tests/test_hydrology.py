@@ -2641,13 +2641,13 @@ def test_march_sea_level_resolve_uses_the_seeded_mask(monkeypatch):
     # ocean, the budget clamps to 0, and the bisection early-returns before any mask
     # call at all.
     calls = []
-    real = eustasy._seeded_connected_mask
+    real = eustasy._seeded_flood_levels
 
-    def spy(elevations, sea_level_m, neighbor_idx, seed):
+    def spy(elevations, neighbor_idx, seed):
         calls.append((len(elevations), len(seed)))
-        return real(elevations, sea_level_m, neighbor_idx, seed)
+        return real(elevations, neighbor_idx, seed)
 
-    monkeypatch.setattr(eustasy, "_seeded_connected_mask", spy)
+    monkeypatch.setattr(eustasy, "_seeded_flood_levels", spy)
     world = generate_world(seed=42, num_plates=2, node_density=0.25, climate_density=0.25, fluid_density=0.25)
     step_world(world, 5_000)
     assert calls, "no re-solve reached the seeded mask"

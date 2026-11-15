@@ -54,6 +54,7 @@ they sum over is entirely the caller's job.
 
 from __future__ import annotations
 
+import heapq
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -201,6 +202,92 @@ def _seeded_connected_mask(
     return _seeded_connected_mask_kernel(neighbor_idx, below, seed_below)
 
 
+@njit(cache=True)
+def _seeded_flood_level_kernel(neighbor_idx: np.ndarray, elevations: np.ndarray, seed: np.ndarray) -> np.ndarray:
+    """Per node, the lowest level `h` at which `_seeded_connected_mask_kernel` would mark it:
+    the minimum over seed nodes and paths from one of the highest elevation on the path, ends
+    included (inf where no seed reaches). A priority flood from every seed at its own
+    elevation, over the same undirected edges the union-find joins (`neighbor_idx` rows are
+    not symmetric, so the reverse edges are added here). NaN elevations are never below any
+    level, so they are never entered."""
+    n = elevations.shape[0]
+    k = neighbor_idx.shape[1]
+    degree = np.zeros(n + 1, dtype=np.int64)
+    for i in range(n):
+        for j in range(k):
+            nb = neighbor_idx[i, j]
+            if nb >= 0:
+                degree[i + 1] += 1
+                degree[nb + 1] += 1
+    indptr = np.cumsum(degree)
+    fill = indptr[:-1].copy()
+    adjacency = np.empty(indptr[n], dtype=np.int64)
+    for i in range(n):
+        for j in range(k):
+            nb = neighbor_idx[i, j]
+            if nb >= 0:
+                adjacency[fill[i]] = nb
+                fill[i] += 1
+                adjacency[fill[nb]] = i
+                fill[nb] += 1
+    level = np.full(n, np.inf)
+    heap = [(0.0, np.int64(0))]
+    heap.pop()
+    for i in range(n):
+        if seed[i] and elevations[i] == elevations[i]:
+            level[i] = elevations[i]
+            heap.append((level[i], np.int64(i)))
+    heapq.heapify(heap)
+    while len(heap) > 0:
+        reached, i = heapq.heappop(heap)
+        if reached > level[i]:
+            continue
+        for e in range(indptr[i], indptr[i + 1]):
+            nb = adjacency[e]
+            z = elevations[nb]
+            if z != z:
+                continue
+            candidate = reached if reached > z else z
+            if candidate < level[nb]:
+                level[nb] = candidate
+                heapq.heappush(heap, (candidate, nb))
+    return level
+
+
+def _seeded_flood_levels(elevations: np.ndarray, neighbor_idx: np.ndarray, seed: np.ndarray) -> np.ndarray:
+    """Every candidate level's `_seeded_connected_mask` at once: the mask at `h` is exactly
+    `levels <= h`. Raising `h` only ever merges nodes into the seed's component, so each node
+    has one level at which it joins, and a bisection can find it once instead of re-running
+    the union-find at every candidate (#147: the glacier march re-solves sea level some 24
+    times a step, about 20 candidates each)."""
+    return _seeded_flood_level_kernel(
+        np.ascontiguousarray(neighbor_idx, dtype=np.int64),
+        np.ascontiguousarray(elevations, dtype=np.float64),
+        np.ascontiguousarray(seed, dtype=np.bool_),
+    )
+
+
+def _seed_anchor(
+    world: "World", elevations: np.ndarray,
+    seed_is_ocean: np.ndarray | None, seed_neighbor_idx: np.ndarray | None,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """The `(neighbor_idx, seed)` pair the connected-ocean mask anchors to, or None when
+    there is none and `_ocean_connected_mask` takes one of its fallbacks: an explicit,
+    aligned pair first, else the hydrology cache's graph and non-empty `is_ocean`."""
+    if (
+        seed_is_ocean is not None and seed_neighbor_idx is not None
+        and len(seed_is_ocean) == len(elevations) and len(seed_neighbor_idx) == len(elevations)
+    ):
+        return np.asarray(seed_neighbor_idx), np.asarray(seed_is_ocean, dtype=bool)
+    hydro = getattr(world, "hydrology_cache", None)
+    if hydro is None or len(hydro.points) != len(elevations):
+        return None
+    seed = getattr(hydro, "is_ocean", None)
+    if seed is None or len(seed) != len(elevations) or not seed.any():
+        return None
+    return hydro.neighbor_idx, seed
+
+
 def _ocean_connected_mask(
     world: "World", elevations: np.ndarray, sea_level_m: float, areas_m2: np.ndarray | None = None,
     *,
@@ -227,28 +314,21 @@ def _ocean_connected_mask(
     march's own current-step ocean mask and graph -- bypasses the cache entirely, so a
     mid-step re-solve never reads last step's ocean or degrades to the blind mask on a
     changed node cloud (#806 review)."""
-    if (
-        seed_is_ocean is not None and seed_neighbor_idx is not None
-        and len(seed_is_ocean) == len(elevations) and len(seed_neighbor_idx) == len(elevations)
-    ):
-        return _seeded_connected_mask(
-            elevations, sea_level_m, np.asarray(seed_neighbor_idx), np.asarray(seed_is_ocean, dtype=bool)
-        )
+    anchor = _seed_anchor(world, elevations, seed_is_ocean, seed_neighbor_idx)
+    if anchor is not None:
+        return _seeded_connected_mask(elevations, sea_level_m, *anchor)
     hydro = getattr(world, "hydrology_cache", None)
     if hydro is None or len(hydro.points) != len(elevations):
         return elevations <= sea_level_m
-    seed = getattr(hydro, "is_ocean", None)
-    if seed is None or len(seed) != len(elevations) or not seed.any():
-        # No seed to anchor to: classify fresh, with the caller's real cell areas when it
-        # has them, so the enclosed-ocean area rule (#758) measures the same bodies as
-        # hydrology's own classification. Without areas it falls back to equal-area cells,
-        # and without a prior ocean there is no hysteresis, so a body within resampling
-        # noise of the threshold can classify differently here than in hydrology -- only
-        # reachable before the first hydrology step, when no budget depends on it yet.
-        return hydrology.connected_ocean_mask(
-            hydro.points, elevations, sea_level_m, hydro.neighbor_idx, areas_m2=areas_m2
-        )
-    return _seeded_connected_mask(elevations, sea_level_m, hydro.neighbor_idx, seed)
+    # No seed to anchor to: classify fresh, with the caller's real cell areas when it
+    # has them, so the enclosed-ocean area rule (#758) measures the same bodies as
+    # hydrology's own classification. Without areas it falls back to equal-area cells,
+    # and without a prior ocean there is no hysteresis, so a body within resampling
+    # noise of the threshold can classify differently here than in hydrology -- only
+    # reachable before the first hydrology step, when no budget depends on it yet.
+    return hydrology.connected_ocean_mask(
+        hydro.points, elevations, sea_level_m, hydro.neighbor_idx, areas_m2=areas_m2
+    )
 
 
 def ocean_water_volume_m3(
@@ -320,14 +400,24 @@ def _solve_sea_level_connected(
     raising it can only ever merge components, never split one -- see `connected_ocean_mask`'s
     own docstring -- so `ocean_water_volume_m3(h)` stays strictly increasing and bisection stays
     valid), which is why this isn't simply `total_water_volume_m3` over one fixed mask."""
-    return _bisect_sea_level(
-        elevations, areas_m2, water_volume_m3,
-        lambda h: ocean_water_volume_m3(
-            world, elevations, areas_m2, h,
-            seed_is_ocean=seed_is_ocean, seed_neighbor_idx=seed_neighbor_idx,
-        ),
-        bracket=bracket,
-    )
+    anchor = _seed_anchor(world, elevations, seed_is_ocean, seed_neighbor_idx)
+    if anchor is None:
+        return _bisect_sea_level(
+            elevations, areas_m2, water_volume_m3,
+            lambda h: ocean_water_volume_m3(world, elevations, areas_m2, h),
+            bracket=bracket,
+        )
+    # Anchored to a seed, every candidate's mask is `levels <= h` for one flood from the
+    # seed (#147), found on the first candidate: a dry budget returns before asking for any.
+    levels: list[np.ndarray] = []
+
+    def volume_at(h: float) -> float:
+        if not levels:
+            levels.append(_seeded_flood_levels(elevations, *anchor))
+        mask = levels[0] <= h
+        return total_water_volume_m3(elevations[mask], areas_m2[mask], h)
+
+    return _bisect_sea_level(elevations, areas_m2, water_volume_m3, volume_at, bracket=bracket)
 
 
 def water_volume_for_sea_level(world: "World", sea_level_m: float) -> float:
