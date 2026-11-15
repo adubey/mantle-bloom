@@ -48,10 +48,15 @@
   - **Freshly generated worlds don't gate, owner's decision of 2026-11-13** (preregistration
     amendment 7). A world at year 0 hasn't brought its ice close to its climate yet, so its
     warm-up noise is reported only. This drops gen30 from the earlier round 3's flip count.
-  - **Ice-age saves don't gate, owner's decision of 2026-11-15** (amendment 9), made after
-    all round 3 results were in. They are reported separately. Round 3 passes with this
-    and fails without it, so the evidence has no passing result on ice-age saves (see the
-    preregistration).
+  - **Ice ages are out of scope for RFC 0015, owner's decision of 2026-11-15** (preregistration
+    amendment 9, widened the same day after Codex's review of #870). No acceptance criterion
+    of this RFC gates on a save replayed with ice ages: the ice-age saves (seeds 374464662
+    and 447276134) are reported separately and don't count toward the diagnosis or
+    held-out sets' gates. The decision was first made for #842's round 3 after all of its
+    results were in. Round 3 passes with it and fails without it, so the evidence has no
+    passing result on ice-age saves (see the preregistration). The ice-age forcing's own
+    behaviour, G0's open ice-age rerun and the ice-age sea-ice cap stay with the issues that
+    already track them.
   - **Impact table and round 3 results:** to be added to this PR before review.
 - **2026-11-03 — proposed by the #765 PR after #741's drop-step ensembles and G1 (#766).**
   - **Old:** D2 solved each body implicitly at the end of the step
@@ -512,12 +517,16 @@ physical m/yr.
 15 settle pairs) the march compares the window-mean depth fields of the last two windows
 (area-weighted L1 change as a fraction of the ice). While that change shrinks by a ratio
 r < 1, the change still to come is projected as D·r/(1−r); otherwise it is D times the
-windows left in the step. When the projection is below 0.1%, the body has settled and the
-rest of the step is held: it keeps the mean rates (melt, calving, ledger flows) of the
-last window, and its ice doesn't change. While the change keeps shrinking, the substep
+windows left in the step. The projection is capped at D times the windows left, since the
+sheet can't move further than that in the time that remains. When the projection is below
+0.1%, the body has settled and the rest of the step is held: it keeps the mean rates (melt,
+calving, ledger flows) of the last window (30 substeps), and its ice doesn't change. The
+pair test of the fixed-250 yr march still runs beside the trend test and either can end the
+march. It settles the body after three settle pairs in a row whose mean change is below
+0.1%, and its hold keeps the mean rates of the last 6 substeps. While the change keeps shrinking, the substep
 doubles up to the 1 kyr limit; a ratio above 1.5 drops it back to 250 yr. A window that
 is a whole number of cycle periods cancels a limit cycle, which is why pair-means (the
-earlier test: 0.1% three times in a row) never settled on the exact limit cycles of
+fixed-250 yr test, kept as above) never settled on the exact limit cycles of
 period 5, 20 or 30 substeps (#822). The small net over the alternation shows up as the
 ledger residual, not as ice. A body that never settles marches the whole step. Every
 step logs substeps, marched years, held years, whether it settled, which test settled it
@@ -842,8 +851,10 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
   - a report-only run of the same save at a period users can pick, 1 Myr, with 0.25 Myr steps,
     so the selectable range is seen at physical rates. It isn't pass/fail: 4 steps per cycle
     sample the forcing coarsely (see Assumptions).
-- a **held-out acceptance set** of ≥ 3 other saves, at least one replayed with ice ages on
-  under the same period rule, never used for gates or knob choices.
+- a **held-out acceptance set** of ≥ 3 other saves, never used for gates or knob choices.
+  (Until the 2026-11-15 revision it included at least one save replayed with ice ages on
+  under the same period rule. Ice ages are now out of scope for this RFC's gates, so the
+  ice-age saves below are reported, not gating.)
 
 **Chosen (2026-10-23, #548).** All six are density 4, at a tilt of 23.5°, with ice ages off
 as saved. Checksums and the survey are in [`analysis/issue548/`](../analysis/issue548/README.md).
@@ -1322,8 +1333,8 @@ The thresholds below were confirmed by the project owner on 2026-10-23.
   supersedes" (a), and listed on the tracking issue.
 - [ ] **G0–G6 run and recorded** in this RFC, with D2's fixes chosen by G0.
 - [ ] **Step robustness:** on each held-out save, ice volume and area at 10 Myr agree within
-  20% between 0.25 Myr and 1 Myr steps (was 10% until the 2026-11-13 revision). Ice-age saves use a period of at least 8
-  of the longest step.
+  20% between 0.25 Myr and 1 Myr steps (was 10% until the 2026-11-13 revision). Saves
+  replayed with ice ages are out of scope for this criterion (2026-11-15 revision).
 - [ ] **No unforced swings:** with the ice-age control at "never", no step-to-step change in
   global ice volume exceeds 25% after the first 2 Myr.
 - [ ] **Ledgers close:** the glacier ledger residual, as a fraction of the step's

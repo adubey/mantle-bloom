@@ -101,6 +101,10 @@ can run. Four things changed once the harness was built, before any run of this 
    trend march therefore has no passing evidence here: on 374464662 it was less step-size
    robust than `d2` at 10 Myr, and 1.37× slower at 1 Myr steps.
 
+   Later the same day, after Codex's review of PR #870, the owner widened this: **ice ages
+   are out of scope for RFC 0015**, so no acceptance criterion of the RFC gates on a save
+   replayed with ice ages. The RFC's acceptance criteria were edited to match.
+
 ## Arms
 
 | Arm | March |

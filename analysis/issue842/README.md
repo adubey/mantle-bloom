@@ -69,6 +69,9 @@ amendment 9 and don't gate.
 
 ## The ice-age saves (not gating, amendment 9)
 
+The owner later widened this on 2026-11-15: ice ages are out of scope for RFC 0015, so no
+acceptance criterion of the RFC gates on an ice-age save.
+
 Without amendment 9, round 3b fails on:
 
 - **Step gap on 374464662: trend 27.5%, `d2` 18.8%.** It's one snapshot at 10 Myr, during a
