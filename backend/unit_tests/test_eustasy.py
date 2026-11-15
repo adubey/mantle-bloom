@@ -175,6 +175,20 @@ def test_warm_bracket_matches_the_cold_solve():
     assert stale == pytest.approx(cold, abs=2.0)
 
 
+def test_flood_levels_reproduce_the_seeded_mask_at_every_level():
+    # #147: one flood from the seed must give the union-find's mask at any candidate level,
+    # on an asymmetric k-NN table with padding, tied elevations and a seedless component.
+    rng = np.random.default_rng(147)
+    for n, k, seed_share in ((1, 1, 1.0), (60, 3, 0.05), (300, 6, 0.3), (300, 4, 0.0)):
+        neighbor_idx = rng.integers(-1, n, size=(n, k))
+        elevations = rng.normal(0.0, 1000.0, n).round(-2)
+        seed = rng.random(n) < seed_share
+        levels = eustasy._seeded_flood_levels(elevations, neighbor_idx, seed)
+        for h in (-1e9, *np.unique(elevations)[::7], 12.5, 1e9):
+            expected = eustasy._seeded_connected_mask(elevations, h, neighbor_idx, seed)
+            assert np.array_equal(levels <= h, expected)
+
+
 def _pile_ice_everywhere(world, depth_m):
     for plate in world.plates:
         plate.set_fields_on_plate(glacier_depth=np.full(plate.node_count(), depth_m))
