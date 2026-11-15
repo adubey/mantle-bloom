@@ -107,6 +107,23 @@ def detect_sinkless_closed_class(n_cells, rates, sinks):
             raise ValueError("closed transition class has no rain sink")
 
 
+def assert_arrows_follow_wind(rates, u, v):
+    """Verify every Markov transition has a positive component along its local arrow."""
+    nlat, nlon = u.shape
+    for origin, destination, _ in rates:
+        row, col = divmod(origin, nlon)
+        dest_row, dest_col = divmod(destination, nlon)
+        if row == dest_row:
+            east_step = (dest_col - col) % nlon
+            assert (east_step == 1 and u[row, col] > 0) or (
+                east_step == nlon - 1 and u[row, col] < 0
+            )
+        else:
+            assert abs(dest_row - row) == 1 and dest_col == col
+            assert v[row, col] * (dest_row - row) > 0
+        assert 0 <= dest_row < nlat
+
+
 def solve_stationary(source, sinks, rates):
     """Solve the absolute stationary mass balance and return closure metrics."""
     n_cells = source.size
@@ -150,7 +167,8 @@ def cap_rain_to_available(opening_mass, potential_rain, delta_t):
     return available - removed, removed
 
 
-def run_case(nlat=8, nlon=16, source_mode="ocean", wind_mode="circulation", rain_days=9.1):
+def run_case(nlat=8, nlon=16, source_mode="ocean", wind_mode="circulation", rain_days=9.1,
+             schemes=("finite_volume", "wind_arrows")):
     latitude, latitude_edges, area = sphere_grid(nlat, nlon)
     u = np.zeros(area.shape)
     v = np.zeros(area.shape)
@@ -182,8 +200,12 @@ def run_case(nlat=8, nlon=16, source_mode="ocean", wind_mode="circulation", rain
     sinks = np.full(source.size, 1.0 / (rain_days * 86_400.0))
 
     outputs = {}
-    for name, finite_volume in (("finite_volume", True), ("wind_arrows", False)):
+    scheme_options = {"finite_volume": True, "wind_arrows": False}
+    for name in schemes:
+        finite_volume = scheme_options[name]
         rates = transition_rates(u, v, latitude, latitude_edges, area, finite_volume)
+        if not finite_volume:
+            assert_arrows_follow_wind(rates, u, v)
         started = time.perf_counter()
         mass, rain, metrics = solve_stationary(source, sinks, rates)
         metrics["solve_seconds"] = time.perf_counter() - started
@@ -199,6 +221,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--benchmark-90x180", action="store_true",
                         help="include the climate-density 1.0 prototype-size benchmark")
+    parser.add_argument("--benchmark-scheme", choices=("finite_volume", "wind_arrows"),
+                        help="run one benchmark scheme for an uncontended A/B comparison")
     args = parser.parse_args()
     base = run_case()
     assert max(x["global_closure_relative"] for x in base.values()) < 1e-8
@@ -238,10 +262,10 @@ def main():
                    for source, destination, _ in rates)
         assert all(abs(source // area.shape[1] - destination // area.shape[1]) <= 1
                    for source, destination, _ in rates)
+        assert any(source % area.shape[1] == area.shape[1] - 1
+                   and destination % area.shape[1] == 0
+                   for source, destination, _ in rates)
         if name == "finite_volume":
-            assert any(source % area.shape[1] == area.shape[1] - 1
-                       and destination % area.shape[1] == 0
-                       for source, destination, _ in rates)
             assert all(np.isfinite(rate) and rate >= 0 for _, _, rate in rates)
         sinks = np.full(sources.size, 1.0 / (9.1 * 86_400.0))
         total_mass, total_rain, total_metrics = solve_stationary(sources, sinks, rates)
@@ -286,7 +310,9 @@ def main():
         for nlat, nlon in ((4, 8), (8, 16), (16, 32))
     }
     scale_benchmark = (
-        run_case(nlat=90, nlon=180, source_mode="uniform", wind_mode="circulation")
+        run_case(nlat=90, nlon=180, source_mode="uniform", wind_mode="circulation",
+                 schemes=(args.benchmark_scheme,) if args.benchmark_scheme else
+                 ("finite_volume", "wind_arrows"))
         if args.benchmark_90x180 else None
     )
     result = {"cases": {"ocean_source": base, "zero_source": zero, "calm": calm,

@@ -287,14 +287,17 @@ longitude wrap, equal-area pole boundaries, sinkless closed-class detection, and
 uniform-source resolution sweep. Uniform-source column water is 23.5872 kg/m² at
 4×8, 8×16, and 16×32 for both schemes.
 
-An approved 90×180 (climate density 1) run also completed. Finite volume closed to
-`1.25e-16` globally and `4.69e-18` per cell with a 22.48 kg/m² minimum; wind arrows
-closed to zero globally and `5.95e-18` per cell with a 22.48 kg/m² minimum. The measured
-sparse solve sections were about 0.028 s for each scheme, but three other simulations
-were active during this run, so the timing is not used to rank them. Peak RSS was not
-captured. The production default at density 4 is 360×720; direct-solver memory and
-runtime there remain unmeasured. The cap check is a one-cell availability identity,
-not a time-integrated transport update. G2 remains in progress pending an uncontended
-runtime comparison, review of the cap semantics, and any additional scaling needed for
-the density-4 grid. Full outputs are in [`g2-prototype.json`](g2-prototype.json) and
-[`g2-prototype-90x180.json`](g2-prototype-90x180.json).
+An initial combined 90×180 (climate density 1) run confirmed positive water and closure
+but overlapped other simulations, so its timings were discarded. Separate sequential
+runs after the budget showed no competing simulations measured finite-volume at 0.02865 s
+and wind arrows at 0.02824 s for the sparse solve section. Both methods have effectively
+the same cost at this scale; the 1.4% difference is below a useful tuning signal. Finite
+volume closed to `1.25e-16` globally and `4.69e-18` per cell with a 22.48 kg/m² minimum;
+wind arrows closed to zero globally and `5.95e-18` per cell with a 22.48 kg/m² minimum.
+Peak RSS was not captured. The production default at density 4 is 360×720; direct-solver
+memory and runtime there remain unmeasured. The cap check is a one-cell availability
+identity, not a time-integrated transport update. The analytic G2 gate is complete, with
+the one-cell cap scope and density-4 scaling limits recorded for owner review before G3.
+Full outputs are in [`g2-prototype.json`](g2-prototype.json),
+[`g2-prototype-90x180.json`](g2-prototype-90x180.json), and
+[`g2-prototype-90x180-uncontended.json`](g2-prototype-90x180-uncontended.json).

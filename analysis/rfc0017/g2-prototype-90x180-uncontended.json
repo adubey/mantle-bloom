@@ -1,0 +1,27 @@
+{
+  "grid": {
+    "nlat": 90,
+    "nlon": 180,
+    "climate_density": 1.0,
+    "cells": 16200
+  },
+  "runs_sequentially": true,
+  "other_simulations_active": 0,
+  "results": {
+    "finite_volume": {
+      "global_closure_relative": 1.2464755195037646e-16,
+      "max_cell_residual_relative": 4.688357781336639e-18,
+      "solve_seconds": 0.02865237498190254,
+      "minimum_column_water_kg_m2": 22.478587922758475,
+      "rain_over_land_fraction": 0.5000000000000001
+    },
+    "wind_arrows": {
+      "global_closure_relative": 0.0,
+      "max_cell_residual_relative": 5.9531682984112295e-18,
+      "solve_seconds": 0.0282449169899337,
+      "minimum_column_water_kg_m2": 22.484604493794727,
+      "rain_over_land_fraction": 0.5
+    }
+  },
+  "note": "Sparse solve section timings were measured on separate invocations with no other simulation running."
+}
