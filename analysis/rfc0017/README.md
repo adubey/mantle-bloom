@@ -180,17 +180,124 @@ The 38–51% premise reproduces for A, D and E on the pinned backend and convert
 checkpoints; the writer inventory and available source/sink and proxy totals are above.
 The exact legacy input bytes were not available through B2, the original measurement
 script fails on one source cache, and physical atmospheric evaporation/transpiration
-fluxes and closure totals are not defined in the current model. These gaps prevent
-claiming literal completion of every G0 requirement. The proxy totals do not replace
-the missing physical quantities. Owner decision is needed before treating these
-documented limitations as satisfying that gate or changing its criterion.
+fluxes and closure totals are not defined in the current model. The proxy totals do not replace the missing physical quantities. On 2026-11-14 the owner
+accepted these documented limitations as satisfying G0 and authorized G1. This decision
+does not establish atmospheric closure.
 
-**Proposed owner decision (not applied):** Treat G0's input reproduction requirement as
+**Owner decision (accepted 2026-11-14):** Treat G0's input reproduction requirement as
 satisfied by the recorded converted-file hashes plus the exact match of the five checked
 ledger terms in both arms across A, D and E, and accept the source snapshot with its
 cached land/ice summary omitted. Treat the area-weighted physical atmosphere source
 and closure totals as unavailable in the current implementation, with the separately
 reported proxy integrals and physical hydrology losses completing the inventory. This
 would permit G1 and G2 to proceed without claiming atmospheric closure; the unmodified
-script failure and missing original bytes remain open limitations. The current G0
-criterion remains unchanged until the owner decides.
+script failure and missing original bytes remain open limitations. This interpretation is accepted for G0; the limitations remain.
+
+## G1: literature and units (in progress)
+
+Crossref resolves all three RFC references with the expected authors, titles and years.
+The following checks use the sources themselves; they constrain scales, not synthetic
+world calibration targets.
+
+- [Trenberth (1998), Table I](https://staff.cgd.ucar.edu/trenbert/trenberth.papers/ClilmChg39_667-694.pdf),
+  reports global-mean precipitable water 24.6 mm and precipitation 2.69 mm/day, so
+  their ratio is 9.14 days. The same paper calculates 8.1 days from the inverse of
+  the area-mean local depletion rate, and distinguishes it from the ratio of global
+  means. Neither number implies a universal local rainout time. As liquid water
+  equivalent, 1 mm of column water is 1 kg/m²; 1 mm/day is 1/86,400 kg/m²/s.
+- [van der Ent et al. (2010)](https://doi.org/10.1029/2010WR009127), Table 1,
+  reports a 40% continental-origin share of terrestrial precipitation for 1999–2008,
+  and 57% of terrestrial evaporation returning to continental precipitation. Those
+  are distinct source fractions, not local plant transpiration fractions.
+- Oki and Kanae's 2006 water-cycle figure gives 436.5 and 65.5 thousand km³/yr for
+  ocean evaporation and terrestrial evapotranspiration, respectively, and 391 and
+  111 thousand km³/yr for ocean and land precipitation. These imply 86.95% and
+  77.89% ocean shares, respectively; Antarctica is omitted in the land figure.
+  See the figure reproduced by its author in [Oki (2016), slide 2](https://gewexevents.org/wp-content/uploads/Day3_Oki_IWMinLSMs.pdf).
+- [ECMWF's ERA5 documentation](https://confluence.ecmwf.int/pages/viewpage.action?pageId=611555221)
+  says to derive 2 m specific humidity from 2 m dew point and surface pressure,
+  using saturation over water even for subfreezing dew points. Column vapour is
+  kg/m²; vertically integrated q·wind·dp/g is kg/(m·s). Precipitation in the
+  selected six-hour accumulation is metres of water equivalent per six hours, not
+  an instantaneous rate; multiplying by 4,000 gives mm/day.
+
+### G1: ERA5 sample and calibration screen
+
+The WeatherBench2 1990–2019 climatology has near-surface and column variables but no
+native vertically integrated vapour flux. The completed probe instead samples twelve
+48-hour windows around the start of each month in 2000 at 1.5° resolution (24 days,
+eight six-hourly samples per window). The January window begins on 1999-12-31. The
+main fields are WeatherBench2 conservative regrids; its sampled 1.5° dewpoint is all
+non-finite, so specific humidity is derived from valid native 0.25° hourly dewpoint
+sampled at the exact 1.5° grid centers. This point sample does not match the area
+averaging of the other fields.
+
+Reproduce with `python bin/debug/era5_rfc0019_g1.py --out
+analysis/rfc0017/g1-era5.json` in an environment with numpy and numcodecs. The script
+records source URLs, the sampling schedule, method and SHA-256 of each compressed
+source chunk. `g1-era5.json` is the compact checked-in output; it contains no saves or
+full downloaded arrays. The integrated flux is an approximation from 13 pressure
+levels (50–1000 hPa), omitting below-ground levels, holding the top value to 0 hPa,
+and interpolating the surface layer from 2 m humidity and 10 m winds. A synthetic
+check covers native-grid alignment and constant-humidity/wind integration. The selected
+sample footprint is recorded per class because polar land has relatively few cells
+passing the proxy-wind threshold.
+
+| Class | Column water (kg/m²) | Pressure-integrated water (kg/m²) | Precipitation (mm/day) | Ratio of means (days) | Effective depth p10–p90 (km) | Signed IVT/proxy fit |
+|---|---:|---:|---:|---:|---:|---:|
+| Global | 23.69 | 23.98 | 2.93 | 8.10 | 1.69–2.45 | 1.06 |
+| Land | 18.32 | 18.49 | 2.21 | 8.28 | 1.90–2.63 | 1.36 |
+| Ocean | 25.86 | 26.19 | 3.21 | 8.05 | 1.65–2.38 | 1.05 |
+
+The pressure-integrated water agrees with the supplied total-column water to within
+1.3% in the global, land and ocean means, a useful check on the vertical approximation
+for this sample. The signed fit regresses approximate integrated vapour transport on column water
+times the 10 m wind vector. Its latitude-band values range 0.72–2.83; land and ocean
+do not support one precise common mapping. Cell-level parallel ratios are broader and
+can be negative where vectors oppose, so they are not interpreted as a positive local
+constant. The 1.5–3.0 km effective-depth range and 0.5/1/2 wind-multiplier sensitivity
+are provisional calibration ranges, not measured physical constants. Effective depth
+is a column-to-near-surface conversion, not boundary-layer depth. The 24 days are not
+a climatology and cannot establish interannual or seasonal uncertainty.
+
+As a comparison, Trenberth's global means give 9.14 days; the ERA5 sample's 8.10-day
+ratio is a same-grid sample ratio, not an annual estimate or a local rainout time. Its
+column water and precipitation are within a plausible global scale. This is a unit and
+scale sanity check only. Full per-band metrics and compressed-chunk hashes are in
+[`g1-era5.json`](g1-era5.json). The earlier failed runs remain private diagnostic
+artifacts; empty-bin and non-finite guards are retained in the script.
+
+### G2: preliminary analytic prototype screen
+
+`backend/.venv/bin/python bin/debug/rfc0019_transport_prototypes.py` compares two
+diagnostic formulations on an equal-area lat/lon sphere: an upwind finite-volume
+face-flux generator, and local wind-arrow transitions. Both solve the same absolute
+stationary mass balance with a positive rain sink using a sparse direct solve. It
+asserts nonnegative mass and per-cell and global closure below `1e-8` relative to
+source. This is an isolated script; it does not change `World` or production climate.
+
+On the 8×16 ocean-source case, both options close globally to below `1.3e-16`, with
+maximum cell residual below `1.6e-17`; minimum column water is positive. Ocean-only
+source tags produce nonzero rain over land, and ocean/land source superposition error
+is below `2.3e-16`. An enhanced local sink increases rain at its target cell while
+retaining global closure below `5.7e-16`. A separate 18-day single-cell availability
+check caps requested rain of 1.98 kg to the 1.0 kg opening inventory. The script also
+checks zero sources, calm cells, convergence/divergence, a closed wind loop with rain,
+longitude wrap, equal-area pole boundaries, sinkless closed-class detection, and a
+uniform-source resolution sweep. Uniform-source column water is 23.5872 kg/m² at
+4×8, 8×16, and 16×32 for both schemes.
+
+An initial combined 90×180 (climate density 1) run confirmed positive water and closure
+but overlapped other simulations, so its timings were discarded. Separate sequential
+runs after the budget showed no competing simulations measured finite-volume at 0.02865 s
+and wind arrows at 0.02824 s for the sparse solve section. Both methods have effectively
+the same cost at this scale; the 1.4% difference is below a useful tuning signal. Finite
+volume closed to `1.25e-16` globally and `4.69e-18` per cell with a 22.48 kg/m² minimum;
+wind arrows closed to zero globally and `5.95e-18` per cell with a 22.48 kg/m² minimum.
+Peak RSS was not captured. The production default at density 4 is 360×720; direct-solver
+memory and runtime there remain unmeasured. The cap check is a one-cell availability
+identity, not a time-integrated transport update. The analytic G2 gate is complete, with
+the one-cell cap scope and density-4 scaling limits recorded for owner review before G3.
+Full outputs are in [`g2-prototype.json`](g2-prototype.json),
+[`g2-prototype-90x180.json`](g2-prototype-90x180.json), and
+[`g2-prototype-90x180-uncontended.json`](g2-prototype-90x180-uncontended.json).
