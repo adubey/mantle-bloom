@@ -287,11 +287,14 @@ longitude wrap, equal-area pole boundaries, sinkless closed-class detection, and
 uniform-source resolution sweep. Uniform-source column water is 23.5872 kg/m² at
 4×8, 8×16, and 16×32 for both schemes.
 
-The solve times on grids no larger than 16×32 are sub-millisecond to about 1 ms and
-are not representative of production. The default climate grid is 90×180 at density
-1 and 360×720 at density 4. The direct sparse solver's memory, scaling, and convergence
-on that grid remain unmeasured; runtime comparison is therefore incomplete. The cap
-check is a one-cell availability identity, not a time-integrated transport update.
-G2 remains in progress until both options are assessed at representative climate
-resolutions and the full analytic suite, including seam/pole and cap semantics, is
-reviewed. Full run output is in [`g2-prototype.json`](g2-prototype.json).
+An approved 90×180 (climate density 1) run also completed. Finite volume closed to
+`1.25e-16` globally and `4.69e-18` per cell with a 22.48 kg/m² minimum; wind arrows
+closed to zero globally and `5.95e-18` per cell with a 22.48 kg/m² minimum. The measured
+sparse solve sections were about 0.028 s for each scheme, but three other simulations
+were active during this run, so the timing is not used to rank them. Peak RSS was not
+captured. The production default at density 4 is 360×720; direct-solver memory and
+runtime there remain unmeasured. The cap check is a one-cell availability identity,
+not a time-integrated transport update. G2 remains in progress pending an uncontended
+runtime comparison, review of the cap semantics, and any additional scaling needed for
+the density-4 grid. Full outputs are in [`g2-prototype.json`](g2-prototype.json) and
+[`g2-prototype-90x180.json`](g2-prototype-90x180.json).
