@@ -230,3 +230,9 @@ show the effect of that vertical approximation. A 12-month sample of 48-hour win
 is not a 30-year climatology and cannot by itself establish a precise universal
 transport multiplier or mixing depth. The raw pressure-level probe is queued until
 compute capacity is available.
+
+The first 12-window fetch on 2026-11-15 completed its downloads but failed in the
+summary when a latitude/surface bin had no cells above the transport threshold; no
+result was written. The diagnostic now reports empty-bin quantiles and regression as
+`null` and filters non-finite values. The corrected probe has not yet completed; its
+first run must not be interpreted as a G1 result.

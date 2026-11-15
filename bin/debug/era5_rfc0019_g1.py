@@ -77,16 +77,19 @@ def integrated_flux(q, u, v, levels_pa, pressure, surface_q, surface_u, surface_
 
 
 def weighted_quantiles(values, weights, quantiles=(0.1, 0.5, 0.9)):
+    if values.size == 0:
+        return None
     order = np.argsort(values)
     cumulative = np.cumsum(weights[order])
     return [float(x) for x in np.interp(np.asarray(quantiles) * cumulative[-1], cumulative, values[order])]
 
 
 def summarize(fields, area, mask):
-    selected = mask & np.isfinite(fields['height']) & (fields['proxy_speed'] > 5.0)
+    selected = mask & np.isfinite(fields['height']) & np.isfinite(fields['flux_x']) & np.isfinite(fields['flux_y']) & (fields['proxy_speed'] > 5.0)
     weights = area[selected]
-    def mean(name):
-        return float(np.average(fields[name][mask], weights=area[mask]))
+    def mean(name, scale=1.0):
+        valid = mask & np.isfinite(fields[name])
+        return float(np.average(fields[name][valid], weights=area[valid]) * scale) if valid.any() else None
     dot = fields['proxy_x'] * fields['flux_x'] + fields['proxy_y'] * fields['flux_y']
     squared = fields['proxy_x'] ** 2 + fields['proxy_y'] ** 2
     ratio = dot[selected] / squared[selected]
@@ -94,14 +97,17 @@ def summarize(fields, area, mask):
         'area_fraction': float(area[mask].sum() / area.sum()),
         'column_water_kg_m2': mean('water'),
         'pressure_integrated_water_kg_m2': mean('integrated_water'),
-        'surface_specific_humidity_g_kg': mean('humidity') * 1000,
+        'surface_specific_humidity_g_kg': mean('humidity', 1000),
         'surface_wind_vector_m_s': [mean('wind_x'), mean('wind_y')],
         'precipitation_mm_day': mean('precip'),
         'ivt_vector_kg_m_s': [mean('flux_x'), mean('flux_y')],
         'effective_depth_m_quantiles_10_50_90': weighted_quantiles(fields['height'][selected], weights),
         'parallel_transport_ratio_quantiles_10_50_90': weighted_quantiles(ratio, weights),
-        'signed_vector_regression_multiplier': float(np.sum(area[mask] * dot[mask]) / np.sum(area[mask] * squared[mask])),
-        'selected_fraction_of_class_area': float(weights.sum() / area[mask].sum()),
+        'signed_vector_regression_multiplier': (
+            float(np.sum(area[selected] * dot[selected]) / np.sum(area[selected] * squared[selected]))
+            if selected.any() else None
+        ),
+        'selected_fraction_of_class_area': float(weights.sum() / area[mask].sum()) if area[mask].sum() else 0.0,
     }
 
 
@@ -143,7 +149,7 @@ def main():
         classes[f'abs_lat_{lo}_{lo+15}_ocean'] = band & ~land
     result = {'source': STORE, 'sampling': {'year': 2000, 'months': args.months, 'block_starts_utc': starts, 'samples_per_block': 8, 'spacing_hours': 6, 'grid_degrees': 1.5}, 'method': {'specific_humidity': 'Magnus water saturation from 2m dew point and surface pressure; below-freezing approximation', 'precipitation': '6-hour accumulation multiplied by 4, m to mm/day', 'ivt': '13 pressure levels 50-1000 hPa; trapezoidal q*u/g and q*v/g; below-ground levels excluded; top held constant to 0 hPa; surface interpolated from 2m humidity and 10m wind', 'depth': 'ratio of sample-mean column vapour to sample-mean near-surface vapour density, not measured mixing depth', 'transport': 'signed vector projection of mean pressure-integrated IVT onto mean instantaneous W times 10m vector; mean ratios use proxy norm >5 kg m-1 s-1; sample is not a climatology'}, 'compressed_chunk_sha256': hashes, 'classes': {name: summarize(fields, weights, mask) for name, mask in classes.items()}}
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(result, indent=2) + '\n')
+    args.out.write_text(json.dumps(result, indent=2, allow_nan=False) + '\n')
     print(f'wrote {args.out}', flush=True)
 
 
