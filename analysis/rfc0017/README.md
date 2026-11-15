@@ -80,6 +80,7 @@ are diagnostic annual rates; they are not independent ledgered atmospheric sinks
 | D | 80,593 | 489,436 | 4,512.76 | 32.16 | 3.97 | 63.31 |
 | E | 79,173 | 490,865 | 4,521.43 | 34.34 | 4.30 | 60.21 |
 | Source 220.2 Myr | 81,100 | 502,956 | 4,601.76 | 46.58 | 3.51 | 59.92 |
+| Cold source 200.8 Myr | 116,975 | 573,761 | 5,183.55 | 24.48 | 1.83 | 91.48 |
 
 The last four columns are area integrals in `10^12 m²·g/kg`, not fluxes. Ocean is
 a target rather than an additive input; land values are pre-cap per-sweep proxies,
