@@ -46,7 +46,7 @@ the exact `.bloom` object in the bucket; verify its bytes before G3.
 | `mantle-bloom-seed507012855-479000000y.bloom` | `a249a559fac44e3f2b9d2dc76a1a26ca2711b659` |
 | `mantle-bloom-seed762517225-135200000y.bloom` | `fe140dd3e8b458fe99a4aaefefc894b6647d3200` |
 
-## G0: current-source writer and ownership inventory (in progress)
+## G0: current-source writer and ownership inventory
 
 The diagnostic backend is based on `9f8267c49b2da23c9be544f6de6606bf1f0e7135`
 plus this RFC work; none of its changes alters the simulation. On a climate update,
@@ -129,13 +129,20 @@ g/kg). `--myr 0` deliberately measures the loaded checkpoint; it does not step t
 | D | 451.589 | 1,475.991 | 14.14 | 0.355 | 0.202 |
 | E | 445.221 | 1,477.459 | 13.89 | 0.339 | 0.217 |
 | Cold source | 1,061.365 | 1,434.930 | 16.93 | 0.830 | 0.239 |
+| Source 220.2 Myr, summary skipped | 493.922 | 1,454.181 | 13.89 | 0.365 | 0.305 |
 
 On the 220.2 Myr source, the same script fails in its pre-climate ice/land summary:
 the saved hydrology `is_ocean` array has 133,460 entries while the current plate area
 array has 133,489. The separate climate-grid inventory above does produce a snapshot,
-but it is not a complete successful `measure_climate_fields.py` run and retains the
-saved cache's own sampling semantics. This compatibility discrepancy must not be
-silently treated as a reproduced output.
+and retains the saved cache's own sampling semantics. A temporary copy of
+`measure_climate_fields.py` with only its cached hydrology summary branch disabled
+then produced the source climate snapshot shown above, including its latitude bands
+and Köppen groups. This is a partial workaround: the original script still fails and
+no ice or land percentage is reported for that snapshot. Reproduce by copying the
+script and `replay_lib.py` to a scratch directory, changing `if hydro is not None:` to
+`if False and hydro is not None:` in the copy, and running the copy with `--backend`
+pointing to this checkout's backend, `--myr 0`, and the source save. Neither the
+world nor its hydrology cache is modified by that skip.
 
 ### Independent G1b replay: window A
 
@@ -166,3 +173,24 @@ For all six independently reproduced A/D/E control and central runs, every step'
 `land_rain_only` rain, dry ET, river evaporation, lake evaporation, and ocean export
 matches the corresponding archived value exactly. This checks 84 reproduced steps
 across the two schedules, not all 84 original G1b arms.
+
+## G0 assessment
+
+The 38–51% premise reproduces for A, D and E on the pinned backend and converted
+checkpoints; the writer inventory and available source/sink and proxy totals are above.
+The exact legacy input bytes were not available through B2, the original measurement
+script fails on one source cache, and physical atmospheric evaporation/transpiration
+fluxes and closure totals are not defined in the current model. These gaps prevent
+claiming literal completion of every G0 requirement. The proxy totals do not replace
+the missing physical quantities. Owner decision is needed before treating these
+documented limitations as satisfying that gate or changing its criterion.
+
+**Proposed owner decision (not applied):** Treat G0's input reproduction requirement as
+satisfied by the recorded converted-file hashes plus the exact match of the five checked
+ledger terms in both arms across A, D and E, and accept the source snapshot with its
+cached land/ice summary omitted. Treat the area-weighted physical atmosphere source
+and closure totals as unavailable in the current implementation, with the separately
+reported proxy integrals and physical hydrology losses completing the inventory. This
+would permit G1 and G2 to proceed without claiming atmospheric closure; the unmodified
+script failure and missing original bytes remain open limitations. The current G0
+criterion remains unchanged until the owner decides.
