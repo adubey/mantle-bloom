@@ -185,6 +185,9 @@ MARCH_COST_PRESETS: dict[str, MarchCost] = {
     "cap-hold-recur": MarchCost(max_substeps=200, recurrence=True),
     "trend-adapt": MarchCost(trend=True),
     "trend-hold": MarchCost(trend=True, trend_grow=False),
+    # #842 round 3's arm: the trend march with the 1 kyr longest substep the RFC 0015 D2
+    # revision proposes (inside #741's 0-of-12-drops range).
+    "trend-1k": MarchCost(trend=True, trend_max_substep_years=1_000.0),
 }
 MARCH_COST = MARCH_COST_PRESETS["d2"]
 
