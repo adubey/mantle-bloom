@@ -146,4 +146,22 @@ control and central treatment with the converted A save, `--myr 0.4 --step-years
 steps. The control's dry ET, river and lake evaporation, and ocean export also match
 exactly at all four steps. The mean of treatment/control rain ratios after the first
 step is 1.380703848756227. This supports simulation parity for those measured outputs,
-not byte identity or parity of every field. D and E at 10 kyr remain to be checked.
+not byte identity or parity of every field.
+
+Window D was independently replayed in both arms at the registered `--myr 0.4
+--step-years 10000 --checkpoint-myr 0.1`. All 40 control and 40 central rain
+values match the archived outputs exactly. Control dry ET, river and lake evaporation,
+and ocean export also match at every step. The mean central/control rain ratio after
+the first step is 1.480160784723084.
+
+Window E was independently replayed with the same 40-step, 10 kyr schedule. Rain
+matches the archived control and central runs exactly at every step; the control dry
+ET, river and lake evaporation, and ocean export match exactly as well. The mean
+central/control rain ratio after the first step is 1.5077775929811301. These three
+paired replays verify the reported range on the converted inputs and pinned backend;
+they do not establish full state parity or the physical atmospheric balance.
+
+For all six independently reproduced A/D/E control and central runs, every step's
+`land_rain_only` rain, dry ET, river evaporation, lake evaporation, and ocean export
+matches the corresponding archived value exactly. This checks 84 reproduced steps
+across the two schedules, not all 84 original G1b arms.
