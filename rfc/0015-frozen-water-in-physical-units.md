@@ -59,9 +59,14 @@
     behaviour, G0's open ice-age rerun and the ice-age sea-ice cap stay with the issues that
     already track them. The scope and what it means for each gate is in
     [Scope: ice ages are out](#scope-ice-ages-are-out).
-  - **Acceptance checklist reviewed against the code and the evidence, 2026-11-15.** Six of
-    its 16 items are met and ticked, each with its evidence below it. Runtime waits for the
-    default flip (#906). The rest wait on D3–D8 and G1, G3, G4 and G6. The held-out set is
+  - **RFC 0014's withdrawal recorded, 2026-11-15.** RFC 0014 was withdrawn on 2026-10-31 after
+    delivering D1a–c, D2(a)–(c), D3 and D4. The Prerequisites and ownership section now says
+    what that means: those behaviours are in production, D2(b) and D2(c) landed before D1–D2,
+    and the removals that waited on RFC 0014 (the three `IceLedger` fields, `WATER_TO_ICE`)
+    are RFC 0015 D5's alone. No design change.
+  - **Acceptance checklist reviewed against the code and the evidence, 2026-11-15.** Seven of
+    its 16 items are met and ticked, each with its evidence below it. The rest wait on D3–D8
+    and G1, G3, G4 and G6. The held-out set is
     accepted at two saves (see Scope), and D6 keeps removing the ice-age sea-ice cap.
   - **Impact table and round 3 results:** in the description of #870 and in
     [`analysis/issue842/README.md`](../analysis/issue842/README.md).
@@ -407,26 +412,36 @@ D2's fixes are chosen.
 
 ### Prerequisites and ownership
 
-RFC 0014 D2(b) (liquid water reaches its sink whatever the temperature, and pools there)
-and D2(c) (the lake ice cap `lake_ice_m`) are **prerequisites** of D4, D5 and D8. Without
-them, removing frozen river ice deletes the water that settles at cold nodes, which breaks
-this RFC's "no water deleted" criterion. D1–D3 should also wait for 0014 D2(b): at physical
-rates, `WATER_TO_ICE` turns that settled water into kilometres of river ice (Evidence item 3).
+**RFC 0014 was withdrawn on 2026-10-31, and what it delivered stays.** Its D1a–c (#587–#589),
+D2(a)–(c) (#539, #608, #632), D3 (#661) and D4 (#553) work is in production and is described in
+[the hydrology model page](../docs/simulation-model/hydrology.md). The mechanisms it didn't
+settle (partition stability, G7 and G8, and G9's body-budget sublimation, where the cell-wise
+sink stays) are open for separate work and aren't things this RFC relies on. So where this
+RFC says "RFC 0014" below, it means that delivered behaviour: liquid water reaching its sink
+whatever the temperature (D2(b)), the lake ice cap `lake_ice_m` (D2(c) and D4), the lake's
+wet and ice-free fractions, and the cell-wise lake sublimation. If a mechanism RFC 0014 didn't
+deliver turns out to matter for D4, D5 or D8, this RFC owns it. RFC 0014's text is in
+[`rfc/abandoned/`](abandoned/0014-lake-water-volume-and-freezing.md).
 
-If D1–D3 must ship first, the interim rule is: keep today's river and lake freezing, with
-`WATER_TO_ICE` held at its model-unit value as a listed exception, and book what the depth
-guard clips as ocean water.
+RFC 0014 D2(b) (liquid water reaches its sink whatever the temperature, and pools there)
+and D2(c) (the lake ice cap `lake_ice_m`) were **prerequisites** of D4, D5 and D8. Without
+them, removing frozen river ice deletes the water that settles at cold nodes, which breaks
+this RFC's "no water deleted" criterion. D1–D3 also had to wait for D2(b): at physical
+rates, `WATER_TO_ICE` turns that settled water into kilometres of river ice (Evidence item 3).
+**Both landed before D1–D2 did** (D2(b) in #550 on 2026-10-24, D1–D2 in #806 on 2026-11-07),
+so the interim rule that would have let D1–D3 ship first, keeping today's river and lake
+freezing, was never needed.
 
 Each removal has one owner:
 
 | Item | Removed or changed by |
 |---|---|
-| `_compute_flow_direction`'s freeze override (`water_frozen`) for liquid routing | RFC 0014 D2(b) |
-| `water_frozen`, `lake_frozen`, `freezing_lake`, `frozen_from_lake` in `compute_hydrology` | RFC 0014 D2(b) |
-| The frozen-river-ice block for liquid water in `compute_hydrology` | RFC 0014 D2(b) |
-| Writing `IceLedger.frozen_river_ice_m3`, `frozen_river_capped_m3`, `frozen_lake_m3` | RFC 0014 stops writing them |
-| Deleting those three fields | RFC 0015 D5, after RFC 0014 |
-| `WATER_TO_ICE` itself, once 0014 removes its uses | RFC 0015 D5 |
+| `_compute_flow_direction`'s freeze override (`water_frozen`) for liquid routing | RFC 0014 D2(b), delivered (#550) |
+| `water_frozen`, `lake_frozen`, `freezing_lake`, `frozen_from_lake` in `compute_hydrology` | RFC 0014 D2(b), delivered (#550): none of these names remains in `backend/app` |
+| The frozen-river-ice block for liquid water in `compute_hydrology` | RFC 0014 D2(b), delivered (#550) |
+| Writing `IceLedger.frozen_river_ice_m3`, `frozen_river_capped_m3`, `frozen_lake_m3` | RFC 0014 D2(b) stopped writing them, delivered: they are always 0 (`ice_sheet.py`) |
+| Deleting those three fields | RFC 0015 D5. It no longer waits on RFC 0014 |
+| `WATER_TO_ICE` itself | RFC 0015 D5, once its remaining uses go. `hydrology.py` still uses it to open a save's glacier water account |
 | `is_frozen`'s use as the snow switch, `liquid_precip`, `rates()`'s `snows`, and the breach gate's `WaterBalance` source | RFC 0015 D1 |
 | RFC 0014 D2(b)'s "Unchanged: … snow onto a lake's ice cap joins the glacier accumulation" | Replaced by RFC 0015 D4; a note in RFC 0014 records it |
 | The ice-age sea-ice cap (`allow_ocean_ice` block in `step_ice`) | RFC 0015 D6 |
@@ -810,7 +825,7 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
   Biome views, four kinds of perennial ice are drawn as ice:
   - glacier ice of at least `GLACIER_VISIBLE_DEPTH_M` on land;
   - grounded marine glacier ice on ocean cells (D6), the same way as land ice;
-  - perennial lake ice: a lake cell whose ice-free fraction (RFC 0014's `f_free`) is 0 and
+  - perennial lake ice: a lake cell whose ice-free fraction (`ice_free_fraction` in `compute_hydrology`, from RFC 0014's lake ice cap) is 0 and
     whose `lake_ice_m` > 0;
   - perennial sea ice (D6).
 
@@ -1241,7 +1256,7 @@ withdrawal can be handled part by part.
     replaced by a derived sea-ice state (new, e.g. `sea_ice_state`) and `SEAWATER_FREEZING_C`
     (new);
   - `seasonal_positive_degrees`: reused, plus siblings for the share of the year below a
-    threshold and freezing degree-days (new, shared with RFC 0014's `f_free`).
+    threshold and freezing degree-days (new, shared with the lake ice-free fraction RFC 0014 delivered).
 - `backend/app/hydroclimate/ice_sheet.py`:
   - `SurfaceClimate.rates` in physical units, returning snow and rain on ice and the basal
     energy balance; `W_M2_TO_M_ICE_PER_YR` (new); `MODEL_UNIT_SCALE`, the model-unit
@@ -1358,8 +1373,7 @@ withdrawal can be handled part by part.
 
 The thresholds below were confirmed by the project owner on 2026-10-23.
 
-**Status, 2026-11-15:** 6 of 16 met and ticked. Runtime is pending #906, the default flip. The
-others wait on D3–D8 and G1, G3, G4 and G6. Each item carries its evidence. Ice-age saves
+**Status, 2026-11-15:** 7 of 16 met and ticked. The others wait on D3–D8 and G1, G3, G4 and G6. Each item carries its evidence. Ice-age saves
 don't gate any item (see [Scope](#scope-ice-ages-are-out)).
 
 - [x] **Prerequisites:** RFC 0014 D2(b) and D2(c) landed before D4, D5 and D8; or D1–D3 shipped
@@ -1415,11 +1429,11 @@ don't gate any item (see [Scope](#scope-ice-ages-are-out)).
   [[Lambeck et al., 2014]](#ref-lambeck2014), with the world's ocean area and the velocity
   distribution of the ice (interior and margins) stated.
   *Open: not yet reported.*
-- [ ] **Runtime:** median step time at density 4 within +15% of the fixed-250 yr `d2` march,
+- [x] **Runtime:** median step time at density 4 within +15% of the fixed-250 yr `d2` march,
   as the mean of the per-save ratios on the same saves and steps. (The 2026-11-13 revision
   changed this from `origin/main` and from a limit on every save. The ratio to `origin/main`
   is reported.)
-  *Pending #906: round 3b measured a mean ratio of 0.71 against `d2` on the diagnosis saves without ice ages. Ticked when the default flip merges.*
+  *Met (#870, #906): round 3b measured a mean ratio of 0.71 against `d2` on the diagnosis saves without ice ages, and #906 made the trend march the default.*
 - [x] **Saves:** old saves load.
   *Met: the six #548 saves, captured 2026-10-23 before D1–D2 landed, load and replay on main (#870). `test_save_without_glacier_water_account_loads_unopened_and_new_saves_round_trip` covers the account field.*
 - [ ] **Docs** updated as listed above.
