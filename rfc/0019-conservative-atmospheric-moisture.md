@@ -145,7 +145,7 @@ Run these only after the project owner accepts this Draft RFC. Record scripts, s
 
 ## Revision note
 
-**2026-11-14 — G0 interpretation.** The original gate required the exact #771 source
+**2026-11-14 — G0 interpretation ([PR #903](https://github.com/adubey/mantle-bloom/pull/903)).** The original gate required the exact #771 source
 worlds, current climate-field output and area-weighted physical source/sink totals.
 The owner accepted G0 on the documented evidence: the converted checkpoints reproduce
 the checked G1b quantities exactly; the source snapshot omits an incompatible cached
