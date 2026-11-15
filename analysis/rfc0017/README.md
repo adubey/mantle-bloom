@@ -32,3 +32,16 @@ Still required for G0: check exact input bytes and current-source compatibility,
 `measure_climate_fields.py` for the named worlds, independently reproduce G1b where its
 pinned code and inputs permit, trace the complete source/sink ownership, and establish
 area-weighted totals. Do not mark the gate passed on this archive audit alone.
+
+## Held-out registration before G0 replays
+
+Registered on 2026-11-14 from the private bucket inventory, before any RFC 0019
+model replay or tuning. These saves are reserved for G3 acceptance, not G0–G2
+calibration or design selection. Selection used the save name, seed and hash only;
+no climate outputs from either save were inspected for RFC 0019. SHA-1 identifies
+the exact `.bloom` object in the bucket; verify its bytes before G3.
+
+| Save | Bucket object SHA-1 |
+|---|---|
+| `mantle-bloom-seed507012855-479000000y.bloom` | `a249a559fac44e3f2b9d2dc76a1a26ca2711b659` |
+| `mantle-bloom-seed762517225-135200000y.bloom` | `fe140dd3e8b458fe99a4aaefefc894b6647d3200` |
