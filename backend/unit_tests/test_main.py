@@ -2532,6 +2532,19 @@ def test_generate_weights_follow_the_request(client, monkeypatch):
     assert "Seeding rivers and glaciers" not in captured["weights"]
 
 
+def test_generate_rejects_disallowed_sketch_format(client):
+    import base64
+    import io
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (32, 16), "white").save(buf, format="GIF")
+    encoded = base64.b64encode(buf.getvalue()).decode("ascii")
+    resp = _post_generate(client, json={"seed": 7, "sketch": {"image_base64": encoded}})
+    assert resp.status_code == 400
+    assert "invalid sketch image" in resp.json()["detail"]
+
+
 @pytest.fixture
 def mounted_frontend(tmp_path):
     """A stand-in `vite build` output mounted on the real app, as the Railway image does
