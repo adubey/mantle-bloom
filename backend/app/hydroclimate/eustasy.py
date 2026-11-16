@@ -50,6 +50,17 @@ volume_m3`/`solve_sea_level` narrowed to it, used by every `World`-level entry p
 `total_water_volume_m3`/`solve_sea_level` themselves stay the bare, connectivity-oblivious
 primitives (exercised directly by this module's own unit tests) -- restricting *which* nodes
 they sum over is entirely the caller's job.
+
+**Ice counts only above flotation (RFC 0015 D6, #917).** The connected-ocean mask is
+elevation-only, so it includes every marine cell that carries ice. Grounded marine ice fills
+the capacity under it with ice, and floating ice displaces its own mass of liquid, so
+counting that capacity as open ocean *and* debiting the ice's whole water equivalent books
+the same water twice. The solve instead balances liquid water: each connected cell holds
+`max(0, (h - z) - 0.917 H)` of liquid at the candidate level `h`, against
+`V_total - V_trapped`, where `V_trapped` still carries the ice's full water equivalent. That
+is the debit `max(0, 0.917 H - D)` per cell with the water depth `D = max(0, h - z)` taken at
+the level being solved, not last step's: floating ice, and ice grounded exactly at flotation,
+leave sea level unchanged, and land ice (`D` = 0) keeps `0.917 H`.
 """
 
 from __future__ import annotations
@@ -75,8 +86,10 @@ _SOLVE_TOLERANCE_M = 1.0
 _SOLVE_MAX_ITERS = 80
 
 # Ice is ~91.7% the density of liquid water, so a metre of `glacier_depth` (stored as a
-# metre-of-ice column, see hydrology.py) is this much liquid-water column removed from the
-# ocean. Lake water is already liquid, so it counts 1:1. Applied in `trapped_water_volume_m3`.
+# metre-of-ice column, see hydrology.py) holds this much liquid-water column taken from the
+# ocean. Lake water is already liquid, so it counts 1:1. Applied in `ice_water_column_m`.
+# Sea level debits only the part of it above flotation (RFC 0015 D6, #917): see
+# `_liquid_floor`.
 _ICE_WATER_EQUIVALENT = 0.917
 
 # Lake water only counts toward the trapped budget where it's a real, visible standing body,
@@ -103,6 +116,22 @@ def total_water_volume_m3(elevations: np.ndarray, areas_m2: np.ndarray, sea_leve
     if len(elevations) == 0:
         return 0.0
     return float(np.dot(areas_m2, np.clip(sea_level_m - elevations, 0.0, None)))
+
+
+def _liquid_floor(elevations: np.ndarray, ice_water_m: np.ndarray | None) -> np.ndarray:
+    """The level liquid water stands on at each node: the bed `z`, raised by the ice's
+    water-equivalent column `w` (RFC 0015 D6, #917). Summed below a candidate `h`,
+    `max(0, h - (z + w))` is `max(0, D - w)` with `D = max(0, h - z)`: grounded marine ice
+    (`w >= D`) leaves no liquid over its cell, and floating ice displaces `w` of liquid
+    from it. With the ice's full `w` debited in `trapped_water_volume_m3`, this is the debit
+    `max(0, w - D)`, `D` at the level being solved. Only the liquid's floor moves: which
+    cells are connected ocean is still decided on bare `z` (`_ocean_connected_mask`), and
+    excluding ice cells from that mask instead would change the debit. `elevations` is the
+    loaded bed (`hypsometry`), since liquid sits on the deflected bed (whereas
+    `ice_sheet.is_grounded` uses the unloaded bed)."""
+    if ice_water_m is None:
+        return elevations
+    return elevations + np.clip(np.asarray(ice_water_m, dtype=float), 0.0, None)
 
 
 @njit(cache=True)
@@ -334,7 +363,11 @@ def _ocean_connected_mask(
     `hydrology_cache` existed. An explicit `(seed_is_ocean, seed_neighbor_idx)` pair -- the
     march's own current-step ocean mask and graph -- bypasses the cache entirely, so a
     mid-step re-solve never reads last step's ocean or degrades to the blind mask on a
-    changed node cloud (#806 review)."""
+    changed node cloud (#806 review).
+
+    The mask is elevation-only, so ice-covered marine cells stay in it. Sea level's ice debit
+    (`_liquid_floor`, RFC 0015 D6) relies on that: it removes the capacity the ice fills from
+    those cells, so excluding ice cells here would change the debit too."""
     anchor = _seed_anchor(world, elevations, seed_is_ocean, seed_neighbor_idx)
     if anchor is not None:
         return _seeded_connected_mask(elevations, sea_level_m, *anchor)
@@ -355,18 +388,22 @@ def _ocean_connected_mask(
 def ocean_water_volume_m3(
     world: "World", elevations: np.ndarray, areas_m2: np.ndarray, sea_level_m: float,
     *, seed_is_ocean: np.ndarray | None = None, seed_neighbor_idx: np.ndarray | None = None,
+    ice_water_m: np.ndarray | None = None,
 ) -> float:
     """`total_water_volume_m3`, restricted to nodes that are actually the connected ocean at
     `sea_level_m` (see `_ocean_connected_mask`) -- the quantity the eustasy solve actually
     means by "the ocean's own volume." A closed basin's own below-`sea_level_m` footprint
     contributes nothing here even when its floor plunges far deeper than `sea_level_m` itself:
     it either holds no water at all (a dry catchment, however deep), or holds real, measured
-    water already accounted for by `trapped_water_volume_m3`."""
+    water already accounted for by `trapped_water_volume_m3`. With `ice_water_m` (each node's
+    ice as a water-equivalent column, `ice_water_column_m`) it is the *liquid* ocean, without
+    the capacity the ice occupies (`_liquid_floor`); without it, the geometric capacity."""
     mask = _ocean_connected_mask(
         world, elevations, sea_level_m, areas_m2=areas_m2,
         seed_is_ocean=seed_is_ocean, seed_neighbor_idx=seed_neighbor_idx,
     )
-    return total_water_volume_m3(elevations[mask], areas_m2[mask], sea_level_m)
+    floor = _liquid_floor(elevations, ice_water_m)
+    return total_water_volume_m3(floor[mask], areas_m2[mask], sea_level_m)
 
 
 def _bisect_sea_level(
@@ -414,6 +451,7 @@ def _solve_sea_level_connected(
     *, seed_is_ocean: np.ndarray | None = None, seed_neighbor_idx: np.ndarray | None = None,
     bracket: tuple[float, float] | None = None,
     seed_adjacency: tuple[np.ndarray, np.ndarray] | None = None,
+    ice_water_m: np.ndarray | None = None,
 ) -> float:
     """`solve_sea_level`, but bisecting against `ocean_water_volume_m3` (connectivity-restricted)
     rather than the bare `total_water_volume_m3` -- see this module's own docstring for why a
@@ -423,62 +461,101 @@ def _solve_sea_level_connected(
     own docstring -- so `ocean_water_volume_m3(h)` stays strictly increasing and bisection stays
     valid), which is why this isn't simply `total_water_volume_m3` over one fixed mask.
     `seed_adjacency` is `flood_adjacency(seed_neighbor_idx)` from a caller that solves
-    repeatedly on one graph; it is only read alongside an explicit seed pair."""
+    repeatedly on one graph; it is only read alongside an explicit seed pair.
+
+    `ice_water_m` is each node's ice as a water-equivalent column (`ice_water_column_m`), and
+    `water_volume_m3` then has the ice's full water equivalent already taken off. Each
+    candidate `h` counts only the liquid ice leaves room for (`_liquid_floor`), so the ice's
+    net debit is its water above flotation at that same `h` (RFC 0015 D6, #917). Taking `D`
+    at the candidate level, not last step's, is what makes the debit exact (G4, #912); it
+    stays monotonic in `h`, since every term `max(0, h - z - w)` is."""
     anchor = _seed_anchor(world, elevations, seed_is_ocean, seed_neighbor_idx)
     explicit_seed = anchor is not None and anchor[0] is seed_neighbor_idx
     adjacency = seed_adjacency if explicit_seed else None
+    floor = _liquid_floor(elevations, ice_water_m)
     if anchor is None:
-        return _bisect_sea_level(
-            elevations, areas_m2, water_volume_m3,
-            lambda h: ocean_water_volume_m3(world, elevations, areas_m2, h),
-            bracket=bracket,
-        )
+        def unseeded_volume_at(h: float) -> float:
+            mask = _ocean_connected_mask(world, elevations, h, areas_m2=areas_m2)
+            return total_water_volume_m3(floor[mask], areas_m2[mask], h)
+
+        return _bisect_sea_level(elevations, areas_m2, water_volume_m3, unseeded_volume_at, bracket=bracket)
     # Anchored to a seed, every candidate's mask is `levels <= h` for one flood from the
     # seed (#147), found on the first candidate: a dry budget returns before asking for any.
+    # The flood runs on bare elevations: ice doesn't decide which cells are ocean.
     levels: list[np.ndarray] = []
 
     def volume_at(h: float) -> float:
         if not levels:
             levels.append(_seeded_flood_levels(elevations, *anchor, adjacency=adjacency))
         mask = levels[0] <= h
-        return total_water_volume_m3(elevations[mask], areas_m2[mask], h)
+        return total_water_volume_m3(floor[mask], areas_m2[mask], h)
 
     return _bisect_sea_level(elevations, areas_m2, water_volume_m3, volume_at, bracket=bracket)
 
 
+def ice_water_column_m(world: "World") -> np.ndarray:
+    """Every node's `glacier_depth` as a liquid-water-equivalent column (m), in hypsometry
+    order: `_ICE_WATER_EQUIVALENT * H`. Its area integral is the ice part of
+    `trapped_water_volume_m3`; per node, it is what `_liquid_floor` lifts the liquid by."""
+    from ..plates import collect_all_glacier_depth
+
+    if not world.plates:
+        return np.zeros(0)
+    return _ICE_WATER_EQUIVALENT * np.clip(collect_all_glacier_depth(world.plates), 0.0, None)
+
+
 def water_volume_for_sea_level(world: "World", sea_level_m: float) -> float:
+    """The liquid ocean the world's current hypsometry and ice hold at `sea_level_m`:
+    `ocean_water_volume_m3` without the capacity the ice occupies, so that adding
+    `trapped_water_volume_m3` gives the total budget that `update_sea_level` solves back to
+    `sea_level_m` (the slider and the budget backfill rely on this)."""
     elevations, areas_m2 = hypsometry(world)
-    return ocean_water_volume_m3(world, elevations, areas_m2, sea_level_m)
+    return ocean_water_volume_m3(world, elevations, areas_m2, sea_level_m, ice_water_m=ice_water_column_m(world))
 
 
-def trapped_water_volume_m3(world: "World") -> float:
-    """Surface water currently locked up on land rather than sitting in the ocean, in m^3 like
-    `total_water_volume_m3` -- so it can be subtracted straight from the conserved total
-    budget. Contributions are read off the
-    persisted per-node fields hydrology.py maintains: every node's `glacier_depth` (ice caps,
-    valley glaciers, mountain-top ice, and any ice-age sea-ice cap -- converted from a column
-    of ice to its liquid-water equivalent, `_ICE_WATER_EQUIVALENT`), and the `lake_depth` of
-    every node holding a real visible lake (`_LAKE_MIN_TRAPPED_DEPTH_M`). Both are water that
-    fell as precipitation and would otherwise have run back to the sea; persistent river water
-    (`river_water_m`, RFC 0016 / #725) is also temporarily stored on land. Debiting these
-    inventories is what makes sea level fall as they grow. 0.0 for a world with none."""
+def other_trapped_water_volume_m3(world: "World", areas_m2: np.ndarray | None = None) -> float:
+    """`trapped_water_volume_m3` without the ice: visible lakes, lake ice and persistent river
+    water, in m^3. The glacier march holds this part fixed while it re-solves sea level from
+    its own ice between substeps."""
     from ..plates import (
-        collect_all_accounting_areas_m2, collect_all_glacier_depth, collect_all_lake_depth,
-        collect_all_lake_ice, collect_all_river_water,
+        collect_all_accounting_areas_m2, collect_all_lake_depth, collect_all_lake_ice, collect_all_river_water,
     )
 
     if not world.plates:
         return 0.0
-    glacier_depth = collect_all_glacier_depth(world.plates)
     lake_depth = collect_all_lake_depth(world.plates)
     lake_ice_m = collect_all_lake_ice(world.plates)
     river_water_m = collect_all_river_water(world.plates)
-    areas_m2 = collect_all_accounting_areas_m2(world.plates, line_spacing_rad(world.node_density))
-    glacier_ice = _ICE_WATER_EQUIVALENT * float(np.dot(areas_m2, np.clip(glacier_depth, 0.0, None)))
+    if areas_m2 is None:
+        areas_m2 = collect_all_accounting_areas_m2(world.plates, line_spacing_rad(world.node_density))
     lake_liquid = float(np.dot(areas_m2, np.where(lake_depth >= _LAKE_MIN_TRAPPED_DEPTH_M, lake_depth, 0.0)))
     lake_ice = float(np.dot(areas_m2, np.clip(lake_ice_m, 0.0, None)))
     river_water = float(np.dot(areas_m2, np.clip(river_water_m, 0.0, None)))
-    return glacier_ice + lake_liquid + lake_ice + river_water
+    return lake_liquid + lake_ice + river_water
+
+
+def trapped_water_volume_m3(world: "World") -> float:
+    """Surface water currently held out of the liquid ocean, in m^3 like
+    `total_water_volume_m3` -- so it can be subtracted straight from the conserved total
+    budget. Contributions are read off the
+    persisted per-node fields hydrology.py maintains: every node's `glacier_depth` (ice caps,
+    valley glaciers, mountain-top ice, grounded marine ice and any ice-age sea-ice cap --
+    converted from a column of ice to its liquid-water equivalent, `ice_water_column_m`), and
+    the `lake_depth` of every node holding a real visible lake (`_LAKE_MIN_TRAPPED_DEPTH_M`).
+    Both are water that fell as precipitation and would otherwise have run back to the sea;
+    persistent river water (`river_water_m`, RFC 0016 / #725) is also temporarily stored on
+    land. Debiting these inventories is what makes sea level fall as they grow. 0.0 for a
+    world with none.
+
+    The ice counts in full here; the solve then credits back the capacity marine ice fills
+    (`_liquid_floor`), so sea level falls only by the ice above flotation (RFC 0015 D6)."""
+    from ..plates import collect_all_accounting_areas_m2
+
+    if not world.plates:
+        return 0.0
+    areas_m2 = collect_all_accounting_areas_m2(world.plates, line_spacing_rad(world.node_density))
+    glacier_ice = float(np.dot(areas_m2, ice_water_column_m(world)))
+    return glacier_ice + other_trapped_water_volume_m3(world)
 
 
 def solve_sea_level(elevations: np.ndarray, areas_m2: np.ndarray, water_volume_m3: float) -> float:
@@ -508,15 +585,21 @@ def update_sea_level(world: "World") -> None:
     only the ocean's own share floats the shoreline -- solved against `ocean_water_volume_m3`
     (connectivity-restricted, see this module's own docstring), not the bare `total_water_
     volume_m3`, so a landlocked basin's own below-sea-level footprint isn't also counted as
-    free ocean depth on top of being debited as trapped. Cheap enough to call unconditionally
+    free ocean depth on top of being debited as trapped. Ice is debited only above flotation,
+    with the water depth under it taken at the level being solved (`_liquid_floor`, RFC 0015
+    D6). Cheap enough to call unconditionally
     every step. Initializes the budget on first use (older saves / a freshly constructed
     World)."""
     if getattr(world, "ocean_water_volume_m3", None) is None:
         initialize_water_budget(world)
         return
     elevations, areas_m2 = hypsometry(world)
-    ocean_budget = max(0.0, world.ocean_water_volume_m3 - trapped_water_volume_m3(world))
-    world.sea_level_m = _solve_sea_level_connected(world, elevations, areas_m2, ocean_budget)
+    ice_water_m = ice_water_column_m(world)
+    trapped = float(np.dot(areas_m2, ice_water_m)) + other_trapped_water_volume_m3(world, areas_m2=areas_m2) if world.plates else 0.0
+    ocean_budget = max(0.0, world.ocean_water_volume_m3 - trapped)
+    world.sea_level_m = _solve_sea_level_connected(
+        world, elevations, areas_m2, ocean_budget, ice_water_m=ice_water_m
+    )
 
 
 def set_sea_level_via_water_budget(world: "World", sea_level_m: float) -> None:

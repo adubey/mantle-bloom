@@ -2059,15 +2059,19 @@ def _march_sea_level(
     connectivity-blind mask on a changed node cloud), and the mask keeps Earth's
     forced straits connected. The bisection warm-starts around the last level
     (validated, same converged value). `flood_adjacency` is the march's once-built
-    `eustasy.flood_adjacency(neighbor_idx)` (#147). Returns the new (sea level, ocean mask)."""
+    `eustasy.flood_adjacency(neighbor_idx)` (#147). The ice debit follows eustasy's
+    rule, above flotation at the level being solved (RFC 0015 D6, #917), so this
+    re-solve and `eustasy.update_sea_level` agree on the same state. Returns the new
+    (sea level, ocean mask)."""
     from . import eustasy
 
-    debit = to_water * float(np.dot(areas, depth))
+    ice_water_m = to_water * depth
+    debit = float(np.dot(areas, ice_water_m))
     sea_level = eustasy._solve_sea_level_connected(
         world, elevations, hyps_areas, max(0.0, total_water - lakes_trapped - debit),
         seed_is_ocean=ocean_mask, seed_neighbor_idx=neighbor_idx,
         bracket=(sea_level - warm_half_width_m, sea_level + warm_half_width_m),
-        seed_adjacency=flood_adjacency,
+        seed_adjacency=flood_adjacency, ice_water_m=ice_water_m,
     )
     ocean_mask = connected_ocean_mask(points, elevation, sea_level, neighbor_idx, areas_m2=areas, prior_ocean=ocean_mask)
     if getattr(world, "premade_world_id", None) == "earth":
@@ -2085,6 +2089,17 @@ def _adapt_substep_years(cost, sub: float, base: float, last_change: float | Non
     if last_change < cost.adaptive_grow_below:
         return min(sub * cost.adaptive_growth, max(cost.adaptive_max_substep_years, base))
     return sub
+
+
+def _march_ice_debit_m3(
+    to_water: float, areas: np.ndarray, depth: np.ndarray,
+    elevation: np.ndarray, sea_level: float, ocean_mask: np.ndarray,
+) -> float:
+    """Ice volume above flotation (`max(0, 0.917 H - D)`) over `ocean_mask` at `sea_level`,
+    matching eustasy's debit so `sea_level_skip_m` bounds the actual sea-level move (#917)."""
+    w = to_water * depth
+    d = np.where(ocean_mask, np.clip(sea_level - elevation, 0.0, None), 0.0)
+    return float(np.dot(areas, np.clip(w - d, 0.0, None)))
 
 
 def _sea_level_debit_moved(cost, debit_m3: float, resolved_debit_m3: float, areas: np.ndarray, ocean_mask: np.ndarray) -> bool:
@@ -2347,7 +2362,9 @@ def _march_glacier(
     unloaded_bed = np.asarray(elevation, dtype=float) - np.asarray(deflection_m, dtype=float)
     elevations, hyps_areas = eustasy.hypsometry(world)
     to_water = ice_sheet.RHO_ICE / ice_sheet.RHO_WATER
-    lakes_trapped = eustasy.trapped_water_volume_m3(world) - to_water * float(np.dot(areas, depth))
+    # Everything eustasy holds out of the ocean except the ice, which the march re-debits
+    # from its own `depth` at each re-solve (above flotation, RFC 0015 D6).
+    lakes_trapped = eustasy.other_trapped_water_volume_m3(world)
     # A world without a conserved ocean inventory yet (synthetic test worlds) opens one from
     # its current state, the way eustasy does on a real step.
     total_water = world.ocean_water_volume_m3
@@ -2414,7 +2431,7 @@ def _march_glacier(
     capped = False
     watch = _SettleWatch(cost, areas, base_sub, ice_sheet.MARCH_HOLD_WINDOW, ice_sheet.MARCH_SETTLE_PATIENCE)
     resolves = skipped_resolves = 0
-    resolved_debit = to_water * float(np.dot(areas, depth))
+    resolved_debit = _march_ice_debit_m3(to_water, areas, depth, elevation, sea_level, ocean_mask)
     max_dt = 0.0
     frozen_land_total = 0.0
     frozen_ocean_retained_total = 0.0
@@ -2454,7 +2471,7 @@ def _march_glacier(
         # `elapsed` already includes this substep's `dt`, so this is true exactly
         # when years remain after it.
         if has_ocean and elapsed < years - 1e-6:
-            debit = to_water * float(np.dot(areas, depth))
+            debit = _march_ice_debit_m3(to_water, areas, depth, elevation, sea_level, ocean_mask)
             if _sea_level_debit_moved(cost, debit, resolved_debit, areas, ocean_mask):
                 with _phase("Re-solving march sea level"):
                     sea_level, ocean_mask = _march_sea_level(
@@ -2462,7 +2479,7 @@ def _march_glacier(
                         areas, depth, sea_level, ocean_mask, neighbor_idx, points, elevation,
                         warm_half_width_m, flood_adjacency,
                     )
-                resolved_debit = debit
+                resolved_debit = _march_ice_debit_m3(to_water, areas, depth, elevation, sea_level, ocean_mask)
                 resolves += 1
             else:
                 skipped_resolves += 1

@@ -1433,11 +1433,11 @@ don't gate any item (see [Scope](#scope-ice-ages-are-out)).
   visible river networks sourced at ice margins is reported against `origin/main`
   (G6 informs the report). Bare-ground snowmelt is reported separately.
   *Open: D8, after G6, D4 and D5.*
-- [ ] **Sea level:** unit tests show floating ice, and ice grounded exactly at flotation,
+- [x] **Sea level:** unit tests show floating ice, and ice grounded exactly at flotation,
   leave sea level unchanged; G4's difference is recorded. D2's sea-level loop was dropped
   in the #765 revision: sea level is re-solved from the current ice debit between substeps,
   exact each time, so no residual criterion applies.
-  *Open: D6. G4's difference is recorded (#912): at most 0.08 m without ice ages, so D6's simple form is adopted.*
+  *Met (#917): `test_eustasy.py` covers floating ice, ice grounded at flotation, grounded marine ice above flotation, land ice, and march/eustasy parity; `analysis/issue917/README.md` records the A/B replay and `0.0000 m` agreement with G4's generalised arm.*
 - [ ] **Sea ice:** no ocean cell carries floating `glacier_depth` (every ice-bearing ocean
   cell is grounded by `is_grounded`); G5's extents recorded and its outcome met.
   *Open: D6. G5's extents are recorded, and `allow_ocean_ice` is still in `step_ice`.*

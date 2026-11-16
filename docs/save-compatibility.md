@@ -109,7 +109,9 @@ plume-free and its first steps schedule heads exactly as a fresh world would. A 
 reads as its `surface_fields.SURFACE_FIELDS` default, the value the retired `ElevationLine`
 backfilled lazily. The eustatic water budget, if missing or in its pre-#257
 units, is re-snapshotted from the save's own hypsometry and sea level, so the shoreline
-doesn't move. Attributes an older build set on `World` that this build no longer declares
+doesn't move; saves already carrying `ocean_water_volume_m3` from before #917 re-solve on
+their first step under the flotation-aware ice debit (shifting sea level by the old
+over-debit, `≤ 0.08 m` on the diagnosis saves). Attributes an older build set on `World` that this build no longer declares
 (found in real saves: `gap_fill_algorithm`, `volcanic_field_plate_ids`, the old
 `ocean_water_column_m`, the line engine's `corner_notch_log`) are inert. All but
 `volcanic_field_plate_ids` are dropped on load, so a loaded world and its next save carry no
