@@ -14,7 +14,7 @@ from typing import AsyncContextManager
 
 import httpx
 from anyio import CancelScope
-from fastapi import Request, Response
+from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.background import BackgroundTask
 
@@ -245,6 +245,11 @@ def _upstream_request(request: Request) -> httpx.Request:
             b"?" + request.scope["query_string"] if request.scope["query_string"] else b""
         ),
     )
+    # httpx removes dot segments, so `/public/worlds/../step` would reach the worker as
+    # `/public/step`: a different route from the one this process matched and authorised.
+    # No client sends such a path on purpose; refuse it rather than forward a rewrite (#920).
+    if url.raw_path.split(b"?", 1)[0] != request.scope["raw_path"]:
+        raise HTTPException(404, "not found")
     # Uvicorn exposes the socket worker at the root, like the public deployment.
     content = request.stream() if request.method not in ("GET", "HEAD", "OPTIONS") else None
     return httpx.Request(request.method, url, headers=headers, content=content)
