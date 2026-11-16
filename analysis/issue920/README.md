@@ -23,16 +23,16 @@ accounts exist ([#560](https://github.com/adubey/mantle-bloom/issues/560)).
 | # | Finding | Who can reach it | Severity | State |
 |---|---|---|---|---|
 | S1 | Request bodies had no size limit; the worker buffered a visitor's step body whole | Anyone | Medium | Fixed in this branch |
-| S2 | A v5 save's compressed entries expand without a limit on load | Owner only | Low now, High with accounts | To file |
-| S3 | Pillow 12.3.0 has 43 advisories; the sketch upload decodes any image format | Owner only | Low now, High with accounts | To file (needs a pin bump) |
-| S4 | certifi 2026.7.22 bundles root CAs with compromised intermediates | Not reachable | Accepted until the next pin bump | To file with S3 |
-| S5 | The v5 loader imports whatever module a manifest names | Owner only | Low | To file |
-| S6 | A v5 manifest sets the HEALPix grid size with no upper bound | Owner only | Low | To file with S2 |
-| S7 | `POST /worlds/import` doesn't apply the 100-character name limit | Owner only | Low | To file |
-| S8 | Save loading runs on the worker's event loop | Owner only | Low | To file |
-| S9 | `node:20-slim` is past Node 20's end of life | Build stage only | Low | To file |
+| S2 | A v5 save's compressed entries expand without a limit on load | Owner only | Low now, High with accounts | [#925](https://github.com/adubey/mantle-bloom/issues/925) |
+| S3 | Pillow 12.3.0 has 43 advisories; the sketch upload decodes any image format | Owner only | Low now, High with accounts | [#926](https://github.com/adubey/mantle-bloom/issues/926) |
+| S4 | certifi 2026.7.22 bundles root CAs with compromised intermediates | Not reachable | Accepted until the next pin bump | [#926](https://github.com/adubey/mantle-bloom/issues/926) |
+| S5 | The v5 loader imports whatever module a manifest names | Owner only | Low | [#925](https://github.com/adubey/mantle-bloom/issues/925) |
+| S6 | A v5 manifest sets the HEALPix grid size with no upper bound | Owner only | Low | [#925](https://github.com/adubey/mantle-bloom/issues/925) |
+| S7 | `POST /worlds/import` doesn't apply the 100-character name limit | Owner only | Low | [#925](https://github.com/adubey/mantle-bloom/issues/925) |
+| S8 | Save loading runs on the worker's event loop | Owner only | Low | [#925](https://github.com/adubey/mantle-bloom/issues/925) |
+| S9 | `node:20-slim` is past Node 20's end of life | Build stage only | Low | [#926](https://github.com/adubey/mantle-bloom/issues/926) |
 | S10 | Logging out doesn't invalidate a copied session cookie | Needs a stolen cookie | Low | Accepted, recorded here |
-| S11 | Generate takes unbounded `num_plates` and `num_mantle_centers` | Owner only | Low | To file |
+| S11 | Generate takes unbounded `num_plates` and `num_mantle_centers` | Owner only | Low | [#925](https://github.com/adubey/mantle-bloom/issues/925) |
 
 S1 and S2 were measured. S3 to S11 come from reading the code and the scan output and were
 not exercised.
@@ -49,8 +49,7 @@ resident memory rose from 210 MiB to 463 MiB. The world id did not have to exist
 the body is parsed before the route looks the world up.
 
 Fix: `backend/app/body_limit.py`, installed by both entry points. After the fix, on the same
-copy: a declared 8 KiB body gets `413`, a 200 MiB chunked body has its connection closed at
-the cap, a normal step body is answered as before, and the worker's memory did not move
+copy: a declared 8 KiB body gets `413`, a 200 MiB chunked body is stopped at the cap, a normal step body is answered as before, and the worker's memory did not move
 (213 MiB before and after). Whether Railway's edge also caps bodies was not checked.
 
 Verify: `backend/unit_tests/test_body_limit.py`.
