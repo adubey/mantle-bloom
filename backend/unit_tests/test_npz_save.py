@@ -565,6 +565,12 @@ def test_resolve_rejects_external_module_before_importing_it(monkeypatch):
     assert imported == []
 
 
+@pytest.mark.parametrize("dotted", ["app.world.NoSuchClass", "app.no_such_module.SomeClass"])
+def test_resolve_rejects_missing_app_class_as_corrupt(dotted):
+    with pytest.raises(persistence.CorruptSaveError, match="unresolved class"):
+        npz_save._resolve(dotted)
+
+
 def test_loading_a_v5_naming_a_non_dataclass_raises(stepped_bytes):
     def retag(manifest):
         _first_with_key(manifest, "__dc__")["__dc__"] = "builtins.dict"

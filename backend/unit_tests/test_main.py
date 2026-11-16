@@ -1473,6 +1473,7 @@ def _saved_bytes_with_name(client, name):
     "request_body",
     [
         {"num_plates": -1},
+        {"num_plates": 0},
         {"num_plates": main.MAX_GENERATE_PLATES + 1},
         {"num_mantle_centers": -1},
         {"num_mantle_centers": main.MAX_GENERATE_MANTLE_CENTERS + 1},
@@ -1481,6 +1482,19 @@ def _saved_bytes_with_name(client, name):
 def test_generate_rejects_unbounded_plate_and_mantle_counts(client, request_body):
     response = client.post("/world/generate", json=request_body)
     assert response.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "request_body",
+    [
+        {"num_plates": 1},
+        {"num_plates": main.MAX_GENERATE_PLATES},
+        {"num_mantle_centers": 0},
+        {"num_mantle_centers": main.MAX_GENERATE_MANTLE_CENTERS},
+    ],
+)
+def test_generate_resource_limits_accept_boundaries(request_body):
+    main._validate_generate_resource_limits(main.GenerateRequest(**request_body))
 
 
 def test_import_rejects_an_overlong_query_name_before_loading(client, monkeypatch):
@@ -1492,11 +1506,11 @@ def test_import_rejects_an_overlong_query_name_before_loading(client, monkeypatc
     assert response.status_code == 422
 
 
-def test_import_rejects_an_overlong_manifest_name(client):
+def test_import_ignores_an_overlong_manifest_name(client):
     saved = _saved_bytes_with_name(client, "x" * 101)
-    response = client.post("/worlds/import", content=saved)
-    assert response.status_code == 400
-    assert "name exceeds 100 characters" in response.json()["detail"]
+    response = client.post("/worlds/import", params={"name": "Valid name"}, content=saved)
+    assert response.status_code == 201
+    assert response.json()["name"] == "Valid name"
 
 
 @pytest.mark.parametrize("route", ["/world/load", "/worlds/import"])

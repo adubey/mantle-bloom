@@ -246,11 +246,13 @@ def _resolve(dotted: str):
         except ImportError:
             continue
         for part in parts[i:]:
-            obj = getattr(obj, part)
+            obj = getattr(obj, part, None)
+            if obj is None:
+                raise _corrupt(f"v5 save names an unresolved class {dotted!r}")
         if not (isinstance(obj, type) and dataclasses.is_dataclass(obj)):
             raise _corrupt(f"v5 save names a non-dataclass {dotted!r}")
         return obj
-    raise ImportError(dotted)
+    raise _corrupt(f"v5 save names an unresolved class {dotted!r}")
 
 
 def _thaw_packed(node: dict, zf: zipfile.ZipFile) -> list:

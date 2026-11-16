@@ -100,14 +100,17 @@ loads part of a save:
 On upload routes (`POST /worlds/import` and `POST /worlds/{world_id}/load`), the v5 loader
 checks ZIP central-directory sizes before reading any member (`enforce_size_limits=True`).
 Total declared uncompressed size is capped at 512 MiB, and `manifest.json` at 128 MiB; local
-and debug loaders leave those expansion bounds off. `World.stats_history` is packed into
-columnar `.npy` array members (`a/world/stats_history.*.npy`) rather than repeated JSON dicts
-so `manifest.json` stays small on mature worlds (#936). Dataclass names in the
-manifest must resolve under `app.` before Python imports them. A saved HEALPix grid must use a
-positive power-of-two `nside` no larger than 512. `POST /worlds/import` also rejects a saved
-display name longer than 100 characters; this matches the explicit import-name limit and the
-other world-name inputs. These bounds keep compressed uploads and manifest metadata from
-allocating beyond the save format's supported range (#925, #936).
+and debug loaders leave those expansion bounds off. Default saves are deflated to about 30%
+of stored size, while exact saves are stored; representative worlds are documented as
+100–400 MB stored in `persistence.save_world_bytes`, leaving headroom below the cap.
+`World.stats_history` is packed into columnar `.npy` array members
+(`a/world/stats_history.*.npy`) rather than repeated JSON dicts so `manifest.json` stays
+small on mature worlds (#936). Dataclass names in the manifest must resolve under `app.`
+before Python imports them. A saved HEALPix grid must use a positive power-of-two `nside`
+no larger than 512. Imported saved names longer than 100 characters are ignored as advisory
+metadata, matching the explicit import-name limit without letting a tampered label block an
+otherwise valid world load. These bounds keep uploads and manifest metadata from allocating
+beyond the save format's supported range (#925, #936).
 
 `POST /worlds/{world_id}/load` returns `400` with `invalid or incompatible world file: <reason>` for
 either.
