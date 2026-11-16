@@ -93,7 +93,7 @@ function githubAnchor(heading: string): string {
 describe("docs links", () => {
   // phaseInfo.ts links into docs/simulation-model on GitHub; check each file and anchor against the
   // local docs, so a renamed heading fails here instead of showing a dead link in the overlay.
-  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
   const prefix = "https://github.com/adubey/mantle-bloom/blob/main/";
 
   it("points every docs link at a file and heading that exist", () => {
