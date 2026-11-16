@@ -5,12 +5,16 @@ from fastapi.responses import PlainTextResponse
 from fastapi.testclient import TestClient
 
 from app import hosted, security_headers
-from app.security_headers import CONTENT_SECURITY_POLICY, SecurityHeadersMiddleware
+from app.security_headers import CONTENT_SECURITY_POLICY
 
 
 def _client(root_path: str = "") -> TestClient:
     app = FastAPI(root_path=root_path)
-    app.add_middleware(SecurityHeadersMiddleware)
+    security_headers.install(app)
+
+    @app.get("/boom")
+    def _boom() -> PlainTextResponse:
+        raise RuntimeError("unhandled")
 
     @app.get("/plain")
     def _plain() -> PlainTextResponse:
@@ -77,3 +81,12 @@ def test_hosted_auth_refusals_carry_the_headers(monkeypatch):
     login = client.get("/login")
     assert login.status_code == 200
     assert login.headers["content-security-policy"] == CONTENT_SECURITY_POLICY
+
+
+def test_unhandled_exception_500_carries_the_headers():
+    # Starlette builds this response outside every user middleware (PR #919 review).
+    response = TestClient(_client().app, raise_server_exceptions=False).get("/boom")
+    assert response.status_code == 500
+    assert response.headers["content-security-policy"] == CONTENT_SECURITY_POLICY
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["x-content-type-options"] == "nosniff"

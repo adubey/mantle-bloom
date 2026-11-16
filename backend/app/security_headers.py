@@ -23,6 +23,9 @@ already set is left alone.
 
 from __future__ import annotations
 
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
 from .auth import _route_path
 
 CONTENT_SECURITY_POLICY = "; ".join((
@@ -94,3 +97,20 @@ class SecurityHeadersMiddleware:
             await send(message)
 
         await self.app(scope, receive, send_with_headers)
+
+
+async def _server_error(request: Request, _exc: Exception) -> JSONResponse:
+    """The 500 for an unhandled exception. Starlette builds it in `ServerErrorMiddleware`,
+    which wraps every user middleware, so `SecurityHeadersMiddleware` never sees it; the
+    handler adds the headers itself. The exception is still re-raised after this response,
+    so the server logs the traceback as before."""
+    return JSONResponse(
+        {"detail": "Internal Server Error"}, status_code=500,
+        headers={name.decode(): value.decode() for name, value in _headers_for(request.scope)},
+    )
+
+
+def install(app: FastAPI) -> None:
+    """Add the headers to every response of `app`, unhandled-exception 500s included."""
+    app.add_middleware(SecurityHeadersMiddleware)
+    app.add_exception_handler(Exception, _server_error)

@@ -195,9 +195,10 @@ requests never get admin access, and `/login` says login isn't configured.
 
 ### Response security headers (`backend/app/security_headers.py`)
 
-`SecurityHeadersMiddleware` is the outermost middleware in both entry points (`main.py` and
-`hosted.py`), so every response carries these headers, including the guard's `401`, `403`
-and redirect:
+`security_headers.install(app)` (called by `main.py` and `hosted.py`) adds the middleware last, so it
+is outermost, and a handler for unhandled exceptions, because Starlette builds that `500` outside
+every middleware. Every response carries these headers, including the guard's `401`, `403`,
+redirect and a `500`:
 
 | Header | Value | Effect |
 |---|---|---|

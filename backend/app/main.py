@@ -39,6 +39,7 @@ from . import (
     public_view,
     render_image,
     replay_log,
+    security_headers,
     run_control,
     stats,
     synthetic_relief,
@@ -48,7 +49,6 @@ from . import (
     worldsketch,
 )
 from .frontend_files import mount_frontend
-from .security_headers import SecurityHeadersMiddleware
 from .world_registry import FairComputeGate, UnknownWorldError, WorldLimitReached, WorldRegistry, WorldSession
 from .hydroclimate import biomes, climate, coastline, eustasy, hydrology, lakes, stranded_basins
 from .elevation_lines import NODE_DENSITY_CHOICES
@@ -133,7 +133,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 # Last, so it is outermost: auth and CORS refusals carry the security headers too (#555 F5).
-app.add_middleware(SecurityHeadersMiddleware)
+security_headers.install(app)
 
 _logger = logging.getLogger(__name__)
 
@@ -1708,9 +1708,8 @@ async def load_world(world_id: str, request: Request) -> dict:
     """A save-file upload that replaces one record's world in place -- the raw bytes of a
     file /worlds/{world_id}/save previously produced, as the request body (not JSON --
     see persistence.py). Same as /worlds/{world_id}/generate, whatever world previously
-    existed is gone. A line-backed (legacy) save is converted to
-    sparse quads on load, one way -- see docs/save-compatibility.md; the summary's
-    `surface_conversion` then reports what changed. The body streams to a temp file and
+    existed is gone. Only v5 saves load: a legacy (pickled, possibly line-backed) save is
+    refused and converted offline -- see docs/save-compatibility.md. The body streams to a temp file and
     loads from disk, so a large upload never sits in RAM twice (as bytes and as a
     world). `400` with the reason if the
     bytes are corrupt or in a save format this build doesn't read; any other failure is
