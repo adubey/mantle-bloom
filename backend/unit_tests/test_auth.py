@@ -392,3 +392,17 @@ def test_every_route_is_owner_only_or_listed_as_public(remote):
         path = route.path.replace("{world_id}", "test-world")
         for method in route.methods - {"HEAD", "OPTIONS"}:
             assert remote.request(method, path).status_code == 401, (method, path)
+
+
+def test_a_finished_sign_in_cannot_be_replayed_in_the_same_browser(monkeypatch, remote):
+    """The callback clears the state cookie, so a second callback with the same `state`
+    and `code` starts no new session (#920)."""
+    _fake_github(monkeypatch, {"id": OWNER_ID, "login": "owner"})
+    state = _start(remote)
+    params = {"code": "abc", "state": state}
+    assert remote.get("/auth/github/callback", params=params).headers["location"] == "/"
+    assert auth.STATE_COOKIE not in remote.cookies
+    remote.cookies.delete(auth.SESSION_COOKIE)
+    again = remote.get("/auth/github/callback", params=params)
+    assert again.headers["location"] == "/login?error=state"
+    assert auth.SESSION_COOKIE not in remote.cookies

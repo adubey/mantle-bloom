@@ -23,7 +23,8 @@ earlier in this pass and fixed in PR #924.
 
 | Area | Check | Result | Test |
 |---|---|---|---|
-| OAuth | Start sends `state` and an S256 PKCE challenge; callback needs the matching signed state cookie; a missing, mismatched or reused state fails | Holds | `test_auth.py`: `test_login_start_redirects_to_github_with_state_and_pkce`, `test_callback_failures_redirect_to_login`, `test_callback_without_state_cookie_fails` |
+| OAuth | Start sends `state` and an S256 PKCE challenge; callback needs the matching signed state cookie; a missing or mismatched state fails | Holds | `test_auth.py`: `test_login_start_redirects_to_github_with_state_and_pkce`, `test_callback_failures_redirect_to_login`, `test_callback_without_state_cookie_fails` |
+| OAuth | A finished sign-in replayed in the same browser | Fails: the callback clears the state cookie. A copy of that cookie taken beforehand stays valid for its 10 minutes (it is stateless, like the session), but is useless without a fresh GitHub code for the same PKCE verifier | new: `test_a_finished_sign_in_cannot_be_replayed_in_the_same_browser` |
 | OAuth | Another GitHub account gets no session | Holds | `test_other_github_account_gets_no_session` |
 | Session forgery | Wrong secret, changed owner, expired token | Refused | `test_forged_or_stale_sessions_are_rejected`, `test_expired_token_is_rejected` |
 | Session forgery | A guest-allowance or OAuth-state token, signed with the same secret and naming the owner, used as a session | Refused | new: `test_tokens_minted_for_another_purpose_are_not_sessions` |
