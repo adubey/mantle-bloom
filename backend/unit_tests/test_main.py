@@ -1403,6 +1403,31 @@ def test_load_reports_a_save_from_a_newer_build_as_unsupported(client):
     assert "unsupported save format version" in resp.json()["detail"]
 
 
+def test_load_enforces_online_v5_manifest_cap_and_allows_over_16_mib(client, monkeypatch):
+    import io
+    import json
+    import zipfile
+    from app import npz_save
+
+    raw = _saved_bytes(client, seed=5)
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(raw)) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            data = src.read(item.filename)
+            if item.filename == "manifest.json":
+                manifest = json.loads(data)
+                manifest["_pad"] = "x" * (17 * 1024 * 1024)
+                data = json.dumps(manifest).encode()
+            dst.writestr(item, data)
+    padded = out.getvalue()
+    assert client.post("/world/load", content=padded).status_code == 200
+
+    monkeypatch.setattr(npz_save, "MAX_V5_MANIFEST_BYTES", 1024)
+    resp = client.post("/world/load", content=padded)
+    assert resp.status_code == 400
+    assert "manifest exceeds" in resp.json()["detail"]
+
+
 def test_uploads_refuse_a_legacy_pickled_save_without_unpickling_it(client, monkeypatch):
     # #555 F1: unpickling runs code, so no upload route loads a v1-v4 save. The loader must
     # never be reached, and the refusal says how to convert the file offline.

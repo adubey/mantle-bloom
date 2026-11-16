@@ -367,7 +367,7 @@ def test_oversized_v5_manifest_is_rejected_before_reading_it(monkeypatch):
 
     monkeypatch.setattr(zipfile.ZipFile, "read", track_read)
     with pytest.raises(persistence.CorruptSaveError, match="manifest exceeds"):
-        persistence.load_world_bytes(data)
+        persistence.load_world_bytes(data, enforce_size_limits=True)
     assert not read_manifest
 
 
@@ -393,8 +393,43 @@ def test_v5_total_uncompressed_limit_is_checked_before_reading_members(monkeypat
 
     monkeypatch.setattr(zipfile.ZipFile, "read", track_read)
     with pytest.raises(persistence.CorruptSaveError, match="expands beyond"):
-        persistence.load_world_bytes(bytes(data))
+        persistence.load_world_bytes(bytes(data), enforce_size_limits=True)
     assert not read_called
+
+
+def test_manifest_over_16_mib_loads_even_with_size_limits_enforced(stepped_bytes):
+    # Regression test for #936: mature worlds had >16 MiB manifests and must load
+    # both locally and on upload routes (`enforce_size_limits=True`).
+    padding = "x" * (17 * 1024 * 1024)
+    padded = _remanifested(stepped_bytes, lambda m: m.update({"_pad": padding}))
+    with zipfile.ZipFile(io.BytesIO(padded)) as zf:
+        assert zf.getinfo("manifest.json").file_size > 16 * 1024 * 1024
+    loaded = persistence.load_world_bytes(padded, enforce_size_limits=True)
+    assert loaded.steps_taken > 0
+
+
+def test_local_load_allows_manifest_over_online_limit(stepped_bytes, monkeypatch):
+    monkeypatch.setattr(npz_save, "MAX_V5_MANIFEST_BYTES", 1024)
+    with pytest.raises(persistence.CorruptSaveError, match="manifest exceeds"):
+        persistence.load_world_bytes(stepped_bytes, enforce_size_limits=True)
+    loaded = persistence.load_world_bytes(stepped_bytes)
+    assert loaded.steps_taken > 0
+
+
+def test_stats_history_is_packed_in_arrays_and_round_trips(stepped_world):
+    stepped_world.stats_history = [
+        {"elapsed_years": 0.0, "plate_count": 4, "nullable": None, "nested": {"a": 1.5, "b": 2}},
+        {"elapsed_years": 1e6, "plate_count": 5, "nullable": 3.5, "nested": {"a": 2.5}, "extra": "ok"},
+        {"elapsed_years": 2e6, "plate_count": 5, "nullable": None, "nested": None},
+    ]
+    data = persistence.save_world_bytes(stepped_world)
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        manifest = json.loads(zf.read("manifest.json"))
+        assert "__stats_history__" in manifest["world"]["stats_history"]
+        assert "a/world/stats_history.float64.npy" in zf.namelist()
+        assert "a/world/stats_history.int64.npy" in zf.namelist()
+    loaded = persistence.load_world_bytes(data)
+    assert loaded.stats_history == stepped_world.stats_history
 
 
 def test_loading_a_v5_with_duplicate_plate_ids_raises(stepped_bytes):
