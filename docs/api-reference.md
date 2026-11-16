@@ -20,17 +20,27 @@ a world. An unusable volume fails startup or returns `503`. [Hosting](hosting.md
 ## Login routes
 
 - `GET /login`: the sign-in page. It redirects to `/` when the request is already the admin.
-  `?error=denied|state|github|forbidden|unconfigured` shows a fixed message for a failed
-  attempt.
+  `?error=denied|state|github|google|forbidden|unconfigured` shows a fixed message for a
+  failed attempt. It offers Google when that is configured, with the owner's GitHub login
+  as a text link beside it.
 - `GET /auth/github`: starts GitHub OAuth (with PKCE). It sets a short-lived signed `state`
   cookie and redirects to GitHub.
 - `GET /auth/github/callback`: checks `state`, exchanges the code and fetches the GitHub
   user. If the user ID is the configured owner, it sets the session cookie and redirects to
   `/`. Otherwise it redirects to `/login?error=...` without a session.
+- `GET /auth/google`: starts Google sign-in (authorization code with PKCE, scope
+  `openid email profile`), with its own signed `state` cookie. Redirects to
+  `/login?error=unconfigured` when no Google client is configured.
+- `GET /auth/google/callback`: checks `state`, exchanges the code and reads the account
+  from Google's userinfo endpoint. It finds or creates the store user for that account,
+  sets a session cookie for it and redirects to `/view`. This session is never the admin
+  (#929).
 - `POST /logout`: clears the session cookie and redirects (`303`) to `/view`.
 - `GET /auth/session`: `{"admin": bool, "local": bool, "login": str | null,
-  "login_available": bool}`. `local` means the no-login local rule applied. `login` is the
-  GitHub login of a real session.
+  "login_available": bool, "user": {"name": str | null, "provider": str} | null}`. `local`
+  means the no-login local rule applied. `login` is the GitHub login of the owner's
+  session. `user` is a signed-in free account; it is `null` for the owner and for anyone
+  signed out. `login_available` is true when either sign-in is configured.
 
 ## Public viewer routes
 

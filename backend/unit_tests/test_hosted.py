@@ -494,7 +494,7 @@ def _owner_only(path: str) -> bool:
 # Every route the hosted public process answers without a session. A new route must be
 # added here on purpose, or the test below fails: nothing becomes public by accident.
 _HOSTED_PUBLIC_ROUTES = {
-    "/login", "/auth/github", "/auth/github/callback", "/logout", "/auth/session", "/healthz", "/demo",
+    "/login", "/auth/github", "/auth/github/callback", "/auth/google", "/auth/google/callback", "/logout", "/auth/session", "/healthz", "/demo",
     "/public/worlds", "/public/worlds/{world_id}/world", "/public/worlds/{world_id}/render",
     "/public/worlds/{world_id}/preview.png", "/public/worlds/{world_id}/warm", "/public/worlds/{world_id}/step",
     "/_worker/{path:path}",
