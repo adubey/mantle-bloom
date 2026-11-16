@@ -160,6 +160,7 @@ Gate 2 load, mesh and capacity diagnostics.
 |---|---|
 | [`measure_river_endings.py`](debugging/scripts-water-ice.md#measure_river_endingspy) | rivers that reach neither sea nor lake |
 | [`measure_river_hops.py`](debugging/scripts-water-ice.md#measure_river_hopspy) | river lines drawn across lakes by spill hops |
+| [`river_style_sheet.py`](debugging/scripts-water-ice.md#river_style_sheetpy) | one save rendered under several river styles, side by side |
 | [`measure_discharge_calibration.py`](debugging/scripts-water-ice.md#measure_discharge_calibrationpy) | river and glacier calibration on one save in two trees |
 | [`measure_lake_silt.py`](debugging/scripts-water-ice.md#measure_lake_siltpy) | lake area, volume and silt |
 | [`trace_lake_drainage_phases.py`](debugging/scripts-water-ice.md#trace_lake_drainage_phasespy) | modeled lake catchments through selected replay phases |

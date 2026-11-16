@@ -703,7 +703,8 @@ the river's mouth, at the width of the drawn reach above them
 (`_extend_drawn_rivers_downstream`): a river's last cells before the coast are often new or
 reset cells whose channel is still narrower than the floor, and the line used to stop one to
 three nodes short of the sea (issue #503). A node drawn in its own right keeps its own width. Color and line width are driven by two different, deliberately decoupled measures of "how
-big":
+big". A third measure decides whether a segment is drawn as water at all (see "Canyon
+headwaters" below).
 
 - **Color** is a *percentile rank* of `channel_width` among this same render's own currently-
   drawn segments (`render_image._percentile_rank`), not a fraction of any fixed physical or
@@ -711,7 +712,8 @@ big":
   already only selects each catchment's own highest-flow tail, so most drawn segments sit close
   to whatever fixed denominator you pick, reading as uniformly bright with barely any visible
   head-to-mouth gradient. A percentile rank is spread evenly from `RIVER_COLOR_BLEND_MIN_FRACTION`
-  (this render's own narrowest visible channel) to 1.0 (its widest) by construction, while
+  (this render's own narrowest visible channel) to `RIVER_COLOR_BLEND_MAX_FRACTION` (its
+  widest; 0.7 rather than full color, which glowed against dark land, issue #933) by construction, while
   staying exactly monotonic in `channel_width` -- so a real confluence (a genuine local width
   increase) still visibly brightens everything downstream of it toward the river-blue overlay
   color.
@@ -736,6 +738,28 @@ flat, uniformly-blended slab. The River Inspector also filters short networks fo
 using a 1,875 km physical-length cutoff (the former 30-node threshold at default
 `node_density=4`). The cutoff stays fixed as mesh density changes. River selection itself uses
 physical discharge, so breach-only erosion paths cannot appear as physical rivers.
+
+**Canyon headwaters (issue #933).** A river is drawn as carved ground in its upper reaches
+and turns into water gradually downstream. `render_image._river_water_fraction` ranks each
+drawn segment's physical discharge among the render's drawn segments. Below
+`RIVER_WATER_MIN_PERCENTILE` (0.3) a segment gets no river color: the land under the line
+keeps its hue and saturation and loses `RIVER_CANYON_SHADE` (15%) of its HSV value. Above that
+rank the water share rises as a power of the rank (`RIVER_WATER_RAMP_GAMMA`), reaching 1 at the
+render's largest flow. The color blend above is multiplied by the water share, and the canyon
+shade falls by the same share, so there is no node where the line switches look. The widest
+line is `RIVER_LINE_WIDTH_MAX_MULT` = 2 times the base width.
+
+**Drawn course (issue #933).** Steepest-descent routing on a smooth slope runs dead straight
+along the mesh, sometimes for more than ten nodes (issue #935 tracks the routing). The map
+bends the drawn line only: `render_image._river_course_points` displaces each interior river
+node sideways by up to `RIVER_MEANDER_AMPLITUDE` (0.6) node spacings, by an amount fixed by
+the node's position, then relaxes it toward its upstream and downstream neighbours
+(`RIVER_SMOOTH_PASSES`). Heads and mouths stay on their nodes. Routing, discharge and the
+River Inspector's data are unchanged.
+
+These settings are the defaults of `render_image.RiverStyle`.
+`bin/debug/river_style_sheet.py` renders one saved world under several styles side by side,
+which is how the defaults were chosen.
 
 **Canyons via hillshade (issue #190).** A channel deep past `CHANNEL_INCISION_MIN_DEPTH_M`
 and wide past `CHANNEL_INCISION_MIN_WIDTH_M` (ramped over `CHANNEL_INCISION_WIDTH_RANGE_M`) has

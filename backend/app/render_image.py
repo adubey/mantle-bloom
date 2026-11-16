@@ -23,9 +23,11 @@ import io
 import logging
 from collections.abc import Callable
 from contextvars import ContextVar
+from dataclasses import dataclass
 from fractions import Fraction
 
 import av
+
 import numpy as np
 from numba import njit
 from PIL import Image, ImageDraw, ImageFilter
@@ -139,8 +141,9 @@ SEA_COLOR_RGB = (42, 128, 140)
 RIVER_COLOR_RGB = (77, 216, 230)
 RIVER_LINE_WIDTH_PX = 1.0
 # Widest drawn line, at flow-percentile-rank 1.0 (see RIVER_WIDE_MIN_PERCENTILE), is this many
-# multiples of RIVER_LINE_WIDTH_PX.
-RIVER_LINE_WIDTH_MAX_MULT = 3.0
+# multiples of RIVER_LINE_WIDTH_PX. 2 rather than the earlier 3: near an ice margin, several
+# widened parallel trunks fused into one cyan mat (#933).
+RIVER_LINE_WIDTH_MAX_MULT = 2.0
 # A light Gaussian blur of just the river-line mask before compositing the river color in by
 # the blurred mask's own value as a per-pixel alpha -- the same cheap-AA idea
 # CELL_BLUR_RADIUS_PX already uses for cell edges (see that constant's own comment), just
@@ -171,8 +174,33 @@ RIVER_VISIBLE_MIN_FLOW_M3_S = 10_000.0
 # The floor on the percentile-rank color fraction above (RIVER_COLOR_BLEND_MIN_FRACTION) plus
 # (1 - floor) * (this segment's own percentile rank, see RIVER_COLOR_RGB's own comment) -- so
 # even this render's own narrowest visible channel still reads as a pale, visible trickle
-# rather than fading all the way to indistinguishable-from-land-color.
-RIVER_COLOR_BLEND_MIN_FRACTION = 0.15
+# rather than fading all the way to indistinguishable-from-land-color. The blend tops out at
+# RIVER_COLOR_BLEND_MAX_FRACTION, not 1.0: RIVER_COLOR_RGB is far lighter and more saturated
+# than any land color, so at full strength a river glowed against dark forest (#933). Both
+# are then scaled by how much of the segment is water at all (RIVER_WATER_MIN_PERCENTILE).
+RIVER_COLOR_BLEND_MIN_FRACTION = 0.4
+RIVER_COLOR_BLEND_MAX_FRACTION = 0.7
+# A river is drawn as carved ground in its upper reaches and turns into water gradually
+# downstream (#933). Segments below this physical-discharge percentile rank (among this
+# render's drawn segments) get no river color at all, only the canyon shade below. Above it
+# the water share of a segment rises as ((rank - min) / (1 - min)) ** RIVER_WATER_RAMP_GAMMA,
+# reaching 1 at the render's highest-flow segment, and the canyon shade falls by the same
+# share. A hard switch at one percentile was tried and rejected: the line visibly jumped
+# between the two looks at a single node. Discharge rather than channel_width for the same
+# reason line width uses it (see RIVER_COLOR_RGB's comment).
+RIVER_WATER_MIN_PERCENTILE = 0.3
+RIVER_WATER_RAMP_GAMMA = 2.0
+# The canyon look: land under the line keeps its own hue and saturation and loses this
+# fraction of its HSV value, so it reads as a valley cut into that land, not as water. 0.3 and
+# 0.22 were tried and read as drawn-on dark lines.
+RIVER_CANYON_SHADE = 0.15
+# Drawn course only; routing is untouched. Steepest-descent routing on a smooth slope runs
+# dead straight along the mesh for many nodes (#935). Each interior river node is drawn
+# displaced sideways by up to this many node spacings, by a fixed pseudo-random amount per
+# location, then relaxed toward its upstream and downstream neighbours RIVER_SMOOTH_PASSES
+# times. Larger displacements (1.2 to 4 spacings) were tried and looked invented.
+RIVER_MEANDER_AMPLITUDE = 0.6
+RIVER_SMOOTH_PASSES = 1
 # Only the top (1 - RIVER_WIDE_MIN_PERCENTILE) of drawn segments by physical-discharge percentile rank
 # ever draw wider than 1px, ramping from 0 extra width at this floor to full
 # RIVER_LINE_WIDTH_MAX_MULT at percentile-rank 1.0 (this render's single highest-flow drawn
@@ -2626,6 +2654,27 @@ def _render_thickness_view(world: World, projection: str, view: str, width: int,
     return _render_resampled_view(world, projection, width, height, view_rotation, cell_colors)
 
 
+@dataclass(frozen=True)
+class RiverStyle:
+    """How _draw_rivers paints the selected segments. The defaults are the map's look; see
+    each default's constant for what it does and why. bin/debug/river_style_sheet.py renders
+    one world under several of these side by side, which is how the defaults were chosen
+    (#933)."""
+
+    alpha_min: float = RIVER_COLOR_BLEND_MIN_FRACTION
+    alpha_max: float = RIVER_COLOR_BLEND_MAX_FRACTION
+    water_min_percentile: float = RIVER_WATER_MIN_PERCENTILE
+    water_ramp_gamma: float = RIVER_WATER_RAMP_GAMMA
+    canyon_shade: float = RIVER_CANYON_SHADE
+    meander_amplitude: float = RIVER_MEANDER_AMPLITUDE
+    smooth_passes: int = RIVER_SMOOTH_PASSES
+    wide_min_percentile: float = RIVER_WIDE_MIN_PERCENTILE
+    width_max_mult: float = RIVER_LINE_WIDTH_MAX_MULT
+
+
+RIVER_STYLE = RiverStyle()
+
+
 def _percentile_rank(values: np.ndarray) -> np.ndarray:
     """0..1 percentile rank of each element of `values` among the others in the same array
     (0 = the smallest, 1 = the largest) via a double argsort -- evenly spread by construction
@@ -2685,13 +2734,32 @@ def _extend_drawn_rivers_downstream(
     return drawn, width
 
 
-def _rivers_to_draw(world: World, hide_short_networks: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _river_discharge_m3_s(hydro) -> np.ndarray:
+    """Per-node physical discharge, from the legacy field when that is all a fixture has."""
+    discharge_m3_s = hydro.discharge_m3_s
+    if discharge_m3_s is None or len(discharge_m3_s) != len(hydro.points):
+        # Hand-built internal fixtures may still carry only the legacy field.
+        discharge_m3_s = hydrology.flow_accum_mm_yr_to_discharge_m3_s(hydro.flow_accum)
+    return discharge_m3_s
+
+
+def _river_water_fraction(hydro, river_idx: np.ndarray, style: RiverStyle = RIVER_STYLE) -> np.ndarray:
+    """How much of each drawn river node's segment is water, in [0, 1]; the rest is canyon.
+    See RIVER_WATER_MIN_PERCENTILE."""
+    flow_percentile = _percentile_rank(_river_discharge_m3_s(hydro)[river_idx])
+    ramp = np.clip((flow_percentile - style.water_min_percentile) / max(1.0 - style.water_min_percentile, 1e-9), 0.0, 1.0)
+    return np.where(flow_percentile < style.water_min_percentile, 0.0, ramp**style.water_ramp_gamma)
+
+
+def _rivers_to_draw(
+    world: World, hide_short_networks: bool = False, style: RiverStyle = RIVER_STYLE
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Selects which river segments the general-purpose map views draw, how strongly each
     tints toward RIVER_COLOR_RGB, and how much (if at all) each widens past 1px.
 
     Returns (src_idx, color_alpha, width_frac): `src_idx` is each drawn river node, whose flow
     edge (`hydro.flow_target[src_idx]`, guaranteed >= 0) _draw_rivers draws as one segment, or
-    as several along a spill path (`hydrology.flow_segments`). `color_alpha` is in [RIVER_COLOR_BLEND_MIN_FRACTION, 1.0], a percentile rank of this
+    as several along a spill path (`hydrology.flow_segments`). `color_alpha` is in [RIVER_COLOR_BLEND_MIN_FRACTION, RIVER_COLOR_BLEND_MAX_FRACTION], a percentile rank of this
     segment's own channel_width among every other segment drawn in this same call -- see
     RIVER_COLOR_RGB's own comment for why a rank beats a fixed fraction here. `width_frac` is
     in [0, 1], a percentile rank of this segment's own physical discharge (not channel_width -- see
@@ -2716,10 +2784,7 @@ def _rivers_to_draw(world: World, hide_short_networks: bool = False) -> tuple[np
     if hydro is None or channel_width is None or len(channel_width) != len(hydro.points):
         return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
 
-    discharge_m3_s = hydro.discharge_m3_s
-    if discharge_m3_s is None or len(discharge_m3_s) != len(hydro.points):
-        # Hand-built internal fixtures may still carry only the legacy field.
-        discharge_m3_s = hydrology.flow_accum_mm_yr_to_discharge_m3_s(hydro.flow_accum)
+    discharge_m3_s = _river_discharge_m3_s(hydro)
     visible_mask = hydro.is_river & (hydro.flow_target >= 0) & (channel_width >= RIVER_VISIBLE_MIN_WIDTH_M)
     # No network's mouth can clear the discharge floor if no river node does, so skip grouping.
     if not np.any(discharge_m3_s[hydro.is_river] > RIVER_VISIBLE_MIN_FLOW_M3_S):
@@ -2738,17 +2803,49 @@ def _rivers_to_draw(world: World, hide_short_networks: bool = False) -> tuple[np
     candidates = np.where(visible_mask)[0]
 
     color_percentile = _percentile_rank(channel_width[candidates])
-    color_alpha = RIVER_COLOR_BLEND_MIN_FRACTION + (1.0 - RIVER_COLOR_BLEND_MIN_FRACTION) * color_percentile
+    color_alpha = style.alpha_min + (style.alpha_max - style.alpha_min) * color_percentile
 
     flow_percentile = _percentile_rank(discharge_m3_s[candidates])
-    width_frac = np.clip((flow_percentile - RIVER_WIDE_MIN_PERCENTILE) / (1.0 - RIVER_WIDE_MIN_PERCENTILE), 0.0, 1.0)
+    width_frac = np.clip((flow_percentile - style.wide_min_percentile) / (1.0 - style.wide_min_percentile), 0.0, 1.0)
 
     return candidates.astype(np.int64), color_alpha, width_frac
+
+
+def _river_course_points(hydro, river_idx: np.ndarray, style: RiverStyle, spacing_rad: float) -> np.ndarray:
+    """Unit-sphere positions to draw each node at: `hydro.points`, with the interior nodes of
+    the drawn rivers displaced and smoothed per `style` (see RIVER_MEANDER_AMPLITUDE). Heads
+    and mouths stay where the routing put them, so a river still starts and ends on its nodes."""
+    points = np.asarray(hydro.points, dtype=float)
+    if style.meander_amplitude <= 0.0 and style.smooth_passes <= 0:
+        return points
+    points = points.copy()
+    discharge = _river_discharge_m3_s(hydro)
+    drawn = np.zeros(len(points), dtype=bool)
+    drawn[river_idx] = True
+    # Each node's main upstream neighbour: its largest drawn inflow (the last write wins).
+    upstream = np.full(len(points), -1, dtype=np.int64)
+    by_flow = river_idx[np.argsort(discharge[river_idx], kind="stable")]
+    upstream[hydro.flow_target[by_flow]] = by_flow
+    downstream = hydro.flow_target[river_idx]
+    interior = river_idx[(upstream[river_idx] >= 0) & drawn[downstream]]
+    up, down = upstream[interior], hydro.flow_target[interior]
+    if style.meander_amplitude > 0.0 and len(interior):
+        here = points[interior]
+        side = np.cross(here, points[down] - points[up])
+        side /= np.maximum(np.linalg.norm(side, axis=1, keepdims=True), 1e-12)
+        # A hash of the node's own position, so the same place always bends the same way.
+        noise = np.modf(np.abs(np.sin(here @ np.array([127.1, 311.7, 74.7])) * 43758.5453))[0] * 2.0 - 1.0
+        points[interior] = here + side * (noise * style.meander_amplitude * spacing_rad)[:, None]
+    for _ in range(int(style.smooth_passes)):
+        points[interior] = 0.5 * points[interior] + 0.25 * (points[up] + points[down])
+    points[interior] /= np.linalg.norm(points[interior], axis=1, keepdims=True)
+    return points
 
 
 def _draw_rivers(
     image: Image.Image, world: World, projection: str, scale: float, offset_x: float, offset_y: float, pixel_scale: float, view_rotation: np.ndarray,
     hide_short_networks: bool = False,
+    style: RiverStyle = RIVER_STYLE,
 ) -> Image.Image:
     """Draws each selected river segment (see _rivers_to_draw for which segments and how
     strongly each tints toward RIVER_COLOR_RGB) as a short line from a river node to its own
@@ -2765,27 +2862,30 @@ def _draw_rivers(
     hydro = world.hydrology_cache
     if hydro is None:
         return image
-    river_idx, color_alpha, width_frac = _rivers_to_draw(world, hide_short_networks=hide_short_networks)
+    river_idx, color_alpha, width_frac = _rivers_to_draw(world, hide_short_networks=hide_short_networks, style=style)
     if len(river_idx) == 0:
         return image
+    water_frac = _river_water_fraction(hydro, river_idx, style)
     # A spill hop is drawn along its spill path, so one node can own several segments (#520).
     from_idx, target_idx, owner, _ = hydrology.flow_segments(hydro, river_idx)
-    color_alpha, width_frac = color_alpha[owner], width_frac[owner]
+    color_alpha, width_frac, water_frac = color_alpha[owner] * water_frac[owner], width_frac[owner], water_frac[owner]
+    canyon_fill = np.round(255 * (1.0 - water_frac)).astype(int)
 
     width_px = np.maximum(
-        np.round(pixel_scale * RIVER_LINE_WIDTH_PX * (1.0 + (RIVER_LINE_WIDTH_MAX_MULT - 1.0) * width_frac)).astype(int), 1
+        np.round(pixel_scale * RIVER_LINE_WIDTH_PX * (1.0 + (style.width_max_mult - 1.0) * width_frac)).astype(int), 1
     )
     # Each line is drawn at a gray level equal to its own color-blend fraction rather than
     # always full 255 -- the mask-blur-then-composite below already treats the mask value as a
-    # per-pixel blend-toward-RIVER_COLOR_RGB alpha, so a narrow channel's line lands closer to
+    # per-pixel blend-toward-river-color alpha, so a narrow channel's line lands closer to
     # the land color underneath it and a wide one lands closer to full river-blue, with no
     # separate compositing pass needed for the color blend.
     fill_value = np.clip(np.round(255 * color_alpha), 0, 255).astype(int)
     halo_fill_value = np.clip(np.round(fill_value * RIVER_HALO_FILL_FRACTION), 0, 255).astype(int)
     core_width_px = np.maximum(np.round(width_px * RIVER_CORE_WIDTH_FRACTION).astype(int), 1)
 
-    from_points = _rotate(hydro.points[from_idx], view_rotation)
-    to_points = _rotate(hydro.points[target_idx], view_rotation)
+    course = _river_course_points(hydro, river_idx, style, line_spacing_rad(world.node_density))
+    from_points = _rotate(course[from_idx], view_rotation)
+    to_points = _rotate(course[target_idx], view_rotation)
     _, from_lon = geometry.xyz_to_latlon(from_points)
     from_xy = _project_points(projection, from_points)
     to_xy = _project_offset(projection, to_points, from_lon)
@@ -2795,7 +2895,15 @@ def _draw_rivers(
 
     mask = Image.new("L", image.size, 0)
     mask_draw = ImageDraw.Draw(mask)
-    for (x1, y1), (x2, y2), w, f, core_w, halo_f in zip(from_px, to_px, width_px, fill_value, core_width_px, halo_fill_value):
+    canyon_mask = Image.new("L", image.size, 0)
+    canyon_draw = ImageDraw.Draw(canyon_mask)
+    for (x1, y1), (x2, y2), w, f, core_w, halo_f, canyon in zip(
+        from_px, to_px, width_px, fill_value, core_width_px, halo_fill_value, canyon_fill
+    ):
+        if canyon:
+            canyon_draw.line([(x1, y1), (x2, y2)], fill=int(canyon), width=1)
+        if f == 0:
+            continue
         if w > 1:
             # A wide river's own cross-section: a full-width, dimmer "halo" first, then a
             # narrower full-color "core" painted on top -- see RIVER_CORE_WIDTH_FRACTION's own
@@ -2805,10 +2913,13 @@ def _draw_rivers(
             mask_draw.line([(x1, y1), (x2, y2)], fill=int(f), width=int(core_w))
         else:
             mask_draw.line([(x1, y1), (x2, y2)], fill=int(f), width=int(w))
-    mask = mask.filter(ImageFilter.GaussianBlur(radius=RIVER_BLUR_RADIUS_PX * pixel_scale))
+    blur = ImageFilter.GaussianBlur(radius=RIVER_BLUR_RADIUS_PX * pixel_scale)
 
-    alpha_px = (np.asarray(mask, dtype=np.float32) / 255.0)[:, :, None]
-    base_rgb = np.asarray(image, dtype=np.float32)
+    # Scaling R, G and B by one factor changes only the HSV value: hue and saturation stay the
+    # land's own, so a canyon reads as carved ground rather than as water (RIVER_CANYON_SHADE).
+    canyon_px = (np.asarray(canyon_mask.filter(blur), dtype=np.float32) / 255.0)[:, :, None]
+    base_rgb = np.asarray(image, dtype=np.float32) * (1.0 - style.canyon_shade * canyon_px)
+    alpha_px = (np.asarray(mask.filter(blur), dtype=np.float32) / 255.0)[:, :, None]
     blended = base_rgb * (1.0 - alpha_px) + np.array(RIVER_COLOR_RGB, dtype=np.float32) * alpha_px
     return Image.fromarray(np.clip(np.round(blended), 0, 255).astype(np.uint8), mode="RGB")
 
