@@ -1085,6 +1085,28 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
   grounded marine and land ice under D1–D2, and the eustatic difference between today's
   debit and D6's. *Outcome:* adopt D6's simple form if the generalised correction changes sea
   level by less than 1 m.
+
+  **Gate result (2026-11-15, #912, commit `0d4505e`): adopt D6's simple form.** The method
+  was stated on #912 before any run. On each step's final state, three levels are solved:
+  today's (debit `0.917 H`), D6's simple form (`D` lagged one step, as `update_sea_level`
+  sees it), and the generalised one. The generalised level is the liquid-water balance
+  `Σ A · max(0, (h − z) − 0.917 H) = V_total − L − Σ A · 0.917 H`, which is
+  [[Goelzer et al., 2020]](#ref-goelzer2020) Eqs. 5, 13 and 14 with the reference level set to
+  the solved level. The runs used the `trend-1k` march, 10 steps at 0.25 Myr (primary) and
+  1 Myr (second).
+  - **Deciding saves (ice ages off):** the largest |simple − generalised| is 0.0095 m and
+    0.0001 m at 0.25 Myr on 997271774 and 649658380, and 0.016 m and 0.0003 m at 1 Myr.
+    Today's debit and D6's differ by at most 0.08 m. Grounded marine ice is under 1% of ice
+    volume (≤ 0.095 M km³ against 12–16 M km³ on land), and floating ice ≤ 0.003 M km³.
+  - **Ice-age save (report only):** today's debit puts sea level up to 2.4 m too low at the
+    cycle's peak, and the simple form's residual reaches 0.26 m, with 3 M km³ grounded marine.
+  - The simple form's residual comes from lagging `D` by a step, and peaks on steps where sea
+    level moves most. Taking `D` at each candidate level inside the solve would make it exact.
+    That is optional for D6.
+  - Goelzer's density term (Eq. 10) is zero here because the model has one water density.
+    Evaluated separately at 1028 kg m⁻³, it is 0.16–1.10 m. It is reported only, not part of
+    D6.
+  See [`analysis/issue912/`](../analysis/issue912/README.md).
 - **G5: sea ice.** On the diagnosis set, with and without ice ages, report the perennial and
   seasonal sea-ice areas from D6's balance, by hemisphere and latitude band, the spread of the
   perennial ice edge's latitude by longitude, and the Polar Sea Ice class area before and
@@ -1373,7 +1395,7 @@ withdrawal can be handled part by part.
 
 The thresholds below were confirmed by the project owner on 2026-10-23.
 
-**Status, 2026-11-15:** 7 of 16 met and ticked. The others wait on D3–D8 and G1, G3, G4 and G6. Each item carries its evidence. Ice-age saves
+**Status, 2026-11-15:** 7 of 16 met and ticked. The others wait on D3–D8 and G1, G3 and G6 (G4 is recorded, #912). Each item carries its evidence. Ice-age saves
 don't gate any item (see [Scope](#scope-ice-ages-are-out)).
 
 - [x] **Prerequisites:** RFC 0014 D2(b) and D2(c) landed before D4, D5 and D8; or D1–D3 shipped
@@ -1383,7 +1405,7 @@ don't gate any item (see [Scope](#scope-ice-ages-are-out)).
   supersedes" (a), and listed on the tracking issue.
   *Met, per #544's table: #197, #203 and #368 are closed, #358 item 4 is marked superseded (and #358 has since been closed), and #313 stays open with Stage E pointing at the knobs table.*
 - [ ] **G0–G6 run and recorded** in this RFC, with D2's fixes chosen by G0.
-  *Open: G0 (#554, #569), G2 and G5 are recorded. G1, G3, G4 and G6 are open.*
+  *Open: G0 (#554, #569), G2, G4 (#912) and G5 are recorded. G1, G3 and G6 are open.*
 - [x] **Step robustness:** on each held-out save, ice volume and area at 10 Myr agree within
   20% between 0.25 Myr and 1 Myr steps (was 10% until the 2026-11-13 revision). Saves
   replayed with ice ages are out of scope for this criterion (2026-11-15 revision).
@@ -1415,7 +1437,7 @@ don't gate any item (see [Scope](#scope-ice-ages-are-out)).
   leave sea level unchanged; G4's difference is recorded. D2's sea-level loop was dropped
   in the #765 revision: sea level is re-solved from the current ice debit between substeps,
   exact each time, so no residual criterion applies.
-  *Open: D6 and G4.*
+  *Open: D6. G4's difference is recorded (#912): at most 0.08 m without ice ages, so D6's simple form is adopted.*
 - [ ] **Sea ice:** no ocean cell carries floating `glacier_depth` (every ice-bearing ocean
   cell is grounded by `is_grounded`); G5's extents recorded and its outcome met.
   *Open: D6. G5's extents are recorded, and `allow_ocean_ice` is still in `step_ice`.*
