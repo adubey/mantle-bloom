@@ -1058,7 +1058,9 @@ exists) -- a floating polar ice cap that retreats when the age passes; and **gla
 returns -- `eustasy.trapped_water_volume_m3` debits the liquid-water equivalent of all
 `glacier_depth` plus every visible lake's `lake_depth` from the conserved total surface-water
 budget, so the ocean's share (and the shoreline) falls as the ice sheets grow and rises again as
-they melt.
+they melt. Ice on connected ocean lowers sea level only by its water above flotation (RFC 0015
+D6, #917), so the floating sea-ice cap leaves sea level unchanged; see
+[Eustatic sea level](surface-processes.md#eustatic-sea-level-eustasypy).
 
 ## River Inspector
 

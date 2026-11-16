@@ -3,9 +3,14 @@ conserved ocean water volume against the world's hypsometry."""
 
 import numpy as np
 import pytest
+from scipy.spatial import cKDTree
 
-from app.hydroclimate import eustasy
-from app.world import generate_world, step_world
+from app.elevation_lines import line_spacing_rad
+from app.hydroclimate import eustasy, hydrology, ice_sheet
+from app.plates import collect_all_accounting_areas_m2
+from app.world import World, generate_world, step_world
+
+from .quad_fixtures import quad_plate
 
 
 def test_total_water_volume_is_monotonic_and_area_weighted():
@@ -237,3 +242,128 @@ def test_set_sea_level_via_water_budget_folds_in_trapped_water():
     # Re-solving against that budget reproduces the requested level (ice unchanged).
     eustasy.update_sea_level(world)
     assert abs(world.sea_level_m) < 1.0
+
+
+# RFC 0015 D6 (#917): sea level debits ice only above flotation. A row of 40 cells: 20 of
+# ocean floor 1,000 m deep, then 20 of land 300 m up. Without a hydrology cache the mask is
+# the blind `z <= h` one, which on this row is the connected ocean.
+_OCEAN_CELLS = slice(0, 20)
+_OCEAN_FLOOR_M = -1_000.0
+_ICE_CELLS = slice(2, 7)  # five ocean cells away from the coast
+_LAND_ICE_CELLS = slice(30, 35)
+
+
+def _ocean_and_land_row_world(**fields):
+    elevation = np.full(40, 300.0)
+    elevation[_OCEAN_CELLS] = _OCEAN_FLOOR_M
+    plate = quad_plate(0, "continental", columns=np.arange(40) - 20, elevation=elevation, **fields)
+    world = World(seed=0, plates=[plate])
+    eustasy.initialize_water_budget(world)  # sea level 0, no ice yet
+    return world, plate
+
+
+def _set_ice(plate, cells, ice_m):
+    depth = np.zeros(plate.node_count())
+    depth[cells] = ice_m
+    plate.set_fields_on_plate(glacier_depth=depth)
+
+
+def _row_areas(world):
+    return collect_all_accounting_areas_m2(world.plates, line_spacing_rad(world.node_density))
+
+
+def _old_full_debit_level(world):
+    """What sea level was before D6: every metre of ice debited at 0.917 m of water."""
+    elevations, areas = eustasy.hypsometry(world)
+    budget = world.ocean_water_volume_m3 - eustasy.trapped_water_volume_m3(world)
+    return eustasy._solve_sea_level_connected(world, elevations, areas, budget)
+
+
+@pytest.mark.parametrize("ice_m", [500.0, 1_000.0 / 0.917])
+def test_floating_ice_and_ice_at_flotation_leave_sea_level_unchanged(ice_m):
+    # 500 m of ice floats in 1,000 m of water; 1,090 m is grounded exactly at flotation
+    # (0.917 H = D). Either way the ice displaces its own mass and sea level doesn't move.
+    world, plate = _ocean_and_land_row_world()
+    _set_ice(plate, _ICE_CELLS, ice_m)
+    assert eustasy.trapped_water_volume_m3(world) > 0.0
+    eustasy.update_sea_level(world)
+    assert world.sea_level_m == pytest.approx(0.0, abs=0.1)
+    # The old full debit would have dropped it by a quarter of the ice's water equivalent.
+    assert _old_full_debit_level(world) < -100.0
+
+
+def test_grounded_marine_ice_counts_only_its_volume_above_flotation():
+    # 1,500 m of water-equivalent ice on a 1,000 m deep floor: grounded, and the liquid it
+    # leaves for the open cells is the budget less all of the ice. The debit, taken at the
+    # solved level, is the ice above flotation, `0.917 H - D(h)`.
+    world, plate = _ocean_and_land_row_world()
+    _set_ice(plate, _ICE_CELLS, 1_500.0 / 0.917)
+    areas = _row_areas(world)
+    open_ocean = np.zeros(40, dtype=bool)
+    open_ocean[_OCEAN_CELLS] = True
+    open_ocean[_ICE_CELLS] = False
+    ice_water_m3 = 1_500.0 * areas[_ICE_CELLS].sum()
+    expected = (world.ocean_water_volume_m3 - ice_water_m3) / areas[open_ocean].sum() + _OCEAN_FLOOR_M
+
+    eustasy.update_sea_level(world)
+    h = world.sea_level_m
+    assert h == pytest.approx(expected, abs=0.1)
+    depth_under_ice = h - _OCEAN_FLOOR_M
+    above_flotation_m3 = float(np.dot(areas[_ICE_CELLS], 1_500.0 - np.full(5, depth_under_ice)))
+    ocean_cells = slice(0, 20)
+    capacity_m3 = float(np.dot(areas[ocean_cells], np.full(20, depth_under_ice)))
+    assert capacity_m3 == pytest.approx(world.ocean_water_volume_m3 - above_flotation_m3, rel=1e-4)
+    # Higher than the full debit, by the water depth the ice sits in.
+    assert h > _old_full_debit_level(world) + 10.0
+
+
+def test_land_ice_keeps_its_full_water_equivalent():
+    world, plate = _ocean_and_land_row_world()
+    _set_ice(plate, _LAND_ICE_CELLS, 1_000.0)
+    areas = _row_areas(world)
+    expected = (world.ocean_water_volume_m3 - 917.0 * areas[_LAND_ICE_CELLS].sum()) / areas[_OCEAN_CELLS].sum() + _OCEAN_FLOOR_M
+    eustasy.update_sea_level(world)
+    assert world.sea_level_m == pytest.approx(expected, abs=0.1)
+    assert world.sea_level_m == pytest.approx(_old_full_debit_level(world), abs=0.1)
+
+
+def test_slider_level_is_reproduced_with_marine_ice():
+    # The slider's budget uses the same rule as the solve, so solving at its level gives it back.
+    world, plate = _ocean_and_land_row_world()
+    depth = np.zeros(40)
+    depth[_ICE_CELLS] = 1_500.0
+    depth[8:11] = 400.0  # floating
+    depth[_LAND_ICE_CELLS] = 800.0
+    plate.set_fields_on_plate(glacier_depth=depth)
+    eustasy.set_sea_level_via_water_budget(world, -40.0)
+    eustasy.update_sea_level(world)
+    assert world.sea_level_m == pytest.approx(-40.0, abs=0.1)
+
+
+def test_march_resolve_and_update_sea_level_agree_on_the_same_state():
+    # The glacier march re-solves sea level between substeps from its own ice; on the same
+    # state it must land where the end-of-step `update_sea_level` does, lakes and all.
+    lake = np.zeros(40)
+    lake[25] = 50.0
+    world, plate = _ocean_and_land_row_world(lake_depth=lake)
+    depth = np.zeros(40)
+    depth[_ICE_CELLS] = 1_500.0  # grounded marine
+    depth[8:11] = 400.0  # floating
+    depth[_LAND_ICE_CELLS] = 800.0  # land
+    plate.set_fields_on_plate(glacier_depth=depth)
+    points = plate.all_points_and_elevation()[0]
+    elevation = plate.collect("elevation")
+    neighbor_idx = cKDTree(points).query(points, k=3)[1][:, 1:].astype(np.int64)
+    is_ocean = elevation <= 0.0
+    world.hydrology_cache = _FakeHydrologyCache(40, neighbor_idx, is_ocean)
+    assert eustasy.other_trapped_water_volume_m3(world) > 0.0
+
+    eustasy.update_sea_level(world)
+    elevations, hyps_areas = eustasy.hypsometry(world)
+    march_level, _ = hydrology._march_sea_level(
+        world, elevations, hyps_areas, world.ocean_water_volume_m3,
+        eustasy.other_trapped_water_volume_m3(world), ice_sheet.RHO_ICE / ice_sheet.RHO_WATER,
+        _row_areas(world), depth, 0.0, is_ocean, neighbor_idx, points, elevation, 25.0,
+    )
+    assert march_level == pytest.approx(world.sea_level_m, abs=0.1)
+    assert world.sea_level_m < -1.0  # the land and grounded ice did move it

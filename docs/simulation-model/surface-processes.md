@@ -524,6 +524,27 @@ is counted, since the connectivity is seeded from the cached `is_ocean` (see
 still strictly increasing in `h` and the bracket `[min z, max z + headroom]` holds exactly one
 root.
 
+**Ice counts only above flotation** (RFC 0015 D6, #917). `trapped_water_volume_m3` holds the
+ice's full water equivalent, `w = 0.917 H` per node (`ice_water_column_m`, with
+`_ICE_WATER_EQUIVALENT` = 0.917). The solve then counts only the liquid each connected cell
+holds at the candidate `h`, `max(0, (h - z) - w)`, rather than its whole capacity `h - z`
+(`_liquid_floor`):
+
+```
+sum over connected nodes of  A_i * max(0, (h - z_i) - w_i)  ==  V - trapped
+```
+
+That is a debit per node of `max(0, w - D)`, with the water depth `D = max(0, h - z)` taken
+at the level being solved. Land ice (`D` = 0) debits `0.917 H`. Grounded marine ice debits
+only its water above flotation, since it fills the capacity under it. Floating ice, and ice
+grounded exactly at flotation, displace their own mass and leave sea level unchanged. The
+connected-ocean mask stays elevation-only, so ice-covered marine cells are in it; excluding
+them from the mask would change this debit. Gate G4 (#912, `analysis/issue912/`) measured
+the old full debit putting sea level at most 0.08 m too low on the diagnosis saves, and 2.4 m
+on an ice-age save. The glacier march's re-solve between substeps
+(`hydrology._march_sea_level`), the budget snapshot and the slider all use the same rule, so
+solving at the slider's level reproduces it.
+
 - **Deepening a basin** (sea-floor spreading, a subducting slab, `growth_seed_thickness`
   tiling drowned oceanic column) raises `ocean_water_volume_m3(h)` at every `h`, so the solved
   `h` **falls** -- the eustatic response that a fixed sea level never produced, and the

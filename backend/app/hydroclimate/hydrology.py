@@ -2059,15 +2059,19 @@ def _march_sea_level(
     connectivity-blind mask on a changed node cloud), and the mask keeps Earth's
     forced straits connected. The bisection warm-starts around the last level
     (validated, same converged value). `flood_adjacency` is the march's once-built
-    `eustasy.flood_adjacency(neighbor_idx)` (#147). Returns the new (sea level, ocean mask)."""
+    `eustasy.flood_adjacency(neighbor_idx)` (#147). The ice debit follows eustasy's
+    rule, above flotation at the level being solved (RFC 0015 D6, #917), so this
+    re-solve and `eustasy.update_sea_level` agree on the same state. Returns the new
+    (sea level, ocean mask)."""
     from . import eustasy
 
-    debit = to_water * float(np.dot(areas, depth))
+    ice_water_m = to_water * depth
+    debit = float(np.dot(areas, ice_water_m))
     sea_level = eustasy._solve_sea_level_connected(
         world, elevations, hyps_areas, max(0.0, total_water - lakes_trapped - debit),
         seed_is_ocean=ocean_mask, seed_neighbor_idx=neighbor_idx,
         bracket=(sea_level - warm_half_width_m, sea_level + warm_half_width_m),
-        seed_adjacency=flood_adjacency,
+        seed_adjacency=flood_adjacency, ice_water_m=ice_water_m,
     )
     ocean_mask = connected_ocean_mask(points, elevation, sea_level, neighbor_idx, areas_m2=areas, prior_ocean=ocean_mask)
     if getattr(world, "premade_world_id", None) == "earth":
@@ -2347,7 +2351,9 @@ def _march_glacier(
     unloaded_bed = np.asarray(elevation, dtype=float) - np.asarray(deflection_m, dtype=float)
     elevations, hyps_areas = eustasy.hypsometry(world)
     to_water = ice_sheet.RHO_ICE / ice_sheet.RHO_WATER
-    lakes_trapped = eustasy.trapped_water_volume_m3(world) - to_water * float(np.dot(areas, depth))
+    # Everything eustasy holds out of the ocean except the ice, which the march re-debits
+    # from its own `depth` at each re-solve (above flotation, RFC 0015 D6).
+    lakes_trapped = eustasy.other_trapped_water_volume_m3(world)
     # A world without a conserved ocean inventory yet (synthetic test worlds) opens one from
     # its current state, the way eustasy does on a real step.
     total_water = world.ocean_water_volume_m3
