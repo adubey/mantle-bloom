@@ -32,6 +32,7 @@ from . import (
     healpix_grid,
     lithosphere_plate,
     mantle,
+    npz_save,
     persistence,
     plates,
     projections,
@@ -1648,25 +1649,45 @@ def _hydrology_cache_is_stale(cache) -> bool:
     )
 
 
+def _require_v5_upload(head: bytes) -> None:
+    """Refuse an upload that isn't a v5 `.bloom` zip, before it is read any further. A
+    legacy v1-v4 save is a pickle, and unpickling runs code, so the UI and API never load
+    one (#555 F1); `bin/convert_saves.py` converts old saves offline."""
+    if not npz_save.is_v5(head):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "not a v5 .bloom save: legacy pickled (.mbworld) saves are not loaded from uploads; "
+                "convert them offline with bin/convert_saves.py"
+            ),
+        )
+
+
 async def _spool_upload_to_tempfile(request: Request) -> str:
     """Stream the request body to a temp file, returning its path. The upload route reads
     the world back from disk (see persistence.load_world_file) instead of holding the whole
     body in RAM as bytes alongside the unpickled world -- a default-detail save is tens of
     MB, and a hosted container has no RAM to spare for both copies at once. Bodies past
     MAX_LOAD_WORLD_BYTES are refused with a `413` while still streaming, before any of
-    that work starts."""
+    that work starts. Only v5 saves are accepted (see `_require_v5_upload`)."""
     fd, path = tempfile.mkstemp(prefix="mantle-bloom-upload-", suffix=".mbworld")
     size = 0
+    head = b""
     try:
         with os.fdopen(fd, "wb") as tmp:
             async for chunk in request.stream():
                 size += len(chunk)
+                if len(head) < 4:
+                    head += chunk[:4 - len(head)]
+                    if len(head) == 4:
+                        _require_v5_upload(head)
                 if size > MAX_LOAD_WORLD_BYTES:
                     raise HTTPException(
                         status_code=413,
                         detail=f"world file exceeds the {MAX_LOAD_WORLD_BYTES // (1024 * 1024)} MB upload limit",
                     )
                 tmp.write(chunk)
+        _require_v5_upload(head)
     except BaseException:
         # os.fdopen raising leaves fd open (the `with` never took it); closing an
         # already-closed fd just raises OSError, which the suppress below absorbs.

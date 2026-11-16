@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -452,6 +452,11 @@ def _health() -> dict:
     return {"status": "ok"}
 
 
+def _require_admin(request: Request) -> None:
+    if not auth.is_admin(request, auth.load_config(request)):
+        raise HTTPException(401, "Login required")
+
+
 def create_app(dist: str | None = None) -> FastAPI:
     app = FastAPI(title="Mantle-Bloom", lifespan=_lifespan, openapi_url=None)
     app.add_middleware(auth.AuthMiddleware, allow_local=False)
@@ -459,10 +464,15 @@ def create_app(dist: str | None = None) -> FastAPI:
     app.add_middleware(SecurityHeadersMiddleware)
     app.include_router(auth.router)
     app.add_api_route("/healthz", _health)
-    app.add_api_route("/openapi.json", _openapi, include_in_schema=False)
-    app.add_api_route("/docs", _swagger, include_in_schema=False)
-    app.add_api_route("/docs/oauth2-redirect", get_swagger_ui_oauth2_redirect_html, include_in_schema=False)
-    app.add_api_route("/redoc", _redoc, include_in_schema=False)
+    # The schema describes the admin API and waking the worker to build it costs memory, so
+    # the schema and its viewers are owner-only (#555 follow-up). Guarded here, not in
+    # auth.gate: the worker answers its own /openapi.json to this process without a cookie.
+    owner_only = [Depends(_require_admin)]
+    app.add_api_route("/openapi.json", _openapi, include_in_schema=False, dependencies=owner_only)
+    app.add_api_route("/docs", _swagger, include_in_schema=False, dependencies=owner_only)
+    app.add_api_route("/docs/oauth2-redirect", get_swagger_ui_oauth2_redirect_html, include_in_schema=False,
+                      dependencies=owner_only)
+    app.add_api_route("/redoc", _redoc, include_in_schema=False, dependencies=owner_only)
     app.add_api_route("/demo", _demo)
     app.add_api_route("/public/worlds", _public_records)
     app.add_api_route(_WORLD_PATH + "/world", _world_state)
