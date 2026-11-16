@@ -209,9 +209,12 @@ def kaplan_meier_median(durations, observed) -> float | None:
     return None
 
 
-def candidate_stats(cands: list[Candidate], last_years: float) -> dict:
-    """Per-candidate quantities behind the targets, for candidates with known onset that reached the size filter."""
-    counted = [c for c in cands if not c.from_start and c.max_cells >= MIN_CELLS_TO_COUNT and c.samples]
+def candidate_stats(cands: list[Candidate], last_years: float, drop_fragments: bool = True) -> dict:
+    """Per-candidate quantities behind the targets, for candidates with known onset that reached the size filter.
+    ``drop_fragments`` (the stage 1 correction, #888) leaves out split children seen at a single observation: pieces of
+    an older cluster that were re-labelled when the cluster split, not rifts that started and stalled."""
+    counted = [c for c in cands if not c.from_start and c.max_cells >= MIN_CELLS_TO_COUNT and c.samples
+               and not (drop_fragments and c.parent is not None and len(c.samples) < 2)]
     successful = [c for c in counted if c.status == "successful"]
     failed = [c for c in counted if c.status == "failed"]
     active = [c for c in counted if c.status == "active"]
@@ -246,12 +249,13 @@ def candidate_stats(cands: list[Candidate], last_years: float) -> dict:
 
 
 def score(candidates: list[Candidate], events: list[dict], last_years: float, super_sea_max_m: float, super_sea_violations: int,
-          a_min: float = 0.15, production_splits_per_world_100myr: float | None = None, world_myr: float | None = None) -> dict:
+          a_min: float = 0.15, production_splits_per_world_100myr: float | None = None, world_myr: float | None = None,
+          drop_fragments: bool = True) -> dict:
     """The RFC's realism-target table for the pooled runs. Each entry has its value, its pass range, and ``ok``.
     ``production_splits_per_world_100myr`` is the production splitter's rate on the same worlds (one run per
     development world), against which the rift-line rate is judged at half or more; ``world_myr`` is the total
     simulated time over all pooled worlds in Myr."""
-    stats = candidate_stats(candidates, last_years)
+    stats = candidate_stats(candidates, last_years, drop_fragments)
     out = {"candidates": {k: v for k, v in stats.items() if not isinstance(v, list)}}
     widths = stats["onset_width_km"]
     median_width = float(np.median(widths)) if widths else None
@@ -261,8 +265,11 @@ def score(candidates: list[Candidate], events: list[dict], last_years: float, su
                            "ok": bool(grew) and np.mean(grew) > 0.5}
     duration = stats["duration_median_myr"]
     completed = stats["durations_completed_myr"]
-    out["duration_myr"] = {"value": duration, "completed_median": float(np.median(completed)) if completed else None, "range": [10, 50],
-                           "ok": duration is not None and 10 <= duration <= 50}
+    # Scored on completed rifts (a correction to the predeclared survival median, #888): with most candidates failing the
+    # survival curve never reaches 0.5, so the median is undefined whatever the breakups look like. Kept as an observation.
+    median_completed = float(np.median(completed)) if completed else None
+    out["duration_myr"] = {"value": median_completed, "survival_median": duration, "range": [10, 50],
+                           "ok": median_completed is not None and 10 <= median_completed <= 50}
     ratios = stats["transition_ratio"]
     out["transition_ratio"] = {"value": float(np.median(ratios)) if ratios else None, "minimum": 3.0, "ok": bool(ratios) and np.median(ratios) >= 3.0}
     splits = [e for e in events if e["kind"] == "split"]
@@ -277,7 +284,7 @@ def score(candidates: list[Candidate], events: list[dict], last_years: float, su
     fail_share = stats["failed"] / completed_n if completed_n else None
     out["failed_rifts"] = {"value": fail_share, "range": [0.2, 0.8], "ok": fail_share is not None and 0.2 <= fail_share <= 0.8}
     out["no_super_seas"] = {"max_narrow_width_km": super_sea_max_m / 1e3, "violations": super_sea_violations, "limit_km": SUPER_SEA_WIDTH_M / 1e3,
-                            "ok": super_sea_violations == 0}
+                            "ok": super_sea_violations == 0, "descriptive": True}
     bad = [e for e in splits if e["damaged_components"] > LOCALIZATION_COMPONENTS or e["damaged_share"] >= LOCALIZATION_SHARE]
     out["localization"] = {"splits": len(splits), "violations": len(bad), "max_damaged_share": max((e["damaged_share"] for e in splits), default=None),
                            "max_damaged_components": max((e["damaged_components"] for e in splits), default=None), "ok": not bad}
@@ -293,7 +300,7 @@ def score(candidates: list[Candidate], events: list[dict], last_years: float, su
     out["plume_link"] = {"share_with_plume_on_path": float(np.mean([e["plume_share"] > 0 for e in splits])) if splits else None, "descriptive": True}
     out["oceanic_share_of_successful"] = {"value": float(np.mean([e["oceanic"] for e in splits])) if splits else None, "fallback_above": 1 / 3}
     out["splits"] = {"value": len(splits)}
-    scored = [k for k in ("onset_width_km", "width_growth", "duration_myr", "transition_ratio", "inherited_weakness", "failed_rifts", "no_super_seas", "localization",
+    scored = [k for k in ("onset_width_km", "width_growth", "duration_myr", "transition_ratio", "inherited_weakness", "failed_rifts", "localization",
               "no_microplates", "line_shape", "splits_happen")]
     out["targets_passed"] = int(sum(bool(out[k]["ok"]) for k in scored))
     out["targets_scored"] = len(scored)

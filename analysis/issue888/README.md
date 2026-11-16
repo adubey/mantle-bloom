@@ -69,3 +69,76 @@ Remaining rejections: 50 of 52 are a stray piece above the 1% limit (median 3.4%
 split off a median 33% of the plate, are 1.30 times the straight distance between their ends, and
 run 66% over oceanic crust; median `Λ` is 0.08 against `Λ_grow = 0.3` (4% of continental lines
 reach it).
+
+## Stage 2
+
+The three stage 1 candidates (settings 0, 10 and 14 of `stage1-settings.json`, chosen by the
+corrected scoring rules recorded on the issue) on all 20 development worlds: 200 Myr at 1 Myr
+steps, plates-only, shadow shell solve every 10 Myr. 60 of 60 runs finished, largest ledger gap
+7e-16. Two setting 0 runs first crashed in the shadow solve on a plate with fewer than four
+non-coplanar cells; `shadow_stats` now skips and counts such a plate, and both were rerun from the
+start. Scores are in `stage2-scores.json` (`score_stage1.py --runs <stage2> --baseline
+<production-baseline>`); the production splitter makes 7.4 splits per world per 100 Myr on the
+same worlds (`production-baseline-summary.json`).
+
+| | Setting 0 | Setting 10 | Setting 14 | Target |
+|---|---:|---:|---:|---|
+| Targets met (of 10) | 6 | 6 | 6 | |
+| Total violation | 2.50 | 2.21 | 2.48 | |
+| Splits | 174 | 55 | 131 | |
+| Worlds with a split | 20 | 17 | 20 | |
+| Onset width (km) | 126 | 128 | 129 | 100–150 |
+| Share of rifts wider at breakup | 0.92 | 0.94 | 0.93 | above 0.5 |
+| Completed-rift median (Myr) | 25 | 35 | 25 | 10–50 |
+| Transition ratio | **0.93** | **0.75** | **1.14** | at least 3 |
+| Splits along inherited weakness | **16%** | **13%** | **17%** | at least 67% |
+| Failed share | **82%** | **81%** | 80% | 20–80% |
+| Localization violations | **9** | 0 | **8** | 0 |
+| Smallest daughter | 15.3% | 16.7% | 15.6% | at least 15% |
+| Line length ratio | 1.30 | 1.30 | 1.29 | at least 1.1 |
+| Splits per world per 100 Myr | 4.35 | **1.38** | **3.28** | at least 3.7 |
+| Oceanic share of successful rifts | 90% | 89% | 93% | fallback above 33% |
+| Splits with a plume on the line | 30% | 29% | 58% | reported |
+
+Bold values miss their target. By the predeclared ranking (targets met, then smaller total
+violation) setting 10 is first, but it is the one that splits least: 1.4 per world per 100 Myr and
+none at all on three worlds.
+
+What the three settings share:
+
+- **Rifts are oceanic.** 89–93% of successful rifts run mostly through oceanic crust (17, 6 and 9
+  continental splits in settings 0, 10 and 14). This is above the one-third limit in every
+  setting, so the RFC's oceanic fallback applies whichever is frozen.
+- **No acceleration toward breakup.** Transition ratios are 0.75–1.14 against 3.
+- **Lines do not follow inherited weakness.** Split lines are 25–28% weak rock against 23–25% for
+  matched random paths.
+- **About four fifths of candidates fail**, at the edge of the 20–80% range.
+
+Localization fails only in the two settings that split often (largest damaged share 57% and 55%
+of a plate, up to 5 damaged components at a split). Super-sea counts are 6,266, 1,614 and 4,380
+checks, with the caveat recorded on the issue: they count checks, not basins.
+
+Also reported: held band cells 81, 3 and 127; far flank transfers 8,387, 1,450 and 16,813; breakup
+tests that did not give a valid split 513 of 687, 87 of 142 and 296 of 427; no strain off the
+line; at most 30, 52 and 68 sub-steps per step.
+
+### Shadow shell
+
+D0's statistics for proxy C from 400 shadow solves per setting (20 worlds, every 10 Myr). Each
+value is the median over the per-world, per-time checks; D0 pooled all plates of its 28 snapshot
+worlds into one statistic, so the two columns are not the same estimator.
+
+| | D0 threshold | D0, snapshots | Setting 0 | Setting 10 | Setting 14 |
+|---|---|---:|---:|---:|---:|
+| Sign agreement | at least 0.80 | 0.824 | 0.826 | 0.826 | 0.821 |
+| Direction within 30° | at least 0.70 | 0.719 | 0.704 | 0.714 | 0.713 |
+| Spearman | at least 0.5 | 0.692 | 0.682 | 0.678 | 0.682 |
+| Top-decile ratio, continental | 0.5–2 | 0.57 | 0.51 | 0.52 | 0.52 |
+| Top-decile ratio, oceanic | 0.5–2 | 0.54 | **0.40** | **0.46** | **0.41** |
+
+The proxy agrees with the shell on evolving worlds about as well as it did at D0, except in
+magnitude: it reads the most loaded oceanic cells at 0.40–0.46 of the shell value, below the 0.5
+floor, and the continental ratio sits on the floor. Sign agreement drifts from 0.84 at 10 Myr to
+0.80 at 200 Myr. Because the thresholds sit close to the medians, single checks often fall
+below one (a single check passes sign in 63–65% of cases, direction in 52–56%, magnitude in
+23–35%).

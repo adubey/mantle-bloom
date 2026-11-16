@@ -23,7 +23,7 @@ sys.path[:0] = [str(Path(__file__).resolve().parent)]
 import rift_damage_mechanism as mech  # noqa: E402
 import rift_damage_recorder as rec  # noqa: E402
 
-SCORED = ("onset_width_km", "width_growth", "duration_myr", "transition_ratio", "inherited_weakness", "failed_rifts", "no_super_seas",
+SCORED = ("onset_width_km", "width_growth", "duration_myr", "transition_ratio", "inherited_weakness", "failed_rifts",
           "localization", "no_microplates", "line_shape", "splits_happen")
 RANGES = {"onset_width_km": (100.0, 150.0), "duration_myr": (10.0, 50.0), "failed_rifts": (0.2, 0.8)}
 
@@ -53,12 +53,14 @@ def events_behind(name: str, result: dict) -> int:
     stats = result["candidates"]
     if name in ("onset_width_km", "width_growth", "transition_ratio"):
         return stats["successful"] if name != "onset_width_km" else stats["counted"]
-    if name == "duration_myr" or name == "failed_rifts":
+    if name == "duration_myr":
+        return stats["successful"]
+    if name == "failed_rifts":
         return stats["counted"]
     return result["splits"]["value"] if name in ("inherited_weakness", "no_microplates", "line_shape", "localization") else 10**9
 
 
-def pool(directory: Path, production_rate: float | None, min_events: int) -> dict:
+def pool(directory: Path, production_rate: float | None, min_events: int, drop_fragments: bool = True) -> dict:
     cands, events, super_max, super_viol, myr, ledger = [], [], 0.0, 0, 0.0, 0.0
     errors = []
     for run in sorted(p for p in directory.iterdir() if p.is_dir()):
@@ -74,7 +76,7 @@ def pool(directory: Path, production_rate: float | None, min_events: int) -> dic
         events += data["events"]
         super_max, super_viol, myr = max(super_max, data["super_sea_max_m"]), super_viol + data["super_sea_violations"], myr + data["years_myr"]
         ledger = max(ledger, max(json.load(open(summary))["ledger_relative_gap_max"].values(), default=0.0))
-    result = rec.score(cands, events, 200e6, super_max, super_viol, mech.Params().a_min, production_rate, myr)
+    result = rec.score(cands, events, 200e6, super_max, super_viol, mech.Params().a_min, production_rate, myr, drop_fragments)
     for name in SCORED:
         if events_behind(name, result) < min_events:
             result[name]["ok"], result[name]["not_evaluable"] = False, True
@@ -90,13 +92,14 @@ def main() -> None:
     parser.add_argument("--baseline", type=Path, required=True)
     parser.add_argument("--min-events", type=int, default=5)
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--keep-fragments", action="store_true", help="the original rule: count split children seen once")
     args = parser.parse_args()
     seeds = sorted(p.name for p in next(args.runs.glob("setting*")).iterdir() if p.is_dir())
     base = [json.load(open(args.baseline / f"{s}.json")) for s in seeds]
     rate = sum(b["n_splits"] for b in base) / len(base) / base[0]["years"] * 100.0
     ranked, excluded = [], []
     for directory in sorted(args.runs.glob("setting*")):
-        result = pool(directory, rate, args.min_events)
+        result = pool(directory, rate, args.min_events, not args.keep_fragments)
         row = {"setting": directory.name, "targets_passed": result["targets_passed"], "violation_total": result["violation_total"],
                "splits": result["splits"]["value"], "ledger_gap": result["ledger_gap"], "errors": result["errors"],
                "met": [n for n in SCORED if result[n]["ok"]], "not_evaluable": [n for n in SCORED if result[n].get("not_evaluable")]}

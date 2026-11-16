@@ -24,7 +24,10 @@ K_CUT = 1.33
 def shadow_stats(world) -> dict:
     records, skipped = [], 0
     for plate in world.plates:
-        record = d0.compute_record(world, plate)
+        try:
+            record = d0.compute_record(world, plate)
+        except ValueError:  # a plate too small for the solver (fewer than four non-coplanar cells) has no mesh either; it crashed two stage 2 runs
+            record = None
         skipped += record is None
         if record is not None:
             d0.prepare(record, "cut")

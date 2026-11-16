@@ -24,6 +24,7 @@ HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE)]
 
 import stage1_settings  # noqa: E402
+from check_rift_lines_world_d1 import DEV_SEEDS  # noqa: E402
 
 REPO = HERE.parents[1]
 STAGE1_SEEDS = [106533960, 1097624328, 1397817354, 1629738962, 591453549]
@@ -51,9 +52,12 @@ def main() -> None:
     parser.add_argument("--years", type=float, default=200.0)
     parser.add_argument("--workers", type=int, default=1, help="heavy runs of this task alive at once (the owner approved 6 on 2026-11-15)")
     parser.add_argument("--min-free-gb", type=float, default=2.5)
+    parser.add_argument("--stage2", type=Path, metavar="BASELINE_DIR",
+                        help="stage 2: all 20 development worlds, shadow shell every 10 Myr, each world's production rate from this baseline directory")
     args = parser.parse_args()
     table = stage1_settings.settings()
-    jobs = [(i, s, seed) for i, s in enumerate(table) for seed in STAGE1_SEEDS if args.settings is None or i in args.settings]
+    seeds = DEV_SEEDS if args.stage2 else STAGE1_SEEDS
+    jobs = [(i, s, seed) for i, s in enumerate(table) for seed in seeds if args.settings is None or i in args.settings]
     jobs = [(i, s, seed) for i, s, seed in jobs if not (args.out / f"setting{i:02d}" / str(seed) / "run.json").exists()]
     if args.limit:
         jobs = jobs[:args.limit]
@@ -69,6 +73,9 @@ def main() -> None:
             target.mkdir(parents=True, exist_ok=True)
             command = [sys.executable, str(HERE / "run_rift_damage_d1.py"), "--seed", str(seed), "--out", str(target), "--years", str(args.years),
                        "--setting", json.dumps(setting)]
+            if args.stage2:
+                base = json.load(open(args.stage2 / f"{seed}.json"))
+                command += ["--shadow-every", "10", "--production-rate", str(base["n_splits"] / base["years"] * 100.0)]
             proc = subprocess.Popen(command, cwd=REPO / "backend", stdout=open(target / "run.log", "w"), stderr=subprocess.STDOUT)
             running.append((proc, time.perf_counter(), f"setting{index:02d}/{seed}"))
             time.sleep(5)

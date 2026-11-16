@@ -573,7 +573,27 @@ def check_broken_line_splits_and_f_break(seed):
         state.params = old
 
 
-CHECKS = [check_strength_bounds, check_softening_monotone, check_healing, check_no_strain_off_band_and_latch, check_plume_expiry,
+def check_shadow_stats_skips_degenerate_plate():
+    """A plate the thin-shell solver rejects (ValueError) is skipped and counted, not fatal (two stage 2 runs crashed on it, #888)."""
+    import shadow_shell_check as shadow
+
+    class World:
+        plates = [object(), object()]
+
+    original = shadow.d0.compute_record
+
+    def reject(world, plate):
+        raise ValueError("thin-shell solve requires at least four non-coplanar nodes")
+
+    shadow.d0.compute_record = reject
+    try:
+        got = shadow.shadow_stats(World())
+    finally:
+        shadow.d0.compute_record = original
+    assert got == {"plates": 0, "skipped_no_mesh": 2}, got
+
+
+CHECKS = [check_shadow_stats_skips_degenerate_plate, check_strength_bounds, check_softening_monotone, check_healing, check_no_strain_off_band_and_latch, check_plume_expiry,
           check_flank_conservation_and_held, check_held_band_never_strains, check_section_load_branches, check_substep_bound_and_kfail,
           check_ligament_normal_load, check_directional_sign, check_section_pull_manufactured, check_line_placement, check_path_lengths,
           check_split_masks, check_split_islands_and_deep_line, check_tip_speed_against_law, check_capacity_and_disk_kernels]
