@@ -1,0 +1,85 @@
+{
+ "source": "npm audit (npm 11.17.0)",
+ "date": "2026-11-15",
+ "lockfiles": {
+  "frontend/package-lock.json": {
+   "before": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 3,
+    "critical": 0,
+    "total": 3
+   },
+   "production_only": "0 advisories",
+   "after_npm_audit_fix": "0 advisories"
+  },
+  ".railway/package-lock.json": "0 advisories"
+ },
+ "dependency_counts": {
+  "prod": 4,
+  "dev": 185,
+  "optional": 123,
+  "peer": 13,
+  "peerOptional": 0,
+  "total": 188
+ },
+ "advisories_before_fix": [
+  {
+   "package": "source-map-js",
+   "severity": "high",
+   "affected_range": "1.0.0 - 1.2.1",
+   "direct": false,
+   "advisories": [
+    {
+     "title": "source-map-js allows event-loop denial of service through indexed source-map section offsets",
+     "url": "https://github.com/advisories/GHSA-68fv-2mgg-jv7q"
+    }
+   ]
+  },
+  {
+   "package": "vite",
+   "severity": "high",
+   "affected_range": "8.2.0 - 8.2.2",
+   "direct": true,
+   "advisories": [
+    {
+     "title": "launch-editor: escapeCmdArgs() omits % escaping on Windows",
+     "url": "https://github.com/advisories/GHSA-698v-4r3x-3vcv"
+    },
+    {
+     "title": "launch-editor: Editor CLI flag misinterpretation causing arbitrary command execution for some editors",
+     "url": "https://github.com/advisories/GHSA-r825-w8mm-5pxw"
+    },
+    {
+     "title": "launch-editor: `fs.existsSync()` existence check can be bypassed on Windows",
+     "url": "https://github.com/advisories/GHSA-587h-7wmj-h5pm"
+    },
+    {
+     "title": "Vite: Cross origin script execution through Vite custom middleware",
+     "url": "https://github.com/advisories/GHSA-9jrq-w75r-8gcw"
+    },
+    {
+     "title": "Vite: Files outside `server.fs.allow` could be served when project paths match system paths on non-Windows machine",
+     "url": "https://github.com/advisories/GHSA-rq7h-c2jc-7f22"
+    },
+    {
+     "title": "Vite: First 4 bytes of files outside of `server.fs` setting is exposed by `?vite-wasm-instance`",
+     "url": "https://github.com/advisories/GHSA-vfpm-58rq-9qcg"
+    }
+   ]
+  },
+  {
+   "package": "zod",
+   "severity": "high",
+   "affected_range": "<4.6.6",
+   "direct": false,
+   "advisories": [
+    {
+     "title": "Zod can exhaust memory while validating oversized constrained collections",
+     "url": "https://github.com/advisories/GHSA-mrhx-c7xc-m3w5"
+    }
+   ]
+  }
+ ]
+}

@@ -139,6 +139,12 @@ These record the deployment findings of the first-pass security review
   Unix socket inside the container.
 - **Browser security headers** are set on every response; see
   [architecture](architecture.md#response-security-headers-backendappsecurity_headerspy).
+- **Request bodies are capped** on every route, so a visitor can't make the worker buffer a
+  large one; see [architecture](architecture.md#request-body-cap-backendappbody_limitpy).
+
+The second pass ([#920](https://github.com/adubey/mantle-bloom/issues/920)) recorded its
+dependency scan, frontend XSS audit and local checks in
+[analysis/issue920](../analysis/issue920/README.md).
 
 ## Hosting boundary
 

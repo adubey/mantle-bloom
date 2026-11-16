@@ -411,6 +411,9 @@ The body streams to a temp file and loads from disk, so a large upload never sit
 RAM twice (as bytes and as a world). Bodies past 512 MB (`MAX_LOAD_WORLD_BYTES` in
 `backend/app/main.py`) are refused with `413` while still streaming.
 
+Every other route refuses a body past its own cap with `413`: 4 KiB under `/public/*`,
+32 MiB elsewhere (see [architecture](architecture.md#request-body-cap-backendappbody_limitpy)).
+
 `503` while a generation, step or animation is in progress, so a running step can't keep
 changing a world that has already been replaced.
 
