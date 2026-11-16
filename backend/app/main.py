@@ -22,6 +22,7 @@ from scipy.spatial import cKDTree
 
 from . import (
     auth,
+    body_limit,
     checkpoint,
     continent_layout,
     cross_section as cross_section_view,
@@ -132,7 +133,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# Last, so it is outermost: auth and CORS refusals carry the security headers too (#555 F5).
+# Ahead of routing and of the auth guard's body-free refusals (#920); see body_limit.py.
+body_limit.install(app)
+# Last, so it is outermost: auth, CORS and body-size refusals carry the security headers too (#555 F5).
 security_headers.install(app)
 
 _logger = logging.getLogger(__name__)

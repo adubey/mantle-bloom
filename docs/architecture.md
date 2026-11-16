@@ -213,6 +213,24 @@ script, so their policy is only `frame-ancestors 'none'`. A header the route alr
 kept. When the frontend starts loading from another origin (a CDN, an analytics script, a
 font host), add that origin to `CONTENT_SECURITY_POLICY`, or the browser blocks it.
 
+### Request body cap (`backend/app/body_limit.py`)
+
+`body_limit.install(app)` (called by `main.py` and `hosted.py`) refuses an oversized request
+body with `413` before a route reads it. FastAPI buffers a JSON body whole before validating
+it, so without the cap a logged-out visitor could make the worker hold a body of any size
+(#920). The hosted public process applies the cap too, so an oversized body never wakes the
+worker or streams to it.
+
+| Routes | Cap | Why |
+|---|---|---|
+| `/public/*` | `MAX_PUBLIC_BODY_BYTES` (4 KiB) | The only body is a step's `{"revision": ...}`. |
+| `POST /worlds/import`, `POST /worlds/{world_id}/load` | none here | They stream to disk under `MAX_LOAD_WORLD_BYTES` (512 MB). |
+| Everything else | `MAX_BODY_BYTES` (32 MiB) | Room for a generate request carrying a base64 sketch image. |
+
+A declared `Content-Length` over the cap is refused before any of the body is read. A body
+with no declared length is counted as it streams and cut off at the cap. A new route that
+takes a large body needs its own entry in `body_limit.limit_for`.
+
 <a id="public-viewer"></a>
 ### The public viewer (`backend/app/public_view.py`)
 
