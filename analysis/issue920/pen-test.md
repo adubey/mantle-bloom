@@ -2,7 +2,7 @@
 
 Scope, checks and results for the penetration-test part of
 [#920](https://github.com/adubey/mantle-bloom/issues/920). The dependency scan and frontend
-XSS audit are in this folder's `README.md` (PR #924).
+XSS audit are in this folder's [README](README.md).
 
 ## Scope
 
@@ -18,8 +18,8 @@ XSS audit are in this folder's `README.md` (PR #924).
 
 ## Results
 
-One new finding (S12, fixed here). One earlier finding from this pass (S1, unbounded
-request bodies) is fixed in PR #924.
+One new finding (S12, fixed with these tests). S1, unbounded request bodies, was found
+earlier in this pass and fixed in PR #924.
 
 | Area | Check | Result | Test |
 |---|---|---|---|
@@ -40,7 +40,7 @@ request bodies) is fixed in PR #924.
 | Worker proxy | The proxy keeps no cookies between callers | Holds | `test_proxy_does_not_keep_cookies_or_hide_a_snapshot_when_the_worker_exits` |
 | Guest allowance | Limit enforced; forged cookie ignored; stale or shared steps not charged | Holds. Clearing the cookie resets it: accepted (#555 F4) | `test_public_view.py`: `test_allowance_runs_out_after_the_limit`, `test_forged_allowance_cookie_is_ignored` |
 | Resource bounds | Render dimensions, step years, animation step years, run step years | Refused past the bound | `test_main.py`: `test_render_out_of_range_dimensions_return_400`, `test_step_rejects_invalid_years`, `test_animate_rejects_invalid_step_years`, `test_run_rejects_step_years_over_the_max` |
-| Resource bounds | Request body size | Did not hold (S1), fixed in PR #924 | `test_body_limit.py` (PR #924) |
+| Resource bounds | Request body size | Did not hold (S1), fixed in PR #924 | `test_body_limit.py` |
 | Resource bounds | Concurrent worlds | Capped | `test_world_registry.py` |
 | Upload | Over the 512 MB cap; a legacy pickle | `413`; refused before unpickling | `test_main.py`: `test_load_rejects_an_upload_over_the_size_cap`, `test_uploads_refuse_a_legacy_pickled_save_without_unpickling_it` |
 | Upload | A small save that expands without limit; other malformed v5 input | Open: [#925](https://github.com/adubey/mantle-bloom/issues/925) | none yet |

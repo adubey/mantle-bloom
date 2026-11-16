@@ -1,9 +1,11 @@
 # Issue 920: security second pass
 
-Status on 2026-11-15: the dependency scan is done for Python and npm, and the frontend XSS
-audit is done. The base-image scan and most of the penetration test are **not** done. One
-finding that a logged-out visitor could reach was fixed in the same branch. The
-launch-readiness §4 security box stays open.
+Status on 2026-11-16: the dependency scan is done for Python and npm, the frontend XSS
+audit is done, and the penetration test is done against a local copy
+([pen-test.md](pen-test.md)). The base-image scan is **not** done
+([#926](https://github.com/adubey/mantle-bloom/issues/926)) and nothing was tested against
+the deployed service. Two findings were fixed (S1 here, S12 in the pen test); the rest are
+filed. The launch-readiness §4 security box stays open.
 
 | Part of #920 | State |
 |---|---|
@@ -11,7 +13,7 @@ launch-readiness §4 security box stays open.
 | npm dependency scan | Done: 3 advisories, all in dev tooling, cleared by a lockfile update |
 | Base-image scan | Not run: no Docker or image scanner on the machine used |
 | Frontend XSS audit | Done: no HTML injection sink found |
-| Penetration test | Partly done, on a local hosted copy only; see [what was not run](#what-was-not-run) |
+| Penetration test | Done against a local copy, not the deployment; see [pen-test.md](pen-test.md) |
 
 ## Findings
 
@@ -200,41 +202,18 @@ What the content security policy from #918 does:
 
 ## Penetration test
 
-### Scope
+Scope, checks and results are in [pen-test.md](pen-test.md). It was run against the
+application code and a loopback copy of the hosted entry point; the owner took the deployed
+service out of scope. It found one more issue, S12 (the worker could route a different path
+from the one the public process authorised), fixed with it.
 
-Target: a local copy of the hosted entry point on loopback, with throwaway OAuth values and
-a throwaway session secret. The owner withdrew the deployed service as a target during the
-work, so nothing was sent to it. Planned areas, from #920: auth and session handling,
-authorization on `/worlds/*`, `/debug/*` and `/public/*`, the worker proxy, the guest step
-allowance, resource exhaustion, and the upload path.
+Two measurements from the first session, both on the loopback copy, are what S1 and S2 above
+rest on: the anonymous oversized step body, and the small save with a highly compressed
+manifest.
 
-### What was run
-
-| Check | Result |
-|---|---|
-| Logged-out `GET /auth/session` | `admin: false`, `local: false` |
-| Security headers on a logged-out response | All present |
-| Anonymous oversized step body, before the fix | Buffered whole by the worker (S1) |
-| The same, after the fix, declared and chunked | Refused at the cap; worker memory unchanged |
-| A session cookie signed with the copy's own secret | Accepted, and wakes the worker |
-| Small v5 file with a highly compressed manifest, in-process | Expands without limit (S2) |
-
-### What was not run
-
-- Everything against the deployed service: its TLS and edge behaviour, the cookie flags as
-  served, and whether its variables match the repository.
-- OAuth state and PKCE handling, session forgery and replay, and the cross-site write
-  checks. The code for each was read (see `auth.py`) and nothing wrong was seen, but none
-  was exercised.
-- Authorization bypass attempts on `/worlds/*` and `/debug/*`, and how the public process
-  and the worker each interpret an unusual request path. The proxy forwards the raw path to
-  the worker; whether the two always agree on which route a path names is untested.
-- Render and animate bounds, the concurrent-world cap, and the 512 MB upload cap under load.
-- Legacy pickles and malformed v5 saves through the upload routes.
-- A base-image scan of `python:3.14-slim` and `node:20-slim`.
-
-A first attempt at an automated outside-in probe script was abandoned and is not in the
-repository.
+Not covered by either document: TLS and edge behaviour of the deployment, its cookie flags
+as served, whether its variables match the repository, sustained load, and a base-image scan
+of `python:3.14-slim` and `node:20-slim`.
 
 ## Reproducing the scans
 
