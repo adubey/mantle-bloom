@@ -319,7 +319,10 @@ The layout is a registry index plus one subdirectory per world:
 
 The [hosted entry point](../backend/app/hosted.py) reads the index and snapshots without
 importing the simulation. It forwards simulation requests over a private Unix socket to
-one [worker process](../backend/app/hosted_worker.py). The worker defers loading stopped
+one [worker process](../backend/app/hosted_worker.py). The request path is forwarded exactly as
+received; a path the HTTP client would rewrite on the way (one with `.` or `..` segments)
+gets `404` instead, so the worker never routes a path other than the one this process
+matched and authorised (#920). The worker defers loading stopped
 worlds with a valid hosted summary until a request needs the world. It restores running
 worlds on startup. A snapshot is served only when its checkpoint generation matches the
 current world file and the index still marks the world public. The saved revision survives
