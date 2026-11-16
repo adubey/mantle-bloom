@@ -22,6 +22,7 @@ from starlette.routing import Route
 from . import auth, checkpoint, public_view
 from .frontend_files import mount_frontend
 from .hosted_worker import HostedWorker, WorkerUnavailable
+from .security_headers import SecurityHeadersMiddleware
 
 _logger = logging.getLogger(__name__)
 _WORLD_PATH = "/public/worlds/{world_id}"
@@ -454,6 +455,8 @@ def _health() -> dict:
 def create_app(dist: str | None = None) -> FastAPI:
     app = FastAPI(title="Mantle-Bloom", lifespan=_lifespan, openapi_url=None)
     app.add_middleware(auth.AuthMiddleware, allow_local=False)
+    # After the auth guard, so it wraps it: a 401 or the /view redirect carries the headers too.
+    app.add_middleware(SecurityHeadersMiddleware)
     app.include_router(auth.router)
     app.add_api_route("/healthz", _health)
     app.add_api_route("/openapi.json", _openapi, include_in_schema=False)

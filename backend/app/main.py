@@ -47,6 +47,7 @@ from . import (
     worldsketch,
 )
 from .frontend_files import mount_frontend
+from .security_headers import SecurityHeadersMiddleware
 from .world_registry import FairComputeGate, UnknownWorldError, WorldLimitReached, WorldRegistry, WorldSession
 from .hydroclimate import biomes, climate, coastline, eustasy, hydrology, lakes, stranded_basins
 from .elevation_lines import NODE_DENSITY_CHOICES
@@ -130,6 +131,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Last, so it is outermost: auth and CORS refusals carry the security headers too (#555 F5).
+app.add_middleware(SecurityHeadersMiddleware)
 
 _logger = logging.getLogger(__name__)
 

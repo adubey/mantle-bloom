@@ -114,6 +114,30 @@ mount and its health check verifies that the checkpoint directory can be written
 [checkpoint.py](../backend/app/checkpoint.py) and [architecture](architecture.md#run-and-checkpoint)
 for the behavior.
 
+## Security notes
+
+These record the deployment findings of the first-pass security review
+([#555](https://github.com/adubey/mantle-bloom/issues/555), tracked in
+[#556](https://github.com/adubey/mantle-bloom/issues/556)).
+
+- **Write access to the volume is code execution.** The container runs as root because
+  Railway mounts the volume root-owned. The worker loads each world's checkpoint
+  (`world.mbworld`) from the volume, and the loader still reads legacy pickled saves, which
+  run code when loaded. The app writes only v5 saves, which carry no code, but a file
+  planted on the volume can be a pickle. Keep Railway project and volume access to the
+  owner, and never copy a file from someone else onto the volume.
+- **Uploads are the owner's own files.** File > Load World accepts legacy pickled saves as
+  well as v5. Never upload a legacy save that came from someone else; convert old saves
+  locally first (see [save compatibility](save-compatibility.md)).
+- **No request is local.** `hosted.py` builds its guard with `allow_local=False`, and the
+  Dockerfile also sets `MANTLE_BLOOM_LOCAL_NO_LOGIN=0`, so the loopback no-login rule can't
+  apply whatever the Railway variables say. To check a deployment from outside:
+  `GET /auth/session` answers `{"admin": false, "local": false, ...}` and `GET /worlds`
+  answers `401` without a session cookie. The simulation worker listens only on a private
+  Unix socket inside the container.
+- **Browser security headers** are set on every response; see
+  [architecture](architecture.md#response-security-headers-backendappsecurity_headerspy).
+
 ## Hosting boundary
 
 The Docker image keeps the application build portable, while the deployment contract is still
