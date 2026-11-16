@@ -22,6 +22,7 @@ from scipy.spatial import cKDTree
 
 from . import (
     auth,
+    body_limit,
     checkpoint,
     continent_layout,
     cross_section as cross_section_view,
@@ -126,13 +127,16 @@ def demo_login_page() -> RedirectResponse:
     return RedirectResponse("/login?demo=true", status_code=302)
 
 
+# Body-size cap (#920, body_limit.py). Before CORSMiddleware so CORS wraps it and the dev
+# frontend can read a 413 instead of an opaque network error.
+body_limit.install(app)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(_frontend_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# Last, so it is outermost: auth and CORS refusals carry the security headers too (#555 F5).
+# Last, so it is outermost: auth, body-size and CORS refusals carry the security headers too (#555 F5).
 security_headers.install(app)
 
 _logger = logging.getLogger(__name__)

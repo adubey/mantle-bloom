@@ -1,0 +1,587 @@
+{
+ "source": "api.osv.dev querybatch, ecosystem PyPI",
+ "date": "2026-11-15",
+ "input": "backend/constraints.txt",
+ "packages_scanned": 46,
+ "advisories": [
+  {
+   "package": "certifi",
+   "version": "2026.7.22",
+   "id": "GHSA-6q48-6c7w-9gw2",
+   "aliases": [],
+   "severity": "CRITICAL",
+   "fixed": [
+    "2026.10.18"
+   ],
+   "summary": "certifi bundles emSign root CAs with compromised intermediate CA keys"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-22hg-r758-rrw9",
+   "aliases": [
+    "CVE-2026-112390"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Infinite loop in MIC n_frames when the embedded TIFF"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-24rc-8hj2-v98c",
+   "aliases": [
+    "CVE-2026-96638"
+   ],
+   "severity": "MODERATE",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: BMP RLE decoder memory-amplification DoS via unbounded delta escape / absolute mode"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-254f-3936-288h",
+   "aliases": [
+    "CVE-2026-112391"
+   ],
+   "severity": "MODERATE",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: PdfParser can recurse without limit in get_value() and linearize_page_tree()"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-27h8-gf7j-v5hc",
+   "aliases": [
+    "CVE-2026-112392"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: NULL dereference in ImagingExpand via rank filters on zero-size images"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-332p-7hrc-92wf",
+   "aliases": [
+    "CVE-2026-112393"
+   ],
+   "severity": "CRITICAL",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Heap buffer overflow in _tiffWriteProc when saving TIFF to BytesIO"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-3j72-p6qg-6xp7",
+   "aliases": [
+    "CVE-2026-96642"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: TarIO negative size field causes infinite CPU-spin loop"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-4558-3h8r-v8xp",
+   "aliases": [
+    "CVE-2026-112394"
+   ],
+   "severity": "MODERATE",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: P;2L and P;4L decoders may read 1 to 3 bytes past the passed buffer size"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-462x-pgg6-55fp",
+   "aliases": [
+    "CVE-2026-112395"
+   ],
+   "severity": "MODERATE",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow tiled-TIFF decoder reads past tile buffer in copy4 (Unpack.c:1290)"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-4rm8-3hmm-39fg",
+   "aliases": [
+    "CVE-2026-96641"
+   ],
+   "severity": "MODERATE",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Reachable undefined behavior in native integer operations, potentially leading to denial of service or logic integrity compromise"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-4rr5-89j8-mwwm",
+   "aliases": [
+    "CVE-2026-112396"
+   ],
+   "severity": "MODERATE",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Heap use-after-free when encoding TIFF to an in-memory buffer"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-58r4-6rv3-gfh8",
+   "aliases": [
+    "CVE-2026-112397"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Out-of-bounds access in _imagingmorph on a zero-width image"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-5x8w-8jj5-q52h",
+   "aliases": [
+    "CVE-2026-112398"
+   ],
+   "severity": "CRITICAL",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Heap buffer overflow in FlashPix (FPX) JPEG decoding leads to code execution"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-5xm2-6676-qcp9",
+   "aliases": [
+    "CVE-2026-112399"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: APNG background disposal allocates full canvas before decompression bomb check"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-654x-cwwv-5j9c",
+   "aliases": [
+    "CVE-2026-114501"
+   ],
+   "severity": "MODERATE",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Arrow export leaks stale heap memory when PILLOW_ALIGNMENT > 1"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-65qm-jvmh-6pqg",
+   "aliases": [
+    "CVE-2026-112400"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: GIF seek keeps rejected size after DecompressionBombError, allowing DoS"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-74r2-7ff9-mjj2",
+   "aliases": [
+    "CVE-2026-112401"
+   ],
+   "severity": "MODERATE",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Quadratic GIF comment concatenation allows DoS in Image.open()"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-78g4-xqwv-q3g8",
+   "aliases": [],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Bundled libopenjp2 2.5.4 in all wheels since 11.1.0 carries OSV-2025-219 heap-buffer-overflow write reachable from Image.open().load()"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-7mwm-ghpf-9vrm",
+   "aliases": [
+    "CVE-2026-112402"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Double free in ImagingScaleAffine on calloc failure via Image.transform"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-8g5g-8vmr-9782",
+   "aliases": [
+    "CVE-2026-112403"
+   ],
+   "severity": "CRITICAL",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Heap buffer overflow in ImagingJpegDecode"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-9v9v-9qvf-h2hj",
+   "aliases": [
+    "CVE-2026-96644"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Heap over-read in WMF/EMF rendering via 16-bit dimension truncation (Windows builds)"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-c6hw-5grf-ff96",
+   "aliases": [
+    "CVE-2026-112404"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: OOB read in TiffDecode.c tile and RGBA paths leaks heap memory into pixels"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-cp9v-662q-vvx9",
+   "aliases": [
+    "CVE-2026-112405"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: NULL pointer dereference in Image.merge via an unvalidated band 0"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-f2g6-542v-9j58",
+   "aliases": [
+    "CVE-2026-112406"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Infinite loop in PdfParser.rewrite_pages on page tree Parent cycle"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-fc9g-5qg7-mf45",
+   "aliases": [
+    "CVE-2026-112891"
+   ],
+   "severity": "MODERATE",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Quadratic GIF comment copying during save"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-g4qv-2jxx-769h",
+   "aliases": [
+    "CVE-2026-96643"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: PNG eXIf chunk makes EXIF parsing run in quadratic time"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-g7cr-3p24-7wf7",
+   "aliases": [
+    "CVE-2026-96778"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Heap buffer overflow writing JPEG comment after ICC profile fills buffer"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-g842-9rc4-69pw",
+   "aliases": [
+    "CVE-2026-96637"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Decompression bomb check bypass in SpiderImagePlugin.seek() leads to unbounded allocation DoS"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-gg2r-wvfm-q9rx",
+   "aliases": [
+    "CVE-2026-112892"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: MSP RLE decoder expands a tiny file into unbounded memory"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-j4m9-6w36-pw47",
+   "aliases": [
+    "CVE-2026-112893"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Invalid free in FreeType glyph rendering when a stroker is active"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-jg86-v3jv-hrpm",
+   "aliases": [
+    "CVE-2026-112894"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Quadratic-time DoS in PDF save_all (PdfParser.next_object_id)"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-mrfp-p49p-3hf2",
+   "aliases": [
+    "CVE-2026-96640"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow PDF append accepts malformed shared page-tree DAG causing resource exhaustion"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-p4wg-p73j-c528",
+   "aliases": [
+    "CVE-2026-112895"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Unbounded recursion parsing a PDF page tree or trailer chain (incomplete fix for CVE-2026-42310)"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-p8hx-v2p6-rp84",
+   "aliases": [
+    "CVE-2026-96636"
+   ],
+   "severity": "MODERATE",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Decompression-bomb protection bypass via multi-frame seek() in MPO and DCX (MpoImageFile.seek / DcxImageFile.seek)"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-pchr-8j38-3x4p",
+   "aliases": [
+    "CVE-2026-112896"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: TIFF encoder ColorMap plane-size mismatch causes a heap out-of-bounds read"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-q45j-58j2-45rg",
+   "aliases": [
+    "CVE-2026-112897"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: TiffDecode returns uninitialized memory as pixels for short JPEG strips"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-rfgq-q3w2-pmv2",
+   "aliases": [
+    "CVE-2026-112898"
+   ],
+   "severity": "MODERATE",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Image.quantize() with empty palette leaks uninitialized stack memory"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-v9pv-5gc8-w2m6",
+   "aliases": [
+    "CVE-2026-96639"
+   ],
+   "severity": "CRITICAL",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow multi-frame loaders can reuse stale native image storage after mode transitions"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-vx6w-vv9f-6gvg",
+   "aliases": [
+    "CVE-2026-112899"
+   ],
+   "severity": "MODERATE",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: EPS load(scale) lets Ghostscript render past the decompression bomb limit"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-w889-685w-c8fh",
+   "aliases": [
+    "CVE-2026-112900"
+   ],
+   "severity": "CRITICAL",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Argument Injection in Ghostscript call, potentially leading into RCE"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-wqgw-9xfh-qf2g",
+   "aliases": [
+    "CVE-2026-128066"
+   ],
+   "severity": "MODERATE",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Memory DoS in TIFF and EXIF IFD parsing via overlapping tag data"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-xcvg-w56q-r89m",
+   "aliases": [
+    "CVE-2026-128067"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Heap buffer overflow saving TIFF with libtiff when tags override image size"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-xgh8-jp6q-p5x8",
+   "aliases": [
+    "CVE-2026-112901"
+   ],
+   "severity": "MODERATE",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: ReDoS in XbmImagePlugin: 512-byte file stalls Image.open() for minutes"
+  },
+  {
+   "package": "pillow",
+   "version": "12.3.0",
+   "id": "GHSA-xvh5-g6gv-559v",
+   "aliases": [
+    "CVE-2026-112902"
+   ],
+   "severity": "HIGH",
+   "fixed": [
+    "13.0.0"
+   ],
+   "summary": "Pillow: Memory disclosure and segfault in libtiff encoder via crafted TIFF tags"
+  },
+  {
+   "package": "setuptools",
+   "version": "84.0.0",
+   "id": "GHSA-xmj3-9gf7-h52w",
+   "aliases": [],
+   "severity": "LOW",
+   "fixed": [
+    "84.1.0"
+   ],
+   "summary": "setuptools: Windows path escape via namespace_packages.txt during legacy wheel installation  Description"
+  }
+ ]
+}
