@@ -161,7 +161,7 @@ def load_world_name(data: bytes) -> str | None:
     pickle, and any v5 save written without one. Reads only the manifest, never
     the arrays, so it stays cheap on a tens-of-MB save. A present-but-not-a-string
     name is ignored, not an error: the name is advisory record metadata, and a
-    tampered label must not block loading the world itself (#652)."""
+    tampered or overlong label must not block loading the world itself (#652, #925)."""
     return load_world_name_file(io.BytesIO(data))
 
 
@@ -180,7 +180,7 @@ def load_world_name_file(file: BinaryIO) -> str | None:
         return None
     name = manifest.get("name") if isinstance(manifest, dict) else None
     if isinstance(name, str) and len(name) > 100:
-        raise CorruptSaveError("v5 save name exceeds 100 characters")
+        return None
     return name if isinstance(name, str) and name else None
 
 
