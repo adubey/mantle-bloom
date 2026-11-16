@@ -60,16 +60,17 @@ interface FetchMockOptions {
   worlds: () => PublicWorldListing[];
   states?: Record<string, Partial<PublicState>>;
   onStep?: (worldId: string) => Response | Promise<Response>;
+  admin?: boolean;
 }
 
-function installFetchMock({ worlds, states = {}, onStep }: FetchMockOptions): { worldsCalls: () => number } {
+function installFetchMock({ worlds, states = {}, onStep, admin = false }: FetchMockOptions): { worldsCalls: () => number } {
   let publicWorldsCalls = 0;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const rawUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const url = new URL(rawUrl, "http://localhost");
 
     if (url.pathname === "/auth/session") {
-      return jsonResponse({ admin: false, local: false, login: null, login_available: false });
+      return jsonResponse({ admin, local: false, login: admin ? "owner" : null, login_available: false });
     }
     if (url.pathname === "/public/worlds") {
       publicWorldsCalls += 1;
@@ -238,5 +239,39 @@ describe("Viewer (/view)", () => {
     fireEvent.click(advanceBtn);
     await waitFor(() => assert.equal(advanceBtn.disabled, true));
     assert.ok(screen.getByText(/You've used all 3 of this browser's advances\./));
+  });
+
+  it("shows guests a preview of the full app's other views (#560)", async () => {
+    installFetchMock({ worlds: () => [makeListing({ world_id: "w1", name: "Kepler-186 f" })] });
+
+    render(<Viewer />);
+
+    await screen.findByText("Kepler-186 f");
+    assert.ok(screen.getByRole("heading", { name: "More in the full app" }));
+    const images = screen.getAllByRole("img").filter((img) => img.getAttribute("src")?.startsWith("/preview/"));
+    assert.deepEqual(
+      images.map((img) => img.getAttribute("src")),
+      ["/preview/temperature.webp", "/preview/ocean-currents.webp", "/preview/cross-section.webp"],
+    );
+    // Static files only: the preview must not reach for a non-public route.
+    assert.ok(images.every((img) => img.getAttribute("alt")));
+  });
+
+  it("shows the preview even when no world is public yet (#560)", async () => {
+    installFetchMock({ worlds: () => [] });
+
+    render(<Viewer />);
+
+    await screen.findByText("No world has been generated yet. Check back later.");
+    assert.ok(screen.getByRole("heading", { name: "More in the full app" }));
+  });
+
+  it("hides the preview from the admin, who already has the full app (#560)", async () => {
+    installFetchMock({ worlds: () => [makeListing({ world_id: "w1", name: "Kepler-186 f" })], admin: true });
+
+    render(<Viewer />);
+
+    await screen.findByText("Kepler-186 f");
+    await waitFor(() => assert.equal(screen.queryByRole("heading", { name: "More in the full app" }), null));
   });
 });

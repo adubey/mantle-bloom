@@ -246,6 +246,12 @@ api-reference.md). Those routes accept no projection, rotation, step size or oth
 so creating, saving, loading, animating and reconfiguring a world all stay behind the
 `/worlds/*` guard above.
 
+Below the map, visitors who aren't the admin see "More in the full app" (#560,
+`FullVersionPreview.tsx`): screenshots of views the public routes don't serve (temperature,
+ocean currents, the lithosphere cross-section). They are static files in
+`frontend/public/preview/`, served by the frontend fallback, so the preview adds no public
+route and costs no render. Replace a screenshot by overwriting its `.webp` there.
+
 Each browser may trigger at most 30 step computations. The count is kept in an HMAC-signed
 `mb_guest` cookie, so it can't be edited down, though clearing the cookie resets it (a usage
 limit, not abuse protection). It's signed with `MANTLE_BLOOM_SESSION_SECRET`, or, when that's
