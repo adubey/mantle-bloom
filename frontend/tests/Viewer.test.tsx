@@ -284,8 +284,9 @@ describe("Viewer (/view)", () => {
     const form = signOut.closest("form");
     assert.equal(form?.getAttribute("method"), "post");
     assert.ok(form?.getAttribute("action")?.endsWith("/logout"));
-    // Signed in is still the free viewer: the browser's step allowance is unchanged.
-    assert.ok(screen.getByText(/3 of 3 advances left in this browser/));
+    // Signed in is still the free viewer: the browser's step allowance is unchanged. Awaited,
+    // because the session can resolve before the world's state has loaded.
+    assert.ok(await screen.findByText(/3 of 3 advances left in this browser/));
   });
 
   it("offers Sign in to a signed-out visitor (#929)", async () => {
