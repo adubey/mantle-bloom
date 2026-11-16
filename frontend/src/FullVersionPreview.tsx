@@ -1,6 +1,9 @@
 // A look at the full app for /view visitors (#560): static screenshots of views the public
-// routes don't serve. Images are files under public/preview/, not rendered from the shared
-// world, so the preview costs no simulation or render work and adds no public API surface.
+// routes don't serve, in a <details> that starts closed while the hosted full version isn't
+// live. The summary row is all a visitor sees until they ask for more, and the lazy images
+// aren't fetched before then. Images are files under public/preview/, not rendered from the
+// shared world, so the preview costs no simulation or render work and adds no public API
+// surface.
 
 const PREVIEWS = [
   {
@@ -31,8 +34,8 @@ const PREVIEWS = [
 
 export default function FullVersionPreview({ repoUrl }: { repoUrl: string }) {
   return (
-    <section aria-labelledby="full-version-heading" className="full-preview">
-      <h2 id="full-version-heading">More in the full app</h2>
+    <details className="full-preview">
+      <summary>Features of the full version</summary>
       <p className="full-preview-lead">
         This page shows one shared world in a single map view. The full app generates your own worlds from a seed or a
         sketch, runs them for as long as you like, and looks at them on a globe and in over twenty map views, with
@@ -54,6 +57,6 @@ export default function FullVersionPreview({ repoUrl }: { repoUrl: string }) {
           </li>
         ))}
       </ul>
-    </section>
+    </details>
   );
 }

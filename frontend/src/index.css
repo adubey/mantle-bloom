@@ -184,7 +184,8 @@ button:disabled {
   }
 }
 
-/* The /view page's look at the full app (see FullVersionPreview.tsx, #560). Cards wrap to
+/* The /view page's look at the full app (see FullVersionPreview.tsx, #560): a <details>
+   that starts closed, keeping its native disclosure marker. Cards wrap to
    one column on phones through auto-fit, so no breakpoint of their own. */
 .full-preview {
   margin-top: 40px;
@@ -192,9 +193,15 @@ button:disabled {
   border-top: 1px solid #2a2f42;
 }
 
-.full-preview h2 {
-  font-size: 18px;
-  margin: 0 0 6px;
+.full-preview > summary {
+  width: fit-content;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.full-preview[open] > summary {
+  margin-bottom: 8px;
 }
 
 .full-preview-lead {

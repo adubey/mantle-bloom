@@ -241,29 +241,32 @@ describe("Viewer (/view)", () => {
     assert.ok(screen.getByText(/You've used all 3 of this browser's advances\./));
   });
 
-  it("shows guests a preview of the full app's other views (#560)", async () => {
+  it("offers guests a closed expando of the full version's other views (#560)", async () => {
     installFetchMock({ worlds: () => [makeListing({ world_id: "w1", name: "Kepler-186 f" })] });
 
     render(<Viewer />);
 
     await screen.findByText("Kepler-186 f");
-    assert.ok(screen.getByRole("heading", { name: "More in the full app" }));
-    const images = screen.getAllByRole("img").filter((img) => img.getAttribute("src")?.startsWith("/preview/"));
+    const details = screen.getByText("Features of the full version").closest("details");
+    assert.ok(details);
+    // Closed until asked for: the full version isn't live yet.
+    assert.equal(details.open, false);
+    const images = [...details.querySelectorAll("img")];
     assert.deepEqual(
       images.map((img) => img.getAttribute("src")),
       ["/preview/temperature.webp", "/preview/ocean-currents.webp", "/preview/cross-section.webp"],
     );
-    // Static files only: the preview must not reach for a non-public route.
-    assert.ok(images.every((img) => img.getAttribute("alt")));
+    // Lazy, so a closed expando downloads nothing.
+    assert.ok(images.every((img) => img.getAttribute("alt") && img.getAttribute("loading") === "lazy"));
   });
 
-  it("shows the preview even when no world is public yet (#560)", async () => {
+  it("offers the expando even when no world is public yet (#560)", async () => {
     installFetchMock({ worlds: () => [] });
 
     render(<Viewer />);
 
     await screen.findByText("No world has been generated yet. Check back later.");
-    assert.ok(screen.getByRole("heading", { name: "More in the full app" }));
+    assert.ok(screen.getByText("Features of the full version"));
   });
 
   it("hides the preview from the admin, who already has the full app (#560)", async () => {
@@ -272,6 +275,6 @@ describe("Viewer (/view)", () => {
     render(<Viewer />);
 
     await screen.findByText("Kepler-186 f");
-    await waitFor(() => assert.equal(screen.queryByRole("heading", { name: "More in the full app" }), null));
+    await waitFor(() => assert.equal(screen.queryByText("Features of the full version"), null));
   });
 });
