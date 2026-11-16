@@ -492,6 +492,23 @@ def open_user_store() -> UserStore:
     return SqliteUserStore(path)
 
 
+_shared: UserStore | None = None
+_shared_lock = threading.Lock()
+
+
+def shared_store() -> UserStore:
+    """This process's one store, opened on first use (#929). Sign-in (`auth.py`) and the
+    simulator (`main.py`) must see the same users, and a memory-backed store exists only
+    in the instance that holds it. On Railway the front process and its worker are two
+    processes with one store each, which agree only through the SQLite file -- set
+    `MANTLE_BLOOM_USER_DB_PATH` there."""
+    global _shared
+    with _shared_lock:
+        if _shared is None:
+            _shared = open_user_store()
+        return _shared
+
+
 def seed_test_users(store: UserStore) -> dict[str, int]:
     """One free, one paid and one admin-test user for tier tests. The admin entry is
     used with `admin=True` (admin is an override, never stored); the free user never

@@ -147,7 +147,8 @@ _registry = WorldRegistry(max_worlds=checkpoint.max_worlds())
 
 # The user/entitlement store (#620): SQLite at MANTLE_BLOOM_USER_DB_PATH, in-memory
 # when unset. Nothing gates on tiers yet (items 2-4); the store just exists for them.
-_user_store = users.open_user_store()
+# Opened here, at import, so an unusable path stops startup; sign-in shares it (#929).
+_user_store = users.shared_store()
 
 # FastAPI runs sync `def` routes in a thread pool, so two requests can otherwise race on the
 # same World's mutable numpy arrays -- and, worse, launch Numba's `parallel=True` kernels

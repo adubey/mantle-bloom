@@ -180,18 +180,35 @@ and there are no proxy headers (`Forwarded`, `Via`, any `X-Forwarded-*`, `X-Real
 `CF-Connecting-IP` and similar). That covers `bin/restart.sh` and the desktop build, so
 neither needs login. The OAuth flow uses PKCE and a signed, short-lived `state` cookie.
 
+Google sign-in makes signed-in free users (#929, the first provider of #560). Its callback,
+`/auth/google/callback`, finds or creates the row in the user store (`users.py`) for the
+Google account, keyed by Google's `sub`, and sets the same `mb_session` cookie with a
+different payload: `{user, via, exp}`, where `user` is the store's user ID. Admin is read
+only from `uid`, which only the GitHub callback writes, so a Google session is never the
+admin: it gets `401` from every `/worlds/*` route and the same guest step allowance as a
+signed-out visitor. `auth.signed_in_user` looks the user up in the store on each call, so
+a session ends when its user is gone. The account's email is stored only when Google
+reports it verified. Nothing links accounts across providers yet. Sign-in and the simulator
+share one store per process (`users.shared_store`); on Railway the front process and its
+worker are separate processes, so they share users only through the SQLite file at
+`MANTLE_BLOOM_USER_DB_PATH`.
+
 Configuration is read from the environment on every request:
 
 | Variable | Meaning |
 |---|---|
 | `MANTLE_BLOOM_GITHUB_CLIENT_ID`, `MANTLE_BLOOM_GITHUB_CLIENT_SECRET` | The GitHub OAuth app. Its callback URL is `<public URL>/auth/github/callback`. |
 | `MANTLE_BLOOM_GITHUB_OWNER_ID` | The one GitHub user ID allowed in (`gh api user -q .id`). |
+| `MANTLE_BLOOM_GOOGLE_CLIENT_ID`, `MANTLE_BLOOM_GOOGLE_CLIENT_SECRET` | Optional. The Google OAuth client for free accounts. Its redirect URI is `<public URL>/auth/google/callback`. |
 | `MANTLE_BLOOM_SESSION_SECRET` | At least 32 bytes, used to sign cookies. Rotating it signs everyone out. |
 | `MANTLE_BLOOM_PUBLIC_URL` | Optional. The public `https://` URL. The OAuth callback is built from it, and its origin is trusted for writes. Needed behind a TLS-terminating or `Host`-rewriting proxy. |
 | `MANTLE_BLOOM_LOCAL_NO_LOGIN` | `0` turns off the local no-login rule. Set it behind a same-host proxy that rewrites `Host` to loopback and adds no forwarding headers. |
 
-Missing any of the first four leaves login unconfigured, and the guard fails closed: remote
-requests never get admin access, and `/login` says login isn't configured.
+Missing any of the three GitHub variables or the session secret leaves the owner login
+unconfigured, and the guard fails closed: remote requests never get admin access. Google
+sign-in needs only its own two variables and the session secret, so it can be on without
+the owner login and the reverse. `/login` offers whichever are configured and says sign-in
+isn't configured when neither is.
 
 ### Response security headers (`backend/app/security_headers.py`)
 
@@ -697,8 +714,8 @@ hydroclimate/atmosphere_cfd.py      the atmospheric wind solver: a genuine time-
 main.py              FastAPI routes
 world_names.py       default world names in exoplanet style: a star name plus a lowercase
                      discovery letter (#597)
-auth.py              single-owner GitHub login: the request guard, OAuth routes and signed
-                     session cookies (see #access-control above)
+auth.py              the request guard, the owner's GitHub login, Google sign-in for free
+                     accounts (#929) and signed session cookies (see #access-control above)
 users.py             per-user store behind the paid tier (#620): users, linked identities,
                      the subscription cache and world ownership; SQLite at
                      MANTLE_BLOOM_USER_DB_PATH, in-memory when unset, tier() for

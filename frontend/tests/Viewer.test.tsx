@@ -61,16 +61,17 @@ interface FetchMockOptions {
   states?: Record<string, Partial<PublicState>>;
   onStep?: (worldId: string) => Response | Promise<Response>;
   admin?: boolean;
+  user?: { name: string | null; provider: string } | null;
 }
 
-function installFetchMock({ worlds, states = {}, onStep, admin = false }: FetchMockOptions): { worldsCalls: () => number } {
+function installFetchMock({ worlds, states = {}, onStep, admin = false, user = null }: FetchMockOptions): { worldsCalls: () => number } {
   let publicWorldsCalls = 0;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const rawUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const url = new URL(rawUrl, "http://localhost");
 
     if (url.pathname === "/auth/session") {
-      return jsonResponse({ admin, local: false, login: admin ? "owner" : null, login_available: false });
+      return jsonResponse({ admin, local: false, login: admin ? "owner" : null, login_available: false, user });
     }
     if (url.pathname === "/public/worlds") {
       publicWorldsCalls += 1;
@@ -267,6 +268,35 @@ describe("Viewer (/view)", () => {
 
     await screen.findByText("No world has been generated yet. Check back later.");
     assert.ok(screen.getByText("Features of the full version"));
+  });
+
+  it("shows a signed-in free user their name and a sign-out form instead of Sign in (#929)", async () => {
+    installFetchMock({
+      worlds: () => [makeListing({ world_id: "w1", name: "Kepler-186 f" })],
+      user: { name: "Ada Lovelace", provider: "google" },
+    });
+
+    render(<Viewer />);
+
+    const signOut = await screen.findByRole("button", { name: "Sign out" });
+    assert.ok(screen.getByText(/Ada Lovelace/));
+    assert.equal(screen.queryByRole("link", { name: "Sign in" }), null);
+    const form = signOut.closest("form");
+    assert.equal(form?.getAttribute("method"), "post");
+    assert.ok(form?.getAttribute("action")?.endsWith("/logout"));
+    // Signed in is still the free viewer: the browser's step allowance is unchanged. Awaited,
+    // because the session can resolve before the world's state has loaded.
+    assert.ok(await screen.findByText(/3 of 3 advances left in this browser/));
+  });
+
+  it("offers Sign in to a signed-out visitor (#929)", async () => {
+    installFetchMock({ worlds: () => [makeListing({ world_id: "w1", name: "Kepler-186 f" })] });
+
+    render(<Viewer />);
+
+    const link = await screen.findByRole("link", { name: "Sign in" });
+    assert.ok(link.getAttribute("href")?.endsWith("/login"));
+    assert.equal(screen.queryByRole("button", { name: "Sign out" }), null);
   });
 
   it("hides the preview from the admin, who already has the full app (#560)", async () => {
