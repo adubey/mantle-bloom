@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE } from "./api";
+import FullVersionPreview from "./FullVersionPreview";
 import Legend from "./Legend";
 import MapCanvas from "./MapCanvas";
 import ProgressBar from "./ProgressBar";
@@ -91,6 +92,14 @@ function AllowanceNote({ state, demo = false }: { state: PublicState; demo?: boo
       <a href={REPO_URL}><GitHubIcon />GitHub</a> to run your own worlds.
     </span>
   );
+}
+
+// Whoever already has the full app (the owner, or a local run) doesn't need it advertised,
+// except on /demo/view, which exists to show them the logged-out page.
+function FullVersionTeaser() {
+  const session = useSession();
+  if (session?.admin && !isDemo) return null;
+  return <FullVersionPreview repoUrl={REPO_URL} />;
 }
 
 function AccountLink() {
@@ -225,6 +234,7 @@ export default function Viewer() {
         </div>
       )}
       {worldId && <WorldView key={worldId} worldId={worldId} />}
+      <FullVersionTeaser />
     </main>
   );
 }

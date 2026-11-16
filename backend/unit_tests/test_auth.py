@@ -316,3 +316,93 @@ def test_dev_frontend_origin_may_not_write_remotely(monkeypatch, remote):
     _sign_in(remote, monkeypatch)
     dev = {"Origin": f"http://localhost:{main._frontend_port}"}
     assert remote.post("/worlds/test-world/animate/stop", headers=dev).status_code == 403
+
+
+def test_tokens_minted_for_another_purpose_are_not_sessions(remote):
+    """The guest allowance and OAuth state cookies share the session's secret; neither
+    may pass as a session even when it names the owner (#920)."""
+    for purpose in ("guest-steps", "oauth-state"):
+        token = auth.sign_token({"uid": OWNER_ID, "used": 0}, SECRET.encode(), purpose, 60)
+        remote.cookies.set(auth.SESSION_COOKIE, token)
+        assert remote.get("/worlds/test-world/summary").status_code == 401, purpose
+        assert remote.get("/auth/session").json()["admin"] is False
+
+
+def _signed(body: bytes) -> str:
+    encoded = auth._b64(body)
+    return f"{encoded}.{auth._mac(SECRET.encode(), 'session', encoded)}"
+
+
+@pytest.mark.parametrize("cookie", [
+    "", ".", "a.b.c", "not-a-token", "%00.%00", "ZZZ.ZZZ",
+    _signed(b"not json"), _signed(b"[]"), _signed(b'"owner"'),
+    _signed(b'{"uid":4242}'), _signed(b'{"uid":4242,"exp":"never"}'), _signed(b'{"uid":4242,"exp":1e99}'),
+    _signed(b'{"uid":"4242","exp":99999999999}'), _signed(b'{"uid":true,"exp":99999999999}'),
+])
+def test_malformed_session_cookies_are_refused_not_errors(cookie):
+    """A correctly signed body that isn't a well-formed session is still no session, and
+    nothing a client puts in the cookie can cause a 500 (#920)."""
+    client = TestClient(app, base_url="https://testserver", follow_redirects=False, raise_server_exceptions=True)
+    headers = {"Cookie": f"{auth.SESSION_COOKIE}={cookie}"}
+    assert client.get("/worlds/test-world/summary", headers=headers).status_code == 401
+    assert client.get("/auth/session", headers=headers).json()["admin"] is False
+
+
+def test_copied_session_outlives_logout_until_it_expires(monkeypatch, remote):
+    """Accepted for a single-owner service (#920 S10): sessions are stateless, so logout
+    clears the browser's cookie but can't revoke a copy. Rotating the secret does."""
+    _sign_in(remote, monkeypatch)
+    copied = remote.cookies.get(auth.SESSION_COOKIE)
+    remote.post("/logout", headers={"Origin": "https://testserver"})
+    other = TestClient(app, base_url="https://testserver", follow_redirects=False)
+    other.cookies.set(auth.SESSION_COOKIE, copied)
+    assert other.get("/worlds/test-world/summary").status_code != 401
+    monkeypatch.setenv("MANTLE_BLOOM_SESSION_SECRET", "r" * 40)
+    assert other.get("/worlds/test-world/summary").status_code == 401
+
+
+def _all_routes(routes) -> list:
+    """Every route with methods, including those behind `include_router`."""
+    found = []
+    for route in routes:
+        inner = getattr(route, "original_router", None)
+        if inner is not None:
+            found.extend(_all_routes(inner.routes))
+        elif hasattr(route, "methods"):
+            found.append(route)
+    return found
+
+
+# Every route the simulator app answers without a session. A new route must be added here
+# on purpose, or the test below fails: nothing becomes public by accident (#920).
+_PUBLIC_ROUTES = {
+    "/login", "/auth/github", "/auth/github/callback", "/logout", "/auth/session", "/healthz",
+    "/demo", "/demo/", "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc",
+    "/public/worlds", "/public/worlds/{world_id}/world", "/public/worlds/{world_id}/render",
+    "/public/worlds/{world_id}/step",
+}
+
+
+def test_every_route_is_owner_only_or_listed_as_public(remote):
+    routes = _all_routes(app.routes)
+    guarded = [route for route in routes if auth._is_world_route(route.path)]
+    assert {route.path for route in routes} - {route.path for route in guarded} == _PUBLIC_ROUTES
+    assert len(guarded) > 40
+    for route in guarded:
+        path = route.path.replace("{world_id}", "test-world")
+        for method in route.methods - {"HEAD", "OPTIONS"}:
+            assert remote.request(method, path).status_code == 401, (method, path)
+
+
+def test_a_finished_sign_in_cannot_be_replayed_in_the_same_browser(monkeypatch, remote):
+    """The callback clears the state cookie, so a second callback with the same `state`
+    and `code` starts no new session (#920)."""
+    _fake_github(monkeypatch, {"id": OWNER_ID, "login": "owner"})
+    state = _start(remote)
+    params = {"code": "abc", "state": state}
+    assert remote.get("/auth/github/callback", params=params).headers["location"] == "/"
+    assert auth.STATE_COOKIE not in remote.cookies
+    remote.cookies.delete(auth.SESSION_COOKIE)
+    again = remote.get("/auth/github/callback", params=params)
+    assert again.headers["location"] == "/login?error=state"
+    assert auth.SESSION_COOKIE not in remote.cookies

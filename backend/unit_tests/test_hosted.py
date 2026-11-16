@@ -13,7 +13,7 @@ from fastapi import Request
 from fastapi.testclient import TestClient
 
 from app import checkpoint, hosted, public_view
-from app.hosted_worker import HostedWorker
+from app.hosted_worker import HostedWorker, _upstream_request
 
 WORLD_ID = "a" * 32
 REVISION = "aabbccdd-5"
@@ -427,3 +427,91 @@ def test_invalid_idle_timeout_names_the_environment_variable(monkeypatch):
     monkeypatch.setenv("MANTLE_BLOOM_IDLE_SECONDS", "invalid")
     with pytest.raises(ValueError, match="MANTLE_BLOOM_IDLE_SECONDS"):
         hosted._idle_seconds()
+
+
+def _forwarded(method: str, raw_path: str, query: bytes = b"") -> Request:
+    from urllib.parse import unquote
+
+    return Request({
+        "type": "http", "method": method, "path": unquote(raw_path), "raw_path": raw_path.encode(),
+        "query_string": query, "headers": [(b"host", b"testserver")], "root_path": "",
+    })
+
+
+def test_proxy_forwards_the_path_this_process_matched():
+    """The worker must see the path the public process routed and authorised (#920)."""
+    upstream = _upstream_request(_forwarded("GET", f"{PATH}/render", b"view=elevation&width=10"))
+    assert upstream.url.raw_path == f"{PATH}/render?view=elevation&width=10".encode()
+    # Percent-encoding is left as sent, so both processes decode it to the same route.
+    for raw in ("/worlds/a%20b/summary", "/public/worlds/%2e%2e/step"):
+        assert _upstream_request(_forwarded("GET", raw)).url.raw_path == raw.encode()
+
+
+@pytest.mark.parametrize("raw_path", ["/public/worlds/../step", "/worlds/../_worker/idle", "/worlds/./x"])
+def test_proxy_refuses_a_path_the_client_library_would_rewrite(raw_path):
+    with pytest.raises(hosted.HTTPException) as refused:
+        _upstream_request(_forwarded("POST", raw_path))
+    assert refused.value.status_code == 404
+
+
+def test_refused_path_releases_the_worker_lease(tmp_path, monkeypatch):
+    async def run():
+        worker = HostedWorker(tmp_path / "worker.sock", 60)
+        monkeypatch.setattr(HostedWorker, "running", property(lambda _worker: True))
+        worker._ready = True
+        send = AsyncMock()
+        monkeypatch.setattr(worker._client, "send", send)
+        try:
+            with pytest.raises(hosted.HTTPException) as refused:
+                await worker.forward(_forwarded("POST", "/public/worlds/../step"))
+            assert refused.value.status_code == 404
+            send.assert_not_called()
+            assert worker._requests == 0
+        finally:
+            await worker._client.aclose()
+
+    asyncio.run(run())
+
+
+def _all_routes(routes) -> list:
+    """Every route with methods, including those behind `include_router`."""
+    found = []
+    for route in routes:
+        inner = getattr(route, "original_router", None)
+        if inner is not None:
+            found.extend(_all_routes(inner.routes))
+        elif hasattr(route, "methods"):
+            found.append(route)
+    return found
+
+
+def _owner_only(path: str) -> bool:
+    return path == "/worlds" or path.startswith(("/worlds/", "/debug/")) or path in {
+        "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc",
+    }
+
+
+# Every route the hosted public process answers without a session. A new route must be
+# added here on purpose, or the test below fails: nothing becomes public by accident.
+_HOSTED_PUBLIC_ROUTES = {
+    "/login", "/auth/github", "/auth/github/callback", "/logout", "/auth/session", "/healthz", "/demo",
+    "/public/worlds", "/public/worlds/{world_id}/world", "/public/worlds/{world_id}/render",
+    "/public/worlds/{world_id}/preview.png", "/public/worlds/{world_id}/warm", "/public/worlds/{world_id}/step",
+    "/_worker/{path:path}",
+}
+
+
+def test_every_hosted_route_is_owner_only_or_listed_as_public(tmp_path, monkeypatch):
+    _checkpoint(tmp_path, monkeypatch)
+    app = hosted.create_app()
+    routes = _all_routes(app.routes)
+    paths = {route.path for route in routes}
+    assert {path for path in paths if not _owner_only(path)} == _HOSTED_PUBLIC_ROUTES
+    with TestClient(app, follow_redirects=False) as client:
+        for route in routes:
+            if not _owner_only(route.path):
+                continue
+            path = route.path.replace("{world_id}", WORLD_ID).replace("{path:path}", "anything")
+            for method in route.methods - {"HEAD", "OPTIONS"}:
+                assert client.request(method, path).status_code == 401, (method, path)
+        assert not client.app.state.worker.running

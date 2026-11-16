@@ -246,6 +246,13 @@ api-reference.md). Those routes accept no projection, rotation, step size or oth
 so creating, saving, loading, animating and reconfiguring a world all stay behind the
 `/worlds/*` guard above.
 
+Below the map, visitors who aren't the admin get a "Features of the full version" expando
+(#560, `FullVersionPreview.tsx`), closed by default while the hosted full version isn't
+live: screenshots of views the public routes don't serve (temperature,
+ocean currents, the lithosphere cross-section). They are static files in
+`frontend/public/preview/`, served by the frontend fallback, so the preview adds no public
+route and costs no render. Replace a screenshot by overwriting its `.webp` there.
+
 Each browser may trigger at most 30 step computations. The count is kept in an HMAC-signed
 `mb_guest` cookie, so it can't be edited down, though clearing the cookie resets it (a usage
 limit, not abuse protection). It's signed with `MANTLE_BLOOM_SESSION_SECRET`, or, when that's
@@ -340,7 +347,10 @@ The layout is a registry index plus one subdirectory per world:
 
 The [hosted entry point](../backend/app/hosted.py) reads the index and snapshots without
 importing the simulation. It forwards simulation requests over a private Unix socket to
-one [worker process](../backend/app/hosted_worker.py). The worker defers loading stopped
+one [worker process](../backend/app/hosted_worker.py). The request path is forwarded exactly as
+received; a path the HTTP client would rewrite on the way (one with `.` or `..` segments)
+gets `404` instead, so the worker never routes a path other than the one this process
+matched and authorised (#920). The worker defers loading stopped
 worlds with a valid hosted summary until a request needs the world. It restores running
 worlds on startup. A snapshot is served only when its checkpoint generation matches the
 current world file and the index still marks the world public. The saved revision survives
