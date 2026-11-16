@@ -387,17 +387,40 @@ def test_supervisor_retries_a_saved_run_and_recovers_after_a_child_exit(tmp_path
     assert calls[:4] == ["start", "start", "exit", "start"]
 
 
+def _owner_client(client, monkeypatch):
+    from app import auth
+
+    secret = "s" * 32
+    monkeypatch.setenv("MANTLE_BLOOM_GITHUB_CLIENT_ID", "id")
+    monkeypatch.setenv("MANTLE_BLOOM_GITHUB_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("MANTLE_BLOOM_GITHUB_OWNER_ID", "7")
+    monkeypatch.setenv("MANTLE_BLOOM_SESSION_SECRET", secret)
+    client.cookies.set(auth.SESSION_COOKIE, auth.sign_token({"uid": 7, "login": "o"}, secret.encode(), "session", 60))
+    return client
+
+
 def test_openapi_includes_worker_admin_routes_and_hosted_routes(tmp_path, monkeypatch):
     _checkpoint(tmp_path, monkeypatch)
     schema = AsyncMock(return_value={"paths": {"/worlds/{world_id}/generate": {"post": {}}}})
     monkeypatch.setattr(HostedWorker, "openapi", schema)
     with TestClient(hosted.create_app()) as client:
+        _owner_client(client, monkeypatch)
         assert client.get("/docs").status_code == 200
         paths = client.get("/openapi.json").json()["paths"]
         assert "/worlds/{world_id}/generate" in paths
         assert f"{hosted._WORLD_PATH}/preview.png" in paths
         assert client.get("/openapi.json").status_code == 200
     schema.assert_awaited_once()
+
+
+def test_api_schema_and_docs_are_owner_only_and_do_not_wake_the_worker(tmp_path, monkeypatch):
+    _checkpoint(tmp_path, monkeypatch)
+    schema = AsyncMock(return_value={"paths": {}})
+    monkeypatch.setattr(HostedWorker, "openapi", schema)
+    with TestClient(hosted.create_app()) as client:
+        for path in ("/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"):
+            assert client.get(path).status_code == 401, path
+    schema.assert_not_awaited()
 
 
 def test_invalid_idle_timeout_names_the_environment_variable(monkeypatch):

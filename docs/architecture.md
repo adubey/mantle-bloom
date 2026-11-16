@@ -193,6 +193,26 @@ Configuration is read from the environment on every request:
 Missing any of the first four leaves login unconfigured, and the guard fails closed: remote
 requests never get admin access, and `/login` says login isn't configured.
 
+### Response security headers (`backend/app/security_headers.py`)
+
+`security_headers.install(app)` (called by `main.py` and `hosted.py`) adds the middleware last, so it
+is outermost, and a handler for unhandled exceptions, because Starlette builds that `500` outside
+every middleware. Every response carries these headers, including the guard's `401`, `403`,
+redirect and a `500`:
+
+| Header | Value | Effect |
+|---|---|---|
+| `X-Content-Type-Options` | `nosniff` | Browsers use the declared content type only. |
+| `X-Frame-Options`, CSP `frame-ancestors` | `DENY`, `'none'` | No other site can frame the app. |
+| `Referrer-Policy` | `same-origin` | Outbound links carry no path or world ID. |
+| `Content-Security-Policy` | `CONTENT_SECURITY_POLICY` | Scripts, styles, fonts and fetches come from this origin only, and inline scripts don't run. Inline styles are allowed (React `style=` attributes, the login page's `<style>`), as are `data:` and `blob:` images and `blob:` media (rendered maps, saved animations). |
+| `Strict-Transport-Security` | `max-age=31536000` | Sent only when the request was HTTPS (the scope's scheme, or the proxy's `X-Forwarded-Proto`), so plain-HTTP localhost is never pinned. |
+
+`/docs`, `/docs/oauth2-redirect` and `/redoc` load a CDN bundle and start it from an inline
+script, so their policy is only `frame-ancestors 'none'`. A header the route already set is
+kept. When the frontend starts loading from another origin (a CDN, an analytics script, a
+font host), add that origin to `CONTENT_SECURITY_POLICY`, or the browser blocks it.
+
 <a id="public-viewer"></a>
 ### The public viewer (`backend/app/public_view.py`)
 

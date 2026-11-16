@@ -1363,7 +1363,7 @@ def test_save_then_load_round_trips_the_exact_world_state(client):
 def test_load_with_malformed_bytes_returns_400(client):
     resp = client.post("/world/load", content=b"definitely not a saved world")
     assert resp.status_code == 400
-    assert "not a readable mantle-bloom save" in resp.json()["detail"]
+    assert "not a v5 .bloom save" in resp.json()["detail"]
 
 
 def test_load_rejects_an_upload_over_the_size_cap(client, monkeypatch, tmp_path):
@@ -1379,44 +1379,47 @@ def test_load_rejects_an_upload_over_the_size_cap(client, monkeypatch, tmp_path)
         return real_mkstemp(*args, **kwargs)
 
     monkeypatch.setattr(tempfile, "mkstemp", mkstemp_in_tmp_dir)
-    resp = client.post("/world/load", content=b"0123456789ABCDEF")
+    resp = client.post("/world/load", content=b"PK\x03\x04" + b"0123456789ABCDEF")
     assert resp.status_code == 413
     assert list(tmp_path.iterdir()) == []
 
 
 def test_load_reports_a_save_from_a_newer_build_as_unsupported(client):
-    import pickle
+    import io
+    import json
+    import zipfile
 
-    from app import persistence
-
-    newer = pickle.dumps({"format": persistence.SAVE_FORMAT, "version": persistence.SAVE_FORMAT_VERSION + 1, "world": None})
-    resp = client.post("/world/load", content=newer)
+    _post_generate(client, json={"seed": 5, "num_plates": 4})
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(client.get("/world/save").content)) as src, zipfile.ZipFile(out, "w") as dst:
+        for item in src.infolist():
+            data = src.read(item.filename)
+            if item.filename == "manifest.json":
+                data = json.dumps({**json.loads(data), "version": 999}).encode()
+            dst.writestr(item, data)
+    resp = client.post("/world/load", content=out.getvalue())
     assert resp.status_code == 400
     assert "unsupported save format version" in resp.json()["detail"]
 
 
-def test_load_converts_a_line_save_to_quads(client):
-    # docs/save-compatibility.md: a line-backed save converts to sparse quads on load, one way.
-    from app.elevation_lines import line_spacing_rad
-    from app.world import generate_world
-
-    from .legacy_lines import line_world_like, retired_class_names
-
+def test_uploads_refuse_a_legacy_pickled_save_without_unpickling_it(client, monkeypatch):
+    # #555 F1: unpickling runs code, so no upload route loads a v1-v4 save. The loader must
+    # never be reached, and the refusal says how to convert the file offline.
     import pickle
 
-    lines = line_world_like(generate_world(seed=5, num_plates=6, node_density=1.0), line_spacing_rad(1.0))
-    # A pre-#251 save pickled the retired line classes. v5 never holds lines, so build
-    # that version-1 save directly instead of going through the writer.
-    with retired_class_names():
-        saved = pickle.dumps(lines)
+    from app import persistence
 
-    converted = client.post("/world/load", content=saved).json()
-    assert converted["surface"] == "quad"
-    assert converted["surface_conversion"]["from"] == "lines"
-    assert converted["num_plates"] == 6
-    assert client.get("/world/render").status_code == 200
-    resaved = client.get("/world/save").content
-    assert client.post("/world/load", content=resaved).json()["surface"] == "quad"
+    def unreachable(*_args, **_kwargs):
+        raise AssertionError("a pickled upload reached the loader")
+
+    monkeypatch.setattr(persistence, "load_world_file", unreachable)
+    monkeypatch.setattr(persistence, "load_world_name_file", unreachable)
+    legacy = pickle.dumps({"format": persistence.SAVE_FORMAT, "version": 4, "world": None})
+    for path in ("/world/load", "/worlds/import"):
+        for body in (legacy, b"", b"PK"):  # a pickle, an empty body, a truncated zip magic
+            resp = client.post(path, content=body)
+            assert resp.status_code == 400, (path, body)
+            assert "bin/convert_saves.py" in resp.json()["detail"]
 
 
 def _saved_bytes(client, seed=5):
@@ -1497,7 +1500,7 @@ def test_import_duplicate_name_from_another_seed_is_not_the_same_planet(client):
 def test_import_with_malformed_bytes_returns_400(client):
     resp = client.post("/worlds/import", content=b"definitely not a saved world")
     assert resp.status_code == 400
-    assert "not a readable mantle-bloom save" in resp.json()["detail"]
+    assert "not a v5 .bloom save" in resp.json()["detail"]
 
 
 def test_animate_advances_the_world_and_streams_progress_then_an_mp4(client):

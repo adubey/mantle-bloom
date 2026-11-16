@@ -363,8 +363,10 @@ the code. [save-compatibility.md](save-compatibility.md) lists which older saves
 reads and how line-backed saves move to sparse quads. `404` if no world has been generated
 yet.
 
-Loading a legacy v1-v4 pickle save still unpickles it (a standard pickle caveat) -- acceptable given this server is a single-user localhost dev tool already
-(see `main.py`'s CORS allowlist), the same trust boundary every other route here assumes.
+Upload routes load v5 saves only. A legacy v1-v4 save is a pickle, and unpickling runs code, so
+`POST /worlds/import` and `POST /worlds/{world_id}/load` refuse one with `400` before reading
+it. Convert old saves offline with `bin/convert_saves.py` (see
+[save-compatibility.md](save-compatibility.md)).
 
 ## `POST /worlds/import`
 
@@ -381,7 +383,7 @@ another date), `uploaded_elapsed_years`, `existing_elapsed_years` (`null` when t
 existing record is empty), and `suggested_name` (the first unused `"<name> (1)"`).
 `409` past the world cap, like `POST /worlds`. The new record is private.
 
-Same spooling, size cap, and `400` contract as `POST /worlds/{world_id}/load` below.
+Same spooling, size cap, v5-only rule, and `400` contract as `POST /worlds/{world_id}/load` below.
 
 ## `POST /worlds/{world_id}/load`
 
@@ -398,12 +400,14 @@ load, one way (see [save-compatibility.md](save-compatibility.md)). The summary'
 `surface_conversion` then reports what the conversion changed; it is `null` for a world that
 was never converted, and stays with the world through later saves.
 
-`400` with `detail` `"invalid or incompatible world file: <reason>"` when the bytes aren't a
+`400` with `detail` `"not a v5 .bloom save: ..."` when the body doesn't start with the v5 zip
+magic (a legacy pickled save, an empty body, garbage). Otherwise `400` with `detail`
+`"invalid or incompatible world file: <reason>"` when the bytes aren't a
 readable save (corrupt, truncated, or not a mantle-bloom file) or are in a format version
 newer than this build reads (the save envelope or one of its sparse-quad plates). Nothing
 falls back to a partial load.
 
-The body streams to a temp file and unpickles from disk, so a large upload never sits in
+The body streams to a temp file and loads from disk, so a large upload never sits in
 RAM twice (as bytes and as a world). Bodies past 512 MB (`MAX_LOAD_WORLD_BYTES` in
 `backend/app/main.py`) are refused with `413` while still streaming.
 

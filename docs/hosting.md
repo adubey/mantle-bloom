@@ -50,12 +50,13 @@ records the original idle footprint and the local measurements that informed thi
 
 The hosted entry point requires a signed owner session for admin routes, including when
 run on loopback. Use the desktop or development entry point for local admin access without OAuth.
-Opening the API schema starts the worker on the first request so the hosted docs include
-the admin API.
+The API schema and its viewers (`/openapi.json`, `/docs`, `/redoc`) answer `401` to anyone
+without the owner's session. The first owner request for the schema starts the worker so the
+hosted docs include the admin API.
 
 To avoid generating on the host at all, generate locally and upload the result: File > Save
 World on the local app, then File > Load World on the hosted app (admin only, like every
-`/worlds/*` route). The upload streams to a temp file and unpickles from disk rather than
+`/worlds/*` route). The upload streams to a temp file and loads from disk rather than
 holding the whole body in RAM, and bodies past 512 MB (`MAX_LOAD_WORLD_BYTES` in
 `backend/app/main.py`) are refused with `413` while still streaming.
 
@@ -113,6 +114,31 @@ provided by Railway, and the app uses it for checkpoints. The service definition
 mount and its health check verifies that the checkpoint directory can be written. See
 [checkpoint.py](../backend/app/checkpoint.py) and [architecture](architecture.md#run-and-checkpoint)
 for the behavior.
+
+## Security notes
+
+These record the deployment findings of the first-pass security review
+([#555](https://github.com/adubey/mantle-bloom/issues/555), tracked in
+[#556](https://github.com/adubey/mantle-bloom/issues/556)).
+
+- **Write access to the volume is code execution.** The container runs as root because
+  Railway mounts the volume root-owned. The worker loads each world's checkpoint
+  (`world.mbworld`) from the volume, and the loader still reads legacy pickled saves, which
+  run code when loaded. The app writes only v5 saves, which carry no code, but a file
+  planted on the volume can be a pickle. Keep Railway project and volume access to the
+  owner, and never copy a file from someone else onto the volume.
+- **Uploads carry no code.** File > Load World and the upload API accept v5 `.bloom` saves
+  only; a legacy pickled save is refused before it is read. Convert old saves locally with
+  `bin/convert_saves.py`. The one remaining pickle path is the checkpoint on the volume,
+  covered by the first bullet.
+- **No request is local.** `hosted.py` builds its guard with `allow_local=False`, and the
+  Dockerfile also sets `MANTLE_BLOOM_LOCAL_NO_LOGIN=0`, so the loopback no-login rule can't
+  apply whatever the Railway variables say. To check a deployment from outside:
+  `GET /auth/session` answers `{"admin": false, "local": false, ...}` and `GET /worlds`
+  answers `401` without a session cookie. The simulation worker listens only on a private
+  Unix socket inside the container.
+- **Browser security headers** are set on every response; see
+  [architecture](architecture.md#response-security-headers-backendappsecurity_headerspy).
 
 ## Hosting boundary
 
