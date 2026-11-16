@@ -72,19 +72,56 @@ Tried and dropped: `np.unique` in `lakes._body_leaf_mapping` in place of the Pyt
 Most bodies have a handful of members, where `np.unique` costs more than the loop (3.8 s
 became 8.9 s).
 
+## Third pass: the opening extent, found near last substep's margin
+
+Measured at `0d4505ee`, where the trend-adaptive march is the default (#842), so the
+three steps of the 67.4 Myr save take 84 s where the second pass measured 162 s.
+
+Each body's substep solve has two searches: the extent whose profile holds the opening
+volume (`_volume_extent`, a bisection over the body's whole domain), then the margin root
+find that walks out from it. Counting profiles (`_shape` calls) per body solve over those
+three steps (3,109 body solves) corrects the first pass's "13 of 16":
+
+| Profiles per body solve | Before | After |
+|---|---:|---:|
+| Opening extent (`_volume_extent`) | 5.3 | 1.4 |
+| Margin root find (walk, then Illinois to 100 m) | 11.1 | 11.1 |
+| **Three steps, unprofiled, old and new back to back** | **83.6 s** | **63.8 s** |
+
+The step times were 27.9, 19.7 and 36.0 s before and 23.8, 16.9 and 23.1 s after.
+
+The bisection itself is unchanged. The march now passes each body the margin its nodes
+ended the previous substep with, and `_volume_extent` first builds the profiles at the two
+ends of the bisection cell that margin falls in. V(d) is nondecreasing, so every other
+midpoint the bisection tests is then on a known side and needs no profile. A hint that
+turns out wrong costs a few more probes, doubling outward, and the bisection still
+returns the same extent. 93% of body solves had a hint.
+
+Equivalence, with `bin/debug/exact_step_ab.py`: after those three steps all 2,961 arrays
+and 320,735 scalars are equal between `origin/main` (`0d4505ee`) and this branch, and
+likewise the 1,450 arrays of a seed-0 world at density 1 after two steps. This rests on
+V(d) being nondecreasing at the extents compared. The profile sweep keeps that order by
+construction, but summing a volume in floating point can break it by about 1e-9 of the
+volume, so an opening volume that falls inside that gap could in principle send the
+hinted search one cell away from the full bisection. None did in these 3,109 solves.
+
 ## What is left, largest first
 
-Shares are of the profiled three steps after the second pass (192 s).
+Shares are of the profiled three steps after the second pass (192 s), before the third
+pass and the trend-adaptive march.
 
 1. **Ice shape solve (about half).** 83% of it is the
    ordered sweep, `_plastic_sweep`, which is already close to what the hardware allows: an
    indexed heap in place of `heapq` tuples bought 15%, and solving bodies on threads topped
-   out at 1.5x. The cost is how many sweeps run. Each body takes about 16 shape evaluations
-   per substep, 13 of them in `_volume_extent`'s full-range bisection that recovers last
-   substep's extent from the opening volume, and each evaluation sweeps about 3 times while
-   it drops floating cells. Cutting the evaluations (a bracket carried from the previous
-   substep, or a secant search) would move results within the existing tolerances, so it
-   needs a replay comparison and belongs with the march-cost work (#822, #842). The mass
+   out at 1.5x. The cost is how many sweeps run. After the third pass a body takes about
+   12.5 profiles per substep, 11 of them in the margin root find, and each profile sweeps
+   about 3 times while it drops floating cells. The root find walks out from the opening
+   extent one edge length (about 60 km) at a time, then narrows that bracket to 100 m. Its
+   function is not monotone, so nothing can be inferred as in the third pass: starting it
+   from a narrow bracket around last substep's margin would save roughly half of those
+   profiles, but ends on a different 100 m bracket, so results move within the existing
+   tolerance. That needs a replay comparison and belongs with the march-cost work (#822,
+   #842). The mass
    balance inside each evaluation (`SurfaceClimate.rates`, 19 s) is numpy on small arrays;
    its `arcsin` rules out a bit-identical numba port.
 2. **Lake march (about 17%).** `_settle_prognostic_slice` is Python loops over small numpy
