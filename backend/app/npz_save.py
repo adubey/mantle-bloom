@@ -51,6 +51,11 @@ COMPRESSLEVEL = 6
 FORMAT = "mantle-bloom-world"
 VERSION = 5
 SURFACES = ("quad", "empty")
+# Keep valid default/exact saves from mature worlds loadable while bounding the
+# attacker-controlled ZIP expansion points before any member is read (#925).
+MAX_V5_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
+MAX_V5_MANIFEST_BYTES = 16 * 1024 * 1024
+MAX_V5_HEALPIX_NSIDE = 512
 
 # The H9 hard gate (`surface_parity_gates.load_continuation`) requires a step from a
 # default/exact-loaded world to land on identical authoritative state to a step from
@@ -222,9 +227,11 @@ def freeze(value, path: str, arrays: dict):
 
 def _resolve(dotted: str):
     """Import `a.b.C` by trying the longest importable module prefix first. Only
-    dataclass types resolve: thaw instantiates the result with manifest-controlled
-    keyword arguments, so anything else -- even `builtins.dict`, let alone
-    callables with side effects -- must fail the load, not run (#596 review)."""
+    dataclass types resolve, and only under `app.`: thaw instantiates the result
+    with manifest-controlled keyword arguments, so external classes and callables
+    with side effects must fail before import (#596 review, #925)."""
+    if not isinstance(dotted, str) or not dotted.startswith("app."):
+        raise _corrupt(f"v5 save names a class outside app.: {dotted!r}")
     parts = dotted.split(".")
     for i in range(len(parts) - 1, 0, -1):
         try:
@@ -305,8 +312,10 @@ def _thaw_tagged(tag: str, payload, node: dict, zf: zipfile.ZipFile, plates_by_i
             raise _corrupt(f"v5 save references unknown plate {payload!r}")
         return plates_by_id[payload]
     if tag == "__healpix_grid__":
+        if type(payload) is not int or payload <= 0 or payload > MAX_V5_HEALPIX_NSIDE or payload & (payload - 1):
+            raise _corrupt(f"v5 save holds a bad HEALPix nside {payload!r}")
         try:
-            return healpix_grid.build(int(payload))
+            return healpix_grid.build(payload)
         except Exception as exc:
             raise _corrupt(f"v5 save holds a bad HEALPix nside {payload!r}: {exc}") from exc
     if tag == "__npy__":
@@ -360,6 +369,20 @@ def _unsupported(reason: str) -> Exception:
     from .persistence import UnsupportedSaveVersionError
 
     return UnsupportedSaveVersionError(reason)
+
+
+def _validate_v5_zip_sizes(zf: zipfile.ZipFile) -> None:
+    """Refuse declared ZIP expansion before reading even the manifest (#925)."""
+    infos = zf.infolist()
+    total_size = sum(info.file_size for info in infos)
+    if total_size > MAX_V5_UNCOMPRESSED_BYTES:
+        raise _corrupt(f"v5 save expands beyond the {MAX_V5_UNCOMPRESSED_BYTES}-byte limit")
+    try:
+        manifest_size = zf.getinfo("manifest.json").file_size
+    except KeyError as exc:
+        raise _corrupt("v5 save is missing manifest.json") from exc
+    if manifest_size > MAX_V5_MANIFEST_BYTES:
+        raise _corrupt(f"v5 manifest exceeds the {MAX_V5_MANIFEST_BYTES}-byte limit")
 
 
 def is_v5(data: bytes) -> bool:
@@ -477,6 +500,7 @@ def _load_world_v5_from_zip(zf: zipfile.ZipFile) -> World:
     from .persistence import SaveFormatError
 
     try:
+        _validate_v5_zip_sizes(zf)
         manifest = json.loads(zf.read("manifest.json"))
     except Exception as exc:
         raise _corrupt(f"not a readable mantle-bloom save ({type(exc).__name__}: {exc})") from exc

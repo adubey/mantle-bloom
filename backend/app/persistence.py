@@ -172,10 +172,15 @@ def load_world_name_file(file: BinaryIO) -> str | None:
         return None
     try:
         with zipfile.ZipFile(file) as zf:
+            npz_save._validate_v5_zip_sizes(zf)
             manifest = json.loads(zf.read("manifest.json"))
+    except SaveFormatError:
+        raise
     except Exception:  # noqa: BLE001 - any unreadable zip just has no name
         return None
     name = manifest.get("name") if isinstance(manifest, dict) else None
+    if isinstance(name, str) and len(name) > 100:
+        raise CorruptSaveError("v5 save name exceeds 100 characters")
     return name if isinstance(name, str) and name else None
 
 

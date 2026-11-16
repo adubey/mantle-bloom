@@ -7,6 +7,7 @@ import math
 import tempfile
 import threading
 import time
+import zipfile
 from types import SimpleNamespace
 import av
 import numpy as np
@@ -1427,6 +1428,77 @@ def _saved_bytes(client, seed=5):
     record name, "test", the save's manifest therefore carries)."""
     _post_generate(client, json={"seed": seed, "num_plates": 4})
     return client.get("/world/save").content
+
+
+def _saved_bytes_with_name(client, name):
+    saved = _saved_bytes(client)
+    with zipfile.ZipFile(io.BytesIO(saved)) as source:
+        manifest = json.loads(source.read("manifest.json"))
+        manifest["name"] = name
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as target:
+            target.writestr("manifest.json", json.dumps(manifest))
+            for info in source.infolist():
+                if info.filename != "manifest.json":
+                    target.writestr(info, source.read(info.filename))
+    return out.getvalue()
+
+
+@pytest.mark.parametrize(
+    "request_body",
+    [
+        {"num_plates": -1},
+        {"num_plates": main.MAX_GENERATE_PLATES + 1},
+        {"num_mantle_centers": -1},
+        {"num_mantle_centers": main.MAX_GENERATE_MANTLE_CENTERS + 1},
+    ],
+)
+def test_generate_rejects_unbounded_plate_and_mantle_counts(client, request_body):
+    response = client.post("/world/generate", json=request_body)
+    assert response.status_code == 400
+
+
+def test_import_rejects_an_overlong_query_name_before_loading(client, monkeypatch):
+    def unexpected_load(_upload):
+        raise AssertionError("invalid query name reached the save loader")
+
+    monkeypatch.setattr(persistence, "load_world_file", unexpected_load)
+    response = client.post("/worlds/import", params={"name": "x" * 101}, content=b"not read")
+    assert response.status_code == 422
+
+
+def test_import_rejects_an_overlong_manifest_name(client):
+    saved = _saved_bytes_with_name(client, "x" * 101)
+    response = client.post("/worlds/import", content=saved)
+    assert response.status_code == 400
+    assert "name exceeds 100 characters" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("route", ["/world/load", "/worlds/import"])
+def test_upload_routes_load_saves_off_the_event_loop(client, monkeypatch, route):
+    saved = _saved_bytes(client)
+    loop_threads = []
+    loader_threads = []
+    real_to_thread = asyncio.to_thread
+    real_loader = persistence.load_world_file
+
+    async def recording_to_thread(func, *args, **kwargs):
+        loop_threads.append(threading.get_ident())
+        return await real_to_thread(func, *args, **kwargs)
+
+    def recording_loader(upload):
+        loader_threads.append(threading.get_ident())
+        return real_loader(upload)
+
+    monkeypatch.setattr(main.asyncio, "to_thread", recording_to_thread)
+    monkeypatch.setattr(persistence, "load_world_file", recording_loader)
+    params = {"allow_duplicate": True} if route == "/worlds/import" else None
+    response = client.post(route, params=params, content=saved)
+
+    assert response.status_code in (200, 201)
+    assert loop_threads
+    assert loader_threads
+    assert all(loader_thread not in loop_threads for loader_thread in loader_threads)
 
 
 def test_import_adds_a_new_record_and_leaves_the_open_world_alone(client):
