@@ -3,6 +3,7 @@ explicit world ID (see docs/architecture.md, #563)."""
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -14,7 +15,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -71,6 +72,10 @@ MAX_RENDER_DIMENSION_PX = 4000
 # container with a few hundred MB of free RAM must refuse a huge upload before buffering it,
 # not after unpickling has already doubled it.
 MAX_LOAD_WORLD_BYTES = 512 * 1024 * 1024
+# Generation controls have ample headroom over the UI's choices while preventing a
+# request from multiplying the work and allocations without bound (#925).
+MAX_GENERATE_PLATES = 64
+MAX_GENERATE_MANTLE_CENTERS = 64
 # Each animation frame costs a full step_world + render, so this bounds worst-case request
 # time for POST /worlds/{world_id}/animate the same way MAX_RENDER_DIMENSION_PX bounds /worlds/{world_id}/render's
 # own worst case. Also doubles as the safety ceiling for "keep going until Stop is pressed"
@@ -1263,6 +1268,17 @@ def _generate_message_line(message):
     raise ValueError(f"unexpected generate progress message: {message!r}")
 
 
+def _validate_generate_resource_limits(req: GenerateRequest) -> None:
+    """Bound explicit generation counts before any compute is queued (#925)."""
+    if req.num_plates is not None and not 1 <= req.num_plates <= MAX_GENERATE_PLATES:
+        raise HTTPException(status_code=400, detail=f"num_plates must be between 1 and {MAX_GENERATE_PLATES}")
+    if not 0 <= req.num_mantle_centers <= MAX_GENERATE_MANTLE_CENTERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"num_mantle_centers must be between 0 and {MAX_GENERATE_MANTLE_CENTERS}",
+        )
+
+
 @app.post("/worlds/{world_id}/generate")
 def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
     """Streams newline-delimited JSON progress while generating a fresh world, replacing
@@ -1286,6 +1302,7 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
     stream starts, so a bad request still gets an ordinary 400 response rather than an error
     line."""
     session = _session_or_404(world_id)
+    _validate_generate_resource_limits(req)
     if req.node_density not in NODE_DENSITY_CHOICES:
         raise HTTPException(status_code=400, detail=f"unknown node_density {req.node_density!r}; choices are {NODE_DENSITY_CHOICES}")
     if req.climate_density not in climate.CLIMATE_DENSITY_CHOICES:
@@ -1667,6 +1684,27 @@ def _require_v5_upload(head: bytes) -> None:
         )
 
 
+async def _load_uploaded_world(upload_path: str, *, read_manifest_name: bool = False) -> tuple[str | None, World]:
+    """Load one spooled upload off the event loop and always remove its temp file."""
+    try:
+        with open(upload_path, "rb") as upload:
+            saved_name = None
+            if read_manifest_name:
+                saved_name = await asyncio.to_thread(persistence.load_world_name_file, upload)
+                upload.seek(0)
+            world = await asyncio.to_thread(persistence.load_world_file, upload)
+        return saved_name, world
+    except persistence.SaveFormatError as exc:
+        raise HTTPException(status_code=400, detail=f"invalid or incompatible world file: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="invalid or incompatible world file") from exc
+    finally:
+        try:
+            os.unlink(upload_path)
+        except OSError:
+            pass
+
+
 async def _spool_upload_to_tempfile(request: Request) -> str:
     """Stream the request body to a temp file, returning its path. The upload route reads
     the world back from disk (see persistence.load_world_file) instead of holding the whole
@@ -1727,18 +1765,7 @@ async def load_world(world_id: str, request: Request) -> dict:
     # flag across a slow upload would stall every other operation on this world.)
     session = _session_or_404(world_id, hydrate=False)
     upload_path = await _spool_upload_to_tempfile(request)
-    try:
-        with open(upload_path, "rb") as upload:
-            world = persistence.load_world_file(upload)
-    except persistence.SaveFormatError as exc:
-        raise HTTPException(status_code=400, detail=f"invalid or incompatible world file: {exc}") from exc
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="invalid or incompatible world file") from exc
-    finally:
-        try:
-            os.unlink(upload_path)
-        except OSError:
-            pass
+    _, world = await _load_uploaded_world(upload_path)
     _discard_stale_hydrology_cache(world)
     # Under the lock, so a step can't still be mutating the world viewers are told replaced it.
     if not session.begin_operation():
@@ -1802,7 +1829,11 @@ def _duplicate_import_conflict(name: str, existing: WorldSession, world: World) 
 
 
 @app.post("/worlds/import", status_code=201)
-async def import_world(request: Request, name: str | None = None, allow_duplicate: bool = False) -> dict:
+async def import_world(
+    request: Request,
+    name: str | None = Query(default=None, min_length=1, max_length=100),
+    allow_duplicate: bool = False,
+) -> dict:
     """The "File > Load World" upload -- the raw bytes of a save file as the request body
     (not JSON, same spooling, size cap and `400` contract as `/worlds/{world_id}/load`).
     Unlike that route this one never destroys anything: the save becomes a brand-new
@@ -1816,20 +1847,7 @@ async def import_world(request: Request, name: str | None = None, allow_duplicat
     are built on exactly this. `409` past the world cap, like `POST /worlds`. The new
     session is private; publish it afterwards like any created world."""
     upload_path = await _spool_upload_to_tempfile(request)
-    try:
-        with open(upload_path, "rb") as upload:
-            saved_name = persistence.load_world_name_file(upload)
-            upload.seek(0)
-            world = persistence.load_world_file(upload)
-    except persistence.SaveFormatError as exc:
-        raise HTTPException(status_code=400, detail=f"invalid or incompatible world file: {exc}") from exc
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="invalid or incompatible world file") from exc
-    finally:
-        try:
-            os.unlink(upload_path)
-        except OSError:
-            pass
+    saved_name, world = await _load_uploaded_world(upload_path, read_manifest_name=True)
     _discard_stale_hydrology_cache(world)
     resolved = name or saved_name
     if not resolved:

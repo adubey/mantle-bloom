@@ -159,6 +159,9 @@ cratons-first ones (`plates.CONTINENTAL_AREA_FRACTION = 0.5` when omitted; the r
 share is bounded to 0.05–0.9), a layout
 selected by `cratons_first` -- see
 [simulation-model/foundations.md#initial-plate-generation](simulation-model/foundations.md#initial-plate-generation-platespy).
+Explicit `num_plates` values must be 1–64, and `num_mantle_centers` must be 0–64; values
+outside those bounds return `400` before generation starts. The UI's manual plate slider is
+8–40.
 `cratons_first` selects random-world terrain generation. By default, continental cratons are
 laid out before plates and relief is generated from that layout
 (`continent_layout.CRATONS_FIRST_DEFAULT = True`). Pass false for the plate-first layout.
@@ -384,6 +387,9 @@ existing record is empty), and `suggested_name` (the first unused `"<name> (1)"`
 `409` past the world cap, like `POST /worlds`. The new record is private.
 
 Same spooling, size cap, v5-only rule, and `400` contract as `POST /worlds/{world_id}/load` below.
+The optional `name` query parameter is 1–100 characters; an overlong saved manifest name is
+also rejected. V5 ZIP and manifest expansion limits are described in
+[save-compatibility.md](save-compatibility.md#2-save-format).
 
 ## `POST /worlds/{world_id}/load`
 
