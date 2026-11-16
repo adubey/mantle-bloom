@@ -143,6 +143,30 @@ describe("Viewer (/view)", () => {
     assert.equal(window.location.search, "?world=w-def");
   });
 
+  it("falls back to the first listed world when multiple live worlds exist without a default", async () => {
+    const idle = makeListing({ world_id: "w-idle", name: "Kepler-186 f", running: false });
+    const live1 = makeListing({ world_id: "w-live-1", name: "TRAPPIST-1 e", running: true });
+    const live2 = makeListing({ world_id: "w-live-2", name: "LHS 1140 b", running: true });
+    installFetchMock({ worlds: () => [idle, live1, live2] });
+
+    render(<Viewer />);
+
+    await screen.findByText("Kepler-186 f");
+    assert.equal(window.location.search, "?world=w-idle");
+  });
+
+  it("keeps an explicit valid ?world= even when another world is marked default", async () => {
+    resetDom("http://localhost/view?world=w-explicit");
+    const def = makeListing({ world_id: "w-def", name: "Proxima Centauri b", is_default: true });
+    const explicit = makeListing({ world_id: "w-explicit", name: "Kepler-186 f" });
+    installFetchMock({ worlds: () => [def, explicit] });
+
+    render(<Viewer />);
+
+    await screen.findByText("Kepler-186 f");
+    assert.equal(window.location.search, "?world=w-explicit");
+  });
+
   it("keeps the selected world on 15s polling when a new live world appears (#597)", async (t: TestContext) => {
     resetDom("http://localhost/view?world=w1");
     t.mock.timers.enable({ apis: ["setInterval"] });

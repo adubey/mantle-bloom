@@ -29,6 +29,8 @@ const DOM_GLOBALS = [
   "MutationObserver",
   "getComputedStyle",
   "matchMedia",
+  "localStorage",
+  "sessionStorage",
   "requestAnimationFrame",
   "cancelAnimationFrame",
 ] as const;
@@ -54,5 +56,12 @@ Object.defineProperties(domWindow, {
 
 export function resetDom(url = "http://localhost/view"): void {
   domWindow.happyDOM.setURL(url);
+  domWindow.document.head.innerHTML = "";
   domWindow.document.body.innerHTML = "";
+  domWindow.localStorage.clear();
+  domWindow.sessionStorage.clear();
+  for (const cookie of domWindow.document.cookie.split(";")) {
+    const name = cookie.split("=")[0]?.trim();
+    if (name) domWindow.document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+  }
 }
