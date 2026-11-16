@@ -1,17 +1,17 @@
 # Issue 920: security second pass
 
 Status on 2026-11-16: the dependency scan is done for Python and npm, the frontend XSS
-audit is done, and the penetration test is done against a local copy
-([pen-test.md](pen-test.md)). The base-image scan is **not** done
-([#926](https://github.com/adubey/mantle-bloom/issues/926)) and nothing was tested against
-the deployed service. Two findings were fixed (S1 here, S12 in the pen test); the rest are
+audit is done, the penetration test is done against a local copy ([pen-test.md](pen-test.md)),
+and the base-image scan (`python:3.14-slim` and `node:26-slim`) was completed under
+[#926](https://github.com/adubey/mantle-bloom/issues/926). Nothing was tested against the
+deployed service. Two findings were fixed (S1 here, S12 in the pen test); the rest are
 filed. The launch-readiness §4 security box stays open.
 
 | Part of #920 | State |
 |---|---|
-| Python dependency scan | Done: 45 advisories in 3 packages, triaged below |
+| Python dependency scan | Done: 45 advisories in 3 packages, triaged below (cleared in #926) |
 | npm dependency scan | Done: 3 advisories, all in dev tooling, cleared by a lockfile update |
-| Base-image scan | Not run: no Docker or image scanner on the machine used |
+| Base-image scan | Done (#926): Trivy 0.76.2 on `python:3.14-slim` and `node:26-slim` (0 critical) |
 | Frontend XSS audit | Done: no HTML injection sink found |
 | Penetration test | Done against a local copy, not the deployment; see [pen-test.md](pen-test.md) |
 
@@ -212,8 +212,29 @@ rest on: the anonymous oversized step body, and the small save with a highly com
 manifest.
 
 Not covered by either document: TLS and edge behaviour of the deployment, its cookie flags
-as served, whether its variables match the repository, sustained load, and a base-image scan
-of `python:3.14-slim` and `node:20-slim`.
+as served, whether its variables match the repository, and sustained load.
+
+## Base-image scan (#926)
+
+Scanned `python:3.14-slim` (`python@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f`)
+and `node:26-slim` (`node@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc`,
+replacing `node:20-slim`) with Trivy 0.76.2 on 2026-11-15. Both images are based on Debian 13.7
+and have **0 critical** advisories.
+
+| Image | Target | Critical | High | Medium | Low | Unknown | Fixable High/Critical |
+|---|---|---|---|---|---|---|---|
+| `python:3.14-slim` | Debian 13.7 OS | 0 | 49 | 93 | 65 | 5 | 2 (`zlib1g` CVE-2026-76844, CVE-2026-85091) |
+| `python:3.14-slim` | Bundled Python (`pip`/`setuptools`/`urllib3`/`msgpack`) | 0 | 5 | 2 | 1 | 0 | 5 (`msgpack` 1.1.2, `setuptools` 70.3.0, `urllib3` 2.7.0) |
+| `node:26-slim` (build stage only) | Debian 13.7 OS | 0 | 48 | 94 | 65 | 5 | 2 (`zlib1g` CVE-2026-76844, CVE-2026-85091) |
+| `node:26-slim` (build stage only) | Bundled Node.js (`npm`'s `brace-expansion`, `undici`) | 0 | 6 | 12 | 1 | 0 | 6 (`brace-expansion` 5.0.9, `undici` 6.28.0) |
+
+- `node:26-slim` is used only in the multi-stage `frontend` build stage (`Dockerfile`) to run
+  `npm ci` and `npm run build`; neither Node.js nor its Debian packages enter the final image.
+- In `python:3.14-slim`, the 47 non-`zlib1g` Debian HIGH advisories (`util-linux`/`bsdutils`/
+  `libblkid1`/`libmount1`, `libacl1`, `libncursesw6`, etc.) have no upstream Debian 13 fix yet;
+  the 5 Python-package HIGH advisories are in `pip`/base-image tooling (`msgpack`, `setuptools`,
+  `urllib3`), not in `backend/constraints.txt` (which uses `setuptools==84.2.1` at build time and
+  does not include `msgpack` or `urllib3`).
 
 ## Reproducing the scans
 
@@ -222,3 +243,4 @@ of `python:3.14-slim` and `node:20-slim`.
   leave the machine. `pip-audit -r backend/constraints.txt --no-deps --disable-pip` reads
   the same data.
 - npm: `npm audit` and `npm audit --omit=dev` in `frontend/` and `.railway/`.
+- Base images: `trivy image python:3.14-slim` and `trivy image node:26-slim`.

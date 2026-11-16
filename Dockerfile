@@ -2,8 +2,8 @@
 # one origin, as the desktop build does. Railway builds it as .railway/railway.ts configures;
 # see docs/hosting.md for the variables and volume it needs.
 
-# Node 20 matches CI's frontend job (.github/workflows/test.yml).
-FROM node:20-slim AS frontend
+# Node 26 matches CI's frontend job (.github/workflows/test.yml).
+FROM node:26-slim AS frontend
 WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
