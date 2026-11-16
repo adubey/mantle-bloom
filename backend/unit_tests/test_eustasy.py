@@ -367,3 +367,41 @@ def test_march_resolve_and_update_sea_level_agree_on_the_same_state():
     )
     assert march_level == pytest.approx(world.sea_level_m, abs=0.1)
     assert world.sea_level_m < -1.0  # the land and grounded ice did move it
+
+
+def test_disconnected_below_sea_level_ice_is_debited_in_full():
+    # Ice in a disconnected sub-sea-level pit is outside `_ocean_connected_mask`, so it
+    # has no seawater depth D and must be debited in full (`0.917 H`), not treated as floating.
+    world, elevations, areas = _make_fake_world_with_two_below_sea_level_rings()
+    ocean_ring = slice(0, 10)
+    pit_ring = slice(10, 15)
+    neighbor_idx = world.hydrology_cache.neighbor_idx
+    is_ocean = world.hydrology_cache.is_ocean
+    target_level = 0.0
+    total_budget = float(np.dot(areas[ocean_ring], target_level - elevations[ocean_ring]))
+
+    ice_m = np.zeros(len(elevations))
+    ice_m[pit_ring] = 100.0  # 0.917 * 100 = 91.7 m < 500 m pit depth: would float if in mask
+    ice_water_m = eustasy._ICE_WATER_EQUIVALENT * ice_m
+    ice_debit = float(np.dot(areas, ice_water_m))
+    solved = eustasy._solve_sea_level_connected(
+        world, elevations, areas, total_budget - ice_debit,
+        seed_is_ocean=is_ocean, seed_neighbor_idx=neighbor_idx,
+        ice_water_m=ice_water_m,
+    )
+    expected = target_level - ice_debit / float(areas[ocean_ring].sum())
+    assert solved == pytest.approx(expected, abs=0.5)
+    assert solved < -40.0
+
+
+def test_initialize_water_budget_round_trips_with_marine_ice():
+    world, plate = _ocean_and_land_row_world()
+    depth = np.zeros(40)
+    depth[_ICE_CELLS] = 1_500.0  # grounded marine
+    depth[8:11] = 400.0  # floating
+    depth[_LAND_ICE_CELLS] = 800.0  # land
+    plate.set_fields_on_plate(glacier_depth=depth)
+    world.sea_level_m = 0.0
+    eustasy.initialize_water_budget(world)
+    eustasy.update_sea_level(world)
+    assert world.sea_level_m == pytest.approx(0.0, abs=0.1)

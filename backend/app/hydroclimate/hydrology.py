@@ -2091,6 +2091,17 @@ def _adapt_substep_years(cost, sub: float, base: float, last_change: float | Non
     return sub
 
 
+def _march_ice_debit_m3(
+    to_water: float, areas: np.ndarray, depth: np.ndarray,
+    elevation: np.ndarray, sea_level: float, ocean_mask: np.ndarray,
+) -> float:
+    """Ice volume above flotation (`max(0, 0.917 H - D)`) over `ocean_mask` at `sea_level`,
+    matching eustasy's debit so `sea_level_skip_m` bounds the actual sea-level move (#917)."""
+    w = to_water * depth
+    d = np.where(ocean_mask, np.clip(sea_level - elevation, 0.0, None), 0.0)
+    return float(np.dot(areas, np.clip(w - d, 0.0, None)))
+
+
 def _sea_level_debit_moved(cost, debit_m3: float, resolved_debit_m3: float, areas: np.ndarray, ocean_mask: np.ndarray) -> bool:
     """Whether the ice debit has moved enough since the last re-solve to re-solve sea
     level again (#822): at least `sea_level_skip_m` of sea level spread over the current
@@ -2420,7 +2431,7 @@ def _march_glacier(
     capped = False
     watch = _SettleWatch(cost, areas, base_sub, ice_sheet.MARCH_HOLD_WINDOW, ice_sheet.MARCH_SETTLE_PATIENCE)
     resolves = skipped_resolves = 0
-    resolved_debit = to_water * float(np.dot(areas, depth))
+    resolved_debit = _march_ice_debit_m3(to_water, areas, depth, elevation, sea_level, ocean_mask)
     max_dt = 0.0
     frozen_land_total = 0.0
     frozen_ocean_retained_total = 0.0
@@ -2460,7 +2471,7 @@ def _march_glacier(
         # `elapsed` already includes this substep's `dt`, so this is true exactly
         # when years remain after it.
         if has_ocean and elapsed < years - 1e-6:
-            debit = to_water * float(np.dot(areas, depth))
+            debit = _march_ice_debit_m3(to_water, areas, depth, elevation, sea_level, ocean_mask)
             if _sea_level_debit_moved(cost, debit, resolved_debit, areas, ocean_mask):
                 with _phase("Re-solving march sea level"):
                     sea_level, ocean_mask = _march_sea_level(
@@ -2468,7 +2479,7 @@ def _march_glacier(
                         areas, depth, sea_level, ocean_mask, neighbor_idx, points, elevation,
                         warm_half_width_m, flood_adjacency,
                     )
-                resolved_debit = debit
+                resolved_debit = _march_ice_debit_m3(to_water, areas, depth, elevation, sea_level, ocean_mask)
                 resolves += 1
             else:
                 skipped_resolves += 1

@@ -126,7 +126,9 @@ def _liquid_floor(elevations: np.ndarray, ice_water_m: np.ndarray | None) -> np.
     from it. With the ice's full `w` debited in `trapped_water_volume_m3`, this is the debit
     `max(0, w - D)`, `D` at the level being solved. Only the liquid's floor moves: which
     cells are connected ocean is still decided on bare `z` (`_ocean_connected_mask`), and
-    excluding ice cells from that mask instead would change the debit."""
+    excluding ice cells from that mask instead would change the debit. `elevations` is the
+    loaded bed (`hypsometry`), since liquid sits on the deflected bed (whereas
+    `ice_sheet.is_grounded` uses the unloaded bed)."""
     if ice_water_m is None:
         return elevations
     return elevations + np.clip(np.asarray(ice_water_m, dtype=float), 0.0, None)
@@ -470,17 +472,17 @@ def _solve_sea_level_connected(
     anchor = _seed_anchor(world, elevations, seed_is_ocean, seed_neighbor_idx)
     explicit_seed = anchor is not None and anchor[0] is seed_neighbor_idx
     adjacency = seed_adjacency if explicit_seed else None
+    floor = _liquid_floor(elevations, ice_water_m)
     if anchor is None:
-        return _bisect_sea_level(
-            elevations, areas_m2, water_volume_m3,
-            lambda h: ocean_water_volume_m3(world, elevations, areas_m2, h, ice_water_m=ice_water_m),
-            bracket=bracket,
-        )
+        def unseeded_volume_at(h: float) -> float:
+            mask = _ocean_connected_mask(world, elevations, h, areas_m2=areas_m2)
+            return total_water_volume_m3(floor[mask], areas_m2[mask], h)
+
+        return _bisect_sea_level(elevations, areas_m2, water_volume_m3, unseeded_volume_at, bracket=bracket)
     # Anchored to a seed, every candidate's mask is `levels <= h` for one flood from the
     # seed (#147), found on the first candidate: a dry budget returns before asking for any.
     # The flood runs on bare elevations: ice doesn't decide which cells are ocean.
     levels: list[np.ndarray] = []
-    floor = _liquid_floor(elevations, ice_water_m)
 
     def volume_at(h: float) -> float:
         if not levels:
@@ -511,7 +513,7 @@ def water_volume_for_sea_level(world: "World", sea_level_m: float) -> float:
     return ocean_water_volume_m3(world, elevations, areas_m2, sea_level_m, ice_water_m=ice_water_column_m(world))
 
 
-def other_trapped_water_volume_m3(world: "World") -> float:
+def other_trapped_water_volume_m3(world: "World", areas_m2: np.ndarray | None = None) -> float:
     """`trapped_water_volume_m3` without the ice: visible lakes, lake ice and persistent river
     water, in m^3. The glacier march holds this part fixed while it re-solves sea level from
     its own ice between substeps."""
@@ -524,7 +526,8 @@ def other_trapped_water_volume_m3(world: "World") -> float:
     lake_depth = collect_all_lake_depth(world.plates)
     lake_ice_m = collect_all_lake_ice(world.plates)
     river_water_m = collect_all_river_water(world.plates)
-    areas_m2 = collect_all_accounting_areas_m2(world.plates, line_spacing_rad(world.node_density))
+    if areas_m2 is None:
+        areas_m2 = collect_all_accounting_areas_m2(world.plates, line_spacing_rad(world.node_density))
     lake_liquid = float(np.dot(areas_m2, np.where(lake_depth >= _LAKE_MIN_TRAPPED_DEPTH_M, lake_depth, 0.0)))
     lake_ice = float(np.dot(areas_m2, np.clip(lake_ice_m, 0.0, None)))
     river_water = float(np.dot(areas_m2, np.clip(river_water_m, 0.0, None)))
@@ -591,9 +594,11 @@ def update_sea_level(world: "World") -> None:
         initialize_water_budget(world)
         return
     elevations, areas_m2 = hypsometry(world)
-    ocean_budget = max(0.0, world.ocean_water_volume_m3 - trapped_water_volume_m3(world))
+    ice_water_m = ice_water_column_m(world)
+    trapped = float(np.dot(areas_m2, ice_water_m)) + other_trapped_water_volume_m3(world, areas_m2=areas_m2) if world.plates else 0.0
+    ocean_budget = max(0.0, world.ocean_water_volume_m3 - trapped)
     world.sea_level_m = _solve_sea_level_connected(
-        world, elevations, areas_m2, ocean_budget, ice_water_m=ice_water_column_m(world)
+        world, elevations, areas_m2, ocean_budget, ice_water_m=ice_water_m
     )
 
 

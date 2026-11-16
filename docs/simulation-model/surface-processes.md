@@ -558,6 +558,9 @@ solving at the slider's level reproduces it.
 - Persistence backfills `ocean_water_volume_m3` for a save written before it existed
   (including saves carrying the older, nominal-area `ocean_water_column_m`, which is dropped),
   from that save's own hypsometry and `sea_level_m`, so loading it doesn't jump the shoreline.
+  Saves already carrying `ocean_water_volume_m3` written before #917 re-solve on their first
+  step under the flotation-aware debit, raising sea level by the old over-debit (`≤ 0.08 m` on
+  the diagnosis saves).
 
 Measured (seed 926698457, node_density 0.5, climate off, 100 My): the land-fraction decline
 roughly halves against a fixed sea level (~-0.025 vs ~-0.052), and the trajectory changes
