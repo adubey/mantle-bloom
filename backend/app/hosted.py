@@ -459,8 +459,8 @@ def _require_admin(request: Request) -> None:
 def create_app(dist: str | None = None) -> FastAPI:
     app = FastAPI(title="Mantle-Bloom", lifespan=_lifespan, openapi_url=None)
     app.add_middleware(auth.AuthMiddleware, allow_local=False)
-    # Bodies are capped here as well as in the worker, so an oversized one is refused before
-    # it wakes the worker or streams to it (#920).
+    # Bodies are capped here as well as in the worker (#920): a declared oversize is refused
+    # before it reaches the worker, and a chunked one stops streaming to it at the cap.
     body_limit.install(app)
     # After the auth guard, so it wraps it: a 401 or the /view redirect carries the headers too.
     security_headers.install(app)

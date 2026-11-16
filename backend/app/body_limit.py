@@ -12,15 +12,15 @@ here, ahead of routing, so it also covers a route added later.
   generate request carrying a base64 sketch PNG.
 
 A declared `Content-Length` over the cap is refused with `413` before any of the body is
-read. A body with no declared length (chunked) is counted as it streams and cut off at
-the cap.
+read. A body with no declared length (chunked) is counted as it streams: the route receives
+up to the cap, then the read fails and the answer is `413`.
 """
 
 from __future__ import annotations
 
 import re
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
 from .auth import _route_path
@@ -33,8 +33,17 @@ _PUBLIC_PREFIX = "/public/"
 _UPLOAD_PATH = re.compile(r"/worlds/(import|[^/]+/load)")
 
 
-class _BodyTooLarge(Exception):
-    pass
+class _BodyTooLarge(HTTPException):
+    """Raised from `receive` when a streamed body passes its cap. An `HTTPException` so
+    FastAPI's body reader, which turns any other error into a `400`, lets it through as
+    the `413` it is."""
+
+    def __init__(self, limit: int) -> None:
+        super().__init__(status_code=413, detail=_detail(limit))
+
+
+def _detail(limit: int) -> str:
+    return f"request body exceeds the {limit}-byte limit"
 
 
 def limit_for(method: str, path: str) -> int | None:
@@ -68,7 +77,7 @@ class BodyLimitMiddleware:
         if limit is None:
             await self.app(scope, receive, send)
             return
-        refusal = JSONResponse({"detail": f"request body exceeds the {limit}-byte limit"}, status_code=413)
+        refusal = JSONResponse({"detail": _detail(limit)}, status_code=413)
         declared = _declared_length(scope)
         if declared is not None and declared > limit:
             await refusal(scope, receive, send)
@@ -83,7 +92,7 @@ class BodyLimitMiddleware:
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
                 if received > limit:
-                    raise _BodyTooLarge
+                    raise _BodyTooLarge(limit)
             return message
 
         async def tracked_send(message):
@@ -94,11 +103,21 @@ class BodyLimitMiddleware:
 
         try:
             await self.app(scope, counted_receive, tracked_send)
-        except _BodyTooLarge:
-            # A route that had already begun answering can't be given a new status.
-            if started:
+        except Exception as exc:
+            # Usually the app's own exception handling has already answered 413 and nothing
+            # reaches here. A route that had begun answering can't be given a new status.
+            if started or not _is_overrun(exc):
                 raise
             await refusal(scope, receive, send)
+
+
+def _is_overrun(exc: BaseException) -> bool:
+    """Whether `exc` is the cap's own exception, bare or grouped: a streaming response
+    reads `receive` inside a task group, which wraps what it raises in an ExceptionGroup."""
+    if isinstance(exc, _BodyTooLarge):
+        return True
+    grouped = getattr(exc, "exceptions", None)
+    return bool(grouped) and all(_is_overrun(inner) for inner in grouped)
 
 
 def install(app: FastAPI) -> None:
