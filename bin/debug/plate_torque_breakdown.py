@@ -18,6 +18,8 @@ geometry) and writes, per plate:
 - area-weighted mean speed of continental and oceanic crust, ``|omega| R``, area and continental share.
 - two speeds the plate would have alone, from the same snapshot: carried by mantle flow only, and under all of its
   own loads and drags with no contact; and the mean speed of the prescribed mantle flow under the plate.
+- over its subducting nodes, the work slab pull does and the work sunk-slab drag takes, split by trench-normal and
+  trench-parallel motion, how much of the pull cancels across the plate, and how much trench is dragged unpulled.
 
 Writes ``<out>/<seed>.json`` (existing files are kept, so a run resumes).
 """
@@ -52,6 +54,46 @@ def _crust_speeds(omega: np.ndarray, points: np.ndarray, areas: np.ndarray, cont
 
 def _solve(k: np.ndarray, b: np.ndarray) -> np.ndarray:
     return np.linalg.lstsq(k, b, rcond=None)[0]
+
+
+def _slab_terms(plate, inputs, subducting: np.ndarray, spacing: float, omega: np.ndarray) -> dict:
+    """Why slab pull and sunk-slab drag net out as they do on one plate, over its subducting nodes.
+
+    Powers are in W at the solved `omega`: force times the node's own velocity. Slab pull acts along the direction
+    to the trench, so it does work only on the trench-normal part of the motion, positive where the plate moves
+    toward its trench and negative where it moves away (the neighbour overrides it). Sunk-slab drag acts against
+    the whole velocity, so its dissipation splits into a trench-normal and a trench-parallel part.
+    """
+    from app import lithosphere, torque
+
+    if not subducting.any():
+        return {}
+    length = torque.boundary_node_length_m(inputs, spacing)[subducting]
+    pull = torque.slab_pull_force_n(plate, inputs, subducting, spacing)
+    toward = inputs.direction_to_neighbor[subducting]
+    points = inputs.own_points[subducting]
+    velocity = np.cross(omega, points) * lithosphere.PLANET_RADIUS_M / torque.SECONDS_PER_YEAR
+    normal = np.einsum("ni,ni->n", velocity, toward)
+    speed_sq = np.einsum("ni,ni->n", velocity, velocity)
+    drag_per_speed = torque.SLAB_MANTLE_VISCOSITY_PA_S / torque.SHEAR_ZONE_THICKNESS_M * torque.SUBDUCTION_LSINK_M * length
+    pull_power = pull * normal
+    moments = np.cross(points * lithosphere.PLANET_RADIUS_M, pull[:, None] * toward)
+    moment_sum = float(np.linalg.norm(moments, axis=1).sum())
+    return {
+        "subducting_km": float(length.sum() / 1e3),
+        "no_pull_km": float(length[pull <= 0.0].sum() / 1e3),  # buoyant columns: dragged but not pulled
+        "moving_away_from_trench_km": float(length[normal < 0.0].sum() / 1e3),
+        # Trench-normal speed already past pull / drag: there the drag exceeds the pull on the normal motion alone.
+        "past_terminal_speed_km": float(length[normal * drag_per_speed > pull].sum() / 1e3),
+        "pull_n": float(pull.sum()),
+        "hm_km_length_weighted": float(np.dot(inputs.own_hm[subducting], length) / length.sum() / 1e3),
+        "pull_power_toward_trench_w": float(pull_power[normal > 0.0].sum()),
+        "pull_power_away_from_trench_w": float(pull_power[normal < 0.0].sum()),
+        "drag_power_trench_normal_w": float(np.dot(drag_per_speed, normal**2)),
+        "drag_power_trench_parallel_w": float(np.dot(drag_per_speed, np.clip(speed_sq - normal**2, 0.0, None))),
+        "pull_torque_surviving_cancellation": float(np.linalg.norm(moments.sum(axis=0)) / moment_sum) if moment_sum else None,
+        "pull_moment_sum_nm": moment_sum,
+    }
 
 
 def sample(world) -> dict:
@@ -125,6 +167,7 @@ def sample(world) -> dict:
                     ),
                 },
                 "mantle_flow_under_plate_cm_per_yr": float(np.dot(flow_speed, areas) / areas.sum()),
+                "slab": _slab_terms(plate, inputs, subducting, spacing, omega),
                 "continental_area_km2": float(areas[continental].sum() / 1e6),
                 "boundary_km": {
                     "band_total": float(length[band].sum() / 1e3),

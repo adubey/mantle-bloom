@@ -10,7 +10,8 @@ plate's rotation axis, so a term that opposes motion on one plate and helps it o
 acts on); the share of plate area on which each resisting term is the largest; and the share of closing down-going
 and of opening boundary length that passes the 1 cm/yr motion gate. Each is given for all plates and split at an
 `|omega| R` of 1 cm/yr. Where the runs carry them, it also gives the area-weighted speeds each plate would have
-alone (mantle flow only; all own loads with no contact) and the mean prescribed mantle-flow speed under the plates.
+alone (mantle flow only; all own loads with no contact), the mean prescribed mantle-flow speed under the plates,
+and the slab terms' work budget (`slab`).
 """
 
 import argparse
@@ -28,6 +29,7 @@ def _summarize(rows: list[dict]) -> dict:
     km: dict[str, float] = defaultdict(float)
     moved = {"continental": [0.0, 0.0], "oceanic": [0.0, 0.0]}
     alone: dict[str, list[float]] = defaultdict(lambda: [0.0, 0.0])
+    slab: dict[str, float] = defaultdict(float)
     area = pull = pull_ungated = 0.0
     for row in rows:
         area += row["area_km2"]
@@ -45,6 +47,13 @@ def _summarize(rows: list[dict]) -> dict:
         if "mantle_flow_under_plate_cm_per_yr" in row:
             alone["mantle_flow_under_plate:all"][0] += row["mantle_flow_under_plate_cm_per_yr"] * row["area_km2"]
             alone["mantle_flow_under_plate:all"][1] += row["area_km2"]
+        for name, value in row.get("slab", {}).items():
+            if name == "hm_km_length_weighted":
+                slab["hm_km_times_km"] += value * row["slab"]["subducting_km"]
+            elif name == "pull_torque_surviving_cancellation":
+                slab["pull_torque_surviving_nm"] += (value or 0.0) * row["slab"]["pull_moment_sum_nm"]
+            else:
+                slab[name] += value
         for name, value in row["boundary_km"].items():
             km[name] += value
         terms = row.get("torque_along_axis_nm")
@@ -67,6 +76,7 @@ def _summarize(rows: list[dict]) -> dict:
         "plate_area_share": None,
         "speed_cm_per_yr": {kind: v[0] / v[1] if v[1] else None for kind, v in moved.items()},
         "speed_alone_cm_per_yr": {name: v[0] / v[1] for name, v in sorted(alone.items()) if v[1]},
+        "slab": _slab_summary(slab),
         "driving_share": shares(drive),
         "resisting_share": shares(resist),
         "largest_resisting_term_area_share": shares(largest),
@@ -75,6 +85,29 @@ def _summarize(rows: list[dict]) -> dict:
         "closing_down_going_share_of_band": km["down_going_closing_any_rate"] / km["band_total"] if km["band_total"] else None,
         "slab_pull_ungated_over_applied": pull_ungated / pull if pull else None,
         "_area": area,
+    }
+
+
+def _slab_summary(slab: dict[str, float]) -> dict:
+    """Pooled slab terms: powers as shares of the work slab pull does where plates move toward their trench."""
+    km = slab["subducting_km"]
+    work = slab["pull_power_toward_trench_w"]
+    if not km or not work:
+        return {}
+    return {
+        "subducting_km_per_sample_sum": km,
+        "pull_n_per_m": slab["pull_n"] / (km * 1e3),
+        "hm_km": slab["hm_km_times_km"] / km,
+        "length_share_no_pull": slab["no_pull_km"] / km,
+        "length_share_moving_away_from_trench": slab["moving_away_from_trench_km"] / km,
+        "length_share_past_terminal_speed": slab["past_terminal_speed_km"] / km,
+        "pull_torque_surviving_cancellation": slab["pull_torque_surviving_nm"] / slab["pull_moment_sum_nm"],
+        "power_over_pull_toward_trench": {
+            "pull_away_from_trench": slab["pull_power_away_from_trench_w"] / work,
+            "drag_trench_normal": -slab["drag_power_trench_normal_w"] / work,
+            "drag_trench_parallel": -slab["drag_power_trench_parallel_w"] / work,
+            "net": (work + slab["pull_power_away_from_trench_w"] - slab["drag_power_trench_normal_w"] - slab["drag_power_trench_parallel_w"]) / work,
+        },
     }
 
 
