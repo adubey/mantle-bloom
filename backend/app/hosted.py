@@ -410,10 +410,14 @@ async def _admin_list(request: Request) -> Response:
         return active
     root = _root()
     payload = _admin_records(root)
+    actor = auth.current_actor()
+    if not actor.is_admin:
+        owned = set(users.shared_store().user_worlds(actor.user_id)) if actor.user_id is not None else set()
+        payload = {"worlds": [row for row in payload["worlds"] if row["world_id"] in owned]}
     if any(
         row["summary"] is None and row["load_error"] is None and root.for_world(row["world_id"]).world_path.is_file()
         for row in payload["worlds"]
-    ) or (not payload["worlds"] and root.world_path.is_file()):
+    ) or (actor.is_admin and not payload["worlds"] and root.world_path.is_file()):
         return await _proxy(request)
     return JSONResponse(payload, headers=_NO_STORE)
 
@@ -421,6 +425,9 @@ async def _admin_list(request: Request) -> Response:
 async def _admin_run(request: Request) -> Response:
     world_id = request.path_params["world_id"]
     if _WORLD_ID.fullmatch(world_id) is None:
+        raise HTTPException(404, "unknown world")
+    actor = auth.current_actor()
+    if not actor.is_admin and users.shared_store().world_owner(world_id) != actor.user_id:
         raise HTTPException(404, "unknown world")
     # An active run already vetoes sleep. Preserve its existing event-driven
     # poll and use a disk response once the worker is gone.

@@ -19,6 +19,10 @@ export interface Session {
   } | null;
 }
 
+export function canAccessApp(session: Session): boolean {
+  return session.admin || session.user?.tier === "paid";
+}
+
 export function useSession(pollForPaid = false): Session | null {
   const [session, setSession] = useState<Session | null>(null);
   useEffect(() => {

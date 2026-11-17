@@ -366,7 +366,8 @@ def _parse_view_rotation(rotation: str | None) -> np.ndarray:
 
 def _session_or_404(world_id: str, *, hydrate: bool = True) -> WorldSession:
     session = _registry.find(world_id)
-    if session is None:
+    actor = auth.current_actor()
+    if session is None or (not actor.is_admin and users.shared_store().world_owner(world_id) != actor.user_id):
         raise HTTPException(status_code=404, detail=f"unknown world {world_id!r}")
     if hydrate:
         _hydrate(session)
@@ -1047,11 +1048,27 @@ class PatchWorldRequest(BaseModel):
     viewer_rotation: list[float] | None = None
 
 
+def _visible_sessions() -> list[WorldSession]:
+    """All worlds for admin, or only the signed-in paid user's own worlds (#953)."""
+    sessions = _registry.list()
+    actor = auth.current_actor()
+    if actor.is_admin:
+        return sessions
+    owned = set(users.shared_store().user_worlds(actor.user_id)) if actor.user_id is not None else set()
+    return [s for s in sessions if s.world_id in owned]
+
+
+def _record_world_owner(world_id: str) -> None:
+    actor = auth.current_actor()
+    if not actor.is_admin and actor.user_id is not None:
+        users.shared_store().add_world(world_id, actor.user_id)
+
+
 @app.get("/worlds")
 def list_worlds() -> dict:
-    """Every world record in this process (#563)."""
+    """Every world record visible to the caller (#563, #953)."""
     worlds = []
-    for session in _registry.list():
+    for session in _visible_sessions():
         # The summary reads world arrays a concurrent step mutates in place;
         # hold the session lock so a record can't tear mid-step.
         with session.lock:
@@ -1066,6 +1083,7 @@ def create_world(req: CreateWorldRequest) -> dict:
         session = _registry.create(name=req.name, is_public=req.is_public)
     except WorldLimitReached as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    _record_world_owner(session.world_id)
     _wire_session(session)
     _save_index()
     return _record_json(session)
@@ -1076,7 +1094,7 @@ def suggest_world_name() -> dict:
     """An unused exoplanet-style name for the Generate World dialog to offer up
     front (#597): advisory only, duplicate display names are allowed (identity
     is the world_id)."""
-    return {"name": world_names.default_world_name({s.name for s in _registry.list()})}
+    return {"name": world_names.default_world_name({s.name for s in _visible_sessions()})}
 
 
 @app.get("/worlds/{world_id}")
@@ -1208,6 +1226,9 @@ def delete_world(world_id: str) -> dict:
         session.runner.set_status(checkpoint.RunStatus(running=False, step_years=session.runner.status().step_years), persist=False)
         session.runner.close()
     _registry.remove(world_id)
+    store = users.shared_store()
+    if store.world_owner(world_id) is not None:
+        store.remove_world(world_id)
     if _checkpoint_root is not None and session.checkpoint_store is not None:
         import shutil
 
@@ -1852,16 +1873,18 @@ async def import_world(
     upload_path = await _spool_upload_to_tempfile(request)
     saved_name, world = await _load_uploaded_world(upload_path, read_manifest_name=True)
     _discard_stale_hydrology_cache(world)
+    visible = _visible_sessions()
     resolved = name or saved_name
     if not resolved:
-        resolved = world_names.default_world_name({s.name for s in _registry.list()})
-    existing = next((s for s in _registry.list() if s.name == resolved), None)
+        resolved = world_names.default_world_name({s.name for s in visible})
+    existing = next((s for s in visible if s.name == resolved), None)
     if existing is not None and not allow_duplicate:
         raise HTTPException(status_code=409, detail=_duplicate_import_conflict(resolved, existing, world))
     try:
         session = _registry.create(name=resolved)
     except WorldLimitReached as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    _record_world_owner(session.world_id)
     _wire_session(session)
     _save_index()
     # Fresh session, nothing contends with it -- the lock just honors `_set_world`'s contract.

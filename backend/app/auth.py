@@ -30,6 +30,7 @@ Google is configured by its own two variables and works with or without the GitH
 from __future__ import annotations
 
 import base64
+import contextvars
 import hashlib
 import hmac
 import html
@@ -227,6 +228,42 @@ def is_admin(request: Request, config: AuthConfig) -> bool:
     return is_local_request(request, config) or session_user(request, config) is not None
 
 
+@dataclass(frozen=True)
+class Actor:
+    """Who is making the current request: admin (local or owner) or a paid user ID (#953)."""
+
+    is_admin: bool
+    user_id: int | None = None
+
+
+# Set per HTTP request by AuthMiddleware so /worlds/* handlers can check ownership without
+# threading `request` through every route. Defaults to admin when called directly in tests.
+_CURRENT_ACTOR: contextvars.ContextVar[Actor | None] = contextvars.ContextVar("mantle_bloom_actor", default=None)
+
+
+def current_actor() -> Actor:
+    return _CURRENT_ACTOR.get() or Actor(is_admin=True)
+
+
+def paid_user(request: Request, config: AuthConfig) -> users.User | None:
+    """The store user behind an active paid session, or None (#953)."""
+    signed_in = signed_in_user(request, config)
+    if signed_in is None:
+        return None
+    user = signed_in[0]
+    return user if users.shared_store().tier(user.id) == "paid" else None
+
+
+def request_actor(request: Request, config: AuthConfig) -> Actor | None:
+    """Authenticated caller allowed into the full app (`admin` or `paid`), or None."""
+    if is_admin(request, config):
+        return Actor(is_admin=True)
+    paid = paid_user(request, config)
+    if paid is not None:
+        return Actor(is_admin=False, user_id=paid.id)
+    return None
+
+
 def _origin_of(url: str) -> str:
     parts = urllib.parse.urlsplit(url)
     return f"{parts.scheme}://{parts.netloc}"
@@ -263,11 +300,13 @@ def _route_path(scope) -> tuple[str, str]:
     return root, path
 
 
+def _is_admin_only_route(path: str) -> bool:
+    # /debug/scenarios, generate_debug, and replay-logs stay owner/local-only (#953).
+    return path.startswith("/debug/") or path.endswith("/generate_debug") or path.endswith("/replay-logs")
+
+
 def _is_world_route(path: str) -> bool:
-    # /debug/scenarios is guarded too: it moved out from under /worlds/ but is
-    # still an owner-route, and the guard below also carries the cross-site
-    # write check for it.
-    return path == "/worlds" or path.startswith("/worlds/") or path.startswith("/debug/")
+    return path == "/worlds" or path.startswith("/worlds/") or _is_admin_only_route(path)
 
 
 def gate(request: Request, config: AuthConfig, extra_origins: frozenset[str]) -> Response | None:
@@ -275,9 +314,14 @@ def gate(request: Request, config: AuthConfig, extra_origins: frozenset[str]) ->
     if is_cross_site_write(request, config, extra_origins):
         return JSONResponse({"detail": "Cross-site request refused"}, status_code=403)
     root, path = _route_path(request.scope)
-    if path == "/" and request.method in ("GET", "HEAD") and not is_admin(request, config):
+    actor = request_actor(request, config)
+    if path == "/" and request.method in ("GET", "HEAD") and actor is None:
         return RedirectResponse(f"{root}/view", status_code=302)
-    if _is_world_route(path) and not is_admin(request, config):
+    if _is_admin_only_route(path) and (actor is None or not actor.is_admin):
+        if actor is not None:
+            return JSONResponse({"detail": "Admin required"}, status_code=403)
+        return JSONResponse({"detail": "Login required"}, status_code=401)
+    if _is_world_route(path) and actor is None:
         return JSONResponse({"detail": "Login required"}, status_code=401)
     return None
 
@@ -292,14 +336,21 @@ class AuthMiddleware:
         self.allow_local = allow_local
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] == "http":
-            scope["mantle_bloom_allow_local"] = self.allow_local
-            request = Request(scope)
-            refusal = gate(request, load_config(request), self.extra_origins)
-            if refusal is not None:
-                await refusal(scope, receive, send)
-                return
-        await self.app(scope, receive, send)
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        scope["mantle_bloom_allow_local"] = self.allow_local
+        request = Request(scope)
+        config = load_config(request)
+        refusal = gate(request, config, self.extra_origins)
+        if refusal is not None:
+            await refusal(scope, receive, send)
+            return
+        token = _CURRENT_ACTOR.set(request_actor(request, config))
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            _CURRENT_ACTOR.reset(token)
 
 
 class ProviderError(Exception):

@@ -35,6 +35,7 @@ import RunOverlay from "./RunOverlay";
 import { PLAYING_FALLBACK_PHASE, playingPhaseView } from "./phaseInfo";
 import ModalShell from "./ModalShell";
 import AdminSession from "./AdminSession";
+import { useSession } from "./session";
 import ProbePopup from "./ProbePopup";
 import { PREMADE_WORLDS } from "./premadeWorlds";
 import { CRATON_LEGEND_LABEL, faultKindForLegendLabel, highlightTargetFor } from "./legendData";
@@ -54,7 +55,7 @@ import { getCookie, setCookie } from "./cookies";
 // whole page load, not something that changes while the app is open. Works identically on the
 // packaged prod server and the dev/debug server -- it only ever looks at the URL the browser
 // actually loaded, never which backend is serving it.
-const DEBUG_UI = new URLSearchParams(window.location.search).has("deb");
+const HAS_DEB_PARAM = new URLSearchParams(window.location.search).has("deb");
 
 // How often the World list re-polls itself (see the worlds effect below): new,
 // renamed, published, or newly running worlds show up without a reload (#597).
@@ -286,6 +287,9 @@ export default function App() {
   // (and for every other tab, where it's simply unused).
   const [premadeWorldId, setPremadeWorldId] = useState<"earth" | "pangaea" | "got" | null>(null);
   const [showSketchEditor, setShowSketchEditor] = useState(false);
+  const session = useSession();
+  // ?deb / &deb is admin-only (#953): paid users get no debug UI even if they add it to the URL.
+  const debugUi = HAS_DEB_PARAM && Boolean(session?.admin);
   // "Debugging Worlds" tab (see backend debug_worlds.py) -- tiny scripted plate scenarios for
   // fast iteration on the gap-filling problem. The scenario list is fetched once (static,
   // server-authoritative so the frontend never hardcodes it) and the picker defaults to
@@ -293,7 +297,7 @@ export default function App() {
   const [debugScenarios, setDebugScenarios] = useState<DebugScenario[]>([]);
   const [debugScenario, setDebugScenario] = useState<string>("");
   useEffect(() => {
-    if (!DEBUG_UI) return; // "Debugging Worlds" tab is hidden without ?deb -- nothing to populate it with
+    if (!debugUi) return; // "Debugging Worlds" tab is hidden without ?deb -- nothing to populate it with
     fetchDebugScenarios()
       .then((r) => {
         setDebugScenarios(r.scenarios);
@@ -303,7 +307,7 @@ export default function App() {
         // Best-effort -- if this fails the "Debugging Worlds" tab just shows an empty picker;
         // every other Generate World tab is unaffected.
       });
-  }, []);
+  }, [debugUi]);
   // "Load an image" (Human-made tab) -- a hidden file input triggered by a plain button, read
   // via FileReader straight to a data URL, same shape SketchEditor's own "Done" produces.
   const loadImageInputRef = useRef<HTMLInputElement>(null);
@@ -347,8 +351,13 @@ export default function App() {
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
   const [projection, setProjection] = useState<Projection>(initialView?.projection ?? "eckert4");
   const [mapView, setMapView] = useState<MapView>(
-    initialView && (DEBUG_UI || !DEBUG_MAP_VIEWS.has(initialView.mapView)) ? initialView.mapView : "combined",
+    initialView && (HAS_DEB_PARAM || !DEBUG_MAP_VIEWS.has(initialView.mapView)) ? initialView.mapView : "combined",
   );
+  useEffect(() => {
+    if (session && !session.admin && DEBUG_MAP_VIEWS.has(mapView)) {
+      setMapView("combined");
+    }
+  }, [session, mapView]);
   // These controls describe only the cross-section's great-circle cut. Keep them independent
   // of the map projection/rotation state, and retain their values when switching views.
   const [crossSectionPlaneAngleDeg, setCrossSectionPlaneAngleDeg] = useState(0);
@@ -1699,7 +1708,7 @@ export default function App() {
           <p style={{ opacity: 0.7, marginTop: 0, marginBottom: 16 }}>
             Physical World Builder
           </p>
-          <AdminSession />
+          <AdminSession session={session} />
 
           <button
             onClick={() => setShowFileModal(true)}
@@ -1891,7 +1900,7 @@ export default function App() {
                 <option value="resources">Resources</option>
                 <option value="soilQuality">Soil Quality</option>
               </optgroup>
-              {DEBUG_UI && (
+              {debugUi && (
                 <optgroup label="Debug &gt;">
                   <option value="platesDetail">Points</option>
                   <option value="speckle">Coastal dither (speckle)</option>
@@ -2022,8 +2031,8 @@ export default function App() {
           </fieldset>
 
           {/* Reloads the same page with &deb added, turning on the developer-only UI
-              described at DEBUG_UI above. Hidden once already in debug mode. */}
-          {!DEBUG_UI && (
+              described at debugUi above. Hidden for non-admins and once already in debug mode. */}
+          {Boolean(session?.admin) && !debugUi && (
             <a href={debugUrl()} style={{ fontSize: 11, color: "#5b8cff" }}>
               Debug...
             </a>
@@ -2238,7 +2247,7 @@ export default function App() {
             </ModalShell>
           )}
 
-          {DEBUG_UI && (
+          {debugUi && (
             <EventConsole
               events={[...(summary?.events ?? []), ...(summary?.replay_logs ?? [])].sort(
                 (a, b) => a.elapsed_years - b.elapsed_years,
@@ -2533,7 +2542,7 @@ export default function App() {
             <h2 style={{ fontSize: 16, marginTop: 0, marginBottom: 12 }}>Generate World</h2>
 
             <div style={{ display: "flex", marginBottom: 16, borderBottom: "1px solid #333" }}>
-              {(DEBUG_UI
+              {(debugUi
                 ? (["random", "human", "premade", "debug"] as const)
                 : (["random", "human", "premade"] as const)
               ).map((mode) => (
