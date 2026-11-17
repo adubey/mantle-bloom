@@ -14,7 +14,7 @@ plate each step. Everything here is behind `World.split_method == "rift_lines"`.
   the band's flanks, conserving every column total.
 """
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 import numpy as np
@@ -345,6 +345,9 @@ class ThinningOutcome:
     moment: np.ndarray
     craton_lost_m3: float
     cap_held_m3: float = 0.0  # crust and mantle a donor kept because its recipients were at the thickness cap
+    # Plate indices of donors that gave up nothing because every recipient was at a cap. They must not strain: their
+    # column is unchanged, and a strained cell at the reference column reads as erupted (PR #950 review).
+    stuck: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int64))
 
 
 def thin_with_flank_transfer(areas, plan: FlankPlan, d_eps, columns: dict) -> ThinningOutcome:
@@ -388,7 +391,10 @@ def thin_with_flank_transfer(areas, plan: FlankPlan, d_eps, columns: dict) -> Th
         move(name, ratio_c)
     craton_lost = float(np.dot(out["craton"][donors] * (1.0 - ratio_c), a_d))
     out["craton"][donors] *= ratio_c
-    return ThinningOutcome(**out, craton_lost_m3=craton_lost, cap_held_m3=cap_held)
+    # A donor already at its floors has nothing to give and must still be able to strain and break, so only a donor
+    # with volume to lose that lost none is stuck.
+    stuck = donors[(leaves <= 0.0) & (lost_c + lost_m > 0.0)]
+    return ThinningOutcome(**out, craton_lost_m3=craton_lost, cap_held_m3=cap_held, stuck=stuck)
 
 
 def _capped_flow(share: csr_matrix, areas, layers):

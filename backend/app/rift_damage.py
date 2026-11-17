@@ -354,8 +354,22 @@ def _strain_line(prep: PlatePrep, state: RiftRuntime, years: float):
     return prob, plan, advance.eps, np.minimum(advance.warm, advance.eps)
 
 
-def damage_step(world, plate, years: float, state: RiftRuntime) -> PlateStep | None:
-    """Steps 1-4 for one plate: load, strength, the rift line and its strain, thinning with flank transfer, the latch."""
+@dataclass
+class _Pending:
+    """One plate's damage step, computed but not yet written to the plate."""
+
+    prep: PlatePrep
+    prob: "lines.LineProblem | None"
+    eps1: np.ndarray
+    warm1: np.ndarray
+    d_eps: np.ndarray
+    broken_now: np.ndarray
+    out: "strength.ThinningOutcome | None"
+
+
+def _compute_step(world, plate, years: float, state: RiftRuntime) -> _Pending | None:
+    """Steps 1-4 for one plate (load, strength, the rift line and its strain, thinning with flank transfer, the
+    latch), without writing anything to the plate."""
     p = state.params
     n = plate.node_count()
     if n == 0 or years <= 0.0:
@@ -366,30 +380,47 @@ def damage_step(world, plate, years: float, state: RiftRuntime) -> PlateStep | N
     prep = prepare_plate(world, plate, p, years, eps0, warm0, broken)
     line = prep.line
     state.counters["line_steps" if line is not None else "line_none"] += 1
-    eps1, warm1, d_eps = eps0, warm0 * np.exp(-years / p.tau_heal_yr), np.zeros(n)
-    hc, new_elevation, broken_now, prob = prep.hc, plate.collect("elevation"), broken, None
+    healed = warm0 * np.exp(-years / p.tau_heal_yr)
+    pending = _Pending(prep, None, eps0, healed, np.zeros(n), broken, None)
+    if line is None:
+        return pending
+    prob, plan, eps1, warm1 = _strain_line(prep, state, years)
+    d_eps = np.maximum(eps1 - eps0, 0.0)
+    pending.prob, pending.eps1, pending.warm1, pending.d_eps = prob, eps1, warm1, d_eps
+    if d_eps.max() <= 0.0:
+        return pending
+    columns = _columns(plate, prep.hc, prep.hm)
+    out = strength.thin_with_flank_transfer(prep.areas, plan, d_eps, columns)
+    _record_closure(state, _volumes(columns, prep.areas), _volumes({k: getattr(out, k) for k in strength.COLUMNS}, prep.areas),
+                    out.craton_lost_m3)
+    state.counters["cap_held_m3"] += out.cap_held_m3
+    # A donor whose recipients were all at a cap gave up nothing; like a held cell it does not strain this step, so
+    # its damage stays consistent with its unchanged column (PR #950 review).
+    stuck = out.stuck
+    eps1[stuck], warm1[stuck], d_eps[stuck] = eps0[stuck], np.minimum(healed, eps0)[stuck], 0.0
+    at_floor = out.hc <= rheology.RIFT_CRITICAL_THICKNESS_M + 1e-6
+    if p.oceanic_latch_on_break_only:
+        at_floor = np.where(prep.continental, at_floor, at_floor & (out.hm <= lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M + 1e-6))
+    # A cell breaks when the strain that thinned it took its crust to the floor, or at eps_break. There is no
+    # interior eruption: a broken cell costs nothing to cross and waits for the split.
+    pending.broken_now = broken | ((d_eps > 0.0) & ((eps1 >= p.eps_break - 1e-9) | at_floor))
+    pending.out = out
+    return pending
+
+
+def _commit_step(world, plate, years: float, state: RiftRuntime, pending: _Pending) -> PlateStep:
+    """Write a computed damage step to the plate and record it for the breakthrough test."""
+    p, prep = state.params, pending.prep
+    line, out, broken_now = prep.line, pending.out, pending.broken_now
+    hc, new_elevation = prep.hc, plate.collect("elevation")
+    if out is not None:
+        hc, new_elevation = out.hc, _write_thinning(world, plate, prep, out, pending.d_eps)
+    plate.set_fields_on_plate(rift_strain=pending.eps1, rift_warm_strain=pending.warm1, rift_broken=broken_now)
+    step = PlateStep(plate.plate_id, plate.cell_keys.copy(), prep.points, prep.areas, prep.graph, prep.boundary, pending.eps1,
+                     pending.d_eps, broken_now, ~prep.continental, prep.weak, prep.heated, new_elevation, hc, line)
     if line is not None:
-        prob, plan, eps1, warm1 = _strain_line(prep, state, years)
-        d_eps = np.maximum(eps1 - eps0, 0.0)
-        if d_eps.max() > 0.0:
-            columns = _columns(plate, prep.hc, prep.hm)
-            out = strength.thin_with_flank_transfer(prep.areas, plan, d_eps, columns)
-            _record_closure(state, _volumes(columns, prep.areas), _volumes({k: getattr(out, k) for k in strength.COLUMNS}, prep.areas),
-                            out.craton_lost_m3)
-            state.counters["cap_held_m3"] += out.cap_held_m3
-            at_floor = out.hc <= rheology.RIFT_CRITICAL_THICKNESS_M + 1e-6
-            if p.oceanic_latch_on_break_only:
-                at_floor = np.where(prep.continental, at_floor, at_floor & (out.hm <= lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M + 1e-6))
-            # A cell breaks when the strain that thinned it took its crust to the floor, or at eps_break. There is no
-            # interior eruption: a broken cell costs nothing to cross and waits for the split.
-            broken_now = broken | ((d_eps > 0.0) & ((eps1 >= p.eps_break - 1e-9) | at_floor))
-            hc, new_elevation = out.hc, _write_thinning(world, plate, prep, out, d_eps)
-    plate.set_fields_on_plate(rift_strain=eps1, rift_warm_strain=warm1, rift_broken=broken_now)
-    step = PlateStep(plate.plate_id, plate.cell_keys.copy(), prep.points, prep.areas, prep.graph, prep.boundary, eps1, d_eps, broken_now,
-                     ~prep.continental, prep.weak, prep.heated, new_elevation, hc, line)
-    if line is not None:
-        fresh = lines.LineProblem(**{**prob.__dict__, "intact": ~broken_now[line.chain]})
-        n_eff, load, _ = lines.line_state(fresh, eps1, warm1, years, p)
+        fresh = lines.LineProblem(**{**pending.prob.__dict__, "intact": ~broken_now[line.chain]})
+        n_eff, load, _ = lines.line_state(fresh, pending.eps1, pending.warm1, years, p)
         step.pull_end = float(np.sum(load * fresh.ds))
         step.strength_end = float(np.sum((n_eff * fresh.ds)[fresh.intact]))
         step.broken_share = float(line.geometry.ds[broken_now[line.chain]].sum() / max(line.geometry.ds.sum(), 1e-9))
@@ -398,11 +429,15 @@ def damage_step(world, plate, years: float, state: RiftRuntime) -> PlateStep | N
 
 
 def damage_pass(world, years: float) -> None:
-    """The damage step for every plate, once per world step, before any split is decided."""
+    """The damage step for every plate, once per world step, before any split is decided. Every plate is computed
+    from the step-start world before any is written, so the result doesn't depend on plate order, and an error in
+    any plate (a sub-step overrun, say) leaves the world untouched rather than partly strained (PR #950 review)."""
     state = runtime(world)
+    pending = [(plate, _compute_step(world, plate, years, state)) for plate in world.plates]
     state.steps = {}
-    for plate in world.plates:
-        damage_step(world, plate, years, state)
+    for plate, step in pending:
+        if step is not None:
+            _commit_step(world, plate, years, state, step)
 
 
 # --- breakthrough --------------------------------------------------------------------------------

@@ -100,6 +100,45 @@ def test_a_world_step_with_rift_lines_on_keeps_the_ledgers_and_the_damage_invari
     assert max(world.rift_runtime.ledger_gap.values()) < 1e-9
 
 
+def test_a_bad_setting_stops_the_step_before_anything_changes(saved_world):
+    for setting in ({"split_method": "rift_line"}, {"split_method": "rift_lines", "rift_line_params": {"k_cup": 0.1}}):
+        world = persistence.load_world_bytes(saved_world)
+        for name, value in setting.items():
+            setattr(world, name, value)
+        before = (world.steps_taken, world.elapsed_years, [p.age_years for p in world.plates], _damage(world, "elevation"))
+        with pytest.raises(ValueError):
+            step_world(world, MYR)
+        after = (world.steps_taken, world.elapsed_years, [p.age_years for p in world.plates], _damage(world, "elevation"))
+        assert before[:3] == after[:3] and np.array_equal(before[3], after[3])
+
+
+def test_a_sub_step_overrun_on_any_plate_leaves_every_plate_unwritten(saved_world, monkeypatch):
+    # Put a plate that strains first, then fail the second plate's integration: written one plate at a time, the first
+    # plate would already be thinned when the error came (PR #950 review).
+    dry = _rift_world(saved_world)
+    rift_damage.damage_pass(dry, MYR)
+    strained = [pid for pid, step in dry.rift_runtime.steps.items() if step.d_eps.max() > 0.0]
+    world = _rift_world(saved_world)
+    world.plates.sort(key=lambda plate: plate.plate_id != strained[0])
+    real, calls = lines.advance_rift, []
+
+    def second_call_overruns(prob, eps, warm, years, p):
+        if calls:
+            raise RuntimeError("rift integration needed more than K_fail sub-steps")
+        out = real(prob, eps, warm, years, p)
+        calls.append(bool(np.any(out.eps > eps)))
+        return out
+
+    monkeypatch.setattr(lines, "advance_rift", second_call_overruns)
+    names = ("rift_strain", "crustal_thickness_m", "elevation")
+    before = {name: _damage(world, name) for name in names}
+    with pytest.raises(RuntimeError):
+        rift_damage.damage_pass(world, MYR)
+    assert calls == [True]  # the first plate did strain, so an early write would show
+    for name in names:
+        assert np.array_equal(_damage(world, name), before[name]), name
+
+
 def _breakable(world):
     """A plate whose rift line gives a valid two-daughter split, with its step record."""
     state = rift_damage.runtime(world)

@@ -212,3 +212,21 @@ def test_flank_recipients_share_the_donor_crust_type_and_reach_past_the_other_ki
     # With no same-kind cell anywhere outside the band, the donor is held rather than feeding the other kind.
     alone = strength.flank_plan(strip, band, np.zeros(n, bool), P.flank_rows, group=~band)
     assert alone.held.all()
+
+
+def test_a_donor_whose_recipients_are_all_capped_is_stuck_and_a_floored_one_is_not():
+    # A five-cell strip: two donors in the middle, every recipient at both caps. The donor at the reference column
+    # can give nothing, so it is reported stuck (it must not strain, or it would read as erupted next step); the
+    # donor already at its floors had nothing to give and is not.
+    strip, n = lattice(5, 1), 5
+    band = np.zeros(n, bool)
+    band[1:3] = True
+    cols = _columns(n, np.random.default_rng(3))
+    cols["hc"][:] = lithosphere.MAX_CRUSTAL_THICKNESS_M
+    cols["hm"][:] = lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M
+    cols["hc"][1], cols["hm"][1] = lithosphere.REFERENCE_HC_CONTINENTAL_M, lithosphere.REFERENCE_HM_CONTINENTAL_M
+    cols["hc"][2], cols["hm"][2] = rheology.RIFT_CRITICAL_THICKNESS_M, lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M
+    plan = strength.flank_plan(strip, band, np.zeros(n, bool), P.flank_rows)
+    out = strength.thin_with_flank_transfer(np.full(n, 4e9), plan, np.where(band, 1.0, 0.0), cols)
+    assert out.stuck.tolist() == [1] and out.cap_held_m3 > 0.0
+    assert out.hc[1] == cols["hc"][1] and out.hm[1] == cols["hm"][1]

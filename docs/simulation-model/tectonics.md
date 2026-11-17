@@ -1087,7 +1087,9 @@ plate the pass does the following.
    floor. A donor with no recipient of its type on the plate is held and does not strain. A
    recipient takes only what fits under `MAX_CRUSTAL_THICKNESS_M` and
    `MAX_MANTLE_LITHOSPHERE_THICKNESS_M`. Its donors keep the rest, the same share of each layer,
-   so they thin less than their strain asks. The total is in the `cap_held_m3` counter.
+   so they thin less than their strain asks. The total is in the `cap_held_m3` counter. A donor
+   whose recipients are all at a cap gives up nothing, and like a held cell it does not strain
+   that step.
    Craton crust thins in place and its loss is booked to `rifted_stretch_m3`.
    The cell subsides isostatically. A cell whose crust reaches the floor, or whose strain reaches
    `eps_break`, is marked broken.
@@ -1106,9 +1108,14 @@ to the column), `rift_warm_strain` (the part that still heals, never above `rift
 cell opened by spreading inherits its donors' strain times its stretched share
 (`rift_damage.inherit_margin_damage`). `World.rift_runtime` holds the last pass's per-plate
 records, the split events and counters; it is rebuilt each pass and not saved.
+`rift_damage.damage_pass` computes every plate from the world as it was at the step's start,
+then writes them all. The result doesn't depend on plate order, and an error on any plate
+leaves every plate unwritten.
 
 **Parameters.** `rift_strength.RiftLineParams` holds the starting values, and
-`World.rift_line_params` overrides them by name. These raise `ValueError` at the next step:
+`World.rift_line_params` overrides them by name. `merge_split.check_split_settings` checks
+`split_method` and these overrides at the start of every step, before anything moves. Each of
+these raises `ValueError` and leaves the world unchanged:
 - an unknown name;
 - a value of the wrong kind;
 - a fraction for a whole-number knob (it is not truncated);

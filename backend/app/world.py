@@ -1152,6 +1152,7 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
     World.simulate_plate_movement/World.simulate_climate_biomes (see their own docstrings and
     main.py's /world/controls) -- elapsed_years always advances regardless of either flag.
     """
+    merge_split.check_split_settings(world)  # before anything moves, so a bad setting leaves the world untouched
     world.steps_taken += 1
     # The render path's cached node-cloud k-d tree (see World.node_kdtree_cache) and its
     # positions-only sibling shared with climate.py (World.node_position_tree_cache) are both
