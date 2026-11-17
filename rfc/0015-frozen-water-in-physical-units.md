@@ -1081,6 +1081,32 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
   abrasion's, and the effect of `glacier_erosion_multiplier` at 0.25× and 4× on ice-cap area
   and land volume. *Outcome:* if the neighbor-drop clip still removes more than half of raw
   abrasion, D3's within-step bound is designed explicitly before implementation.
+
+  **Gate result (2026-11-16, #940, commit `bf624090`): design D3's within-step bound before
+  implementation.** Run over 10 Myr at 0.25 Myr (40 steps) and 1.0 Myr (10 steps) on the
+  two non-ice-age diagnosis saves (`649658380` and `997271774`, default `trend-1k` march).
+  The `l = 2` option (Herman et al., 2015) was dropped because its coefficient was not
+  verified directly from the paper.
+  - **Clip ratio (`applied / raw < 0.5`):** both pairs fail on every save and step size
+    (measured via `erosion.py`'s shared `applied_scale`, which reflects the combined
+    neighbor-drop/`Hc`-headroom cap, mobile-cover erodibility, craton resistance, and
+    shared competition with other subaerial erosion terms).
+    Cook et al. (2020) (`K_G = 1 × 10⁻⁴, l = 0.65`) gives `applied / raw` = `0.210` (0.25 Myr)
+    and `0.071` (1.0 Myr) on `649658380`, and `0.157` / `0.048` on `997271774`. Humphrey &
+    Raymond (1994) (`K_G = 1 × 10⁻⁴, l = 1`) gives `0.049` / `0.014` and `0.018` / `0.0045`.
+  - **Step gap (0.25 vs 1.0 Myr applied abrasion):** `66.5%` and `70.4%` for Cook et al.
+    (2020) (`2.72M` vs `0.91M km³` on `649658380`; `33.88M` vs `10.04M km³` on `997271774`),
+    and `65.7%` / `72.6%` for Humphrey & Raymond (1994), because the per-step neighbor-drop
+    cap resets 4× as often at 0.25 Myr. Applied abrasion is `74–157×` `origin/main` at
+    0.25 Myr under Cook et al. (2020).
+  - **Flattening and `glacier_erosion_multiplier`:** under Cook et al. (2020), flattening is
+    `0.48–0.63×` applied abrasion at 0.25 Myr (`1.72M` / `16.30M km³`) and `1.22–1.72×` at
+    1.0 Myr. Across `0.25×` to `4×` on `glacier_erosion_multiplier` (1.0 Myr), applied abrasion
+    barely moves on `649658380` (`-4.3%` to `-5.7%`) and moves `-21%` to `+23%` on `997271774`;
+    flattening accounts for nearly all of the land-volume shift (`+0.18%` to `-0.37%` on
+    `649658380`, `+0.02%` to `-0.16%` on `997271774`, vs `≤ 0.06%` with flattening held at `1×`)
+    and drives the `-6.89%` ice-cap area drop at `4×` on `649658380`.
+  See [`analysis/issue940/`](../analysis/issue940/README.md).
 - **G4: sea level.** On the diagnosis set, including its ice-age save, report floating,
   grounded marine and land ice under D1–D2, and the eustatic difference between today's
   debit and D6's. *Outcome:* adopt D6's simple form if the generalised correction changes sea
@@ -1395,7 +1421,7 @@ withdrawal can be handled part by part.
 
 The thresholds below were confirmed by the project owner on 2026-10-23.
 
-**Status, 2026-11-15:** 7 of 16 met and ticked. The others wait on D3–D8 and G1, G3 and G6 (G4 is recorded, #912). Each item carries its evidence. Ice-age saves
+**Status, 2026-11-16:** 7 of 16 met and ticked. The others wait on D3–D8 and G1 and G6 (G3 is recorded, #940; G4 is recorded, #912). Each item carries its evidence. Ice-age saves
 don't gate any item (see [Scope](#scope-ice-ages-are-out)).
 
 - [x] **Prerequisites:** RFC 0014 D2(b) and D2(c) landed before D4, D5 and D8; or D1–D3 shipped
@@ -1405,7 +1431,7 @@ don't gate any item (see [Scope](#scope-ice-ages-are-out)).
   supersedes" (a), and listed on the tracking issue.
   *Met, per #544's table: #197, #203 and #368 are closed, #358 item 4 is marked superseded (and #358 has since been closed), and #313 stays open with Stage E pointing at the knobs table.*
 - [ ] **G0–G6 run and recorded** in this RFC, with D2's fixes chosen by G0.
-  *Open: G0 (#554, #569), G2, G4 (#912) and G5 are recorded. G1, G3 and G6 are open.*
+  *Open: G0 (#554, #569), G2, G3 (#940), G4 (#912) and G5 are recorded. G1 and G6 are open.*
 - [x] **Step robustness:** on each held-out save, ice volume and area at 10 Myr agree within
   20% between 0.25 Myr and 1 Myr steps (was 10% until the 2026-11-13 revision). Saves
   replayed with ice ages are out of scope for this criterion (2026-11-15 revision).
