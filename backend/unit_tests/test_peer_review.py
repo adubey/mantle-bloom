@@ -427,3 +427,59 @@ def test_reviewer_writable_dirs_cover_the_state_and_the_git_common_dir(tmp_path,
 
     monkeypatch.setattr(pr_mod.subprocess, "run", lambda *a, **k: Failed())
     assert pr_mod.reviewer_writable_dirs(outside) == (outside.resolve(),)
+
+
+def _fake_git(monkeypatch, dirty: bool = False, heads=("6bda6906",)):
+    """Stub git: `status` reports a change when `dirty`; `rev-parse` of the fetched ref returns `heads` in turn,
+    the last one repeating, as GitHub's pull ref does while it catches up with a push."""
+    calls, heads = [], list(heads)
+
+    class Result:
+        def __init__(self, stdout=""):
+            self.returncode, self.stdout = 0, stdout
+
+    def run(cmd, **_kwargs):
+        calls.append(cmd)
+        if "status" in cmd:
+            return Result(" M backend/app/world.py\n" if dirty else "")
+        if cmd[:2] == ["git", "rev-parse"]:
+            return Result((heads.pop(0) if len(heads) > 1 else heads[0]) + "\n")
+        return Result()
+
+    monkeypatch.setattr(pr_mod.subprocess, "run", run)
+    return calls
+
+
+def test_a_new_review_tree_is_made_at_the_prs_fetched_head(tmp_path, monkeypatch):
+    calls = _fake_git(monkeypatch)
+    wt = tmp_path / "mantle-bloom-review-950-muse"
+    assert pr_mod.prepare_review_tree(950, wt) is True
+    assert calls == [
+        ["git", "fetch", "origin", "+pull/950/head:refs/remotes/origin/pr/950"],
+        ["git", "rev-parse", "refs/remotes/origin/pr/950"],
+        ["git", "worktree", "add", "--detach", str(wt), "refs/remotes/origin/pr/950"],
+    ]
+
+
+def test_an_existing_review_tree_moves_to_the_new_head_and_a_changed_one_is_refused(tmp_path, monkeypatch):
+    wt = tmp_path / "mantle-bloom-review-950-muse"
+    wt.mkdir()
+    calls = _fake_git(monkeypatch)
+    assert pr_mod.prepare_review_tree(950, wt) is False  # a second round: not handed over at the old commit
+    assert calls[-1] == ["git", "-C", str(wt), "checkout", "--detach", "refs/remotes/origin/pr/950"]
+    calls = _fake_git(monkeypatch, dirty=True)
+    with pytest.raises(RuntimeError, match="has changes"):
+        pr_mod.prepare_review_tree(950, wt)
+    assert not any("checkout" in cmd for cmd in calls)
+
+
+def test_the_fetch_waits_for_githubs_pull_ref_to_reach_the_pr_head(tmp_path, monkeypatch):
+    wt = tmp_path / "mantle-bloom-review-950-codex"
+    wt.mkdir()
+    monkeypatch.setattr(pr_mod.time, "sleep", lambda _s: None)
+    calls = _fake_git(monkeypatch, heads=("1fae9ce7", "1fae9ce7", "6bda6906"))  # lags two fetches behind the push
+    assert pr_mod.prepare_review_tree(950, wt, "6bda69063541ea84803a86fc20e5462e7dc038d1") is False
+    assert sum(cmd[:2] == ["git", "fetch"] for cmd in calls) == 3 and calls[-1][-1] == "refs/remotes/origin/pr/950"
+    _fake_git(monkeypatch, heads=("1fae9ce7",))  # never catches up: refuse rather than review the old commit
+    with pytest.raises(RuntimeError, match="still 1fae9ce7"):
+        pr_mod.prepare_review_tree(950, wt, "6bda6906", tries=3)
