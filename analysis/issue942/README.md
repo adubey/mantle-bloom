@@ -1,6 +1,6 @@
 # Issue #942: what sets plate speed
 
-Status: in progress. First pass at deliverable 2 (the torque breakdown) on two worlds. The speed census on the 20
+Status: in progress. First pass at deliverable 2 (the torque breakdown and standalone speeds) on two worlds. The speed census on the 20
 development worlds (deliverable 1) and the `contact_drag_multiplier` sweep (deliverable 3) are not done.
 
 ## Torque breakdown, two worlds
@@ -57,9 +57,8 @@ prescribed flow (`mantle.flow_at`, centres of 2–6 cm/yr). Its net effect is to
   trap for slow plates. Prediction 5 failing says the gate does not explain why one world is slower than the other.
 - Prediction 2 failing changes the reading of the brake: it is the largest resistance, not an addition to basal
   drag. That agrees with the #888 arms, where turning it off raised speed 2–3 times.
-- A breakdown gives the balance at the solved speed. It does not give the speed under a changed term. In
-  particular the speed mantle flow alone would give each plate (`K⁻¹ b`), the ceiling when the flow is the main
-  driver, has not been computed.
+- A breakdown gives the balance at the solved speed. It does not give the speed under a changed term; the next
+  section estimates that from each snapshot.
 
 **Validity.** The solver converged at every sample. Speeds are near the #888 brake-on arm (1.14/1.35 and 0.41/0.56
 cm/yr, rift-line prototype). The closure check (terms summing to zero) could only be read where there are no
@@ -68,6 +67,44 @@ Both worlds had blocked edges (up to 31 and 22).
 
 **Limits.** Two worlds, plates-only stepping, one sample per 10 Myr.
 
+## Speeds a plate would have alone
+
+**Finding.** Mantle flow alone would carry plates at about 3.7 cm/yr (4.8 and 2.5 in the two worlds), close to
+Earth's mean, and they move at about 1.0. Contacts between plates remove about 70% of that speed. The prescribed
+flow is not the ceiling that keeps plates slow.
+
+**Run.** The same two worlds and schedule, rerun with three more measures per plate from each snapshot's own terms;
+the driving and resisting shares are identical to the first run. Predictions 6–8 were posted before the run.
+
+| Area-weighted crust speed (cm/yr) | 106533960 | 1097624328 | Pooled |
+|---|---:|---:|---:|
+| As solved (brake on) | 1.42 | 0.68 | 1.05 |
+| Mantle flow only (`K_basal ω = b`) | 4.82 | 2.51 | 3.67 |
+| Own loads, no contact (adds slab pull, ridge push, sunk-slab drag) | 4.36 | 2.46 | 3.41 |
+| Prescribed flow under the plates (mean `\|flow\|`) | 5.24 | 3.08 | 4.16 |
+| #888 arm with `contact_drag_multiplier = 0`, continental / oceanic | 2.06 / 2.91 | 1.29 / 1.58 | |
+
+| # | Prediction | Result |
+|---|---|---|
+| 6 | Mantle-flow-only speed under 2.5 cm/yr (against: 4 or more) | Not met: 3.67 pooled. One world is at the 2.5 line and the other, at 4.8, counts against |
+| 7 | Own-loads-no-contact within 30% of mantle-flow-only | Holds: 0.93 times. Slab pull and sunk-slab drag together slow plates slightly |
+| 8 | Flow under plates at least 1.5 times the mantle-flow-only plate speed (against: under 1.2) | Counts against: 1.13. A rigid plate keeps nearly all of the flow speed under it |
+
+**What this shows.**
+
+- Plate speed in the current model is the prescribed flow speed (convection centres of 2–6 cm/yr,
+  `MANTLE_FLOW_REFERENCE_RATE` = 4 cm/yr) less what contacts take away. The slab terms change it by under 10%.
+- Continental crust would be as fast as oceanic crust or faster under its own loads (3.57 against 3.25 cm/yr
+  pooled). In the solved motion and in every #888 arm it is slower, so the continental deficit comes from contacts.
+- The check against the #888 brake-off arm does not close. Own loads with no contact give 2.5–4.7 cm/yr, and the
+  runs with the brake multiplier at zero gave 1.3–2.9. Setting `contact_drag_multiplier = 0` does not remove all
+  contact: the blocked-edge contact force (`_blocked_contact_response`) is not scaled by it, and neighbours still
+  couple through it. The brake-off runs also have their own history (more splits). Which of these holds the
+  remaining factor of about 1.5–2 has not been measured; a breakdown of a brake-off run would show it.
+
+**Limits.** Snapshot estimates on the brake-on history, each plate solved alone. They leave out what faster plates
+would do to the gate, the boundaries and plate shapes.
+
 **Reproduce.**
 
 ```bash
@@ -75,4 +112,5 @@ backend/.venv/bin/python bin/debug/plate_torque_breakdown.py --out <dir> --seeds
 backend/.venv/bin/python bin/debug/summarize_torque_breakdown.py <dir> --out analysis/issue942/torque-breakdown.json
 ```
 
-Raw outputs (SHA-256): `106533960.json` `e12cee4cbf265bc6448418622c4900b87b9a6cae1159880697de503061c7162d`, `1097624328.json` `0b32789ab2368b8b3b3a165b67b6f0172f8652fb59aebdeb2d99780ce0d1fc5e`.
+Raw outputs of the rerun (SHA-256): `106533960.json` `cc41c208251ae77e3be2fcce809dc4ed7a7632a38d580200864f1942f99612ab`,
+`1097624328.json` `c576fa804c45a7864a5a172c00ef17b47e4d7a2671ac9f863a70659cce1b331d`.

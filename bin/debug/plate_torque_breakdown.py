@@ -16,6 +16,8 @@ geometry) and writes, per plate:
   1 cm/yr and ridge push only where it opens faster than 1 cm/yr, so the script also records the boundary length
   that moves the right way at any rate, and the slab pull that length would give.
 - area-weighted mean speed of continental and oceanic crust, ``|omega| R``, area and continental share.
+- two speeds the plate would have alone, from the same snapshot: carried by mantle flow only, and under all of its
+  own loads and drags with no contact; and the mean speed of the prescribed mantle flow under the plate.
 
 Writes ``<out>/<seed>.json`` (existing files are kept, so a run resumes).
 """
@@ -37,8 +39,23 @@ def _along(axis: np.ndarray, vector: np.ndarray) -> float:
     return float(np.dot(axis, vector))
 
 
+def _crust_speeds(omega: np.ndarray, points: np.ndarray, areas: np.ndarray, continental: np.ndarray, radius_cm: float) -> dict:
+    """`|omega| R` and the area-weighted mean speed of all, continental and oceanic crust under `omega`, in cm/yr."""
+    speed = np.linalg.norm(np.cross(omega, points), axis=1) * radius_cm
+
+    def mean(mask: np.ndarray) -> float | None:
+        return float(np.dot(speed[mask], areas[mask]) / areas[mask].sum()) if mask.any() else None
+
+    return {"rate": float(np.linalg.norm(omega) * radius_cm), "all": mean(np.ones(len(points), dtype=bool)),
+            "continental": mean(continental), "oceanic": mean(~continental)}
+
+
+def _solve(k: np.ndarray, b: np.ndarray) -> np.ndarray:
+    return np.linalg.lstsq(k, b, rcond=None)[0]
+
+
 def sample(world) -> dict:
-    from app import lithosphere, torque
+    from app import lithosphere, mantle, torque
     from app.elevation_lines import line_spacing_rad
 
     diagnostics: dict = {}
@@ -83,22 +100,31 @@ def sample(world) -> dict:
         areas = np.asarray(plate.accounting_areas_m2(spacing), dtype=float)
         continental = torque.own_is_continental(plate, inputs)
         omega = omegas[plate.plate_id]
-        speed = np.linalg.norm(np.cross(omega, points), axis=1) * radius_cm
+        solved = _crust_speeds(omega, points, areas, continental, radius_cm)
+        slab_pull = torque.slab_pull_torque(plate, inputs, subducting, spacing)
+        ridge_push = torque.ridge_push_torque(plate, inputs, divergent, spacing)
+        flow_speed = np.linalg.norm(mantle.flow_at(points, world.mantle_centers), axis=1) * radius_cm
         local[plate.plate_id] = {
             "omega": omega, "basal_b": basal_b, "basal_k": basal_k, "slab_k": slab_k,
-            "slab_pull": torque.slab_pull_torque(plate, inputs, subducting, spacing),
+            "slab_pull": slab_pull,
             "slab_pull_ungated": torque.slab_pull_torque(plate, inputs, closing_any, spacing),
-            "ridge_push": torque.ridge_push_torque(plate, inputs, divergent, spacing),
+            "ridge_push": ridge_push,
             "row": {
                 "plate_id": int(plate.plate_id),
-                "rate_cm_per_yr": float(np.linalg.norm(omega) * radius_cm),
+                "rate_cm_per_yr": solved["rate"],
                 "area_km2": float(areas.sum() / 1e6),
                 "continental_area_share": float(areas[continental].sum() / areas.sum()),
-                "speed_cm_per_yr": {
-                    "all": float(np.dot(speed, areas) / areas.sum()),
-                    "continental": float(np.dot(speed[continental], areas[continental]) / areas[continental].sum()) if continental.any() else None,
-                    "oceanic": float(np.dot(speed[~continental], areas[~continental]) / areas[~continental].sum()) if (~continental).any() else None,
+                "speed_cm_per_yr": {kind: solved[kind] for kind in ("all", "continental", "oceanic")},
+                # Speeds this plate would have alone, from this snapshot's own terms: under the mantle-flow
+                # coupling only (K_basal omega = b), and under all of its own loads and drags with no contact
+                # (brake or blocked edge) and its neighbours' motion ignored.
+                "counterfactual_speed_cm_per_yr": {
+                    "mantle_flow_only": _crust_speeds(_solve(basal_k, basal_b), points, areas, continental, radius_cm),
+                    "own_loads_no_contact": _crust_speeds(
+                        _solve(basal_k + slab_k, basal_b + slab_pull + ridge_push), points, areas, continental, radius_cm
+                    ),
                 },
+                "mantle_flow_under_plate_cm_per_yr": float(np.dot(flow_speed, areas) / areas.sum()),
                 "continental_area_km2": float(areas[continental].sum() / 1e6),
                 "boundary_km": {
                     "band_total": float(length[band].sum() / 1e3),

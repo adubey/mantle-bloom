@@ -9,7 +9,8 @@ the summed driving torque and each resisting term's share of the summed resistin
 plate's rotation axis, so a term that opposes motion on one plate and helps it on another is counted on the side it
 acts on); the share of plate area on which each resisting term is the largest; and the share of closing down-going
 and of opening boundary length that passes the 1 cm/yr motion gate. Each is given for all plates and split at an
-`|omega| R` of 1 cm/yr.
+`|omega| R` of 1 cm/yr. Where the runs carry them, it also gives the area-weighted speeds each plate would have
+alone (mantle flow only; all own loads with no contact) and the mean prescribed mantle-flow speed under the plates.
 """
 
 import argparse
@@ -26,6 +27,7 @@ def _summarize(rows: list[dict]) -> dict:
     largest: dict[str, float] = defaultdict(float)
     km: dict[str, float] = defaultdict(float)
     moved = {"continental": [0.0, 0.0], "oceanic": [0.0, 0.0]}
+    alone: dict[str, list[float]] = defaultdict(lambda: [0.0, 0.0])
     area = pull = pull_ungated = 0.0
     for row in rows:
         area += row["area_km2"]
@@ -35,6 +37,14 @@ def _summarize(rows: list[dict]) -> dict:
             if speed is not None:
                 moved[kind][0] += speed * kind_area
                 moved[kind][1] += kind_area
+        for name, speeds in row.get("counterfactual_speed_cm_per_yr", {}).items():
+            for kind, kind_area in (("all", row["area_km2"]), ("continental", cont), ("oceanic", row["area_km2"] - cont)):
+                if speeds[kind] is not None:
+                    alone[f"{name}:{kind}"][0] += speeds[kind] * kind_area
+                    alone[f"{name}:{kind}"][1] += kind_area
+        if "mantle_flow_under_plate_cm_per_yr" in row:
+            alone["mantle_flow_under_plate:all"][0] += row["mantle_flow_under_plate_cm_per_yr"] * row["area_km2"]
+            alone["mantle_flow_under_plate:all"][1] += row["area_km2"]
         for name, value in row["boundary_km"].items():
             km[name] += value
         terms = row.get("torque_along_axis_nm")
@@ -56,6 +66,7 @@ def _summarize(rows: list[dict]) -> dict:
         "plate_samples": len(rows),
         "plate_area_share": None,
         "speed_cm_per_yr": {kind: v[0] / v[1] if v[1] else None for kind, v in moved.items()},
+        "speed_alone_cm_per_yr": {name: v[0] / v[1] for name, v in sorted(alone.items()) if v[1]},
         "driving_share": shares(drive),
         "resisting_share": shares(resist),
         "largest_resisting_term_area_share": shares(largest),
