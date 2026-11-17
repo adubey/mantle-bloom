@@ -64,16 +64,17 @@ cover entrainment up to `MOBILE_COVER_ERODIBILITY_FACTOR`.
 | 997271774 | `humphrey1994` | 1.0 | 2,420,986,990 | 10,922,151 | **0.0045** | — | 12,297,338 | 1.13 |
 
 Key observations:
-1. **Clip saturation:** Under `cook2020`, the neighbor-drop clip removes **79.0–92.9%** of raw
-   abrasion on `649658380` and **84.3–95.2%** on `997271774`. Under `humphrey1994`, it removes
-   **95.1–99.5%**. Because both laws saturate the same per-step neighbor-drop cap, their applied
+1. **Cap saturation:** Under `cook2020`, the shared per-step cap/scaling removes **79.0–92.9%**
+   of raw abrasion on `649658380` and **84.3–95.2%** on `997271774`. Under `humphrey1994`, it
+   removes **95.1–99.5%**. Because both laws saturate the same per-step cap, their applied
    erosion volumes are nearly identical (`2.72M` vs `2.77M km³` on `649658380`; `33.88M` vs
    `39.88M km³` on `997271774` at 0.25 Myr) despite `humphrey1994` having 4.4–10.5× higher raw
    demand.
-2. **Step-size dependence:** Because the neighbor-drop cap resets each step, taking 4× as many
-   steps (0.25 Myr vs 1.0 Myr) increases applied glacial erosion by **~3×** (`66–73%` step gap)
-   under both physical laws. By contrast, closing `land_ice_area_km2` and
-   `land_volume_above_sea_km3` agree within 0.1–8.5% and 1.2–1.7%, respectively.
+2. **Step-size dependence (`|applied_0.25 − applied_1.0| / applied_0.25`):** Because the per-step
+   cap resets each step, taking 4× as many steps (0.25 Myr vs 1.0 Myr) increases applied glacial
+   erosion by **~3×** (`66–73%` step gap) under both physical laws. By contrast, closing
+   `land_ice_area_km2` and `land_volume_above_sea_km3` agree within 0.1–8.5% and 1.2–1.7%,
+   respectively.
 3. **Comparison with `origin/main`:** At 0.25 Myr, `cook2020` applied abrasion is **157×** `main`
    on `649658380` and **74×** `main` on `997271774`.
 4. **Flattening beside abrasion:** Under `main`, flattening is **35–115×** applied abrasion. Under

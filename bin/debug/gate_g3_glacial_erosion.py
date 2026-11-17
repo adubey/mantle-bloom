@@ -182,6 +182,9 @@ def _run_replay(ns: argparse.Namespace) -> dict:
     total_app = sum(s["applied_glacial_erosion_m3"] for s in steps)
     total_flat = sum(s["glacial_flatten_m3"] for s in steps)
     closing = steps[-1] if steps else opening
+    rss_bytes = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if sys.platform != "darwin":
+        rss_bytes *= 1024
     return {
         "issue": 940,
         "commit": commit,
@@ -198,7 +201,7 @@ def _run_replay(ns: argparse.Namespace) -> dict:
         "myr_per_step": ns.myr,
         "total_myr": ns.steps * ns.myr,
         "elapsed_s": round(time.perf_counter() - t0, 2),
-        "peak_rss_gb": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e9, 2),
+        "peak_rss_gb": round(rss_bytes / 1e9, 2),
         "summary": {
             "cumulative_raw_glacial_erosion_km3": total_raw / 1.0e9,
             "cumulative_applied_glacial_erosion_km3": total_app / 1.0e9,
