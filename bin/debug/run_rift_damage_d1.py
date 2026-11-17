@@ -82,11 +82,17 @@ def kinematics(world, state) -> dict:
             "line_oceanic_share": line_oceanic / line_weight if line_weight else None}
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+def base_parser(doc: str) -> argparse.ArgumentParser:
+    """The arguments every single-world prototype run takes: the seed, the output path and the knob setting."""
+    parser = argparse.ArgumentParser(description=doc.split("\n")[0])
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--setting", type=json.loads, default={})
+    return parser
+
+
+def main() -> None:
+    parser = base_parser(__doc__)
     parser.add_argument("--years", type=float, default=200.0, help="Myr")
     parser.add_argument("--step-myr", type=float, default=1.0)
     parser.add_argument("--node-density", type=float, default=1.0)

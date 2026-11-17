@@ -16,7 +16,6 @@ each ``--at`` time, compares three line choices on every plate without straining
 It also records strength by rock class and how much of each plate's weak continental rock the corridors contain.
 """
 
-import argparse
 import json
 import sys
 import time
@@ -29,6 +28,7 @@ sys.path[:0] = [str(Path(__file__).resolve().parent)]
 import rift_damage_mechanism as mech  # noqa: E402
 import rift_damage_step as step_mod  # noqa: E402
 import rift_line as rl  # noqa: E402
+from run_rift_damage_d1 import base_parser  # noqa: E402
 from app import thin_shell  # noqa: E402
 
 WINDOW = 0.15  # area share of the plate inside one strip
@@ -120,10 +120,7 @@ def probe_plate(world, plate, p, deepen: float) -> dict | None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--seed", type=int, required=True)
-    parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--setting", type=json.loads, default={})
+    parser = base_parser(__doc__)
     parser.add_argument("--at", type=int, nargs="+", default=[50, 100, 150], help="Myr")
     parser.add_argument("--deepen", type=float, default=0.5, help="extra strength factor on inherited-weakness cells in the sensitivity arm")
     args = parser.parse_args()
