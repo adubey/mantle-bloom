@@ -222,3 +222,28 @@ weak rock finds the ocean. It is weak because its mantle lithosphere is thin: on
 toward `lithosphere.REFERENCE_HM_OCEANIC_M = 40 km` with no dependence on age. The capacity table
 then gives a median 4.1 TN/m for oceanic columns and 14.9 TN/m for continental ones. At 0 Myr the
 median oceanic mantle lithosphere is 8 km (the young-ridge value), with capacity 0.3 TN/m.
+
+### With ocean strength from age
+
+The same probe with `Params.oceanic_age_strength` on (157 plate samples; fewer plates because fewer
+split). An oceanic cell's `N_cap` then uses a cooling-plate mantle lithosphere,
+`min(13 km × sqrt(age / Myr), 95 km)` less the crust and thinned by the rift strain applied, never
+below the model's own thickness. The plate's thickness and isostasy are unchanged. Mean `N_eff` of
+mature ocean floor rises from 0.72 to 2.32 TN/m, level with unmarked continental crust (2.37).
+
+| Strip rule, lines above the growth threshold | Model thickness | Thickness from age |
+|---|---:|---:|
+| Count | 63 of 163 | 23 of 134 |
+| Mean oceanic share of length | 80% | 50% |
+| Continent-majority lines | 17% | 52% |
+| Lines more than half on weak rock | 17% | 26% |
+| Weak share of the line's continental part (22% of continental area is weak) | 38% | 29% |
+| Lines that give a valid split | 79% | 83% |
+
+- The ocean bias goes: lines are half oceanic, as the crust is.
+- Lines still do not seek weak rock. A mark lowers strength to 0.65, and unmarked continental
+  crust, cratons and old ocean floor are all within a factor 1.2 of each other.
+- Marks twice as deep (whole-plate arm, a further 0.5): 49% of growing lines are more than half on
+  weak rock, and 53% of their continental length is weak.
+- Fewer lines reach the growth threshold (median `Λ` 0.20 against 0.40), so `k_cap` needs
+  retuning with this on.

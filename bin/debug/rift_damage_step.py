@@ -27,6 +27,7 @@ from rift_damage_mechanism import Params, RADIUS_M
 
 from app import cratons, elevation_lines, faults, lithosphere, mantle, merge_split, quad_tectonics, rheology, terranes, thin_shell  # noqa: E501
 from app.elevation_lines import ELEV_CHANGE_RIFT, line_spacing_rad
+from app.surface_fields import SURFACE_FIELDS
 
 
 @dataclass
@@ -73,6 +74,7 @@ class PlatePrep:
     disk: csr_matrix
     line: LineInfo | None
     candidates: int  # corridors that gave a connected line
+    hm_strength: np.ndarray | None = None  # the mantle-lithosphere thickness behind N_cap (``hm`` unless ``oceanic_age_strength``)
 
 
 @dataclass
@@ -180,7 +182,7 @@ def _line_problem(prep: PlatePrep, line: LineInfo, p: Params):
         chain=chain, s=line.geometry.s, ds=line.geometry.ds, normal_load=line.normal_load,
         base_quiet=prep.base_quiet[chain], base_plume=prep.base_plume[chain], plume_left_yr=prep.plume_left_yr[chain],
         intact=~prep.broken[chain], disk_rows=prep.disk[chain], band=band, reach_band=reach_band, reach_line=reach_line, latch=latch,
-        capacity=rl.CapacityInputs(prep.kind[chain], prep.hc[chain], prep.hm[chain], prep.lag[chain], prep.k_scale[chain],
+        capacity=rl.CapacityInputs(prep.kind[chain], prep.hc[chain], prep.hm_strength[chain], prep.lag[chain], prep.k_scale[chain],
                                    prep.mult_quiet[chain], prep.mult_plume[chain], prep.eps[chain]))
     return prob, plan, latch
 
@@ -206,7 +208,12 @@ def prepare_plate(world, plate, p: Params, years: float, eps=None, warm=None, br
     plume_left = np.where(heated, np.minimum(heat * mech.YEAR_PER_MYR, years), 0.0)
     kind = np.where(continental, 0, np.where(divergent, 1, 2))
     k_scale = p.k_cap * np.where(continental, 1.0, p.oceanic_k_cap_factor)
-    ncap = mech.capacity(kind, hc, hm, lag) * k_scale
+    hm_strength = hm
+    if p.oceanic_age_strength:
+        created = plate.collect("node_created_years")
+        age = np.where(created == SURFACE_FIELDS["node_created_years"].sentinel, np.nan, world.elapsed_years - created)
+        hm_strength = np.where(continental, hm, mech.oceanic_strength_hm(hc, hm, age, eps, p))
+    ncap = mech.capacity(kind, hc, hm_strength, lag) * k_scale
     belt = cratons.belt_mask(plate, world.elapsed_years)
     volcano = plate.collect("is_volcano").astype(bool)
     near_fault = fault_mask(world, plate, points, spacing_m)
@@ -220,6 +227,7 @@ def prepare_plate(world, plate, p: Params, years: float, eps=None, warm=None, br
     boundary = plate.exposed_sides().any(axis=1)
     prep = PlatePrep(points, areas, graph, boundary, tensor, eps, warm, broken, hc, hm, continental, heated, plume_left, base_quiet,
                      base_plume, kind, lag, k_scale, mult_quiet, mult_plume, n_eff, belt | volcano | near_fault, disk, None, 0)
+    prep.hm_strength = hm_strength
     prep.line, prep.candidates = _choose_line(prep, sections, p)
     return prep
 

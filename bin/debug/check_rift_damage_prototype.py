@@ -593,7 +593,22 @@ def check_shadow_stats_skips_degenerate_plate():
     assert got == {"plates": 0, "skipped_no_mesh": 2}, got
 
 
-CHECKS = [check_shadow_stats_skips_degenerate_plate, check_strength_bounds, check_softening_monotone, check_healing, check_no_strain_off_band_and_latch, check_plume_expiry,
+def check_oceanic_strength_follows_age():
+    """Old ocean floor is stronger than young, is never thinner than the model's own lithosphere, and thins with rift strain."""
+    p = Params()
+    hc, hm = np.full(4, 11_000.0), np.full(4, 40_000.0)
+    age = np.array([1e6, 25e6, 150e6, np.nan])
+    got = mech.oceanic_strength_hm(hc, hm, age, np.zeros(4), p)
+    assert got[0] == 40_000.0 and got[3] == 40_000.0, got  # young or undated floor keeps the model's thickness
+    assert abs(got[1] - (13_000.0 * 5.0 - 11_000.0)) < 1e-6 and got[2] == p.ocean_plate_thickness_m - 11_000.0, got
+    strained = mech.oceanic_strength_hm(hc, hm, age, np.full(4, 0.5), p)
+    assert strained[2] < got[2] and np.all(strained >= hm), strained
+    kind = np.full(4, 2)
+    cap = mech.capacity(kind, hc, got, np.zeros(4))
+    assert cap[2] > cap[1] > cap[0], cap
+
+
+CHECKS = [check_shadow_stats_skips_degenerate_plate, check_oceanic_strength_follows_age, check_strength_bounds, check_softening_monotone, check_healing, check_no_strain_off_band_and_latch, check_plume_expiry,
           check_flank_conservation_and_held, check_held_band_never_strains, check_section_load_branches, check_substep_bound_and_kfail,
           check_ligament_normal_load, check_directional_sign, check_section_pull_manufactured, check_line_placement, check_path_lengths,
           check_split_masks, check_split_islands_and_deep_line, check_tip_speed_against_law, check_capacity_and_disk_kernels]

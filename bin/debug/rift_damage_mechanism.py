@@ -84,6 +84,21 @@ class Params:
     crossing_stops: bool = True  # a sub-step ends when a line cell reaches eps_cand (RFC revision 2026-11-15)
     oceanic_latch_on_break_only: bool = False  # the predeclared oceanic fallback
     oceanic_k_cap_factor: float = 1.0
+    # Strength of ocean floor from its age (#888 line-choice probe): the model's oceanic mantle lithosphere relaxes to
+    # 40 km whatever its age, which makes old ocean floor the weakest rock on a plate. With this on, N_cap of an oceanic
+    # cell uses a cooling-plate thickness instead; the plate's own thickness, and so its isostasy, is untouched.
+    oceanic_age_strength: bool = False
+    ocean_cooling_m_per_sqrt_myr: float = 13_000.0  # 2.32 sqrt(kappa t) with kappa = 1e-6 m2/s (half-space cooling); starting value
+    ocean_plate_thickness_m: float = 95_000.0  # where old ocean floor stops thickening (plate-model value); starting value
+
+
+def oceanic_strength_hm(hc, hm, age_yr, eps, p: Params) -> np.ndarray:
+    """Mantle-lithosphere thickness (m) that sets an oceanic cell's strength: a cooling plate of the cell's age, less its
+    crust, thinned by the rift strain applied to it, and never below the model's own thickness. A cell without a known
+    age (``age_yr`` NaN) keeps the model's thickness."""
+    total = np.minimum(p.ocean_cooling_m_per_sqrt_myr * np.sqrt(np.maximum(age_yr, 0.0) / YEAR_PER_MYR), p.ocean_plate_thickness_m)
+    aged = np.maximum(total - hc, 0.0) * np.exp(-eps)
+    return np.where(np.isnan(age_yr), hm, np.maximum(hm, aged))
 
 
 # --- fields --------------------------------------------------------------------------------------
