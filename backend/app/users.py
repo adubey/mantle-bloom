@@ -98,6 +98,7 @@ class UserStore(ABC):
         provider_subscription_id: str | None = None,
         plan: str = "paid",
         current_period_end: str | None = None,
+        updated_at: str | None = None,
     ) -> Subscription:
         """Upsert the cached billing truth for a user. Raises `KeyError` if missing."""
 
@@ -194,6 +195,7 @@ class MemoryUserStore(UserStore):
         provider_subscription_id: str | None = None,
         plan: str = "paid",
         current_period_end: str | None = None,
+        updated_at: str | None = None,
     ) -> Subscription:
         _check_status(status)
         with self._lock:
@@ -202,7 +204,7 @@ class MemoryUserStore(UserStore):
             sub = Subscription(
                 user_id=user_id,
                 status=status,
-                updated_at=_now(),
+                updated_at=updated_at or _now(),
                 provider_customer_id=provider_customer_id,
                 provider_subscription_id=provider_subscription_id,
                 plan=plan,
@@ -394,12 +396,13 @@ class SqliteUserStore(UserStore):
         provider_subscription_id: str | None = None,
         plan: str = "paid",
         current_period_end: str | None = None,
+        updated_at: str | None = None,
     ) -> Subscription:
         _check_status(status)
         sub = Subscription(
             user_id=user_id,
             status=status,
-            updated_at=_now(),
+            updated_at=updated_at or _now(),
             provider_customer_id=provider_customer_id,
             provider_subscription_id=provider_subscription_id,
             plan=plan,

@@ -52,10 +52,10 @@ network.**
   and GMs genuinely want their world on the wall. Likely out-earns ads per visitor.
 - **Ko-fi / GitHub Sponsors / "buy me a VPS month"** — a small, honest donation link.
   Open-source + a visible hosting cost converts surprisingly well.
-- **Optional "supporter" tier** (Patreon or one-off): higher-resolution worlds, longer
+- **Optional "supporter" tier** (Polar subscription, #560 / #945): higher-resolution worlds, longer
   animations, no queue, cloud-saved worlds, batch seed generation, private galleries.
-  This also maps cleanly onto the future free and paid resource tiers — free users get the light
-  presets, supporters unlock `4.0`.
+  Checkout, customer portal, and webhook sync to `UserStore` are implemented via Polar
+  (`backend/app/billing.py`); per-user world ownership and tier caps are tracked separately.
 - **Commissioned worlds** — a paid "give me a world matching this brief" service, even at
   low volume, is real money and great marketing (each one becomes a showcase).
 - These stack with a single tasteful sponsor slot without making the site feel like adware.

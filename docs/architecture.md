@@ -203,6 +203,7 @@ Configuration is read from the environment on every request:
 | `MANTLE_BLOOM_SESSION_SECRET` | At least 32 bytes, used to sign cookies. Rotating it signs everyone out. |
 | `MANTLE_BLOOM_PUBLIC_URL` | Optional. The public `https://` URL. The OAuth callback is built from it, and its origin is trusted for writes. Needed behind a TLS-terminating or `Host`-rewriting proxy. |
 | `MANTLE_BLOOM_LOCAL_NO_LOGIN` | `0` turns off the local no-login rule. Set it behind a same-host proxy that rewrites `Host` to loopback and adds no forwarding headers. |
+| `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`, `POLAR_PRODUCT_ID`, `POLAR_ENVIRONMENT` | Optional. Polar subscription billing (#945); `POLAR_ENVIRONMENT` is `sandbox` or `production` (default `production`). |
 
 Missing any of the three GitHub variables or the session secret leaves the owner login
 unconfigured, and the guard fails closed: remote requests never get admin access. Google
@@ -716,6 +717,8 @@ world_names.py       default world names in exoplanet style: a star name plus a 
                      discovery letter (#597)
 auth.py              the request guard, the owner's GitHub login, Google sign-in for free
                      accounts (#929) and signed session cookies (see #access-control above)
+billing.py           Polar subscription billing (#945): checkout, customer portal, and
+                     Standard Webhooks sync into UserStore
 users.py             per-user store behind the paid tier (#620): users, linked identities,
                      the subscription cache and world ownership; SQLite at
                      MANTLE_BLOOM_USER_DB_PATH, in-memory when unset, tier() for
