@@ -19,23 +19,36 @@ export interface Session {
   } | null;
 }
 
-export function useSession(): Session | null {
+export function useSession(pollForPaid = false): Session | null {
   const [session, setSession] = useState<Session | null>(null);
   useEffect(() => {
     let cancelled = false;
-    // No `credentials: "include"`: production is same-origin, so the cookie goes anyway, and the
-    // dev frontend is local (no cookie needed) and its CORS setup doesn't allow credentials.
-    fetch(`${API_BASE}/auth/session`)
-      .then((resp) => asJson<Session>(resp))
-      .then((s) => {
-        if (!cancelled) setSession(s);
-      })
-      .catch(() => {
-        // Leave it null: the page still works, minus the sign-in/out link.
-      });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
+
+    function load() {
+      // No `credentials: "include"`: production is same-origin, so the cookie goes anyway, and the
+      // dev frontend is local (no cookie needed) and its CORS setup doesn't allow credentials.
+      fetch(`${API_BASE}/auth/session`)
+        .then((resp) => asJson<Session>(resp))
+        .then((s) => {
+          if (cancelled) return;
+          setSession(s);
+          if (pollForPaid && s.user && s.user.tier !== "paid" && attempts < 6) {
+            attempts += 1;
+            timer = setTimeout(load, 1500);
+          }
+        })
+        .catch(() => {
+          // Leave it null: the page still works, minus the sign-in/out link.
+        });
+    }
+
+    load();
     return () => {
       cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
     };
-  }, []);
+  }, [pollForPaid]);
   return session;
 }

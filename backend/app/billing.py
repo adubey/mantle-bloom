@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -94,8 +94,8 @@ def create_checkout(request: Request) -> dict[str, str]:
     config = load_config()
     if not config.configured:
         raise HTTPException(503, "Billing is not configured")
-    if users.shared_store().tier(user.id) == "paid":
-        raise HTTPException(409, "Subscription is already active")
+    if can_manage_subscription(users.shared_store().get_subscription(user.id)):
+        raise HTTPException(409, "A subscription already exists; use the billing portal")
     base = _base_url(request, auth_config)
     try:
         with _client(config) as client:
@@ -121,6 +121,8 @@ def create_portal(request: Request) -> dict[str, str]:
     config = load_config()
     if not config.configured:
         raise HTTPException(503, "Billing is not configured")
+    if not can_manage_subscription(users.shared_store().get_subscription(user.id)):
+        raise HTTPException(409, "No active subscription to manage")
     base = _base_url(request, auth_config)
     try:
         with _client(config) as client:
@@ -144,9 +146,38 @@ def _coerce_iso(value: object) -> str | None:
     return str(value)
 
 
-def _apply_subscription_event(event_type: str, sub: object, config: BillingConfig) -> None:
+def _parse_ts(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str) and value:
+        try:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return None
+
+
+def _is_stale_event(existing: users.Subscription | None, sub_id: str | None, status: str, event_ts: datetime | None) -> bool:
+    if existing is None:
+        return False
+    existing_ts = _parse_ts(existing.updated_at)
+    if event_ts is not None and existing_ts is not None:
+        if event_ts < existing_ts:
+            return True
+    if sub_id == existing.provider_subscription_id and existing.status == "canceled" and status in users.PAID_STATUSES:
+        return True
+    return bool(
+        existing.status in users.PAID_STATUSES
+        and existing.provider_subscription_id
+        and sub_id != existing.provider_subscription_id
+        and status not in users.PAID_STATUSES
+    )
+
+
+def _apply_subscription_event(event_type: str, sub: object, config: BillingConfig, event_timestamp: object = None) -> None:
     product_id = getattr(sub, "product_id", None)
-    if config.product_id and product_id != config.product_id:
+    if product_id != config.product_id:
         _logger.warning("Ignoring Polar %s for unrelated product %r", event_type, product_id)
         return
     customer = getattr(sub, "customer", None)
@@ -158,17 +189,11 @@ def _apply_subscription_event(event_type: str, sub: object, config: BillingConfi
     sub_id = getattr(sub, "id", None)
     raw_status = str(getattr(sub, "status", ""))
     status = "canceled" if event_type == "subscription.revoked" and raw_status in users.PAID_STATUSES else raw_status
+    event_ts = _parse_ts(event_timestamp) or _parse_ts(getattr(sub, "modified_at", None)) or _parse_ts(getattr(sub, "created_at", None))
 
     store = users.shared_store()
-    existing = store.get_subscription(user_id)
-    if (
-        existing is not None
-        and existing.status in users.PAID_STATUSES
-        and existing.provider_subscription_id
-        and sub_id != existing.provider_subscription_id
-        and status not in users.PAID_STATUSES
-    ):
-        _logger.info("Ignoring stale Polar %s for old subscription %r", event_type, sub_id)
+    if _is_stale_event(store.get_subscription(user_id), sub_id, status, event_ts):
+        _logger.info("Ignoring stale Polar %s for subscription %r", event_type, sub_id)
         return
 
     try:
@@ -181,6 +206,7 @@ def _apply_subscription_event(event_type: str, sub: object, config: BillingConfi
             provider_subscription_id=sub_id,
             plan="paid",
             current_period_end=_coerce_iso(getattr(sub, "current_period_end", None)),
+            updated_at=event_ts.isoformat() if event_ts is not None else None,
         )
     except KeyError:
         _logger.warning("Ignoring Polar %s for unknown user %s", event_type, user_id)
@@ -196,7 +222,7 @@ async def polar_webhook(request: Request) -> Response:
     )
 
     config = load_config()
-    if not config.webhook_configured:
+    if not (config.webhook_configured and config.product_id):
         raise HTTPException(503, "Billing is not configured")
     body = await request.body()
     try:
@@ -209,5 +235,5 @@ async def polar_webhook(request: Request) -> Response:
         raise HTTPException(400, "Invalid webhook payload") from exc
 
     if event.type.startswith("subscription."):
-        _apply_subscription_event(event.type, event.data, config)
+        _apply_subscription_event(event.type, event.data, config, getattr(event, "timestamp", None))
     return Response(status_code=202)

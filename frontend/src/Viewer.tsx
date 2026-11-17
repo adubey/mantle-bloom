@@ -112,7 +112,18 @@ function FullVersionTeaser() {
 }
 
 function AccountLink() {
-  const session = useSession();
+  const [billingSuccess] = useState(() => new URLSearchParams(window.location.search).get("billing") === "success");
+  const session = useSession(billingSuccess);
+
+  useEffect(() => {
+    if (!billingSuccess) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("billing")) {
+      url.searchParams.delete("billing");
+      window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+  }, [billingSuccess]);
+
   // Always offered once the session state is known: on a server without login configured
   // the /login page explains the setup (#626), instead of /view silently having no login
   // entry at all.
@@ -120,11 +131,19 @@ function AccountLink() {
   // A signed-in user (#929, #945): identity, optional billing action, and sign-out.
   if (session.user) {
     const canManage = Boolean(session.user.tier === "paid" || session.user.manage_subscription);
+    const statusLabel =
+      session.user.tier === "paid"
+        ? " (Paid)"
+        : session.user.manage_subscription
+          ? " (Payment issue)"
+          : billingSuccess
+            ? " (Activating…)"
+            : "";
     return (
       <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
         <span style={{ opacity: 0.7 }}>
           {session.user.name ?? "Signed in"}
-          {session.user.tier === "paid" ? " (Paid)" : ""} ·
+          {statusLabel} ·
         </span>
         {session.billing_available && <BillingActionButton apiBase={API_BASE} manage={canManage} />}
         <form method="post" action={`${API_BASE}/logout`} style={{ margin: 0 }}>

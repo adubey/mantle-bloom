@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { asJson } from "./apiResponse";
 
 // A look at the full app for /view visitors (#560): static screenshots of views the public
 // routes don't serve, in a <details> that starts closed while the hosted full version isn't
@@ -52,7 +51,12 @@ export function BillingActionButton({ apiBase, manage, inline = false }: Billing
       const resp = await fetch(`${apiBase}${manage ? "/billing/portal" : "/billing/checkout"}`, {
         method: "POST",
       });
-      const data = await asJson<{ url: string }>(resp);
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => null) as { detail?: unknown } | null;
+        const message = typeof body?.detail === "string" ? body.detail : `Request failed (${resp.status})`;
+        throw new Error(message);
+      }
+      const data = await resp.json() as { url: string };
       window.location.assign(data.url);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Billing unavailable");
@@ -65,7 +69,11 @@ export function BillingActionButton({ apiBase, manage, inline = false }: Billing
       <button type="button" onClick={handleClick} disabled={busy}>
         {manage ? "Manage subscription" : "Upgrade"}
       </button>
-      {error && <span role="alert" style={{ color: "#ff9b9b", fontSize: 12 }}>{error}</span>}
+      {error && (
+        <span role="alert" style={{ color: "#ff9b9b", fontSize: 12, marginLeft: inline ? 8 : 0 }}>
+          {error}
+        </span>
+      )}
     </span>
   );
 }

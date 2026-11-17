@@ -76,10 +76,11 @@ def _subscription_event(
     subscription_id: str = "sub_1",
     product_id: str = "prod_123",
     current_period_end: str | None = "2026-12-01T00:00:00Z",
+    timestamp: str = "2026-11-01T00:00:00Z",
 ) -> dict:
     return {
         "type": event_type,
-        "timestamp": "2026-11-01T00:00:00Z",
+        "timestamp": timestamp,
         "api_version": "2026-10",
         "data": {
             "id": subscription_id,
@@ -204,13 +205,18 @@ def test_checkout_creates_session_and_returns_url(remote, monkeypatch):
         "return_url": "https://testserver/view",
     }]
 
-    # Already-paid users cannot start a duplicate checkout.
+    # Already-paid or past-due users cannot start a duplicate checkout.
     users.shared_store().set_subscription(user.id, status="active", provider_subscription_id="sub_1")
+    assert remote.post("/billing/checkout", headers=SAME_SITE).status_code == 409
+    users.shared_store().set_subscription(user.id, status="past_due", provider_subscription_id="sub_1")
     assert remote.post("/billing/checkout", headers=SAME_SITE).status_code == 409
 
 
 def test_portal_creates_session_and_returns_url(remote, monkeypatch):
     user = _sign_in_google(remote, monkeypatch)
+    # Never-subscribed users are refused cleanly before calling Polar.
+    assert remote.post("/billing/portal", headers=SAME_SITE).status_code == 409
+    users.shared_store().set_subscription(user.id, status="active", provider_subscription_id="sub_1")
     calls = []
 
     class FakeClient:
@@ -272,7 +278,9 @@ def test_webhook_lifecycle_updates_user_store_and_preserves_records(remote, monk
     assert remote.get("/auth/session").json()["user"]["tier"] == "paid"
 
     # Past-due downgrades to free without deleting user or world records; portal stays offered.
-    body, headers = _signed_webhook(_subscription_event("subscription.past_due", status="past_due", external_id=str(user.id)))
+    body, headers = _signed_webhook(
+        _subscription_event("subscription.past_due", status="past_due", external_id=str(user.id), timestamp="2026-11-02T00:00:00Z")
+    )
     assert remote.post("/billing/webhook", content=body, headers=headers).status_code == 202
     assert store.tier(user.id) == "free"
     assert store.tier(user.id, admin=True) == "admin"
@@ -280,11 +288,15 @@ def test_webhook_lifecycle_updates_user_store_and_preserves_records(remote, monk
     assert remote.get("/auth/session").json()["user"]["manage_subscription"] is True
 
     # Re-activation and revocation: canceled user sees Upgrade (manage_subscription is False).
-    body, headers = _signed_webhook(_subscription_event("subscription.updated", status="active", external_id=str(user.id)))
+    body, headers = _signed_webhook(
+        _subscription_event("subscription.updated", status="active", external_id=str(user.id), timestamp="2026-11-03T00:00:00Z")
+    )
     assert remote.post("/billing/webhook", content=body, headers=headers).status_code == 202
     assert store.tier(user.id) == "paid"
 
-    body, headers = _signed_webhook(_subscription_event("subscription.revoked", status="canceled", external_id=str(user.id)))
+    body, headers = _signed_webhook(
+        _subscription_event("subscription.revoked", status="canceled", external_id=str(user.id), timestamp="2026-11-04T00:00:00Z")
+    )
     assert remote.post("/billing/webhook", content=body, headers=headers).status_code == 202
     assert store.tier(user.id) == "free"
     assert store.get_user(user.id) is not None
@@ -292,7 +304,7 @@ def test_webhook_lifecycle_updates_user_store_and_preserves_records(remote, monk
     assert remote.get("/auth/session").json()["user"]["manage_subscription"] is False
 
 
-def test_webhook_ignores_unrelated_product_and_stale_subscription(remote, monkeypatch):
+def test_webhook_ignores_unrelated_product_and_out_of_order_events(remote, monkeypatch):
     user = _sign_in_google(remote, monkeypatch)
     store = users.shared_store()
 
@@ -303,19 +315,48 @@ def test_webhook_ignores_unrelated_product_and_stale_subscription(remote, monkey
     assert remote.post("/billing/webhook", content=body, headers=headers).status_code == 202
     assert store.tier(user.id) == "free"
 
-    # Active subscription sub_2 must not be downgraded by a late retry of sub_1's revocation.
+    # Active subscription sub_2 at t=200 must ignore delayed sub_1 active at t=150 and delayed created at t=190.
     body, headers = _signed_webhook(
-        _subscription_event("subscription.active", status="active", external_id=str(user.id), subscription_id="sub_2")
+        _subscription_event(
+            "subscription.active", status="active", external_id=str(user.id),
+            subscription_id="sub_2", timestamp="2026-11-02T00:00:00Z",
+        )
     )
     assert remote.post("/billing/webhook", content=body, headers=headers).status_code == 202
     assert store.tier(user.id) == "paid"
 
+    for stale_type, stale_status, stale_sub, stale_ts in [
+        ("subscription.updated", "active", "sub_1", "2026-11-01T12:00:00Z"),
+        ("subscription.created", "incomplete", "sub_2", "2026-11-01T23:59:00Z"),
+    ]:
+        body, headers = _signed_webhook(
+            _subscription_event(
+                stale_type, status=stale_status, external_id=str(user.id),
+                subscription_id=stale_sub, timestamp=stale_ts,
+            )
+        )
+        assert remote.post("/billing/webhook", content=body, headers=headers).status_code == 202
+        assert store.tier(user.id) == "paid"
+        assert store.get_subscription(user.id).provider_subscription_id == "sub_2"
+
+    # Genuine revocation of sub_2 at t=300 downgrades to free; a late active replay at t=250 does not resurrect it.
     body, headers = _signed_webhook(
-        _subscription_event("subscription.revoked", status="canceled", external_id=str(user.id), subscription_id="sub_1")
+        _subscription_event(
+            "subscription.revoked", status="canceled", external_id=str(user.id),
+            subscription_id="sub_2", timestamp="2026-11-03T00:00:00Z",
+        )
     )
     assert remote.post("/billing/webhook", content=body, headers=headers).status_code == 202
-    assert store.tier(user.id) == "paid"
-    assert store.get_subscription(user.id).provider_subscription_id == "sub_2"
+    assert store.tier(user.id) == "free"
+
+    body, headers = _signed_webhook(
+        _subscription_event(
+            "subscription.active", status="active", external_id=str(user.id),
+            subscription_id="sub_2", timestamp="2026-11-02T12:00:00Z",
+        )
+    )
+    assert remote.post("/billing/webhook", content=body, headers=headers).status_code == 202
+    assert store.tier(user.id) == "free"
 
 
 def test_subscription_survives_sqlite_restart(tmp_path, monkeypatch):
@@ -345,6 +386,7 @@ def test_unconfigured_billing_fails_closed_while_local_stays_unlocked(remote, mo
     monkeypatch.delenv("POLAR_ACCESS_TOKEN")
     monkeypatch.delenv("POLAR_PRODUCT_ID")
     assert remote.post("/billing/checkout", headers=SAME_SITE).status_code == 503
+    assert remote.post("/billing/webhook", content=b"{}").status_code == 503
 
     local = TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000), follow_redirects=False)
     session = local.get("/auth/session").json()
