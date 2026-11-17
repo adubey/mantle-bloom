@@ -1,6 +1,6 @@
 # Issue #942: what sets plate speed
 
-Status: in progress. First pass at deliverable 2 (the torque breakdown and standalone speeds) on two worlds. The speed census on the 20
+Status: in progress. First pass at deliverable 2 (the torque breakdown, standalone speeds and a brake-off run) on two worlds. The speed census on the 20
 development worlds (deliverable 1) and the `contact_drag_multiplier` sweep (deliverable 3) are not done.
 
 ## Torque breakdown, two worlds
@@ -99,18 +99,74 @@ the driving and resisting shares are identical to the first run. Predictions 6�
 - The check against the #888 brake-off arm does not close. Own loads with no contact give 2.5–4.7 cm/yr, and the
   runs with the brake multiplier at zero gave 1.3–2.9. Setting `contact_drag_multiplier = 0` does not remove all
   contact: the blocked-edge contact force (`_blocked_contact_response`) is not scaled by it, and neighbours still
-  couple through it. The brake-off runs also have their own history (more splits). Which of these holds the
-  remaining factor of about 1.5–2 has not been measured; a breakdown of a brake-off run would show it.
+  couple through it. The brake-off runs also have their own history (more splits). The next section measures
+  which of these holds the remaining factor of about 1.5–2: neither. It is the slab terms.
 
 **Limits.** Snapshot estimates on the brake-on history, each plate solved alone. They leave out what faster plates
 would do to the gate, the boundaries and plate shapes.
+
+## Brake off
+
+**Finding.** With the contact brake off, plates reach 2.3 cm/yr, and what holds them below the 3.6 cm/yr that mantle
+flow would give is sunk-slab drag, not the blocked-edge contact force. Once plates move fast enough for boundaries
+to pass the 1 cm/yr gate, subduction switches on, and its drag outweighs its pull: slabs are a net brake. A retune of
+the contact brake alone therefore tops out near 2.3 cm/yr on these two worlds, about half of Earth's mean.
+
+**Run.** The same two worlds and schedule with `contact_drag_multiplier = 0` from the start (the #888 brake-off
+knob, on the production splitter), pooled into [`torque-breakdown-brake-off.json`](torque-breakdown-brake-off.json).
+Predictions 9 and 10 were posted before the run.
+
+| | 106533960 | 1097624328 | Pooled | Pooled, brake on |
+|---|---:|---:|---:|---:|
+| Solved crust speed (cm/yr) | 2.75 | 1.87 | 2.31 | 1.05 |
+| continental / oceanic | 2.50 / 2.98 | 1.56 / 2.14 | 2.03 / 2.56 | 0.98 / 1.12 |
+| Own loads, no contact (cm/yr) | 2.91 | 2.01 | 2.46 | 3.41 |
+| Mantle flow only (cm/yr) | 4.85 | 2.33 | 3.59 | 3.67 |
+| **Driving:** mantle flow | 64% | 44% | 56% | 80% |
+| slab pull | 35% | 53% | 42% | 15% |
+| ridge push | 0.5% | 0.7% | 0.6% | 0.1% |
+| **Resisting:** sunk-slab drag | 51% | 48% | 50% | 7% |
+| basal drag | 43% | 45% | 44% | 26% |
+| blocked edges (residual) | 3% | 5% | 4% | 6% |
+| contact brake | 0 | 0 | 0 | 59% |
+| Closing down-going boundary length past the 1 cm/yr gate | 66% | 66% | 66% | 11% |
+
+| # | Prediction | Result |
+|---|---|---|
+| 9 | Blocked edges are over 40% of the resisting torque and solved speed is under 70% of own-loads speed (against: under 15%, or over 90%) | Counts against: 4%, and solved speed is 94% of own-loads speed |
+| 10 | Own-loads-no-contact speed stays within 25% of its brake-on-history value of 3.41 cm/yr (against: under 2.4) | Not met, by a little: 2.46, which is 28% lower |
+
+**What this shows.**
+
+- The three steps from the prescribed flow to the solved speed, on these two worlds: mantle flow alone gives about
+  3.6 cm/yr; the slab terms take it to about 2.5; the contact brake takes it to about 1.05.
+- With the brake on, the slab terms are nearly absent, because few boundaries close faster than 1 cm/yr. So the
+  brake-on estimate of own-loads speed (3.41 cm/yr) was too high: it was taken with subduction mostly switched off.
+  With the brake off, two thirds of the closing length passes the gate.
+- Slab pull and sunk-slab drag are both larger with the brake off, and the drag wins: own-loads speed (2.46) is
+  below mantle-flow-only speed (3.59). Sunk-slab drag resists a subducting node's motion in every direction, at
+  `SLAB_MANTLE_VISCOSITY_PA_S` = 10²¹ Pa·s, while slab pull acts only toward the trench and pulls from trenches on
+  different sides of a plate partly cancel. Whether this is the cause of the net drag has not been tested.
+- This reverses the earlier reading of the gate. Opening it does not free plates; in the current force model it
+  adds a net resistance.
+- On Earth, plates with attached slabs are the fastest. Here the slab slows its plate, and speed follows the
+  prescribed flow.
+
+**Validity.** The solver converged at every sample, and the contact-brake term is exactly zero on every plate.
+Solved speeds are near the #888 brake-off arm (2.06 / 2.91 and 1.29 / 1.58 cm/yr), somewhat higher.
+
+**Limits.** Two worlds, plates-only stepping. No collision measure was taken, so this says nothing about what
+loosening the brake costs (deliverable 3).
 
 **Reproduce.**
 
 ```bash
 backend/.venv/bin/python bin/debug/plate_torque_breakdown.py --out <dir> --seeds 106533960 1097624328
 backend/.venv/bin/python bin/debug/summarize_torque_breakdown.py <dir> --out analysis/issue942/torque-breakdown.json
+# brake off: add --world-knobs '{"contact_drag_multiplier": 0.0}' to the first command
 ```
 
 Raw outputs of the rerun (SHA-256): `106533960.json` `cc41c208251ae77e3be2fcce809dc4ed7a7632a38d580200864f1942f99612ab`,
-`1097624328.json` `c576fa804c45a7864a5a172c00ef17b47e4d7a2671ac9f863a70659cce1b331d`.
+`1097624328.json` `c576fa804c45a7864a5a172c00ef17b47e4d7a2671ac9f863a70659cce1b331d`. Brake off: `106533960.json`
+`463002e3551357b02e8d8a5591b1aa77e0e3c8e07487f034ee1816f2b1f91d98`, `1097624328.json`
+`fd2f3a4477c321e7bf676c9010f37491a9e9bb47d0e25f60dde0a79d24850a58`.
