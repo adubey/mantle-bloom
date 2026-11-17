@@ -772,15 +772,26 @@ def reviewer_writable_dirs(state_dir: Path) -> tuple[Path, ...]:
     return (common,) if common == state or common in state.parents else (common, state)
 
 
-def prepare_review_tree(pr: int, wt_dir: Path) -> bool:
+def prepare_review_tree(pr: int, wt_dir: Path, expect_sha: str = "", tries: int = 10, wait_s: float = 2.0) -> bool:
     """Put `wt_dir` at the PR's current head, creating it if needed. Returns True when it was created.
+
+    GitHub updates `pull/<N>/head` a few seconds after a push. So when the request knows the head (`expect_sha`,
+    from the PR), the fetch is retried until it arrives. Otherwise a request made right after a push could review
+    the previous commit, as this function's first live run did.
 
     An existing tree from an earlier round is moved to the new head. It used to be handed over as it was, which
     would have had a second #950 reviewer review the code from before that round's fixes. A tree with changes
     is refused rather than overwritten. The head goes to an explicit ref, not FETCH_HEAD, so concurrent requests
     don't race."""
     ref = f"refs/remotes/origin/pr/{pr}"
-    subprocess.run(["git", "fetch", "origin", f"+pull/{pr}/head:{ref}"], check=True, capture_output=True, text=True)
+    for attempt in range(tries):
+        subprocess.run(["git", "fetch", "origin", f"+pull/{pr}/head:{ref}"], check=True, capture_output=True, text=True)
+        got = subprocess.run(["git", "rev-parse", ref], capture_output=True, text=True, check=False).stdout.strip()
+        if not expect_sha or got.startswith(expect_sha) or expect_sha.startswith(got or "-"):
+            break
+        if attempt == tries - 1:
+            raise RuntimeError(f"GitHub's pull/{pr}/head is still {got[:8]}, not the PR head {expect_sha[:8]}; retry shortly")
+        time.sleep(wait_s)
     if not wt_dir.exists():
         subprocess.run(["git", "worktree", "add", "--detach", str(wt_dir), ref], check=True, capture_output=True, text=True)
         return True
@@ -807,7 +818,7 @@ def spawn_cli_reviewer(
     created_wt = False
     log_handle = None
     try:
-        created_wt = prepare_review_tree(req.pr, wt_dir)
+        created_wt = prepare_review_tree(req.pr, wt_dir, req.head_sha)
 
         claim_slot(state_dir, req.pr, slot.slot)
         log_path = state_dir / f"pr-{req.pr}-{slot.slot}.log"
