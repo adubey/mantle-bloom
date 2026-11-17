@@ -142,3 +142,40 @@ floor, and the continental ratio sits on the floor. Sign agreement drifts from 0
 0.80 at 200 Myr. Because the thresholds sit close to the medians, single checks often fall
 below one (a single check passes sign in 63–65% of cases, direction in 52–56%, magnitude in
 23–35%).
+
+## Braking arms
+
+Does the RFC 0008 contact brake slow continents enough to hold back rifting? Stage 1 setting 0 on
+the five stage 1 worlds, 200 Myr at 1 Myr steps, plates-only, with the brake's two world tuners
+(`run_rift_damage_d1.py --world-knobs`). 15 of 15 runs finished; summary in
+`braking-summary.json`. Speed is the area-weighted mean of `|ω × r|` over crust of each kind,
+sampled every 10 Myr. The brake-on arm reproduces the stage 1 runs split for split.
+
+| | Brake on | `craton_drag_multiplier = 0` | `contact_drag_multiplier = 0` |
+|---|---:|---:|---:|
+| Continental crust speed (cm/yr) | 0.63 | 0.63 | 1.55 |
+| Oceanic crust speed (cm/yr) | 0.77 | 0.77 | 2.12 |
+| Share of lines above the growth threshold | 40% | 40% | 81% |
+| Splits | 44 | 48 | 109 |
+| Splits per world per 100 Myr (production 7.7) | 4.4 | 4.8 | 10.9 |
+| Continent-majority splits | 4 | 4 | 10 |
+| Oceanic share of successful rifts | 91% | 92% | 91% |
+| Line length in oceanic crust | 66% | 66% | 68% |
+| Splits mostly along inherited weakness | 20% | 31% | 61% |
+| Weak share of split lines, against random paths | 29% / 23% | 35% / 27% | 56% / 44% |
+| Transition ratio | 0.99 | 0.99 | 0.82 |
+| Failed share | 78% | 78% | 89% |
+| Localization violations | 0 | 0 | 8 |
+| Targets met (of 10) | 8 | 8 | 6 |
+
+- The whole brake costs a factor of about 2.5 in speed and in split rate. Its craton component
+  alone changes neither.
+- Plates are slow in every arm: 0.4–1.4 cm/yr braked and 1.3–2.9 cm/yr unbraked, by world,
+  against about 4–5 cm/yr on Earth (#942).
+- Braking does not decide where lines go. Two thirds of line length is in oceanic crust and nine
+  tenths of successful rifts are oceanic in every arm, with crust about half continental by area.
+  No split in any arm ran through continental crust alone.
+- The inherited-weakness share rises to 61% without the brake, mostly because faster plates mark
+  more rock as weak: random paths go from 23% to 44% weak. The lines' excess over random grows
+  from 6 to 12 points.
+- Without the brake more rifts fail and damage spreads again (8 localization violations).

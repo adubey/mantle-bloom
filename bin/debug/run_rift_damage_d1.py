@@ -3,11 +3,13 @@
 Usage (repo root, this worktree's venv; follow the compute-budget skill first, one heavy run at a time):
     backend/.venv/bin/python bin/debug/run_rift_damage_d1.py --seed 106533960 --out <dir> \
         [--setting '{"eps_dot0": 8e-8, "k_cap": 1.0}'] [--years 200] [--step-myr 1] [--node-density 1.0] \
-        [--shadow-every 10] [--snapshot-every 5] [--max-steps N]
+        [--shadow-every 10] [--snapshot-every 5] [--max-steps N] [--world-knobs '{"contact_drag_multiplier": 0.0}']
 
 Writes ``<dir>/recorder.pkl`` (the recorder's candidates and the split events, for pooled scoring) and ``<dir>/run.json`` (parameters, seed, timings, counters, ledger closure, the recorder's score and every split
 event) and, with ``--snapshot-every``, ``<dir>/snapshots/t<Myr>.npz`` of per-cell arrays for the map sequences.
 ``--shadow-every`` solves the thin shell every that many Myr and records proxy C's D0 statistics (stage 2 reporting).
+``--world-knobs`` sets tuning knobs on the generated world (the braking arms of #888) and adds ``kinematics`` to
+``run.json``: every 10 Myr, the speed of continental and oceanic crust and how much of each rift line is oceanic.
 A held-out or reserve seed from ``analysis/issue797/g2-seed-preregistration.json`` is refused.
 """
 
@@ -52,6 +54,34 @@ def snapshot(world, path: Path) -> None:
     np.savez_compressed(path, **{k: np.concatenate(v) for k, v in arrays.items()})
 
 
+def kinematics(world, state) -> dict:
+    """Area-weighted mean speed (cm/yr) of continental and oceanic crust over all plates, the continental share of the
+    surface, and the area-weighted oceanic share and count of the step's rift lines (does braking keep continents slow
+    and push the lines into the ocean, #888)."""
+    radius_cm = mech.RADIUS_M * 100.0
+    moved = {"continental": [0.0, 0.0], "oceanic": [0.0, 0.0]}
+    lines, line_oceanic, line_weight, growing = 0, 0.0, 0.0, 0
+    by_id = {plate.plate_id: plate for plate in world.plates}
+    for plate_id, step in state.steps.items():
+        plate = by_id.get(plate_id)
+        if plate is None or len(step.points) != len(step.oceanic):
+            continue
+        speed = np.linalg.norm(np.cross(plate.omega, step.points), axis=1) * radius_cm
+        for name, mask in (("continental", ~step.oceanic), ("oceanic", step.oceanic)):
+            moved[name][0] += float(np.dot(speed[mask], step.areas[mask]))
+            moved[name][1] += float(step.areas[mask].sum())
+        if step.line is not None:
+            ds = step.line.geometry.ds
+            lines += 1
+            line_oceanic += float(ds[step.oceanic[step.line.chain]].sum())
+            line_weight += float(ds.sum())
+            growing += step.line.is_open or step.line.lam > state.params.lam_grow
+    total = moved["continental"][1] + moved["oceanic"][1]
+    return {"speed_cm_per_yr": {k: v[0] / v[1] if v[1] else None for k, v in moved.items()},
+            "continental_area_share": moved["continental"][1] / total if total else None, "lines": lines, "lines_growing": int(growing),
+            "line_oceanic_share": line_oceanic / line_weight if line_weight else None}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--seed", type=int, required=True)
@@ -63,6 +93,7 @@ def main() -> None:
     parser.add_argument("--shadow-every", type=float, default=0.0, help="Myr; 0 = never")
     parser.add_argument("--snapshot-every", type=float, default=0.0, help="Myr; 0 = never")
     parser.add_argument("--max-steps", type=int)
+    parser.add_argument("--world-knobs", type=json.loads, default={}, help="tuning knobs set on the generated world, as JSON")
     parser.add_argument("--production-rate", type=float, help="the production splitter's splits per world per 100 Myr on this world")
     args = parser.parse_args()
     if args.seed in forbidden_seeds():
@@ -75,12 +106,16 @@ def main() -> None:
     started = time.perf_counter()
     world = world_module.generate_world(args.seed, node_density=args.node_density)
     world.simulate_climate_biomes = False
+    for name, value in args.world_knobs.items():
+        if not hasattr(world, name):
+            sys.exit(f"the world has no knob {name!r}")
+        setattr(world, name, value)
     generated_s = time.perf_counter() - started
     recorder = rec.Recorder(params)
     steps = round(args.years / args.step_myr)
     if args.max_steps:
         steps = min(steps, args.max_steps)
-    shadow, plate_counts = [], []
+    shadow, plate_counts, motion = [], [], []
     stepping = time.perf_counter()
     if args.snapshot_every:
         (args.out / "snapshots").mkdir(exist_ok=True)
@@ -97,13 +132,14 @@ def main() -> None:
 
             shadow.append({"myr": myr, **shadow_shell_check.shadow_stats(world)})
         if k % 10 == 0:
+            motion.append({"myr": myr, **kinematics(world, state)})
             print(json.dumps({"myr": myr, "plates": len(world.plates), "splits": len(state.events), "counters": state.counters,
                               "wall_s": round(time.perf_counter() - stepping, 1)}), flush=True)
     recorder.finish(world)
     score = rec.score(list(recorder.candidates.values()), state.events, recorder.last_years, recorder.super_sea_max_width_m,
                       recorder.super_sea_violations, params.a_min, args.production_rate, steps * args.step_myr)
     result = {
-        "seed": args.seed, "params": asdict(params), "years_myr": steps * args.step_myr, "step_myr": args.step_myr,
+        "seed": args.seed, "params": asdict(params), "world_knobs": args.world_knobs, "kinematics": motion, "years_myr": steps * args.step_myr, "step_myr": args.step_myr,
         "node_density": args.node_density, "generate_s": generated_s, "step_s": time.perf_counter() - stepping,
         "line": {"strain_on_line_share": state.on_line_strain / max(state.total_strain, 1e-30), "growing_samples": len(state.lam_samples),
                  "open_samples": sum(o for _, o, _ in state.lam_samples),
