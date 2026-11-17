@@ -7,8 +7,10 @@ description: Set up an isolated branch, worktree, venv and ports for a Mantle-Bl
 
 1. **Read the issue**, including its comments: `gh issue view <N> --comments`. Note linked
    issues and PRs, any `.mbworld` saves or replay numbers, and whether the issue cites or is
-   listed under an RFC. For an RFC-linked issue, check only the RFC's status line and gate
-   checklist (its header and Acceptance criteria), not the whole RFC. Read further sections
+   listed under an RFC. For an RFC-linked issue, check only the RFC's status line and its
+   gate record, not the whole RFC. The gate record is the Acceptance criteria checklist or the
+   Diagnosis gates section, wherever that RFC keeps its gates and their results; some RFCs have
+   both, and RFC 0018 has only the latter. Read further sections
    only when the issue implements them. If the RFC is not accepted or its gates have not
    passed, resolve that lifecycle step before implementing the issue. If a `## RFC revision return` comment on
    this issue or its tracking issue postdates this issue's last work, follow
@@ -18,9 +20,16 @@ description: Set up an isolated branch, worktree, venv and ports for a Mantle-Bl
    When work begins, follow [Starting an issue](../project-management/SKILL.md#starting-an-issue)
    to update its project status.
 
-2. **Choose the worktree.** Only if the issue needs earlier run evidence, use the discovery
-   procedure in [`continue-rfc`](../continue-rfc/SKILL.md#2-find-rfc-and-evidence-worktrees)
-   to find it; skip it otherwise. It locates evidence, not an issue checkout. RFCs are large
+2. **Choose the worktree.** Use the discovery procedure in
+   [`continue-rfc`](../continue-rfc/SKILL.md#2-find-rfc-and-evidence-worktrees) only when the
+   issue needs earlier run evidence. That is the case when the issue, its comments or its RFC
+   gate record do any of these:
+   - cite a save or replay;
+   - cite an `analysis/` report;
+   - cite a run label or capture directory;
+   - refer to a gate result that the RFC itself doesn't record.
+
+   Otherwise skip it. The procedure locates evidence, not an issue checkout. RFCs are large
    decisions tracked by a parent issue and sub-issues; every issue,
    including an RFC sub-issue, gets its own isolated issue worktree. Do not reuse or switch
    the RFC proposal worktree, and never switch branches in a tree another task may be using.
