@@ -95,6 +95,7 @@ _DERIVED_SCRATCH = frozenset(
         "node_kdtree_relief_cache",
         "node_hillshade_cache",
         "boundary_search_cache",
+        "rift_runtime",
     }
 )
 

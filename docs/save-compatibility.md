@@ -77,6 +77,11 @@ as initial state rather than interval input, so sea level moves by that small in
 first step. A hydrology cache saves `river_water_m` and its ledgers but never its per-reach
 readouts (`river_water_inflow_m3` and the like), which only the current step's diagnostics use.
 
+**Rift lines.** RFC 0018 (#846) added `World.split_method`, `World.rift_line_params` and the
+surface fields `rift_strain`, `rift_warm_strain` and `rift_broken`. A save from before them loads
+on the `"great_circle"` method with empty overrides and zero damage, so it steps as it did.
+`World.rift_runtime` is per-step scratch and is never saved.
+
 **Cached humidity without units.** Before #522 the pickled `World.climate_cache` held
 `humidity`, a unitless index. `persistence._migrate_climate_humidity_units` renames it to
 `humidity_g_kg` and multiplies it by `climate.HUMIDITY_INDEX_G_KG` (12.3), the factor the

@@ -339,6 +339,14 @@ class World:
     # (`torque.BoundarySearchCache`); also the (parent, child)
     # plate-id pairs topology changes record (`collision_polarity.note_lineage`).
     boundary_search_cache: object | None = None
+    # How a plate breaks up (RFC 0018, #846). "great_circle" is `merge_split.maybe_split_plate`'s cut along the great
+    # circle between two mantle-flow regimes. "rift_lines" strains each plate along a rift line placed where it is
+    # being pulled apart and splits it when the line breaks (rift_damage.py). Plain default, so an old save loads on
+    # the great-circle method. `rift_line_params` overrides `rift_strength.RiftLineParams` by name, for tuning
+    # (RFC 0021); empty means the RFC's starting values. `rift_runtime` is that method's per-step scratch, never saved.
+    split_method: str = "great_circle"
+    rift_line_params: dict = field(default_factory=dict)
+    rift_runtime: object | None = None
     topology_lineage: list | None = None
     # Step-scoped scratch for the deform pass: the roots each upper plate may still shed
     # this step under crust transfer (`crust_transfer.root_capacity`), by plate id.

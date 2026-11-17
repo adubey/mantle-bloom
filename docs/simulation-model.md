@@ -42,6 +42,7 @@ Use these Markdown links to jump directly to detailed sections on the topic page
 - [Quad-surface deformation (quad_tectonics.py)](simulation-model/tectonics.md#quad-deformation)
 - [Orogenic relief before delamination (orogeny.py)](simulation-model/tectonics.md#orogenic-relief)
 - [Merge and split (merge_split.py)](simulation-model/tectonics.md#merge-and-split)
+- [Splitting along rift lines (rift_damage.py, rift_lines.py, rift_strength.py)](simulation-model/tectonics.md#splitting-along-rift-lines)
 - [Whole-sphere coverage: local thinning-then-melting, plus a whole-sphere fallback (gaps.py)](simulation-model/tectonics.md#gap-filling)
 - [Per-node crust type](simulation-model/tectonics.md#per-node-crust-type)
 - [Cratons (cratons.py)](simulation-model/tectonics.md#cratons)
