@@ -1,6 +1,6 @@
 # Issue #942: what sets plate speed
 
-Status: in progress. First pass at deliverable 2 (the torque breakdown, standalone speeds and a brake-off run) on two worlds. The speed census on the 20
+Status: in progress. First pass at deliverable 2 (the torque breakdown, standalone speeds, a brake-off run and the slab terms' work budget) on two worlds. The speed census on the 20
 development worlds (deliverable 1) and the `contact_drag_multiplier` sweep (deliverable 3) are not done.
 
 ## Torque breakdown, two worlds
@@ -158,6 +158,84 @@ Solved speeds are near the #888 brake-off arm (2.06 / 2.91 and 1.29 / 1.58 cm/yr
 **Limits.** Two worlds, plates-only stepping. No collision measure was taken, so this says nothing about what
 loosening the brake costs (deliverable 3).
 
+## Why slabs slow their plates
+
+**Finding.** With the brake off, sunk-slab drag takes more work out of the plates than slab pull puts in, for three
+reasons of similar size: 40% of the drag is on trench-parallel motion, which pull cannot offset; 34% of the
+subducting length is dragged but not pulled, because its column is buoyant; and the drag on trench-normal motion
+alone is already two thirds of the pull's work. Without the trench-parallel part the slab terms would net positive.
+
+**Run.** The brake-off run repeated with a work budget over each plate's subducting boundary (its driving and
+resisting shares are identical to the earlier run). Work is force times the node's own velocity at the solved
+rotation, given as a share of the work slab pull does where plates move toward their trench. Predictions 11–14 were
+posted before the run.
+
+| Pooled over plate-samples | 106533960 | 1097624328 | Pooled |
+|---|---:|---:|---:|
+| Pull work where the plate moves toward its trench | +100% | +100% | +100% |
+| Pull work where the plate moves away from its trench | −11% | −5% | −8% |
+| Drag on trench-normal motion | −77% | −55% | −68% |
+| Drag on trench-parallel motion | −53% | −37% | −46% |
+| **Net slab work** | **−41%** | **+4%** | **−22%** |
+| Subducting length dragged but not pulled (buoyant column) | 35% | 34% | 34% |
+| Subducting length where the plate moves away from its trench | 26% | 17% | 23% |
+| Subducting length past the pull-to-drag terminal speed | 25% | 25% | 25% |
+| Pull torque surviving cancellation across the plate | 62% | 64% | 63% |
+| Mean slab pull (10¹² N/m; reference 4.9) | 2.84 | 2.95 | 2.89 |
+| Mantle lithosphere thickness at the trench (km; reference 40) | 50.8 | 52.8 | 51.7 |
+
+| # | Prediction | Result |
+|---|---|---|
+| 11 | Trench-parallel motion takes at least a third of the drag dissipation | Holds: 40% |
+| 12 | Less than 60% of the pull torque survives cancellation | Not met, by a little: 63% |
+| 13 | Mean pull at the trench is below the 4.9×10¹² N/m reference, because trench lithosphere is thin or buoyant | Holds for the number (59% of the reference) and for buoyancy; thinness is wrong, the lithosphere there is 52 km |
+| 14 | Slab work nets negative | Holds pooled (−22%); one world is at +4% |
+
+**What this shows.**
+
+- Sunk-slab drag is isotropic: it resists a subducting node's whole velocity. Slab pull acts only toward the
+  trench. With drag on trench-normal motion only, the pooled net would be about +24% in place of −22%, at these
+  speeds.
+- A third of the subducting length gets drag and no pull. `subducting_boundary_mask` includes continental nodes
+  behind a slab (`slab_attached_continent`), whose buoyant columns pull nothing (`slab_pull_force_n` clips at zero),
+  and the drag has no such clip. How much of the drag dissipation falls on that length was not measured.
+- The pull that is applied is partly lost: 37% cancels across the plate, and 8% of its work is negative where the
+  neighbour overrides a plate moving the other way.
+- A quarter of the subducting length is past its terminal speed, where drag exceeds pull even on normal motion.
+  At `SLAB_MANTLE_VISCOSITY_PA_S` = 10²¹ Pa·s over a 100 km shear zone and a 250 km slab, that speed is 6.2 cm/yr for
+  the 40 km reference column and lower for buoyant ones.
+
+**Limits.** Two worlds, plates-only stepping, brake off. A work budget at the solved speed; it does not give the
+speed a changed slab law would produce.
+
+## The mantle flow reference rate
+
+A check of `MANTLE_FLOW_REFERENCE_RATE` (4 cm/yr) against the literature, with no run.
+
+- **Origin.** Added on 2026-08-15 (`ddb78dc2`) with the first motion model, which fitted each plate's rotation to
+  the flow, so it was in effect the target plate speed. It predates the torque engine, sunk-slab drag and the
+  contact brake, and has not been recalibrated.
+- **Magnitude: plausible.** Centres of 2–6 cm/yr give a mean flow of 4.2 cm/yr under plates. With plates about
+  3 cm/yr slower, the basal coefficient of 5×10¹⁴ Pa·s/m gives a traction near 0.5 MPa (an estimate from the speed
+  difference), inside published basal tractions of about 0.1–1 MPa (Bird, Liu & Rucker 2008 report no more than
+  1 MPa under slabless plates). The viscosity of 5×10¹⁹ Pa·s is at the low end of what global models need.
+- **Role: not Earth-like.** The flow supplies 80% of the driving torque with the brake on and 56% with it off. On
+  Earth slab pull and slab suction are the main drivers (about 60% and 40% in Conrad & Lithgow-Bertelloni 2004),
+  and basal traction mostly resists. The model's centres are random and fixed, unrelated to where the slabs are;
+  on Earth the flow under plates is largely set up by the slabs.
+- **Consequences.** A plate dragged by the flow cannot outrun it, so the constant is a ceiling on plate speed. The
+  random draw also sets each world's speed: mantle-flow-only speed is 4.8 cm/yr in one world and 2.5 in the other.
+- **Retune.** Doubling the rate would probably reach Earth-like speeds, with driving tractions over 1 MPa and
+  plates tied more closely to a fixed pattern. Slab-attached plates would still not be the fast ones.
+
+## Diagnosis so far
+
+On two worlds: plate speed is the prescribed mantle flow (about 3.6 cm/yr), less a net drag from the slab terms
+(to about 2.5), less the contact brake (to about 1.05). Ridge push is under 1% of the drive in every run. The
+brake alone cannot bring speeds to Earth's: with it off they are 2.3 cm/yr here and 1.55 / 2.12 cm/yr continental /
+oceanic over five worlds in #888. Earth-like speeds, and slab-attached plates being the fast ones, need a change to
+the driving forces, which is RFC-sized under the issue's own rule.
+
 **Reproduce.**
 
 ```bash
@@ -169,4 +247,6 @@ backend/.venv/bin/python bin/debug/summarize_torque_breakdown.py <dir> --out ana
 Raw outputs of the rerun (SHA-256): `106533960.json` `cc41c208251ae77e3be2fcce809dc4ed7a7632a38d580200864f1942f99612ab`,
 `1097624328.json` `c576fa804c45a7864a5a172c00ef17b47e4d7a2671ac9f863a70659cce1b331d`. Brake off: `106533960.json`
 `463002e3551357b02e8d8a5591b1aa77e0e3c8e07487f034ee1816f2b1f91d98`, `1097624328.json`
-`fd2f3a4477c321e7bf676c9010f37491a9e9bb47d0e25f60dde0a79d24850a58`.
+`fd2f3a4477c321e7bf676c9010f37491a9e9bb47d0e25f60dde0a79d24850a58`. Brake off with the slab budget:
+`106533960.json` `0d53b9291641061a14f2beaebfbd9ccd27e86c74f0f040511a9786950a2c46b3`, `1097624328.json`
+`aeb9af59573b5ddbbbddfcd59e5cd3c02eb00f1dc061e07cc450ddaef8e0ae7f`.

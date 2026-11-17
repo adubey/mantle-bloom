@@ -25,6 +25,21 @@
      "own_loads_no_contact:continental": 2.7800494742362023,
      "own_loads_no_contact:oceanic": 3.0328276744333027
     },
+    "slab": {
+     "subducting_km_per_sample_sum": 2641256.4723884435,
+     "pull_n_per_m": 2842008272013.1133,
+     "hm_km": 50.83816129561025,
+     "length_share_no_pull": 0.3485280074864682,
+     "length_share_moving_away_from_trench": 0.26373422436905397,
+     "length_share_past_terminal_speed": 0.2459317464977858,
+     "pull_torque_surviving_cancellation": 0.6209801865907874,
+     "power_over_pull_toward_trench": {
+      "pull_away_from_trench": -0.10752284996372229,
+      "drag_trench_normal": -0.7743976627069773,
+      "drag_trench_parallel": -0.5272806410960134,
+      "net": -0.40920115376671296
+     }
+    },
     "driving_share": {
      "mantle_flow": 0.637087036504329,
      "slab_pull": 0.34758794278445115,
@@ -68,6 +83,21 @@
      "own_loads_no_contact:continental": 0.8414065497537744,
      "own_loads_no_contact:oceanic": 0.6880998866777941
     },
+    "slab": {
+     "subducting_km_per_sample_sum": 63794.422428062135,
+     "pull_n_per_m": 1855532933314.5586,
+     "hm_km": 65.91940661055371,
+     "length_share_no_pull": 0.585576389648678,
+     "length_share_moving_away_from_trench": 0.6386911798148341,
+     "length_share_past_terminal_speed": 0.229558607048875,
+     "pull_torque_surviving_cancellation": 0.5956299368157898,
+     "power_over_pull_toward_trench": {
+      "pull_away_from_trench": -2.7598088050154628,
+      "drag_trench_normal": -0.8369281395501522,
+      "drag_trench_parallel": -0.9659942853578178,
+      "net": -3.562731229923433
+     }
+    },
     "driving_share": {
      "mantle_flow": 0.948983323793757,
      "blocked_edges_residual": 0.04609380583365722,
@@ -108,6 +138,21 @@
      "own_loads_no_contact:all": 2.9461961684329085,
      "own_loads_no_contact:continental": 2.8225062854727545,
      "own_loads_no_contact:oceanic": 3.0548658839949034
+    },
+    "slab": {
+     "subducting_km_per_sample_sum": 2577462.0499603814,
+     "pull_n_per_m": 2866424392697.71,
+     "hm_km": 50.46488738673637,
+     "length_share_no_pull": 0.3426608543201289,
+     "length_share_moving_away_from_trench": 0.25445371433849284,
+     "length_share_past_terminal_speed": 0.24633699590756594,
+     "pull_torque_surviving_cancellation": 0.6213863515560002,
+     "power_over_pull_toward_trench": {
+      "pull_away_from_trench": -0.10499102838951548,
+      "drag_trench_normal": -0.7743379723066965,
+      "drag_trench_parallel": -0.5268618534206779,
+      "net": -0.40619085411688993
+     }
     },
     "driving_share": {
      "mantle_flow": 0.634135938993452,
@@ -161,6 +206,21 @@
      "own_loads_no_contact:continental": 1.7341959405826453,
      "own_loads_no_contact:oceanic": 2.2525961925811306
     },
+    "slab": {
+     "subducting_km_per_sample_sum": 1957803.8533394278,
+     "pull_n_per_m": 2948521316309.4443,
+     "hm_km": 52.76445414901235,
+     "length_share_no_pull": 0.34010455298127495,
+     "length_share_moving_away_from_trench": 0.1739745936931663,
+     "length_share_past_terminal_speed": 0.2508305523958575,
+     "pull_torque_surviving_cancellation": 0.6356048894133711,
+     "power_over_pull_toward_trench": {
+      "pull_away_from_trench": -0.04500063869962408,
+      "drag_trench_normal": -0.5479712121921576,
+      "drag_trench_parallel": -0.3717437275796731,
+      "net": 0.03528442152854517
+     }
+    },
     "driving_share": {
      "slab_pull": 0.5249876514292772,
      "mantle_flow": 0.4431057593270646,
@@ -205,6 +265,21 @@
      "own_loads_no_contact:continental": 0.656530900891613,
      "own_loads_no_contact:oceanic": 0.5483657556450806
     },
+    "slab": {
+     "subducting_km_per_sample_sum": 120532.6237998113,
+     "pull_n_per_m": 1742749779945.578,
+     "hm_km": 61.8132762193759,
+     "length_share_no_pull": 0.6062801365589705,
+     "length_share_moving_away_from_trench": 0.37348696245098273,
+     "length_share_past_terminal_speed": 0.3289923110218857,
+     "pull_torque_surviving_cancellation": 0.6294477654820584,
+     "power_over_pull_toward_trench": {
+      "pull_away_from_trench": -0.19576000811804545,
+      "drag_trench_normal": -0.22142973234021252,
+      "drag_trench_parallel": -0.2101817164432001,
+      "net": 0.3726285430985419
+     }
+    },
     "driving_share": {
      "slab_pull": 0.4745428561956284,
      "mantle_flow": 0.36028045098203837,
@@ -247,6 +322,21 @@
      "own_loads_no_contact:all": 2.2090648386691845,
      "own_loads_no_contact:continental": 1.9352544753738619,
      "own_loads_no_contact:oceanic": 2.430625933640474
+    },
+    "slab": {
+     "subducting_km_per_sample_sum": 1837271.2295396165,
+     "pull_n_per_m": 3027624937290.5903,
+     "hm_km": 52.17081383673693,
+     "length_share_no_pull": 0.322642329133082,
+     "length_share_moving_away_from_trench": 0.16088575362412505,
+     "length_share_past_terminal_speed": 0.24570281638359567,
+     "pull_torque_surviving_cancellation": 0.6358374009605339,
+     "power_over_pull_toward_trench": {
+      "pull_away_from_trench": -0.04405856105016129,
+      "drag_trench_normal": -0.550011731670169,
+      "drag_trench_parallel": -0.37275330967252135,
+      "net": 0.0331763976071483
+     }
     },
     "driving_share": {
      "slab_pull": 0.5264394312739602,
@@ -295,6 +385,21 @@
     "own_loads_no_contact:continental": 2.260769188230404,
     "own_loads_no_contact:oceanic": 2.64097025403773
    },
+   "slab": {
+    "subducting_km_per_sample_sum": 4599060.32572787,
+    "pull_n_per_m": 2887350501465.4478,
+    "hm_km": 51.65817740845697,
+    "length_share_no_pull": 0.3449421724417657,
+    "length_share_moving_away_from_trench": 0.22552386434648483,
+    "length_share_past_terminal_speed": 0.2480171509901675,
+    "pull_torque_surviving_cancellation": 0.6273377609244468,
+    "power_over_pull_toward_trench": {
+     "pull_away_from_trench": -0.08149707293769291,
+     "drag_trench_normal": -0.6801443694412959,
+     "drag_trench_parallel": -0.4625361455215663,
+     "net": -0.22417758790055506
+    }
+   },
    "driving_share": {
     "mantle_flow": 0.5613390756263137,
     "slab_pull": 0.41686094884843317,
@@ -339,6 +444,21 @@
     "own_loads_no_contact:continental": 0.6789804654625063,
     "own_loads_no_contact:oceanic": 0.5607879767811664
    },
+   "slab": {
+    "subducting_km_per_sample_sum": 184327.04622787342,
+    "pull_n_per_m": 1781783314502.9268,
+    "hm_km": 63.23438192296142,
+    "length_share_no_pull": 0.5991147009744059,
+    "length_share_moving_away_from_trench": 0.4652724612068065,
+    "length_share_past_terminal_speed": 0.2945789362911952,
+    "pull_torque_surviving_cancellation": 0.6172591824486202,
+    "power_over_pull_toward_trench": {
+     "pull_away_from_trench": -0.6500911188936859,
+     "drag_trench_normal": -0.3304916485434856,
+     "drag_trench_parallel": -0.3441062986854261,
+     "net": -0.3246890661225976
+    }
+   },
    "driving_share": {
     "mantle_flow": 0.5624382413083767,
     "slab_pull": 0.31265648254123096,
@@ -381,6 +501,21 @@
     "own_loads_no_contact:all": 2.599481415419146,
     "own_loads_no_contact:continental": 2.4150328246292445,
     "own_loads_no_contact:oceanic": 2.7553916045037528
+   },
+   "slab": {
+    "subducting_km_per_sample_sum": 4414733.279499995,
+    "pull_n_per_m": 2933510919564.896,
+    "hm_km": 51.17483958268235,
+    "length_share_no_pull": 0.334329782417153,
+    "length_share_moving_away_from_trench": 0.21551371245310819,
+    "length_share_past_terminal_speed": 0.24607307061016168,
+    "pull_torque_surviving_cancellation": 0.6275933562747912,
+    "power_over_pull_toward_trench": {
+     "pull_away_from_trench": -0.07970507632624013,
+     "drag_trench_normal": -0.6812463445595556,
+     "drag_trench_parallel": -0.46290939227948547,
+     "net": -0.22386081316528122
+    }
    },
    "driving_share": {
     "mantle_flow": 0.5613204796751041,
