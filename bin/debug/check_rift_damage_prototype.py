@@ -608,7 +608,19 @@ def check_oceanic_strength_follows_age():
     assert cap[2] > cap[1] > cap[0], cap
 
 
-CHECKS = [check_shadow_stats_skips_degenerate_plate, check_oceanic_strength_follows_age, check_strength_bounds, check_softening_monotone, check_healing, check_no_strain_off_band_and_latch, check_plume_expiry,
+def check_strength_map_arms_default_off():
+    """The strength-map arms change nothing at their defaults, and each moves strength the way it says."""
+    p = Params()
+    assert p.craton_root_m == 0.0 and p.mark_power == 1.0 and p.route_mark_power == 1.0 and not p.oceanic_age_strength
+    kind, hc, lag = np.zeros(2, int), np.full(2, 40_000.0), np.zeros(2)
+    cap = mech.capacity(kind, hc, np.array([100_000.0, 180_000.0]), lag)
+    assert cap[1] > 2.0 * cap[0], cap  # a 180 km root at least doubles a craton's capacity
+    mult = mech.inherited_multiplier(np.array([True, False]), np.zeros(2, bool), np.zeros(2, bool), np.zeros(2, bool))
+    deep = np.clip(mult ** 2.8, mech.MULTIPLIER_FLOOR, 1.0)
+    assert abs(deep[0] - 0.65 ** 2.8) < 1e-12 and deep[1] == 1.0, deep
+
+
+CHECKS = [check_shadow_stats_skips_degenerate_plate, check_strength_map_arms_default_off, check_oceanic_strength_follows_age, check_strength_bounds, check_softening_monotone, check_healing, check_no_strain_off_band_and_latch, check_plume_expiry,
           check_flank_conservation_and_held, check_held_band_never_strains, check_section_load_branches, check_substep_bound_and_kfail,
           check_ligament_normal_load, check_directional_sign, check_section_pull_manufactured, check_line_placement, check_path_lengths,
           check_split_masks, check_split_islands_and_deep_line, check_tip_speed_against_law, check_capacity_and_disk_kernels]

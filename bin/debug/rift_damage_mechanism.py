@@ -90,6 +90,14 @@ class Params:
     oceanic_age_strength: bool = False
     ocean_cooling_m_per_sqrt_myr: float = 13_000.0  # 2.32 sqrt(kappa t) with kappa = 1e-6 m2/s (half-space cooling); starting value
     ocean_plate_thickness_m: float = 95_000.0  # where old ocean floor stops thickening (plate-model value); starting value
+    # Strength-map arms of #888. A craton has the same 100 km of mantle lithosphere as any continental cell, so it is no
+    # stronger than its surroundings; ``craton_root_m`` adds a root to the thickness behind N_cap, in proportion to the
+    # cell's craton strength (0 = off). ``mark_power`` raises the inherited-weakness multipliers to a power (1 = the
+    # accepted values; 2.8 takes 0.65 to 0.30). ``route_mark_power`` does the same for the line's path cost only, so the
+    # route follows marks more closely than the open-or-not test weighs them (1 = the same strength for both).
+    craton_root_m: float = 0.0
+    mark_power: float = 1.0
+    route_mark_power: float = 1.0
 
 
 def oceanic_strength_hm(hc, hm, age_yr, eps, p: Params) -> np.ndarray:

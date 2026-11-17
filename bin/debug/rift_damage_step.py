@@ -213,12 +213,18 @@ def prepare_plate(world, plate, p: Params, years: float, eps=None, warm=None, br
         created = plate.collect("node_created_years")
         age = np.where(created == SURFACE_FIELDS["node_created_years"].sentinel, np.nan, world.elapsed_years - created)
         hm_strength = np.where(continental, hm, mech.oceanic_strength_hm(hc, hm, age, eps, p))
+    if p.craton_root_m > 0.0:
+        root = p.craton_root_m * cratons.strength(plate.collect("craton_crust_m")) * np.exp(-eps)
+        hm_strength = np.where(continental, hm + root, hm_strength)
     ncap = mech.capacity(kind, hc, hm_strength, lag) * k_scale
     belt = cratons.belt_mask(plate, world.elapsed_years)
     volcano = plate.collect("is_volcano").astype(bool)
     near_fault = fault_mask(world, plate, points, spacing_m)
     mult_plume = mech.inherited_multiplier(belt, volcano, heated, near_fault)
     mult_quiet = mech.inherited_multiplier(belt, volcano, np.zeros(n, bool), near_fault)
+    if p.mark_power != 1.0:
+        mult_plume = np.clip(mult_plume ** p.mark_power, mech.MULTIPLIER_FLOOR, 1.0)
+        mult_quiet = np.clip(mult_quiet ** p.mark_power, mech.MULTIPLIER_FLOOR, 1.0)
     base_plume, base_quiet = ncap * mult_plume, ncap * mult_quiet
     disk = mech.disk_average_matrix(points, areas, p.w0_m / 2.0)
     w = mech.softening(disk @ eps, disk @ warm, p)
@@ -234,7 +240,7 @@ def prepare_plate(world, plate, p: Params, years: float, eps=None, warm=None, br
 
 def _choose_line(prep: PlatePrep, sections: rl.Sections, p: Params):
     first, second = thin_shell._tangent_basis(prep.points)
-    cost = np.where(prep.broken, 0.0, prep.n_eff)
+    cost = np.where(prep.broken, 0.0, prep.n_eff * prep.mult_quiet ** (p.route_mark_power - 1.0))
     plume_tensor = prep.tensor + p.n_plume * prep.heated[:, None] * np.array([1.0, 1.0, 0.0])
     best, best_key, count = None, None, 0
     for corridor in rl.candidate_corridors(sections, p):
