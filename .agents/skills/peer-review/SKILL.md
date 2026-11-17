@@ -32,7 +32,13 @@ POSIX `fcntl`, applicable to macOS and Linux development hosts).
      --reviewer <agent2>:<model2>:<reasoning2>
    ```
 
-   In the default headless CLI mode, reviewers are spawned immediately in the background. If
+   In the default headless CLI mode, reviewers are spawned immediately in the background. A
+   headless reviewer has no one to approve its commands, so the spawn grants what the brief
+   needs: Muse runs with `--trust-workspace`, which loads `AGENTS.md` and the skills, and
+   `claude -p` gets an allow list (`CLAUDE_REVIEW_ALLOW` in `bin/peer_review.py`). A reviewer
+   that still stops for approval leaves its slot `claimed`. Check its log,
+   `pr-<N>-<slot>.log` beside the state file, and finish the slot from an open window. If
+
    `--no-spawn` was requested, `request` waits briefly (`--claim-wait 2.0`) to see whether
    standby listeners in open windows claim the slots automatically, or outputs prompt one-liners
    to paste into open windows.

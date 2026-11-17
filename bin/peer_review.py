@@ -636,6 +636,21 @@ def resolve_binary(name: str) -> str:
     return name
 
 
+# What a headless `claude -p` reviewer may run without a prompt. With no one to approve, every other command fails,
+# and the PR #950 reviewer wrote its review but could neither post it nor mark its slot complete. The list covers the
+# brief: read the diff, inspect it in a detached worktree, run targeted tests, post a comment, notify the author.
+# Merging stays denied by the user's own settings.
+CLAUDE_REVIEW_ALLOW = (
+    "Read", "Grep", "Glob",
+    "Bash(gh pr view *)", "Bash(gh pr diff *)", "Bash(gh pr checks *)", "Bash(gh issue view *)",
+    "Bash(gh pr comment *)", "Bash(gh pr review *)",
+    "Bash(git fetch *)", "Bash(git worktree add *)", "Bash(git worktree remove *)", "Bash(git log *)",
+    "Bash(git show *)", "Bash(git diff *)", "Bash(git grep *)", "Bash(git rev-parse *)",
+    "Bash(python3 bin/peer_review.py *)", "Bash(python3 bin/compute_budget.py *)",
+    "Bash(./bin/setup.sh)", "Bash(./bin/unit_test.sh *)", "Bash(backend/.venv/bin/python -m pytest *)",
+)
+
+
 def build_cli_command(req: ReviewRequest, slot: ReviewSlot, worktree: Path) -> list[str]:
     prompt = format_review_brief(req, slot)
     if slot.agent == "codex":
@@ -654,6 +669,8 @@ def build_cli_command(req: ReviewRequest, slot: ReviewSlot, worktree: Path) -> l
             cmd.extend(["--model", slot.model])
         if slot.reasoning != "default":
             cmd.extend(["--effort", slot.reasoning])
+        # One JSON argument, not `--allowedTools`, whose variadic values would swallow the prompt after them.
+        cmd.extend(["--settings", json.dumps({"permissions": {"allow": list(CLAUDE_REVIEW_ALLOW)}})])
         cmd.append(prompt)
         return cmd
     if slot.agent == "muse":
@@ -663,6 +680,9 @@ def build_cli_command(req: ReviewRequest, slot: ReviewSlot, worktree: Path) -> l
             cmd.extend(["--model", slot.model])
         if slot.reasoning != "default":
             cmd.extend(["--reasoning-effort", slot.reasoning])
+        # Load the repo's AGENTS.md and skills, which Muse skips in a workspace it hasn't been told to trust. The
+        # sandbox and approval stay on.
+        cmd.append("--trust-workspace")
         cmd.append(prompt)
         return cmd
     if slot.agent == "antigravity":

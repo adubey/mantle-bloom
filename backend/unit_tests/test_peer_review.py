@@ -211,6 +211,12 @@ def test_build_cli_command_passes_model_and_reasoning(tmp_path):
     claude_slot = pr_mod.ReviewSlot("claude", "claude", "opus", "high", "cli")
     claude_cmd = pr_mod.build_cli_command(req, claude_slot, tmp_path)
     assert claude_cmd[1:6] == ["-p", "--model", "opus", "--effort", "high"]
+    # A headless reviewer has no one to approve its commands, so it is pre-allowed what the brief asks of it, in
+    # one JSON argument that leaves the prompt last.
+    assert claude_cmd[6] == "--settings" and "PR #825" in claude_cmd[8]
+    allow = json.loads(claude_cmd[7])["permissions"]["allow"]
+    assert {"Bash(gh pr comment *)", "Bash(python3 bin/peer_review.py *)"} <= set(allow)
+    assert not any("merge" in rule for rule in allow)
 
     muse_slot = pr_mod.ReviewSlot("muse", "muse", "opus", "high", "cli")
     muse_cmd = pr_mod.build_cli_command(req, muse_slot, tmp_path)
@@ -223,6 +229,7 @@ def test_build_cli_command_passes_model_and_reasoning(tmp_path):
         "--reasoning-effort",
     ]
     assert muse_cmd[7] == "high"
+    assert muse_cmd[8] == "--trust-workspace" and "PR #825" in muse_cmd[9]  # loads AGENTS.md and the skills
 
     agy_slot = pr_mod.ReviewSlot("antigravity", "antigravity", "pro", "high", "cli")
     agy_cmd = pr_mod.build_cli_command(req, agy_slot, tmp_path)
