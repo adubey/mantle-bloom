@@ -247,3 +247,61 @@ mature ocean floor rises from 0.72 to 2.32 TN/m, level with unmarked continental
   weak rock, and 53% of their continental length is weak.
 - Fewer lines reach the growth threshold (median `Λ` 0.20 against 0.40), so `k_cap` needs
   retuning with this on.
+
+## Strength map: why lines avoid weak rock
+
+The split lines of the rift-line prototype run mostly through ocean floor and do not follow inherited weakness. The cause is the strength map the lines are routed through, not the routing.
+
+### What was measured
+
+Line-choice probe (`bin/debug/probe_line_choice.py`; seeds 106533960, 1397817354, 591453549; stage 1 setting 0; every plate at 50, 100 and 150 Myr). Area-weighted mean strength `N_eff` by rock class, with `k_cap = 0.196`:
+
+| Class | Share of area | Mean `N_eff` (TN/m) |
+|---|---:|---:|
+| Oceanic, at a ridge | 2% | 0.44 |
+| Oceanic, mature | 49% | 0.72 |
+| Continental, inherited weakness | 11% | 1.55 |
+| Continental, unmarked | 18% | 2.39 |
+| Craton | 20% | 2.73 |
+
+- Mature ocean floor is half as strong as the weakest continental class. Oceanic mantle lithosphere relaxes toward `lithosphere.REFERENCE_HM_OCEANIC_M = 40 km` whatever its age: on seed 106533960 at 60 Myr, oceanic cells have a median age of 102 Myr and a median mantle lithosphere of 39.9 km.
+- Cratons are 1.15 times as strong as unmarked continental crust. Continental mantle lithosphere is 100 km from the 10th to the 90th percentile, so a craton has no thick root in the strength calculation.
+- An inherited-weakness mark lowers strength to 0.65. That is the largest contrast on a continent.
+- Choosing the line over the whole plate by pull over strength does not help: it finds shorter lines, which are more oceanic (85% of length against 80%), at 26 times the cost.
+
+With ocean-floor strength taken from age instead (`Params.oceanic_age_strength`: a cooling plate, `min(13 km × sqrt(age / Myr), 95 km)` less the crust; the plate's own thickness is untouched), mature ocean floor rises to 2.32 TN/m. Lines above the growth threshold are then 50% oceanic by length (from 80%), and 52% are continent-majority (from 17%). They still do not seek weak rock: 26% are more than half on weak rock (from 17%).
+
+### Where the weakness multipliers came from
+
+- RFC 0010 has one value, "Belt and plume resistance 0.6", sourced as "Gate 3a scenario rank; uncalibrated".
+- The first version of RFC 0018 (2026-11-03, the graph-cut design) listed reductions of 0.35 (belt), 0.45 (suture), 0.35 (volcano, plume heat) and 0.40 (fault) as "first trial" values from an offline prototype, "starting points only", with the 0.12 floor there to avoid zero or negative resistance.
+- The rift-line revision carried them over as the accepted multipliers 0.65, 0.55, 0.65 and 0.60.
+
+They began as dimensionless route-cost weights and were never calibrated as strength ratios. The prototype has no suture field, so 0.55 is never applied; belts stand in at 0.65.
+
+### What the literature gives
+
+No source gives a multiplier for a suture. The literature gives strength ratios between kinds of lithosphere and conditions on when inheritance matters. These are from abstracts and database records, not full texts, and must be verified with `check_citations.py --crossref` and against the papers before any of them enters the RFC.
+
+| Source | Finding | Bearing on the model |
+|---|---|---|
+| Vink, Morgan & Zhao (1984), J. Geophys. Res. | Continental lithosphere is about three times weaker than oceanic; thickened crust can halve the strength of normal continental lithosphere | The model has the ocean–continent ratio inverted. A belt at about 0.5 is the right size |
+| Petit & Ebinger (2000); Pérez-Gussinyé & Watts (2005) | Effective elastic thickness about 60 km or more under cratons, 20–45 km under orogenic belts; the size is method-dependent and contested | Cratons should be several times stronger than belts, not 1.15 times |
+| Dunbar & Sawyer (1989), Tectonics | Breakup takes two to three times less extension where it follows the pre-existing grain | Weakness should shorten a rift as well as steer it |
+| Tommasi & Vauchez (2001), Earth Planet. Sci. Lett. | Frozen mantle fabric is weak in a direction; reactivation is favoured where the pull is oblique (about 30–55°) to it | The pull direction and the weak structure decide together |
+| Erdős, Buiter & Tetreault (2025), Solid Earth | In small, cold orogens the oldest, shortest, best-oriented suture is reactivated; in large, warm orogens heat dominates and rifts form away from sutures | Inheritance is conditional |
+
+### Reading
+
+- The marks are about the right size: 0.55–0.65 is close to the halving Vink et al. give for thickened crust. Nothing found supports deepening them to about 0.3.
+- The background is wrong. The capacity table itself gives the right ordering when given realistic thickness: 13.7 TN/m for ocean floor with 84 km of mantle lithosphere against 6.3 for the reference continent (35 + 65 km), and 42.6 TN/m for a craton with a 180 km root against 12.7 at 100 km.
+- The capacity table already weakens thick crust sharply (15.8 TN/m at 35 km of crust, 9.0 at 45 km, 2.1 at 55 km, all over 100 km of mantle lithosphere), so a belt mark may double-count where a belt still has thick crust.
+- With old ocean floor and cratons at their strength, a belt at 0.65 would be several times weaker than its surroundings instead of 1.5 times.
+
+### Planned arms (five stage 1 worlds)
+
+1. Background contrast: ocean-floor strength from age plus a craton root in the strength calculation, marks unchanged.
+2. Deeper marks (about 0.3), as a comparison.
+3. A route more sensitive to marks than the open-or-not test.
+
+A `k_cap` scan with ocean strength from age (0.196, 0.14, 0.10) is running first, because `k_cap` was tuned while ocean floor was weak.
