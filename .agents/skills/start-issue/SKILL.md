@@ -7,9 +7,10 @@ description: Set up an isolated branch, worktree, venv and ports for a Mantle-Bl
 
 1. **Read the issue**, including its comments: `gh issue view <N> --comments`. Note linked
    issues and PRs, any `.mbworld` saves or replay numbers, and whether the issue cites or is
-   listed under an RFC. Read the RFC's status and diagnosis gates in `rfc/` and
-   `rfc/README.md`. If it is not accepted or its gates have not passed, resolve that RFC
-   lifecycle step before implementing the issue. If a `## RFC revision return` comment on
+   listed under an RFC. For an RFC-linked issue, check only the RFC's status line and gate
+   checklist (its header and Acceptance criteria), not the whole RFC. Read further sections
+   only when the issue implements them. If the RFC is not accepted or its gates have not
+   passed, resolve that lifecycle step before implementing the issue. If a `## RFC revision return` comment on
    this issue or its tracking issue postdates this issue's last work, follow
    [Resume](../edit-rfc/SKILL.md#4-resume-an-affected-issue) in `edit-rfc`. If the tracking
    issue links an `## RFC revision brief` whose tracker is still open, raise it with the user
@@ -17,9 +18,9 @@ description: Set up an isolated branch, worktree, venv and ports for a Mantle-Bl
    When work begins, follow [Starting an issue](../project-management/SKILL.md#starting-an-issue)
    to update its project status.
 
-2. **Choose the worktree.** Use the discovery procedure in
-   [`continue-rfc`](../continue-rfc/SKILL.md#2-find-rfc-and-evidence-worktrees) to locate RFC
-   evidence, not to choose an issue checkout. RFCs are large
+2. **Choose the worktree.** Only if the issue needs earlier run evidence, use the discovery
+   procedure in [`continue-rfc`](../continue-rfc/SKILL.md#2-find-rfc-and-evidence-worktrees)
+   to find it; skip it otherwise. It locates evidence, not an issue checkout. RFCs are large
    decisions tracked by a parent issue and sub-issues; every issue,
    including an RFC sub-issue, gets its own isolated issue worktree. Do not reuse or switch
    the RFC proposal worktree, and never switch branches in a tree another task may be using.
