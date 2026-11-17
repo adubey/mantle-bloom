@@ -18,6 +18,8 @@ user's old save -- stands regardless of this module.
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import dataclasses
 import io
 import json
@@ -121,7 +123,20 @@ def save_kind(data: bytes) -> str:
     return "v5" if npz_save.is_v5(data) else "pickle"
 
 
-def load_world_bytes(data: bytes) -> World:
+_ENFORCE_SIZE_LIMITS: contextvars.ContextVar[bool] = contextvars.ContextVar("_ENFORCE_SIZE_LIMITS", default=False)
+
+
+@contextlib.contextmanager
+def enforcing_size_limits():
+    """Enforce v5 ZIP expansion bounds inside this context (for online upload routes)."""
+    token = _ENFORCE_SIZE_LIMITS.set(True)
+    try:
+        yield
+    finally:
+        _ENFORCE_SIZE_LIMITS.reset(token)
+
+
+def load_world_bytes(data: bytes, *, enforce_size_limits: bool | None = None) -> World:
     """The `World` in a save of any supported version. Raises `CorruptSaveError` for bytes
     that aren't a readable save (pickle's own errors are wrapped, never passed through) or a
     save that contradicts itself, and `UnsupportedSaveVersionError` for a save, or a sparse
@@ -131,9 +146,11 @@ def load_world_bytes(data: bytes) -> World:
     A line-backed save is unpickled with inert stand-ins for the retired line classes
     (`legacy_conversion.legacy_unpickler`) and converted to sparse quads one way
     (`legacy_conversion.convert_world_to_quad`); the conversion summary is then on
-    `World.surface_conversion`."""
+    `World.surface_conversion`. `enforce_size_limits` applies the v5 ZIP central-directory
+    expansion bounds for untrusted upload routes; local callers leave it off."""
+    enforced = _ENFORCE_SIZE_LIMITS.get() if enforce_size_limits is None else enforce_size_limits
     if npz_save.is_v5(data):
-        world = npz_save.load_world_v5(data)
+        world = npz_save.load_world_v5(data, enforce_size_limits=enforced)
         is_v5 = True
     else:
         world = _load_pickled_world(data)
@@ -141,13 +158,14 @@ def load_world_bytes(data: bytes) -> World:
     return _finish_loaded_world(world, is_v5=is_v5)
 
 
-def load_world_file(file: BinaryIO) -> World:
+def load_world_file(file: BinaryIO, *, enforce_size_limits: bool | None = None) -> World:
     """`load_world_bytes` from an already-open seekable binary file: the save streams
     from disk, so a large upload never sits in RAM as bytes alongside the world it
     builds (see main.py's `/worlds/{world_id}/load`). Same errors, same conversions,
     same backfills."""
+    enforced = _ENFORCE_SIZE_LIMITS.get() if enforce_size_limits is None else enforce_size_limits
     if npz_save.is_v5_file(file):
-        world = npz_save.load_world_v5_file(file)
+        world = npz_save.load_world_v5_file(file, enforce_size_limits=enforced)
         is_v5 = True
     else:
         world = _load_pickled_world_file(file)
@@ -155,24 +173,26 @@ def load_world_file(file: BinaryIO) -> World:
     return _finish_loaded_world(world, is_v5=is_v5)
 
 
-def load_world_name(data: bytes) -> str | None:
+def load_world_name(data: bytes, *, enforce_size_limits: bool | None = None) -> str | None:
     """The display name stamped into a v5 save's manifest at save time (see
     `save_world_bytes`), or `None` when the save carries none -- every pre-v5
     pickle, and any v5 save written without one. Reads only the manifest, never
     the arrays, so it stays cheap on a tens-of-MB save. A present-but-not-a-string
     name is ignored, not an error: the name is advisory record metadata, and a
     tampered or overlong label must not block loading the world itself (#652, #925)."""
-    return load_world_name_file(io.BytesIO(data))
+    return load_world_name_file(io.BytesIO(data), enforce_size_limits=enforce_size_limits)
 
 
-def load_world_name_file(file: BinaryIO) -> str | None:
+def load_world_name_file(file: BinaryIO, *, enforce_size_limits: bool | None = None) -> str | None:
     """`load_world_name` from an already-open binary file: only the manifest is
     read, so a large upload never sits in RAM as bytes just to learn its name."""
     if not npz_save.is_v5_file(file):
         return None
+    enforced = _ENFORCE_SIZE_LIMITS.get() if enforce_size_limits is None else enforce_size_limits
     try:
         with zipfile.ZipFile(file) as zf:
-            npz_save._validate_v5_zip_sizes(zf)
+            if enforced:
+                npz_save._validate_v5_zip_sizes(zf)
             manifest = json.loads(zf.read("manifest.json"))
     except SaveFormatError:
         raise

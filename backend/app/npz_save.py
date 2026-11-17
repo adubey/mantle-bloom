@@ -52,10 +52,15 @@ FORMAT = "mantle-bloom-world"
 VERSION = 5
 SURFACES = ("quad", "empty")
 # Keep valid default/exact saves from mature worlds loadable while bounding the
-# attacker-controlled ZIP expansion points before any member is read (#925).
+# attacker-controlled ZIP expansion points before any member is read (#925, #936).
+# Enforced on untrusted upload routes (`enforce_size_limits=True`), not local/debug loads.
 MAX_V5_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
-MAX_V5_MANIFEST_BYTES = 16 * 1024 * 1024
+MAX_V5_MANIFEST_BYTES = 128 * 1024 * 1024
 MAX_V5_HEALPIX_NSIDE = 512
+
+_INT64_MIN = -(2**63)
+_INT64_MAX = 2**63 - 1
+_MISSING = object()
 
 # The H9 hard gate (`surface_parity_gates.load_continuation`) requires a step from a
 # default/exact-loaded world to land on identical authoritative state to a step from
@@ -215,6 +220,8 @@ def freeze(value, path: str, arrays: dict):
             "fields": {f.name: freeze(getattr(value, f.name), f"{path}.{f.name}", arrays) for f in dataclasses.fields(value)},
         }
     if isinstance(value, (list, tuple)):
+        if path == "world/stats_history" and isinstance(value, list) and value and all(isinstance(v, dict) for v in value):
+            return _freeze_stats_history(value, path, arrays)
         if value and all(dataclasses.is_dataclass(v) and not isinstance(v, type) for v in value):
             if len({type(v) for v in value}) == 1:
                 return _freeze_dataclass_list(list(value), path, arrays)
@@ -330,6 +337,8 @@ def _thaw_tagged(tag: str, payload, node: dict, zf: zipfile.ZipFile, plates_by_i
             raise _corrupt(f"v5 save holds an unreadable array {payload!r}: {exc}") from exc
     if tag == "__packed__":
         return _thaw_packed(node, zf)
+    if tag == "__stats_history__":
+        return _thaw_stats_history(payload, zf, plates_by_id)
     if tag == "__nonfinite__":
         return {"nan": math.nan, "inf": math.inf, "-inf": -math.inf}[payload]
     if tag == "__np_scalar__":
@@ -349,6 +358,157 @@ def _thaw_tagged(tag: str, payload, node: dict, zf: zipfile.ZipFile, plates_by_i
         except TypeError as exc:
             raise _corrupt(f"v5 dict holds an unhashable key: {exc}") from exc
     raise _corrupt(f"v5 manifest holds an unknown tag {tag!r}")
+
+
+def _pack_stats_series(
+    values: list,
+    field_path: str,
+    float_cols: list[np.ndarray],
+    int_cols: list[np.ndarray],
+    arrays: dict,
+) -> dict:
+    """Encode one 1D column of stats_history into the shared float64/int64 2D array or JSON fallback."""
+    missing = [i for i, v in enumerate(values) if v is _MISSING]
+    nulls = [i for i, v in enumerate(values) if v is None]
+    present = [v for v in values if v is not _MISSING and v is not None]
+    if present and all(type(v) is float for v in present):
+        col_idx = len(float_cols)
+        float_cols.append(np.array([v if (v is not _MISSING and v is not None) else 0.0 for v in values], dtype=np.float64))
+        spec: dict = {"kind": "float", "col": col_idx}
+    elif present and all(type(v) is int and _INT64_MIN <= v <= _INT64_MAX for v in present):
+        col_idx = len(int_cols)
+        int_cols.append(np.array([v if (v is not _MISSING and v is not None) else 0 for v in values], dtype=np.int64))
+        spec = {"kind": "int", "col": col_idx}
+    else:
+        items = [freeze(v, f"{field_path}[{i}]", arrays) if v is not _MISSING else None for i, v in enumerate(values)]
+        spec = {"kind": "json", "values": items}
+        if missing:
+            spec["missing"] = missing
+        return spec
+    if missing:
+        spec["missing"] = missing
+    if nulls:
+        spec["nulls"] = nulls
+    return spec
+
+
+def _freeze_stats_history(history: list[dict], path: str, arrays: dict) -> dict:
+    """Pack `World.stats_history` into columnar `.npy` array members instead of repeating
+    every stat key as JSON dict entries in `manifest.json` (#936)."""
+    float_cols: list[np.ndarray] = []
+    int_cols: list[np.ndarray] = []
+    fields_spec: list[dict] = []
+    top_keys = list(dict.fromkeys(k for s in history for k in s))
+    for key in top_keys:
+        values = [s[key] if key in s else _MISSING for s in history]
+        present = [v for v in values if v is not _MISSING and v is not None]
+        if present and all(type(v) is dict for v in present) and all(isinstance(k, str) for d in present for k in d):
+            subkeys = list(dict.fromkeys(k for d in present for k in d))
+            subfields = []
+            for sk in subkeys:
+                subvals = [v[sk] if (isinstance(v, dict) and sk in v) else _MISSING for v in values]
+                subspec = _pack_stats_series(subvals, f"{path}.{key}.{sk}", float_cols, int_cols, arrays)
+                subspec["name"] = sk
+                subfields.append(subspec)
+            entry: dict = {"name": key, "kind": "dict", "subfields": subfields}
+            missing = [i for i, v in enumerate(values) if v is _MISSING]
+            nulls = [i for i, v in enumerate(values) if v is None]
+            if missing:
+                entry["missing"] = missing
+            if nulls:
+                entry["nulls"] = nulls
+            fields_spec.append(entry)
+        else:
+            spec = _pack_stats_series(values, f"{path}.{key}", float_cols, int_cols, arrays)
+            spec["name"] = key
+            fields_spec.append(spec)
+    if float_cols:
+        arrays[f"{path}.float64"] = np.column_stack(float_cols)
+    if int_cols:
+        arrays[f"{path}.int64"] = np.column_stack(int_cols)
+    return {
+        "__stats_history__": {
+            "path": path,
+            "length": len(history),
+            "float_cols": len(float_cols),
+            "int_cols": len(int_cols),
+            "fields": fields_spec,
+        }
+    }
+
+
+def _load_stats_table(zf: zipfile.ZipFile, entry: str, expected_shape: tuple[int, int], expected_dtype: np.dtype) -> np.ndarray:
+    try:
+        with zf.open(f"a/{entry}.npy") as fh:
+            arr = np.load(fh, allow_pickle=False)
+    except KeyError as exc:
+        raise _corrupt(f"v5 save is missing array {entry!r}") from exc
+    except ValueError as exc:
+        raise _corrupt(f"v5 save holds an unreadable array {entry!r}: {exc}") from exc
+    if arr.shape != expected_shape or arr.dtype != expected_dtype:
+        raise _corrupt(f"v5 stats_history array {entry!r} shape/dtype mismatch: {arr.shape} {arr.dtype}")
+    return arr
+
+
+def _unpack_stats_series(
+    spec: dict,
+    n: int,
+    float_arr: np.ndarray | None,
+    int_arr: np.ndarray | None,
+    zf: zipfile.ZipFile,
+    plates_by_id: dict | None,
+) -> list:
+    kind = spec["kind"]
+    nulls = set(spec.get("nulls", ()))
+    if kind == "float":
+        col = float_arr[:, spec["col"]].tolist()
+        return [None if i in nulls else col[i] for i in range(n)]
+    if kind == "int":
+        col = int_arr[:, spec["col"]].tolist()
+        return [None if i in nulls else col[i] for i in range(n)]
+    if kind == "json":
+        missing = set(spec.get("missing", ()))
+        vals = spec["values"]
+        if len(vals) != n:
+            raise _corrupt("v5 stats_history json column length mismatch")
+        return [None if i in missing else thaw(vals[i], zf, plates_by_id) for i in range(n)]
+    raise _corrupt(f"v5 stats_history unknown column kind {kind!r}")
+
+
+def _thaw_stats_history(payload: dict, zf: zipfile.ZipFile, plates_by_id: dict | None) -> list[dict]:
+    """Rebuild `World.stats_history` from its columnar `.npy` array members."""
+    n = payload["length"]
+    n_float = payload["float_cols"]
+    n_int = payload["int_cols"]
+    if type(n) is not int or n < 0 or type(n_float) is not int or n_float < 0 or type(n_int) is not int or n_int < 0:
+        raise _corrupt("v5 stats_history header has invalid counts")
+    path = payload["path"]
+    float_arr = _load_stats_table(zf, f"{path}.float64", (n, n_float), np.dtype(np.float64)) if n_float else None
+    int_arr = _load_stats_table(zf, f"{path}.int64", (n, n_int), np.dtype(np.int64)) if n_int else None
+    snapshots: list[dict] = [{} for _ in range(n)]
+    for field_spec in payload["fields"]:
+        name = field_spec["name"]
+        if field_spec["kind"] == "dict":
+            missing = set(field_spec.get("missing", ()))
+            nulls = set(field_spec.get("nulls", ()))
+            dicts: list = [None if i in nulls else (_MISSING if i in missing else {}) for i in range(n)]
+            for subspec in field_spec["subfields"]:
+                subname = subspec["name"]
+                submissing = set(subspec.get("missing", ()))
+                subvals = _unpack_stats_series(subspec, n, float_arr, int_arr, zf, plates_by_id)
+                for i in range(n):
+                    if dicts[i] is not None and dicts[i] is not _MISSING and i not in submissing:
+                        dicts[i][subname] = subvals[i]
+            for i in range(n):
+                if dicts[i] is not _MISSING:
+                    snapshots[i][name] = dicts[i]
+        else:
+            missing = set(field_spec.get("missing", ()))
+            vals = _unpack_stats_series(field_spec, n, float_arr, int_arr, zf, plates_by_id)
+            for i in range(n):
+                if i not in missing:
+                    snapshots[i][name] = vals[i]
+    return snapshots
 
 
 def _thaw_column(col, zf: zipfile.ZipFile, plates_by_id: dict | None = None) -> list:
@@ -459,7 +619,7 @@ def save_world_v5(world: World, *, profile: str, name: str | None = None, compre
     return buf.getvalue()
 
 
-def load_world_v5(data: bytes) -> World:
+def load_world_v5(data: bytes, *, enforce_size_limits: bool = False) -> World:
     """The `World` in v5 bytes. Raises `CorruptSaveError` for anything that is not a
     readable v5 save and `UnsupportedSaveVersionError` for a newer v5 or a plate
     surface format this build does not read. Never loads partially."""
@@ -467,14 +627,14 @@ def load_world_v5(data: bytes) -> World:
 
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            return _load_world_v5_from_zip(zf)
+            return _load_world_v5_from_zip(zf, enforce_size_limits=enforce_size_limits)
     except Exception as exc:
         if isinstance(exc, SaveFormatError):
             raise
         raise _corrupt(f"not a readable mantle-bloom save ({type(exc).__name__}: {exc})") from exc
 
 
-def load_world_v5_file(file: BinaryIO) -> World:
+def load_world_v5_file(file: BinaryIO, *, enforce_size_limits: bool = False) -> World:
     """`load_world_v5` from an already-open binary file: entries stream from disk, so
     a large save never sits in RAM as bytes alongside the world it builds (see
     `persistence.load_world_file`). Same errors, same validation. The file is read
@@ -483,14 +643,14 @@ def load_world_v5_file(file: BinaryIO) -> World:
 
     try:
         with zipfile.ZipFile(file) as zf:
-            return _load_world_v5_from_zip(zf)
+            return _load_world_v5_from_zip(zf, enforce_size_limits=enforce_size_limits)
     except Exception as exc:
         if isinstance(exc, SaveFormatError):
             raise
         raise _corrupt(f"not a readable mantle-bloom save ({type(exc).__name__}: {exc})") from exc
 
 
-def _load_world_v5_from_zip(zf: zipfile.ZipFile) -> World:
+def _load_world_v5_from_zip(zf: zipfile.ZipFile, *, enforce_size_limits: bool = False) -> World:
     """The manifest/plates/world body of `load_world_v5`, shared by the bytes and
     file entry points, which differ only in where the zip streams from."""
     from .sparse_quad_patch import (
@@ -502,7 +662,8 @@ def _load_world_v5_from_zip(zf: zipfile.ZipFile) -> World:
     from .persistence import SaveFormatError
 
     try:
-        _validate_v5_zip_sizes(zf)
+        if enforce_size_limits:
+            _validate_v5_zip_sizes(zf)
         manifest = json.loads(zf.read("manifest.json"))
     except Exception as exc:
         raise _corrupt(f"not a readable mantle-bloom save ({type(exc).__name__}: {exc})") from exc
