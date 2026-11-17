@@ -20,17 +20,27 @@ a world. An unusable volume fails startup or returns `503`. [Hosting](hosting.md
 ## Login routes
 
 - `GET /login`: the sign-in page. It redirects to `/` when the request is already the admin.
-  `?error=denied|state|github|forbidden|unconfigured` shows a fixed message for a failed
-  attempt.
+  `?error=denied|state|github|google|forbidden|unconfigured` shows a fixed message for a
+  failed attempt. It offers Google when that is configured, with the owner's GitHub login
+  as a text link beside it.
 - `GET /auth/github`: starts GitHub OAuth (with PKCE). It sets a short-lived signed `state`
   cookie and redirects to GitHub.
 - `GET /auth/github/callback`: checks `state`, exchanges the code and fetches the GitHub
   user. If the user ID is the configured owner, it sets the session cookie and redirects to
   `/`. Otherwise it redirects to `/login?error=...` without a session.
+- `GET /auth/google`: starts Google sign-in (authorization code with PKCE, scope
+  `openid email profile`), with its own signed `state` cookie. Redirects to
+  `/login?error=unconfigured` when no Google client is configured.
+- `GET /auth/google/callback`: checks `state`, exchanges the code and reads the account
+  from Google's userinfo endpoint. It finds or creates the store user for that account,
+  sets a session cookie for it and redirects to `/view`. This session is never the admin
+  (#929).
 - `POST /logout`: clears the session cookie and redirects (`303`) to `/view`.
 - `GET /auth/session`: `{"admin": bool, "local": bool, "login": str | null,
-  "login_available": bool}`. `local` means the no-login local rule applied. `login` is the
-  GitHub login of a real session.
+  "login_available": bool, "user": {"name": str | null, "provider": str} | null}`. `local`
+  means the no-login local rule applied. `login` is the GitHub login of the owner's
+  session. `user` is a signed-in free account; it is `null` for the owner and for anyone
+  signed out. `login_available` is true when either sign-in is configured.
 
 ## Public viewer routes
 
@@ -159,6 +169,9 @@ cratons-first ones (`plates.CONTINENTAL_AREA_FRACTION = 0.5` when omitted; the r
 share is bounded to 0.05–0.9), a layout
 selected by `cratons_first` -- see
 [simulation-model/foundations.md#initial-plate-generation](simulation-model/foundations.md#initial-plate-generation-platespy).
+Explicit `num_plates` values must be 1–64, and `num_mantle_centers` must be 0–64; values
+outside those bounds return `400` before generation starts. The UI's manual plate slider is
+8–40.
 `cratons_first` selects random-world terrain generation. By default, continental cratons are
 laid out before plates and relief is generated from that layout
 (`continent_layout.CRATONS_FIRST_DEFAULT = True`). Pass false for the plate-first layout.
@@ -363,8 +376,10 @@ the code. [save-compatibility.md](save-compatibility.md) lists which older saves
 reads and how line-backed saves move to sparse quads. `404` if no world has been generated
 yet.
 
-Loading a legacy v1-v4 pickle save still unpickles it (a standard pickle caveat) -- acceptable given this server is a single-user localhost dev tool already
-(see `main.py`'s CORS allowlist), the same trust boundary every other route here assumes.
+Upload routes load v5 saves only. A legacy v1-v4 save is a pickle, and unpickling runs code, so
+`POST /worlds/import` and `POST /worlds/{world_id}/load` refuse one with `400` before reading
+it. Convert old saves offline with `bin/convert_saves.py` (see
+[save-compatibility.md](save-compatibility.md)).
 
 ## `POST /worlds/import`
 
@@ -381,7 +396,10 @@ another date), `uploaded_elapsed_years`, `existing_elapsed_years` (`null` when t
 existing record is empty), and `suggested_name` (the first unused `"<name> (1)"`).
 `409` past the world cap, like `POST /worlds`. The new record is private.
 
-Same spooling, size cap, and `400` contract as `POST /worlds/{world_id}/load` below.
+Same spooling, size cap, v5-only rule, and `400` contract as `POST /worlds/{world_id}/load` below.
+The optional `name` query parameter is 1–100 characters; an overlong saved manifest name is
+also rejected. V5 ZIP and manifest expansion limits are described in
+[save-compatibility.md](save-compatibility.md#2-save-format).
 
 ## `POST /worlds/{world_id}/load`
 
@@ -398,14 +416,19 @@ load, one way (see [save-compatibility.md](save-compatibility.md)). The summary'
 `surface_conversion` then reports what the conversion changed; it is `null` for a world that
 was never converted, and stays with the world through later saves.
 
-`400` with `detail` `"invalid or incompatible world file: <reason>"` when the bytes aren't a
+`400` with `detail` `"not a v5 .bloom save: ..."` when the body doesn't start with the v5 zip
+magic (a legacy pickled save, an empty body, garbage). Otherwise `400` with `detail`
+`"invalid or incompatible world file: <reason>"` when the bytes aren't a
 readable save (corrupt, truncated, or not a mantle-bloom file) or are in a format version
 newer than this build reads (the save envelope or one of its sparse-quad plates). Nothing
 falls back to a partial load.
 
-The body streams to a temp file and unpickles from disk, so a large upload never sits in
+The body streams to a temp file and loads from disk, so a large upload never sits in
 RAM twice (as bytes and as a world). Bodies past 512 MB (`MAX_LOAD_WORLD_BYTES` in
 `backend/app/main.py`) are refused with `413` while still streaming.
+
+Every other route refuses a body past its own cap with `413`: 4 KiB under `/public/*`,
+32 MiB elsewhere (see [architecture](architecture.md#request-body-cap-backendappbody_limitpy)).
 
 `503` while a generation, step or animation is in progress, so a running step can't keep
 changing a world that has already been replaced.

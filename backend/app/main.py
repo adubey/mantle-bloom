@@ -3,6 +3,7 @@ explicit world ID (see docs/architecture.md, #563)."""
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -14,7 +15,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -22,6 +23,7 @@ from scipy.spatial import cKDTree
 
 from . import (
     auth,
+    body_limit,
     checkpoint,
     continent_layout,
     cross_section as cross_section_view,
@@ -32,12 +34,14 @@ from . import (
     healpix_grid,
     lithosphere_plate,
     mantle,
+    npz_save,
     persistence,
     plates,
     projections,
     public_view,
     render_image,
     replay_log,
+    security_headers,
     run_control,
     stats,
     synthetic_relief,
@@ -68,6 +72,10 @@ MAX_RENDER_DIMENSION_PX = 4000
 # container with a few hundred MB of free RAM must refuse a huge upload before buffering it,
 # not after unpickling has already doubled it.
 MAX_LOAD_WORLD_BYTES = 512 * 1024 * 1024
+# Generation controls have ample headroom over the UI's choices while preventing a
+# request from multiplying the work and allocations without bound (#925).
+MAX_GENERATE_PLATES = 64
+MAX_GENERATE_MANTLE_CENTERS = 64
 # Each animation frame costs a full step_world + render, so this bounds worst-case request
 # time for POST /worlds/{world_id}/animate the same way MAX_RENDER_DIMENSION_PX bounds /worlds/{world_id}/render's
 # own worst case. Also doubles as the safety ceiling for "keep going until Stop is pressed"
@@ -124,12 +132,17 @@ def demo_login_page() -> RedirectResponse:
     return RedirectResponse("/login?demo=true", status_code=302)
 
 
+# Body-size cap (#920, body_limit.py). Before CORSMiddleware so CORS wraps it and the dev
+# frontend can read a 413 instead of an opaque network error.
+body_limit.install(app)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(_frontend_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Last, so it is outermost: auth, body-size and CORS refusals carry the security headers too (#555 F5).
+security_headers.install(app)
 
 _logger = logging.getLogger(__name__)
 
@@ -139,7 +152,8 @@ _registry = WorldRegistry(max_worlds=checkpoint.max_worlds())
 
 # The user/entitlement store (#620): SQLite at MANTLE_BLOOM_USER_DB_PATH, in-memory
 # when unset. Nothing gates on tiers yet (items 2-4); the store just exists for them.
-_user_store = users.open_user_store()
+# Opened here, at import, so an unusable path stops startup; sign-in shares it (#929).
+_user_store = users.shared_store()
 
 # FastAPI runs sync `def` routes in a thread pool, so two requests can otherwise race on the
 # same World's mutable numpy arrays -- and, worse, launch Numba's `parallel=True` kernels
@@ -1255,6 +1269,17 @@ def _generate_message_line(message):
     raise ValueError(f"unexpected generate progress message: {message!r}")
 
 
+def _validate_generate_resource_limits(req: GenerateRequest) -> None:
+    """Bound explicit generation counts before any compute is queued (#925)."""
+    if req.num_plates is not None and not 1 <= req.num_plates <= MAX_GENERATE_PLATES:
+        raise HTTPException(status_code=400, detail=f"num_plates must be between 1 and {MAX_GENERATE_PLATES}")
+    if not 0 <= req.num_mantle_centers <= MAX_GENERATE_MANTLE_CENTERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"num_mantle_centers must be between 0 and {MAX_GENERATE_MANTLE_CENTERS}",
+        )
+
+
 @app.post("/worlds/{world_id}/generate")
 def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
     """Streams newline-delimited JSON progress while generating a fresh world, replacing
@@ -1278,6 +1303,7 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
     stream starts, so a bad request still gets an ordinary 400 response rather than an error
     line."""
     session = _session_or_404(world_id)
+    _validate_generate_resource_limits(req)
     if req.node_density not in NODE_DENSITY_CHOICES:
         raise HTTPException(status_code=400, detail=f"unknown node_density {req.node_density!r}; choices are {NODE_DENSITY_CHOICES}")
     if req.climate_density not in climate.CLIMATE_DENSITY_CHOICES:
@@ -1645,25 +1671,66 @@ def _hydrology_cache_is_stale(cache) -> bool:
     )
 
 
+def _require_v5_upload(head: bytes) -> None:
+    """Refuse an upload that isn't a v5 `.bloom` zip, before it is read any further. A
+    legacy v1-v4 save is a pickle, and unpickling runs code, so the UI and API never load
+    one (#555 F1); `bin/convert_saves.py` converts old saves offline."""
+    if not npz_save.is_v5(head):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "not a v5 .bloom save: legacy pickled (.mbworld) saves are not loaded from uploads; "
+                "convert them offline with bin/convert_saves.py"
+            ),
+        )
+
+
+async def _load_uploaded_world(upload_path: str, *, read_manifest_name: bool = False) -> tuple[str | None, World]:
+    """Load one spooled upload off the event loop and always remove its temp file."""
+    try:
+        with open(upload_path, "rb") as upload:
+            saved_name = None
+            if read_manifest_name:
+                saved_name = await asyncio.to_thread(persistence.load_world_name_file, upload)
+                upload.seek(0)
+            world = await asyncio.to_thread(persistence.load_world_file, upload)
+        return saved_name, world
+    except persistence.SaveFormatError as exc:
+        raise HTTPException(status_code=400, detail=f"invalid or incompatible world file: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="invalid or incompatible world file") from exc
+    finally:
+        try:
+            os.unlink(upload_path)
+        except OSError:
+            pass
+
+
 async def _spool_upload_to_tempfile(request: Request) -> str:
     """Stream the request body to a temp file, returning its path. The upload route reads
     the world back from disk (see persistence.load_world_file) instead of holding the whole
     body in RAM as bytes alongside the unpickled world -- a default-detail save is tens of
     MB, and a hosted container has no RAM to spare for both copies at once. Bodies past
     MAX_LOAD_WORLD_BYTES are refused with a `413` while still streaming, before any of
-    that work starts."""
+    that work starts. Only v5 saves are accepted (see `_require_v5_upload`)."""
     fd, path = tempfile.mkstemp(prefix="mantle-bloom-upload-", suffix=".mbworld")
     size = 0
+    head = b""
     try:
         with os.fdopen(fd, "wb") as tmp:
             async for chunk in request.stream():
                 size += len(chunk)
+                if len(head) < 4:
+                    head += chunk[:4 - len(head)]
+                    if len(head) == 4:
+                        _require_v5_upload(head)
                 if size > MAX_LOAD_WORLD_BYTES:
                     raise HTTPException(
                         status_code=413,
                         detail=f"world file exceeds the {MAX_LOAD_WORLD_BYTES // (1024 * 1024)} MB upload limit",
                     )
                 tmp.write(chunk)
+        _require_v5_upload(head)
     except BaseException:
         # os.fdopen raising leaves fd open (the `with` never took it); closing an
         # already-closed fd just raises OSError, which the suppress below absorbs.
@@ -1684,9 +1751,8 @@ async def load_world(world_id: str, request: Request) -> dict:
     """A save-file upload that replaces one record's world in place -- the raw bytes of a
     file /worlds/{world_id}/save previously produced, as the request body (not JSON --
     see persistence.py). Same as /worlds/{world_id}/generate, whatever world previously
-    existed is gone. A line-backed (legacy) save is converted to
-    sparse quads on load, one way -- see docs/save-compatibility.md; the summary's
-    `surface_conversion` then reports what changed. The body streams to a temp file and
+    existed is gone. Only v5 saves load: a legacy (pickled, possibly line-backed) save is
+    refused and converted offline -- see docs/save-compatibility.md. The body streams to a temp file and
     loads from disk, so a large upload never sits in RAM twice (as bytes and as a
     world). `400` with the reason if the
     bytes are corrupt or in a save format this build doesn't read; any other failure is
@@ -1700,18 +1766,7 @@ async def load_world(world_id: str, request: Request) -> dict:
     # flag across a slow upload would stall every other operation on this world.)
     session = _session_or_404(world_id, hydrate=False)
     upload_path = await _spool_upload_to_tempfile(request)
-    try:
-        with open(upload_path, "rb") as upload:
-            world = persistence.load_world_file(upload)
-    except persistence.SaveFormatError as exc:
-        raise HTTPException(status_code=400, detail=f"invalid or incompatible world file: {exc}") from exc
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="invalid or incompatible world file") from exc
-    finally:
-        try:
-            os.unlink(upload_path)
-        except OSError:
-            pass
+    _, world = await _load_uploaded_world(upload_path)
     _discard_stale_hydrology_cache(world)
     # Under the lock, so a step can't still be mutating the world viewers are told replaced it.
     if not session.begin_operation():
@@ -1775,7 +1830,11 @@ def _duplicate_import_conflict(name: str, existing: WorldSession, world: World) 
 
 
 @app.post("/worlds/import", status_code=201)
-async def import_world(request: Request, name: str | None = None, allow_duplicate: bool = False) -> dict:
+async def import_world(
+    request: Request,
+    name: str | None = Query(default=None, min_length=1, max_length=100),
+    allow_duplicate: bool = False,
+) -> dict:
     """The "File > Load World" upload -- the raw bytes of a save file as the request body
     (not JSON, same spooling, size cap and `400` contract as `/worlds/{world_id}/load`).
     Unlike that route this one never destroys anything: the save becomes a brand-new
@@ -1789,20 +1848,7 @@ async def import_world(request: Request, name: str | None = None, allow_duplicat
     are built on exactly this. `409` past the world cap, like `POST /worlds`. The new
     session is private; publish it afterwards like any created world."""
     upload_path = await _spool_upload_to_tempfile(request)
-    try:
-        with open(upload_path, "rb") as upload:
-            saved_name = persistence.load_world_name_file(upload)
-            upload.seek(0)
-            world = persistence.load_world_file(upload)
-    except persistence.SaveFormatError as exc:
-        raise HTTPException(status_code=400, detail=f"invalid or incompatible world file: {exc}") from exc
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="invalid or incompatible world file") from exc
-    finally:
-        try:
-            os.unlink(upload_path)
-        except OSError:
-            pass
+    saved_name, world = await _load_uploaded_world(upload_path, read_manifest_name=True)
     _discard_stale_hydrology_cache(world)
     resolved = name or saved_name
     if not resolved:

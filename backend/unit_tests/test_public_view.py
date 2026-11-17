@@ -581,7 +581,7 @@ def test_owner_changes_invalidate_viewer_renders(steps, monkeypatch, change):
     else:
         monkeypatch.setattr(main.persistence, "load_world_file", lambda file: _AnyWorld(
             seed=7, elapsed_years=0.0, hydrology_cache=None))
-        assert client.post(f"/worlds/{_S.world_id}/load", content=b"save").status_code == 200
+        assert client.post(f"/worlds/{_S.world_id}/load", content=b"PK\x03\x04save").status_code == 200
     assert client.get(f"/public/worlds/{_S.world_id}/render").json()["revision"] != before
 
 
@@ -591,7 +591,7 @@ def test_load_while_the_world_is_busy_is_refused(steps, monkeypatch):
     before = _revision(_local())
     assert _S.begin_operation()
     try:
-        assert _local().post(f"/worlds/{_S.world_id}/load", content=b"save").status_code == 503
+        assert _local().post(f"/worlds/{_S.world_id}/load", content=b"PK\x03\x04save").status_code == 503
     finally:
         _S.end_operation()
     assert _revision(_local()) == before
@@ -896,7 +896,7 @@ def test_load_is_refused_while_the_compute_gate_is_held(steps, monkeypatch):
     before = _revision(_local())
     main._compute_gate.acquire()
     try:
-        assert _local().post(f"/worlds/{_S.world_id}/load", content=b"save").status_code == 503
+        assert _local().post(f"/worlds/{_S.world_id}/load", content=b"PK\x03\x04save").status_code == 503
     finally:
         main._compute_gate.release()
     assert _revision(_local()) == before

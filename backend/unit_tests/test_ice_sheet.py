@@ -708,10 +708,12 @@ def test_d1_frictional_melt_reads_last_step_heat_inside_the_root():
     assert melts[1] - melts[0] >= melts[2] - melts[1] - 1e-9
 
 
-def test_march_cost_default_is_the_d2_march():
-    # #822: the production default changes nothing; every cost option is opt-in.
+def test_march_cost_default_is_the_trend_1k_march():
+    # #842: the production default is the trend march with a 1 kyr longest substep. The
+    # fixed-250 yr "d2" march stays selectable, and is still the bare MarchCost().
+    assert ice_sheet.MARCH_COST is ice_sheet.march_cost("trend-1k")
+    assert ice_sheet.MARCH_COST.trend and ice_sheet.MARCH_COST.trend_max_substep_years == 1_000.0
     d2 = ice_sheet.MarchCost()
-    assert ice_sheet.MARCH_COST == d2
     assert ice_sheet.march_cost("d2") == d2
     assert d2.max_substeps is None and not d2.adaptive
     assert d2.sea_level_skip_m == 0.0 and not d2.local_dijkstra and d2.dijkstra_limit_m is None
@@ -730,6 +732,30 @@ def _patchy_positive(points, seed=822):
     return (points @ centres.T > np.cos(250e3 / _R_M)).any(axis=1)
 
 
+def test_restrict_matches_the_coo_round_trip_exactly():
+    # #147: filtering the CSR rows in place must give the matrix the old COO round trip
+    # built, stored order included (the distance searches break ties by it).
+    from scipy.sparse import csr_matrix
+
+    points, _, _, _ = _lattice(50.0, 1000.0, kind="hex")
+    graph = ice_sheet.symmetric_graph(points, _neighbors(points))
+    rng = np.random.default_rng(147)
+    # The same matrix with each row's edges stored in reverse.
+    flip = np.concatenate([np.arange(b - 1, a - 1, -1) for a, b in zip(graph.indptr[:-1], graph.indptr[1:])])
+    unsorted = csr_matrix((graph.data[flip], graph.indices[flip], graph.indptr), shape=graph.shape)
+    assert not unsorted.has_canonical_format
+    for source in (graph, unsorted):
+        for share in (0.0, 0.4, 1.0):
+            keep = rng.random(len(points)) < share
+            coo = source.tocoo()
+            ok = keep[coo.row] & keep[coo.col]
+            expected = csr_matrix((coo.data[ok], (coo.row[ok], coo.col[ok])), shape=source.shape)
+            got = ice_sheet._restrict(source, keep)
+            np.testing.assert_array_equal(got.indptr, expected.indptr)
+            np.testing.assert_array_equal(got.indices, expected.indices)
+            np.testing.assert_array_equal(got.data, expected.data)
+
+
 def test_local_inside_distance_matches_the_full_search_exactly():
     # #822 option 3: the inside distance searched on S plus its boundary is the full
     # search exactly (a shortest path into S can be cut at its last outside node), so
@@ -737,13 +763,18 @@ def test_local_inside_distance_matches_the_full_search_exactly():
     points, _, _, _ = _lattice(50.0, 1000.0, kind="hex")
     graph = ice_sheet.symmetric_graph(points, _neighbors(points))
     positive = _patchy_positive(points)
+    # Since #147 every search is the local one, so the full search is spelled out here.
+    from scipy.sparse.csgraph import dijkstra
+
     eligible = ice_sheet._restrict(graph, np.ones(len(points), dtype=bool))
-    phi_full, src_full = ice_sheet._signed_distance(graph, eligible, positive)
-    local = ice_sheet.MarchCost(local_dijkstra=True)
-    phi_local, src_local = ice_sheet._signed_distance(graph, eligible, positive, cost=local)
+    phi_local, _ = ice_sheet._signed_distance(graph, eligible, positive)
+    d_in = dijkstra(graph, indices=np.flatnonzero(~positive), min_only=True)
+    d_out = dijkstra(eligible, indices=np.flatnonzero(positive), min_only=True)
+    phi_full = 0.5 * (np.where(positive, 0.0, d_out) - np.where(positive, d_in, 0.0))
     assert 0 < positive.sum() < len(points)
     np.testing.assert_array_equal(phi_local, phi_full)
-    np.testing.assert_array_equal(src_local, src_full)
+    everywhere = np.ones(len(points), dtype=bool)
+    assert np.all(ice_sheet._signed_distance(graph, eligible, everywhere)[0] == -np.inf)
 
 
 def test_limited_outside_distance_falls_back_when_it_cuts_off_a_member():
@@ -764,3 +795,87 @@ def test_limited_outside_distance_falls_back_when_it_cuts_off_a_member():
     phi_far, src_far = ice_sheet._signed_distance(graph, eligible, positive, cost=limited, members=far)
     np.testing.assert_array_equal(phi_far, phi_full)
     np.testing.assert_array_equal(src_far, src_full)
+
+
+class _CountedProfiles:
+    """A stand-in for `_solve_plastic_body`'s cached shape builder over a nondecreasing
+    V(d), counting the distinct extents built."""
+
+    def __init__(self, volume_of):
+        self.volume_of = volume_of
+        self.built: set[float] = set()
+
+    def __call__(self, d):
+        self.built.add(d)
+        return type("Profile", (), {"volume": self.volume_of(d)})()
+
+
+def test_volume_extent_hint_changes_the_work_not_the_answer():
+    # #147: with any hint (good, far off, outside the range, not finite) the bisection
+    # returns the very same float as without one; a hint near the answer builds two or
+    # three profiles where the full bisection builds over a dozen.
+    def volume_of(d):
+        return max(d + 300e3, 0.0) ** 2.5  # empty below -300 km, growing like a dome
+
+    d_min, d_max, tolerance = -400e3 - 1.0, 2_750e3, 62e3
+    rng = np.random.default_rng(147)
+    for answer in rng.uniform(-290e3, 2_700e3, 40):
+        volume = volume_of(answer)
+        plain = _CountedProfiles(volume_of)
+        expected = ice_sheet._volume_extent(plain, volume, d_min, d_max, tolerance)
+        assert expected - tolerance < answer <= expected
+        for hint in (answer, answer + 100.0, answer - 100.0, answer + 5 * tolerance, answer - 5 * tolerance,
+                     d_min - 1e6, d_max + 1e6, d_min, d_max, np.nan, np.inf):
+            hinted = _CountedProfiles(volume_of)
+            assert ice_sheet._volume_extent(hinted, volume, d_min, d_max, tolerance, hint) == expected
+            assert expected in hinted.built or expected == d_max  # the walk from d0 reuses it
+        near = _CountedProfiles(volume_of)
+        ice_sheet._volume_extent(near, volume, d_min, d_max, tolerance, answer + 100.0)
+        assert len(near.built) <= 3 < len(plain.built)
+    # Volumes no extent holds, and none at all, are the same with a hint.
+    for volume in (volume_of(d_max) * 2.0, 0.0):
+        expected = ice_sheet._volume_extent(_CountedProfiles(volume_of), volume, d_min, d_max, tolerance)
+        assert ice_sheet._volume_extent(_CountedProfiles(volume_of), volume, d_min, d_max, tolerance, 0.0) == expected
+    # A domain narrower than the tolerance, and an empty one.
+    for lo, hi in ((0.0, 10e3), (5.0, 5.0)):
+        expected = ice_sheet._volume_extent(_CountedProfiles(volume_of), 1.0, lo, hi, tolerance)
+        assert ice_sheet._volume_extent(_CountedProfiles(volume_of), 1.0, lo, hi, tolerance, 3.0) == expected
+
+
+def test_margin_hints_leave_a_marched_ice_step_bit_identical(monkeypatch):
+    # #147: stepping a growing dome with the previous step's margins as hints gives the
+    # same ice as stepping it without, with fewer profiles built.
+    points, x, y, cell = _lattice(125.0, 1500.0, "hex")
+    n = len(points)
+    neighbors = _neighbors(points)
+    area = np.full(n, cell)
+    r = np.hypot(x, y)
+    climate = _cold(n, precipitation=400.0, temperature=np.where(r < 500e3, -25.0, 8.0), amplitude=10.0)
+    no = np.zeros(n, dtype=bool)
+    built = []
+    real_shape = ice_sheet._shape
+    monkeypatch.setattr(ice_sheet, "_shape", lambda *a: built.append(1) or real_shape(*a))
+
+    def march(hinted):
+        depth, bodies, history = np.zeros(n), None, []
+        for _ in range(6):
+            hints = ice_sheet.margin_hints(n, bodies) if hinted and bodies is not None else None
+            depth, melt, ice = ice_sheet.step_ice(
+                points, neighbors, area, np.zeros(n), np.zeros(n), -1e4, depth, climate, np.zeros(n), no, no, 2_000.0,
+                margin_hint_m=hints,
+            )
+            bodies = ice.bodies
+            history.append((depth, melt, ice.thickness, [b.margin_m for b in bodies]))
+        return history
+
+    plain = march(False)
+    plain_built = len(built)
+    built.clear()
+    hinted = march(True)
+    assert plain[-1][0].max() > 100.0
+    for (d0, m0, t0, g0), (d1, m1, t1, g1) in zip(plain, hinted):
+        np.testing.assert_array_equal(d1, d0)
+        np.testing.assert_array_equal(m1, m0)
+        np.testing.assert_array_equal(t1, t0)
+        assert g1 == g0
+    assert len(built) < plain_built

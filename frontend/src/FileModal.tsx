@@ -116,7 +116,7 @@ export default function FileModal({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".bloom,.mbworld"
+            accept=".bloom"
             style={{ display: "none" }}
             onChange={(e) => {
               const file = e.target.files?.[0];

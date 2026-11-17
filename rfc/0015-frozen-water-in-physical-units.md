@@ -1,11 +1,75 @@
 # RFC 0015: Frozen water in physical units: glacier mass balance, ice flow and meltwater, freezing lakes and rivers, ocean ice and polar snow
 
-- **Status:** Accepted (revised 2026-10-31 after G0's drifting-noise runs)
+- **Status:** Accepted (revised 2026-11-13 and 2026-11-15 for the trend-adaptive march, #842, round 3 passes only under post-hoc amendments; ice ages out of scope since 2026-11-15; revised 2026-10-31 after G0's drifting-noise runs)
 - **Date:** 2026-10-23
-- **Related:** #544 (tracking); #368 (evidence), #353 and #359 (ice-sheet model, decision B), #355 (water units), #503 and #504 (lake freezing at `WATER_TO_ICE`), #297 (balanced lakes), RFC [0014](abandoned/0014-lake-water-volume-and-freezing.md) (lake water volume and seasonal lake ice; its D2(b) and D2(c) are prerequisites here), RFC [0012](0012-physics-first-simulation.md) (physics-first simulation); superseded on acceptance: #197, #203, #358 item 4, #313 Stage E (see "Open issues this RFC supersedes"); design principles 3, 5, 6 and 8
+- **Related:** #544 (tracking); #822 and #842 (march cost, trend-adaptive default); #368 (evidence), #353 and #359 (ice-sheet model, decision B), #355 (water units), #503 and #504 (lake freezing at `WATER_TO_ICE`), #297 (balanced lakes), RFC [0014](abandoned/0014-lake-water-volume-and-freezing.md) (lake water volume and seasonal lake ice; its D2(b) and D2(c) are prerequisites here), RFC [0012](0012-physics-first-simulation.md) (physics-first simulation); superseded on acceptance: #197, #203, #358 item 4, #313 Stage E (see "Open issues this RFC supersedes"); design principles 3, 5, 6 and 8
 
 ## Revision note
 
+- **2026-11-13 — proposed for [#842](https://github.com/adubey/mantle-bloom/issues/842), after #822's round 2 (PR #839). Draft: round 3 evidence isn't in yet.**
+  - **Old:** D2 marches every body in fixed 250 yr substeps and holds the rest of the step
+    once pair-means settle three times in a row.
+  - **Evidence so far:** #822 round 2 found the never-settling marches sit on exact limit
+    cycles (periods 5, 20 or 30 substeps), so pair-means never coincide and the pair test
+    never fires: up to 4,000 `step_ice` solves per 1 Myr step. The trend march (every 30
+    substeps, compare window-mean depth fields; hold when the projected remaining change is
+    < 0.1%; double the substep while the change shrinks; back to 250 yr on a jump) cost
+    0.04–0.21× on cycling sheets with ice within 0.87% of D2 and the ledger closed, and
+    0.22–0.61× on drifting sheets, the only arm with the ledger inside 1e-3. On gen30, D2 at
+    125 yr moves ice by 7.3%, so 250 yr isn't a converged reference there. #811 found that on
+    two saves at 100 kyr and longer the pair test usually fires first, so the trend march
+    engaged on 9 of 200 steps and the ledger missed on 183 of 200 for both marches (#852).
+    Round 3 (E1–E6, [`analysis/issue842/`](../analysis/issue842/README.md)) has run. It
+    passes only under owner amendments set after seeing results (below).
+  - **New:** the trend march is the production default, with a **1 kyr** longest substep
+    (inside #741's 0-of-12-drops range), and the fixed-250 yr march stays selectable as
+    `d2` (the module's `MARCH_COST` setting, the replay probe's `--preset d2`, a test fixture;
+    no environment variable or UI switch)
+    and bit-identical to today's. No API or UI change.
+  - **Threshold changes, owner's decision of 2026-11-13, made without seeing any round 3
+    result.** An earlier round 3 (2026-11-08/09, unscored) had already run, and is scored
+    under its own stricter rule as well (preregistration amendment 5):
+
+    | Criterion | Old | New |
+    |---|---|---|
+    | Ledger residual on every step of a 10-step replay | ≤ 0.1% of accumulation | ≤ 0.1% of accumulation, or no worse than `d2`'s on the same step (#852 owns the absolute fix) |
+    | Step robustness, 0.25 vs 1 Myr, 10 Myr | < 10% on held-out saves (G0's gap limit 20%) | < 20% |
+    | Substep convergence | Within 1% (G1) | Reported, not gating |
+    | Agreement with `d2` | Within 0.87% (round 2 result, never a criterion) | Reported, not gating |
+    | Median step time at density 4 | ≤ +15% vs `origin/main` | ≤ +15% vs fixed-250 yr `d2`; ratio to `origin/main` reported |
+
+    The final evaluation reports every round 3 result against both columns.
+  - **Averaged gates, owner's decision of 2026-11-13, made after seeing the earlier round 3's
+    scores and before any comparison of this round 3 had run** (preregistration amendment
+    6). These two replace the "New" column's rows above, which stay as references:
+    - **Ledger:** the mean glacier residual over every checked step is ≤ max(0.1%, `d2`'s
+      mean + 0.01%). It was per step.
+    - **Runtime:** the mean of the per-save ratios is ≤ 1.15. It was the same limit on every
+      save at both step sizes.
+  - **Freshly generated worlds don't gate, owner's decision of 2026-11-13** (preregistration
+    amendment 7). A world at year 0 hasn't brought its ice close to its climate yet, so its
+    warm-up noise is reported only. This drops gen30 from the earlier round 3's flip count.
+  - **Ice ages are out of scope for RFC 0015, owner's decision of 2026-11-15** (preregistration
+    amendment 9, widened the same day after Codex's review of #870). No acceptance criterion
+    of this RFC gates on a save replayed with ice ages: the ice-age saves (seeds 374464662
+    and 447276134) are reported separately and don't count toward the diagnosis or
+    held-out sets' gates. The decision was first made for #842's round 3 after all of its
+    results were in. Round 3 passes with it and fails without it, so the evidence has no
+    passing result on ice-age saves (see the preregistration). The ice-age forcing's own
+    behaviour, G0's open ice-age rerun and the ice-age sea-ice cap stay with the issues that
+    already track them. The scope and what it means for each gate is in
+    [Scope: ice ages are out](#scope-ice-ages-are-out).
+  - **RFC 0014's withdrawal recorded, 2026-11-15.** RFC 0014 was withdrawn on 2026-10-31 after
+    delivering D1a–c, D2(a)–(c), D3 and D4. The Prerequisites and ownership section now says
+    what that means: those behaviours are in production, D2(b) and D2(c) landed before D1–D2,
+    and the removals that waited on RFC 0014 (the three `IceLedger` fields, `WATER_TO_ICE`)
+    are RFC 0015 D5's alone. No design change.
+  - **Acceptance checklist reviewed against the code and the evidence, 2026-11-15.** Seven of
+    its 16 items are met and ticked, each with its evidence below it. The rest wait on D3–D8
+    and G1, G3, G4 and G6. The held-out set is
+    accepted at two saves (see Scope), and D6 keeps removing the ice-age sea-ice cap.
+  - **Impact table and round 3 results:** in the description of #870 and in
+    [`analysis/issue842/README.md`](../analysis/issue842/README.md).
 - **2026-11-03 — proposed by the #765 PR after #741's drop-step ensembles and G1 (#766).**
   - **Old:** D2 solved each body implicitly at the end of the step
     (`V(d) = V_open + Δt · B(d)`), substepping only bodies slower than the step at τ/4
@@ -33,6 +97,27 @@
   - **Reason:** with drifting climate noise, arm (m3) on seed 997271774 has step gaps of 12.2%, 17.0% and 10.6% over three noise draws, against 3.2% with the per-step redraw, while its swing passes on every draw. On seed 649658380 the gaps are 5.1%, 3.8% and 4.5%, against 0.3%. Why the gap grows isn't established.
   - **Judgement:** 20% is the owner's decision, set after seeing these results, not derived from them.
   - **Impact:** arm (m3) with drifting noise passes both saves without ice ages. The last (m3) run on the ice-age save failed the forcing conditions and it hasn't been rerun, so G0's every-save rule still isn't met. Impact table: [PR #735](https://github.com/adubey/mantle-bloom/pull/735).
+
+## Scope: ice ages are out
+
+**Decision (owner, 2026-11-15).** This RFC doesn't cover the ice-age forcing: the ice-age
+cooling of the climate (`ICE_AGE_MAX_COOLING_C`), the Ice Age Frequency slider and the way a
+world's ice follows them. It delivers physical ice, a march that holds the ice in balance
+within a step, and meltwater, judged on worlds with ice ages off. What that means:
+
+- **No gate and no acceptance criterion passes or fails on a save replayed with ice ages.**
+  The two ice-age saves (seeds 374464662 and 447276134) are still replayed and reported.
+- **The held-out set is two saves without ice ages** (seeds 628977350 and 295569319). That's
+  below the seed-set rule's "at least 3", accepted because of this decision.
+- **The ice-age evidence we have isn't one to build on.** G1 was falsified on the ice-age
+  save by its runaway sheets (#766), and round 3 found the trend march less step-size robust
+  there (#842). Both stay on record as findings.
+- **D6 still removes the ice-age polar sea-ice cap** (`allow_ocean_ice` in `step_ice`). It is
+  a rule inside the ice solve that D6's freezing-point sea ice replaces, so it's a design
+  part and not ice-age evidence. Its behaviour under ice-age forcing is reported, not gating.
+- **Behaviour under the forcing belongs to the issues that track it**, such as G0's open
+  ice-age rerun (#554). Nothing here stops a user turning ice ages on; the RFC just makes no
+  claim about them.
 
 ## Problem
 
@@ -327,26 +412,36 @@ D2's fixes are chosen.
 
 ### Prerequisites and ownership
 
-RFC 0014 D2(b) (liquid water reaches its sink whatever the temperature, and pools there)
-and D2(c) (the lake ice cap `lake_ice_m`) are **prerequisites** of D4, D5 and D8. Without
-them, removing frozen river ice deletes the water that settles at cold nodes, which breaks
-this RFC's "no water deleted" criterion. D1–D3 should also wait for 0014 D2(b): at physical
-rates, `WATER_TO_ICE` turns that settled water into kilometres of river ice (Evidence item 3).
+**RFC 0014 was withdrawn on 2026-10-31, and what it delivered stays.** Its D1a–c (#587–#589),
+D2(a)–(c) (#539, #608, #632), D3 (#661) and D4 (#553) work is in production and is described in
+[the hydrology model page](../docs/simulation-model/hydrology.md). The mechanisms it didn't
+settle (partition stability, G7 and G8, and G9's body-budget sublimation, where the cell-wise
+sink stays) are open for separate work and aren't things this RFC relies on. So where this
+RFC says "RFC 0014" below, it means that delivered behaviour: liquid water reaching its sink
+whatever the temperature (D2(b)), the lake ice cap `lake_ice_m` (D2(c) and D4), the lake's
+wet and ice-free fractions, and the cell-wise lake sublimation. If a mechanism RFC 0014 didn't
+deliver turns out to matter for D4, D5 or D8, this RFC owns it. RFC 0014's text is in
+[`rfc/abandoned/`](abandoned/0014-lake-water-volume-and-freezing.md).
 
-If D1–D3 must ship first, the interim rule is: keep today's river and lake freezing, with
-`WATER_TO_ICE` held at its model-unit value as a listed exception, and book what the depth
-guard clips as ocean water.
+RFC 0014 D2(b) (liquid water reaches its sink whatever the temperature, and pools there)
+and D2(c) (the lake ice cap `lake_ice_m`) were **prerequisites** of D4, D5 and D8. Without
+them, removing frozen river ice deletes the water that settles at cold nodes, which breaks
+this RFC's "no water deleted" criterion. D1–D3 also had to wait for D2(b): at physical
+rates, `WATER_TO_ICE` turns that settled water into kilometres of river ice (Evidence item 3).
+**Both landed before D1–D2 did** (D2(b) in #550 on 2026-10-24, D1–D2 in #806 on 2026-11-07),
+so the interim rule that would have let D1–D3 ship first, keeping today's river and lake
+freezing, was never needed.
 
 Each removal has one owner:
 
 | Item | Removed or changed by |
 |---|---|
-| `_compute_flow_direction`'s freeze override (`water_frozen`) for liquid routing | RFC 0014 D2(b) |
-| `water_frozen`, `lake_frozen`, `freezing_lake`, `frozen_from_lake` in `compute_hydrology` | RFC 0014 D2(b) |
-| The frozen-river-ice block for liquid water in `compute_hydrology` | RFC 0014 D2(b) |
-| Writing `IceLedger.frozen_river_ice_m3`, `frozen_river_capped_m3`, `frozen_lake_m3` | RFC 0014 stops writing them |
-| Deleting those three fields | RFC 0015 D5, after RFC 0014 |
-| `WATER_TO_ICE` itself, once 0014 removes its uses | RFC 0015 D5 |
+| `_compute_flow_direction`'s freeze override (`water_frozen`) for liquid routing | RFC 0014 D2(b), delivered (#550) |
+| `water_frozen`, `lake_frozen`, `freezing_lake`, `frozen_from_lake` in `compute_hydrology` | RFC 0014 D2(b), delivered (#550): none of these names remains in `backend/app` |
+| The frozen-river-ice block for liquid water in `compute_hydrology` | RFC 0014 D2(b), delivered (#550) |
+| Writing `IceLedger.frozen_river_ice_m3`, `frozen_river_capped_m3`, `frozen_lake_m3` | RFC 0014 D2(b) stopped writing them, delivered: they are always 0 (`ice_sheet.py`) |
+| Deleting those three fields | RFC 0015 D5. It no longer waits on RFC 0014 |
+| `WATER_TO_ICE` itself | RFC 0015 D5, once its remaining uses go. `hydrology.py` still uses it to open a save's glacier water account |
 | `is_frozen`'s use as the snow switch, `liquid_precip`, `rates()`'s `snows`, and the breach gate's `WaterBalance` source | RFC 0015 D1 |
 | RFC 0014 D2(b)'s "Unchanged: … snow onto a lake's ice cap joins the glacier accumulation" | Replaced by RFC 0015 D4; a note in RFC 0014 records it |
 | The ice-age sea-ice cap (`allow_ocean_ice` block in `step_ice`) | RFC 0015 D6 |
@@ -461,15 +556,31 @@ sliding speed (`ICE_SLIDING_FRACTION` = 0.7 of it; `_diagnose_flow`). Till rides
 ice-surface flow (`hydrology._ice_surface_flow_target`). Under D1 these velocities become
 physical m/yr.
 
-**Settling and hold.** Substeps are 250 yr (below). After each pair of substeps, the march
-compares the means of the last two pairs; when they differ by less than 0.1% three times
-in a row, the body has settled and the rest of the step is held: it keeps the mean rates
-(melt, calving, ledger flows) of its last 6 substeps, and its ice doesn't change. The
-small net over the alternation shows up as the ledger residual, not as ice. A body that
-never settles marches the whole step. Every step logs substeps, marched years, held
-years, whether it settled, and the volume path.
+**Settling and hold.** Substeps start at 250 yr (below). Every 30 substeps (a window of
+15 settle pairs) the march compares the window-mean depth fields of the last two windows
+(area-weighted L1 change as a fraction of the ice). While that change shrinks by a ratio
+r < 1, the change still to come is projected as D·r/(1−r); otherwise it is D times the
+windows left in the step. The projection is capped at D times the windows left, since the
+sheet can't move further than that in the time that remains. When the projection is below
+0.1%, the body has settled and the rest of the step is held: it keeps the mean rates (melt,
+calving, ledger flows) of the last window (30 substeps), and its ice doesn't change. The
+pair test of the fixed-250 yr march still runs beside the trend test and either can end the
+march. It settles the body after three settle pairs in a row whose mean change is below
+0.1%, and its hold keeps the mean rates of the last 6 substeps. While the change keeps shrinking, the substep
+doubles up to the 1 kyr limit; a ratio above 1.5 drops it back to 250 yr. A window that
+is a whole number of cycle periods cancels a limit cycle, which is why pair-means (the
+fixed-250 yr test, kept as above) never settled on the exact limit cycles of
+period 5, 20 or 30 substeps (#822). The small net over the alternation shows up as the
+ledger residual, not as ice. A body that never settles marches the whole step. Every
+step logs substeps, marched years, held years, whether it settled, which test settled it
+and the volume path. The fixed-250 yr march with the pair test stays selectable as `d2`
+and is bit-identical to the march before this revision.
 
-**Substep limit: longest 250 yr, fixed.** G1 (#766) measured the response time τ per body
+**Substep limit: shortest 250 yr, longest 1 kyr.** The start and the floor stay 250 yr, for the
+reasons below; the trend settle test may double the substep up to 1 kyr while the window
+change shrinks, and drops it back to 250 yr on a jump. 1 kyr is inside #741's range (0 of 12
+drops at a 1 kyr cap) and is round 3's arm (E3 re-checks the invariant under the trend
+march). The G1 measurements that follow were taken at fixed substeps. G1 (#766) measured the response time τ per body
 on the march: the e-folding time of a ±5% or ±10% opening-ice perturbation, marched at
 125 yr substeps. Volume-weighted τ (p5 / median / p95) is 250 yr / 438 yr / over 10 kyr
 on seed 997271774, 688 yr / 1.0 kyr / 1.06 kyr on seed 649658380, and 500 yr / over 10 kyr
@@ -477,13 +588,13 @@ on seed 997271774, 688 yr / 1.0 kyr / 1.06 kyr on seed 649658380, and 500 yr / o
 the prototype's 250 yr floor, which binds; and no longest-substep cap from 10 kyr down to
 250 yr passes the 1% convergence check on any save (the failing bodies are small: 0.7–
 5.9% of volume at 500 → 250 yr; which state each settles in is what moves, not the
-integration). So the limit is a fixed longest substep of 250 yr, not a per-body τ/4:
+integration). So the floor is a fixed 250 yr, not a per-body τ/4:
 measuring τ every step would cost probe marches and buy nothing, since the cap range it
 implies doesn't converge anyway. The 250 yr march settles in about 4 kyr (13–16 substeps)
 and holds the rest of the step; at 10 kyr each substep overshoots, the alternation never
 damps, and it marches the whole step (45–73 substeps).
 
-**Why 250 yr is short enough.** #741 showed the failure mode a longer substep allows: on
+**Why 250 yr is short enough (and 1 kyr is the ceiling).** #741 showed the failure mode a longer substep allows: on
 seed 997271774 the equatorial plateau ice turns over in about 2 kyr, and a 10 kyr substep
 moves about five times the body's volume through it (46 M km³ accumulation and 53 melt),
 flipping the body from its high state to a low one it then keeps. At a 1 kyr cap none of
@@ -714,7 +825,7 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
   Biome views, four kinds of perennial ice are drawn as ice:
   - glacier ice of at least `GLACIER_VISIBLE_DEPTH_M` on land;
   - grounded marine glacier ice on ocean cells (D6), the same way as land ice;
-  - perennial lake ice: a lake cell whose ice-free fraction (RFC 0014's `f_free`) is 0 and
+  - perennial lake ice: a lake cell whose ice-free fraction (`ice_free_fraction` in `compute_hydrology`, from RFC 0014's lake ice cap) is 0 and
     whose `lake_ice_m` > 0;
   - perennial sea ice (D6).
 
@@ -783,8 +894,13 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
   - a report-only run of the same save at a period users can pick, 1 Myr, with 0.25 Myr steps,
     so the selectable range is seen at physical rates. It isn't pass/fail: 4 steps per cycle
     sample the forcing coarsely (see Assumptions).
-- a **held-out acceptance set** of ≥ 3 other saves, at least one replayed with ice ages on
-  under the same period rule, never used for gates or knob choices.
+- a **held-out acceptance set** of ≥ 3 other saves, never used for gates or knob choices.
+  (Until the 2026-11-15 revision it included at least one save replayed with ice ages on
+  under the same period rule. Ice ages are now out of scope for this RFC's gates, so the
+  ice-age saves below are reported, not gating.)
+
+Since 2026-11-15 the ice-age save in the diagnosis set and in the held-out set is replayed
+and reported, and doesn't gate (see [Scope](#scope-ice-ages-are-out)).
 
 **Chosen (2026-10-23, #548).** All six are density 4, at a tilt of 23.5°, with ice ages off
 as saved. Checksums and the survey are in [`analysis/issue548/`](../analysis/issue548/README.md).
@@ -834,7 +950,7 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
   - V's lag behind the intensity curve, at its maximum, is at most one step of the longest
     arm (1 Myr).
 
-  An arm passes the gate only if it passes on every diagnosis save. The forcing-following
+  An arm passes the gate only if it passes on every diagnosis save (the ice-age save is reported, not gating: see Scope). The forcing-following
   condition is diagnosis-only; acceptance carries its own step limit (10%, on volume and area) and the period rule.
 
   **Outcome:**
@@ -969,6 +1085,28 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
   grounded marine and land ice under D1–D2, and the eustatic difference between today's
   debit and D6's. *Outcome:* adopt D6's simple form if the generalised correction changes sea
   level by less than 1 m.
+
+  **Gate result (2026-11-15, #912, commit `0d4505e`): adopt D6's simple form.** The method
+  was stated on #912 before any run. On each step's final state, three levels are solved:
+  today's (debit `0.917 H`), D6's simple form (`D` lagged one step, as `update_sea_level`
+  sees it), and the generalised one. The generalised level is the liquid-water balance
+  `Σ A · max(0, (h − z) − 0.917 H) = V_total − L − Σ A · 0.917 H`, which is
+  [[Goelzer et al., 2020]](#ref-goelzer2020) Eqs. 5, 13 and 14 with the reference level set to
+  the solved level. The runs used the `trend-1k` march, 10 steps at 0.25 Myr (primary) and
+  1 Myr (second).
+  - **Deciding saves (ice ages off):** the largest |simple − generalised| is 0.0095 m and
+    0.0001 m at 0.25 Myr on 997271774 and 649658380, and 0.016 m and 0.0003 m at 1 Myr.
+    Today's debit and D6's differ by at most 0.08 m. Grounded marine ice is under 1% of ice
+    volume (≤ 0.095 M km³ against 12–16 M km³ on land), and floating ice ≤ 0.003 M km³.
+  - **Ice-age save (report only):** today's debit puts sea level up to 2.4 m too low at the
+    cycle's peak, and the simple form's residual reaches 0.26 m, with 3 M km³ grounded marine.
+  - The simple form's residual comes from lagging `D` by a step, and peaks on steps where sea
+    level moves most. Taking `D` at each candidate level inside the solve would make it exact.
+    That is optional for D6.
+  - Goelzer's density term (Eq. 10) is zero here because the model has one water density.
+    Evaluated separately at 1028 kg m⁻³, it is 0.16–1.10 m. It is reported only, not part of
+    D6.
+  See [`analysis/issue912/`](../analysis/issue912/README.md).
 - **G5: sea ice.** On the diagnosis set, with and without ice ages, report the perennial and
   seasonal sea-ice areas from D6's balance, by hemisphere and latitude band, the spread of the
   perennial ice edge's latitude by longitude, and the Polar Sea Ice class area before and
@@ -1037,11 +1175,13 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
 | `F_w` (ocean heat flux under sea ice) | 2 W m⁻² | [[Maykut & Untersteiner, 1971]](#ref-maykut1971) (1.3–2.7) | G5 sensitivity |
 | `T_si`, `A` over sea ice | Land construct at sea level; maritime amplitude | Design choice (proxies) | G5 |
 | Polar Sea Ice class threshold | `f_ice` ≥ 0.5 | Design choice | G5 |
-| Longest substep | 250 yr, fixed (shortest = longest) | G1 #766: τ/4 gives 125 yr on every save, below the prototype's 250 yr floor, which binds; no cap 10 kyr–250 yr converges | Fixed; re-measure only if a prototype runs below the 250 yr floor |
+| Shortest substep | 250 yr, fixed | G1 #766: τ/4 gives 125 yr on every save, below the prototype's 250 yr floor, which binds | Fixed; re-measure only if a prototype runs below the 250 yr floor |
+| Longest substep | 1 kyr (`d2` mode: 250 yr, so shortest = longest) | #741: 0 of 12 drops at a 1 kyr cap; #842 round 3 E3 re-checks it under the trend march | Fixed before E5; `d2` selectable |
+| Substep growth, shrink ratio | ×2 while the window change shrinks; back to 250 yr above a ratio of 1.5 | #822 round 2 | Fixed before E5 |
 | τ probe (diagnostic) | ±5%, ±10%, e-folding at 125 yr substeps | G1 #766 | None; the march doesn't use τ |
 | Tipping-point log | Growth factor of a growing gap, no τ | G1 #766 | None |
-| Settling tolerance | 0.1% between pair-means, 3 in a row | m3 #554; G1 cost runs settle in ~4 kyr | Sensitivity only if steps stop settling |
-| Hold window | Mean rates of last 6 substeps | m3 #554 | None |
+| Settling test | Trend: every 30 substeps, hold when the projected remaining change between window-mean depth fields is < 0.1% (`d2` mode: 0.1% between pair-means, 3 in a row) | #822 round 2: the pair test never fires on exact limit cycles; m3 #554 | Fixed before E5 |
+| Hold window | Mean rates of the last window (`d2` mode: last 6 substeps) | #822 round 2; m3 #554 | None |
 | Substep damping | Lagged inputs read mean of last two substeps | m3 #554 | None |
 | Sea-level bracket, membership iterations, endpoint threshold | Dropped: each substep reads the current ice, debit, deflection and masks | G1 marks them not applicable to the march | None |
 | `GLACIER_MAX_DEPTH_M` | 5,000 m, unchanged | Existing guard | Report how often it binds |
@@ -1050,12 +1190,18 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
 
 - **Runtime.** The ice solve is about 9% of step time today (#353).
   - The march runs ~13–16 substeps per step (G1 cost runs: 13.0–15.5 at the 250 yr cap,
-    settling in ~4 kyr then holding), each a full `step_ice` solve plus a sea-level
+    settling in ~4 kyr then holding; trend march: see #822 round 2 below), each a full `step_ice` solve plus a sea-level
     re-solve from the current debit (connected-ocean mask rebuild) and a deflection update.
     Root enumeration stays a diagnostic flag, not part of the production march.
   - Measured at density 4, medians over 40 steps: 13.2–22.5 s per step at the 250 yr cap,
     0.32–0.51× the 10 kyr march per step (30.9–65.7 s), which never settles and marches the
     whole step (33–73 substeps). Peak RSS 1.0–1.6 GB.
+  - **Trend march (#822 round 2, PR #839; revision of 2026-11-13).** On sheets that never
+    settle, the fixed-250 yr march solves every substep (up to 4,000 `step_ice` solves per
+    1 Myr step). The trend march costs 0.04–0.21× that on cycling sheets and 0.22–0.61× on
+    drifting ones. At 100 kyr and longer steps the pair test usually fires first, so the
+    two marches then behave alike (#811). Round 3's E6 measures the median step time at
+    density 4 against fixed-250 yr `d2`.
   - Against `origin/main` the +15% target is assessed by the D1–D2 implementation's replay:
     ~14 substep solves per step replace one whole-step solve. If the implementation can't
     meet it, the owner decides between the budget and the fix.
@@ -1132,7 +1278,7 @@ withdrawal can be handled part by part.
     replaced by a derived sea-ice state (new, e.g. `sea_ice_state`) and `SEAWATER_FREEZING_C`
     (new);
   - `seasonal_positive_degrees`: reused, plus siblings for the share of the year below a
-    threshold and freezing degree-days (new, shared with RFC 0014's `f_free`).
+    threshold and freezing degree-days (new, shared with the lake ice-free fraction RFC 0014 delivered).
 - `backend/app/hydroclimate/ice_sheet.py`:
   - `SurfaceClimate.rates` in physical units, returning snow and rain on ice and the basal
     energy balance; `W_M2_TO_M_ICE_PER_YR` (new); `MODEL_UNIT_SCALE`, the model-unit
@@ -1249,44 +1395,71 @@ withdrawal can be handled part by part.
 
 The thresholds below were confirmed by the project owner on 2026-10-23.
 
-- [ ] **Prerequisites:** RFC 0014 D2(b) and D2(c) landed before D4, D5 and D8; or D1–D3 shipped
+**Status, 2026-11-15:** 7 of 16 met and ticked. The others wait on D3–D8 and G1, G3 and G6 (G4 is recorded, #912). Each item carries its evidence. Ice-age saves
+don't gate any item (see [Scope](#scope-ice-ages-are-out)).
+
+- [x] **Prerequisites:** RFC 0014 D2(b) and D2(c) landed before D4, D5 and D8; or D1–D3 shipped
   first under the interim rule, stated in the PR.
-- [ ] **Superseded issues settled** at acceptance as planned in "Open issues this RFC
+  *Met: RFC 0014's D2(a)–(c) landed (#539 in PR #550, #608, #632) before RFC 0014 was withdrawn (`rfc/abandoned/`). The lake mechanisms that D4, D5 and D8 name as RFC 0014's are open work, tracked on #544.*
+- [x] **Superseded issues settled** at acceptance as planned in "Open issues this RFC
   supersedes" (a), and listed on the tracking issue.
+  *Met, per #544's table: #197, #203 and #368 are closed, #358 item 4 is marked superseded (and #358 has since been closed), and #313 stays open with Stage E pointing at the knobs table.*
 - [ ] **G0–G6 run and recorded** in this RFC, with D2's fixes chosen by G0.
-- [ ] **Step robustness:** on each held-out save, ice volume and area at 10 Myr agree within
-  10% between 0.25 Myr and 1 Myr steps. Ice-age saves use a period of at least 8
-  of the longest step.
-- [ ] **No unforced swings:** with the ice-age control at "never", no step-to-step change in
+  *Open: G0 (#554, #569), G2, G4 (#912) and G5 are recorded. G1, G3 and G6 are open.*
+- [x] **Step robustness:** on each held-out save, ice volume and area at 10 Myr agree within
+  20% between 0.25 Myr and 1 Myr steps (was 10% until the 2026-11-13 revision). Saves
+  replayed with ice ages are out of scope for this criterion (2026-11-15 revision).
+  *Met (#870, round 3b): 628977350 11% and 295569319 3.4% (fixed-250 yr `d2`: 7.8% and 2.4%). The held-out set is these two saves; see Scope.*
+- [x] **No unforced swings:** with the ice-age control at "never", no step-to-step change in
   global ice volume exceeds 25% after the first 2 Myr.
-- [ ] **Ledgers close:** glacier ledger residual ≤ 0.1% of the step's accumulation, and both
-  meltwater sources' ledgers (D8) close to round-off, on every step of a 10-step replay of
-  each held-out save.
-- [ ] **No water deleted:** the three-part partition of precipitation sums to P on every cell;
+  *Met (#870): the largest step-to-step change after 2 Myr is 16.8% for `trend-1k` and 10.8% for `d2`, on 997271774, 649658380, 628977350 and 295569319.*
+- [ ] **Ledgers close:** the glacier ledger residual, as a fraction of the step's
+  accumulation and averaged over every step of 10-step replays of the held-out saves, is
+  ≤ max(0.1%, the fixed-250 yr `d2` march's mean + 0.01%). Both meltwater sources' ledgers
+  (D8) close to round-off on every step. (D8 isn't on main yet. Round 3 checked #789's
+  land-water ledger in its place, preregistration amendment 3, so this half is still open.
+  The 2026-11-13 revision introduced the comparison
+  with `d2` and then the averaging. Before it, the limit was 0.1% on every step. #852 owns
+  closing the absolute residual at 100 kyr and longer steps.)
+  *Open. Glacier half: met on average in round 3b (mean 0.249% against a limit of 0.281%, four saves without ice ages), and the per-step miss is shared with `d2` (#852). D8 half: D8 isn't on main.*
+- [x] **No water deleted:** the three-part partition of precipitation sums to P on every cell;
   liquid water lost outside the ledgers is 0.
+  *Met (#789): `test_d1_precipitation_partition_sums_to_p` (five disjoint parts sum to P; this criterion's three-part form was refined), the ledger chain test `test_glacier_account_chains_steps_and_closes_the_full_precipitation_ledger`, and the land ledger within 0.1% on every replayed step in round 3b.*
 - [ ] **Units:** `WATER_TO_ICE` and `MODEL_UNIT_SCALE` are gone; every ice–water conversion
   goes through ρ_w / ρ_i in one named place.
+  *Open: `MODEL_UNIT_SCALE` is gone, and `WATER_TO_ICE` remains in `hydrology.py` until D4 and D5.*
 - [ ] **Meltwater rivers:** on each held-out save, at least half of the melt from the ice
   (surface, basal and rain on ice) reaches the ocean or a lake as discharge, and the number of
   visible river networks sourced at ice margins is reported against `origin/main`
   (G6 informs the report). Bare-ground snowmelt is reported separately.
-- [ ] **Sea level:** unit tests show floating ice, and ice grounded exactly at flotation,
+  *Open: D8, after G6, D4 and D5.*
+- [x] **Sea level:** unit tests show floating ice, and ice grounded exactly at flotation,
   leave sea level unchanged; G4's difference is recorded. D2's sea-level loop was dropped
   in the #765 revision: sea level is re-solved from the current ice debit between substeps,
   exact each time, so no residual criterion applies.
+  *Met (#917): `test_eustasy.py` covers floating ice, ice grounded at flotation, grounded marine ice above flotation, land ice, and march/eustasy parity; `analysis/issue917/README.md` records the A/B replay and `0.0000 m` agreement with G4's generalised arm.*
 - [ ] **Sea ice:** no ocean cell carries floating `glacier_depth` (every ice-bearing ocean
   cell is grounded by `is_grounded`); G5's extents recorded and its outcome met.
+  *Open: D6. G5's extents are recorded, and `allow_ocean_ice` is still in `step_ice`.*
 - [ ] **Maps:** unit tests show perennial ice drawn on land, grounded marine, lake and sea
   cells in the Elevation, Combined and Biome views, and glacier ice's Elevation value equal to
   bed + ice. As a model check (reported, not pass/fail): the share of drawn land ice whose
   lapse-corrected warmest month is above 0 °C.
+  *Open: D7.*
 - [ ] **Scale check** (reported, not pass/fail): global ice volume and its sea-level effect
   against the LGM's ~52 × 10⁶ km³ of extra grounded ice and ~134 m
   [[Lambeck et al., 2014]](#ref-lambeck2014), with the world's ocean area and the velocity
   distribution of the ice (interior and margins) stated.
-- [ ] **Runtime:** median step time at density 4 within +15% of `origin/main`.
-- [ ] **Saves:** old saves load.
+  *Open: not yet reported.*
+- [x] **Runtime:** median step time at density 4 within +15% of the fixed-250 yr `d2` march,
+  as the mean of the per-save ratios on the same saves and steps. (The 2026-11-13 revision
+  changed this from `origin/main` and from a limit on every save. The ratio to `origin/main`
+  is reported.)
+  *Met (#870, #906): round 3b measured a mean ratio of 0.71 against `d2` on the diagnosis saves without ice ages, and #906 made the trend march the default.*
+- [x] **Saves:** old saves load.
+  *Met: the six #548 saves, captured 2026-10-23 before D1–D2 landed, load and replay on main (#870). `test_save_without_glacier_water_account_loads_unopened_and_new_saves_round_trip` covers the account field.*
 - [ ] **Docs** updated as listed above.
+  *Open: `hydrology.md` is current through the D1–D2 march and #842. The D6 and D7 pages wait on D6 and D7.*
 
 ## Falsification criteria
 

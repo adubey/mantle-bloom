@@ -72,6 +72,8 @@ already-persisted array sidesteps needing that judgment call at all.
 
 from __future__ import annotations
 
+import hashlib
+import heapq
 import logging
 from dataclasses import dataclass, field
 
@@ -211,6 +213,14 @@ SHALLOW_EVAPORATION_BOOST = 0.3
 # lumped remainder re-charges losses at its end level.
 LAKE_SETTLE_TOLERANCE = 1.0e-4
 
+# A body's implicit level solve converges to this share of its stored volume (#905): a thousand
+# times finer than `_active_bodies`' 1e-10 saddle-storage test, so a body's merged and child
+# solves land on the same side of it. Safeguarded Newton for the first iterations, then
+# bisection; 60 halvings collapse any bracket to float precision.
+_LEVEL_SOLVE_STORAGE_TOLERANCE = 1.0e-13
+_NEWTON_ITERATIONS = 12
+_LEVEL_SOLVE_MAX_ITERATIONS = 80
+
 
 @dataclass(frozen=True)
 class LakeClimate:
@@ -335,21 +345,26 @@ def _ordered_spill_bodies(bodies, leaf_of_node, body_for_leaf, body_by_id, node_
         if receiver is not None and id(receiver) != id(body) and id(receiver) in active_ids:
             outgoing[id(body)] = id(receiver)
             indegree[id(receiver)] += 1
-    ready = sorted(
-        (body for body in bodies if indegree[id(body)] == 0),
-        key=lambda body: (-body.floor_elevation, body.lake_id),
-    )
+    # A heap keyed by floor order, then arrival: the order a stable re-sort of the ready list
+    # after every release would give, without re-sorting thousands of bodies each time (#147).
+    ready = [
+        (-body.floor_elevation, body.lake_id, arrival, body)
+        for arrival, body in enumerate(body for body in bodies if indegree[id(body)] == 0)
+    ]
+    heapq.heapify(ready)
+    arrivals = len(ready)
     ordered = []
     while ready:
-        body = ready.pop(0)
+        body = heapq.heappop(ready)[3]
         ordered.append(body)
         receiver_id = outgoing.get(id(body))
         if receiver_id is None:
             continue
         indegree[receiver_id] -= 1
         if indegree[receiver_id] == 0:
-            ready.append(body_by_id[receiver_id])
-            ready.sort(key=lambda item: (-item.floor_elevation, item.lake_id))
+            receiver = body_by_id[receiver_id]
+            heapq.heappush(ready, (-receiver.floor_elevation, receiver.lake_id, arrivals, receiver))
+            arrivals += 1
     if len(ordered) != len(bodies):
         ordered_ids = {id(body) for body in ordered}
         ordered.extend(sorted(
@@ -803,37 +818,51 @@ def _integrate_body_volume(available, members, cap_level, dry_level, dt_step, ev
             area * (evap_rate * (1.0 + SHALLOW_EVAPORATION_BOOST - 2.0 * SHALLOW_EVAPORATION_BOOST * wet) + sub_rate),
             d_wet,
         ))
-        return volume, evaporation_rate * dt_step, wet_area + evaporation_slope * dt_step
+        return volume, evaporation_rate * dt_step, wet_area + evaporation_slope * dt_step, wet_area
 
-    _, cap_evaporation, _ = budget(cap_level)
+    _, cap_evaporation, _, _ = budget(cap_level)
     surplus = available - cap_volume - cap_evaporation
     if surplus > 0.0:
         return cap_volume, cap_evaporation, surplus, cap_level
     low, high = dry_level, cap_level
     level = float(np.clip(dry_level + available / max(float(area.sum()), 1.0), low, high))
-    volume, evaporated, slope = budget(level)
-    for _ in range(8):
+    volume, evaporated, slope, wet_area = budget(level)
+    # Converge on the stored volume, not on `available` (#905). Over a long slice `available`
+    # is mostly the slice's losses, hundreds of times the storage, so a tolerance on it left
+    # the level loose by ~1e-8 of storage: coarser than `_active_bodies`' saddle-storage test.
+    # A body at its saddle then merged as children and split as the merged body, alternately,
+    # until the flush pass bound. The storage error is the level error times the wet area,
+    # i.e. the residual scaled by wet area over the budget's slope; losses dominate that slope
+    # over a long slice, so the residual itself can't reach this tolerance before the level
+    # reaches float precision. A shallow body high above sea level reaches that precision
+    # first (its storage floor is one level ulp over its mean depth), so a Newton correction
+    # below a few ulps of the level also ends the solve rather than bisecting to it.
+    level_floor = 8.0 * np.finfo(float).eps * max(abs(dry_level), abs(cap_level) if np.isfinite(cap_level) else 0.0, 1.0)
+    for iteration in range(_LEVEL_SOLVE_MAX_ITERATIONS):
         residual = volume + evaporated - available
-        if abs(residual) <= 1e-10 * max(available, 1.0):
+        level_error = abs(residual) / slope if slope > 0.0 else np.inf
+        if (
+            level_error * wet_area <= _LEVEL_SOLVE_STORAGE_TOLERANCE * max(volume, 1.0)
+            or level_error <= level_floor
+            or high - low <= level_floor
+        ):
             break
         if residual > 0.0:
             high = level
         else:
             low = level
-        candidate = level - residual / slope if slope > 0.0 else np.nan
+        # Newton while it converges, then bisection: a level crossing many partial-cell kinks
+        # can make Newton creep, and bisection collapses the bracket within 60 halvings.
+        candidate = level - residual / slope if slope > 0.0 and iteration < _NEWTON_ITERATIONS else np.nan
         level = candidate if low < candidate < high else 0.5 * (low + high)
-        volume, evaporated, slope = budget(level)
-    if abs(volume + evaporated - available) > 1e-8 * max(available, 1.0):
-        for _ in range(32):
-            level = 0.5 * (low + high)
-            volume, evaporated, _ = budget(level)
-            if volume + evaporated > available:
-                high = level
-            else:
-                low = level
-        level = 0.5 * (low + high)
-        volume, evaporated, _ = budget(level)
-    return volume, min(evaporated, available), 0.0, level
+        volume, evaporated, slope, wet_area = budget(level)
+    # Book what the converged level leaves over as loss, so storage plus loss is the water the
+    # body had (#905). That residual is at most the larger of the storage tolerance and what
+    # the float floor on the level leaves. A body that stops on the floor (shallow, high above
+    # sea level) can store slightly more than `available`, ~1e-4 m^3 at 5000 m; its loss is
+    # then clamped to zero. In that regime the 1000x margin over the saddle test isn't
+    # guaranteed, and `_first_visit`'s repeat-state backstop is what keeps a flicker bounded.
+    return volume, min(max(available - volume, 0.0), available), 0.0, level
 
 
 def _complete_owner_handoffs(accounting, leaf_ids, pending_volume):
@@ -1171,6 +1200,7 @@ def _settle_prognostic_slice(
     accounting.completed_owner_handoffs.clear()
     routed_surplus_sources: set[int] = set()
     refreshed: set[int] = set()
+    seen_states: set[tuple] = set()
     for pass_index in range(2 * max(1, len(leaves)) + 3):
         dt_input = dt if pass_index == 0 else 0.0
         bodies = _active_bodies(forest, elevation, depth, hypsometry)
@@ -1198,6 +1228,10 @@ def _settle_prognostic_slice(
         _record_body_transitions(bodies, next_bodies, events, seen_events)
         _release_broken_cycles(accounting, next_bodies)
         changed = {id(body) for body in next_bodies} != set(body_by_id)
+        if changed and not accounting.deferred:
+            changed = not _first_visit(
+                seen_states, next_bodies, refreshed, depth, accounting, routed_surplus_sources,
+            )
         if not changed and not accounting.deferred and accounting.cycle_surplus:
             owners, _ = _body_leaf_mapping(next_bodies, leaf_of_node)
             _reroute_final_surplus(
@@ -1210,7 +1244,61 @@ def _settle_prognostic_slice(
                 accounting, leaves, leaf_of_node, parent_by_id, is_ocean, depth, current_owners=owners
             )
             return
-    raise RuntimeError("Lake slice failed to settle transfers and topology within its pass bound")
+    raise RuntimeError(
+        "Lake slice failed to settle transfers and topology within its pass bound: "
+        + _unsettled_summary(bodies, next_bodies, accounting)
+    )
+
+
+def _first_visit(seen_states, next_bodies, refreshed, depth, accounting, routed_surplus_sources):
+    """Record this flush state; False when an earlier pass of the slice ended in it exactly.
+
+    With no transfer in flight, a pass is a deterministic function of this state, so a repeat
+    can only cycle until the pass bound. That is a body alternating between its merged and
+    child forms at its saddle, each within the merge test of the other (#905). Either form
+    holds the same water and has booked its losses, so the slice ends on the current one.
+    The state is everything a later pass reads: depths and charged losses, the active and
+    refreshed bodies, held surplus, the capped (spilling) bodies, owner handoffs and the
+    sources already rerouted. A body's `current_water_elevation` is not in it, because a
+    pass only writes that, after solving the body from depth.
+    """
+    # A digest, not the arrays: a long merge ladder records one state per pass.
+    digest = hashlib.blake2b(digest_size=16)
+    for array in (depth, accounting.slice_evaporation, accounting.slice_sublimation):
+        digest.update(np.ascontiguousarray(array).tobytes())
+    state = (
+        frozenset(id(body) for body in next_bodies),
+        frozenset(refreshed),
+        digest.digest(),
+        tuple(sorted((leaf_id, held.volume) for leaf_id, held in accounting.cycle_surplus.items())),
+        frozenset(accounting.final_spilling_ids),
+        frozenset(
+            (leaf_id, frozenset(sources)) for leaf_id, sources in accounting.pending_owner_handoffs.items()
+        ),
+        frozenset(accounting.completed_owner_handoffs),
+        frozenset(routed_surplus_sources),
+    )
+    if state in seen_states:
+        _logger.warning(
+            "lake slice: active bodies repeat a merge/split cycle with no transfers in flight; "
+            "settling on the current form (%d bodies)", len(next_bodies),
+        )
+        return False
+    seen_states.add(state)
+    return True
+
+
+def _unsettled_summary(bodies, next_bodies, accounting):
+    """Name what was still changing when a slice exhausted its flush passes (#905)."""
+    before = {id(body): body for body in bodies}
+    after = {id(body): body for body in next_bodies}
+    def ids(selected):
+        return sorted(body.lake_id for body in selected)[:20]
+    return (
+        f"bodies entering {ids(body for key, body in after.items() if key not in before)}, "
+        f"leaving {ids(body for key, body in before.items() if key not in after)}; "
+        f"deferred {sum(accounting.deferred.values()):.6g} m^3 at leaves {sorted(accounting.deferred)[:20]}"
+    )
 
 
 def solve_lakes_prognostic(
@@ -1961,19 +2049,25 @@ def _already_merged(
     if not lake.children:
         return True
     hyps = hypsometry if hypsometry is not None else CellHypsometry.whole_cells(elevation)
-    reached_saddle: list[bool] = []
+    saddle = lake.min_depth - 1e-6
     for child in lake.children:
         floor_idx = child.sink_node_idx
         if floor_idx < 0:
             floor_idx = int(child.members[np.argmin(elevation[child.members])])
-        floor_cell = np.array([floor_idx])
-        depth = float(lake_depth[floor_idx])
+        # One cell's `dry_level` / `level_from_depth`, on scalars: the lake march asks this
+        # of every hierarchy node several times a slice (#147).
+        z = hyps.elevation[floor_idx]
+        r = hyps.relief_m[floor_idx]
+        depth = np.float64(lake_depth[floor_idx])
         if depth <= 0.0:
-            level = hyps.dry_level(floor_cell)
+            level = float(z - r)
+        elif depth >= r:
+            level = float(z + depth)
         else:
-            level = float(hyps.level_from_depth(np.array([depth]), floor_cell)[0])
-        reached_saddle.append(level >= lake.min_depth - 1e-6)
-    return all(reached_saddle)
+            level = float(z - r + np.sqrt(4.0 * r * depth))
+        if not level >= saddle:
+            return False
+    return True
 
 
 def compute_spill_routing(

@@ -97,8 +97,8 @@ class MarchCost:
     """Selectable cost reductions for the end-of-step march (#822).
 
     The defaults are the fixed-250-yr D2 march exactly (RFC 0015, #789). Every other value
-    changes results or the cost structure and is an owner decision, so the production
-    default stays D2 and the alternatives are selected by preset (`MARCH_COST_PRESETS`)
+    changes results or the cost structure and is an owner decision. The production default is
+    the "trend-1k" preset (#842) and the alternatives are selected by preset (`MARCH_COST_PRESETS`)
     or by replacing `MARCH_COST`. They compose: a preset is just one combination.
 
     1. Substep cap with hold-extrapolation (#806 review item 12): after `max_substeps`
@@ -119,7 +119,8 @@ class MarchCost:
        debit has moved less than that many metres of sea level over the ocean since the
        last re-solve (0 re-solves every substep). `local_dijkstra` computes the inside
        distance on the positive set and its boundary only, which is exact (any shortest
-       path from outside S into S can be cut at its last outside node).
+       path from outside S into S can be cut at its last outside node); being exact, it
+       is what every search does since #147, and the flag no longer selects anything.
        `dijkstra_limit_m` caps the outside distance's reach; a member it would cut off,
        or one past half the limit, falls back to the unlimited search.
 
@@ -174,7 +175,9 @@ class MarchCost:
             raise ValueError("max_substeps must leave room for at least one settle pair")
 
 
-# Named combinations for probes and A/B runs (#822). "d2" is the production default.
+# Named combinations for probes and A/B runs (#822). "trend-1k" is the production default
+# (#842, RFC 0015 D2); "d2" is the fixed-250 yr march, kept selectable and bit-identical for
+# accuracy and correctness checks.
 MARCH_COST_PRESETS: dict[str, MarchCost] = {
     "d2": MarchCost(),
     "cap-hold": MarchCost(max_substeps=200),
@@ -185,8 +188,11 @@ MARCH_COST_PRESETS: dict[str, MarchCost] = {
     "cap-hold-recur": MarchCost(max_substeps=200, recurrence=True),
     "trend-adapt": MarchCost(trend=True),
     "trend-hold": MarchCost(trend=True, trend_grow=False),
+    # The production default (#842): the trend march with a 1 kyr longest substep, as the
+    # RFC 0015 D2 revision decided (inside #741's 0-of-12-drops range).
+    "trend-1k": MarchCost(trend=True, trend_max_substep_years=1_000.0),
 }
-MARCH_COST = MARCH_COST_PRESETS["d2"]
+MARCH_COST = MARCH_COST_PRESETS["trend-1k"]
 
 
 def march_cost(preset: str) -> MarchCost:
@@ -370,11 +376,46 @@ def symmetric_graph(points: np.ndarray, neighbor_idx: np.ndarray) -> csr_matrix:
     return graph.tocsr()
 
 
+@njit(cache=True)
+def _restrict_kernel(indptr, indices, data, keep):
+    """CSR arrays of the edges whose two ends are both in `keep`, in their stored order."""
+    n = indptr.shape[0] - 1
+    out_indptr = np.zeros(n + 1, dtype=indptr.dtype)
+    out_indices = np.empty(indices.shape[0], dtype=indices.dtype)
+    out_data = np.empty(data.shape[0], dtype=data.dtype)
+    m = 0
+    for i in range(n):
+        if keep[i]:
+            for e in range(indptr[i], indptr[i + 1]):
+                j = indices[e]
+                if keep[j]:
+                    out_indices[m] = j
+                    out_data[m] = data[e]
+                    m += 1
+        out_indptr[i + 1] = m
+    return out_indptr, out_indices[:m].copy(), out_data[:m].copy()
+
+
+def median_edge_m(graph: csr_matrix) -> float:
+    """The graph's typical edge length in metres: the step the margin root find resolves to."""
+    return float(np.median(graph.data)) if graph.nnz else 1.0
+
+
 def _restrict(graph: csr_matrix, keep: np.ndarray) -> csr_matrix:
-    """`graph` with every edge touching a node outside `keep` removed (same shape)."""
-    coo = graph.tocoo()
-    ok = keep[coo.row] & keep[coo.col]
-    return csr_matrix((coo.data[ok], (coo.row[ok], coo.col[ok])), shape=graph.shape)
+    """`graph` with every edge touching a node outside `keep` removed (same shape).
+
+    Filters the CSR rows directly (#147): the march calls this twice a substep, and the
+    round trip through COO and back re-sorted every surviving edge each time. The stored
+    edge order is the one that round trip gave, so searches over the result break ties
+    the same way."""
+    graph = graph.tocsr()
+    if not graph.has_canonical_format:
+        graph = graph.copy()
+        graph.sum_duplicates()
+    indptr, indices, data = _restrict_kernel(
+        graph.indptr, graph.indices, graph.data, np.ascontiguousarray(keep, dtype=np.bool_)
+    )
+    return csr_matrix((data, indices, indptr), shape=graph.shape)
 
 
 @njit(cache=True)
@@ -885,7 +926,9 @@ def _bracketed_root(f, lo: float, hi: float, f_lo: float, f_hi: float, tolerance
     return lo, hi
 
 
-def _solve_plastic_body(dom: _Domain, opening_m3: float, dt_myr: float, sea_level_m: float, step_m: float):
+def _solve_plastic_body(
+    dom: _Domain, opening_m3: float, dt_myr: float, sea_level_m: float, step_m: float, extent_hint: float | None = None
+):
     """Backward-Euler volume update for one body. Returns (shape, accumulation, surface melt,
     basal melt, saturation excess, saturated) with volumes in m^3, the shape already scaled to
     the closing volume.
@@ -893,7 +936,8 @@ def _solve_plastic_body(dom: _Domain, opening_m3: float, dt_myr: float, sea_leve
     Last step's extent is the one whose profile holds the opening volume, V(d_prev) = V_open
     (V is nondecreasing in d, so bisection finds it). Where the ice actually sits is a poor
     guide: snow builds ice on any cold node, often far beyond a body's sheet (and before #539,
-    frozen river and lake ice joined a body wherever they froze)."""
+    frozen river and lake ice joined a body wherever they froze). `extent_hint` is where to
+    look for it first (`_volume_extent`); it never changes the extent found."""
     cache: dict[float, _Shape] = {}
 
     def shape(d: float) -> _Shape:
@@ -910,7 +954,7 @@ def _solve_plastic_body(dom: _Domain, opening_m3: float, dt_myr: float, sea_leve
     # when the domain has no wall, since with every node in nothing would seed a margin.
     d_min = float(dom.phi.min()) - 1.0
     d_max = max(float(dom.phi.max()) - (0.0 if np.any(dom.nbr < 0) else 1.0), d_min)
-    d0 = _volume_extent(shape, opening_m3, d_min, d_max, step_m)
+    d0 = _volume_extent(shape, opening_m3, d_min, d_max, step_m, extent_hint)
     f0 = f(d0)
     saturated = False
     # Walk outward from last step's extent one edge at a time, so the bracket holds the root
@@ -960,21 +1004,111 @@ def _solve_plastic_body(dom: _Domain, opening_m3: float, dt_myr: float, sea_leve
     return final, acc, sm, bm, excess, saturated
 
 
-def _volume_extent(shape, volume_m3: float, d_min: float, d_max: float, tolerance: float) -> float:
+class _VolumeShortfall:
+    """Is the profile at extent d short of a volume? V(d) is nondecreasing, so an extent at
+    or below one known to be short is short, and one at or above one known to hold the
+    volume holds it; only extents between the two build a profile. The empty extent `d_min`
+    is short of any positive volume."""
+
+    def __init__(self, shape, volume_m3: float, d_min: float):
+        self._shape = shape
+        self._volume_m3 = volume_m3
+        self._short_up_to = d_min
+        self._holds_from = np.inf
+
+    def __call__(self, d: float) -> bool:
+        if d <= self._short_up_to:
+            return True
+        if d >= self._holds_from:
+            return False
+        short = self._shape(d).volume < self._volume_m3
+        if short:
+            self._short_up_to = d
+        else:
+            self._holds_from = d
+        return short
+
+
+def _bisection_cell(target: float, d_min: float, d_max: float, tolerance: float) -> tuple[float, float]:
+    """The final (lo, hi] of `_volume_extent`'s bisection if its answer lay at `target`:
+    the same midpoints in the same arithmetic, so `hi` is a value that bisection can return."""
+    lo, hi = d_min, d_max
+    while hi - lo > tolerance:
+        mid = 0.5 * (lo + hi)
+        if mid < target:
+            lo = mid
+        else:
+            hi = mid
+    return lo, hi
+
+
+def _probe_near(short: _VolumeShortfall, hint: float, d_min: float, d_max: float, tolerance: float) -> None:
+    """Teach `short` where the answer is by testing the bisection's own cell around `hint`,
+    then cells twice as far each time on the side the answer turns out to lie. A good hint
+    costs two profiles, the cell's two ends; a bad one costs a few more and still brackets."""
+    lo, hi = _bisection_cell(min(max(hint, d_min), d_max), d_min, d_max, tolerance)
+    reach = max(hi - lo, tolerance)
+    if short(hi):
+        probe = hi
+        while probe < d_max and short(probe):
+            probe = _bisection_cell(min(probe + reach, d_max), d_min, d_max, tolerance)[1]
+            reach *= 2.0
+        return
+    probe = lo
+    while probe > d_min and not short(probe):
+        target = probe - reach
+        reach *= 2.0
+        if target <= d_min:
+            return
+        probe = _bisection_cell(target, d_min, d_max, tolerance)[1]
+
+
+def _volume_extent(
+    shape, volume_m3: float, d_min: float, d_max: float, tolerance: float, hint: float | None = None
+) -> float:
     """The smallest extent d whose profile holds `volume_m3` (or d_max if none does), to
-    within `tolerance`."""
+    within `tolerance`.
+
+    `hint` is where the answer is expected, the body's margin after the previous march
+    substep (#147). It changes which profiles are built, not the answer: the bisection
+    below runs unchanged, and the probes around the hint let most of its tests be answered
+    from V's order instead of a new profile (about 2 profiles in place of 13 on a mature
+    world)."""
     if volume_m3 <= 0.0:
         return d_min
-    if shape(d_max).volume < volume_m3:
+    short = _VolumeShortfall(shape, volume_m3, d_min)
+    if hint is not None and np.isfinite(hint):
+        _probe_near(short, hint, d_min, d_max, tolerance)
+    if short(d_max):
         return d_max
     lo, hi = d_min, d_max
     while hi - lo > tolerance:
         mid = 0.5 * (lo + hi)
-        if shape(mid).volume < volume_m3:
+        if short(mid):
             lo = mid
         else:
             hi = mid
     return hi
+
+
+def margin_hints(n: int, bodies: list[BodyBalance]) -> np.ndarray:
+    """Per node, the margin extent (`BodyBalance.margin_m`) of the plastic body that held it
+    in a solve, NaN elsewhere: the next march substep's `margin_hint_m` (#147)."""
+    hints = np.full(n, np.nan)
+    for body in bodies:
+        if len(body.domain_nodes) >= ICE_BODY_MIN_NODES:
+            hints[body.nodes] = body.margin_m
+    return hints
+
+
+def _body_margin_hint(margin_hint_m: np.ndarray | None, body_nodes: np.ndarray) -> float | None:
+    """The body's hint from its nodes' (None without one). A body made of several earlier
+    ones takes their median."""
+    if margin_hint_m is None:
+        return None
+    known = margin_hint_m[body_nodes]
+    known = known[np.isfinite(known)]
+    return float(np.median(known)) if len(known) else None
 
 
 def _solve_uniform_body(nodes, opening_m3, area, climate: SurfaceClimate, dt_myr):
@@ -1015,16 +1149,10 @@ def _inside_distance_local(graph: csr_matrix, positive: np.ndarray) -> np.ndarra
     (#822). Exact: a shortest path into S can be cut at its last node outside S, which is
     a boundary node, and the cut path is no longer. Nodes outside that set get inf (the
     caller zeroes everything outside S)."""
-    n = graph.shape[0]
     boundary = ~positive & (graph @ positive.astype(float) > 0.0)
-    keep = np.flatnonzero(positive | boundary)
-    d_in = np.full(n, np.inf)
     if not boundary.any():
-        return d_in
-    sub = graph[keep][:, keep]
-    local_sources = np.flatnonzero(boundary[keep])
-    d_in[keep] = dijkstra(sub, indices=local_sources, min_only=True)
-    return d_in
+        return np.full(graph.shape[0], np.inf)
+    return dijkstra(_restrict(graph, positive | boundary), indices=np.flatnonzero(boundary), min_only=True)
 
 
 def _outside_distance(eligible_graph, s_idx: np.ndarray, members: np.ndarray | None, limit_m: float | None):
@@ -1051,18 +1179,12 @@ def _signed_distance(
     outside distance runs over the eligible graph only. Also returns, per node, the S node
     nearest to it there (-1 if unreachable). `cost` selects the #822 search
     restrictions (see MarchCost); None is the full-graph search."""
-    n = graph.shape[0]
     s_idx = np.flatnonzero(positive)
     limit = cost.dijkstra_limit_m if cost is not None else None
     d_out, sources = _outside_distance(eligible_graph, s_idx, members, limit)
-    not_s = np.flatnonzero(~positive)
-    if not len(not_s):
-        d_in = np.full(n, np.inf)
-    elif cost is not None and cost.local_dijkstra:
-        d_in = _inside_distance_local(graph, positive)
-    else:
-        d_in = dijkstra(graph, indices=not_s, min_only=True)
-    d_in = np.where(positive, d_in, 0.0)
+    # Always the local search (#147): it is the full one exactly, and the full one starts
+    # from every node outside S, most of the planet, on each march substep.
+    d_in = np.where(positive, _inside_distance_local(graph, positive), 0.0)
     d_out = np.where(positive, 0.0, d_out)
     return 0.5 * (d_out - d_in), sources
 
@@ -1084,6 +1206,8 @@ def step_ice(
     warn: bool = True,
     *,
     graph: csr_matrix | None = None,
+    graph_step_m: float | None = None,
+    margin_hint_m: np.ndarray | None = None,
     cost: MarchCost | None = None,
 ) -> tuple[np.ndarray, np.ndarray, IceStep]:
     """One glacier step over the whole node cloud. See the module docstring for the method.
@@ -1104,7 +1228,10 @@ def step_ice(
     calves.
 
     `cost` selects the march's #822 distance-search restrictions (MarchCost); None, as
-    every non-march caller passes, is the full search."""
+    every non-march caller passes, is the full search. `graph_step_m` is the median edge
+    length of a prebuilt `graph` (`median_edge_m`), which the march finds once (#147).
+    `margin_hint_m` is `margin_hints` of the previous march substep's bodies: it speeds
+    the search for each body's opening extent and never changes what is found (#147)."""
     n = len(points)
     area = np.asarray(area_m2, dtype=float)
     dt_myr = years / 1_000_000.0
@@ -1178,7 +1305,7 @@ def step_ice(
             h0, climate.temperature_c - LAPSE_RATE_C_PER_KM * h0 / 1000.0, climate.frictional_heat_w_m2,
         )
         c = yield_stress_pa(mobile_cover_m, is_warm0) / (RHO_ICE * GRAVITY_M_S2)
-        step_m = float(np.median(graph.data)) if graph.nnz else 1.0
+        step_m = median_edge_m(graph) if graph_step_m is None else graph_step_m
 
         order = np.argsort(label, kind="stable")
         sorted_labels = label[order]
@@ -1195,7 +1322,8 @@ def step_ice(
                 ledger.snow_melted_m3 += _melt_bare_snow(out, rest, bare_acc, area, dt_myr)
             else:
                 dom = _build_domain(graph, dom_nodes, phi, bed, c, area, sea_level_m, is_ocean, climate)
-                body = _plastic_body(out, dom, body_nodes, opening, area, dt_myr, sea_level_m, step_m, ledger)
+                hint = _body_margin_hint(margin_hint_m, body_nodes)
+                body = _plastic_body(out, dom, body_nodes, opening, area, dt_myr, sea_level_m, step_m, ledger, hint)
             _guard_body(out, body, bed, area, sea_level_m, is_ocean)
             bodies.append(body)
 
@@ -1295,9 +1423,11 @@ def _uniform_body(out: _Output, nodes, opening, area, bed, climate, is_ocean, dt
     return body
 
 
-def _plastic_body(out: _Output, dom: _Domain, body_nodes, opening, area, dt_myr, sea_level_m, step_m, ledger) -> BodyBalance:
+def _plastic_body(
+    out: _Output, dom: _Domain, body_nodes, opening, area, dt_myr, sea_level_m, step_m, ledger, extent_hint=None
+) -> BodyBalance:
     nodes = dom.nodes
-    shape, acc, sm, bm, excess, saturated = _solve_plastic_body(dom, opening, dt_myr, sea_level_m, step_m)
+    shape, acc, sm, bm, excess, saturated = _solve_plastic_body(dom, opening, dt_myr, sea_level_m, step_m, extent_hint)
     cov = np.minimum(shape.cover, 1.0)
     out.thickness[nodes] = shape.thickness
     out.covered[nodes] = cov

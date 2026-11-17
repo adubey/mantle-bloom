@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE } from "./api";
+import FullVersionPreview from "./FullVersionPreview";
 import Legend from "./Legend";
 import MapCanvas from "./MapCanvas";
 import ProgressBar from "./ProgressBar";
@@ -93,12 +94,30 @@ function AllowanceNote({ state, demo = false }: { state: PublicState; demo?: boo
   );
 }
 
+// Whoever already has the full app (the owner, or a local run) doesn't need it advertised,
+// except on /demo/view, which exists to show them the logged-out page.
+function FullVersionTeaser() {
+  const session = useSession();
+  if (session?.admin && !isDemo) return null;
+  return <FullVersionPreview repoUrl={REPO_URL} />;
+}
+
 function AccountLink() {
   const session = useSession();
   // Always offered once the session state is known: on a server without login configured
   // the /login page explains the setup (#626), instead of /view silently having no login
   // entry at all.
   if (isDemo || !session || session.admin) return null;
+  // A signed-in free account (#929): who it is, and the way out. /logout is a POST, so a
+  // form rather than a link.
+  if (session.user) {
+    return (
+      <form method="post" action={`${API_BASE}/logout`} style={{ margin: 0 }}>
+        <span style={{ opacity: 0.7 }}>{session.user.name ?? "Signed in"} · </span>
+        <button type="submit">Sign out</button>
+      </form>
+    );
+  }
   return <a href={`${API_BASE}/login`}>Sign in</a>;
 }
 
@@ -225,6 +244,7 @@ export default function Viewer() {
         </div>
       )}
       {worldId && <WorldView key={worldId} worldId={worldId} />}
+      <FullVersionTeaser />
     </main>
   );
 }

@@ -71,6 +71,23 @@ def test_parse_sketch_image_invalid_bytes_raises():
         parse_sketch_image(b"not an image")
 
 
+@pytest.mark.parametrize("fmt", worldsketch.ALLOWED_SKETCH_FORMATS)
+def test_parse_sketch_image_accepts_allowed_formats(fmt: str):
+    buf = io.BytesIO()
+    _island_canvas().save(buf, format=fmt)
+    masks = parse_sketch_image(buf.getvalue())
+    cx, cy = SKETCH_GRID_W // 2, SKETCH_GRID_H // 2
+    assert masks.land[cy, cx]
+
+
+@pytest.mark.parametrize("fmt", ("GIF", "BMP", "TIFF"))
+def test_parse_sketch_image_rejects_disallowed_formats(fmt: str):
+    buf = io.BytesIO()
+    _island_canvas().save(buf, format=fmt)
+    with pytest.raises(ValueError, match="could not decode sketch image"):
+        parse_sketch_image(buf.getvalue())
+
+
 def test_parse_sketch_image_river_and_mountain_restricted_to_land():
     img = _island_canvas()
     draw = ImageDraw.Draw(img)

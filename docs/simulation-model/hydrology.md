@@ -331,9 +331,24 @@ discharge, channel-width growth, deposition, geology or lake silt.
   the same slice duration. Its new evaporation and sublimation replace the earlier charges;
   external supply is added only once. These transfer passes advance no additional time,
   but their receiving bodies still face the slice's full implicit loss balance. A bounded
-  pass count exposes unresolved transfers or topology rather than accepting a partial solve.
+  pass count exposes unresolved transfers or topology rather than accepting a partial solve;
+  its error names the bodies entering and leaving the active set and the deferred leaves.
   Promotion also requires enough stored volume to support a common surface at the saddle;
   checking the floor cells alone can otherwise alternate between a merge and a split.
+  That storage test has a relative tolerance of 1e-10, so each body's implicit level solve
+  (`_integrate_body_volume`) converges until its storage error (level error times wet area)
+  is 1e-13 of its stored volume, or its level is within a few float ulps, not until its
+  budget residual is small against the water available. Over a long slice the available water
+  is mostly the slice's losses, and a tolerance on it lets a body at its saddle pass the test
+  as children but fail it as the merged body (#905). The residual left over is booked as
+  loss, so storage plus loss is the body's available water. It is at most the larger of the
+  storage tolerance and what the level's float floor leaves. A shallow body far above sea level
+  can stop on that floor holding slightly more than its available water (about 1e-4 m³ at
+  5,000 m), with its loss clamped to zero. There, the tolerance's margin over the saddle test
+  isn't guaranteed. As a backstop, a flush pass that ends with no transfers in flight, in a
+  state an earlier pass of the slice ended in, can only repeat. That state covers active and
+  refreshed bodies, depths and charged losses, held surplus, capped bodies, owner handoffs and
+  rerouted sources. The slice ends on that state and logs a warning.
 - **Flow direction** (`_compute_flow_direction`): among each node's k nearest neighbors
   strictly below its own elevation (a downhill candidate), prefers whichever one already has
   the deepest established channel (`channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`),
@@ -688,7 +703,8 @@ the river's mouth, at the width of the drawn reach above them
 (`_extend_drawn_rivers_downstream`): a river's last cells before the coast are often new or
 reset cells whose channel is still narrower than the floor, and the line used to stop one to
 three nodes short of the sea (issue #503). A node drawn in its own right keeps its own width. Color and line width are driven by two different, deliberately decoupled measures of "how
-big":
+big". A third measure decides whether a segment is drawn as water at all (see "Canyon
+headwaters" below).
 
 - **Color** is a *percentile rank* of `channel_width` among this same render's own currently-
   drawn segments (`render_image._percentile_rank`), not a fraction of any fixed physical or
@@ -696,7 +712,8 @@ big":
   already only selects each catchment's own highest-flow tail, so most drawn segments sit close
   to whatever fixed denominator you pick, reading as uniformly bright with barely any visible
   head-to-mouth gradient. A percentile rank is spread evenly from `RIVER_COLOR_BLEND_MIN_FRACTION`
-  (this render's own narrowest visible channel) to 1.0 (its widest) by construction, while
+  (this render's own narrowest visible channel) to `RIVER_COLOR_BLEND_MAX_FRACTION` (its
+  widest; 0.7 rather than full color, which glowed against dark land, issue #933) by construction, while
   staying exactly monotonic in `channel_width` -- so a real confluence (a genuine local width
   increase) still visibly brightens everything downstream of it toward the river-blue overlay
   color.
@@ -721,6 +738,28 @@ flat, uniformly-blended slab. The River Inspector also filters short networks fo
 using a 1,875 km physical-length cutoff (the former 30-node threshold at default
 `node_density=4`). The cutoff stays fixed as mesh density changes. River selection itself uses
 physical discharge, so breach-only erosion paths cannot appear as physical rivers.
+
+**Canyon headwaters (issue #933).** A river is drawn as carved ground in its upper reaches
+and turns into water gradually downstream. `render_image._river_water_fraction` ranks each
+drawn segment's physical discharge among the render's drawn segments. Below
+`RIVER_WATER_MIN_PERCENTILE` (0.3) a segment gets no river color: the land under the line
+keeps its hue and saturation and loses `RIVER_CANYON_SHADE` (15%) of its HSV value. Above that
+rank the water share rises as a power of the rank (`RIVER_WATER_RAMP_GAMMA`), reaching 1 at the
+render's largest flow. The color blend above is multiplied by the water share, and the canyon
+shade falls by the same share, so there is no node where the line switches look. The widest
+line is `RIVER_LINE_WIDTH_MAX_MULT` = 2 times the base width.
+
+**Drawn course (issue #933).** Steepest-descent routing on a smooth slope runs dead straight
+along the mesh, sometimes for more than ten nodes (issue #935 tracks the routing). The map
+bends the drawn line only: `render_image._river_course_points` displaces each interior river
+node sideways by up to `RIVER_MEANDER_AMPLITUDE` (0.6) node spacings, by an amount fixed by
+the node's position, then relaxes it toward its upstream and downstream neighbours
+(`RIVER_SMOOTH_PASSES`). Heads and mouths stay on their nodes. Routing, discharge and the
+River Inspector's data are unchanged.
+
+These settings are the defaults of `render_image.RiverStyle`.
+`bin/debug/river_style_sheet.py` renders one saved world under several styles side by side,
+which is how the defaults were chosen.
 
 **Canyons via hillshade (issue #190).** A channel deep past `CHANNEL_INCISION_MIN_DEPTH_M`
 and wide past `CHANNEL_INCISION_MIN_WIDTH_M` (ramped over `CHANNEL_INCISION_WIDTH_RANGE_M`) has
@@ -825,18 +864,29 @@ since climate.py runs *before* this module each step).
   at a time from last step's extent, and the one nearest it is kept: a higher sheet is
   colder, so B can change sign more than once, and the nearest root preserves Weertman
   (1961) hysteresis (a plateau that is bare stays bare; a covered one keeps its sheet).
+  Last step's extent is the smallest one whose profile holds the opening volume, found by
+  bisection over the domain. In the march it is looked for first around the body's margin
+  from the previous substep (`margin_hints`), which finds the same extent with fewer
+  profiles because V(d) is nondecreasing (#147).
 - **End-of-step march** (RFC 0015 D2). Fast ice reaches balance within a step, so each step
-  marches the ice there in fixed 250 yr substeps (`hydrology._march_glacier`, each one an
+  marches the ice there in substeps of 250 yr to 1 kyr (`hydrology._march_glacier`, each one an
   ordinary `step_ice` solve from the current ice). Between substeps the fast inputs are
   recomputed from it: frictional heat (damped: the mean of the last two substeps' heat),
   the mass-balance lapse surface (on the load-equilibrium deflection of the current ice),
   and sea level (re-solved from the current ice debit, with the ocean mask, anchored on
   the march's own current-step mask rather than last step's cache; Earth's forced straits
   stay connected). Grounding and flotation keep the opening bed, a one-step lag on the
-  deflection; only the lapse correction sees the equilibrium target. Settle checks run on
-  non-overlapping substep pairs; when the last two pair-means differ by less than 0.1%
-  three checks in a row the ice has settled and the rest of the step is held, keeping the
-  mean rates (melt, calving, ledger flows) of the last 6 substeps. Held losses can never
+  deflection; only the lapse correction sees the equilibrium target. Two settle tests run
+  side by side, and either ends the march (#842; `settle_test` in the log says which).
+  The pair test runs on non-overlapping substep pairs: when the last two pair-means differ
+  by less than 0.1% three checks in a row the ice has settled and the rest of the step is
+  held, keeping the mean rates (melt, calving, ledger flows) of the last 6 substeps. The
+  trend test, added because pair-means of an exact limit cycle never coincide (#822),
+  compares 30-substep window-mean depth fields. It holds once the change still to come
+  (projected from the ratio of successive changes, and never more than the change times the
+  windows left) is under 0.1%, keeping the last window's mean rates. While the change
+  shrinks it doubles the substep, up to 1 kyr, and it drops back to 250 yr when the change
+  jumps. Held losses can never
   exceed the available ice: the hold scaling clamps to fit, so a sheet that melts away
   holds ~zero loss instead of booking a transient's mean melt. A body of ice that never
   settles marches the whole step. Every step logs substeps, marched/held years,
@@ -844,7 +894,11 @@ since climate.py runs *before* this module each step).
   `ice_sheet.MARCH_LOG`, last 64 entries). Each marched step warns about the depth guard
   at most once, on the summed ledger. A settled march costs ~13-32 ice solves against the
   endpoint solve's one, which is why steps run over the +15% budget on the diagnosis
-  replays. `World.simulate_glacier_march` (`false` in the UI's Controls, off by default
+  replays. The trend test cut the median step time to 0.35-0.98x of the fixed-250 yr march
+  on the diagnosis saves without ice ages (round 3, #842). Ice at 10 Myr differs from the
+  fixed-250 yr march by up to 17% on a world where that march never settles; neither is a
+  converged reference there (#822). Saves replayed with ice ages have no passing evidence
+  (ice ages are out of scope for RFC 0015). `World.simulate_glacier_march` (`false` in the UI's Controls, off by default
   for UI-created worlds) skips the march: the ice is solved once per step and frozen
   there, the same zero-length path the `MARCH_GLACIERS` test knob takes. A world with
   no ice and no snowfall takes the same one-solve fast path automatically (an
@@ -854,10 +908,13 @@ since climate.py runs *before* this module each step).
   profiler, steps of `MARCH_PROFILE_MIN_YEARS` (5 kyr) or more record the march's
   discrete phases -- graph build, ice solves, sea-level re-solves -- as spans;
   shorter marches record none.
-- **March cost options** (#822, experimental, off by default). `ice_sheet.MARCH_COST`
-  (a `MarchCost`, chosen by name from `ice_sheet.MARCH_COST_PRESETS`) selects
-  cheaper marches for comparison. The production default, `d2`, is the march above
-  unchanged. The options compose:
+- **March cost options** (#822; all but the default are experimental). `ice_sheet.MARCH_COST`
+  (a `MarchCost`, chosen by name from `ice_sheet.MARCH_COST_PRESETS`) selects the march.
+  The production default, `trend-1k` (#842), is the march above with the trend settle test
+  and a 1 kyr longest substep. The `d2` preset is the fixed-250 yr march with the pair test
+  only, bit-identical to the march before #842, and is what accuracy and correctness
+  checks select (the replay probe's `--preset d2`, or a test setting `MARCH_COST`). There
+  is no environment variable or UI switch. The options compose:
   - A substep cap (`max_substeps`). After the cap, an unsettled march fills the rest
     of the step with the settled hold (`cap_fill="hold"`, which leaves a still-moving
     sheet's net drift in the ledger residual) or with one backward-Euler substep over
@@ -868,15 +925,17 @@ since climate.py runs *before* this module each step).
   - Cheaper substeps. `sea_level_skip_m` skips the sea-level re-solve while the ice
     debit has moved less than that many metres of sea level. `local_dijkstra` searches
     the inside distance on the positive set and its boundary only, which gives the
-    same result as the full search. `dijkstra_limit_m` caps the outside distance's
+    same result as the full search; since #147 every search runs that way and the
+    flag selects nothing. `dijkstra_limit_m` caps the outside distance's
     reach, and falls back to the full search when the cap would cut off a body member.
   - Two extra settle tests, run beside the pair test. `recurrence` settles once the
     depth field repeats the one p substeps back (p <= 64), which catches the exact
     limit cycles that pair means never settle; the hold then averages whole periods.
     `trend` compares 30-substep window-mean depth fields. It holds once the change
     still to come (projected from the ratio of successive changes) is under 0.1%. While
-    the change shrinks it can also double the substep (`trend_grow`, up to 4 kyr), and
-    it drops back to 250 yr when the change jumps.
+    the change shrinks it can also double the substep (`trend_grow`, up to
+    `trend_max_substep_years`: 1 kyr in the default, 4 kyr in `trend-adapt`), and it drops
+    back to 250 yr when the change jumps.
 
   Every march log entry also records `capped`, `max_substep_years`, the sea-level
   re-solve/skip counts, and which test settled it (`settle_test`, with the cycle
@@ -1023,7 +1082,9 @@ exists) -- a floating polar ice cap that retreats when the age passes; and **gla
 returns -- `eustasy.trapped_water_volume_m3` debits the liquid-water equivalent of all
 `glacier_depth` plus every visible lake's `lake_depth` from the conserved total surface-water
 budget, so the ocean's share (and the shoreline) falls as the ice sheets grow and rises again as
-they melt.
+they melt. Ice on connected ocean lowers sea level only by its water above flotation (RFC 0015
+D6, #917), so the floating sea-ice cap leaves sea level unchanged; see
+[Eustatic sea level](surface-processes.md#eustatic-sea-level-eustasypy).
 
 ## River Inspector
 

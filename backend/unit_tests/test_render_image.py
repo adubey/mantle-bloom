@@ -729,6 +729,105 @@ def test_render_png_base64_round_trips():
     assert image.size == (100, 60)
 
 
+# Every segment fully water, on its routed course: isolates the water-line mechanics (halo,
+# spill paths, per-segment color) from the canyon ramp and the drawn-course bending (#933).
+_ALL_WATER = render_image.RiverStyle(
+    water_min_percentile=0.0, water_ramp_gamma=0.0, canyon_shade=0.0, meander_amplitude=0.0, smooth_passes=0
+)
+
+
+def _river_chain_world(n: int = 12) -> World:
+    """One straight river of `n` nodes along the equator, discharge rising downstream, every
+    node past the draw floors; the last node is the mouth."""
+    lon = np.radians(np.arange(n) * 2.0)
+    points = np.column_stack([np.cos(lon), np.sin(lon), np.zeros(n)])
+    flow_target = np.r_[np.arange(1, n), -1]
+    world = World(seed=0, plates=[])
+    world.hydrology_cache = hydrology.HydrologyFields(
+        points=points,
+        elevation=np.linspace(100.0, 0.0, n),
+        is_ocean=np.zeros(n, dtype=bool),
+        neighbor_idx=np.zeros((n, 1), dtype=np.int64),
+        flow_accum=np.zeros(n),
+        discharge_m3_s=render_image.RIVER_VISIBLE_MIN_FLOW_M3_S * (2.0 + np.arange(n)),
+        water_deposited=np.zeros(n),
+        filled_elevation=np.zeros(n),
+        spill_target=np.full(n, -1, dtype=np.int64),
+        is_river=np.r_[np.ones(n - 1, dtype=bool), False],
+        flow_target=flow_target,
+        lake_depth=np.zeros(n),
+        glacier_depth=np.zeros(n),
+        plates_in_order=[],
+        channel_width=np.full(n, 5000.0),
+    )
+    return world
+
+
+def test_river_water_fraction_is_zero_in_the_headwaters_and_rises_to_one_at_the_largest_flow():
+    # Issue #933: below RIVER_WATER_MIN_PERCENTILE a segment is canyon only, then water fades
+    # in gradually downstream instead of switching on at one node.
+    world = _river_chain_world(21)
+    river_idx = np.arange(20)
+    frac = render_image._river_water_fraction(world.hydrology_cache, river_idx)
+    below = np.arange(20) / 19.0 < render_image.RIVER_WATER_MIN_PERCENTILE
+    assert below.sum() > 0
+    assert np.all(frac[below] == 0.0)
+    assert frac[-1] == pytest.approx(1.0)
+    assert np.all(np.diff(frac) >= 0.0)
+    assert np.diff(frac).max() < 0.2  # no jump between neighbouring segments
+
+
+def test_draw_rivers_canyon_changes_only_the_value_of_the_land_under_it():
+    # Issue #933: a canyon is the land's own color, darker. With every segment forced to
+    # canyon, drawn pixels keep the land's R:G:B ratios (hue and saturation) and none gains blue.
+    world = _river_chain_world()
+    land = np.array([120, 150, 80])
+    style = render_image.RiverStyle(water_min_percentile=1.01)
+    image = Image.new("RGB", (300, 200), tuple(int(c) for c in land))
+    image = render_image._draw_rivers(image, world, "behrmann", 300.0, 20.0, 100.0, 1.0, np.eye(3), style=style)
+    pixels = np.asarray(image).astype(float)
+    changed = np.any(pixels != land, axis=-1)
+    assert changed.sum() > 0
+    factor = pixels[changed] / land
+    assert np.all(factor <= 1.0)
+    assert factor.min() >= 1.0 - render_image.RIVER_CANYON_SHADE - 0.02
+    # One factor for all three channels, within 8-bit rounding.
+    assert np.ptp(factor, axis=1).max() < 0.02
+
+
+def test_draw_rivers_default_style_never_reaches_full_river_color():
+    # Issue #933: full-strength RIVER_COLOR_RGB glowed against dark land. Even the largest
+    # river now blends at most RIVER_COLOR_BLEND_MAX_FRACTION of the way there.
+    world = _river_chain_world()
+    land = np.array([40, 70, 30])
+    image = Image.new("RGB", (300, 200), tuple(int(c) for c in land))
+    image = render_image._draw_rivers(image, world, "behrmann", 300.0, 20.0, 100.0, 1.0, np.eye(3))
+    pixels = np.asarray(image).astype(float)
+    river_color = np.array(render_image.RIVER_COLOR_RGB)
+    toward_river = ((pixels - land) @ (river_color - land)) / ((river_color - land) @ (river_color - land))
+    assert toward_river.max() > 0.2
+    assert toward_river.max() <= render_image.RIVER_COLOR_BLEND_MAX_FRACTION + 0.02
+
+
+def test_river_course_points_bend_a_straight_run_but_keep_its_head_and_mouth():
+    # Issue #933/#935: routing on a smooth slope runs dead straight. The drawn course is
+    # displaced sideways by at most RIVER_MEANDER_AMPLITUDE node spacings; head, mouth and the
+    # routing itself are untouched, and the same place always bends the same way.
+    world = _river_chain_world()
+    hydro = world.hydrology_cache
+    river_idx = np.arange(len(hydro.points) - 1)
+    spacing = np.radians(2.0)
+    course = render_image._river_course_points(hydro, river_idx, render_image.RIVER_STYLE, spacing)
+    moved = np.linalg.norm(course - hydro.points, axis=1)
+    assert np.allclose(np.linalg.norm(course, axis=1), 1.0)
+    assert moved[0] == 0.0 and moved[-1] == 0.0 and moved[-2] == 0.0
+    assert np.abs(course[1:-2, 2]).max() > 0.0  # off the equator the routed run sits on
+    assert moved.max() <= render_image.RIVER_MEANDER_AMPLITUDE * spacing * 1.01
+    again = render_image._river_course_points(hydro, river_idx, render_image.RIVER_STYLE, spacing)
+    assert np.array_equal(course, again)
+    assert np.array_equal(render_image._river_course_points(hydro, river_idx, _ALL_WATER, spacing), hydro.points)
+
+
 def test_draw_rivers_only_draws_segments_above_the_width_floor():
     # The main map views (unlike the River Inspector, which deliberately shows every
     # is_river-classified network regardless of size) additionally require channel_width to
@@ -808,11 +907,11 @@ def test_draw_rivers_wide_segment_has_a_dimmer_halo_than_its_own_core(monkeypatc
     monkeypatch.setattr(
         render_image,
         "_rivers_to_draw",
-        lambda w, hide_short_networks=False: (np.array([0]), np.array([1.0]), np.array([1.0])),
+        lambda w, hide_short_networks=False, style=None: (np.array([0]), np.array([1.0]), np.array([1.0])),
     )
 
     image = Image.new("RGB", (300, 200), render_image.BACKGROUND_RGB)
-    image = render_image._draw_rivers(image, world, "behrmann", 50.0, 150.0, 100.0, 10.0, np.eye(3))
+    image = render_image._draw_rivers(image, world, "behrmann", 50.0, 150.0, 100.0, 10.0, np.eye(3), style=_ALL_WATER)
     pixels = np.asarray(image).astype(np.int64)
     background = np.array(render_image.BACKGROUND_RGB)
     river_color = np.array(render_image.RIVER_COLOR_RGB)
@@ -836,11 +935,11 @@ def test_draw_rivers_stops_a_spill_hop_at_the_lake_it_crosses(monkeypatch):
     monkeypatch.setattr(
         render_image,
         "_rivers_to_draw",
-        lambda w, hide_short_networks=False: (np.array([0, 1, 2]), np.array([0.3, 1.0, 1.0]), np.zeros(3)),
+        lambda w, hide_short_networks=False, style=None: (np.array([0, 1, 2]), np.array([0.3, 1.0, 1.0]), np.zeros(3)),
     )
     scale, offset_x, offset_y = 2500.0, 20.0, 50.0
     image = Image.new("RGB", (240, 100), render_image.BACKGROUND_RGB)
-    image = render_image._draw_rivers(image, world, "behrmann", scale, offset_x, offset_y, 1.0, np.eye(3))
+    image = render_image._draw_rivers(image, world, "behrmann", scale, offset_x, offset_y, 1.0, np.eye(3), style=_ALL_WATER)
     pixels = np.asarray(image).astype(np.int64)
     background = np.array(render_image.BACKGROUND_RGB)
     node_px = render_image._to_pixels(scale, offset_x, offset_y, render_image._project_points("behrmann", world.hydrology_cache.points))
@@ -1055,10 +1154,10 @@ def test_rivers_to_draw_color_is_a_percentile_rank_not_an_absolute_fraction():
     river_of = np.array([int(i) // 3 for i in src_idx])
 
     # This call's single widest segment overall (river 0's mouth, channel_width == 5000, the
-    # unique global max among all 9 drawn nodes) reaches exactly full color; its single
-    # narrowest (river 2's head, channel_width == 100, the unique global min) sits exactly at
-    # the floor.
-    assert color_alpha[river_of == 0].max() == pytest.approx(1.0)
+    # unique global max among all 9 drawn nodes) reaches exactly the blend ceiling (#933: no
+    # longer full color); its single narrowest (river 2's head, channel_width == 100, the
+    # unique global min) sits exactly at the floor.
+    assert color_alpha[river_of == 0].max() == pytest.approx(render_image.RIVER_COLOR_BLEND_MAX_FRACTION)
     assert color_alpha[river_of == 2].min() == pytest.approx(render_image.RIVER_COLOR_BLEND_MIN_FRACTION)
 
     # Monotonic within each individual tapering river (head -> mid -> mouth) regardless of how
@@ -1506,7 +1605,7 @@ def test_globe_draws_rivers(globe_world, monkeypatch):
     monkeypatch.setattr(
         render_image,
         "_rivers_to_draw",
-        lambda w, hide_short_networks=False: (np.array([0]), np.array([1.0]), np.array([1.0])),
+        lambda w, hide_short_networks=False, style=None: (np.array([0]), np.array([1.0]), np.array([1.0])),
     )
     image = Image.open(io.BytesIO(render_image.render_png(globe_world, "globe", "elevation", 220, 122)))
     assert image.size == (220, 122)

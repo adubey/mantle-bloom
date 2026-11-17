@@ -1,15 +1,15 @@
 {
   "compilerOptions": {
     "target": "ES2023",
-    "lib": ["ES2023", "DOM"],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "types": ["node"],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client"],
     "skipLibCheck": true,
     "strict": true,
-    "noEmit": false,
-    "outDir": ".test-dist",
-    "rootDir": "."
+    "noEmit": true
   },
-  "include": ["tests/**/*.test.ts", "src/apiResponse.ts", "src/crossSectionApi.ts", "src/crossSectionLocator.ts", "src/globeTextureLoader.ts"]
+  "include": ["tests/**/*.ts", "tests/**/*.tsx", "src/**/*.ts", "src/**/*.tsx"]
 }
