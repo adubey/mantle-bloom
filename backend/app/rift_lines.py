@@ -241,7 +241,7 @@ class LineProblem:
     normal_load: np.ndarray  # n̂ᵀ 𝐍 n̂ at the line cells, without the plume term (N/m)
     base_quiet: np.ndarray  # k_cap N_cap M at the line cells, without plume weakening (N/m)
     base_plume: np.ndarray  # the same with the plume multiplier
-    plume_left_yr: np.ndarray  # years of plume heat left in this step at each line cell (0 = none)
+    plume_left_yr: np.ndarray  # years of plume heat left from the step start at each line cell (0 = none); may outlast the step
     intact: np.ndarray  # line cells that are not broken at the step start
     disk_rows: csr_matrix  # (len(chain), n_cells) area-weighted disk averages for the line cells
     band: np.ndarray  # plate indices of the band cells

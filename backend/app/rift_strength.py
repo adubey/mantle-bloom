@@ -82,19 +82,39 @@ class RiftLineParams:
     def with_overrides(cls, overrides: dict | None) -> "RiftLineParams":
         """The starting values with `overrides` applied. An unknown name or a value of the wrong kind is an error, so
         a mistyped knob cannot silently leave the default in place."""
-        known = {f.name: f.type for f in fields(cls)}
+        # The kind comes from the default's type, not `f.type`, which is a string under postponed annotations.
+        known = {f.name: type(f.default) for f in fields(cls)}
         values = {}
         for name, value in (overrides or {}).items():
             if name not in known:
                 raise ValueError(f"unknown rift-line parameter {name!r}; known: {sorted(known)}")
-            kind = known[name]
-            if kind is bool:
-                if not isinstance(value, bool):
-                    raise ValueError(f"rift-line parameter {name!r} must be true or false, got {value!r}")
-            elif isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value) or value < 0:
-                raise ValueError(f"rift-line parameter {name!r} must be a finite number >= 0, got {value!r}")
-            values[name] = int(value) if kind is int else value if kind is bool else float(value)
+            values[name] = _checked(name, known[name], value)
         return cls(**values)
+
+
+# Knobs that divide, set a scale or bound a step: zero crashes or turns N_eff into NaN downstream (PR #950 review).
+_POSITIVE = frozenset({"eps_dot0", "n", "eps_soft", "tau_heal_yr", "k_cap", "k_cut", "w0_m", "lam_grow", "l_tip_m", "r_max",
+                       "eps_cand", "eps_break", "k_fail", "d_eps_max", "ocean_cooling_m_per_sqrt_myr", "ocean_plate_thickness_m"})
+# Shares and softenings: a share above 1 is meaningless, and a softening of 1 removes all strength.
+_AT_MOST_ONE = frozenset({"a_min", "a_stray", "c_dir", "c_corr", "f_break", "s_fault", "s_warm"})
+
+
+def _checked(name: str, kind: type, value):
+    """`value` as a `kind` knob, or ValueError. Integer knobs refuse fractions rather than truncating them, so a
+    sweep cannot silently run a different setting from the one it records."""
+    if kind is bool:
+        if not isinstance(value, bool):
+            raise ValueError(f"rift-line parameter {name!r} must be true or false, got {value!r}")
+        return value
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value) or value < 0:
+        raise ValueError(f"rift-line parameter {name!r} must be a finite number >= 0, got {value!r}")
+    if kind is int and float(value) != int(value):
+        raise ValueError(f"rift-line parameter {name!r} must be a whole number, got {value!r}")
+    if name in _POSITIVE and value <= 0:
+        raise ValueError(f"rift-line parameter {name!r} must be > 0, got {value!r}")
+    if (name in _AT_MOST_ONE and value > 1) or (name == "s_max" and value >= 1):
+        raise ValueError(f"rift-line parameter {name!r} must be at most 1 (s_max below 1), got {value!r}")
+    return int(value) if kind is int else float(value)
 
 
 # --- load ----------------------------------------------------------------------------------------
@@ -252,15 +272,34 @@ class FlankPlan:
     hops: np.ndarray  # per band cell
 
 
-def flank_plan(adjacency: csr_matrix, band: np.ndarray, broken: np.ndarray, rows: int) -> FlankPlan:
-    """Recipients are the unbroken plate cells outside the band. Each donor takes those within `rows` hops, and
-    widens one hop at a time, with no upper limit, until it has some. A donor in a component with none is held."""
+def flank_plan(adjacency: csr_matrix, band: np.ndarray, broken: np.ndarray, rows: int, group: np.ndarray | None = None) -> FlankPlan:
+    """Recipients are the unbroken plate cells outside the band, of the donor's `group` when one is given (its crust
+    type: continental crust moved onto ocean floor would be priced at oceanic density, PR #950 review). Each donor takes
+    those within `rows` hops, and widens one hop at a time, with no upper limit, until it has some. A donor in a
+    component with none is held."""
     n = adjacency.shape[0]
     donors = np.flatnonzero(band)
     recipient_ok = ~band & ~broken
     if not len(donors):
         return FlankPlan(donors, csr_matrix((0, n), dtype=np.int8), np.zeros(0, bool), np.zeros(0, int))
     pattern = (adjacency > 0).astype(np.int8)
+    if group is None:
+        reach, settled, hops = _flank_reach(pattern, donors, recipient_ok, rows)
+        return FlankPlan(donors, reach, ~settled, hops)
+    reach, settled, hops = csr_matrix((len(donors), n), dtype=np.int8), np.zeros(len(donors), bool), np.zeros(len(donors), int)
+    for value in np.unique(group[donors]):
+        rows_of = np.flatnonzero(group[donors] == value)
+        r, s, h = _flank_reach(pattern, donors[rows_of], recipient_ok & (group == value), rows)
+        place = csr_matrix((np.ones(len(rows_of), dtype=np.int8), (rows_of, np.arange(len(rows_of)))), shape=(len(donors), len(rows_of)))
+        reach = reach + place @ r
+        settled[rows_of], hops[rows_of] = s, h
+    reach.data[:] = 1
+    return FlankPlan(donors, reach.tocsr(), ~settled, hops)
+
+
+def _flank_reach(pattern: csr_matrix, donors: np.ndarray, recipient_ok: np.ndarray, rows: int):
+    """(reach, settled, hops) of `flank_plan` for one set of donors and the cells they may give to."""
+    n = pattern.shape[0]
     visited = csr_matrix((np.ones(len(donors), dtype=np.int8), (np.arange(len(donors)), donors)), shape=(len(donors), n))
     frontier = visited.copy()
     result = csr_matrix((len(donors), n), dtype=np.int8)
@@ -286,7 +325,7 @@ def flank_plan(adjacency: csr_matrix, band: np.ndarray, broken: np.ndarray, rows
         if settled.all() or stalled:
             break
     result.data[:] = 1
-    return FlankPlan(donors, result.tocsr(), ~settled, hops)
+    return result.tocsr(), settled, hops
 
 
 # The thickness-like columns thinning moves, in the order `ThinningOutcome` holds them.
@@ -305,6 +344,7 @@ class ThinningOutcome:
     arc: np.ndarray
     moment: np.ndarray
     craton_lost_m3: float
+    cap_held_m3: float = 0.0  # crust and mantle a donor kept because its recipients were at the thickness cap
 
 
 def thin_with_flank_transfer(areas, plan: FlankPlan, d_eps, columns: dict) -> ThinningOutcome:
@@ -328,12 +368,19 @@ def thin_with_flank_transfer(areas, plan: FlankPlan, d_eps, columns: dict) -> Th
     row_total = np.asarray(share.sum(axis=1)).ravel()
     share = csr_matrix(share.multiply((1.0 / np.where(row_total > 0.0, row_total, 1.0))[:, None]))
     received_area = np.maximum(areas, 1.0)
+    lost_c, lost_m = hc[donors] * (1.0 - ratio_c) * a_d, hm[donors] * (1.0 - ratio_m) * a_d
+    flow, leaves = _capped_flow(share, areas, ((hc, lost_c, lithosphere.MAX_CRUSTAL_THICKNESS_M),
+                                               (hm, lost_m, lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)))
+    cap_held = float(np.dot(lost_c + lost_m, 1.0 - leaves))
+    # A donor keeps the share of its loss its recipients refused, the same share of every layer, so a capped donor
+    # thins less but keeps its column's shape (thinning the dense mantle alone would lift it).
+    ratio_c, ratio_m = 1.0 - (1.0 - ratio_c) * leaves, 1.0 - (1.0 - ratio_m) * leaves
 
     def move(name: str, ratio_vec: np.ndarray) -> None:
         values = out[name]
         lost = values[donors] * (1.0 - ratio_vec) * a_d  # volume
         values[donors] = values[donors] * ratio_vec
-        values += (share.T @ lost) / received_area
+        values += (flow.T @ lost) / received_area
 
     move("hc", ratio_c)
     move("hm", ratio_m)
@@ -341,4 +388,23 @@ def thin_with_flank_transfer(areas, plan: FlankPlan, d_eps, columns: dict) -> Th
         move(name, ratio_c)
     craton_lost = float(np.dot(out["craton"][donors] * (1.0 - ratio_c), a_d))
     out["craton"][donors] *= ratio_c
-    return ThinningOutcome(**out, craton_lost_m3=craton_lost)
+    return ThinningOutcome(**out, craton_lost_m3=craton_lost, cap_held_m3=cap_held)
+
+
+def _capped_flow(share: csr_matrix, areas, layers):
+    """Cap each recipient at each layer's ceiling, as every other path that adds crust does (orogeny, faults, merges;
+    PR #950 review). `layers` is (thickness, each donor's loss in m³, ceiling) per layer. A recipient accepts the share
+    of its incoming volume that fits under the tightest of its layers; each donor sends only what its recipients
+    accept. Returns (flow with each donor's row summing to 1, the share of each donor's loss that leaves it)."""
+    fits = np.ones(share.shape[1])
+    for values, lost, cap in layers:
+        incoming = share.T @ lost
+        room = np.maximum(cap - values, 0.0) * areas
+        over = incoming > room
+        fits[over] = np.minimum(fits[over], room[over] / incoming[over])
+    if np.all(fits >= 1.0):
+        return share, np.ones(share.shape[0])
+    accepted = csr_matrix(share.multiply(fits[None, :]))
+    leaves = np.asarray(accepted.sum(axis=1)).ravel()
+    flow = csr_matrix(accepted.multiply((1.0 / np.where(leaves > 0.0, leaves, 1.0))[:, None]))
+    return flow, leaves

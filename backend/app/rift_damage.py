@@ -116,7 +116,7 @@ class PlateStep:
 
 def _new_counters() -> dict:
     return {"held": 0, "far_flank": 0, "line_none": 0, "line_steps": 0, "growing_steps": 0, "substeps_max": 0, "break_tests": 0,
-            "split_rejected": 0, "rejected_because": {}}
+            "split_rejected": 0, "rejected_because": {}, "cap_held_m3": 0.0}
 
 
 @dataclass
@@ -224,7 +224,10 @@ def prepare_plate(world, plate, p: RiftLineParams, years: float, eps=None, warm=
     tensor = p.k_cut * strength.cut_tensor(points, areas, balanced, spacing_m)
     sections = lines.section_profile(points, areas, balanced, p.k_cut)
     heated = heat > 0.0
-    plume_left = np.where(heated, np.minimum(heat * strength.YEAR_PER_MYR, years), 0.0)
+    # The plume's true remaining time, not capped at the step: the breakthrough test reads the line at t = years, and
+    # capping would switch every plume off there, though the sub-steps saw it (PR #950 review). `advance_rift` only
+    # sub-steps at expiries inside the step.
+    plume_left = np.where(heated, heat * strength.YEAR_PER_MYR, 0.0)
     kind = np.where(continental, 0, np.where(divergent, 1, 2))
     k_scale = p.k_cap * np.where(continental, 1.0, p.oceanic_k_cap_factor)
     hm_strength = _strength_thickness(world, plate, p, hc, hm, eps, continental)
@@ -277,7 +280,7 @@ def _line_problem(prep: PlatePrep, line: LineInfo, p: RiftLineParams):
     band, reach_band, reach_line = lines.band_reach(prep.points, chain, prep.eps, p)
     in_band = np.zeros(len(prep.points), dtype=bool)
     in_band[band] = True
-    plan = strength.flank_plan(prep.graph, in_band, prep.broken, p.flank_rows)
+    plan = strength.flank_plan(prep.graph, in_band, prep.broken, p.flank_rows, group=prep.continental)
     floor_c, floor_m = rheology.RIFT_CRITICAL_THICKNESS_M, lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M
     # The strain at which the crust reaches its floor is the cell's strain now plus ln(Hc / floor) (Hc is already thinned).
     crust_room = np.log(np.maximum(prep.hc, floor_c) / floor_c)
@@ -373,6 +376,7 @@ def damage_step(world, plate, years: float, state: RiftRuntime) -> PlateStep | N
             out = strength.thin_with_flank_transfer(prep.areas, plan, d_eps, columns)
             _record_closure(state, _volumes(columns, prep.areas), _volumes({k: getattr(out, k) for k in strength.COLUMNS}, prep.areas),
                             out.craton_lost_m3)
+            state.counters["cap_held_m3"] += out.cap_held_m3
             at_floor = out.hc <= rheology.RIFT_CRITICAL_THICKNESS_M + 1e-6
             if p.oceanic_latch_on_break_only:
                 at_floor = np.where(prep.continental, at_floor, at_floor & (out.hm <= lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M + 1e-6))

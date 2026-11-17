@@ -1082,13 +1082,20 @@ plate the pass does the following.
    `RIFT_CRITICAL_THICKNESS_M` and `MIN_MANTLE_LITHOSPHERE_THICKNESS_M`.
    `rift_strength.thin_with_flank_transfer` moves the removed volume, with continental
    material, mobile cover and the buoyant-crust tracers, to unbroken cells of the same plate
-   outside the band. Craton crust thins in place and its loss is booked to `rifted_stretch_m3`.
+   and the same crust type outside the band. The search for recipients starts at `flank_rows`
+   hops and widens past cells of the other type, so continental crust is never priced as ocean
+   floor. A donor with no recipient of its type on the plate is held and does not strain. A
+   recipient takes only what fits under `MAX_CRUSTAL_THICKNESS_M` and
+   `MAX_MANTLE_LITHOSPHERE_THICKNESS_M`. Its donors keep the rest, the same share of each layer,
+   so they thin less than their strain asks. The total is in the `cap_held_m3` counter.
+   Craton crust thins in place and its loss is booked to `rifted_stretch_m3`.
    The cell subsides isostatically. A cell whose crust reaches the floor, or whose strain reaches
    `eps_break`, is marked broken.
 
 `merge_split.maybe_split_plate` keeps its size and cooldown gates and then calls
 `rift_damage.breakthrough`. The plate splits when at least `f_break` of the line's length is
-broken and the pull across the line is at least the strength of its intact cells.
+broken and the pull across the line is at least the strength of its intact cells. Both are read at
+the end of the step, with plume load and weakening on wherever plume heat lasts past it.
 `rift_lines.split_masks` removes the line and takes the two largest pieces as the daughters. It
 refuses the split if a stray piece is larger than `a_stray` of the plate or a daughter is smaller
 than `a_min`. Both margins are marked as belt.
@@ -1101,8 +1108,15 @@ cell opened by spreading inherits its donors' strain times its stretched share
 records, the split events and counters; it is rebuilt each pass and not saved.
 
 **Parameters.** `rift_strength.RiftLineParams` holds the starting values, and
-`World.rift_line_params` overrides them by name. An unknown name or a value of the wrong kind
-raises `ValueError` at the next step. RFC 0018 searches six of them:
+`World.rift_line_params` overrides them by name. These raise `ValueError` at the next step:
+- an unknown name;
+- a value of the wrong kind;
+- a fraction for a whole-number knob (it is not truncated);
+- zero for a knob that divides or sets a scale (`lam_grow`, `eps_soft`, `tau_heal_yr`,
+  `l_tip_m` and the others listed in `rift_strength._POSITIVE`);
+- a share or softening above 1 (`s_max` must be below 1).
+
+RFC 0018 searches six of them:
 
 | Name | Symbol | Start | Unit | Meaning |
 |---|---|---:|---|---|

@@ -154,3 +154,61 @@ def test_a_floored_donor_gives_up_only_what_it_lost():
     assert np.all(out.hc[band] >= rheology.RIFT_CRITICAL_THICKNESS_M - 1e-6)
     assert np.all(out.hm[band] >= lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M - 1e-6)
     assert float(np.dot(out.hc, areas)) == pytest.approx(float(np.dot(cols["hc"], areas)), rel=1e-12)
+
+
+@pytest.mark.parametrize("bad", [
+    {"flank_rows": 2.9}, {"k_fail": 100.5},  # whole-number knobs refuse fractions instead of truncating them
+    {"lam_grow": 0.0}, {"eps_soft": 0.0}, {"tau_heal_yr": 0.0}, {"n": 0.0}, {"l_tip_m": 0.0}, {"d_eps_max": 0.0},
+    {"a_min": 1.5}, {"s_warm": 1.2}, {"s_max": 1.0},
+])
+def test_overrides_refuse_values_that_would_truncate_divide_by_zero_or_leave_no_strength(bad):
+    with pytest.raises(ValueError):
+        RiftLineParams.with_overrides(bad)
+
+
+def test_overrides_accept_a_whole_float_for_a_whole_number_knob_and_zero_where_zero_means_off():
+    p = RiftLineParams.with_overrides({"flank_rows": 3.0, "n_plume": 0.0, "s_warm": 0.0, "craton_root_m": 0.0, "mark_power": 0.0})
+    assert p.flank_rows == 3 and isinstance(p.flank_rows, int) and p.n_plume == 0.0
+
+
+def test_flank_transfer_never_takes_a_recipient_past_the_thickness_cap_and_the_donor_keeps_the_rest():
+    rng = np.random.default_rng(1)
+    nx, ny = 16, 12
+    graph, n = lattice(nx, ny), nx * ny
+    areas, cols = rng.uniform(0.8, 1.2, n) * 4e9, _columns(n, rng)
+    band = (np.arange(n) % nx >= 6) & (np.arange(n) % nx <= 8)
+    belt = ~band & (np.arange(n) % nx >= 4) & (np.arange(n) % nx <= 10)  # the flanks are a thickened belt near the cap
+    cols["hc"][band], cols["hc"][belt] = 45e3, lithosphere.MAX_CRUSTAL_THICKNESS_M - 2e3
+    cols["hm"][belt] = lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M - 1e3
+    plan = strength.flank_plan(graph, band, np.zeros(n, bool), P.flank_rows)
+    out = strength.thin_with_flank_transfer(areas, plan, np.where(band, 1.5, 0.0), cols)
+    assert out.hc.max() <= lithosphere.MAX_CRUSTAL_THICKNESS_M * (1 + 1e-12)
+    assert out.hm.max() <= lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M * (1 + 1e-12)
+    assert out.cap_held_m3 > 0.0
+    for name in ("hc", "hm", "material", "cover", "cover_material", "plateau", "arc", "moment"):
+        assert float(np.dot(getattr(out, name), areas)) == pytest.approx(float(np.dot(cols[name], areas)), rel=1e-12)
+    # The donors still thinned, by less than their strain asked, and kept their tracers in step with their crust.
+    assert np.all(out.hc[band] < cols["hc"][band]) and np.all(out.hc[band] > cols["hc"][band] * np.exp(-1.5))
+    assert np.allclose(out.material[band] / out.hc[band], cols["material"][band] / cols["hc"][band])
+
+
+def test_flank_recipients_share_the_donor_crust_type_and_reach_past_the_other_kind():
+    # A continental band at a passive margin: ocean floor on one side, continent beyond it on the other.
+    strip, n = lattice(14, 1), 14
+    continental = np.ones(n, bool)
+    continental[4:7] = continental[9:12] = False  # ocean floor right next to the band on both sides
+    band = np.zeros(n, bool)
+    band[7:9] = True
+    untyped = strength.flank_plan(strip, band, np.zeros(n, bool), P.flank_rows)
+    assert (np.asarray(untyped.reach.sum(axis=0)).ravel() > 0)[~continental].any()  # without types, ocean would take it
+    plan = strength.flank_plan(strip, band, np.zeros(n, bool), P.flank_rows, group=continental)
+    reached = np.asarray(plan.reach.sum(axis=0)).ravel() > 0
+    assert not plan.held.any() and not reached[~continental].any() and reached[3] and reached[12]
+    assert list(plan.hops) == [4, 4]
+    rng = np.random.default_rng(2)
+    cols, areas = _columns(n, rng), np.full(n, 4e9)
+    out = strength.thin_with_flank_transfer(areas, plan, np.where(band, 0.5, 0.0), cols)
+    assert np.array_equal(out.hc[~continental], cols["hc"][~continental])
+    # With no same-kind cell anywhere outside the band, the donor is held rather than feeding the other kind.
+    alone = strength.flank_plan(strip, band, np.zeros(n, bool), P.flank_rows, group=~band)
+    assert alone.held.all()

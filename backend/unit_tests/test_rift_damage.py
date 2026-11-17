@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from app import lithosphere, merge_split, persistence, rift_damage
+from app import cratons, lithosphere, merge_split, persistence, rift_damage
 from app import rift_lines as lines
 from app.lithosphere_plate import K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION
 from app.world import generate_world, step_world
@@ -69,6 +69,35 @@ def test_strained_cells_thin_and_subside(saved_world):
         assert np.all(plate.collect("crustal_thickness_m")[donors] < hc0[plate.plate_id][donors])
         assert np.all(plate.collect("elevation")[donors] <= z0[plate.plate_id][donors] + 1e-6)
     assert thinned > 0
+
+
+def test_plume_heat_that_outlasts_the_step_still_counts_when_the_line_is_judged(saved_world):
+    # The split test reads the line at the end of the step; heat lasting past it must still load and weaken the line
+    # there, and heat that ran out inside the step must not (PR #950 review).
+    world = _rift_world(saved_world)
+    p = rift_damage.runtime(world).params
+    for heat_myr, on_at_end in ((5.0, True), (0.5, False)):
+        for plate in world.plates:
+            plate.set_fields_on_plate(plume_heat_myr=np.full(plate.node_count(), heat_myr))
+        preps = [rift_damage.prepare_plate(world, plate, p, MYR) for plate in world.plates]
+        prep = next(prep for prep in preps if prep.line is not None)
+        assert np.all(prep.plume_left_yr == heat_myr * MYR)
+        prob, _ = rift_damage._line_problem(prep, prep.line, p)
+        plume_on = lines.line_state(prob, prep.eps, prep.warm, MYR, p)[2]
+        assert bool(plume_on.all()) is on_at_end and bool(plume_on.any()) is on_at_end
+
+
+def test_a_world_step_with_rift_lines_on_keeps_the_ledgers_and_the_damage_invariants(saved_world):
+    world = _rift_world(saved_world)
+    step_world(world, MYR)
+    assert world.rift_runtime is not None and world.rift_runtime.steps
+    eps, warm = _damage(world, "rift_strain"), _damage(world, "rift_warm_strain")
+    assert eps.max() > 0.0 and np.all(warm <= eps + 1e-12)  # the remap through the step kept warm strain under strain
+    hc = np.concatenate([plate.collect("crustal_thickness_m") for plate in world.plates])
+    assert hc.max() <= lithosphere.MAX_CRUSTAL_THICKNESS_M * (1 + 1e-9)
+    scale = max(world.craton_ledger["initial_m3"], 1e12)
+    assert cratons.balance_error_m3(world) == pytest.approx(0.0, abs=1e-9 * scale)  # rifted_stretch_m3 nets out in the audit
+    assert max(world.rift_runtime.ledger_gap.values()) < 1e-9
 
 
 def _breakable(world):
