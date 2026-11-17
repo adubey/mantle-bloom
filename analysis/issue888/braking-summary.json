@@ -1,0 +1,171 @@
+{
+ "brake-on": {
+  "targets": 8,
+  "met": [
+   "onset_width_km",
+   "width_growth",
+   "duration_myr",
+   "failed_rifts",
+   "localization",
+   "no_microplates",
+   "line_shape",
+   "splits_happen"
+  ],
+  "splits": 44,
+  "rate": 4.4,
+  "cont_majority": 4,
+  "pure_cont": 0,
+  "oceanic_share_succ": 0.91,
+  "speed_cont": 0.63,
+  "speed_ocean": 0.77,
+  "line_oceanic": 0.66,
+  "lines_growing_share": 0.4,
+  "weak": 0.2,
+  "transition": 0.99,
+  "failed": 0.78,
+  "duration": 23.0,
+  "loc_viol": 0,
+  "plates_final": 23.2,
+  "ledger": 4.427522851644756e-16,
+  "errors": [],
+  "per_world": {
+   "106533960": [
+    13,
+    1.14,
+    1.35
+   ],
+   "1097624328": [
+    9,
+    0.41,
+    0.56
+   ],
+   "1397817354": [
+    10,
+    0.85,
+    1.03
+   ],
+   "1629738962": [
+    7,
+    0.35,
+    0.45
+   ],
+   "591453549": [
+    5,
+    0.42,
+    0.45
+   ]
+  }
+ },
+ "craton-off": {
+  "targets": 8,
+  "met": [
+   "onset_width_km",
+   "width_growth",
+   "duration_myr",
+   "failed_rifts",
+   "localization",
+   "no_microplates",
+   "line_shape",
+   "splits_happen"
+  ],
+  "splits": 48,
+  "rate": 4.8,
+  "cont_majority": 4,
+  "pure_cont": 0,
+  "oceanic_share_succ": 0.92,
+  "speed_cont": 0.63,
+  "speed_ocean": 0.77,
+  "line_oceanic": 0.66,
+  "lines_growing_share": 0.4,
+  "weak": 0.31,
+  "transition": 0.99,
+  "failed": 0.78,
+  "duration": 16.0,
+  "loc_viol": 0,
+  "plates_final": 23.8,
+  "ledger": 5.021131074713387e-16,
+  "errors": [],
+  "per_world": {
+   "106533960": [
+    16,
+    1.15,
+    1.36
+   ],
+   "1097624328": [
+    9,
+    0.41,
+    0.56
+   ],
+   "1397817354": [
+    9,
+    0.85,
+    1.04
+   ],
+   "1629738962": [
+    9,
+    0.34,
+    0.43
+   ],
+   "591453549": [
+    5,
+    0.42,
+    0.45
+   ]
+  }
+ },
+ "brake-off": {
+  "targets": 6,
+  "met": [
+   "onset_width_km",
+   "width_growth",
+   "duration_myr",
+   "no_microplates",
+   "line_shape",
+   "splits_happen"
+  ],
+  "splits": 109,
+  "rate": 10.9,
+  "cont_majority": 10,
+  "pure_cont": 0,
+  "oceanic_share_succ": 0.91,
+  "speed_cont": 1.55,
+  "speed_ocean": 2.12,
+  "line_oceanic": 0.68,
+  "lines_growing_share": 0.81,
+  "weak": 0.61,
+  "transition": 0.82,
+  "failed": 0.89,
+  "duration": 29.0,
+  "loc_viol": 8,
+  "plates_final": 31.2,
+  "ledger": 4.985544875793171e-16,
+  "errors": [],
+  "per_world": {
+   "106533960": [
+    36,
+    2.06,
+    2.91
+   ],
+   "1097624328": [
+    12,
+    1.29,
+    1.58
+   ],
+   "1397817354": [
+    19,
+    1.62,
+    2.23
+   ],
+   "1629738962": [
+    19,
+    1.4,
+    1.9
+   ],
+   "591453549": [
+    23,
+    1.37,
+    2.0
+   ]
+  }
+ }
+}

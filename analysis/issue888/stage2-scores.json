@@ -1,0 +1,57 @@
+{
+ "production_rate_per_world_100myr": 7.400000000000001,
+ "ranked": [
+  {
+   "setting": "setting10",
+   "targets_passed": 6,
+   "violation_total": 2.2088269421761453,
+   "splits": 55,
+   "ledger_gap": 7.125772315033964e-16,
+   "errors": [],
+   "met": [
+    "onset_width_km",
+    "width_growth",
+    "duration_myr",
+    "localization",
+    "no_microplates",
+    "line_shape"
+   ],
+   "not_evaluable": []
+  },
+  {
+   "setting": "setting14",
+   "targets_passed": 6,
+   "violation_total": 2.4819632569654075,
+   "splits": 131,
+   "ledger_gap": 5.057399969399619e-16,
+   "errors": [],
+   "met": [
+    "onset_width_km",
+    "width_growth",
+    "duration_myr",
+    "failed_rifts",
+    "no_microplates",
+    "line_shape"
+   ],
+   "not_evaluable": []
+  },
+  {
+   "setting": "setting00",
+   "targets_passed": 6,
+   "violation_total": 2.4984932701067164,
+   "splits": 174,
+   "ledger_gap": 5.212244682714189e-16,
+   "errors": [],
+   "met": [
+    "onset_width_km",
+    "width_growth",
+    "duration_myr",
+    "no_microplates",
+    "line_shape",
+    "splits_happen"
+   ],
+   "not_evaluable": []
+  }
+ ],
+ "excluded": []
+}

@@ -1,14 +1,22 @@
-"""RFC 0018 D0: calibrate the cheap rift-load tensor against the thin-shell diagnostic (#797).
+"""RFC 0018 D0: calibrate a cheap rift-load tensor against the thin-shell diagnostic (#797).
 
 Usage (repo root, this worktree's venv; follow the compute-budget skill first):
-    backend/.venv/bin/python bin/debug/calibrate_rift_load_proxy.py --out analysis/issue797/d0-load-calibration.json \
+    backend/.venv/bin/python bin/debug/calibrate_rift_load_proxy.py --proxy local|cut \
+        --out analysis/issue797/d0-load-calibration.json [--cache <dir>] \
         [--snapshots <rfc0018-g0-snapshots> --seeds N ...] [--saves <a.mbworld> ...]
 
 For every plate of each world, this builds the per-node force field (``torque.gather_per_node_force_field``
-through ``replay_gate2_capacity._event_force_field``), solves the thin-shell membrane diagnostic
-(``thin_shell.solve_thin_shell``) for its resultant tensor, and builds the cheap tensor of
-``rift_damage_prototype`` for a grid of ``L_pull`` and ``L_drag``. It picks the pair with the smallest median
-|log10(N / N_ext)| over loaded extensional cells, then reports D0's frozen criteria at that pair:
+through ``replay_gate2_capacity._event_force_field``) and solves the thin-shell membrane diagnostic
+(``thin_shell.solve_thin_shell``) for its resultant tensor. ``--cache`` keeps both per plate (``.npz``), so a
+later run scores another proxy without solving again. Two proxies from ``rift_damage_prototype`` can be scored:
+
+* ``local`` (proxy A, the RFC's design): signed basal-drag differences scaled by ``L_drag`` plus slab, ridge and
+  contact forces spread by a kernel of length ``L_pull``; fitted over a grid of both lengths.
+* ``cut`` (proxy C): the balanced total load integrated along straight line cuts in six directions, a resultant
+  per line, fitted to a tensor; one overall scale ``k_cut`` is fitted, which should come out near 1.
+
+The fit picks the setting with the smallest median |log10(N / N_ext)| over loaded extensional cells, then reports
+D0's frozen criteria at that setting:
 
 * manufactured sign cases on one real plate mesh (one-sided slab pull, two slabs pulling apart, a slab
   opposed by collision, pure collision): the proxy's sign at the plate centre must match the shell's;
@@ -23,6 +31,7 @@ scale). Plume load is not in the shell's force field, so ``N_plume`` is not cali
 """
 
 import argparse
+import itertools
 import json
 import sys
 import time
@@ -38,11 +47,14 @@ import compare_rift_load_maps as maps  # noqa: E402
 import replay_gate2_capacity as gate2  # noqa: E402
 import rift_damage_prototype as proto  # noqa: E402
 
-from app import elevation_lines, persistence, thin_shell, torque  # noqa: E402
+from app import elevation_lines, lithosphere, persistence, thin_shell, torque  # noqa: E402
 from app.elevation_lines import line_spacing_rad  # noqa: E402
 
 L_PULL_KM = (250.0, 500.0, 1000.0, 2000.0, 4000.0)
-L_DRAG_M = tuple(float(v) for v in np.logspace(4, 10, 25))  # up to 1e10 m: a local drag difference stands in for drag integrated across the plate
+# Up to 1e10 m: a local drag difference stands in for drag integrated across the plate.
+L_DRAG_M = tuple(float(v) for v in np.logspace(4, 10, 25))
+K_CUT = tuple(float(v) for v in np.logspace(-1, 1, 17))
+FORCE_FIELDS = ("slab_pull_n", "slab_drag_n", "ridge_push_n", "basal_drag_n", "contact_drag_n")
 
 
 def adjacency_pairs(plate):
@@ -70,24 +82,60 @@ def solve_shell(plate, points, areas, total_n):
     return out
 
 
-def plate_record(world, plate):
+def compute_record(world, plate):
     points, _ = plate.all_points_and_elevation()
     field = gate2._event_force_field(world, plate)
     started = time.perf_counter()
     shell = solve_shell(plate, points, field.areas_m2, field.total_n)
-    shell_s = time.perf_counter() - started
     if shell is None:
         return None
     i, j = adjacency_pairs(plate)
-    started = time.perf_counter()
-    parts = proto.load_parts(points, field.areas_m2, i, j, field)
-    kernels = {l_km: {name: proto.kernel_tensor(points, src, l_km * 1e3) for name, src in parts.sources.items()}
-               for l_km in L_PULL_KM}
-    proxy_s = (time.perf_counter() - started) / len(L_PULL_KM)
     continental = np.asarray(elevation_lines.effective_is_continental_from_codes(
         plate.collect("crust_type_code"), plate.crust_type == "continental"), bool)
-    return {"plate_id": int(plate.plate_id), "nodes": len(points), "shell": shell, "parts": parts, "kernels": kernels,
-            "continental": continental, "shell_s": shell_s, "proxy_s": proxy_s}
+    return {"plate_id": int(plate.plate_id), "points": points, "areas": field.areas_m2, "shell": shell,
+            **{name: getattr(field, name) for name in FORCE_FIELDS}, "i": i, "j": j, "continental": continental,
+            "spacing_m": line_spacing_rad(world.node_density) * lithosphere.PLANET_RADIUS_M,
+            "shell_s": time.perf_counter() - started}
+
+
+def plate_record(world, plate, label, cache):
+    """A plate's record from the cache, or computed (and cached). None when the plate has no connected mesh."""
+    path = cache / f"{label.replace('/', '_')}-{int(plate.plate_id)}.npz" if cache else None
+    if path is not None and path.exists():
+        data = np.load(path)
+        return None if "no_mesh" in data else {k: data[k] for k in data.files} | {"plate_id": int(plate.plate_id)}
+    record = compute_record(world, plate)
+    if path is not None:
+        np.savez(path, **({"no_mesh": np.zeros(1)} if record is None else {k: v for k, v in record.items() if k != "plate_id"}))
+    return record
+
+
+def force_field(record):
+    return torque.PerNodeForceField(record["points"], record["areas"], *(record[name] for name in FORCE_FIELDS))
+
+
+def prepare(record, proxy):
+    """Precompute the setting-independent parts of a proxy, timing them."""
+    started = time.perf_counter()
+    field = force_field(record)
+    if proxy == "local":
+        record["parts"] = proto.load_parts(record["points"], record["areas"], record["i"], record["j"], field)
+        record["kernels"] = {l_km: {name: proto.kernel_tensor(record["points"], src, l_km * 1e3)
+                                    for name, src in record["parts"].sources.items()} for l_km in L_PULL_KM}
+        record["proxy_s"] = (time.perf_counter() - started) / len(L_PULL_KM)
+    else:
+        record["cut"] = proto.cut_tensor(record["points"], record["areas"], field.total_n, float(record["spacing_m"]))
+        record["proxy_s"] = time.perf_counter() - started
+
+
+def settings(proxy):
+    return list(itertools.product(L_PULL_KM, L_DRAG_M)) if proxy == "local" else [(k,) for k in K_CUT]
+
+
+def proxy_tensor(record, proxy, setting):
+    if proxy == "local":
+        return proto.assemble(record["parts"], record["kernels"][setting[0]], setting[1])
+    return setting[0] * record["cut"]
 
 
 def masks(record, proxy):
@@ -101,16 +149,16 @@ def masks(record, proxy):
     return loaded, s1 > 0.05 * scale_s, p1 > 0.05 * max(scale_p, 1e-30)
 
 
-def pooled_metrics(records, l_pull_km, l_drag_m):
-    rows = {"loaded": [], "ext_s": [], "ext_p": [], "s1": [], "p1": [], "ang_s": [], "ang_p": [], "cont": []}
+def pooled_metrics(records, proxy, setting):
+    rows = {"ext_s": [], "ext_p": [], "s1": [], "p1": [], "ang_s": [], "ang_p": [], "cont": []}
     for record in records:
-        proxy = proto.assemble(record["parts"], record["kernels"][l_pull_km], l_drag_m)
-        loaded, ext_s, ext_p = masks(record, proxy)
+        tensor = proxy_tensor(record, proxy, setting)
+        loaded, ext_s, ext_p = masks(record, tensor)
         s1, _, ang_s = proto.principal(record["shell"])
-        p1, _, ang_p = proto.principal(proxy)
-        for key, value in (("loaded", loaded), ("ext_s", ext_s), ("ext_p", ext_p), ("s1", s1), ("p1", p1),
-                           ("ang_s", ang_s), ("ang_p", ang_p), ("cont", record["continental"])):
-            rows[key].append(value[loaded] if key != "loaded" else value[loaded])
+        p1, _, ang_p = proto.principal(tensor)
+        for key, value in (("ext_s", ext_s), ("ext_p", ext_p), ("s1", s1), ("p1", p1), ("ang_s", ang_s),
+                           ("ang_p", ang_p), ("cont", record["continental"])):
+            rows[key].append(value[loaded])
     return {k: np.concatenate(v) for k, v in rows.items()}
 
 
@@ -140,14 +188,9 @@ def passes(result) -> dict:
             "magnitude": bool(ratios) and all(0.5 <= r <= 2.0 for r in ratios)}
 
 
-def fit(records):
-    grid = []
-    for l_pull in L_PULL_KM:
-        for l_drag in L_DRAG_M:
-            result = score(pooled_metrics(records, l_pull, l_drag))
-            grid.append({"l_pull_km": l_pull, "l_drag_m": l_drag, **result})
-    best = min(grid, key=lambda g: g["median_abs_log10_ratio"])
-    return best, grid
+def fit(records, proxy):
+    grid = [{"setting": list(s), **score(pooled_metrics(records, proxy, s))} for s in settings(proxy)]
+    return min(grid, key=lambda g: g["median_abs_log10_ratio"]), grid
 
 
 def centre_category(tensor, centre) -> str:
@@ -160,39 +203,44 @@ def centre_category(tensor, centre) -> str:
     return "neutral"
 
 
-def manufactured_cases(world, plate, l_pull_km, l_drag_m) -> dict:
+def case_loads(points, along, boundary):
+    """Per-case slab and contact force vectors (N) on the two ends of the plate's long axis."""
+    reach = np.abs(along).max()
+    side_a, side_b = boundary & (along < -0.3 * reach), boundary & (along > 0.3 * reach)
+    return {"one_sided_pull": {"slab": (side_a, "outward")},
+            "two_slabs_apart": {"slab": (side_a | side_b, "outward")},
+            "slab_opposed_by_collision": {"slab": (side_a, "outward"), "contact": (side_b, "inward")},
+            "pure_collision": {"contact": (side_a | side_b, "inward")}}
+
+
+def manufactured_cases(world, plate, proxy, setting) -> dict:
     """Boundary loads on a real plate; the proxy's centre sign must match the shell's."""
     points, _ = plate.all_points_and_elevation()
-    areas = np.asarray(plate.accounting_areas_m2(line_spacing_rad(world.node_density)), float)
+    spacing = line_spacing_rad(world.node_density)
+    areas = np.asarray(plate.accounting_areas_m2(spacing), float)
     centre_xyz = points.mean(axis=0) / np.linalg.norm(points.mean(axis=0))
     offsets = points - centre_xyz
     axis = np.linalg.svd(offsets - offsets.mean(axis=0), full_matrices=False)[2][0]
     along = offsets @ axis
-    boundary = plate.exposed_sides().any(axis=1)
-    side_a, side_b = boundary & (along < -0.3 * np.abs(along).max()), boundary & (along > 0.3 * np.abs(along).max())
     centre = np.abs(along) < 0.15 * np.abs(along).max()
     tangent_axis = axis - (points @ axis)[:, None] * points
     tangent_axis /= np.linalg.norm(tangent_axis, axis=1)[:, None]
-    force = 1e12  # N per boundary node
+    outward = np.where((along < 0)[:, None], -tangent_axis, tangent_axis)
     i, j = adjacency_pairs(plate)
-    cases = {"one_sided_pull": {"slab": (side_a, -1.0)},
-             "two_slabs_apart": {"slab": (side_a | side_b, None)},
-             "slab_opposed_by_collision": {"slab": (side_a, -1.0), "contact": (side_b, -1.0)},
-             "pure_collision": {"contact": (side_a | side_b, "inward")}}
+    record = {"points": points, "areas": areas, "i": i, "j": j, "spacing_m": spacing * lithosphere.PLANET_RADIUS_M}
     out = {}
-    for name, loads in cases.items():
-        comp = {k: np.zeros((len(points), 3)) for k in ("slab", "contact")}
-        for kind, (mask, direction) in loads.items():
-            outward = np.where((along < 0)[:, None], -tangent_axis, tangent_axis)
-            vec = outward if direction is None else (-outward if direction == "inward" else direction * tangent_axis)
-            comp[kind][mask] = force * vec[mask]
-        zero = np.zeros((len(points), 3))
-        field = torque.PerNodeForceField(points, areas, comp["slab"], zero, zero, zero, comp["contact"])
-        shell = solve_shell(plate, points, areas, field.total_n)
-        parts = proto.load_parts(points, areas, i, j, field)
-        kernels = {k: proto.kernel_tensor(points, src, l_pull_km * 1e3) for k, src in parts.sources.items()}
-        proxy = proto.assemble(parts, kernels, l_drag_m)
-        out[name] = {"shell": centre_category(shell, centre), "proxy": centre_category(proxy, centre)}
+    for name, loads in case_loads(points, along, plate.exposed_sides().any(axis=1)).items():
+        comp = {k: np.zeros((len(points), 3)) for k in FORCE_FIELDS}
+        for kind, (mask, sense) in loads.items():
+            comp["slab_pull_n" if kind == "slab" else "contact_drag_n"][mask] = 1e12 * (outward if sense == "outward" else -outward)[mask]
+        case = {**record, **comp}
+        if proxy == "local":
+            prepare(case, proxy)
+            tensor = proxy_tensor(case, proxy, setting)
+        else:
+            tensor = setting[0] * proto.cut_tensor(points, areas, force_field(case).total_n, case["spacing_m"])
+        shell = solve_shell(plate, points, areas, force_field(case).total_n)
+        out[name] = {"shell": centre_category(shell, centre), "proxy": centre_category(tensor, centre)}
         out[name]["match"] = out[name]["shell"] == out[name]["proxy"]
     return out
 
@@ -215,34 +263,44 @@ def load_worlds(args):
             yield label, persistence.load_world_file(handle)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--out", required=True, type=Path)
-    parser.add_argument("--snapshots", type=Path)
-    parser.add_argument("--seeds", type=int, nargs="*", default=[])
-    parser.add_argument("--saves", type=Path, nargs="*", default=[])
-    args = parser.parse_args()
+def collect(args):
+    cache = args.cache.expanduser() if args.cache else None
+    if cache:
+        cache.mkdir(parents=True, exist_ok=True)
     records, first_world, skipped = [], None, 0
     for label, world in load_worlds(args):
         first_world = first_world or world
         for plate in world.plates:
-            record = plate_record(world, plate)
+            record = plate_record(world, plate, label, cache)
             skipped += record is None
             if record is not None:
-                records.append({"world": label, **record})
+                prepare(record, args.proxy)
+                records.append(record)
         print(json.dumps({"world": label, "plates": len(records), "skipped": skipped}), flush=True)
-    best, grid = fit(records)
+    return records, first_world, skipped
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--proxy", choices=("local", "cut"), default="local")
+    parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument("--cache", type=Path)
+    parser.add_argument("--snapshots", type=Path)
+    parser.add_argument("--seeds", type=int, nargs="*", default=[])
+    parser.add_argument("--saves", type=Path, nargs="*", default=[])
+    args = parser.parse_args()
+    records, first_world, skipped = collect(args)
+    best, grid = fit(records, args.proxy)
     largest = max(first_world.plates, key=lambda p: p.node_count())
-    summary = {"plates": len(records), "plates_without_mesh": skipped, "fitted": best, "passes": passes(best),
-               "manufactured": manufactured_cases(first_world, largest, best["l_pull_km"], best["l_drag_m"]),
+    summary = {"proxy": args.proxy, "plates": len(records), "plates_without_mesh": skipped, "fitted": best,
+               "passes": passes(best), "manufactured": manufactured_cases(first_world, largest, args.proxy, best["setting"]),
                "ligament": ligament_case(),
-               "seconds": {"shell_total": float(sum(r["shell_s"] for r in records)),
+               "seconds": {"shell_total": float(sum(float(r["shell_s"]) for r in records)),
                            "proxy_total_per_setting": float(sum(r["proxy_s"] for r in records))},
-               "grid": [{k: g[k] for k in ("l_pull_km", "l_drag_m", "sign_agreement", "spearman",
-                                           "median_abs_log10_ratio")} for g in grid]}
+               "grid": [{k: g[k] for k in ("setting", "sign_agreement", "spearman", "median_abs_log10_ratio")} for g in grid]}
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(summary, indent=1, default=float) + "\n")
-    print(json.dumps({k: summary[k] for k in ("plates", "fitted", "passes", "manufactured", "ligament", "seconds")},
+    print(json.dumps({k: summary[k] for k in ("proxy", "plates", "fitted", "passes", "manufactured", "ligament", "seconds")},
                      indent=1, default=float))
 
 

@@ -1,0 +1,74 @@
+{
+ "kcap-0.196": {
+  "targets": 6,
+  "failing": [
+   "transition_ratio",
+   "inherited_weakness",
+   "failed_rifts",
+   "splits_happen"
+  ],
+  "splits": 10,
+  "rate": 1.0,
+  "continent_majority": 4,
+  "pure_continental": 1,
+  "oceanic_share_successful": 0.6,
+  "weak_majority_share": 0.2,
+  "path_weak": 0.4,
+  "random_weak": 0.28,
+  "transition": 0.68,
+  "failed": 0.85,
+  "duration": 40.0,
+  "localization_violations": 0,
+  "onset_width_km": 125,
+  "successful_candidates": 11,
+  "worlds_with_split": 4
+ },
+ "kcap-0.14": {
+  "targets": 7,
+  "failing": [
+   "transition_ratio",
+   "inherited_weakness",
+   "splits_happen"
+  ],
+  "splits": 18,
+  "rate": 1.8,
+  "continent_majority": 7,
+  "pure_continental": 2,
+  "oceanic_share_successful": 0.61,
+  "weak_majority_share": 0.56,
+  "path_weak": 0.48,
+  "random_weak": 0.26,
+  "transition": 1.51,
+  "failed": 0.77,
+  "duration": 35.5,
+  "localization_violations": 0,
+  "onset_width_km": 128,
+  "successful_candidates": 14,
+  "worlds_with_split": 4
+ },
+ "kcap-0.10": {
+  "targets": 5,
+  "failing": [
+   "transition_ratio",
+   "inherited_weakness",
+   "failed_rifts",
+   "localization",
+   "splits_happen"
+  ],
+  "splits": 32,
+  "rate": 3.2,
+  "continent_majority": 13,
+  "pure_continental": 2,
+  "oceanic_share_successful": 0.59,
+  "weak_majority_share": 0.19,
+  "path_weak": 0.36,
+  "random_weak": 0.27,
+  "transition": 1.22,
+  "failed": 0.84,
+  "duration": 24.0,
+  "localization_violations": 3,
+  "onset_width_km": 131,
+  "successful_candidates": 15,
+  "worlds_with_split": 5
+ }
+}

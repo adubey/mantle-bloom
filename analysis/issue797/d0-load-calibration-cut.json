@@ -1,0 +1,194 @@
+{
+ "proxy": "cut",
+ "plates": 451,
+ "plates_without_mesh": 5,
+ "fitted": {
+  "setting": [
+   1.333521432163324
+  ],
+  "loaded_cells": 800853,
+  "sign_agreement": 0.8241262753588986,
+  "direction_within_30deg": 0.7194249930480568,
+  "spearman": 0.6919617014192274,
+  "top_decile_median_ratio": {
+   "continental": 0.5716240878596349,
+   "oceanic": 0.5394726732130986
+  },
+  "median_abs_log10_ratio": 0.19801742376284526
+ },
+ "passes": {
+  "sign_agreement": true,
+  "direction": true,
+  "spearman": true,
+  "magnitude": true
+ },
+ "manufactured": {
+  "one_sided_pull": {
+   "shell": "tension",
+   "proxy": "tension",
+   "match": true
+  },
+  "two_slabs_apart": {
+   "shell": "tension",
+   "proxy": "tension",
+   "match": true
+  },
+  "slab_opposed_by_collision": {
+   "shell": "tension",
+   "proxy": "tension",
+   "match": true
+  },
+  "pure_collision": {
+   "shell": "compression",
+   "proxy": "compression",
+   "match": true
+  }
+ },
+ "ligament": {
+  "parallel_path_splits": false,
+  "crossing_path_splits": true,
+  "match": true
+ },
+ "seconds": {
+  "shell_total": 587.8238524955814,
+  "proxy_total_per_setting": 0.8884413326741196
+ },
+ "grid": [
+  {
+   "setting": [
+    0.1
+   ],
+   "sign_agreement": 0.8241262753588986,
+   "spearman": 0.6919617014192274,
+   "median_abs_log10_ratio": 1.1791868863805692
+  },
+  {
+   "setting": [
+    0.1333521432163324
+   ],
+   "sign_agreement": 0.8241262753588986,
+   "spearman": 0.6919617014192274,
+   "median_abs_log10_ratio": 1.0541868863805695
+  },
+  {
+   "setting": [
+    0.1778279410038923
+   ],
+   "sign_agreement": 0.8241262753588986,
+   "spearman": 0.6919617014192274,
+   "median_abs_log10_ratio": 0.9291868863805695
+  },
+  {
+   "setting": [
+    0.23713737056616552
+   ],
+   "sign_agreement": 0.8241262753588986,
+   "spearman": 0.6919617014192274,
+   "median_abs_log10_ratio": 0.8041868863805695
+  },
+  {
+   "setting": [
+    0.31622776601683794
+   ],
+   "sign_agreement": 0.8241262753588986,
+   "spearman": 0.6919617014192274,
+   "median_abs_log10_ratio": 0.6791877650969613
+  },
+  {
+   "setting": [
+    0.4216965034285822
+   ],
+   "sign_agreement": 0.8241262753588986,
+   "spearman": 0.6919617014192274,
+   "median_abs_log10_ratio": 0.554303205213676
+  },
+  {
+   "setting": [
+    0.5623413251903491
+   ],
+   "sign_agreement": 0.8241262753588986,
+   "spearman": 0.6919617014192274,
+   "median_abs_log10_ratio": 0.4320079946671374
+  },
+  {
+   "setting": [
+    0.7498942093324559
+   ],
+   "sign_agreement": 0.8241262753588986,
+   "spearman": 0.6919617014192274,
+   "median_abs_log10_ratio": 0.3229525875169906
+  },
+  {
+   "setting": [
+    1.0
+   ],
+   "sign_agreement": 0.8241262753588986,
+   "spearman": 0.6919617014192274,
+   "median_abs_log10_ratio": 0.24141935002363682
+  },
+  {
+   "setting": [
+    1.333521432163324
+   ],
+   "sign_agreement": 0.8241262753588986,
+   "spearman": 0.6919617014192274,
+   "median_abs_log10_ratio": 0.19801742376284526
+  },
+  {
+   "setting": [
+    1.7782794100389228
+   ],
+   "sign_agreement": 0.8241262753588986,
+   "spearman": 0.6919617014192274,
+   "median_abs_log10_ratio": 0.2030028706157682
+  },
+  {
+   "setting": [
+    2.371373705661655
+   ],
+   "sign_agreement": 0.8241262753588986,
+   "spearman": 0.6919617014192274,
+   "median_abs_log10_ratio": 0.25749678956503314
+  },
+  {
+   "setting": [
+    3.1622776601683795
+   ],
+   "sign_agreement": 0.8241262753588986,
+   "spearman": 0.6919617014192274,
+   "median_abs_log10_ratio": 0.3493419120855842
+  },
+  {
+   "setting": [
+    4.216965034285822
+   ],
+   "sign_agreement": 0.8241262753588986,
+   "spearman": 0.6919617014192274,
+   "median_abs_log10_ratio": 0.4595624919491309
+  },
+  {
+   "setting": [
+    5.623413251903491
+   ],
+   "sign_agreement": 0.8241262753588986,
+   "spearman": 0.6919617014192274,
+   "median_abs_log10_ratio": 0.577667563831964
+  },
+  {
+   "setting": [
+    7.498942093324558
+   ],
+   "sign_agreement": 0.8241262753588986,
+   "spearman": 0.6919617014192274,
+   "median_abs_log10_ratio": 0.6993679313204337
+  },
+  {
+   "setting": [
+    10.0
+   ],
+   "sign_agreement": 0.8241262753588986,
+   "spearman": 0.6919617014192274,
+   "median_abs_log10_ratio": 0.8227476729695139
+  }
+ ]
+}

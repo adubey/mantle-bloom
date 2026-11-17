@@ -1,0 +1,164 @@
+{
+ "params": {
+  "eps_dot0": 8e-08,
+  "n": 1.0,
+  "eps_soft": 1.0,
+  "s_fault": 0.4,
+  "s_warm": 0.4,
+  "s_max": 0.88,
+  "tau_heal_yr": 62800000.0,
+  "k_cap": 1.0,
+  "k_cut": 1.33,
+  "n_plume": 500000000000.0,
+  "w0_m": 125000.0,
+  "lam_grow": 0.3,
+  "l_tip_m": 250000.0,
+  "r_max": 10.0,
+  "a_min": 0.15,
+  "a_stray": 0.01,
+  "c_dir": 0.8,
+  "c_corr": 0.8,
+  "f_break": 0.5,
+  "eps_cand": 0.1,
+  "eps_break": 2.0,
+  "t_fail_yr": 5000000.0,
+  "flank_rows": 2,
+  "k_fail": 4096,
+  "d_eps_max": 0.02,
+  "live_ncap": true,
+  "crossing_stops": true,
+  "oceanic_latch_on_break_only": false,
+  "oceanic_k_cap_factor": 1.0
+ },
+ "years": 50.0,
+ "t0_step1": {
+  "eligible_plates": 277,
+  "with_line": 246,
+  "no_line": 31,
+  "valid": 224,
+  "valid_share_of_eligible": 0.8086642599277978,
+  "valid_share_of_lines": 0.9105691056910569,
+  "reject_reasons": {
+   "no_separation": 1,
+   "stray_too_large": 21
+  },
+  "craton_plates": 150,
+  "line_less_craton": 135,
+  "line_less_craton_share": 0.9,
+  "smaller_share_median": 0.3421819529435195,
+  "smaller_share_quartiles": [
+   0.2543464562852956,
+   0.4182605622000052
+  ],
+  "length_ratio_median": 1.2810311140545223,
+  "oceanic_share_median": 0.6772989861772845,
+  "lam_median": 0.08350183664357064,
+  "open_lines": 0,
+  "weak_share_median": 0.031001369435194485
+ },
+ "t0_step0.5": {
+  "eligible_plates": 47,
+  "with_line": 41,
+  "no_line": 6,
+  "valid": 39,
+  "valid_share_of_eligible": 0.8297872340425532,
+  "valid_share_of_lines": 0.9512195121951219,
+  "reject_reasons": {
+   "no_separation": 1,
+   "stray_too_large": 1
+  },
+  "craton_plates": 23,
+  "line_less_craton": 20,
+  "line_less_craton_share": 0.8695652173913043,
+  "smaller_share_median": 0.38453127251389546,
+  "smaller_share_quartiles": [
+   0.32690211069561836,
+   0.4420316346546552
+  ],
+  "length_ratio_median": 1.3134000715064567,
+  "oceanic_share_median": 0.6794582803684229,
+  "lam_median": 0.0692371289501052,
+  "open_lines": 0,
+  "weak_share_median": 0.04423960891056577
+ },
+ "t_end_step1": {
+  "eligible_plates": 387,
+  "with_line": 335,
+  "no_line": 52,
+  "valid": 305,
+  "valid_share_of_eligible": 0.7881136950904393,
+  "valid_share_of_lines": 0.9104477611940298,
+  "reject_reasons": {
+   "stray_too_large": 29,
+   "daughter_small": 1
+  },
+  "craton_plates": 181,
+  "line_less_craton": 159,
+  "line_less_craton_share": 0.8784530386740331,
+  "smaller_share_median": 0.30772953628040056,
+  "smaller_share_quartiles": [
+   0.21476195377950316,
+   0.4061403685292578
+  ],
+  "length_ratio_median": 1.3074054171810423,
+  "oceanic_share_median": 0.6399309273903725,
+  "lam_median": 0.08182660411510069,
+  "open_lines": 0,
+  "weak_share_median": 0.17182153474750672
+ },
+ "t_end_step0.5": {
+  "eligible_plates": 68,
+  "with_line": 56,
+  "no_line": 12,
+  "valid": 52,
+  "valid_share_of_eligible": 0.7647058823529411,
+  "valid_share_of_lines": 0.9285714285714286,
+  "reject_reasons": {
+   "stray_too_large": 4
+  },
+  "craton_plates": 31,
+  "line_less_craton": 27,
+  "line_less_craton_share": 0.8709677419354839,
+  "smaller_share_median": 0.3620014616188123,
+  "smaller_share_quartiles": [
+   0.2835337009885962,
+   0.4305975679919125
+  ],
+  "length_ratio_median": 1.2811310430119818,
+  "oceanic_share_median": 0.6077277175246789,
+  "lam_median": 0.07126430413040903,
+  "open_lines": 0,
+  "weak_share_median": 0.16903736949597103
+ },
+ "pooled_step1": {
+  "eligible_plates": 664,
+  "with_line": 581,
+  "no_line": 83,
+  "valid": 529,
+  "valid_share_of_eligible": 0.7966867469879518,
+  "valid_share_of_lines": 0.9104991394148021,
+  "reject_reasons": {
+   "no_separation": 1,
+   "stray_too_large": 50,
+   "daughter_small": 1
+  },
+  "craton_plates": 331,
+  "line_less_craton": 294,
+  "line_less_craton_share": 0.8882175226586103,
+  "smaller_share_median": 0.3255566129687799,
+  "smaller_share_quartiles": [
+   0.23504967765162066,
+   0.41365126604861396
+  ],
+  "length_ratio_median": 1.2960180847658356,
+  "oceanic_share_median": 0.6561188833849326,
+  "lam_median": 0.08247446169122948,
+  "open_lines": 0,
+  "weak_share_median": 0.12276499204749472
+ },
+ "pass": {
+  "valid_share_of_lines": true,
+  "valid_share_of_eligible_plates_reported": 0.7966867469879518,
+  "craton_share": true
+ }
+}
