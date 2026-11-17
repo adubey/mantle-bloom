@@ -206,11 +206,26 @@ def test_build_cli_command_passes_model_and_reasoning(tmp_path):
     ]
     assert codex_cmd[6] == "-c"
     assert codex_cmd[7] == "model_reasoning_effort=xhigh"
-    assert "PR #825" in codex_cmd[8]
+    # Sandboxed, but able to write its tree and the given dirs and to reach GitHub; the prompt stays last.
+    assert codex_cmd[8:12] == ["-s", "workspace-write", "-c", "sandbox_workspace_write.network_access=true"]
+    assert "PR #825" in codex_cmd[12] and "--add-dir" not in codex_cmd
+    state, common = tmp_path / "state", tmp_path / "common"
+    with_dirs = pr_mod.build_cli_command(req, codex_slot, tmp_path, (common, state))
+    assert with_dirs[12:16] == ["--add-dir", str(common), "--add-dir", str(state)] and "PR #825" in with_dirs[16]
 
     claude_slot = pr_mod.ReviewSlot("claude", "claude", "opus", "high", "cli")
     claude_cmd = pr_mod.build_cli_command(req, claude_slot, tmp_path)
     assert claude_cmd[1:6] == ["-p", "--model", "opus", "--effort", "high"]
+    # A headless reviewer has no one to approve its commands, so it is pre-allowed what the brief asks of it, in
+    # one JSON argument that leaves the prompt last.
+    assert claude_cmd[6] == "--settings" and "PR #825" in claude_cmd[8]
+    permissions = json.loads(claude_cmd[7])["permissions"]
+    allow, deny = permissions["allow"], permissions["deny"]
+    assert {"Bash(gh pr comment *)", "Bash(python3 bin/peer_review.py complete *)"} <= set(allow)
+    # Nothing that approves, merges or starts more reviews runs unprompted (PR #951 review).
+    assert not any(word in rule for rule in allow for word in ("gh pr review", "merge", "gh api", "approve"))
+    assert not any(rule.startswith("Bash(python3 bin/peer_review.py") and "complete" not in rule for rule in allow)
+    assert {"Bash(gh pr review *)", "Bash(gh pr merge *)", "Bash(gh api *)"} <= set(deny)
 
     muse_slot = pr_mod.ReviewSlot("muse", "muse", "opus", "high", "cli")
     muse_cmd = pr_mod.build_cli_command(req, muse_slot, tmp_path)
@@ -223,6 +238,7 @@ def test_build_cli_command_passes_model_and_reasoning(tmp_path):
         "--reasoning-effort",
     ]
     assert muse_cmd[7] == "high"
+    assert muse_cmd[8] == "--trust-workspace" and "PR #825" in muse_cmd[9]  # loads AGENTS.md and the skills
 
     agy_slot = pr_mod.ReviewSlot("antigravity", "antigravity", "pro", "high", "cli")
     agy_cmd = pr_mod.build_cli_command(req, agy_slot, tmp_path)
@@ -302,7 +318,29 @@ def test_request_guard_prevents_accidental_overwrite(tmp_path):
     assert req.slots[0].agent == "muse"
 
 
-def test_cli_end_to_end_workflow(tmp_path, capsys):
+def test_request_records_the_prs_own_head_not_the_current_checkouts(monkeypatch):
+    calls = []
+
+    class Done:
+        returncode, stdout = 0, '{"headRefName": "claude/start-issue-lighter-reads", "headRefOid": "159e1bc"}'
+
+    def fake_run(cmd, **_kwargs):
+        calls.append(cmd)
+        return Done()
+
+    monkeypatch.setattr(pr_mod.subprocess, "run", fake_run)
+    assert pr_mod.detect_pr_metadata(948) == ("claude/start-issue-lighter-reads", "159e1bc")
+    assert calls == [["gh", "pr", "view", "948", "--json", "headRefName,headRefOid"]]
+
+    class Failed:
+        returncode, stdout = 1, ""
+
+    monkeypatch.setattr(pr_mod.subprocess, "run", lambda *a, **k: Failed())
+    assert pr_mod.detect_pr_metadata(948) == ("", "")  # the brief then says "(see PR)", never a wrong commit
+
+
+def test_cli_end_to_end_workflow(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(pr_mod, "detect_pr_metadata", lambda pr: ("antigravity/issue-829-test", "abc829"))
     base = ["--state-dir", str(tmp_path)]
     assert (
         pr_mod.main(
@@ -370,3 +408,22 @@ def test_cli_end_to_end_workflow(tmp_path, capsys):
     status_json = json.loads(capsys.readouterr().out)
     assert status_json["pr"] == 829
     assert [s["status"] for s in status_json["slots"]] == ["completed", "completed"]
+
+
+def test_reviewer_writable_dirs_cover_the_state_and_the_git_common_dir(tmp_path, monkeypatch):
+    common = (tmp_path / "repo" / ".git").resolve()
+    inside = common / "mantle-bloom-handoff" / "reviews"
+    outside = tmp_path / "elsewhere"
+
+    class Done:
+        returncode, stdout = 0, f"{common}\n"
+
+    monkeypatch.setattr(pr_mod.subprocess, "run", lambda *a, **k: Done())
+    assert pr_mod.reviewer_writable_dirs(inside) == (common,)  # the state dir sits in the common dir
+    assert pr_mod.reviewer_writable_dirs(outside) == (common, outside.resolve())  # MANTLE_BLOOM_REVIEWS_DIR moved it
+
+    class Failed:
+        returncode, stdout = 128, ""
+
+    monkeypatch.setattr(pr_mod.subprocess, "run", lambda *a, **k: Failed())
+    assert pr_mod.reviewer_writable_dirs(outside) == (outside.resolve(),)
