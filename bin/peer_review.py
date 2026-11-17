@@ -772,6 +772,28 @@ def reviewer_writable_dirs(state_dir: Path) -> tuple[Path, ...]:
     return (common,) if common == state or common in state.parents else (common, state)
 
 
+def prepare_review_tree(pr: int, wt_dir: Path) -> bool:
+    """Put `wt_dir` at the PR's current head, creating it if needed. Returns True when it was created.
+
+    An existing tree from an earlier round is moved to the new head. It used to be handed over as it was, which
+    would have had a second #950 reviewer review the code from before that round's fixes. A tree with changes
+    is refused rather than overwritten. The head goes to an explicit ref, not FETCH_HEAD, so concurrent requests
+    don't race."""
+    ref = f"refs/remotes/origin/pr/{pr}"
+    subprocess.run(["git", "fetch", "origin", f"+pull/{pr}/head:{ref}"], check=True, capture_output=True, text=True)
+    if not wt_dir.exists():
+        subprocess.run(["git", "worktree", "add", "--detach", str(wt_dir), ref], check=True, capture_output=True, text=True)
+        return True
+    status = subprocess.run(["git", "-C", str(wt_dir), "status", "--porcelain"], capture_output=True, text=True, check=False)
+    if status.returncode != 0 or status.stdout.strip():
+        raise RuntimeError(
+            f"review tree {wt_dir} has changes or is not a git worktree; finish or remove it "
+            "(`git worktree remove <path>`) before requesting another review"
+        )
+    subprocess.run(["git", "-C", str(wt_dir), "checkout", "--detach", ref], check=True, capture_output=True, text=True)
+    return False
+
+
 def spawn_cli_reviewer(
     state_dir: Path,
     req: ReviewRequest,
@@ -785,20 +807,7 @@ def spawn_cli_reviewer(
     created_wt = False
     log_handle = None
     try:
-        if not wt_dir.exists():
-            subprocess.run(
-                ["git", "fetch", "origin", f"pull/{req.pr}/head"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            subprocess.run(
-                ["git", "worktree", "add", "--detach", str(wt_dir), "FETCH_HEAD"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            created_wt = True
+        created_wt = prepare_review_tree(req.pr, wt_dir)
 
         claim_slot(state_dir, req.pr, slot.slot)
         log_path = state_dir / f"pr-{req.pr}-{slot.slot}.log"

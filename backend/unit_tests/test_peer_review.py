@@ -427,3 +427,40 @@ def test_reviewer_writable_dirs_cover_the_state_and_the_git_common_dir(tmp_path,
 
     monkeypatch.setattr(pr_mod.subprocess, "run", lambda *a, **k: Failed())
     assert pr_mod.reviewer_writable_dirs(outside) == (outside.resolve(),)
+
+
+def _fake_git(monkeypatch, dirty: bool = False):
+    calls = []
+
+    class Result:
+        def __init__(self, stdout=""):
+            self.returncode, self.stdout = 0, stdout
+
+    def run(cmd, **_kwargs):
+        calls.append(cmd)
+        return Result(" M backend/app/world.py\n" if dirty and "status" in cmd else "")
+
+    monkeypatch.setattr(pr_mod.subprocess, "run", run)
+    return calls
+
+
+def test_a_new_review_tree_is_made_at_the_prs_fetched_head(tmp_path, monkeypatch):
+    calls = _fake_git(monkeypatch)
+    wt = tmp_path / "mantle-bloom-review-950-muse"
+    assert pr_mod.prepare_review_tree(950, wt) is True
+    assert calls == [
+        ["git", "fetch", "origin", "+pull/950/head:refs/remotes/origin/pr/950"],
+        ["git", "worktree", "add", "--detach", str(wt), "refs/remotes/origin/pr/950"],
+    ]
+
+
+def test_an_existing_review_tree_moves_to_the_new_head_and_a_changed_one_is_refused(tmp_path, monkeypatch):
+    wt = tmp_path / "mantle-bloom-review-950-muse"
+    wt.mkdir()
+    calls = _fake_git(monkeypatch)
+    assert pr_mod.prepare_review_tree(950, wt) is False  # a second round: not handed over at the old commit
+    assert calls[-1] == ["git", "-C", str(wt), "checkout", "--detach", "refs/remotes/origin/pr/950"]
+    calls = _fake_git(monkeypatch, dirty=True)
+    with pytest.raises(RuntimeError, match="has changes"):
+        pr_mod.prepare_review_tree(950, wt)
+    assert not any("checkout" in cmd for cmd in calls)

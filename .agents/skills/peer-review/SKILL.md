@@ -40,6 +40,9 @@ POSIX `fcntl`, applicable to macOS and Linux development hosts).
    - `codex exec` runs in the `workspace-write` sandbox with network access, plus write access
      to the git common dir and the review state.
 
+   A review tree left from an earlier round of the same PR is moved to the PR's current head.
+   If that tree has changes in it, the request refuses rather than overwriting them.
+
    A reviewer that still stops for approval leaves its slot `claimed`. Check its log,
    `pr-<N>-<slot>.log` beside the state file, and finish the slot from an open window.
 
