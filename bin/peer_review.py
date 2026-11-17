@@ -651,7 +651,11 @@ CLAUDE_REVIEW_ALLOW = (
 )
 
 
-def build_cli_command(req: ReviewRequest, slot: ReviewSlot, worktree: Path) -> list[str]:
+def build_cli_command(
+    req: ReviewRequest, slot: ReviewSlot, worktree: Path, writable: tuple[Path, ...] = ()
+) -> list[str]:
+    """The headless reviewer's command line. `writable` lists directories outside `worktree` the reviewer must
+    write to: the review state (to mark its slot complete) and the git common dir (to fetch the PR head)."""
     prompt = format_review_brief(req, slot)
     if slot.agent == "codex":
         bin_path = resolve_binary("codex")
@@ -660,6 +664,12 @@ def build_cli_command(req: ReviewRequest, slot: ReviewSlot, worktree: Path) -> l
             cmd.extend(["-m", slot.model])
         if slot.reasoning != "default":
             cmd.extend(["-c", f"model_reasoning_effort={slot.reasoning}"])
+        # `codex exec` defaults to a read-only sandbox with no network and no approvals, so the PR #948 reviewer could
+        # not post or complete its slot. Keep the sandbox, but let it write the review tree and the dirs it must, and
+        # reach GitHub for `gh`.
+        cmd.extend(["-s", "workspace-write", "-c", "sandbox_workspace_write.network_access=true"])
+        for path in writable:
+            cmd.extend(["--add-dir", str(path)])
         cmd.append(prompt)
         return cmd
     if slot.agent == "claude":
@@ -752,6 +762,17 @@ def review_worktree_path(
     return primary.parent / f"{primary.name}-{name}"
 
 
+def reviewer_writable_dirs(state_dir: Path) -> tuple[Path, ...]:
+    """The review state dir and the git common dir, which a sandboxed reviewer writes to outside its own tree."""
+    state = state_dir.resolve()
+    proc = subprocess.run(["git", "rev-parse", "--git-common-dir"], capture_output=True, text=True, check=False)
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return (state,)
+    common = Path(proc.stdout.strip()).resolve()
+    # The state dir normally sits inside the common dir; MANTLE_BLOOM_REVIEWS_DIR can move it elsewhere.
+    return (common,) if common == state or common in state.parents else (common, state)
+
+
 def spawn_cli_reviewer(
     state_dir: Path,
     req: ReviewRequest,
@@ -760,7 +781,7 @@ def spawn_cli_reviewer(
 ) -> subprocess.Popen[bytes]:
     wt_dir = review_worktree_path(state_dir, req.pr, slot.slot, worktree_root)
     # 1. Build command upfront to catch unsupported CLI builders (e.g. muse) before any side-effects
-    cmd = build_cli_command(req, slot, wt_dir)
+    cmd = build_cli_command(req, slot, wt_dir, reviewer_writable_dirs(state_dir))
 
     created_wt = False
     log_handle = None
@@ -786,6 +807,7 @@ def spawn_cli_reviewer(
         proc = subprocess.Popen(
             cmd,
             cwd=str(wt_dir),
+            stdin=subprocess.DEVNULL,  # a detached reviewer never reads the author's terminal
             stdout=log_handle,
             stderr=subprocess.STDOUT,
             start_new_session=True,

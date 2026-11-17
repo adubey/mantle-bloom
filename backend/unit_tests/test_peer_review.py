@@ -206,7 +206,12 @@ def test_build_cli_command_passes_model_and_reasoning(tmp_path):
     ]
     assert codex_cmd[6] == "-c"
     assert codex_cmd[7] == "model_reasoning_effort=xhigh"
-    assert "PR #825" in codex_cmd[8]
+    # Sandboxed, but able to write its tree and the given dirs and to reach GitHub; the prompt stays last.
+    assert codex_cmd[8:12] == ["-s", "workspace-write", "-c", "sandbox_workspace_write.network_access=true"]
+    assert "PR #825" in codex_cmd[12] and "--add-dir" not in codex_cmd
+    state, common = tmp_path / "state", tmp_path / "common"
+    with_dirs = pr_mod.build_cli_command(req, codex_slot, tmp_path, (common, state))
+    assert with_dirs[12:16] == ["--add-dir", str(common), "--add-dir", str(state)] and "PR #825" in with_dirs[16]
 
     claude_slot = pr_mod.ReviewSlot("claude", "claude", "opus", "high", "cli")
     claude_cmd = pr_mod.build_cli_command(req, claude_slot, tmp_path)
@@ -377,3 +382,22 @@ def test_cli_end_to_end_workflow(tmp_path, capsys):
     status_json = json.loads(capsys.readouterr().out)
     assert status_json["pr"] == 829
     assert [s["status"] for s in status_json["slots"]] == ["completed", "completed"]
+
+
+def test_reviewer_writable_dirs_cover_the_state_and_the_git_common_dir(tmp_path, monkeypatch):
+    common = (tmp_path / "repo" / ".git").resolve()
+    inside = common / "mantle-bloom-handoff" / "reviews"
+    outside = tmp_path / "elsewhere"
+
+    class Done:
+        returncode, stdout = 0, f"{common}\n"
+
+    monkeypatch.setattr(pr_mod.subprocess, "run", lambda *a, **k: Done())
+    assert pr_mod.reviewer_writable_dirs(inside) == (common,)  # the state dir sits in the common dir
+    assert pr_mod.reviewer_writable_dirs(outside) == (common, outside.resolve())  # MANTLE_BLOOM_REVIEWS_DIR moved it
+
+    class Failed:
+        returncode, stdout = 128, ""
+
+    monkeypatch.setattr(pr_mod.subprocess, "run", lambda *a, **k: Failed())
+    assert pr_mod.reviewer_writable_dirs(outside) == (outside.resolve(),)
