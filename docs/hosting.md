@@ -142,7 +142,9 @@ set:
 1. Create a recurring product in Polar (sandbox or production) and a webhook endpoint
    pointing at `https://<service-domain>/billing/webhook` subscribed to subscription
    lifecycle events (`subscription.created`, `subscription.active`, `subscription.updated`,
-   `subscription.canceled`, `subscription.past_due`, `subscription.revoked`).
+   `subscription.canceled`, `subscription.past_due`, `subscription.revoked`). Note that
+   Polar's `subscription.canceled` means "will not renew" and still carries `status:
+   active` until period end, when `subscription.revoked` downgrades the user to `free`.
 2. Set `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`, and `POLAR_PRODUCT_ID` in Railway's
    variables. Set `POLAR_ENVIRONMENT=sandbox` when using Polar's sandbox (defaults to
    `production` when unset).

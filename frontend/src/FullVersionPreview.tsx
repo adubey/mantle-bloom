@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { asJson } from "./apiResponse";
+
 // A look at the full app for /view visitors (#560): static screenshots of views the public
 // routes don't serve, in a <details> that starts closed while the hosted full version isn't
 // live. The summary row is all a visitor sees until they ask for more, and the lazy images
@@ -32,12 +35,47 @@ const PREVIEWS = [
   },
 ] as const;
 
+interface BillingActionProps {
+  apiBase: string;
+  manage: boolean;
+  inline?: boolean;
+}
+
+export function BillingActionButton({ apiBase, manage, inline = false }: BillingActionProps) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleClick() {
+    setBusy(true);
+    setError(null);
+    try {
+      const resp = await fetch(`${apiBase}${manage ? "/billing/portal" : "/billing/checkout"}`, {
+        method: "POST",
+      });
+      const data = await asJson<{ url: string }>(resp);
+      window.location.assign(data.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Billing unavailable");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span style={inline ? { display: "inline", marginLeft: 8 } : { display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <button type="button" onClick={handleClick} disabled={busy}>
+        {manage ? "Manage subscription" : "Upgrade"}
+      </button>
+      {error && <span role="alert" style={{ color: "#ff9b9b", fontSize: 12 }}>{error}</span>}
+    </span>
+  );
+}
+
 interface FullVersionPreviewProps {
   repoUrl: string;
   apiBase?: string;
   billingAvailable?: boolean;
   signedIn?: boolean;
-  hasSubscription?: boolean;
+  manageSubscription?: boolean;
 }
 
 export default function FullVersionPreview({
@@ -45,7 +83,7 @@ export default function FullVersionPreview({
   apiBase = "",
   billingAvailable = false,
   signedIn = false,
-  hasSubscription = false,
+  manageSubscription = false,
 }: FullVersionPreviewProps) {
   return (
     <details className="full-preview">
@@ -55,14 +93,8 @@ export default function FullVersionPreview({
         sketch, runs them for as long as you like, and looks at them on a globe and in over twenty map views, with
         plates, faults, rivers, lakes and resources. You can run it today from the <a href={repoUrl}>source on GitHub</a>.
         {billingAvailable ? (
-          hasSubscription ? (
-            <form method="post" action={`${apiBase}/billing/portal`} style={{ display: "inline", marginLeft: 8 }}>
-              <button type="submit">Manage subscription</button>
-            </form>
-          ) : signedIn ? (
-            <form method="post" action={`${apiBase}/billing/checkout`} style={{ display: "inline", marginLeft: 8 }}>
-              <button type="submit">Upgrade</button>
-            </form>
+          signedIn ? (
+            <BillingActionButton apiBase={apiBase} manage={manageSubscription} inline />
           ) : (
             <>
               {" "}

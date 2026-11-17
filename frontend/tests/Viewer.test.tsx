@@ -62,7 +62,7 @@ interface FetchMockOptions {
   onStep?: (worldId: string) => Response | Promise<Response>;
   admin?: boolean;
   billingAvailable?: boolean;
-  user?: { name: string | null; provider: string; tier?: "free" | "paid"; has_subscription?: boolean } | null;
+  user?: { name: string | null; provider: string; tier?: "free" | "paid"; manage_subscription?: boolean } | null;
 }
 
 function installFetchMock({ worlds, states = {}, onStep, admin = false, billingAvailable = false, user = null }: FetchMockOptions): { worldsCalls: () => number } {
@@ -309,27 +309,25 @@ describe("Viewer (/view)", () => {
     await waitFor(() => assert.equal(screen.queryByText("Features of the full version"), null));
   });
 
-  it("offers Upgrade and Manage subscription forms when billing is available (#945)", async () => {
+  it("offers Upgrade and Manage subscription buttons when billing is available (#945)", async () => {
     installFetchMock({
       worlds: () => [makeListing({ world_id: "w1", name: "Kepler-186 f" })],
       billingAvailable: true,
-      user: { name: "Ada Lovelace", provider: "google", tier: "free", has_subscription: false },
+      user: { name: "Ada Lovelace", provider: "google", tier: "free", manage_subscription: false },
     });
 
     const { unmount } = render(<Viewer />);
     const upgradeButtons = await screen.findAllByRole("button", { name: "Upgrade" });
     assert.ok(upgradeButtons.length >= 1);
-    assert.ok(upgradeButtons[0].closest("form")?.getAttribute("action")?.endsWith("/billing/checkout"));
     unmount();
 
     installFetchMock({
       worlds: () => [makeListing({ world_id: "w1", name: "Kepler-186 f" })],
       billingAvailable: true,
-      user: { name: "Ada Lovelace", provider: "google", tier: "paid", has_subscription: true },
+      user: { name: "Ada Lovelace", provider: "google", tier: "paid", manage_subscription: true },
     });
     render(<Viewer />);
     const manageButtons = await screen.findAllByRole("button", { name: "Manage subscription" });
     assert.ok(manageButtons.length >= 1);
-    assert.ok(manageButtons[0].closest("form")?.getAttribute("action")?.endsWith("/billing/portal"));
   });
 });

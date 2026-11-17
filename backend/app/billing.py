@@ -1,7 +1,8 @@
 """Polar subscription billing: checkout, customer portal, and webhook sync (#945).
 
 Remote billing routes fail closed (503) when Polar credentials are unconfigured.
-Local/desktop loopback mode stays unlocked without any Polar configuration.
+Local/desktop loopback mode stays unlocked without any Polar configuration, and `polar`
+is imported lazily inside handlers so the desktop build never loads it at startup.
 """
 
 from __future__ import annotations
@@ -9,23 +10,21 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from typing import Literal
+from datetime import datetime
+from typing import TYPE_CHECKING, Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from fastapi.responses import RedirectResponse
-from polar import PolarError
-from polar.v2026_10 import Polar
-from polar.v2026_10.webhooks import (
-    PolarWebhookError,
-    PolarWebhookUnknownTypeError,
-    PolarWebhookVerificationError,
-    validate_event,
-)
 
 from . import auth, users
 
+if TYPE_CHECKING:
+    from polar.v2026_10 import Polar
+
 _logger = logging.getLogger(__name__)
 _VALID_ENVIRONMENTS = frozenset({"production", "sandbox"})
+# Statuses where the customer portal is useful (active, trialing, or recovering a card);
+# canceled/unpaid users need a fresh checkout instead.
+_PORTAL_STATUSES = frozenset({"active", "trialing", "past_due", "incomplete"})
 
 router = APIRouter()
 
@@ -66,6 +65,8 @@ def load_config() -> BillingConfig:
 
 
 def _client(config: BillingConfig) -> Polar:
+    from polar.v2026_10 import Polar
+
     return Polar(config.access_token, environment=config.environment)
 
 
@@ -81,12 +82,20 @@ def _require_signed_in(request: Request) -> tuple[users.User, auth.AuthConfig]:
     return signed_in[0], auth_config
 
 
+def can_manage_subscription(sub: users.Subscription | None) -> bool:
+    return sub is not None and sub.status in _PORTAL_STATUSES
+
+
 @router.post("/billing/checkout", include_in_schema=False)
-def create_checkout(request: Request) -> RedirectResponse:
+def create_checkout(request: Request) -> dict[str, str]:
+    from polar import PolarError
+
     user, auth_config = _require_signed_in(request)
     config = load_config()
-    if not config.checkout_configured:
+    if not config.configured:
         raise HTTPException(503, "Billing is not configured")
+    if users.shared_store().tier(user.id) == "paid":
+        raise HTTPException(409, "Subscription is already active")
     base = _base_url(request, auth_config)
     try:
         with _client(config) as client:
@@ -101,14 +110,16 @@ def create_checkout(request: Request) -> RedirectResponse:
         raise HTTPException(502, "Could not start checkout session") from exc
     if not checkout.url:
         raise HTTPException(502, "Could not start checkout session")
-    return RedirectResponse(checkout.url, status_code=303)
+    return {"url": checkout.url}
 
 
 @router.post("/billing/portal", include_in_schema=False)
-def create_portal(request: Request) -> RedirectResponse:
+def create_portal(request: Request) -> dict[str, str]:
+    from polar import PolarError
+
     user, auth_config = _require_signed_in(request)
     config = load_config()
-    if not config.checkout_configured:
+    if not config.configured:
         raise HTTPException(503, "Billing is not configured")
     base = _base_url(request, auth_config)
     try:
@@ -122,26 +133,54 @@ def create_portal(request: Request) -> RedirectResponse:
         raise HTTPException(502, "Could not open billing portal") from exc
     if not session.customer_portal_url:
         raise HTTPException(502, "Could not open billing portal")
-    return RedirectResponse(session.customer_portal_url, status_code=303)
+    return {"url": session.customer_portal_url}
 
 
-def _apply_subscription_event(event_type: str, sub: object) -> None:
+def _coerce_iso(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
+def _apply_subscription_event(event_type: str, sub: object, config: BillingConfig) -> None:
+    product_id = getattr(sub, "product_id", None)
+    if config.product_id and product_id != config.product_id:
+        _logger.warning("Ignoring Polar %s for unrelated product %r", event_type, product_id)
+        return
     customer = getattr(sub, "customer", None)
     external_id = getattr(customer, "external_id", None) if customer is not None else None
-    if not isinstance(external_id, str) or not external_id.isdigit():
+    if not isinstance(external_id, str) or not external_id.isascii() or not external_id.isdigit():
         _logger.warning("Ignoring Polar %s without numeric external_id", event_type)
         return
     user_id = int(external_id)
+    sub_id = getattr(sub, "id", None)
     raw_status = str(getattr(sub, "status", ""))
     status = "canceled" if event_type == "subscription.revoked" and raw_status in users.PAID_STATUSES else raw_status
+
+    store = users.shared_store()
+    existing = store.get_subscription(user_id)
+    if (
+        existing is not None
+        and existing.status in users.PAID_STATUSES
+        and existing.provider_subscription_id
+        and sub_id != existing.provider_subscription_id
+        and status not in users.PAID_STATUSES
+    ):
+        _logger.info("Ignoring stale Polar %s for old subscription %r", event_type, sub_id)
+        return
+
     try:
-        users.shared_store().set_subscription(
+        # `current_period_end` is recorded for diagnostics/portal context; access is
+        # driven by webhook status transitions (a missed `revoked` fails open for the user).
+        store.set_subscription(
             user_id,
             status=status,
             provider_customer_id=getattr(sub, "customer_id", None),
-            provider_subscription_id=getattr(sub, "id", None),
+            provider_subscription_id=sub_id,
             plan="paid",
-            current_period_end=getattr(sub, "current_period_end", None),
+            current_period_end=_coerce_iso(getattr(sub, "current_period_end", None)),
         )
     except KeyError:
         _logger.warning("Ignoring Polar %s for unknown user %s", event_type, user_id)
@@ -149,6 +188,13 @@ def _apply_subscription_event(event_type: str, sub: object) -> None:
 
 @router.post("/billing/webhook", include_in_schema=False)
 async def polar_webhook(request: Request) -> Response:
+    from polar.v2026_10.webhooks import (
+        PolarWebhookError,
+        PolarWebhookUnknownTypeError,
+        PolarWebhookVerificationError,
+        validate_event,
+    )
+
     config = load_config()
     if not config.webhook_configured:
         raise HTTPException(503, "Billing is not configured")
@@ -163,5 +209,5 @@ async def polar_webhook(request: Request) -> Response:
         raise HTTPException(400, "Invalid webhook payload") from exc
 
     if event.type.startswith("subscription."):
-        _apply_subscription_event(event.type, event.data)
+        _apply_subscription_event(event.type, event.data, config)
     return Response(status_code=202)

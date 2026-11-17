@@ -480,7 +480,7 @@ def test_google_account_signs_in_as_a_free_user_not_admin(monkeypatch, remote):
     assert remote.get("/auth/session").json() == {
         "admin": False, "local": False, "login": None, "login_available": True,
         "billing_available": False,
-        "user": {"name": "Ada Lovelace", "provider": "google", "tier": "free", "has_subscription": False},
+        "user": {"name": "Ada Lovelace", "provider": "google", "tier": "free", "manage_subscription": False},
     }
     # Signed in, and still only a viewer: every owner route refuses it.
     assert remote.get("/worlds").status_code == 401
@@ -501,7 +501,7 @@ def test_same_google_account_reaches_the_same_user(monkeypatch, remote):
     _google_sign_in(remote, monkeypatch, {**GOOGLE_USER, "name": "Ada King", "email": "new@example.com"})
     assert store.user_for_identity("google", "1077") == first
     assert remote.get("/auth/session").json()["user"] == {
-        "name": "Ada Lovelace", "provider": "google", "tier": "free", "has_subscription": False,
+        "name": "Ada Lovelace", "provider": "google", "tier": "free", "manage_subscription": False,
     }
     other = TestClient(app, base_url="https://testserver", follow_redirects=False)
     _google_sign_in(other, monkeypatch, {**GOOGLE_USER, "sub": "2088"})

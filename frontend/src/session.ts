@@ -15,7 +15,7 @@ export interface Session {
     name: string | null;
     provider: string;
     tier?: "free" | "paid";
-    has_subscription?: boolean;
+    manage_subscription?: boolean;
   } | null;
 }
 
