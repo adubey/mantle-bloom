@@ -568,9 +568,10 @@ def sync_from_github_payload(
         return req
 
 
-def fetch_github_pr_payload(pr: int) -> dict[str, Any] | None:
+def gh_pr_json(pr: int, fields: str) -> dict[str, Any] | None:
+    """`gh pr view <pr> --json <fields>`, or None when gh fails or prints nothing usable."""
     proc = subprocess.run(
-        ["gh", "pr", "view", str(pr), "--json", "reviews,comments"],
+        ["gh", "pr", "view", str(pr), "--json", fields],
         capture_output=True,
         text=True,
         check=False,
@@ -581,6 +582,10 @@ def fetch_github_pr_payload(pr: int) -> dict[str, Any] | None:
         return json.loads(proc.stdout)
     except json.JSONDecodeError:
         return None
+
+
+def fetch_github_pr_payload(pr: int) -> dict[str, Any] | None:
+    return gh_pr_json(pr, "reviews,comments")
 
 
 def wait_for_reviews(
@@ -639,16 +644,19 @@ def resolve_binary(name: str) -> str:
 # What a headless `claude -p` reviewer may run without a prompt. With no one to approve, every other command fails,
 # and the PR #950 reviewer wrote its review but could neither post it nor mark its slot complete. The list covers the
 # brief: read the diff, inspect it in a detached worktree, run targeted tests, post a comment, notify the author.
-# Merging stays denied by the user's own settings.
+# With no prompt, an allowed command runs whatever asked for it, so the list is only what a review needs (PR #951
+# review): reviews are posted as comments, and of this script only `complete` is allowed.
 CLAUDE_REVIEW_ALLOW = (
     "Read", "Grep", "Glob",
     "Bash(gh pr view *)", "Bash(gh pr diff *)", "Bash(gh pr checks *)", "Bash(gh issue view *)",
-    "Bash(gh pr comment *)", "Bash(gh pr review *)",
+    "Bash(gh pr comment *)",
     "Bash(git fetch *)", "Bash(git worktree add *)", "Bash(git worktree remove *)", "Bash(git log *)",
     "Bash(git show *)", "Bash(git diff *)", "Bash(git grep *)", "Bash(git rev-parse *)",
-    "Bash(python3 bin/peer_review.py *)", "Bash(python3 bin/compute_budget.py *)",
+    "Bash(python3 bin/peer_review.py complete *)", "Bash(python3 bin/compute_budget.py check *)",
     "Bash(./bin/setup.sh)", "Bash(./bin/unit_test.sh *)", "Bash(backend/.venv/bin/python -m pytest *)",
 )
+# Denied even if another rule would allow them: a reviewer never approves (`gh pr review` can) or merges.
+CLAUDE_REVIEW_DENY = ("Bash(gh pr review *)", "Bash(gh pr merge *)", "Bash(gh api *)")
 
 
 def build_cli_command(
@@ -680,7 +688,8 @@ def build_cli_command(
         if slot.reasoning != "default":
             cmd.extend(["--effort", slot.reasoning])
         # One JSON argument, not `--allowedTools`, whose variadic values would swallow the prompt after them.
-        cmd.extend(["--settings", json.dumps({"permissions": {"allow": list(CLAUDE_REVIEW_ALLOW)}})])
+        permissions = {"allow": list(CLAUDE_REVIEW_ALLOW), "deny": list(CLAUDE_REVIEW_DENY)}
+        cmd.extend(["--settings", json.dumps({"permissions": permissions})])
         cmd.append(prompt)
         return cmd
     if slot.agent == "muse":
@@ -709,22 +718,12 @@ def build_cli_command(
     )
 
 
-def detect_git_metadata() -> tuple[str, str]:
-    branch_proc = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    sha_proc = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    branch = branch_proc.stdout.strip() if branch_proc.returncode == 0 else ""
-    sha = sha_proc.stdout.strip() if sha_proc.returncode == 0 else ""
-    return branch, sha
+def detect_pr_metadata(pr: int) -> tuple[str, str]:
+    """The PR's own head branch and commit, from GitHub. Not the current checkout's: a request made from another
+    worktree gave the PR #948 reviewers PR #951's commit. ("", "") when gh can't say, so the brief shows "(see PR)"
+    rather than a wrong commit."""
+    data = gh_pr_json(pr, "headRefName,headRefOid") or {}
+    return str(data.get("headRefName", "")), str(data.get("headRefOid", ""))
 
 
 def resolve_primary_checkout(state_dir: Path | None = None) -> Path:
@@ -847,7 +846,7 @@ def format_status_report(req: ReviewRequest) -> str:
 
 
 def cmd_request(args: argparse.Namespace, state_dir: Path) -> int:
-    branch, sha = detect_git_metadata()
+    branch, sha = (args.branch, args.head_sha) if args.branch and args.head_sha else detect_pr_metadata(args.pr)
     spawn = not args.no_spawn
     req = create_review_request(
         state_dir=state_dir,
@@ -996,8 +995,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reviewer spec AGENT[:MODEL[:REASONING]] (repeatable)",
     )
     p_req.add_argument("--author", default="", help="Author agent identifier")
-    p_req.add_argument("--branch", default="", help="PR branch name")
-    p_req.add_argument("--head-sha", default="", help="PR head commit SHA")
+    p_req.add_argument("--branch", default="", help="PR branch name (default: the PR's, from GitHub)")
+    p_req.add_argument("--head-sha", default="", help="PR head commit SHA (default: the PR's, from GitHub)")
     p_req.add_argument(
         "--no-spawn",
         action="store_true",
