@@ -1,7 +1,90 @@
 # Issue #942: what sets plate speed
 
-Status: in progress. First pass at deliverable 2 (the torque breakdown, standalone speeds, a brake-off run and the slab terms' work budget) on two worlds. The speed census on the 20
-development worlds (deliverable 1) and the `contact_drag_multiplier` sweep (deliverable 3) are not done.
+Status: in progress. Deliverable 1 (the speed census on the 20 development worlds) is done; deliverable 2 (the torque
+breakdown) is done on 20 worlds brake on and on two worlds brake off; deliverable 3 (the `contact_drag_multiplier`
+sweep against RFC 0008's collision metrics) moves to RFC 0021.
+
+## Speed census, 20 development worlds
+
+**Finding.** Plates move at 0.83 cm/yr, area-weighted over the 20 development worlds: 4.8–6.0 times slower than
+Earth's mean of about 4–5 cm/yr. 70% of plate area moves under 1 cm/yr, and no plate in 9,442 plate-samples exceeds
+4.3 cm/yr, against an Earth range of about 1–10 cm/yr. A world's speed follows the speed its mantle flow alone would
+give (rank correlation 0.85 across worlds), and the balance is the same as on the first two worlds: mantle flow
+drives, the contact brake resists.
+
+**Run.** `bin/debug/plate_torque_breakdown.py` at `376b2a50` on the 20 RFC 0018 development worlds (no held-out or
+reserve seed), production defaults and splitter, brake on, plates-only, 200 Myr at 1 Myr steps, sampled every
+10 Myr. Pooled by `bin/debug/summarize_speed_census.py` into [`speed-census.json`](speed-census.json) and by
+`summarize_torque_breakdown.py` into [`torque-breakdown-census.json`](torque-breakdown-census.json). 113 minutes
+for the 20 worlds in series; peak RSS 0.54 GB. Predictions 15–18 were posted before the run.
+
+| Pooled, area-weighted | Model | Earth |
+|---|---:|---:|
+| Crust speed (cm/yr) | 0.83 | about 4–5 |
+| continental / oceanic | 0.75 / 0.92 | |
+| Plate speed, 10th / 50th / 90th percentile by area (cm/yr) | 0.24 / 0.68 / 1.66 | range about 1–10 |
+| Fastest plate-sample (cm/yr) | 4.3 | |
+| Area under 1 cm/yr | 70% | |
+| Area at 4 cm/yr or more | 0.06% | |
+| Speed in 0–50 / 50–100 / 100–150 / 150–200 Myr (cm/yr) | 0.83 / 0.83 / 0.83 / 0.84 | |
+| Mantle flow only (cm/yr) | 2.78 | |
+| **Driving:** mantle flow / slab pull / ridge push | 74% / 20% / 0.1% | slab pull and slab suction dominate |
+| **Resisting:** contact brake / basal drag / sunk-slab drag | 58% / 26% / 9% | |
+| Area where the brake is the largest resistance | 70% | |
+| Closing down-going boundary past the 1 cm/yr gate | 11% | |
+
+By world, sorted by speed (cm/yr):
+
+| World | Crust | Continental / oceanic | Plate p10 / p50 / p90 | Mantle flow only | Plates per sample |
+|---|---:|---:|---:|---:|---:|
+| 954941394 | 0.26 | 0.24 / 0.28 | 0.11 / 0.27 / 0.39 | 1.28 | 18.3 |
+| 600370317 | 0.29 | 0.27 / 0.31 | 0.10 / 0.25 / 0.53 | 2.04 | 19.3 |
+| 1629738962 | 0.45 | 0.40 / 0.49 | 0.16 / 0.35 / 0.81 | 2.78 | 26.9 |
+| 870996356 | 0.49 | 0.39 / 0.59 | 0.21 / 0.37 / 0.70 | 1.78 | 22.5 |
+| 591453549 | 0.50 | 0.50 / 0.50 | 0.20 / 0.48 / 0.81 | 1.64 | 22.6 |
+| 1439649077 | 0.51 | 0.41 / 0.61 | 0.24 / 0.43 / 0.73 | 2.18 | 21.8 |
+| 969845080 | 0.61 | 0.61 / 0.61 | 0.26 / 0.56 / 1.04 | 2.74 | 25.2 |
+| 1097624328 | 0.68 | 0.59 / 0.77 | 0.19 / 0.67 / 1.09 | 2.51 | 23.1 |
+| 1097710202 | 0.69 | 0.65 / 0.73 | 0.39 / 0.64 / 0.97 | 2.47 | 23.9 |
+| 487506346 | 0.73 | 0.63 / 0.82 | 0.31 / 0.64 / 1.17 | 3.04 | 24.4 |
+| 1630166320 | 0.76 | 0.60 / 0.92 | 0.30 / 0.59 / 1.55 | 2.61 | 23.9 |
+| 1643146570 | 0.87 | 0.78 / 0.96 | 0.35 / 0.80 / 1.38 | 3.42 | 23.4 |
+| 763144949 | 0.93 | 0.87 / 0.99 | 0.36 / 0.91 / 1.53 | 2.90 | 23.4 |
+| 604997962 | 0.93 | 0.84 / 1.02 | 0.43 / 0.85 / 1.52 | 2.80 | 24.8 |
+| 146046339 | 1.02 | 0.85 / 1.20 | 0.40 / 0.93 / 1.64 | 2.68 | 22.2 |
+| 494568917 | 1.17 | 1.14 / 1.20 | 0.55 / 1.10 / 1.87 | 3.52 | 24.3 |
+| 1854897345 | 1.18 | 0.95 / 1.41 | 0.44 / 1.01 / 2.32 | 3.40 | 23.5 |
+| 1397817354 | 1.24 | 1.07 / 1.40 | 0.73 / 1.14 / 1.78 | 3.21 | 22.1 |
+| 106533960 | 1.42 | 1.37 / 1.47 | 0.76 / 1.41 / 2.14 | 4.82 | 29.3 |
+| 704718994 | 1.90 | 1.71 / 2.11 | 1.25 / 1.82 / 2.52 | 3.84 | 27.1 |
+
+Across worlds the solved speed runs from 0.26 to 1.90 cm/yr (median 0.74), and mantle-flow-only speed from 1.28 to
+4.82 (median 2.76).
+
+| # | Prediction | Result |
+|---|---|---|
+| 15 | Pooled speed 0.5–1.2 cm/yr, four to nine times below Earth (against: over 2) | Holds: 0.83 cm/yr, 4.8–6.0 times below |
+| 16 | Rank correlation of solved with mantle-flow-only speed across worlds of at least 0.6 (against: under 0.3) | Holds: 0.85 |
+| 17 | Mantle flow over 65% of the drive and the brake over 45% of the resistance (against: under half the two-world values) | Holds: 74% and 58% |
+| 18 | Plates with a subducting boundary are within 20% of the speed of plates without one, or slower (against: over 1.5 times faster) | Counts against as measured: 1.15 against 0.63 cm/yr, 1.8 times. See below |
+
+**Prediction 18 is confounded by its own measure.** "Subducting boundary" meant a boundary past the 1 cm/yr gate,
+and passing the gate depends on how fast the plate already moves. Two checks made after seeing the result, not
+predeclared:
+
+- Nearly all plate area (over 99.5%) has some down-going boundary that is closing at some rate, so "plates without a
+  trench" barely exist in these worlds. The share of a plate's boundary that is down-going and closing at any rate
+  has no rank correlation with its speed (−0.05).
+- The plates past the gate also sit on faster flow: their mantle-flow-only speed is 3.22 against 2.50 cm/yr. They
+  reach 36% of it, the others 25%. Of the factor 1.8, about 1.3 is the flow under them.
+
+So the census does not show trenches making plates fast. On Earth subducting plates move about 3–4 times faster
+than the others ([Conrad & Lithgow-Bertelloni 2004](https://doi.org/10.1029/2004JB002991)).
+
+**Validity.** The solver converged at every sample. Worlds 106533960 and 1097624328 reproduce their earlier speeds
+(1.42 and 0.68 cm/yr). Speeds are flat across the four time windows.
+
+**Limits.** Plates-only stepping, brake on only, one sample per 10 Myr. The brake-off breakdown is still two worlds.
 
 ## Torque breakdown, two worlds
 
@@ -230,9 +313,10 @@ A check of `MANTLE_FLOW_REFERENCE_RATE` (4 cm/yr) against the literature, with n
 
 ## Diagnosis so far
 
-On two worlds: plate speed is the prescribed mantle flow (about 3.6 cm/yr), less a net drag from the slab terms
-(to about 2.5), less the contact brake (to about 1.05). Ridge push is under 1% of the drive in every run. The
-brake alone cannot bring speeds to Earth's: with it off they are 2.3 cm/yr here and 1.55 / 2.12 cm/yr continental /
+Over 20 worlds plates move at 0.83 cm/yr, 4.8–6.0 times below Earth's mean, and each world's speed follows its
+mantle flow. On the two worlds broken down with the brake both on and off, plate speed is the prescribed mantle
+flow (about 3.6 cm/yr), less a net drag from the slab terms (to about 2.5), less the contact brake (to about 1.05).
+Ridge push is under 1% of the drive in every run. The brake alone cannot bring speeds to Earth's: with it off they are 2.3 cm/yr here and 1.55 / 2.12 cm/yr continental /
 oceanic over five worlds in #888. Earth-like speeds, and slab-attached plates being the fast ones, need a change to
 the driving forces, which is RFC-sized under the issue's own rule.
 
@@ -241,9 +325,11 @@ the driving forces, which is RFC-sized under the issue's own rule.
 ```bash
 backend/.venv/bin/python bin/debug/plate_torque_breakdown.py --out <dir> --seeds 106533960 1097624328
 backend/.venv/bin/python bin/debug/summarize_torque_breakdown.py <dir> --out analysis/issue942/torque-breakdown.json
+# census: --seeds <the 20 development worlds>, then bin/debug/summarize_speed_census.py <dir> --out analysis/issue942/speed-census.json
 # brake off: add --world-knobs '{"contact_drag_multiplier": 0.0}' to the first command
 ```
 
+Census raw outputs: SHA-256 per world in [`speed-census.json`](speed-census.json) (`raw_outputs_sha256`).
 Raw outputs of the rerun (SHA-256): `106533960.json` `cc41c208251ae77e3be2fcce809dc4ed7a7632a38d580200864f1942f99612ab`,
 `1097624328.json` `c576fa804c45a7864a5a172c00ef17b47e4d7a2671ac9f863a70659cce1b331d`. Brake off: `106533960.json`
 `463002e3551357b02e8d8a5591b1aa77e0e3c8e07487f034ee1816f2b1f91d98`, `1097624328.json`
