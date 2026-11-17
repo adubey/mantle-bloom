@@ -7,8 +7,9 @@ Gate G3 of [RFC 0015](../../rfc/0015-frozen-water-in-physical-units.md#diagnosis
 **Principles:** #5 (consistent units) and #8 (each process follows its own physics). Replacing
 `origin/main`'s model-unit abrasion coefficient (`430 * MODEL_UNIT_SCALE`) with physical
 literature rates (`K_G = 1e-4`, `l = 0.65` or `1.0`) increases raw abrasion by three orders of
-magnitude, causing the per-step neighbor-drop clip to remove 79–99.5% of raw abrasion and
-creating a 66–73% step-size gap in applied glacial erosion between 0.25 Myr and 1.0 Myr steps.
+magnitude, causing `erosion.py`'s shared per-step cap and scaling (`applied_scale`) to remove
+79–99.5% of raw abrasion and creating a 66–73% step-size gap in applied glacial erosion between
+0.25 Myr and 1.0 Myr steps.
 
 **Verdict: D3's within-step bound must be designed explicitly before implementation.** Under the
 G3 decision rule (`applied / raw < 0.5`), both `(K_G, l)` pairs fail the clip-ratio threshold on
@@ -38,9 +39,14 @@ compact summary metrics are in [`g3.json`](g3.json).
 
 ### 1. Abrasion volume, clip ratio, step gap, and flattening (10 Myr)
 
-Note: on `main`, `applied / raw > 1` (`1.97–4.10`) because raw abrasion is small enough that
-the neighbor-drop clip rarely binds, while `erosion.py`'s mobile-cover erodibility factor
-amplifies cover entrainment up to `MOBILE_COVER_ERODIBILITY_FACTOR` (`applied_scale > 1`).
+Note: `applied / raw` is the effective abrasion ratio from `erosion.py`'s shared
+`applied_scale = erosion_amount / raw_erosion_total`, which reflects the combined per-step
+terrain/headroom cap (`min(max(drop_to_lowest_neighbor_m, march_cut_m), removable_m)`),
+mobile-cover erodibility (`_strip_mobile_cover`), craton resistance (`craton_keep`), and shared
+competition with the other subaerial erosion terms (`rain + river + weathering + seismic`), not
+the neighbor-drop clip in isolation. On `main`, `applied / raw > 1` (`1.97–4.10`) because raw
+abrasion is small enough that the cap rarely binds while mobile-cover erodibility amplifies
+cover entrainment up to `MOBILE_COVER_ERODIBILITY_FACTOR`.
 
 | Save | Arm | Step (Myr) | Raw abrasion (km³) | Applied abrasion (km³) | Applied / Raw | Step gap (applied) | Flattening (km³) | Flatten / Applied |
 |---|---|---:|---:|---:|---:|---:|---:|---:|

@@ -1087,7 +1087,10 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
   two non-ice-age diagnosis saves (`649658380` and `997271774`, default `trend-1k` march).
   The `l = 2` option (Herman et al., 2015) was dropped because its coefficient was not
   verified directly from the paper.
-  - **Clip ratio (`applied / raw < 0.5`):** both pairs fail on every save and step size.
+  - **Clip ratio (`applied / raw < 0.5`):** both pairs fail on every save and step size
+    (measured via `erosion.py`'s shared `applied_scale`, which reflects the combined
+    neighbor-drop/`Hc`-headroom cap, mobile-cover erodibility, craton resistance, and
+    shared competition with other subaerial erosion terms).
     Cook et al. (2020) (`K_G = 1 × 10⁻⁴, l = 0.65`) gives `applied / raw` = `0.210` (0.25 Myr)
     and `0.071` (1.0 Myr) on `649658380`, and `0.157` / `0.048` on `997271774`. Humphrey &
     Raymond (1994) (`K_G = 1 × 10⁻⁴, l = 1`) gives `0.049` / `0.014` and `0.018` / `0.0045`.
