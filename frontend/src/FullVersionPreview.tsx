@@ -32,16 +32,47 @@ const PREVIEWS = [
   },
 ] as const;
 
-export default function FullVersionPreview({ repoUrl }: { repoUrl: string }) {
+interface FullVersionPreviewProps {
+  repoUrl: string;
+  apiBase?: string;
+  billingAvailable?: boolean;
+  signedIn?: boolean;
+  hasSubscription?: boolean;
+}
+
+export default function FullVersionPreview({
+  repoUrl,
+  apiBase = "",
+  billingAvailable = false,
+  signedIn = false,
+  hasSubscription = false,
+}: FullVersionPreviewProps) {
   return (
     <details className="full-preview">
       <summary>Features of the full version</summary>
-      <p className="full-preview-lead">
+      <div className="full-preview-lead">
         This page shows one shared world in a single map view. The full app generates your own worlds from a seed or a
         sketch, runs them for as long as you like, and looks at them on a globe and in over twenty map views, with
         plates, faults, rivers, lakes and resources. You can run it today from the <a href={repoUrl}>source on GitHub</a>.
-        Accounts with your own hosted worlds are planned.
-      </p>
+        {billingAvailable ? (
+          hasSubscription ? (
+            <form method="post" action={`${apiBase}/billing/portal`} style={{ display: "inline", marginLeft: 8 }}>
+              <button type="submit">Manage subscription</button>
+            </form>
+          ) : signedIn ? (
+            <form method="post" action={`${apiBase}/billing/checkout`} style={{ display: "inline", marginLeft: 8 }}>
+              <button type="submit">Upgrade</button>
+            </form>
+          ) : (
+            <>
+              {" "}
+              <a href={`${apiBase}/login`}>Sign in to upgrade</a>.
+            </>
+          )
+        ) : (
+          " Accounts with your own hosted worlds are planned."
+        )}
+      </div>
       <ul className="full-preview-grid">
         {PREVIEWS.map((p) => (
           <li key={p.src}>

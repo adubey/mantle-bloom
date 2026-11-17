@@ -600,15 +600,24 @@ def logout() -> Response:
 
 @router.get("/auth/session")
 def auth_session(request: Request) -> dict:
+    from . import billing
+
     config = load_config(request)
     session = session_user(request, config)
     local = is_local_request(request, config)
     signed_in = signed_in_user(request, config)
+    store = users.shared_store()
     return {
         "admin": local or session is not None,
         "local": local,
         "login": session.get("login") if session else None,
         "login_available": config.login_configured or config.google_configured,
-        # A signed-in free user (#929): who they are, never what they may do.
-        "user": None if signed_in is None else {"name": signed_in[0].display_name, "provider": signed_in[1]},
+        "billing_available": billing.load_config().configured,
+        # A signed-in user (#929, #945): identity and subscription status for UI controls.
+        "user": None if signed_in is None else {
+            "name": signed_in[0].display_name,
+            "provider": signed_in[1],
+            "tier": store.tier(signed_in[0].id),
+            "has_subscription": store.get_subscription(signed_in[0].id) is not None,
+        },
     }

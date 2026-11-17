@@ -4,13 +4,19 @@ import { asJson } from "./apiResponse";
 
 // GET /auth/session (backend/app/auth.py): who this browser is to the server. `local` means
 // this machine, which skips login (#372); `login` is set only for the owner's GitHub session.
-// `user` is a signed-in free account (#929): it identifies the visitor and unlocks nothing.
-interface Session {
+// `user` is a signed-in user (#929, #945): identity and subscription state for UI controls.
+export interface Session {
   admin: boolean;
   local: boolean;
   login: string | null;
   login_available: boolean;
-  user: { name: string | null; provider: string } | null;
+  billing_available?: boolean;
+  user: {
+    name: string | null;
+    provider: string;
+    tier?: "free" | "paid";
+    has_subscription?: boolean;
+  } | null;
 }
 
 export function useSession(): Session | null {

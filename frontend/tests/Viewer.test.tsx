@@ -61,17 +61,18 @@ interface FetchMockOptions {
   states?: Record<string, Partial<PublicState>>;
   onStep?: (worldId: string) => Response | Promise<Response>;
   admin?: boolean;
-  user?: { name: string | null; provider: string } | null;
+  billingAvailable?: boolean;
+  user?: { name: string | null; provider: string; tier?: "free" | "paid"; has_subscription?: boolean } | null;
 }
 
-function installFetchMock({ worlds, states = {}, onStep, admin = false, user = null }: FetchMockOptions): { worldsCalls: () => number } {
+function installFetchMock({ worlds, states = {}, onStep, admin = false, billingAvailable = false, user = null }: FetchMockOptions): { worldsCalls: () => number } {
   let publicWorldsCalls = 0;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const rawUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const url = new URL(rawUrl, "http://localhost");
 
     if (url.pathname === "/auth/session") {
-      return jsonResponse({ admin, local: false, login: admin ? "owner" : null, login_available: false, user });
+      return jsonResponse({ admin, local: false, login: admin ? "owner" : null, login_available: false, billing_available: billingAvailable, user });
     }
     if (url.pathname === "/public/worlds") {
       publicWorldsCalls += 1;
@@ -306,5 +307,29 @@ describe("Viewer (/view)", () => {
 
     await screen.findByText("Kepler-186 f");
     await waitFor(() => assert.equal(screen.queryByText("Features of the full version"), null));
+  });
+
+  it("offers Upgrade and Manage subscription forms when billing is available (#945)", async () => {
+    installFetchMock({
+      worlds: () => [makeListing({ world_id: "w1", name: "Kepler-186 f" })],
+      billingAvailable: true,
+      user: { name: "Ada Lovelace", provider: "google", tier: "free", has_subscription: false },
+    });
+
+    const { unmount } = render(<Viewer />);
+    const upgradeButtons = await screen.findAllByRole("button", { name: "Upgrade" });
+    assert.ok(upgradeButtons.length >= 1);
+    assert.ok(upgradeButtons[0].closest("form")?.getAttribute("action")?.endsWith("/billing/checkout"));
+    unmount();
+
+    installFetchMock({
+      worlds: () => [makeListing({ world_id: "w1", name: "Kepler-186 f" })],
+      billingAvailable: true,
+      user: { name: "Ada Lovelace", provider: "google", tier: "paid", has_subscription: true },
+    });
+    render(<Viewer />);
+    const manageButtons = await screen.findAllByRole("button", { name: "Manage subscription" });
+    assert.ok(manageButtons.length >= 1);
+    assert.ok(manageButtons[0].closest("form")?.getAttribute("action")?.endsWith("/billing/portal"));
   });
 });
