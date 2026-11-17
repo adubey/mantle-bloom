@@ -179,3 +179,46 @@ sampled every 10 Myr. The brake-on arm reproduces the stage 1 runs split for spl
   more rock as weak: random paths go from 23% to 44% weak. The lines' excess over random grows
   from 6 to 12 points.
 - Without the brake more rifts fail and damage spreads again (8 localization violations).
+
+## Line-choice probe
+
+Would choosing the line over the whole plate follow inherited weakness better than the peak-pull
+strip? `probe_line_choice.py` on seeds 106533960, 1397817354 and 591453549 (stage 1 setting 0,
+plates-only, 1 Myr steps), comparing line choices on every plate at 50, 100 and 150 Myr without
+straining anything: 192 plate samples.
+
+- **Strip:** the prototype's rule, the cheapest path inside the strip around the peak-pull section.
+- **Whole plate:** the cheapest path inside each of 48 overlapping strips that cover the plate
+  (six directions, 15% of the plate's area each), keeping the largest `Λ = P / S`.
+- **Whole plate, deeper marks:** the same with inherited-weakness cells a further 0.5 weaker.
+
+| Lines above the growth threshold | Strip | Whole plate | Whole plate, deeper marks |
+|---|---:|---:|---:|
+| Count | 63 | 84 | 94 |
+| Mean oceanic share of length | 80% | 85% | 81% |
+| Continent-majority lines | 17% | 10% | 16% |
+| Lines more than half on weak rock | 17% | 21% | 28% |
+| Median length (km) | 5,230 | 4,490 | 4,620 |
+
+The whole-plate choice does not help. It raises `Λ` on 120 of 163 plates by finding shorter,
+cheaper lines, which are more oceanic; the weak share falls on 83 plates and rises on 48. It also
+costs 26 times the strip search (0.81 s against 0.03 s per world step).
+
+The cause is the strength of ocean floor. Area-weighted mean `N_eff` by rock class (with
+`k_cap = 0.196`):
+
+| Class | Share of area | Mean `N_eff` (TN/m) |
+|---|---:|---:|
+| Oceanic, at a ridge | 2% | 0.44 |
+| Oceanic, mature | 49% | 0.72 |
+| Continental, inherited weakness | 11% | 1.55 |
+| Continental, unmarked | 18% | 2.39 |
+| Craton | 20% | 2.73 |
+
+Mature ocean floor is half as strong as the weakest continental class, so any rule that looks for
+weak rock finds the ocean. It is weak because its mantle lithosphere is thin: on seed 106533960 at
+60 Myr, oceanic cells have a median age of 102 Myr and a median mantle lithosphere of 39.9 km
+(90th percentile 40.0 km), against 100 km under continents. Oceanic mantle lithosphere relaxes
+toward `lithosphere.REFERENCE_HM_OCEANIC_M = 40 km` with no dependence on age. The capacity table
+then gives a median 4.1 TN/m for oceanic columns and 14.9 TN/m for continental ones. At 0 Myr the
+median oceanic mantle lithosphere is 8 km (the young-ridge value), with capacity 0.3 TN/m.
