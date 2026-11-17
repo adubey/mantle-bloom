@@ -305,3 +305,44 @@ No source gives a multiplier for a suture. The literature gives strength ratios 
 3. A route more sensitive to marks than the open-or-not test.
 
 A `k_cap` scan with ocean strength from age (0.196, 0.14, 0.10) is running first, because `k_cap` was tuned while ocean floor was weak.
+
+## Strength-map arms
+
+Stage 1 setting 0 with ocean-floor strength from age, on the five stage 1 worlds, 200 Myr at 1 Myr
+steps, plates-only. Set A has the contact brake off (`contact_drag_multiplier = 0`, the owner's
+direction of 2026-11-16) at `k_cap = 0.14`; set B has it on at `k_cap = 0.10`. 35 of 35 runs
+finished; summary in `strength-arms-summary.json`. Craton root: `craton_root_m = 80e3`. Deeper marks:
+`mark_power = 2.8` (0.65 becomes 0.30). Route: `route_mark_power = 2.8`.
+
+| Brake off, `k_cap` 0.14 | Base | Craton root | Deeper marks | Route |
+|---|---:|---:|---:|---:|
+| Targets met (of 10) | 5 | 5 | **7** | 6 |
+| Splits per world per 100 Myr (need 3.85) | 4.8 | 2.7 | 9.4 | 3.9 |
+| Continent-majority splits | 19 of 48 | 5 of 27 | 28 of 94 | 13 of 39 |
+| Splits mostly on weak rock (need 67%) | 58% | 56% | **82%** | **67%** |
+| Weak share of split lines / random paths | 56% / 47% | 55% / 45% | 67% / 47% | 58% / 43% |
+| Completed-rift median (Myr, 10–50) | 68 | 36 | 46 | 90 |
+| Failed share (20–80%) | 88% | 94% | 87% | 92% |
+| Transition ratio (need 3) | 1.02 | 1.53 | 1.08 | 1.33 |
+| Localization violations | 2 | 1 | 18 | 2 |
+
+| Brake on, `k_cap` 0.10 | Base (scan) | Craton root | Deeper marks | Route |
+|---|---:|---:|---:|---:|
+| Targets met (of 10) | 5 | 6 | **7** | 5 |
+| Splits per world per 100 Myr | 3.2 | 2.6 | 5.2 | 3.8 |
+| Continent-majority splits | 13 of 32 | 7 of 26 | 20 of 52 | 12 of 38 |
+| Splits mostly on weak rock | 19% | 19% | 35% | 39% |
+| Weak share of split lines / random paths | 36% / 27% | 34% / 24% | 44% / 26% | 45% / 27% |
+| Localization violations | 3 | 0 | 4 | 2 |
+
+- **Deeper marks do most of the work.** With the brake off they pass the inherited-weakness target
+  (82%), and split lines are 20 points weaker than random paths, against 9 for the base arm. Split
+  rate doubles. Damage then spreads: 18 localization violations.
+- **The craton root does not help.** It halves the split rate and pushes rifts back toward the
+  ocean (81% of successful rifts oceanic with the brake off).
+- **Route sensitivity alone** reaches the weakness target with the brake off (67%) without the
+  extra splits, but rifts take longer (median 90 Myr).
+- **The brake matters for weakness** as well as speed: every arm's weak share roughly doubles with
+  it off, because faster plates mark more rock as belt (random paths 43–47% weak against 24–27%).
+- **Still failing everywhere:** the transition ratio (1.0–1.6 against 3) and the failed share
+  (75–94%, with 80% the upper limit).
