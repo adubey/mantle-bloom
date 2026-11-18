@@ -317,8 +317,8 @@ describe("Viewer (/view)", () => {
     });
 
     const { unmount } = render(<Viewer />);
-    const upgradeButtons = await screen.findAllByRole("button", { name: "Upgrade" });
-    assert.ok(upgradeButtons.length >= 1);
+    assert.ok(await screen.findByRole("button", { name: "Upgrade" }));
+    assert.ok(screen.getByRole("button", { name: "Paid Upgrade" }));
     unmount();
 
     installFetchMock({
