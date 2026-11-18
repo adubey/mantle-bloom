@@ -216,19 +216,14 @@ def band_reach(points: np.ndarray, chain: np.ndarray, eps: np.ndarray, p: RiftLi
     """The band at the step start: the line's cells plus every plate cell within `w_i / 2` of line cell `i`, with
     `w_i = min(3 w_0, w_0 (1 + ε_i))`. Returns the band's plate indices and the (band index, line index) pairs
     whose line cell reaches the band cell."""
-    tree = cKDTree(points)
-    rows, cols, members = [], [], []
-    for k, cell in enumerate(chain):
-        width = min(3.0 * p.w0_m, p.w0_m * (1.0 + float(eps[cell])))
-        chord = 2.0 * np.sin(0.5 * (0.5 * width) / RADIUS_M)
-        found = np.asarray(tree.query_ball_point(points[cell], chord * (1.0 + 1e-6)), dtype=np.int64)
-        found = np.union1d(found, [cell])
-        members.append(found)
-        rows.append(found)
-        cols.append(np.full(len(found), k))
+    width = np.minimum(3.0 * p.w0_m, p.w0_m * (1.0 + eps[chain].astype(float)))
+    chord = 2.0 * np.sin(0.5 * (0.5 * width) / RADIUS_M)
+    # One query for the whole line rather than one per cell (a sweep cost, #942).
+    hits = cKDTree(points).query_ball_point(points[chain], chord * (1.0 + 1e-6))
+    members = [np.union1d(np.asarray(found, dtype=np.int64), [cell]) for found, cell in zip(hits, chain)]
     band = np.unique(np.concatenate(members))
-    position = np.searchsorted(band, np.concatenate(rows))
-    return band, position, np.concatenate(cols)
+    position = np.searchsorted(band, np.concatenate(members))
+    return band, position, np.repeat(np.arange(len(chain)), [len(m) for m in members])
 
 
 @dataclass

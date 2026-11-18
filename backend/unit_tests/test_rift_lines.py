@@ -290,3 +290,16 @@ def test_an_island_joins_the_nearest_daughter_and_a_thick_line_still_splits():
     mask, why = lines.split_masks(padded, np.ones(n + 1), index[:, 9:12].ravel(), P, points=points)
     assert why is None and mask[n] == mask[index[5, 2]]
     assert _connected(padded[:n, :n], mask[:n]) and _connected(padded[:n, :n], ~mask[:n])
+
+
+def test_the_band_is_every_cell_within_its_line_cells_half_width():
+    toy = Toy()
+    toy.eps[toy.chain[::3]] = np.linspace(0.0, 3.0, len(toy.chain[::3]))  # widths from w0 up to the 3 w0 cap
+    band, reach_band, reach_line = lines.band_reach(toy.points, toy.chain, toy.eps, P)
+    pairs = set(zip(band[reach_band].tolist(), reach_line.tolist()))
+    width = np.minimum(3.0 * P.w0_m, P.w0_m * (1.0 + toy.eps[toy.chain]))
+    chord = 2.0 * np.sin(0.25 * width / RADIUS_M) * (1.0 + 1e-6)
+    distance = np.linalg.norm(toy.points[:, None, :] - toy.points[toy.chain][None, :, :], axis=2)
+    expected = {(cell, k) for cell, k in zip(*np.nonzero(distance <= chord[None, :]))}
+    assert pairs == {(int(c), int(k)) for c, k in expected} | {(int(c), k) for k, c in enumerate(toy.chain)}
+    assert np.array_equal(band, np.unique(band[reach_band])) and len(pairs) == len(reach_band)

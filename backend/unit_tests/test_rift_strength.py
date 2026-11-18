@@ -230,3 +230,36 @@ def test_a_donor_whose_recipients_are_all_capped_is_stuck_and_a_floored_one_is_n
     out = strength.thin_with_flank_transfer(np.full(n, 4e9), plan, np.where(band, 1.0, 0.0), cols)
     assert out.stuck.tolist() == [1] and out.cap_held_m3 > 0.0
     assert out.hc[1] == cols["hc"][1] and out.hm[1] == cols["hm"][1]
+
+
+def _flank_by_search(graph, band, broken, rows, group):
+    """`flank_plan` by a breadth-first search per donor: the reference its pruned sparse search must match."""
+    from scipy.sparse.csgraph import shortest_path
+
+    hops_to = shortest_path(graph > 0, unweighted=True, directed=False)
+    ok = ~band & ~broken
+    reach, held, hops = [], [], []
+    for donor in np.flatnonzero(band):
+        mine = ok & (group == group[donor])
+        near = hops_to[donor][mine]
+        if not np.isfinite(near).any():
+            reach.append(set()), held.append(True), hops.append(0)
+            continue
+        hop = max(rows, int(near[np.isfinite(near)].min()))
+        reach.append(set(np.flatnonzero(mine)[near <= hop].tolist())), held.append(False), hops.append(hop)
+    return reach, np.array(held), np.array(hops)
+
+
+def test_flank_reach_matches_a_breadth_first_search_per_donor():
+    rng = np.random.default_rng(3)
+    nx, ny = 18, 11
+    graph, n = lattice(nx, ny), nx * ny
+    for trial in range(6):
+        band = np.zeros(n, bool)
+        band[rng.choice(n, 40 + 10 * trial, replace=False)] = True
+        broken = rng.random(n) < 0.15
+        group = rng.random(n) < (0.5 if trial % 2 else 0.95)  # mostly one type: some donors must look far
+        plan = strength.flank_plan(graph, band, broken, P.flank_rows, group=group)
+        reach, held, hops = _flank_by_search(graph, band, broken, P.flank_rows, group)
+        assert np.array_equal(plan.held, held) and np.array_equal(plan.hops, hops)
+        assert [set(plan.reach[i].indices.tolist()) for i in range(len(reach))] == reach

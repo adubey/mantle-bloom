@@ -246,3 +246,15 @@ def test_a_save_from_before_rift_lines_loads_on_the_great_circle_method_with_no_
     loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
     assert loaded.split_method == "great_circle" and loaded.rift_line_params == {} and loaded.rift_runtime is None
     assert not _damage(loaded, "rift_strain").any() and not _damage(loaded, "rift_broken").any()
+
+
+def test_a_split_that_cuts_the_plate_into_other_than_two_pieces_is_refused_with_its_reason(saved_world, monkeypatch):
+    world = _rift_world(saved_world)
+    rift_damage.damage_pass(world, MYR)
+    plate, step = _breakable(world)
+    step.broken_share, step.pull_end, step.strength_end = 1.0, 1.0, 0.0
+    monkeypatch.setattr(type(plate), "_plates_from_node_masks", lambda self, masks, ids: [self])
+    assert rift_damage.breakthrough(world, plate) is None
+    counters = world.rift_runtime.counters
+    assert counters["split_rejected"] == 1 and counters["rejected_because"] == {"pieces": 1}
+    assert world.craton_ledger.get("split_cuts", 0.0) == 0.0

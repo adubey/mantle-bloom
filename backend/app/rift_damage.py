@@ -447,14 +447,21 @@ def _tie_side_factory(world, step: PlateStep):
     """A line cell with as many edges to one daughter as to the other goes to the one whose fitted rotation best
     matches the mantle flow under it."""
     flow = mantle.flow_at(step.points, world.mantle_centers)
+    # `split_masks` updates the sides only between rounds, so every tie in a round shares them: fit the two poles once
+    # per round, not once per tied cell (ties are common on a quad mesh, a sweep cost, #942).
+    fitted = {"side": None, "poles": None}
+
+    def poles(side):
+        if fitted["side"] is None or not np.array_equal(fitted["side"], side):
+            fitted["side"] = side.copy()
+            fitted["poles"] = [mantle.fit_euler_pole(step.points[side == k], flow[side == k]) if (side == k).any() else None for k in (0, 1)]
+        return fitted["poles"]
 
     def tie(side, cell) -> int:
         best, score = 0, -np.inf
-        for k in (0, 1):
-            sel = side == k
-            if not sel.any():
+        for k, pole in enumerate(poles(side)):
+            if pole is None:
                 continue
-            pole = mantle.fit_euler_pole(step.points[sel], flow[sel])
             value = float(np.cross(pole, step.points[cell]) @ flow[cell])
             if value > score:
                 best, score = k, value
@@ -479,22 +486,6 @@ def near_path_mask(step: PlateStep, path: np.ndarray) -> np.ndarray:
     mask = np.zeros(len(step.points), dtype=bool)
     mask[path] = True
     return mask | ((step.graph > 0).astype(np.int8) @ mask.astype(np.int8) > 0)
-
-
-def cut_band_areas(world, plate, band: np.ndarray) -> tuple[float, float]:
-    """(band area, craton area in the band) of a split's band given as a mask, in m2. Read before the plate is cut."""
-    areas = cratons._areas(world, plate)[band]
-    return float(areas.sum()), float(areas[plate.collect("craton_crust_m")[band] > 0.0].sum())
-
-
-def record_cut(world, band_area: float, craton_area: float) -> None:
-    """`cratons.record_rift_cut`'s ledger entries for a split along a line: its count, band area and craton area."""
-    cratons.ensure_ledger(world)
-    ledger = world.craton_ledger
-    ledger["split_cuts"] += 1.0
-    ledger["split_cuts_through_craton"] += float(craton_area > 0.0)
-    ledger["split_band_area_m2"] += band_area
-    ledger["split_band_craton_area_m2"] += craton_area
 
 
 def _split_event(world, plate, step: PlateStep, mask_a, daughters, p: RiftLineParams) -> dict:
@@ -526,12 +517,13 @@ def breakthrough(world, plate):
         state.counters["rejected_because"][why] = state.counters["rejected_because"].get(why, 0) + 1
         return None
     near_path = near_path_mask(step, path)
-    cut_areas = cut_band_areas(world, plate, near_path)
+    cut_areas = cratons.band_cut_areas(world, plate, near_path)
     pieces = plate._plates_from_node_masks([mask_a, ~mask_a], [plate.plate_id, world.next_plate_id])
     if len(pieces) != 2:
         state.counters["split_rejected"] += 1
+        state.counters["rejected_because"]["pieces"] = state.counters["rejected_because"].get("pieces", 0) + 1
         return None
-    record_cut(world, *cut_areas)
+    cratons.record_cut_areas(world, "split", *cut_areas)
     world.next_plate_id += 1
     flow = mantle.flow_at(step.points, world.mantle_centers)
     for daughter, mask in zip(pieces, (mask_a, ~mask_a)):
