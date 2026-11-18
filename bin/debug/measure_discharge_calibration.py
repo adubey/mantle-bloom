@@ -134,13 +134,17 @@ def replay(args, world, plate_arrays, line_spacing_rad, erosion_mod, hydrology, 
             )
             land = ~hydro.is_ocean
             totals["river_erosion_raw_km3"] += float(np.dot(erosion.river[land], area[land])) / 1e9
-            sliding = hydro.ice.sliding_speed_m_per_yr if hydro.ice is not None else np.zeros(len(area))
-            glacier_raw = (
-                erosion_mod.GLACIER_ABRASION_COEFFICIENT
-                * world.glacier_erosion_multiplier
-                * np.power(sliding, erosion_mod.GLACIER_ABRASION_EXPONENT)
-                * args.step_years / 1e6
-            )
+            integrated_abrasion = getattr(hydro.ice, "abrasion_depth_m", None) if hydro.ice is not None else None
+            if integrated_abrasion is not None:
+                glacier_raw = np.asarray(integrated_abrasion, dtype=float)
+            else:
+                sliding = hydro.ice.sliding_speed_m_per_yr if hydro.ice is not None else np.zeros(len(area))
+                glacier_raw = (
+                    erosion_mod.GLACIER_ABRASION_COEFFICIENT
+                    * world.glacier_erosion_multiplier
+                    * np.power(sliding, erosion_mod.GLACIER_ABRASION_EXPONENT)
+                    * args.step_years / 1e6
+                )
             totals["glacial_erosion_raw_km3"] += float(np.dot(glacier_raw[land], area[land])) / 1e9
             budget = erosion.budget or {}
             for key, budget_key in (
