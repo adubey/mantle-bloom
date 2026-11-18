@@ -582,7 +582,11 @@ bodies run in descending floor order. If the capped basin runs first, the surplu
 its outlet target. If the full sibling runs first, the surplus is held in the step's last
 integration slice and exported once at the sink of the leaf that holds the capped basin's outlet
 target, rather than resent on each zero-duration flush pass. Held surplus returns to the flush if
-either body splits or merges away, since a split can leave a child with room (#696). This is the
+either body splits or merges away, since a split can leave a child with room (#696). A body
+counts as spilling, and hands water to another body, only when its overflow in a slice exceeds
+1e-9 m³. A smaller remainder is round-off at its cap and leaves at its outlet target. Otherwise
+breached sibling pits, which store nothing, would pass it back and forth on every flush pass
+without either being marked capped (#959). This is the
 prognostic D1b path in RFC 0014 (#588), which replaces balanced-level resets and last-step merge
 pins. Unit tests cover merge, split, cap overflow and budget closure.
 

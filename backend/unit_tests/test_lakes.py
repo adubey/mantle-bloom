@@ -1871,3 +1871,47 @@ def test_a_slice_flickering_between_merged_and_child_forms_settles(monkeypatch):
 
     saddle_storage = hyps.volume(parent.min_depth, parent.members)
     assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e-6 * saddle_storage)
+
+
+def _breached_pit_pair(supply_m3_per_yr, relief_m=1.0):
+    """Two single-cell pits with equal floors that merge at that floor, inside a parent breached
+    to the ocean at the same floor (#959). Both pits drain at their floor, so they store nothing,
+    and each one's outlet is the other. Sub-cell relief leaves the parent short of its
+    saddle-supporting storage, so the two pits stay the active bodies."""
+    elevation = np.array([0.0, 0.0, -50.0])
+    left = lakes.Lake(
+        lake_id=0, members=np.array([0]), floor_elevation=0.0, min_depth=0.0,
+        max_depth=0.0, outlet_node_idx=0, sink_node_idx=0, outlet_target_idx=1,
+    )
+    right = lakes.Lake(
+        lake_id=1, members=np.array([1]), floor_elevation=0.0, min_depth=0.0,
+        max_depth=0.0, outlet_node_idx=1, sink_node_idx=1, outlet_target_idx=0,
+    )
+    parent = lakes.Lake(
+        lake_id=2, members=np.array([0, 1]), floor_elevation=0.0, min_depth=0.0,
+        max_depth=0.0, outlet_node_idx=1, sink_node_idx=0, outlet_target_idx=2,
+        children=[left, right],
+    )
+    lakes._mark_floor_drains([parent])
+    supply = np.array([supply_m3_per_yr, 0.0, 0.0])
+    climate = lakes.LakeClimate(supply, np.full(3, 1.0), supply)
+    hyps = lakes.CellHypsometry(elevation, np.full(3, 1.0e10), np.array([relief_m, relief_m, 0.0]), 1.0e10)
+    return [parent], elevation, climate, hyps
+
+
+@pytest.mark.parametrize("supply", [3.58e-16, 1.0e-9, 1.0])
+def test_a_round_off_remainder_between_breached_pits_settles_its_slice(supply):
+    # #959: a remainder at or below the spill floor was routed between the pits, but neither was
+    # marked spilling, so the capped-cycle guard saw room and deferred it back on every flush
+    # pass until the pass bound raised and stopped an animation.
+    forest, elevation, climate, hyps = _breached_pit_pair(supply)
+    assert all(lake.drains_at_floor for lake in lakes.iter_all_lakes(forest))
+    assert lakes._active_bodies(forest, elevation, np.zeros(3), hyps) == forest[0].children
+
+    result = lakes.solve_lakes_prognostic(
+        forest, elevation, np.zeros(3), 1.0, climate, hyps, substeps=1,
+        is_ocean=np.array([False, False, True]),
+    )
+
+    assert np.all(result.lake_depth == 0.0)
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e-9 * supply)

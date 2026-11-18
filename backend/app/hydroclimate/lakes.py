@@ -218,6 +218,10 @@ LAKE_SETTLE_TOLERANCE = 1.0e-4
 # solves land on the same side of it. Safeguarded Newton for the first iterations, then
 # bisection; 60 halvings collapse any bracket to float precision.
 _LEVEL_SOLVE_STORAGE_TOLERANCE = 1.0e-13
+
+# Overflow a body must exceed, per slice, to count as spilling. Anything at or below it is
+# round-off at the body's cap, and leaves at its outlet rather than entering another body (#959).
+_SPILL_FLOOR_M3 = 1.0e-9
 _NEWTON_ITERATIONS = 12
 _LEVEL_SOLVE_MAX_ITERATIONS = 80
 
@@ -620,7 +624,7 @@ def _warn_if_depth_caps_bound(accounting: _PrognosticAccounting) -> None:
 
 def _record_tier_cap_overflow(accounting, body, is_sea, overflow, tier_cap_limits_body):
     """Accumulate a guard binding without changing the overflow's ordinary routing (#553)."""
-    if overflow <= 1e-9 or not tier_cap_limits_body:
+    if overflow <= _SPILL_FLOOR_M3 or not tier_cap_limits_body:
         return
     if is_sea:
         accounting.sea_cap_body_ids.add(id(body))
@@ -962,7 +966,7 @@ def _advance_prognostic_body(
     else:
         depth[members] = hypsometry.mean_depth(new_level, members)
     body.current_water_elevation = new_level
-    body.is_spilling = overflow > 1e-9
+    body.is_spilling = overflow > _SPILL_FLOOR_M3
     if body.is_spilling:
         accounting.final_spilling_ids.add(id(body))
     if overflow <= 0.0:
@@ -970,7 +974,12 @@ def _advance_prognostic_body(
     target = body.outlet_target_idx
     route_source = body
     traversed = {id(body)}
-    while True:
+    # Only a spilling body hands water to another lake body. A remainder at or below the spill
+    # floor leaves at the outlet instead: the cycle guards below read capped status from
+    # `final_spilling_ids`, so routing it made a body that passes water look as if it had room.
+    # Breached sibling pits store nothing and pass such a remainder on exactly, and it was
+    # deferred back and forth until the flush pass bound (#959).
+    while body.is_spilling:
         leaf_id = int(leaf_of_node[target]) if 0 <= target < node_count else -1
         receiver = body_for_leaf.get(leaf_id)
         if receiver is None or receiver is body:
