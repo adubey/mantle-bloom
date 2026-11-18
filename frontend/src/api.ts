@@ -772,6 +772,8 @@ export type TuningMultipliers = Record<TuningKey, number>;
 // leave that value untouched. Forces an immediate server-side climate recompute, so the
 // caller should re-fetch /worlds/{world_id}/render and /worlds/{world_id}/stats right after this resolves to see the
 // effect.
+export type SplitMethod = "great_circle" | "rift_lines";
+
 export type ControlsState = {
   sea_level_m: number;
   solar_multiplier: number;
@@ -781,6 +783,7 @@ export type ControlsState = {
   simulate_glacier_march: boolean;
   wind_model: string;
   fault_deformation_mode: string;
+  split_method: SplitMethod;
   // Gate for the debug-only diagnostics (see backend World.debug_diagnostics) -- on by
   // default for a Debugging Worlds tab world, off/toggleable here for any other loaded save.
   debug_diagnostics: boolean;
@@ -799,6 +802,7 @@ export function updateControls(worldId: WorldId, controls: {
   simulateGlacierMarch?: boolean;
   windModel?: string;
   faultDeformationMode?: string;
+  splitMethod?: SplitMethod;
   debugDiagnostics?: boolean;
   tuning?: Partial<TuningMultipliers>;
 }): Promise<ControlsState> {
@@ -814,6 +818,7 @@ export function updateControls(worldId: WorldId, controls: {
       simulate_glacier_march: controls.simulateGlacierMarch,
       wind_model: controls.windModel,
       fault_deformation_mode: controls.faultDeformationMode,
+      split_method: controls.splitMethod,
       debug_diagnostics: controls.debugDiagnostics,
       ...controls.tuning,
     }),

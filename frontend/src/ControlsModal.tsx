@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { TuningKey, TuningMultipliers } from "./api";
+import type { SplitMethod, TuningKey, TuningMultipliers } from "./api";
 import ModalShell from "./ModalShell";
 
 interface Props {
@@ -11,6 +11,7 @@ interface Props {
   simulateGlacierMarch: boolean;
   windModel: string;
   faultDeformationMode: string;
+  splitMethod: SplitMethod;
   debugDiagnostics: boolean;
   tuning: TuningMultipliers;
   onSeaLevelChange: (v: number) => void;
@@ -21,6 +22,7 @@ interface Props {
   onSimulateGlacierMarchChange: (v: boolean) => void;
   onWindModelChange: (v: string) => void;
   onFaultDeformationModeChange: (v: string) => void;
+  onSplitMethodChange: (v: SplitMethod) => void;
   onDebugDiagnosticsChange: (v: boolean) => void;
   onTuningChange: (key: TuningKey, v: number) => void;
   onTuningReset: () => void;
@@ -119,6 +121,7 @@ export default function ControlsModal({
   simulateGlacierMarch,
   windModel,
   faultDeformationMode,
+  splitMethod,
   debugDiagnostics,
   tuning,
   onSeaLevelChange,
@@ -129,6 +132,7 @@ export default function ControlsModal({
   onSimulateGlacierMarchChange,
   onWindModelChange,
   onFaultDeformationModeChange,
+  onSplitMethodChange,
   onDebugDiagnosticsChange,
   onTuningChange,
   onTuningReset,
@@ -410,6 +414,22 @@ export default function ControlsModal({
                   polygon-edge bands, not fault traces, so this knob has no effect.
                 </div>
               )}
+            </div>
+
+            <div style={{ borderTop: "1px solid #333", paddingTop: 14, marginTop: 14 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={splitMethod === "rift_lines"}
+                  onChange={(e) => onSplitMethodChange(e.target.checked ? "rift_lines" : "great_circle")}
+                />
+                Split plates along rift lines (RFC 0018)
+              </label>
+              <div style={{ fontSize: 11, color: "#999", marginTop: 8 }}>
+                {splitMethod === "rift_lines"
+                  ? "Plates accumulate extensional strain along weak pulled-apart lines and split when a line breaks."
+                  : "Off: plates split instantaneously along a great circle between mantle-flow regimes (classic)."}
+              </div>
             </div>
 
             <div style={{ borderTop: "1px solid #333", paddingTop: 14, marginTop: 14 }}>
