@@ -37,10 +37,26 @@ a world. An unusable volume fails startup or returns `503`. [Hosting](hosting.md
   (#929).
 - `POST /logout`: clears the session cookie and redirects (`303`) to `/view`.
 - `GET /auth/session`: `{"admin": bool, "local": bool, "login": str | null,
-  "login_available": bool, "user": {"name": str | null, "provider": str} | null}`. `local`
+  "login_available": bool, "billing_available": bool, "user": {"name": str | null,
+  "provider": str, "tier": "free" | "paid", "manage_subscription": bool} | null}`. `local`
   means the no-login local rule applied. `login` is the GitHub login of the owner's
-  session. `user` is a signed-in free account; it is `null` for the owner and for anyone
-  signed out. `login_available` is true when either sign-in is configured.
+  session. `user` is a signed-in account; it is `null` for the owner and for anyone
+  signed out. `login_available` is true when either sign-in is configured;
+  `billing_available` is true when Polar billing is configured.
+
+## Billing routes
+
+- `POST /billing/checkout`: requires a signed-in `UserStore` session (`401` otherwise).
+  Creates a Polar checkout session with `external_customer_id` set to the store `user_id`
+  and returns `{"url": str}`. Returns `409` if the user already has a `paid`
+  subscription, and `503` when Polar billing is unconfigured.
+- `POST /billing/portal`: requires a signed-in `UserStore` session (`401` otherwise).
+  Creates a Polar customer portal session for `external_customer_id` and returns
+  `{"url": str}`. Returns `503` when Polar billing is unconfigured.
+- `POST /billing/webhook`: verifies Polar's Standard Webhooks signature headers
+  (`webhook-id`, `webhook-timestamp`, `webhook-signature`) against `POLAR_WEBHOOK_SECRET`
+  (`403` on invalid or missing signatures, `503` when unconfigured) and syncs
+  subscription lifecycle events for `POLAR_PRODUCT_ID` into `UserStore.set_subscription(...)`.
 
 ## Public viewer routes
 

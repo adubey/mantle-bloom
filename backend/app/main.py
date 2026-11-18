@@ -23,6 +23,7 @@ from scipy.spatial import cKDTree
 
 from . import (
     auth,
+    billing,
     body_limit,
     checkpoint,
     continent_layout,
@@ -123,6 +124,7 @@ _frontend_origins = frozenset({f"http://localhost:{_frontend_port}", "http://loc
 # 401/403 refusals too (#372). The Vite dev origin counts as same-site for the CSRF check.
 app.add_middleware(auth.AuthMiddleware, extra_origins=_frontend_origins)
 app.include_router(auth.router)
+app.include_router(billing.router)
 
 
 @app.get("/demo/", include_in_schema=False)
@@ -1688,7 +1690,7 @@ def _require_v5_upload(head: bytes) -> None:
 async def _load_uploaded_world(upload_path: str, *, read_manifest_name: bool = False) -> tuple[str | None, World]:
     """Load one spooled upload off the event loop and always remove its temp file."""
     try:
-        with open(upload_path, "rb") as upload:
+        with open(upload_path, "rb") as upload, persistence.enforcing_size_limits():
             saved_name = None
             if read_manifest_name:
                 saved_name = await asyncio.to_thread(persistence.load_world_name_file, upload)

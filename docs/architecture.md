@@ -203,6 +203,7 @@ Configuration is read from the environment on every request:
 | `MANTLE_BLOOM_SESSION_SECRET` | At least 32 bytes, used to sign cookies. Rotating it signs everyone out. |
 | `MANTLE_BLOOM_PUBLIC_URL` | Optional. The public `https://` URL. The OAuth callback is built from it, and its origin is trusted for writes. Needed behind a TLS-terminating or `Host`-rewriting proxy. |
 | `MANTLE_BLOOM_LOCAL_NO_LOGIN` | `0` turns off the local no-login rule. Set it behind a same-host proxy that rewrites `Host` to loopback and adds no forwarding headers. |
+| `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`, `POLAR_PRODUCT_ID`, `POLAR_ENVIRONMENT` | Optional. Polar subscription billing (#945); `POLAR_ENVIRONMENT` is `sandbox` or `production` (default `production`). |
 
 Missing any of the three GitHub variables or the session secret leaves the owner login
 unconfigured, and the guard fails closed: remote requests never get admin access. Google
@@ -604,6 +605,14 @@ merge_split.py       plate consumption, sustained-collision continental merging 
                      at most one per step), mantle-flow-driven splitting, periodic geometric
                      defragmentation (severed-lobe / stranded-node cleanup deform() can't do),
                      event log messages
+rift_damage.py       optional plate breakup along rift lines (RFC 0018), used when
+                     `World.split_method == "rift_lines"`: the per-step damage pass for every
+                     plate, thinning with flank transfer, the split along a broken line, and
+                     damage inheritance at new margins
+rift_lines.py        array kernels behind it: section pull, corridors, the line search, the
+                     sub-stepped strain integrator, and the two-daughter split masks
+rift_strength.py     `RiftLineParams`, the line-cut load tensor, the capacity table lookup,
+                     weakness multipliers, softening and the flank-transfer thinning
 terranes.py          shared buoyant-crust tracers and ledger (RFC 0007): per-plate plateau,
                      arc and mobile-cover moments, docking-probability draws, and the
                      emplaced/thinned/reset/subducted/converted/foundered/clipped balance
@@ -716,6 +725,8 @@ world_names.py       default world names in exoplanet style: a star name plus a 
                      discovery letter (#597)
 auth.py              the request guard, the owner's GitHub login, Google sign-in for free
                      accounts (#929) and signed session cookies (see #access-control above)
+billing.py           Polar subscription billing (#945): checkout, customer portal, and
+                     Standard Webhooks sync into UserStore
 users.py             per-user store behind the paid tier (#620): users, linked identities,
                      the subscription cache and world ownership; SQLite at
                      MANTLE_BLOOM_USER_DB_PATH, in-memory when unset, tier() for

@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import validate_thin_shell_plate_meshes as mesh_validation  # noqa: E402
 import prototype_mincut_split as mincut  # noqa: E402
 from diagnose_gate2_column_envelope import Scenario, evaluate_case  # noqa: E402
-from app import cratons, geometry, initial_terrain, lithosphere, merge_split, surface_fields, thin_shell, torque, world as world_mod  # noqa: E402
+from app import cratons, geometry, initial_terrain, lithosphere, merge_split, rift_damage, surface_fields, thin_shell, torque, world as world_mod  # noqa: E402
 from app import orogeny  # noqa: E402
 from app.elevation_lines import line_spacing_rad  # noqa: E402
 
@@ -78,21 +78,7 @@ def _physical_capacities() -> dict[str, list[float]]:
 
 
 def _event_force_field(world, plate):
-    spacing = line_spacing_rad(world.node_density)
-    reach = torque.boundary_force_reach_rad(spacing)
-    cache = getattr(world, "boundary_search_cache", None)
-    neighbours = plate.get_neighbours(world.plates)
-    inputs = torque.gather_boundary_force_inputs(plate, neighbours, spacing, reach, cache)
-    _convergent, divergent, _transform, contested = torque.classify_boundary_nodes(
-        plate, neighbours, inputs, reach, cache
-    )
-    collision = torque.continental_contact_mask(plate, inputs, contested)
-    subducting = torque.subducting_boundary_mask(plate, inputs, reach)
-    craton_contact = torque.contact_craton_m(plate, neighbours, inputs)
-    jam = torque.contact_jam_factor(plate, world, neighbours, inputs, reach)
-    return torque.gather_per_node_force_field(
-        plate, world, inputs, spacing, subducting, divergent, collision, craton_contact, jam
-    )
+    return rift_damage.force_inputs(world, plate)[0]
 
 
 def _topology_audit(plate, node_count: int, triangles: np.ndarray) -> dict:

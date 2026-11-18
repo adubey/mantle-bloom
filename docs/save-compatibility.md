@@ -77,6 +77,11 @@ as initial state rather than interval input, so sea level moves by that small in
 first step. A hydrology cache saves `river_water_m` and its ledgers but never its per-reach
 readouts (`river_water_inflow_m3` and the like), which only the current step's diagnostics use.
 
+**Rift lines.** RFC 0018 (#846) added `World.split_method`, `World.rift_line_params` and the
+surface fields `rift_strain`, `rift_warm_strain` and `rift_broken`. A save from before them loads
+on the `"great_circle"` method with empty overrides and zero damage, so it steps as it did.
+`World.rift_runtime` is per-step scratch and is never saved.
+
 **Cached humidity without units.** Before #522 the pickled `World.climate_cache` held
 `humidity`, a unitless index. `persistence._migrate_climate_humidity_units` renames it to
 `humidity_g_kg` and multiplies it by `climate.HUMIDITY_INDEX_G_KG` (12.3), the factor the
@@ -97,17 +102,20 @@ loads part of a save:
 - `UnsupportedSaveVersionError`: an envelope version outside 1–5 (including a non-integer), or
   a quad plate in another surface format version.
 
-Every v5 load path checks ZIP central-directory sizes before reading any member. Total declared
-uncompressed size is capped at 512 MiB, and `manifest.json` at 16 MiB. This applies to uploads,
-checkpoints, replay records and diagnostics; an oversized checkpoint is treated as unreadable
-and moved aside during restore. Default saves are deflated to about 30% of stored size, while
-exact saves are stored; representative worlds are documented as 100–400 MB stored in
-`persistence.save_world_bytes`, leaving headroom below the cap. Dataclass names in the manifest
-must resolve under `app.` before Python imports them. A saved HEALPix grid must use a positive
-power-of-two `nside` no larger than 512. Imported saved names longer than 100 characters are
-ignored as advisory metadata, matching the explicit import-name limit without letting a
-tampered label block an otherwise valid world load. These bounds keep uploads and manifest
-metadata from allocating beyond the save format's supported range (#925).
+On upload routes (`POST /worlds/import` and `POST /worlds/{world_id}/load`), the v5 loader
+checks ZIP central-directory sizes before reading any member (`enforce_size_limits=True`).
+Total declared uncompressed size is capped at 512 MiB, and `manifest.json` at 128 MiB; local
+and debug loaders leave those expansion bounds off. Default saves are deflated to about 30%
+of stored size, while exact saves are stored; representative worlds are documented as
+100–400 MB stored in `persistence.save_world_bytes`, leaving headroom below the cap.
+`World.stats_history` is packed into columnar `.npy` array members
+(`a/world/stats_history.*.npy`) rather than repeated JSON dicts so `manifest.json` stays
+small on mature worlds (#936). Dataclass names in the manifest must resolve under `app.`
+before Python imports them. A saved HEALPix grid must use a positive power-of-two `nside`
+no larger than 512. Imported saved names longer than 100 characters are ignored as advisory
+metadata, matching the explicit import-name limit without letting a tampered label block an
+otherwise valid world load. These bounds keep uploads and manifest metadata from allocating
+beyond the save format's supported range (#925, #936).
 
 `POST /worlds/{world_id}/load` returns `400` with `invalid or incompatible world file: <reason>` for
 either.

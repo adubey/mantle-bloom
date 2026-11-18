@@ -42,6 +42,7 @@ from . import (
     mantle,
     phase_budget,
     plates as plates_mod,
+    rift_damage,
     trace,
 )
 from .hydroclimate import mobile_cover
@@ -776,6 +777,10 @@ def maybe_split_plate(world: "World", plate: Plate, step_years: float = 0.0) -> 
         return None
     if plate.age_years < SPLIT_MIN_AGE_YEARS:
         return None
+    if world.split_method == "rift_lines":
+        # RFC 0018: the plate splits along its rift line once that line has broken, under the same size and
+        # cooldown gates. `apply_topology_changes` has already strained every plate this step.
+        return rift_damage.breakthrough(world, plate)
 
     points, _ = plate.all_points_and_elevation()
     velocities = mantle.flow_at(points, world.mantle_centers)
@@ -974,12 +979,22 @@ def _merge_plates_with_craton_audit(world: "World", id_keep: int, id_absorb: int
 
 
 @trace.traced("Merging and splitting plates", trace.PLATES, user=True)
+def check_split_settings(world: "World") -> None:
+    """Raise ValueError for an unknown `split_method` or, on rift lines, a bad `rift_line_params`. Called before a
+    step changes anything, so a bad setting leaves the world as it was rather than half stepped (PR #950 review)."""
+    if world.split_method not in rift_damage.SPLIT_METHODS:
+        raise ValueError(f"unknown split_method {world.split_method!r}; choices are {rift_damage.SPLIT_METHODS}")
+    if world.split_method == "rift_lines":
+        rift_damage.runtime(world)  # builds the params from the overrides, which validates them
+
+
 def apply_topology_changes(world: "World", years: float) -> list[str]:
     """Consumption, then at most one collision merge, then splits. Returns human-readable
     event messages for anything that happened, for the UI's event console -- a plate
     disappearing (fully subducted, or eroded down to no real land), two plates merging, or
     a new plate being created by a split. A collision merely *starting* is deliberately not
     logged here -- see update_collision_progress."""
+    check_split_settings(world)
     events: list[str] = []
     for plate in world.plates:
         plate.advance_age(years)
@@ -1036,6 +1051,10 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
     # continental breakup plays out over tens of Myr, and splitting every eligible plate in
     # one call shatters a freshly-generated world (every plate clears its identical cooldown
     # on the same step) instead of staggering the rifts over time.
+    if world.split_method == "rift_lines":
+        # Every plate strains every step, in its own pass before any split is decided, so the one-split-per-step
+        # rule below cannot skip a plate's straining or healing (RFC 0018).
+        rift_damage.damage_pass(world, years)
     new_plates: list[Plate] = []
     split_done = False
     for plate in world.plates:

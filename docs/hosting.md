@@ -76,6 +76,8 @@ Railway's variables, not committed to the repository:
 - Public service URL
 - User database file (`MANTLE_BLOOM_USER_DB_PATH`, a SQLite file on the volume;
   unset means the in-memory store, the desktop default -- see #620)
+- Polar billing credentials (`POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`,
+  `POLAR_PRODUCT_ID`, and optional `POLAR_ENVIRONMENT`, see below)
 
 ### Hosted hydrology stop-gap
 
@@ -129,6 +131,26 @@ today; it exists so a subscription and a user's worlds have an account to attach
 
 While the consent screen is in Google's "Testing" state, only the test users listed there
 can sign in.
+
+### Polar subscription billing
+
+Polar handles paid subscriptions (#945), updating `UserStore` via signed webhooks so
+signed-in users can upgrade and manage their subscription from `/view`. Billing is off
+(and remote billing routes fail closed with `503`) until all three required variables are
+set:
+
+1. Create a recurring product in Polar (sandbox or production) and a webhook endpoint
+   pointing at `https://<service-domain>/billing/webhook` subscribed to subscription
+   lifecycle events (`subscription.created`, `subscription.active`, `subscription.updated`,
+   `subscription.canceled`, `subscription.past_due`, `subscription.revoked`). Note that
+   Polar's `subscription.canceled` means "will not renew" and still carries `status:
+   active` until period end, when `subscription.revoked` downgrades the user to `free`.
+2. Set `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`, and `POLAR_PRODUCT_ID` in Railway's
+   variables. Set `POLAR_ENVIRONMENT=sandbox` when using Polar's sandbox (defaults to
+   `production` when unset).
+3. Ensure `MANTLE_BLOOM_USER_DB_PATH` is set on the persistent volume so subscription state
+   survives service restarts. Local/desktop loopback mode remains unlocked with no Polar
+   configuration required.
 
 The Railway service mounts its persistent volume at `/data`. `RAILWAY_VOLUME_MOUNT_PATH` is
 provided by Railway, and the app uses it for checkpoints. The service definition requires the

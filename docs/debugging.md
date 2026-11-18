@@ -120,6 +120,10 @@ Gate 2 load, mesh and capacity diagnostics.
 | [`calibrate_rift_load_proxy.py`](debugging/scripts-rifting.md#rfc-0018-d0-load-calibration-issue-797) | RFC 0018 D0: the cheap rift-load tensor against the thin-shell resultant, with manufactured sign cases |
 | [`rift_damage_prototype.py`](debugging/scripts-rifting.md#rfc-0018-d0-load-calibration-issue-797) | offline prototype of RFC 0018's damage-band rifting used by its gates (load tensor, ligament rule) |
 | [`summarize_rfc0018_profile.py`](debugging/scripts-rifting.md#rfc-0018-runtime-profile-issue-848) | compact JSON summary of that profile |
+| [`run_rift_lines_d1.py`](debugging/scripts-rifting.md#scoring-the-rift-line-method-on-d1s-targets-issue-888) | one development world on either split method, with every split and the rift-line records |
+| [`rift_line_recorder.py`](debugging/scripts-rifting.md#scoring-the-rift-line-method-on-d1s-targets-issue-888) | rift candidates followed through a run, and the realism-target score |
+| [`run_rift_lines_arms.py`](debugging/scripts-rifting.md#scoring-the-rift-line-method-on-d1s-targets-issue-888) | a resumable queue of tuning arms over development worlds |
+| [`score_rift_lines.py`](debugging/scripts-rifting.md#scoring-the-rift-line-method-on-d1s-targets-issue-888) | each arm's pooled realism-target score, ranked, against the great-circle rate |
 
 ### Crust and mantle budgets
 

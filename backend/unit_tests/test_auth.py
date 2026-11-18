@@ -25,6 +25,10 @@ def configured(monkeypatch):
     # Google is off unless a test turns it on, and every test gets an empty user store.
     monkeypatch.delenv("MANTLE_BLOOM_GOOGLE_CLIENT_ID", raising=False)
     monkeypatch.delenv("MANTLE_BLOOM_GOOGLE_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("POLAR_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("POLAR_WEBHOOK_SECRET", raising=False)
+    monkeypatch.delenv("POLAR_PRODUCT_ID", raising=False)
+    monkeypatch.delenv("POLAR_ENVIRONMENT", raising=False)
     monkeypatch.setattr(users, "_shared", users.MemoryUserStore())
 
 
@@ -131,7 +135,8 @@ def test_world_routes_reject_unauthenticated_requests(remote):
 def test_view_and_login_stay_public(remote):
     assert remote.get("/login").status_code == 200
     assert remote.get("/auth/session").json() == {
-        "admin": False, "local": False, "login": None, "login_available": True, "user": None,
+        "admin": False, "local": False, "login": None, "login_available": True,
+        "billing_available": False, "user": None,
     }
 
 
@@ -229,7 +234,8 @@ def test_owner_signs_in_and_reaches_the_full_app(monkeypatch, remote):
     assert remote.get("/worlds/test-world/summary").status_code == 404  # authorized; just no world yet
     assert remote.get("/").status_code != 302
     assert remote.get("/auth/session").json() == {
-        "admin": True, "local": False, "login": "owner", "login_available": True, "user": None,
+        "admin": True, "local": False, "login": "owner", "login_available": True,
+        "billing_available": False, "user": None,
     }
     assert remote.get("/login").headers["location"] == "/"
 
@@ -381,6 +387,7 @@ def _all_routes(routes) -> list:
 # on purpose, or the test below fails: nothing becomes public by accident (#920).
 _PUBLIC_ROUTES = {
     "/login", "/auth/github", "/auth/github/callback", "/auth/google", "/auth/google/callback", "/logout", "/auth/session", "/healthz",
+    "/billing/checkout", "/billing/portal", "/billing/webhook",
     "/demo", "/demo/", "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc",
     "/public/worlds", "/public/worlds/{world_id}/world", "/public/worlds/{world_id}/render",
     "/public/worlds/{world_id}/step",
@@ -472,7 +479,8 @@ def test_google_account_signs_in_as_a_free_user_not_admin(monkeypatch, remote):
     assert form["redirect_uri"] == ["https://testserver/auth/google/callback"]
     assert remote.get("/auth/session").json() == {
         "admin": False, "local": False, "login": None, "login_available": True,
-        "user": {"name": "Ada Lovelace", "provider": "google"},
+        "billing_available": False,
+        "user": {"name": "Ada Lovelace", "provider": "google", "tier": "free", "manage_subscription": False},
     }
     # Signed in, and still only a viewer: every owner route refuses it.
     assert remote.get("/worlds").status_code == 401
@@ -492,7 +500,9 @@ def test_same_google_account_reaches_the_same_user(monkeypatch, remote):
     # A changed name or email is still the same account: it is keyed by `sub`.
     _google_sign_in(remote, monkeypatch, {**GOOGLE_USER, "name": "Ada King", "email": "new@example.com"})
     assert store.user_for_identity("google", "1077") == first
-    assert remote.get("/auth/session").json()["user"] == {"name": "Ada Lovelace", "provider": "google"}
+    assert remote.get("/auth/session").json()["user"] == {
+        "name": "Ada Lovelace", "provider": "google", "tier": "free", "manage_subscription": False,
+    }
     other = TestClient(app, base_url="https://testserver", follow_redirects=False)
     _google_sign_in(other, monkeypatch, {**GOOGLE_USER, "sub": "2088"})
     assert store.user_for_identity("google", "2088").id != first.id

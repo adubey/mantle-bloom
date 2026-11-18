@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 // A look at the full app for /view visitors (#560): static screenshots of views the public
 // routes don't serve, in a <details> that starts closed while the hosted full version isn't
 // live. The summary row is all a visitor sees until they ask for more, and the lazy images
@@ -32,16 +34,85 @@ const PREVIEWS = [
   },
 ] as const;
 
-export default function FullVersionPreview({ repoUrl }: { repoUrl: string }) {
+interface BillingActionProps {
+  apiBase: string;
+  manage: boolean;
+  inline?: boolean;
+}
+
+export function BillingActionButton({ apiBase, manage, inline = false }: BillingActionProps) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleClick() {
+    setBusy(true);
+    setError(null);
+    try {
+      const resp = await fetch(`${apiBase}${manage ? "/billing/portal" : "/billing/checkout"}`, {
+        method: "POST",
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => null) as { detail?: unknown } | null;
+        const message = typeof body?.detail === "string" ? body.detail : `Request failed (${resp.status})`;
+        throw new Error(message);
+      }
+      const data = await resp.json() as { url: string };
+      window.location.assign(data.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Billing unavailable");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span style={inline ? { display: "inline", marginLeft: 8 } : { display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <button type="button" onClick={handleClick} disabled={busy}>
+        {manage ? "Manage subscription" : "Upgrade"}
+      </button>
+      {error && (
+        <span role="alert" style={{ color: "#ff9b9b", fontSize: 12, marginLeft: inline ? 8 : 0 }}>
+          {error}
+        </span>
+      )}
+    </span>
+  );
+}
+
+interface FullVersionPreviewProps {
+  repoUrl: string;
+  apiBase?: string;
+  billingAvailable?: boolean;
+  signedIn?: boolean;
+  manageSubscription?: boolean;
+}
+
+export default function FullVersionPreview({
+  repoUrl,
+  apiBase = "",
+  billingAvailable = false,
+  signedIn = false,
+  manageSubscription = false,
+}: FullVersionPreviewProps) {
   return (
     <details className="full-preview">
       <summary>Features of the full version</summary>
-      <p className="full-preview-lead">
+      <div className="full-preview-lead">
         This page shows one shared world in a single map view. The full app generates your own worlds from a seed or a
         sketch, runs them for as long as you like, and looks at them on a globe and in over twenty map views, with
         plates, faults, rivers, lakes and resources. You can run it today from the <a href={repoUrl}>source on GitHub</a>.
-        Accounts with your own hosted worlds are planned.
-      </p>
+        {billingAvailable ? (
+          signedIn ? (
+            <BillingActionButton apiBase={apiBase} manage={manageSubscription} inline />
+          ) : (
+            <>
+              {" "}
+              <a href={`${apiBase}/login`}>Sign in to upgrade</a>.
+            </>
+          )
+        ) : (
+          " Accounts with your own hosted worlds are planned."
+        )}
+      </div>
       <ul className="full-preview-grid">
         {PREVIEWS.map((p) => (
           <li key={p.src}>

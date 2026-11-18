@@ -72,6 +72,17 @@ SURFACE_FIELDS: dict[str, SurfaceField] = {
     # time left on plume weakening, in Myr. Counted down by plumes.apply, not by
     # the remap machinery -- COUNTDOWN only governs refinement/coarsening here.
     "plume_heat_myr": _field(float, 0.0, RemapClass.COUNTDOWN),
+    # Rift damage stored in the rock (RFC 0018, rift_damage.py; all zero unless `World.split_method` is
+    # "rift_lines"). `rift_strain` is the extensional strain applied to the column: COUNTDOWN, which coarsening and
+    # merges take the maximum of, so a coarsened quartet keeps its most damaged cell. `rift_warm_strain` is the part
+    # that still heals, never above `rift_strain`. It is area-averaged with no coupling: coarsening and merges average
+    # warm strain but take the maximum strain, so they keep the bound. Only the legacy-lattice conversion, which fills
+    # an empty cell from its nearest node but gives it no strain, could break it, and legacy saves carry no damage;
+    # `rift_lines.advance_rift` clips warm to strain on every cell anyway (PR #950 review).
+    # `rift_broken` marks a cell strained to breaking.
+    "rift_strain": _field(float, 0.0, RemapClass.COUNTDOWN),
+    "rift_warm_strain": _field(float, 0.0, RemapClass.INTENSIVE),
+    "rift_broken": _field(bool, False, RemapClass.BOOLEAN_PROVENANCE),
     "soil_depth": _field(float, 0.0, RemapClass.EXTENSIVE),
     "soil_mineral_content": _field(float, 0.0, RemapClass.INTENSIVE, coupled_to=("soil_depth",)),
     "soil_organic_content": _field(float, 0.0, RemapClass.INTENSIVE, coupled_to=("soil_depth",)),
