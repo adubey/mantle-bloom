@@ -54,7 +54,25 @@ def load_setting(path: Path, name: str) -> dict:
     setting = spec["settings"][name]
     method = setting.get("split_method", "rift_lines")
     params = {**spec.get("common_params", {}), **setting.get("params", {})} if method == "rift_lines" else {}
-    return {"name": name, "split_method": method, "params": params, "world_knobs": setting.get("world_knobs", {})}
+    return {"name": name, "split_method": method, "params": params, "world_knobs": setting.get("world_knobs", {}),
+            "module_knobs": setting.get("module_knobs", {})}
+
+
+# Module constants a setting may override (RFC 0021's G1 best-case check and G2, #975): the force constants are module
+# constants, not World fields. Each run is its own process, so an override never leaks into another world.
+# `mantle.MANTLE_FLOW_REFERENCE_RATE` is bound as a default argument, so it can't be overridden this way.
+MODULE_KNOBS = {"torque": ("ASTHENOSPHERE_VISCOSITY_PA_S", "SLAB_MANTLE_VISCOSITY_PA_S", "SUBDUCTION_LSINK_M")}
+
+
+def apply_module_knobs(knobs: dict) -> None:
+    """Set `module.CONSTANT` overrides, refusing any not in MODULE_KNOBS."""
+    import importlib
+
+    for dotted, value in knobs.items():
+        module_name, _, name = dotted.partition(".")
+        if name not in MODULE_KNOBS.get(module_name, ()):
+            sys.exit(f"{dotted!r} is not a module knob; known: {MODULE_KNOBS}")
+        setattr(importlib.import_module(f"app.{module_name}"), name, float(value))
 
 
 def refused_seeds() -> set[int]:
@@ -101,6 +119,7 @@ def run_one(args: argparse.Namespace) -> None:
     if args.seed in refused_seeds() and not args.heldout:
         sys.exit(f"seed {args.seed} is held out (G2 preregistration or RFC 0021); only G3 may run it, with --heldout")
     setting = load_setting(args.settings, args.setting)
+    apply_module_knobs(setting["module_knobs"])
     out = args.out
     out.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()

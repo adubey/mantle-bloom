@@ -1,0 +1,112 @@
+{
+ "note": "RFC 0021 G1 settings (#975): the rifting baseline (#955's deeper-marks arm, G0's settings) with one force correction each (#971's World switches), brake on and off. The combined and best-case settings are added once the singles are scored.",
+ "common_params": {
+  "eps_dot0": 4.595934101500222e-08,
+  "s_warm": 0.15853359860913005,
+  "k_cap": 0.14,
+  "n_plume": 618452193851.9977,
+  "lam_grow": 0.543797610780998,
+  "l_tip_m": 143394.7340879273,
+  "oceanic_age_strength": true
+ },
+ "settings": {
+  "rifting-baseline": {
+   "params": {
+    "mark_power": 2.8
+   }
+  },
+  "rifting-baseline-brake-off": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "contact_drag_multiplier": 0.0
+   }
+  },
+  "b1": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "ridge_push_form": "potential_energy"
+   }
+  },
+  "b1-brake-off": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "ridge_push_form": "potential_energy",
+    "contact_drag_multiplier": 0.0
+   }
+  },
+  "b2": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "slab_drag_form": "trench_normal"
+   }
+  },
+  "b2-brake-off": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "slab_drag_form": "trench_normal",
+    "contact_drag_multiplier": 0.0
+   }
+  },
+  "b3": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "age_force_column": true
+   }
+  },
+  "b3-brake-off": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "age_force_column": true,
+    "contact_drag_multiplier": 0.0
+   }
+  },
+  "b4a": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "subduction_test": "ramp"
+   }
+  },
+  "b4a-brake-off": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "subduction_test": "ramp",
+    "contact_drag_multiplier": 0.0
+   }
+  },
+  "b4b": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "subduction_test": "geometric"
+   }
+  },
+  "b4b-brake-off": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "subduction_test": "geometric",
+    "contact_drag_multiplier": 0.0
+   }
+  }
+ }
+}
