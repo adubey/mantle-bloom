@@ -6,6 +6,17 @@
 
 ## Revision note
 
+- **2026-11-18 — D3 design direction chosen after G3 (#940).** The gate found that the
+  end-of-step abrasion demand saturates the shared terrain cap, with 66–73% step-size
+  sensitivity. The owner chose to integrate abrasion through the D2 ice march. The march will
+  accumulate `K_G · u_b^l · Δt` over its intervals while evolving a working bed and solving
+  subsequent ice intervals against it. The held-equilibrium path must also account for
+  continuing abrasion, since bed change can move the ice away from equilibrium. This replaces
+  the shared neighbor-drop clip as the control on glacial abrasion; crustal headroom and the
+  existing material-transport ledger still apply. The D3 implementation must report the G3
+  step-size metrics and its runtime against the fixed-250 yr `d2` march. G3's measurements
+  remain valid; no gate or acceptance threshold changes here. The design and its review fixes
+  are in [D3](#d3-glacial-erosion).
 - **2026-11-13 — proposed for [#842](https://github.com/adubey/mantle-bloom/issues/842), after #822's round 2 (PR #839). Draft: round 3 evidence isn't in yet.**
   - **Old:** D2 marches every body in fixed 250 yr substeps and holds the rest of the step
     once pair-means settle three times in a row.
@@ -649,11 +660,20 @@ not the substep's.
 
   This replaces `GLACIER_ABRASION_COEFFICIENT` = 430 per model-unit velocity.
 - **Integrated along the step.** A sliding rate times a long step overshoots the neighbor-drop
-  limit, which then does the law's work (Evidence item 2). Glacial erosion deepens the bed
-  only until the ice's surface slope, and so its sliding, changes. Within a step, applied
-  glacial erosion is bounded by the relief the ice can remove, and that bound should be the
-  physical one (valley-floor grade under the ice surface), not a clip. G3 measures how much
-  applied erosion still depends on step size and on the clip.
+  limit, which then does the law's work (Evidence item 2). The rate is integrated through the
+  D2 ice march, not evaluated once from the closing ice and multiplied by the world step.
+  During each march interval, compute abrasion from that interval's basal sliding, lower a
+  working bed by the resulting abrasion, and solve the next ice interval against that bed.
+  This lets erosion change the ice-surface gradient and basal sliding that drive subsequent
+  abrasion. Accumulate the removed rock for one terrain and material update at the normal end
+  of the world step, so the working bed is a feedback state rather than a second material
+  transfer. Continue integrating through any interval D2 would otherwise hold at equilibrium:
+  ongoing sliding still abrades, and bed change can move the ice away from its prior balance.
+  The time integration replaces the neighbor-drop cap as the control on glacial abrasion;
+  retain the independent crustal headroom and material-transport accounting. G3's measured
+  66–73% 0.25 vs 1 Myr difference and 79–99.5% removed by shared clipping are the regression
+  metrics. The acceptance replay must show that applied abrasion follows the physical law
+  without restoring this per-step cap's step-size dependence.
 - **Calibration.** The current coefficient was set to match the old depth × slope law
   (#353). Under physical sliding, `K_G` is literature-constrained, and the global glacial
   erosion volume is reported against `origin/main` as a sanity check, not a target.
