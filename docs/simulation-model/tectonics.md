@@ -1046,7 +1046,12 @@ world.split_method = "rift_lines"
 world.rift_line_params = {"k_cap": 0.14, "eps_dot0": 4.6e-8}   # optional overrides
 ```
 
-Both are saved with the world. There is no API route or UI control for them yet.
+Both are saved with the world. `split_method` can also be toggled in **Controls → Tectonics**
+("Split plates along rift lines (RFC 0018)", off by default) or via `POST /worlds/{world_id}/controls`;
+`rift_line_params` has no API route or UI control yet. Toggling from `"great_circle"` to
+`"rift_lines"` mid-run begins accumulating strain from the world's current rift fields (zero
+on an untouched world); toggling back to `"great_circle"` leaves any accumulated
+`rift_strain`/`rift_broken` fields dormant in the save rather than clearing them.
 
 Each step, `merge_split.apply_topology_changes` runs `rift_damage.damage_pass` for every plate
 before the split loop, so the one-split-per-step rule cannot skip a plate's straining. For each

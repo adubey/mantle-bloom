@@ -42,6 +42,7 @@ from . import (
     public_view,
     render_image,
     replay_log,
+    rift_damage,
     security_headers,
     run_control,
     stats,
@@ -309,6 +310,7 @@ class ControlsRequest(BaseModel):
     simulate_glacier_march: bool | None = None
     wind_model: str | None = None
     fault_deformation_mode: str | None = None
+    split_method: str | None = None
     # Issue #133 phase-1 proving-out flag -- see World.node_cloud_resample_mode. "kdtree"
     # (default) or "healpix". Backend/API-only for now, no Controls-panel entry.
     node_cloud_resample_mode: str | None = None
@@ -338,6 +340,7 @@ class ControlsRequest(BaseModel):
 
 WIND_MODEL_CHOICES = ("cfd", "diagnostic")
 FAULT_DEFORMATION_MODE_CHOICES = faults.FAULT_DEFORMATION_MODES
+SPLIT_METHOD_CHOICES = rift_damage.SPLIT_METHODS
 NODE_CLOUD_RESAMPLE_MODE_CHOICES = healpix_grid.NODE_CLOUD_RESAMPLE_MODE_CHOICES
 
 
@@ -2299,10 +2302,29 @@ def animation_recovery(world_id: str) -> dict:
     return progress
 
 
+def _validate_controls_request(req: ControlsRequest) -> dict[str, float]:
+    """Validate choice fields and tuning multipliers on a ControlsRequest."""
+    choice_fields = (
+        ("wind_model", req.wind_model, WIND_MODEL_CHOICES),
+        ("fault_deformation_mode", req.fault_deformation_mode, FAULT_DEFORMATION_MODE_CHOICES),
+        ("split_method", req.split_method, SPLIT_METHOD_CHOICES),
+        ("node_cloud_resample_mode", req.node_cloud_resample_mode, NODE_CLOUD_RESAMPLE_MODE_CHOICES),
+    )
+    for name, value, choices in choice_fields:
+        if value is not None and value not in choices:
+            raise HTTPException(status_code=400, detail=f"unknown {name} {value!r}; choices are {choices}")
+    tuning_updates = {name: getattr(req, name) for name in TUNING_MULTIPLIER_FIELDS if getattr(req, name) is not None}
+    for name, value in tuning_updates.items():
+        if not np.isfinite(value) or value < 0.0:
+            raise HTTPException(status_code=400, detail=f"{name} must be finite and >= 0 (got {value})")
+    return tuning_updates
+
+
 @app.post("/worlds/{world_id}/controls")
 def set_controls(world_id: str, req: ControlsRequest) -> dict:
     """Live-adjusts sea level, solar heat, ice-age frequency, the plate-movement/climate-biomes
-    step toggles, the wind model, and/or the geomorphic-budget tuning multipliers
+    step toggles, the wind model, fault deformation mode, plate split method, and/or the
+    geomorphic-budget tuning multipliers
     (world.TUNING_MULTIPLIER_FIELDS -- rain/river/wind/ocean/glacier/seismic erosion,
     coastal leveling, river/ocean deposition, collision uplift rate & reach, contact
     braking (whole brake and craton-only), volcanism,
@@ -2318,27 +2340,7 @@ def set_controls(world_id: str, req: ControlsRequest) -> dict:
     user has turned off per-step climate computation to speed up stepping. `400` for an
     unknown wind model or a negative multiplier; `404` if no world has been generated yet."""
     session = _session_or_404(world_id)
-    if req.wind_model is not None and req.wind_model not in WIND_MODEL_CHOICES:
-        raise HTTPException(
-            status_code=400, detail=f"unknown wind_model {req.wind_model!r}; choices are {WIND_MODEL_CHOICES}"
-        )
-    if req.fault_deformation_mode is not None and req.fault_deformation_mode not in FAULT_DEFORMATION_MODE_CHOICES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"unknown fault_deformation_mode {req.fault_deformation_mode!r}; choices are {FAULT_DEFORMATION_MODE_CHOICES}",
-        )
-    if req.node_cloud_resample_mode is not None and req.node_cloud_resample_mode not in NODE_CLOUD_RESAMPLE_MODE_CHOICES:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"unknown node_cloud_resample_mode {req.node_cloud_resample_mode!r}; "
-                f"choices are {NODE_CLOUD_RESAMPLE_MODE_CHOICES}"
-            ),
-        )
-    tuning_updates = {name: getattr(req, name) for name in TUNING_MULTIPLIER_FIELDS if getattr(req, name) is not None}
-    for name, value in tuning_updates.items():
-        if not np.isfinite(value) or value < 0.0:
-            raise HTTPException(status_code=400, detail=f"{name} must be finite and >= 0 (got {value})")
+    tuning_updates = _validate_controls_request(req)
     with _compute_gate.hold(), session.lock:
         _hydrate_locked(session)
         world = _require_world(session)
@@ -2361,6 +2363,13 @@ def set_controls(world_id: str, req: ControlsRequest) -> dict:
             world.wind_model = req.wind_model
         if req.fault_deformation_mode is not None:
             world.fault_deformation_mode = req.fault_deformation_mode
+        if req.split_method is not None:
+            if req.split_method == "rift_lines":
+                try:
+                    rift_damage.RiftLineParams.with_overrides(world.rift_line_params)
+                except (TypeError, ValueError) as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+            world.split_method = req.split_method
         if req.node_cloud_resample_mode is not None:
             world.node_cloud_resample_mode = req.node_cloud_resample_mode
         if req.debug_diagnostics is not None:
@@ -2390,6 +2399,7 @@ def _controls_state(world: World) -> dict:
         "simulate_glacier_march": world.simulate_glacier_march,
         "wind_model": world.wind_model,
         "fault_deformation_mode": world.fault_deformation_mode,
+        "split_method": world.split_method,
         "node_cloud_resample_mode": world.node_cloud_resample_mode,
         "debug_diagnostics": world.debug_diagnostics,
         **{name: getattr(world, name) for name in TUNING_MULTIPLIER_FIELDS},

@@ -5,7 +5,7 @@ import {
   RunStateRefused, TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
-  AnimateResponse, AnimationRecovery, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, ViewerView, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
+  AnimateResponse, AnimationRecovery, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, SplitMethod, TuningKey, TuningMultipliers, ViewerView, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
 } from "./api";
 import { withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
 import MapCanvas from "./MapCanvas";
@@ -187,6 +187,9 @@ const DEFAULT_WIND_MODEL = "diagnostic";
 // edge); "both" runs the boundary bands plus the scaled-up fault relief. See faults.py /
 // lithosphere_plate.deform_columns.
 const DEFAULT_FAULT_DEFORMATION_MODE = "fault";
+// Matching backend app/world.py's World.split_method default ("great_circle"). Off by default
+// until RFC 0018's rift-line splitter is promoted.
+const DEFAULT_SPLIT_METHOD: SplitMethod = "great_circle";
 // Off by default for an ordinarily-generated/loaded world -- see World.debug_diagnostics.
 const DEFAULT_DEBUG_DIAGNOSTICS = false;
 
@@ -616,6 +619,8 @@ export default function App() {
   // "boundary" / "fault" / "both" -- see backend app/world.py's World.fault_deformation_mode.
   // Live-adjustable via Controls like windModel.
   const [faultDeformationMode, setFaultDeformationMode] = useState(DEFAULT_FAULT_DEFORMATION_MODE);
+  // "great_circle" (default) or "rift_lines" (RFC 0018) -- see backend World.split_method.
+  const [splitMethod, setSplitMethod] = useState<SplitMethod>(DEFAULT_SPLIT_METHOD);
   // Gate for the debug-only diagnostics -- see backend World.debug_diagnostics. Live-adjustable
   // via Controls like windModel.
   const [debugDiagnostics, setDebugDiagnostics] = useState(DEFAULT_DEBUG_DIAGNOSTICS);
@@ -855,6 +860,7 @@ export default function App() {
     simulateGlacierMarch?: boolean;
     windModel?: string;
     faultDeformationMode?: string;
+    splitMethod?: SplitMethod;
     debugDiagnostics?: boolean;
     tuning?: Partial<TuningMultipliers>;
   }>({});
@@ -927,6 +933,11 @@ export default function App() {
     pushControls({ faultDeformationMode: v });
   }, [pushControls]);
 
+  const handleSplitMethodChange = useCallback((v: SplitMethod) => {
+    setSplitMethod(v);
+    pushControls({ splitMethod: v });
+  }, [pushControls]);
+
   const handleDebugDiagnosticsChange = useCallback((v: boolean) => {
     setDebugDiagnostics(v);
     pushControls({ debugDiagnostics: v });
@@ -979,6 +990,7 @@ export default function App() {
       setSimulateGlacierMarch(controls.simulate_glacier_march);
       setWindModel(controls.wind_model);
       setFaultDeformationMode(controls.fault_deformation_mode);
+      setSplitMethod(controls.split_method);
       setDebugDiagnostics(controls.debug_diagnostics);
       setTuning(Object.fromEntries(TUNING_MULTIPLIER_KEYS.map((k) => [k, controls[k]])) as TuningMultipliers);
       await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
@@ -1478,6 +1490,7 @@ export default function App() {
       setSimulateGlacierMarch(DEFAULT_SIMULATE_GLACIER_MARCH);
       setWindModel(DEFAULT_WIND_MODEL);
       setFaultDeformationMode(DEFAULT_FAULT_DEFORMATION_MODE);
+      setSplitMethod(DEFAULT_SPLIT_METHOD);
       // A debug world starts with diagnostics already on server-side (see debug_worlds.py) --
       // match that here rather than resetting to the ordinary default.
       setDebugDiagnostics(generateMode === "debug" ? true : DEFAULT_DEBUG_DIAGNOSTICS);
@@ -2858,6 +2871,7 @@ export default function App() {
           simulateGlacierMarch={simulateGlacierMarch}
           windModel={windModel}
           faultDeformationMode={faultDeformationMode}
+          splitMethod={splitMethod}
           debugDiagnostics={debugDiagnostics}
           tuning={tuning}
           onSeaLevelChange={handleSeaLevelChange}
@@ -2868,6 +2882,7 @@ export default function App() {
           onSimulateGlacierMarchChange={handleSimulateGlacierMarchChange}
           onWindModelChange={handleWindModelChange}
           onFaultDeformationModeChange={handleFaultDeformationModeChange}
+          onSplitMethodChange={handleSplitMethodChange}
           onDebugDiagnosticsChange={handleDebugDiagnosticsChange}
           onTuningChange={handleTuningChange}
           onTuningReset={handleTuningReset}

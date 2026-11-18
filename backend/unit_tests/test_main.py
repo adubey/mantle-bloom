@@ -2228,6 +2228,29 @@ def test_controls_fault_deformation_mode_toggle_and_validation(client):
     assert client.post("/world/controls", json={"fault_deformation_mode": "nonsense"}).status_code == 400
 
 
+def test_controls_split_method_toggle_and_validation(client):
+
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    world = _default_session.world
+    assert world.split_method == "great_circle"
+    assert client.get("/world/controls").json()["split_method"] == "great_circle"
+
+    for method in ("rift_lines", "great_circle"):
+        resp = client.post("/world/controls", json={"split_method": method})
+        assert resp.status_code == 200
+        assert resp.json()["split_method"] == method
+        assert world.split_method == method
+        # Omitting split_method leaves the current setting untouched.
+        assert client.post("/world/controls", json={}).json()["split_method"] == method
+
+    assert client.post("/world/controls", json={"split_method": "nonsense"}).status_code == 400
+    assert world.split_method == "great_circle"
+
+    world.rift_line_params = {"not_a_knob": 1.0}
+    assert client.post("/world/controls", json={"split_method": "rift_lines"}).status_code == 400
+    assert world.split_method == "great_circle"
+
+
 def test_controls_node_cloud_resample_mode_toggle_and_validation(client):
 
     _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
