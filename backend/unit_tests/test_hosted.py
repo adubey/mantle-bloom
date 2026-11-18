@@ -520,7 +520,6 @@ def test_every_hosted_route_is_owner_only_or_listed_as_public(tmp_path, monkeypa
 
 def test_hosted_paid_users_only_see_their_own_worlds(tmp_path, monkeypatch):
     from app import auth, users
-    from starlette.responses import JSONResponse
 
     _checkpoint(tmp_path, monkeypatch)
     world_b = "b" * 32
@@ -567,11 +566,12 @@ def test_hosted_paid_users_only_see_their_own_worlds(tmp_path, monkeypatch):
         assert client.get(f"/worlds/{WORLD_ID}/run", cookies={auth.SESSION_COOKIE: ada_cookie}).status_code == 200
         assert client.get(f"/worlds/{world_b}/run", cookies={auth.SESSION_COOKIE: ada_cookie}).status_code == 404
 
-        # Worker active: front still filters the worker's response for non-admins.
-        async def fake_active(request):
-            return JSONResponse({"worlds": [{"world_id": WORLD_ID}, {"world_id": world_b}]})
+        # Worker active: front reads from worker and filters for non-admins.
+        async def fake_read(path, request, params=None):
+            assert path == "/worlds"
+            return httpx.Response(200, json={"worlds": [{"world_id": WORLD_ID}, {"world_id": world_b}]})
 
-        monkeypatch.setattr(hosted, "_active", fake_active)
+        monkeypatch.setattr(app.state.worker, "read", fake_read)
         bob_resp = client.get("/worlds", cookies={auth.SESSION_COOKIE: bob_cookie})
         assert bob_resp.status_code == 200
         assert [w["world_id"] for w in bob_resp.json()["worlds"]] == [world_b]

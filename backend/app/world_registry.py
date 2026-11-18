@@ -213,9 +213,9 @@ class WorldRegistry:
         with self._lock:
             return len(self._sessions)
 
-    def create(self, name: str | None = None, is_public: bool = False) -> WorldSession:
+    def create(self, name: str | None = None, is_public: bool = False, *, enforce_limit: bool = True) -> WorldSession:
         with self._lock:
-            if len(self._sessions) >= self.max_worlds:
+            if enforce_limit and len(self._sessions) >= self.max_worlds:
                 raise WorldLimitReached(
                     f"world limit reached ({self.max_worlds}); delete a world first"
                 )

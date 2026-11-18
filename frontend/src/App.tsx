@@ -230,7 +230,7 @@ const MAP_VIEW_CHOICES = new Set<MapView>([
   "resources", "soilQuality", "geomorph", "elevReason", "overlapAge", "nodeAge", "plateInspector", "riverInspector", "lakeInspector", "platesAndFaults", "hc", "hm", "craton", "plumes",
 ]);
 const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4", "globe"]);
-// The Map View select's "Debug >" optgroup (see the DEBUG_UI comment above) -- kept as its own
+// The Map View select's "Debug >" optgroup (see the HAS_DEB_PARAM comment above) -- kept as its own
 // set so a restored VIEW_COOKIE_NAME cookie pointing at one of these can be sanitized back to
 // the default when the page loads without ?deb, rather than landing on a view whose picker
 // option is no longer there to switch away from.
@@ -327,9 +327,13 @@ export default function App() {
   const [syntheticRelief, setSyntheticRelief] = useState(true);
   const [keepLandOffPoles, setKeepLandOffPoles] = useState(false);
   // The Generate World dialog's name field (blank: keep the record's name) and
-  // Public checkbox (fresh worlds default to public, #597).
+  // Public checkbox: admin worlds default to public (#597); paid users opt in (#953).
   const [generateName, setGenerateName] = useState("");
-  const [generatePublic, setGeneratePublic] = useState(true);
+  const [generatePublic, setGeneratePublic] = useState(false);
+  const defaultGeneratePublic = Boolean(session?.admin);
+  useEffect(() => {
+    if (session) setGeneratePublic(Boolean(session.admin));
+  }, [session]);
   const [continentalPercent, setContinentalPercent] = useState(DEFAULT_CONTINENTAL_PERCENT);
   const [landPercent, setLandPercent] = useState(DEFAULT_LAND_PERCENT);
   const [axialTiltDeg, setAxialTiltDeg] = useState(DEFAULT_AXIAL_TILT_DEG);
@@ -350,11 +354,15 @@ export default function App() {
 
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
   const [projection, setProjection] = useState<Projection>(initialView?.projection ?? "eckert4");
+  // Never start on a debug view before `session` resolves: a paid user visiting `/?deb`
+  // with a debug view in their saved cookie must not fire a debug render on initial load.
   const [mapView, setMapView] = useState<MapView>(
-    initialView && (HAS_DEB_PARAM || !DEBUG_MAP_VIEWS.has(initialView.mapView)) ? initialView.mapView : "combined",
+    initialView && !DEBUG_MAP_VIEWS.has(initialView.mapView) ? initialView.mapView : "combined",
   );
   useEffect(() => {
-    if (session && !session.admin && DEBUG_MAP_VIEWS.has(mapView)) {
+    if (session?.admin && HAS_DEB_PARAM && initialView && DEBUG_MAP_VIEWS.has(initialView.mapView)) {
+      setMapView(initialView.mapView);
+    } else if (session && !session.admin && DEBUG_MAP_VIEWS.has(mapView)) {
       setMapView("combined");
     }
   }, [session, mapView]);
@@ -1293,13 +1301,13 @@ export default function App() {
   // suggestion only lands if the user hasn't typed something meanwhile.
   const openGenerateDialog = useCallback(() => {
     setGenerateName("");
-    setGeneratePublic(true);
+    setGeneratePublic(defaultGeneratePublic);
     setShowGenerateDialog(true);
     fetchSuggestedName().then(
       ({ name }) => setGenerateName((prev) => (prev === "" ? name : prev)),
       () => {},
     );
-  }, []);
+  }, [defaultGeneratePublic]);
 
   // Shares one world creation between rapid Generate confirmations: without it
   // a double-confirm could mint two worlds (and orphan one) before either selects.
@@ -2031,7 +2039,7 @@ export default function App() {
           </fieldset>
 
           {/* Reloads the same page with &deb added, turning on the developer-only UI
-              described at debugUi above. Hidden for non-admins and once already in debug mode. */}
+              described at HAS_DEB_PARAM above. Hidden for non-admins and once already in debug mode. */}
           {Boolean(session?.admin) && !debugUi && (
             <a href={debugUrl()} style={{ fontSize: 11, color: "#5b8cff" }}>
               Debug...

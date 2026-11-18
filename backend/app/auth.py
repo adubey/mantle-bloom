@@ -237,8 +237,9 @@ class Actor:
 
 
 # Set per HTTP request by AuthMiddleware so /worlds/* handlers can check ownership without
-# threading `request` through every route. Defaults to non-admin so an ungated caller
-# never fails open.
+# threading `request` through every route. Anyio copies contextvars into sync-endpoint
+# worker threads, so `current_actor()` is visible inside sync FastAPI handlers. Defaults to
+# non-admin so an ungated caller never fails open.
 _CURRENT_ACTOR: contextvars.ContextVar[Actor | None] = contextvars.ContextVar("mantle_bloom_actor", default=None)
 
 
@@ -310,30 +311,30 @@ def _is_world_route(path: str) -> bool:
     return path == "/worlds" or path.startswith("/worlds/") or _is_admin_only_route(path)
 
 
-_UNSET = object()
-
-
-def gate(
+def gate_resolved(
     request: Request,
     config: AuthConfig,
     extra_origins: frozenset[str],
-    actor: Actor | None | object = _UNSET,
+    actor: Actor | None,
 ) -> Response | None:
-    """The response that refuses `request`, or None to let it through."""
+    """The response that refuses `request` for a pre-resolved `actor`, or None."""
     if is_cross_site_write(request, config, extra_origins):
         return JSONResponse({"detail": "Cross-site request refused"}, status_code=403)
     root, path = _route_path(request.scope)
-    resolved = request_actor(request, config) if actor is _UNSET else actor
-    assert resolved is None or isinstance(resolved, Actor)
-    if path == "/" and request.method in ("GET", "HEAD") and resolved is None:
+    if path == "/" and request.method in ("GET", "HEAD") and actor is None:
         return RedirectResponse(f"{root}/view", status_code=302)
-    if _is_admin_only_route(path) and (resolved is None or not resolved.is_admin):
-        if resolved is not None:
+    if _is_admin_only_route(path) and (actor is None or not actor.is_admin):
+        if actor is not None:
             return JSONResponse({"detail": "Admin required"}, status_code=403)
         return JSONResponse({"detail": "Login required"}, status_code=401)
-    if _is_world_route(path) and resolved is None:
+    if _is_world_route(path) and actor is None:
         return JSONResponse({"detail": "Login required"}, status_code=401)
     return None
+
+
+def gate(request: Request, config: AuthConfig, extra_origins: frozenset[str]) -> Response | None:
+    """The response that refuses `request`, or None to let it through."""
+    return gate_resolved(request, config, extra_origins, request_actor(request, config))
 
 
 class AuthMiddleware:
@@ -352,8 +353,11 @@ class AuthMiddleware:
         scope["mantle_bloom_allow_local"] = self.allow_local
         request = Request(scope)
         config = load_config(request)
-        actor = request_actor(request, config)
-        refusal = gate(request, config, self.extra_origins, actor=actor)
+        _, path = _route_path(scope)
+        # Only resolve the store-backed actor on gated paths (/, /worlds/*, /debug/*) so
+        # healthchecks, static assets, and public long-polls don't hit the user DB lock.
+        actor = request_actor(request, config) if (path == "/" or _is_world_route(path)) else None
+        refusal = gate_resolved(request, config, self.extra_origins, actor)
         if refusal is not None:
             await refusal(scope, receive, send)
             return

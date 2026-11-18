@@ -70,7 +70,7 @@ const VIEWER_VIEWS: { value: ViewerView; label: string }[] = [
 ];
 
 export default function ManageWorldsModal({
-  worlds, selectedWorldId, isAdmin = true, onRename, onDelete, onSetDefault, onViewerViewChange, onShareOrientation, onClose,
+  worlds, selectedWorldId, isAdmin = false, onRename, onDelete, onSetDefault, onViewerViewChange, onShareOrientation, onClose,
 }: Props) {
   const { busy, error, runAction } = useModalAction();
   const [editingId, setEditingId] = useState<WorldId | null>(null);

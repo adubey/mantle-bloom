@@ -695,3 +695,10 @@ def test_paid_user_can_open_root_and_isolate_worlds(monkeypatch, remote):
     assert remote.delete(f"/worlds/{ada_id}").status_code == 200
     assert remote.get("/worlds").json()["worlds"] == []
     assert auth.current_actor() == auth.Actor(is_admin=False)
+
+    # Per-user world cap: Ada filling max_worlds does not block Bob from creating his own.
+    cap = main._registry.max_worlds
+    for i in range(cap):
+        assert remote.post("/worlds", json={"name": f"Ada {i}", "is_public": False}).status_code == 201
+    assert remote.post("/worlds", json={"name": "Ada Over", "is_public": False}).status_code == 409
+    assert bob.post("/worlds", json={"name": "Bob Own", "is_public": False}).status_code == 201

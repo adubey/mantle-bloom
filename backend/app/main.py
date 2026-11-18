@@ -420,15 +420,20 @@ def _apply_generate_identity(session: WorldSession, name: str | None, is_public:
         _save_index()
 
 
+def _is_publicly_visible(world_id: str, is_public: bool, running: bool) -> bool:
+    """Public worlds are always visible; private worlds only while running if admin-owned (#597, #953)."""
+    return is_public or (running and users.shared_store().world_owner(world_id) is None)
+
+
 def _public_session_or_404(world_id: str) -> WorldSession:
     """A session the public viewer may address. Private idle worlds and unknown
     IDs are indistinguishable (both 404) so the public API cannot reveal private
-    worlds -- but a world whose run loop is on answers while it runs (#597), so
+    worlds -- but an admin world whose run loop is on answers while it runs (#597), so
     anyone can watch a planet that is currently stepping."""
     session = _registry.find(world_id)
     if session is None or session.deleted or (session.world is None and session.deferred_summary is None):
         raise HTTPException(status_code=404, detail="no such public world")
-    if not session.is_public and not _session_running(session):
+    if not _is_publicly_visible(world_id, session.is_public, _session_running(session)):
         raise HTTPException(status_code=404, detail="no such public world")
     return session
 
@@ -1058,10 +1063,22 @@ def _visible_sessions() -> list[WorldSession]:
     return [s for s in sessions if s.world_id in owned]
 
 
-def _record_world_owner(world_id: str) -> None:
+def _create_owned_session(name: str | None = None, *, is_public: bool = False) -> WorldSession:
+    """Create a world record enforcing per-user caps for paid callers (#953)."""
     actor = auth.current_actor()
+    if not actor.is_admin and len(_visible_sessions()) >= _registry.max_worlds:
+        raise HTTPException(status_code=409, detail=checkpoint.world_limit_error(_registry.max_worlds))
+    try:
+        session = _registry.create(name=name, is_public=is_public, enforce_limit=actor.is_admin)
+    except WorldLimitReached as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not actor.is_admin and actor.user_id is not None:
-        users.shared_store().add_world(world_id, actor.user_id)
+        try:
+            users.shared_store().add_world(session.world_id, actor.user_id)
+        except Exception:
+            _registry.remove(session.world_id)
+            raise
+    return session
 
 
 @app.get("/worlds")
@@ -1079,11 +1096,7 @@ def list_worlds() -> dict:
 @app.post("/worlds", status_code=201)
 def create_world(req: CreateWorldRequest) -> dict:
     """Create an empty world record. Generate or Load populates it afterwards."""
-    try:
-        session = _registry.create(name=req.name, is_public=req.is_public)
-    except WorldLimitReached as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    _record_world_owner(session.world_id)
+    session = _create_owned_session(name=req.name, is_public=req.is_public)
     _wire_session(session)
     _save_index()
     return _record_json(session)
@@ -1228,9 +1241,10 @@ def delete_world(world_id: str) -> dict:
         session.runner.set_status(checkpoint.RunStatus(running=False, step_years=session.runner.status().step_years), persist=False)
         session.runner.close()
     _registry.remove(world_id)
-    store = users.shared_store()
-    if store.world_owner(world_id) is not None:
-        store.remove_world(world_id)
+    try:
+        users.shared_store().remove_world(world_id)
+    except KeyError:
+        pass
     if _checkpoint_root is not None and session.checkpoint_store is not None:
         import shutil
 
@@ -1882,11 +1896,7 @@ async def import_world(
     existing = next((s for s in visible if s.name == resolved), None)
     if existing is not None and not allow_duplicate:
         raise HTTPException(status_code=409, detail=_duplicate_import_conflict(resolved, existing, world))
-    try:
-        session = _registry.create(name=resolved)
-    except WorldLimitReached as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    _record_world_owner(session.world_id)
+    session = _create_owned_session(name=resolved)
     _wire_session(session)
     _save_index()
     # Fresh session, nothing contends with it -- the lock just honors `_set_world`'s contract.
@@ -3120,7 +3130,7 @@ def public_worlds() -> dict:
             # A generated world answers while it is public -- and while its run
             # loop is on even when private, so /view can watch a planet that is
             # currently stepping (#597). It drops back out when the run stops.
-            if summary is not None and (session.is_public or running):
+            if summary is not None and _is_publicly_visible(session.world_id, session.is_public, running):
                 worlds.append({
                     "world_id": session.world_id, "name": session.feed.name(), "running": running,
                     "is_default": session.is_default, **summary,
