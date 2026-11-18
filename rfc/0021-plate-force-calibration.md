@@ -278,8 +278,10 @@ circular. G0 found the geometric test this paragraph first proposed (B.4b at the
 generation every plate has zero rotation, and the boundaries cut through continuously dated ocean floor, so 98% of
 plate area counted as slab-attached at a 20% share (see G0 below). The owner chose instead (2026-11-18): a plate is
 **slab-attached when it has a slab of its own**, that is, when the oceanic floor it lost under its neighbours in the
-last 10 Myr (`collision_polarity`'s consumption evidence) is at least a set share of its area. The share is fixed on
-G0's 20-world baseline run before any G1 probe. The test is built by past convergence, not the plate's current speed.
+last 10 Myr (`collision_polarity`'s consumption evidence) is at least **10%** of its area. The owner fixed the share on
+G0's 20-world baseline run before any G1 probe (2026-11-18): at 10% the slab-attached plates hold 32% of plate area,
+close to the share of Earth's surface on the plates Forsyth and Uyeda found slab-attached, and the baseline's ratio is
+1.5–1.7 at every share from 5% to 50%, so the choice does not decide the verdict. The test is built by past convergence, not the plate's current speed.
 
 ### Diagnosis gates
 
@@ -354,7 +356,7 @@ world took 5–6 minutes and about 0.5 GB on the rift-line method, as on the gre
    world for 50 Myr with full stepping (climate and surface processes on) to check that plates-only stepping did
    not mislead.
 
-**G0 result (in progress, #958; evidence in [`analysis/issue958/`](../analysis/issue958/README.md)).**
+**G0 result (#958; evidence in [`analysis/issue958/`](../analysis/issue958/README.md)).**
 
 - *Rifting baseline:* #955's `deep-marks` arm of `analysis/issue888/rift-lines-baseline/arms.json`, run on PR #950 at
   `6bda6906` with `run_rift_lines_arms.py` and `score_rift_lines.py` at `bd7b2c3b`; run labels
@@ -375,7 +377,29 @@ world took 5–6 minutes and about 0.5 GB on the rift-line method, as on the gre
   T2's, T4's and T5's measures, no-net-rotation speeds and the solver closure, RFC 0008's contact probe
   (`probe_craton_contacts.py`, whose tap now passes #760's brake gains) and RFC 0018's recorder, and scores a setting
   on T1–T5, T7, T8 and T9.
-- *20-world brake-off breakdown, and its 0.5 Myr check:* running.
+- *20-world brake-off breakdown* (`rifting-baseline-brake-off`, 200 Myr, 1 Myr steps, sampled every 10 Myr;
+  `g0-baseline-brake-off.json`):
+
+  | Target | Baseline | Band | |
+  |---|---:|---|---|
+  | T1 mean speed, no net rotation | 1.88 cm/yr | 3–5 | fails |
+  | T2 speed ratio, slab-attached (32% of area) to the rest | 1.54 | ≥ 2.5 | fails |
+  | T3 slab pull share of driving torque | 55% | ≥ 50% | passes |
+  | T4 basal traction under plates without slabs | 0.22 MPa | ≤ 1 | passes |
+  | T5 ridge push, oceanic floor ≥ 50 Myr | 4.5×10¹⁰ N/m | 1–4×10¹² | fails, 20–90× low |
+  | T7 fastest to slowest world | 2.0 | ≤ 3 | passes |
+  | T9 RFC 0018 targets met | 5 | | split rate unscored (needs the great-circle rate on these worlds) |
+
+  Resisting torque is sunk-slab drag 51% and basal drag 45%; ridge push is 0.6% of the driving torque. The solver
+  closure is at most 6.5×10⁻¹⁵ and every sample converged. The harness reproduces #942's two brake-off worlds to
+  four decimals. T6 is recorded per step but not yet scored. The baseline fails T1, T2 and T5 and passes T3, T4 and
+  T7: slab pull already leads the drive, but sunk-slab and basal drag cancel it, as #942 found, so G1's corrections
+  are the next step.
+- *0.5 Myr step check* (worlds 106533960, 1097624328, 1397817354; `g0-step0.5-brake-off.json`): T1 +5.1% and T2
+  −4.7% against the same worlds at 1 Myr, inside the 15% and 20% of the step-check criterion. T3, T5 and T7 move
+  under 4%; T4 halves (0.91 to 0.47 MPa) on this small sample. The rift-line splitter is not step-converged: 73
+  splits against 48 (+52%; 38 against 23 on 106533960), 19.2 plates against 17.5. RFC 0018's split rate therefore
+  depends on step length, and G2 and G3 must score it at 1 Myr steps throughout.
 
 Rough cost, from 5–6 min per 200 Myr world plates-only (about 0.5 GB) on either split method (#942, #955):
 G0's 20-world brake-off breakdown 2 h; G1 about 12 runs × 5 worlds, 6 h; G2 stage 1, 24 × 5, 11 h, and the same
@@ -441,7 +465,7 @@ removed.
 
 ## Acceptance criteria
 
-- [ ] **G0** recorded in this RFC: the rifting baseline's run labels and commit; T1's Earth figure checked; T2's
+- [x] **G0** recorded in this RFC: the rifting baseline's run labels and commit; T1's Earth figure checked; T2's
       definition fixed; the held-out set frozen and committed; the 20-world brake-off breakdown reported.
 - [ ] **G1** recorded: each correction's predeclared probe and outcome, and the corrections adopted.
 - [ ] **G2** recorded: stage 1 and 2 scores for the corrected search and the control arm, the frozen setting and

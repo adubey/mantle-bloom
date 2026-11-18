@@ -12,6 +12,9 @@ the scorer before any force correction is probed. It changes no model code. Trac
 | `settings.json` | the G0 settings: the rifting baseline with the brake on and off, and the great-circle splitter |
 | `earth-plate-speed.json` | T1's Earth figure from PB2002, `bin/debug/earth_plate_speed.py` |
 | `t2-census.json` | per plate of each generated development world, B.4b's slab-attached length and its band |
+| `t2-threshold.json` | T2's slab-attached share, fixed by the owner before G1 |
+| `g0-baseline-brake-off.json` | the scored 20-world brake-off baseline |
+| `g0-step0.5-brake-off.json` | the scored 0.5 Myr step check on three stage 1 worlds |
 
 ## Rifting baseline
 
@@ -70,8 +73,19 @@ any-rate closing 40–43%. Their rank correlations with plate speed are −0.10 
 
 **The owner chose (2026-11-18): a plate is slab-attached when it has a slab of its own.** That means oceanic floor
 it lost under its neighbours in the last 10 Myr (`collision_polarity`'s consumption evidence, `ROLE_LOWER`) is at
-least a set share of its area. The breakdown records it per plate as `g0.consumed_10myr_km2`, and the share is fixed
-on the 20-world baseline run below before any G1 probe. The owner also asked to think about seeding this at
+least a set share of its area. The breakdown records it per plate as `g0.consumed_10myr_km2`.
+
+On the 20-world baseline below (7,634 plate samples from 10 Myr on), 99% of plates lost some floor in the window, the
+median share is 15% of the plate's area, and the share's rank correlation with no-net-rotation speed is 0.51:
+
+| Share | 5% | 10% | 15% | 20% | 30% | 50% |
+|---|---:|---:|---:|---:|---:|---:|
+| Plate area counted slab-attached | 68% | 32% | 18% | 11% | 5% | 2% |
+| Speed ratio, slab-attached to the rest | 1.52 | 1.58 | 1.59 | 1.61 | 1.66 | 1.70 |
+
+**The owner fixed the share at 10% (2026-11-18)**, which puts about Earth's share of the surface on slab-attached
+plates. The ratio is under 2.5 at every share, so the choice does not decide the baseline's verdict. (The scorer's
+1.54 differs from this table's 1.58 because it also counts the 0 Myr sample.) The owner also asked to think about seeding this at
 generation with a pseudo-history, so that worlds start with slabs (see tracking issue #957).
 
 ## Held-out set
@@ -114,7 +128,45 @@ In series, plates-only, 1 Myr steps, 200 Myr, sampled every 10 Myr, under `~/man
 2. `g0/rifting-baseline-brake-off/`: the 20 development worlds.
 3. `g0-step0.5/rifting-baseline-brake-off/`: three stage 1 worlds at 0.5 Myr.
 
-Results: running.
+All three finished without failures; every solver sample converged, with closure at most 6.5×10⁻¹⁵.
+
+**Reproduction.** On #942's two brake-off worlds the scorer matches `analysis/issue942/torque-breakdown-brake-off.json`
+to four decimals: continental 2.0335 and oceanic 2.5569 cm/yr, mantle flow 56.1% and slab pull 41.7% of the
+driving torque, sunk-slab drag 49.9% and basal drag 44.0% of the resisting.
+
+**20-world baseline** (`g0-baseline-brake-off.json`):
+
+| Target | Baseline | Band | |
+|---|---:|---|---|
+| T1 mean speed, no net rotation | 1.88 cm/yr (1.90 with it) | 3–5 | fails |
+| T2 speed ratio, slab-attached (32% of area) to the rest | 1.54 | ≥ 2.5 | fails |
+| T3 slab pull share of driving torque | 55% | ≥ 50% | passes |
+| T4 basal traction under plates without slabs | 0.22 MPa | ≤ 1 | passes |
+| T5 ridge push, oceanic floor ≥ 50 Myr | 4.5×10¹⁰ N/m | 1–4×10¹² | fails |
+| T7 fastest to slowest world | 2.0 (1.32–2.64 cm/yr) | ≤ 3 | passes |
+| T8 contacts | 122 fusions, 1 collision-time drop on a jammed pair, largest plate 23%, 18.7 plates | not worse than `main` | for G2 |
+| T9 RFC 0018 targets met | 5; 9.0 splits per world per 100 Myr | | split rate needs the great-circle rate |
+
+Continental plates move at 1.62 cm/yr and oceanic ones at 2.17. Sunk-slab drag (51%) and basal drag (45%) are the
+resisting torque, and ridge push is 0.6% of the driving torque. 30% of the subducting length carries no pull. T6's
+pre- and post-contact speeds are in each run's `breakdown.json`, not yet scored.
+
+**0.5 Myr step check** (`g0-step0.5-brake-off.json`, against the same three worlds at 1 Myr):
+
+| | 1 Myr | 0.5 Myr | Change |
+|---|---:|---:|---:|
+| T1 (cm/yr, no net rotation) | 1.89 | 1.98 | +5.1% |
+| T2 ratio | 1.88 | 1.79 | −4.7% |
+| T3 | 48% | 49% | +2.0% |
+| T4 (MPa) | 0.91 | 0.47 | −49% |
+| T5 (10¹⁰ N/m) | 3.76 | 3.89 | +3.5% |
+| T7 | 1.44 | 1.49 | +3.9% |
+| Splits (106533960, 1097624328, 1397817354) | 23, 15, 10 | 38, 16, 19 | +52% |
+| Mean plate count | 17.5 | 19.2 | +9.8% |
+
+T1 and T2 are inside the step check's 15% and 20%. The rift-line splitter is not: it splits half as often again at
+half the step, so its rate is a property of the 1 Myr step, and every RFC 0021 and RFC 0018 split-rate comparison has
+to use the same step.
 
 ## Reproduce
 
