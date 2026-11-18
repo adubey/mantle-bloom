@@ -185,7 +185,7 @@ button:disabled {
 }
 
 /* The /view page's look at the full app (see FullVersionPreview.tsx, #560): a <details>
-   that starts closed, keeping its native disclosure marker. Cards wrap to
+   that starts open, keeping its native disclosure marker. Cards wrap to
    one column on phones through auto-fit, so no breakpoint of their own. */
 .full-preview {
   margin-top: 40px;
@@ -212,7 +212,7 @@ button:disabled {
 
 .full-preview-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: 16px;
   margin: 0;
   padding: 0;

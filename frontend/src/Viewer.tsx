@@ -98,7 +98,8 @@ function AllowanceNote({ state, demo = false }: { state: PublicState; demo?: boo
 // except on /demo/view, which exists to show them the logged-out page.
 function FullVersionTeaser() {
   const session = useSession();
-  if ((session?.admin || session?.user?.tier === "paid") && !isDemo) return null;
+  // Wait for /auth/session on /view so admin/paid users don't get a flash of the open preview.
+  if (!isDemo && (!session || session.admin || session.user?.tier === "paid")) return null;
   const canManage = Boolean(session?.user && (session.user.tier === "paid" || session.user.manage_subscription));
   return (
     <FullVersionPreview

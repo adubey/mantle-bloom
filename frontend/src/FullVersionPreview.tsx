@@ -1,11 +1,11 @@
 import { useState } from "react";
 
 // A look at the full app for /view visitors (#560): static screenshots of views the public
-// routes don't serve, in a <details> that starts closed while the hosted full version isn't
-// live. The summary row is all a visitor sees until they ask for more, and the lazy images
-// aren't fetched before then. Images are files under public/preview/, not rendered from the
-// shared world, so the preview costs no simulation or render work and adds no public API
-// surface.
+// routes don't serve, in a <details> that starts open so visitors see them immediately
+// (and can collapse them). Images under public/preview/ set loading="lazy" and
+// fetchPriority="low" as scheduling hints to keep map rendering ahead of them, and are
+// static files rather than rendered from the shared world, so the preview costs no
+// simulation or render work and adds no public API surface.
 
 const PREVIEWS = [
   {
@@ -95,7 +95,7 @@ export default function FullVersionPreview({
   manageSubscription = false,
 }: FullVersionPreviewProps) {
   return (
-    <details className="full-preview">
+    <details className="full-preview" open>
       <summary>Features of the full version</summary>
       <div className="full-preview-lead">
         This page shows one shared world in a single map view. The full app generates your own worlds from a seed or a
@@ -127,7 +127,15 @@ export default function FullVersionPreview({
           <li key={p.src}>
             <figure>
               <a href={p.src} target="_blank" rel="noreferrer" aria-label={`${p.title}: open the full-size image`}>
-                <img src={p.src} width={p.width} height={p.height} alt={p.alt} loading="lazy" decoding="async" />
+                <img
+                  src={p.src}
+                  width={p.width}
+                  height={p.height}
+                  alt={p.alt}
+                  loading="lazy"
+                  fetchPriority="low"
+                  decoding="async"
+                />
               </a>
               <figcaption>
                 <strong>{p.title}</strong>
