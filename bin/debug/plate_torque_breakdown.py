@@ -108,6 +108,14 @@ def _slab_terms(plate, inputs, subducting: np.ndarray, spacing: float, omega: np
     }
 
 
+def _pulled_km(plate, inputs, mask: np.ndarray, length: np.ndarray) -> float:
+    """Length of `mask` in km, each node weighted by the pull share the subduction test gives it (1 but under B.4a)."""
+    from app import torque
+
+    weight = torque.subduction_pull_weight(plate, inputs, mask)
+    return float((length[mask] if weight is None else length[mask] * weight).sum() / 1e3)
+
+
 def _oceanic_age_myr(plate, world) -> np.ndarray:
     """Per node, the age of oceanic floor in Myr from `node_created_years`; NaN where undated (the field's sentinel)."""
     from app.surface_fields import SURFACE_FIELDS
@@ -273,6 +281,8 @@ def sample(world) -> dict:
                     "band_total": float(length[band].sum() / 1e3),
                     "down_going_closing_any_rate": float(length[closing_any].sum() / 1e3),
                     "down_going_closing_past_gate": float(length[subducting].sum() / 1e3),
+                    # RFC 0021 G1's B.4 measure (#971): closing down-going length that pulls, at B.4a's ramp weight.
+                    "down_going_closing_pulled": float(_pulled_km(plate, inputs, subducting & closing_any, length)),
                     "opening_any_rate": float(length[opening_any].sum() / 1e3),
                     "opening_past_gate": float(length[divergent].sum() / 1e3),
                     "continental_collision": float(length[collision].sum() / 1e3),

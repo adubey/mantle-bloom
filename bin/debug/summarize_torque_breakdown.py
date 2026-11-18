@@ -85,6 +85,9 @@ def _summarize(rows: list[dict]) -> dict:
         "closing_down_going_length_past_gate": km["down_going_closing_past_gate"] / km["down_going_closing_any_rate"] if km["down_going_closing_any_rate"] else None,
         "opening_length_past_gate": km["opening_past_gate"] / km["opening_any_rate"] if km["opening_any_rate"] else None,
         "closing_down_going_share_of_band": km["down_going_closing_any_rate"] / km["band_total"] if km["band_total"] else None,
+        # RFC 0021 G1's B.4 test (#971); breakdowns recorded before it lack the measure.
+        "closing_down_going_length_pulled": km["down_going_closing_pulled"] / km["down_going_closing_any_rate"]
+        if km["down_going_closing_any_rate"] and "down_going_closing_pulled" in km else None,
         "slab_pull_ungated_over_applied": pull_ungated / pull if pull else None,
         "_area": area,
     }
