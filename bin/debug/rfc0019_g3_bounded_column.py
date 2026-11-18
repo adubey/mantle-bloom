@@ -1,7 +1,8 @@
 """Compare a saturation-bounded moisture column with the prior RFC 0019 control.
 
 Usage: backend/.venv/bin/python bin/debug/rfc0019_g3_bounded_column.py SAVE --out DIR
-Run only on the pinned A or cold tuning save at density 1, in both wind modes.
+Run on a pinned tuning save, or pass --heldout with one of the exact registered held-out
+files after the owner has frozen parameters and acceptance criteria.
 """
 
 from __future__ import annotations
@@ -159,9 +160,14 @@ def main():
     parser.add_argument("save", type=Path)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--density", type=int, choices=(1, 4), default=1)
+    parser.add_argument("--heldout", action="store_true",
+                        help="require and verify a registered held-out SHA-1 before loading")
     args = parser.parse_args()
-    root, digest, world, biomes, climate, hydrology, resampled, shape = g3._load_tuning_world(
-        args.save, parser, TUNING_SAVES, args.density,
+    loader = g3._load_heldout_world if args.heldout else (
+        lambda save, cli, density: g3._load_tuning_world(save, cli, TUNING_SAVES, density)
+    )
+    root, digest, world, biomes, climate, hydrology, resampled, shape = loader(
+        args.save, parser, args.density,
     )
     args.out.mkdir(parents=True, exist_ok=False)
     scripts = ("rfc0019_g3_bounded_column.py", "rfc0019_g3_compare.py", "rfc0019_g3_mixing.py",
@@ -170,7 +176,8 @@ def main():
         "base_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip(),
         "scripts": {name: g3._sha256(root / "bin" / "debug" / name) for name in scripts},
         "save": args.save.name,
-        "save_sha256": digest,
+        "save_sha1" if args.heldout else "save_sha256": digest,
+        "heldout": args.heldout,
         "grid_shape": shape,
         "density": args.density,
         "lagged_cache_resampled": resampled,

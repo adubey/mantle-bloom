@@ -35,6 +35,14 @@ AIR_DENSITY_KG_M3 = 1.2
 SECONDS_PER_YEAR = 365.25 * 86_400.0
 RAIN_DAYS = 9.1
 BAND_EDGES_DEG = np.arange(0.0, 90.1, 15.0)
+HELDOUT_SHA1 = {
+    "mantle-bloom-seed66121723-26800000y.bloom": "c434815348a65596b3234987b4d279d294b063d5",
+    "mantle-bloom-seed544349906-422900000y.bloom": "584ca71983ac95555eaf7544a774af07aa52fc3f",
+}
+SPENT_HELDOUT_SHA1 = {
+    "mantle-bloom-seed507012855-479000000y.bloom": "a249a559fac44e3f2b9d2dc76a1a26ca2711b659",
+    "mantle-bloom-seed762517225-135200000y.bloom": "fe140dd3e8b458fe99a4aaefefc894b6647d3200",
+}
 ERA5_CLASS_RAINOUT_DAYS = {
     "land": np.array([8.12, 11.56, 8.79, 5.61, 4.84, 3.79]),
     "ocean": np.array([9.08, 12.65, 6.22, 3.84, 3.46, 5.88]),
@@ -103,6 +111,14 @@ def _arguments() -> argparse.Namespace:
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _sha1(path: Path) -> str:
+    digest = hashlib.sha1()
     with path.open("rb") as source:
         for chunk in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(chunk)
@@ -308,6 +324,19 @@ def _load_tuning_world(save, parser, tuning_saves, density=1):
     digest = _sha256(save)
     if digest != tuning_saves.get(save.name):
         parser.error("save name or hash does not match a registered tuning input")
+    return _load_registered_world(save, digest, density, "registered tuning")
+
+
+def _load_heldout_world(save, parser, density=1):
+    """Verify the registered bucket bytes before opening a held-out world."""
+    digest = _sha1(save)
+    if digest != HELDOUT_SHA1.get(save.name):
+        parser.error("save name or SHA-1 does not match a registered held-out input")
+    return _load_registered_world(save, digest, density, "registered held-out")
+
+
+def _load_registered_world(save, digest, density, description):
+    """Load verified save bytes on a requested climate grid."""
     root = Path(__file__).resolve().parents[2]
     backend_path = str(root / "backend")
     if backend_path not in sys.path:
@@ -318,7 +347,7 @@ def _load_tuning_world(save, parser, tuning_saves, density=1):
     with save.open("rb") as save_file:
         world = persistence.load_world_file(save_file)
     if world.atmosphere_cfd_state is None:
-        raise ValueError("registered tuning save is missing its saved CFD wind state")
+        raise ValueError(f"{description} save is missing its saved CFD wind state")
     world.climate_density = float(density)
     shape = climate.grid_dimensions(float(density))
     world.climate_cache, cache_resampled = _cache_on_grid(world.climate_cache, shape)

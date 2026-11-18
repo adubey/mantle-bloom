@@ -1,6 +1,6 @@
 # RFC 0019: Conserve atmospheric moisture in diagnostic rain and transport
 
-**Status:** Accepted (revised 2026-11-16 after G3 tuning and owner scope clarification; revised 2026-11-15 after G3 tuning screens; revised 2026-11-14 after G0; owner confirmation 2026-11-14)
+**Status:** Accepted (revised 2026-11-18 after three-round G3 failure and owner-approved exception; revised 2026-11-17 after owner-approved G3 regional checks and held-out result; revised 2026-11-16 after G3 tuning and owner scope clarification; revised 2026-11-15 after G3 tuning screens; revised 2026-11-14 after G0; owner confirmation 2026-11-14)
 **Date:** 2026-11-03
 **Revisions:** See [Revision note](#revision-note).
 **Related:** [tracking #898](https://github.com/adubey/mantle-bloom/issues/898), [#771](https://github.com/adubey/mantle-bloom/issues/771), RFC 0015, RFC 0016; issues #522, #526, #530, #358
@@ -141,8 +141,8 @@ Run these only after the project owner accepts this Draft RFC. Record scripts, s
 3. **G2 — Conservative offline prototype.** Implement only a diagnostic script or isolated prototype first. On analytic source/transport cases, test closed-sphere global closure, local availability, source attribution, orographic removal, zero sources, cap behavior, pole/seam handling, and climate-density convergence. For option B, verify that transitions follow local arrows and test convergence, divergence, calm cells, closed loops with rainout, and closed classes without a sink. Compare option A with option B for runtime and closure. If neither can close to `1e-8` relative to total source in double precision and remain positive, revise the discretization before production code.
    **G2 result, 2026-11-15:** The isolated prototype in [the G2 analysis](../analysis/rfc0017/README.md#g2-preliminary-analytic-prototype-screen) compares an upwind finite-volume face-flux scheme with local wind-arrow transitions. Both close below `1.3e-16` globally and `1.6e-17` per-cell on an 8×16 ocean-source case, remain nonnegative, preserve source-tag linearity, produce land rain only from transported ocean moisture, and handle zero source, calm flow, convergence/divergence, and a closed loop with positive rainout. A localized enhanced sink raises local rain and global closure remains within `5.7e-16`; a one-cell finite-interval check caps rain to opening mass. The prototype also checks longitude wrap, latitude bounds, wind-arrow alignment, sinkless closed-class detection, and uniform-source invariance from 4×8 to 16×32. At 90×180 (climate density 1), both schemes remain positive and close globally within `1.3e-16` and locally within `6.0e-18`. Separate uncontended sparse-solve measurements are 0.02865 s for finite volume and 0.02824 s for arrows, effectively equal at this scale. Peak RSS and density-4 (360×720) scaling remain unmeasured; the one-cell cap check is not a time-integrated transport update. G2's analytic and density-1 prototype gate passes.
    **Owner review, 2026-11-15:** The owner approved moving to G3 after reviewing the G2 results. G3's numerical climate-fidelity and runtime limits are preregistered in [the G3 plan](../analysis/rfc0017/g3-preregistration.md) before any G3 comparison.
-4. **G3 — Rainfall patterns, budget, and runtime.** Use the registered tuning windows and, after the candidate and checks are frozen, the registered held-out saves. Compare both wind modes and climate densities 1 and 4. Evaluate wet belts, rain shadows, dry interiors, and cold-land precipitation using [regional diagnostics and maps](../analysis/rfc0017/g3-coarse-transport-plan.md#proposed-g3-regional-pattern-checks). Continue reporting legacy land/ocean shares, latitude-band means, Köppen shares, and precipitation relative RMS, along with source amounts, transport, column water, closure, and climate-update time. The proposed gate revision below needs owner approval of the replacement checks before any held-out run.
-5. **G4 — Downstream coupling.** Only after G3, rerun the eligible RFC 0016 coupling screen under the accepted atmospheric version. Report land rain, lake supply/volume, ocean export, frozen precipitation share, and ledger changes against its control. Recheck glacier accumulation, erosion, and biome distributions. This gate informs RFC 0016; it does not itself implement land-water storage or RFC 0015.
+4. **G3 — Rainfall patterns, budget, and runtime.** Use the registered tuning windows and, after the candidate and checks are frozen, the registered held-out saves. Compare both wind modes and climate densities 1 and 4. Evaluate wet belts, rain shadows, dry interiors, and cold-land precipitation using the [owner-approved regional checks](../analysis/rfc0017/g3-preregistration.md). Continue reporting legacy precipitation RMS, latitude-band means and Köppen shares as diagnostics, along with land/ocean rain shares, source amounts, transport, column water, closure and climate-update time. The two held-out saves have been evaluated for the frozen `p = 0.25` ridge-rainout candidate; the dry-interior and wind-arrow held-out land/ocean-share limits fail. The density-4 offline candidate-update runtime proxy is below 2×, while production integration cost remains unmeasured. **G3 failed after the owner-authorized three tuning rounds. By explicit owner exception dated 2026-11-18, RFC 0019 may continue to G4 and implementation planning with this known modeling simplification. This exception waives the G3 sequencing block only; it does not mark G3 as passed or select a tuning-only candidate for production.** The inland/coast pattern remains unmet and approximate on synthetic worlds; see the [three-round tuning record](../analysis/rfc0017/g3-three-round-plan.md#three-round-disposition-g3-failed-by-owner-exception).
+5. **G4 — Downstream coupling.** After G3 passes or the owner grants an explicit exception, rerun the eligible RFC 0016 coupling screen under the atmospheric version selected for implementation. Report land rain, lake supply/volume, ocean export, frozen precipitation share, and ledger changes against its control. Recheck glacier accumulation, erosion, and biome distributions. This gate informs RFC 0016; it does not itself implement land-water storage or RFC 0015. The 2026-11-18 exception permits continuing to G4 while G3 remains failed; it does not select a tuning-only candidate.
 
    **G3 tuning screen, 2026-11-15:** The preregistered proxy-to-source hypothesis closes the stationary water budget (maximum relative residual below `3e-15`) and is resolution-convergent (density-1/4 global rain changes by at most 0.10%). The tuning screen indicates it cannot meet the held-out climate-pattern target and it exceeds the density-4 runtime limit. Even after fitting one uniform precipitation scale, wind-arrow precipitation rel-RMS is 0.669–0.695 at density 1 and 0.897–0.911 at density 4; the density-4 climate update takes 2.97–3.65× current-source time at the selected parameters. A complete window-A bracket sweep found no setting below 0.50 best-fit RMS or 2× runtime. These are tuning-screen results, not held-out acceptance measurements. The two acceptance-only saves remain unopened, G3 is incomplete, and G4 is not authorized. See the [G3 tuning report](../analysis/rfc0017/README.md#g3-tuning-screen-initial-source-mapping-does-not-pass). The source mapping and/or transport approach needs a design revision before held-out evaluation.
 
@@ -178,7 +178,7 @@ Run these only after the project owner accepts this Draft RFC. Record scripts, s
 - [ ] With a zero land source, total land precipitation is no greater than ocean-origin moisture entering land, within ledger tolerance.
 - [ ] A saturation cap and each precipitation enhancement convert their removed moisture to rain exactly once; there is no unaccounted humidity floor or ocean reset.
 - [ ] Area-weighted closure holds at climate densities 1 and 4; global rainfall changes by no more than 5% relative and land/ocean rainfall shares by no more than 5 percentage points between densities on registered cases.
-- [ ] Demonstrate recognizable wet belts, windward/leeward contrast, dry interiors, and sustained precipitation on exposed cold land where the geography supports each pattern. Review common-scale maps and preregistered regional measurements. Report legacy land/ocean rain shares, latitude bands, Köppen shares, and relative RMS for comparison. The [original numerical climate limits](../analysis/rfc0017/g3-preregistration.md) remain in force until the owner approves the replacement regional checks.
+- [ ] Meet the owner-approved held-out limits: equatorial ocean rain-belt center-to-flank ratio ≥1.5; at least 60% correctly directed ridge crossings with positive median contrast gain; inland (>1,500 km) mean rain ≤0.6× the near-coast (<500 km) mean; and positive precipitation on exposed cold coast, with no minimum cold-inland rate. Preserve the held-out land/ocean share bound, closure, density convergence, and runtime limits. Report legacy precipitation RMS, latitude-band means, and Köppen shares as diagnostics. See the [G3 preregistration](../analysis/rfc0017/g3-preregistration.md) and [held-out result](../analysis/rfc0017/g3-coarse-transport-plan.md#held-out-pattern-screen-for-frozen-ridge_025-candidate).
 - [ ] Effective column water stays physically plausible under the stated density and depth assumptions. Report the upper tail and spatial concentration of water and precipitation. Any additional rain used to limit accumulation debits the atmospheric budget exactly once.
 - [ ] Both diagnostic and CFD wind complete the same budget; report step-time change and keep median density-4 climate-update time within the owner-approved 2× current-source budget.
 - [ ] RFC 0016's rerun reports the coupled and control changes with closed land and atmosphere ledgers; no treatment is used to tune G0–G3.
@@ -193,6 +193,39 @@ Run these only after the project owner accepts this Draft RFC. Record scripts, s
 - If plausible rainout and transport sensitivities produce order-of-magnitude differences in land rain or lake supply, the current literature and diagnostics do not constrain this design enough for implementation; gather new evidence or withdraw the recommendation.
 
 ## Revision note
+
+**2026-11-18 — G3 failed after three tuning rounds; owner exception to continue.** The
+owner authorized at most three carefully selected tuning rounds, with an explicit failure
+and exception if no eligible candidate passed. The best eligible tuning candidate,
+`alpha=1, L=1,500 km`, had a worst inland/coast rain ratio of `1.515` on the cold case with
+CFD winds, against the `0.6` limit. The more aggressive `alpha=2` setting reduced that ratio
+to `1.300` but retained only `77.5%` of baseline inland rain, below the `80%` safeguard, so
+it was ineligible. No candidate was frozen or evaluated on new held-outs. The owner explicitly
+waived the G3 sequencing block so RFC work may continue to G4 and implementation planning
+with this known approximation. G3 remains formally failed; the exception does not claim that
+rain shadows, dry interiors, or other regional patterns passed. Results and fingerprints are
+in the [three-round tuning record](../analysis/rfc0017/g3-three-round-plan.md#three-round-disposition-g3-failed-by-owner-exception).
+
+**2026-11-17 — G3 owner-approved pattern checks and held-out result.** The owner
+replaced the held-out latitude-band and Köppen-share differences (each ≤10
+percentage points) and area-weighted precipitation relative RMS (≤0.50) with
+measurable rain-belt, rain-shadow, dry-interior and exposed cold-coast checks.
+The held-out land/ocean share difference remains limited to 5 percentage
+points. The new limits are an equatorial belt ratio ≥1.5, ≥60% correctly
+directed ridge crossings with positive median contrast gain, inland/coast rain
+ratio ≤0.6, and positive exposed cold-coast precipitation, with no cold-inland
+minimum. This change reflects the owner's preference for visible regional
+patterns on synthetic worlds over pixelwise agreement with current climate.
+Legacy metrics remain diagnostics. On the two held-out
+saves, the frozen `p = 0.25` candidate passed rain-belt, shadow, cold-coast,
+budget-closure and density-convergence checks. The inland/coast limit failed in
+5 of 16 wind/solver/density combinations, all under CFD winds. Wind-arrow
+land/ocean shares also exceeded the retained held-out limit at density 4 on
+both saves. A density-4 offline candidate-update timing proxy on the four
+registered tuning worlds measured 1.22–1.42× current-climate time by mode and
+solver, below the 2× limit; production integration cost remains unmeasured.
+G3 has not passed; do not tune from the opened held-outs. See the impact table in the
+[held-out results](../analysis/rfc0017/g3-coarse-transport-plan.md#held-out-pattern-screen-for-frozen-ridge_025-candidate).
 
 **2026-11-16 — G3 ridge rainout screen.** Intercepting water at a crest
 improved paired windward/lee contrasts in both wind modes. The weak arm

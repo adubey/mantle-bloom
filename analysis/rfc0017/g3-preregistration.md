@@ -4,10 +4,10 @@
 limits below before any G3 comparison. These limits are fixed for the registered held-out
 cases; do not tune parameters or criteria against those cases.
 
-On 2026-11-16 the owner clarified that the objective is four recognizable rainfall
-patterns on synthetic worlds. The [proposed regional checks](g3-coarse-transport-plan.md#proposed-g3-regional-pattern-checks)
-would replace the legacy climate-field agreement limits after owner approval. The held-out
-saves remain sealed. Closure, density convergence and runtime limits are carried forward.
+On 2026-11-17 the owner approved replacing legacy climate-field agreement limits with the
+regional acceptance checks below. Keep the legacy metrics as diagnostics. Freeze the
+`p = 0.25` ridge-rainout candidate from the corrected tuning screen before evaluating the
+held-out saves. Closure, density convergence and runtime limits remain gates.
 
 ## Registered cases
 
@@ -18,9 +18,12 @@ and CFD wind modes at climate densities 1 (90×180) and 4 (360×720). Compare th
 finite-volume and local wind-arrow stationary solvers at both resolutions so the density-4
 runtime and memory cost can inform the solver choice.
 
-The two saves in the [held-out registry](README.md#held-out-registration-before-g0-replays)
-remain acceptance-only. Their preregistered bucket SHA-1 values must be reverified before
-loading. Do not inspect their climate fields or solver results while selecting parameters.
+The two saves in the [original held-out registry](README.md#held-out-registration-before-g0-replays)
+were acceptance-only until their candidate evaluation; they have now been opened and are
+spent. Do not use them for tuning or to accept a successor. Two replacement acceptance saves
+and a bounded three-round tuning protocol were preregistered in
+[`g3-three-round-plan.md`](g3-three-round-plan.md); verify those new save bytes before final
+acceptance and do not inspect their climate fields while selecting parameters.
 
 ## Initial source mapping hypothesis
 
@@ -49,11 +52,22 @@ must be an additional rain sink debited once from available column water.
   finite and nonnegative.
 - Density-1 versus density-4 global rainfall changes by no more than 5% relative. Land and
   ocean rainfall shares change by no more than 5 percentage points.
-- On each held-out save, compared with its current-source climate at the matching wind mode
-  and density: land/ocean rainfall shares differ by no more than 5 percentage points;
-  each folded 15-degree latitude-band mean and each Köppen group share differs by no more
-  than 10 percentage points; area-weighted precipitation relative RMS is no greater than
-  50% of the current-source field.
+- On each held-out save, at densities 1 and 4 and for diagnostic and CFD winds, land/ocean
+  rainfall shares must remain within 5 percentage points of its current-source climate.
+- For each pattern, evaluate eligible A/D/E tuning worlds and held-out worlds whose geography
+  supports the measure, with the same masks and definitions at both densities and wind modes:
+  - Equatorial ocean rain-belt center-to-flank mean ratio is at least `1.5`.
+  - At least `60%` of eligible ridge crossings have wetter crests and drier lee sides, with
+    positive median crest-minus-lee contrast gain.
+  - Mean rain more than `1,500 km` inland is no greater than `0.6` times mean rain within
+    `500 km` of a coast.
+  - Cold land within `500 km` of a coast receives positive precipitation; there is no
+    minimum cold-inland rate.
+  Mark a pattern not evaluable when the registered geography lacks enough area or crossings
+  for its measure; do not choose the eligible mask after seeing candidate rainfall.
+- Preserve land/ocean rain shares, folded 15-degree bands, Köppen shares, and area-weighted
+  precipitation relative RMS against the current-source field as diagnostic comparisons;
+  they are no longer held-out acceptance limits.
 - Median density-4 climate-update time is no greater than 2× the current-source climate
   update time, measured on the same world, wind mode, density, and process. Report each
   solver's peak RSS and timing; do not pool wind modes or resolutions.

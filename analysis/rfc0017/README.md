@@ -528,3 +528,29 @@ JSON SHA-256 is `e142bb03b043c5db71b532d920616ac8e8522d5646fcbb91657e41d59629875
 JSON SHA-256 is `ba60dd762d705c140f03cba38b4608a93b1a1fa6a5d80f6a837fa9d80bd0f68b`. The
 reproducible preregistration, precise input identities, metrics, and limitations are in the
 [issue #913 report](../issue913/README.md) and [lift preregistration](../issue913/lift-preregistration.md).
+
+### G3 approved pattern checks: held-out result
+
+On 2026-11-17 the owner approved replacing held-out precipitation RMS, latitude-band and
+Köppen-share limits with the regional pattern checks in the
+[G3 preregistration](g3-preregistration.md). The frozen `p = 0.25` ridge-rainout candidate
+passed rain-belt, rain-shadow, cold-coast supply, closure and density-convergence checks on
+the two held-out saves. It failed the dry-interior limit in 5 of 16 wind/solver/density
+combinations; wind-arrow land/ocean shares also exceeded the retained 5-point held-out bound
+at density 4. A density-4 offline candidate-update runtime proxy is below the 2× limit in all
+wind/solver combinations (1.22–1.42×); production integration cost remains unmeasured. G3 has
+not passed because of the pattern and held-out share failures.
+See the [held-out pattern screen](g3-coarse-transport-plan.md#held-out-pattern-screen-for-frozen-ridge_025-candidate)
+for metrics, exact save hashes and private result checksums, and the [runtime measurement](g3-coarse-transport-plan.md#density-4-runtime-proxy-for-frozen-ridge_025) for timing details. Do not tune against these acceptance-only saves.
+
+### G3 final three-round tuning disposition: failed with owner exception
+
+The owner authorized up to three tuning rounds to find the lowest-error eligible setting,
+then an explicit G3 failure and exception if none passed. The rounds completed on 2026-11-18.
+The best eligible setting, `alpha=1, L=1,500 km`, had a worst inland/coast rain ratio of
+`1.515` on the cold CFD case, against the `0.6` limit. `alpha=2, L=1,500 km` improved this to
+`1.300`, but retained only `77.5%` of baseline inland rain, below the `80%` safeguard, so it
+was ineligible. No candidate was frozen or tested on new held-outs. The owner authorized RFC
+continuation to G4 and implementation planning with this mismatch recorded as a modeling
+simplification. **G3 is formally failed; the exception is not a pass.** The complete
+preregistered outcomes and source fingerprint are in the [three-round tuning record](g3-three-round-plan.md#three-round-disposition-g3-failed-by-owner-exception).

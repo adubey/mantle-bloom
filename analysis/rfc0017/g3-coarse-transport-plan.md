@@ -618,12 +618,13 @@ flux included in a production budget.
 
 ## Proposed G3 regional pattern checks
 
-**Owner direction, 2026-11-17:** For the current tuning run, prioritize recognizable
-rain shadows over matching cold-inland rainfall. A quantified cold-inland decrease from
-the single-column approximation is an accepted modeling cost and is not by itself a stop
-condition. Keep reporting cold-land supply and maps so the consequence remains visible.
-This tuning priority does not revise the registered held-out criteria; freeze any replacement
-acceptance rules before opening held-out saves.
+**Owner decision, 2026-11-17:** The owner approved replacing legacy precipitation RMS,
+latitude-band and Köppen-share limits with the regional checks recorded in the
+[G3 preregistration](g3-preregistration.md). The rain-belt, dry-interior and rain-shadow
+thresholds apply to eligible tuning worlds and held-out worlds; insufficient geography is
+reported as not evaluable. Preserve the held-out land/ocean share bound, budget closure,
+density convergence and runtime limits. Cold-land precipitation must be positive on exposed
+cold coast; no minimum cold-inland rate is required. Keep the legacy metrics as diagnostics.
 
 Use the existing A, D, E and cold tuning cases to settle masks, aggregation,
 and minimum meaningful contrasts before evaluating the held-outs. Derive
@@ -1296,8 +1297,8 @@ arrows across modes and densities. On those same three cases, mean rain more
 than 1,500 km inland is `0.13–0.42` of near-coast rain for finite volume and
 `0.12–0.51` for wind arrows. The cold-source world remains a separate case: its
 cold-inland rain changes are recorded above, without a minimum inland-rain
-threshold, per the owner's stated priority. Rain-belt and dry-interior ratios
-are tuning diagnostics, not owner-approved held-out limits.
+threshold, per the owner's stated priority. The held-out rain-belt and dry-interior limits
+were approved on 2026-11-17 and are evaluated below.
 
 | Density-1 case | SHA-256 | Density-4 case | SHA-256 |
 | --- | --- | --- | --- |
@@ -1307,6 +1308,92 @@ are tuning diagnostics, not owner-approved held-out limits.
 | Cold | `11e83240404d925de07fdf51a036e17563de29cba3eacce900a5459dddac995c` | Cold | `01efd4c61d719622198d7d3f80a44480148250df8eb53e51c83997c2329c60e4` |
 
 The private corrected map set contains 32 common-scale images across four
-tuning cases, two wind modes, two densities, and two solvers. Density-4 runtime,
-the proposed pattern decision rules, and held-out acceptance remain open; G3
-has not passed.
+tuning cases, two wind modes, two densities, and two solvers. The owner approved
+the held-out pattern limits on 2026-11-17; the registered checks and result are
+recorded below. The density-4 runtime proxy is measured in the final section.
+
+#### Held-out pattern screen for frozen `ridge_025` candidate
+
+After the owner approved the regional checks, both preregistered held-out saves
+were verified against their bucket SHA-1 before loading. The candidate was held
+at `p = 0.25`; no strength sweep or tuning was performed on held-out data. Each
+save was captured at densities 1 and 4, with diagnostic and CFD winds, then
+evaluated using finite-volume and wind-arrow transport. The climate snapshot
+and stationary moisture solve are offline diagnostics; neither world was
+stepped. The frozen input mapping uses a 2 km effective source depth and 9.1-day
+source/rainout timescales. The finite-volume carrier applies the convergence
+correction and half-strength broad meridional capacity; ridge interception is
+`0.25 * (1 - exp(-rise / 1,000 m))` on valid ≥250 m ridge crossings.
+Common-scale density-4 maps were generated for both saves, both wind modes and
+both solvers. Representative maps retain broad wet belts and dry interiors;
+the candidate's rainfall changes are concentrated around ridge crossings.
+
+**Disposition: G3 does not pass.** The candidate passes the equatorial rain-belt
+ratio, ridge-shadow, exposed cold-coast supply, budget-closure and density-
+convergence checks across all 16 held-out combinations. Dry-interior rainfall
+exceeds the approved `0.6` inland-to-coast limit in 5 of 16 combinations, all
+with CFD winds. The held-out land-rain-share difference from current-source
+climate also exceeds the retained 5 percentage-point bound for wind arrows at
+density 4 on both saves and in both wind modes (maximum change: 7.28 points).
+Finite-volume shares stay within that bound (maximum change: 4.61 points).
+
+| Check | Held-out result | Status |
+| --- | --- | --- |
+| Equatorial ocean rain-belt ratio ≥1.5 | All 16 combinations ≥2.34 | Pass |
+| Correctly directed ridge crossings ≥60%, positive median contrast gain | All 16 combinations: 76.1–91.2%; positive gain | Pass |
+| Inland/coast mean rain ≤0.6 | 5/16 fail; range 0.613–0.835 for those CFD cases | Fail |
+| Exposed cold-coast precipitation >0 | Positive in all 16 combinations; minimum 8.44 mm/yr | Pass |
+| Relative stationary budget residual ≤1e-8 | Maximum `2.80e-15` | Pass |
+| Density-1/4 global rain shift ≤5%; land/ocean share shift ≤5 points | Maximum `0.13%` and `3.23` points | Pass |
+| Held-out land/ocean share within 5 points of current-source climate | Wind-arrow density-4 results exceed the bound on both saves | Fail |
+| Median density-4 climate-update time ≤2× baseline | Offline proxy: 1.22–1.42× by wind/solver; details below | Pass as prototype estimate |
+
+Legacy precipitation RMS, latitude-band and Köppen-share differences remain
+available in the private JSON as diagnostics; they were not used for acceptance.
+The cold-inland rate has no minimum. The test confirms that its absolute supply
+is present while leaving the diagnosed high-latitude inland deficits visible.
+Because held-out results are acceptance-only, do not tune a new candidate from
+these failures. Any further calibration must use tuning worlds; validate a new
+frozen candidate on newly preregistered held-outs.
+
+The four compact comparison JSON SHA-256 values are:
+
+| Held-out save | Density 1 | Density 4 |
+| --- | --- | --- |
+| `mantle-bloom-seed507012855-479000000y.bloom` | `dfcb94e5c6dcba7722867bfbfa3afbfde216338d5c20868369ebfa0584c37ee0` | `67994e9c8b0bb18856ae211449ef868d0d8d1883203a1563ec3328131ab5c190` |
+| `mantle-bloom-seed762517225-135200000y.bloom` | `408159b6060aaa864eb5fc0b0a998846bd00893e5fefa1b91e4af7f59522775d` | `22af548c785125610ab760f7d110dbca3e3d0bd991a6f3e5bee1b90d61bd8764` |
+
+Captures and their `SHA256SUMS` remain in the private RFC 0019 capture
+directory. Reproduce a pair using the registered save path and these commands:
+
+```bash
+backend/.venv/bin/python bin/debug/rfc0019_g3_bounded_column.py SAVE \
+  --heldout --density DENSITY --out CAPTURE_DIR
+backend/.venv/bin/python bin/debug/rfc0019_g3_ridge_rainout.py CAPTURE_DIR \
+  --solver both --out CAPTURE_DIR/accepted-candidate.json
+```
+
+#### Density-4 runtime proxy for frozen `ridge_025`
+
+The runtime gate was measured on tuning saves A, D, E, and cold at density 4. Each process
+measured both wind modes, with one warmup and three timed updates per mode. The baseline is
+the full current `climate.compute_climate` call. The candidate proxy computes climate without
+the existing moisture pass, builds the registered source and capacity proxies, constructs
+coarse transport, solves the bounded `p = 0.25` ridge-interception budget, places rain, and
+reclassifies biomes. It removes the discarded zero-rain biome pass from the candidate timing.
+This is a prototype estimate: production climate code does not yet call this solver.
+
+| Wind mode | Solver | Median candidate / baseline | Median ratio across A/D/E/cold | Solver-process peak RSS across saves |
+| --- | --- | ---: | ---: | ---: |
+| Diagnostic | Finite volume | 0.420 / 0.303 s | 1.392× | median 1.10 GB; range 1.07–1.74 GB |
+| Diagnostic | Wind arrows | 0.366 / 0.300 s | 1.222× | median 1.06 GB; range 1.03–1.81 GB |
+| CFD | Finite volume | 0.409 / 0.291 s | 1.405× | median 1.10 GB; range 1.07–1.74 GB |
+| CFD | Wind arrows | 0.359 / 0.288 s | 1.243× | median 1.06 GB; range 1.03–1.81 GB |
+
+All 16 mode/save/solver ratios are below the `2×` limit (maximum `1.421×`). The maximum
+stationary closure residual is `4.45e-17`. The limit passes for this offline candidate
+estimate; actual production integration cost remains unmeasured. The result does not change
+the G3 disposition: the frozen candidate still fails the held-out dry-interior and
+wind-arrow land/ocean-share checks. Per-save samples and solver-process peak RSS are in the
+private runtime reports beside their `SHA256SUMS` manifest. The timing helper's SHA-256 is
+`1f9f39ab13b3769c58d2eebfed33ba27e81c13e83c89bb2c093d93fc1444096e`.
