@@ -1,5 +1,8 @@
 # Teaching Earth science with Mantle-Bloom
 
+This living document explores how Mantle-Bloom could serve as a teaching aid for Earth
+science. Classroom trials and teacher feedback can guide future revisions.
+
 Mantle-Bloom runs an Earth-like planet forward in time and lets learners inspect how its
 terrain, climate, and water systems interact. A classroom activity can use those views to
 make a process visible, test an explanation, or explore the consequences of a change.
