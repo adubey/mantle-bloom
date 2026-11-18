@@ -52,6 +52,7 @@ function RenameForm({ world, busy, onSave, onCancel }: RenameFormProps) {
 interface Props {
   worlds: WorldRecord[];
   selectedWorldId: WorldId | null;
+  isAdmin?: boolean;
   // All reject on failure, so the error shows here rather than behind the modal.
   onRename: (id: WorldId, name: string) => Promise<void>;
   onDelete: (id: WorldId) => Promise<void>;
@@ -69,7 +70,7 @@ const VIEWER_VIEWS: { value: ViewerView; label: string }[] = [
 ];
 
 export default function ManageWorldsModal({
-  worlds, selectedWorldId, onRename, onDelete, onSetDefault, onViewerViewChange, onShareOrientation, onClose,
+  worlds, selectedWorldId, isAdmin = true, onRename, onDelete, onSetDefault, onViewerViewChange, onShareOrientation, onClose,
 }: Props) {
   const { busy, error, runAction } = useModalAction();
   const [editingId, setEditingId] = useState<WorldId | null>(null);
@@ -149,8 +150,8 @@ export default function ManageWorldsModal({
                 </>
               )}
             </div>
-            {/* The /view default (#755): one world, shown to every visitor
-                with the presentation chosen here. Setting it publishes it. */}
+            {/* The /view default (#755): one global world, admin-only (#953). */}
+            {isAdmin && (
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, fontSize: 12 }}>
               {world.is_default ? (
                 <>
@@ -192,6 +193,7 @@ export default function ManageWorldsModal({
                 </button>
               )}
             </div>
+            )}
           </div>
         );
       })}

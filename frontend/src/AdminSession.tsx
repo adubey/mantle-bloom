@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { API_BASE } from "./api";
+import { BillingActionButton } from "./FullVersionPreview";
 import { canAccessApp, type Session } from "./session";
 
 // The full app's account control. The server already sends free/logged-out visits to "/" over to
@@ -24,13 +25,7 @@ export default function AdminSession({ session }: { session: Session | null }) {
   return (
     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: 4, fontSize: 11 }}>
       <span style={{ opacity: 0.7 }}>{session.user.name ?? "Signed in"} ·</span>
-      {session.billing_available && (
-        <form method="post" action={`${API_BASE}/billing/portal`} style={{ margin: 0 }}>
-          <button type="submit" style={{ fontSize: 11 }}>
-            Manage subscription
-          </button>
-        </form>
-      )}
+      {session.billing_available && <BillingActionButton apiBase={API_BASE} manage />}
       <form method="post" action={`${API_BASE}/logout`} style={{ margin: 0 }}>
         <button type="submit" style={{ fontSize: 11 }}>
           Sign out

@@ -668,12 +668,13 @@ def test_paid_user_can_open_root_and_isolate_worlds(monkeypatch, remote):
     assert remote.patch("/worlds/test-world", json={"name": "Stolen"}).status_code == 404
     assert remote.delete("/worlds/test-world").status_code == 404
 
-    # Paid user creates, lists, publishes, and deletes their own world.
+    # Paid user creates, lists, publishes, and deletes their own world, but cannot claim /view default.
     created = remote.post("/worlds", json={"name": "Ada World", "is_public": False})
     assert created.status_code == 201
     ada_id = created.json()["world_id"]
     assert [w["world_id"] for w in remote.get("/worlds").json()["worlds"]] == [ada_id]
-    assert remote.patch(f"/worlds/{ada_id}", json={"is_public": True, "is_default": True}).status_code == 200
+    assert remote.patch(f"/worlds/{ada_id}", json={"is_public": True}).status_code == 200
+    assert remote.patch(f"/worlds/{ada_id}", json={"is_default": True}).status_code == 403
 
     # A second paid user cannot see or delete Ada's world.
     bob = TestClient(app, base_url="https://testserver", follow_redirects=False)
@@ -693,3 +694,4 @@ def test_paid_user_can_open_root_and_isolate_worlds(monkeypatch, remote):
     # Ada can delete her own world.
     assert remote.delete(f"/worlds/{ada_id}").status_code == 200
     assert remote.get("/worlds").json()["worlds"] == []
+    assert auth.current_actor() == auth.Actor(is_admin=False)

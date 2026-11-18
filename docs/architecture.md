@@ -163,9 +163,10 @@ and checks every request before routing:
   logged-out/free page (the frontend's `main.tsx` renders `Viewer.tsx` there and `App.tsx`
   everywhere else).
 - Every `/worlds/{world_id}/*` route answers `401` to free/signed-out callers, including direct
-  API calls. Paid users see and manage only their own worlds (`404` on others' worlds), while
-  debug routes (`/debug/*`, `/worlds/{world_id}/generate_debug`, `/worlds/{world_id}/replay-logs`)
-  remain admin-only (`403` for paid users, and `&deb` / `Debug...` are hidden in the UI) (#953).
+  API calls. Paid users see and manage only their own worlds (`404` on others' worlds) and may
+  mark them `is_public`, while the global `/view` default (`is_default`) and debug routes
+  (`/debug/*`, `/worlds/{world_id}/generate_debug`, `/worlds/{world_id}/replay-logs`) remain
+  admin-only (`403` for paid users, and `&deb` / `Debug...` are hidden in the UI) (#953).
 - Any non-GET request whose `Origin` is another site (or `Sec-Fetch-Site: cross-site` when
   there's no `Origin`) is refused with `403`. This is the CSRF guard. Same-site means the
   request's own `Host` or the origin of `MANTLE_BLOOM_PUBLIC_URL`, so a proxy that rewrites

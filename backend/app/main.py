@@ -1159,6 +1159,8 @@ def _apply_viewer_patch(session: WorldSession, req: PatchWorldRequest) -> None:
 @app.patch("/worlds/{world_id}")
 def patch_world(world_id: str, req: PatchWorldRequest) -> dict:
     _validate_viewer_patch(req)
+    if req.is_default is not None and not auth.current_actor().is_admin:
+        raise HTTPException(status_code=403, detail="Admin required")
     session = _session_or_404(world_id)
     # A /view patch can pre-render (_apply_viewer_patch), and rendering must
     # hold the compute gate like every other render: take it before the

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import json
 import logging
 import os
 import re
@@ -404,16 +405,25 @@ async def _render(
     return await _proxy(request)
 
 
+def _filter_worlds_for_actor(worlds: list[dict], actor: auth.Actor) -> list[dict]:
+    if actor.is_admin:
+        return worlds
+    owned = set(users.shared_store().user_worlds(actor.user_id)) if actor.user_id is not None else set()
+    return [row for row in worlds if row.get("world_id") in owned]
+
+
 async def _admin_list(request: Request) -> Response:
+    actor = auth.current_actor()
     active = await _active(request)
     if active is not None:
-        return active
+        if actor.is_admin or active.status_code != 200:
+            return active
+        data = json.loads(active.body)
+        data["worlds"] = _filter_worlds_for_actor(data.get("worlds", []), actor)
+        return JSONResponse(data, headers=_NO_STORE)
     root = _root()
     payload = _admin_records(root)
-    actor = auth.current_actor()
-    if not actor.is_admin:
-        owned = set(users.shared_store().user_worlds(actor.user_id)) if actor.user_id is not None else set()
-        payload = {"worlds": [row for row in payload["worlds"] if row["world_id"] in owned]}
+    payload["worlds"] = _filter_worlds_for_actor(payload["worlds"], actor)
     if any(
         row["summary"] is None and row["load_error"] is None and root.for_world(row["world_id"]).world_path.is_file()
         for row in payload["worlds"]

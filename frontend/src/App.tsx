@@ -35,7 +35,7 @@ import RunOverlay from "./RunOverlay";
 import { PLAYING_FALLBACK_PHASE, playingPhaseView } from "./phaseInfo";
 import ModalShell from "./ModalShell";
 import AdminSession from "./AdminSession";
-import { useSession } from "./session";
+import { isDebugUiEnabled, useSession } from "./session";
 import ProbePopup from "./ProbePopup";
 import { PREMADE_WORLDS } from "./premadeWorlds";
 import { CRATON_LEGEND_LABEL, faultKindForLegendLabel, highlightTargetFor } from "./legendData";
@@ -289,7 +289,7 @@ export default function App() {
   const [showSketchEditor, setShowSketchEditor] = useState(false);
   const session = useSession();
   // ?deb / &deb is admin-only (#953): paid users get no debug UI even if they add it to the URL.
-  const debugUi = HAS_DEB_PARAM && Boolean(session?.admin);
+  const debugUi = isDebugUiEnabled(window.location.search, session);
   // "Debugging Worlds" tab (see backend debug_worlds.py) -- tiny scripted plate scenarios for
   // fast iteration on the gap-filling problem. The scenario list is fetched once (static,
   // server-authoritative so the frontend never hardcodes it) and the picker defaults to
@@ -2916,6 +2916,7 @@ export default function App() {
         <ManageWorldsModal
           worlds={worlds}
           selectedWorldId={worldId}
+          isAdmin={Boolean(session?.admin)}
           onRename={handleRenameWorld}
           onDelete={handleDeleteWorld}
           onSetDefault={handleWorldDefaultChange}

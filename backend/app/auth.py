@@ -237,12 +237,13 @@ class Actor:
 
 
 # Set per HTTP request by AuthMiddleware so /worlds/* handlers can check ownership without
-# threading `request` through every route. Defaults to admin when called directly in tests.
+# threading `request` through every route. Defaults to non-admin so an ungated caller
+# never fails open.
 _CURRENT_ACTOR: contextvars.ContextVar[Actor | None] = contextvars.ContextVar("mantle_bloom_actor", default=None)
 
 
 def current_actor() -> Actor:
-    return _CURRENT_ACTOR.get() or Actor(is_admin=True)
+    return _CURRENT_ACTOR.get() or Actor(is_admin=False)
 
 
 def paid_user(request: Request, config: AuthConfig) -> users.User | None:
@@ -309,19 +310,28 @@ def _is_world_route(path: str) -> bool:
     return path == "/worlds" or path.startswith("/worlds/") or _is_admin_only_route(path)
 
 
-def gate(request: Request, config: AuthConfig, extra_origins: frozenset[str]) -> Response | None:
+_UNSET = object()
+
+
+def gate(
+    request: Request,
+    config: AuthConfig,
+    extra_origins: frozenset[str],
+    actor: Actor | None | object = _UNSET,
+) -> Response | None:
     """The response that refuses `request`, or None to let it through."""
     if is_cross_site_write(request, config, extra_origins):
         return JSONResponse({"detail": "Cross-site request refused"}, status_code=403)
     root, path = _route_path(request.scope)
-    actor = request_actor(request, config)
-    if path == "/" and request.method in ("GET", "HEAD") and actor is None:
+    resolved = request_actor(request, config) if actor is _UNSET else actor
+    assert resolved is None or isinstance(resolved, Actor)
+    if path == "/" and request.method in ("GET", "HEAD") and resolved is None:
         return RedirectResponse(f"{root}/view", status_code=302)
-    if _is_admin_only_route(path) and (actor is None or not actor.is_admin):
-        if actor is not None:
+    if _is_admin_only_route(path) and (resolved is None or not resolved.is_admin):
+        if resolved is not None:
             return JSONResponse({"detail": "Admin required"}, status_code=403)
         return JSONResponse({"detail": "Login required"}, status_code=401)
-    if _is_world_route(path) and actor is None:
+    if _is_world_route(path) and resolved is None:
         return JSONResponse({"detail": "Login required"}, status_code=401)
     return None
 
@@ -342,11 +352,12 @@ class AuthMiddleware:
         scope["mantle_bloom_allow_local"] = self.allow_local
         request = Request(scope)
         config = load_config(request)
-        refusal = gate(request, config, self.extra_origins)
+        actor = request_actor(request, config)
+        refusal = gate(request, config, self.extra_origins, actor=actor)
         if refusal is not None:
             await refusal(scope, receive, send)
             return
-        token = _CURRENT_ACTOR.set(request_actor(request, config))
+        token = _CURRENT_ACTOR.set(actor)
         try:
             await self.app(scope, receive, send)
         finally:
