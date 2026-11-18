@@ -634,3 +634,71 @@ def test_shared_store_is_one_instance_per_process(monkeypatch):
     monkeypatch.setattr(users, "_shared", None)
     monkeypatch.delenv("MANTLE_BLOOM_USER_DB_PATH", raising=False)
     assert users.shared_store() is users.shared_store()
+
+
+def _subscribe_user(sub: str, status: str = "active") -> users.User:
+    user = users.shared_store().user_for_identity("google", sub)
+    assert user is not None
+    users.shared_store().set_subscription(
+        user.id,
+        status=status,
+        provider_customer_id=f"cus_{sub}",
+        provider_subscription_id=f"sub_{sub}",
+    )
+    return user
+
+
+@pytest.mark.usefixtures("google")
+def test_paid_user_can_open_root_and_isolate_worlds(monkeypatch, remote):
+    # Free user stays redirected from / and refused on /worlds.
+    _google_sign_in(remote, monkeypatch, {**GOOGLE_USER, "sub": "sub-ada"})
+    assert remote.get("/").status_code == 302
+    assert remote.get("/worlds").status_code == 401
+
+    # Activating a subscription unlocks / and their own worlds, but never admin debug routes.
+    _subscribe_user("sub-ada")
+    assert remote.get("/").status_code != 302
+    assert remote.get("/debug/scenarios").status_code == 403
+    assert remote.post("/worlds/test-world/generate_debug", json={"scenario": "x"}).status_code == 403
+    assert remote.get("/worlds/test-world/replay-logs").status_code == 403
+
+    # Pre-existing admin world (`test-world`) is invisible and untouchable to the paid user.
+    assert remote.get("/worlds").json()["worlds"] == []
+    assert remote.get("/worlds/test-world").status_code == 404
+    assert remote.patch("/worlds/test-world", json={"name": "Stolen"}).status_code == 404
+    assert remote.delete("/worlds/test-world").status_code == 404
+
+    # Paid user creates, lists, publishes, and deletes their own world, but cannot claim /view default.
+    created = remote.post("/worlds", json={"name": "Ada World", "is_public": False})
+    assert created.status_code == 201
+    ada_id = created.json()["world_id"]
+    assert [w["world_id"] for w in remote.get("/worlds").json()["worlds"]] == [ada_id]
+    assert remote.patch(f"/worlds/{ada_id}", json={"is_public": True}).status_code == 200
+    assert remote.patch(f"/worlds/{ada_id}", json={"is_default": True}).status_code == 403
+
+    # A second paid user cannot see or delete Ada's world.
+    bob = TestClient(app, base_url="https://testserver", follow_redirects=False)
+    _google_sign_in(bob, monkeypatch, {**GOOGLE_USER, "sub": "sub-bob", "name": "Bob"})
+    _subscribe_user("sub-bob")
+    assert bob.get("/worlds").json()["worlds"] == []
+    assert bob.get(f"/worlds/{ada_id}").status_code == 404
+    assert bob.delete(f"/worlds/{ada_id}").status_code == 404
+
+    # Admin still sees both worlds and debug routes.
+    admin_client = TestClient(app, base_url="https://testserver", follow_redirects=False)
+    _sign_in(admin_client, monkeypatch)
+    assert admin_client.get("/debug/scenarios").status_code == 200
+    admin_ids = {w["world_id"] for w in admin_client.get("/worlds").json()["worlds"]}
+    assert {"test-world", ada_id} <= admin_ids
+
+    # Ada can delete her own world.
+    assert remote.delete(f"/worlds/{ada_id}").status_code == 200
+    assert remote.get("/worlds").json()["worlds"] == []
+    assert auth.current_actor() == auth.Actor(is_admin=False)
+
+    # Per-user world cap: Ada filling max_worlds does not block Bob from creating his own.
+    cap = main._registry.max_worlds
+    for i in range(cap):
+        assert remote.post("/worlds", json={"name": f"Ada {i}", "is_public": False}).status_code == 201
+    assert remote.post("/worlds", json={"name": "Ada Over", "is_public": False}).status_code == 409
+    assert bob.post("/worlds", json={"name": "Bob Own", "is_public": False}).status_code == 201

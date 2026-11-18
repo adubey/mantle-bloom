@@ -37,10 +37,11 @@ const PREVIEWS = [
 interface BillingActionProps {
   apiBase: string;
   manage: boolean;
+  label?: string;
   inline?: boolean;
 }
 
-export function BillingActionButton({ apiBase, manage, inline = false }: BillingActionProps) {
+export function BillingActionButton({ apiBase, manage, label, inline = false }: BillingActionProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,7 +68,7 @@ export function BillingActionButton({ apiBase, manage, inline = false }: Billing
   return (
     <span style={inline ? { display: "inline", marginLeft: 8 } : { display: "inline-flex", alignItems: "center", gap: 6 }}>
       <button type="button" onClick={handleClick} disabled={busy}>
-        {manage ? "Manage subscription" : "Upgrade"}
+        {label ?? (manage ? "Manage subscription" : "Upgrade")}
       </button>
       {error && (
         <span role="alert" style={{ color: "#ff9b9b", fontSize: 12, marginLeft: inline ? 8 : 0 }}>
@@ -99,18 +100,26 @@ export default function FullVersionPreview({
       <div className="full-preview-lead">
         This page shows one shared world in a single map view. The full app generates your own worlds from a seed or a
         sketch, runs them for as long as you like, and looks at them on a globe and in over twenty map views, with
-        plates, faults, rivers, lakes and resources. You can run it today from the <a href={repoUrl}>source on GitHub</a>.
+        plates, faults, rivers, lakes and resources. You can run it today from the <a href={repoUrl}>source on GitHub</a>
         {billingAvailable ? (
           signedIn ? (
-            <BillingActionButton apiBase={apiBase} manage={manageSubscription} inline />
+            manageSubscription ? (
+              <>
+                .<BillingActionButton apiBase={apiBase} manage inline />
+              </>
+            ) : (
+              <>
+                , or run it from mantle-bloom.com with a{" "}
+                <BillingActionButton apiBase={apiBase} manage={false} label="Paid Upgrade" inline />.
+              </>
+            )
           ) : (
             <>
-              {" "}
-              <a href={`${apiBase}/login`}>Sign in to upgrade</a>.
+              . <a href={`${apiBase}/login`}>Sign in to upgrade</a>.
             </>
           )
         ) : (
-          " Accounts with your own hosted worlds are planned."
+          ". Accounts with your own hosted worlds are planned."
         )}
       </div>
       <ul className="full-preview-grid">

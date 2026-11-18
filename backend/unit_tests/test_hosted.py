@@ -516,3 +516,62 @@ def test_every_hosted_route_is_owner_only_or_listed_as_public(tmp_path, monkeypa
             for method in route.methods - {"HEAD", "OPTIONS"}:
                 assert client.request(method, path).status_code == 401, (method, path)
         assert not client.app.state.worker.running
+
+
+def test_hosted_paid_users_only_see_their_own_worlds(tmp_path, monkeypatch):
+    from app import auth, users
+
+    _checkpoint(tmp_path, monkeypatch)
+    world_b = "b" * 32
+    root = checkpoint.CheckpointStore(tmp_path)
+    root.save_index([
+        {"world_id": WORLD_ID, "name": "Ada World", "is_public": True, "is_default": False, "created_at": 1.0, "updated_at": 1.0},
+        {"world_id": world_b, "name": "Bob World", "is_public": False, "is_default": False, "created_at": 2.0, "updated_at": 2.0},
+    ])
+    summary_a = root.for_world(WORLD_ID).load_hosted_summary()
+    assert summary_a is not None
+    store_b = root.for_world(world_b)
+    store_b.directory.mkdir(parents=True)
+    store_b.world_path.write_bytes(b"checkpoint")
+    store_b.save_hosted_summary(summary_a)
+    store_b.save_status(checkpoint.RunStatus(running=False, step_years=50_000))
+
+    async def fail_proxy(_request):
+        raise AssertionError("sleeping-worker path should not wake the worker")
+
+    monkeypatch.setattr(hosted, "_proxy", fail_proxy)
+
+    secret = "s" * 40
+    monkeypatch.setenv("MANTLE_BLOOM_SESSION_SECRET", secret)
+    monkeypatch.setenv("MANTLE_BLOOM_GOOGLE_CLIENT_ID", "g-id")
+    monkeypatch.setenv("MANTLE_BLOOM_GOOGLE_CLIENT_SECRET", "g-secret")
+    store = users.MemoryUserStore()
+    monkeypatch.setattr(users, "_shared", store)
+    ada = store.create_user("Ada")
+    bob = store.create_user("Bob")
+    store.set_subscription(ada.id, status="active", provider_customer_id="c1", provider_subscription_id="s1")
+    store.set_subscription(bob.id, status="active", provider_customer_id="c2", provider_subscription_id="s2")
+    store.add_world(WORLD_ID, ada.id)
+    store.add_world(world_b, bob.id)
+
+    ada_cookie = auth.sign_token({"user": ada.id, "via": "google"}, secret.encode(), "session", 60)
+    bob_cookie = auth.sign_token({"user": bob.id, "via": "google"}, secret.encode(), "session", 60)
+
+    app = hosted.create_app()
+    with TestClient(app, base_url="https://testserver", follow_redirects=False) as client:
+        # Worker asleep: /worlds and /worlds/{id}/run filter by owner.
+        ada_resp = client.get("/worlds", cookies={auth.SESSION_COOKIE: ada_cookie})
+        assert ada_resp.status_code == 200
+        assert [w["world_id"] for w in ada_resp.json()["worlds"]] == [WORLD_ID]
+        assert client.get(f"/worlds/{WORLD_ID}/run", cookies={auth.SESSION_COOKIE: ada_cookie}).status_code == 200
+        assert client.get(f"/worlds/{world_b}/run", cookies={auth.SESSION_COOKIE: ada_cookie}).status_code == 404
+
+        # Worker active: front reads from worker and filters for non-admins.
+        async def fake_read(path, request, params=None):
+            assert path == "/worlds"
+            return httpx.Response(200, json={"worlds": [{"world_id": WORLD_ID}, {"world_id": world_b}]})
+
+        monkeypatch.setattr(app.state.worker, "read", fake_read)
+        bob_resp = client.get("/worlds", cookies={auth.SESSION_COOKIE: bob_cookie})
+        assert bob_resp.status_code == 200
+        assert [w["world_id"] for w in bob_resp.json()["worlds"]] == [world_b]

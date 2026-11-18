@@ -19,6 +19,14 @@ export interface Session {
   } | null;
 }
 
+export function canAccessApp(session: Session): boolean {
+  return session.admin || session.user?.tier === "paid";
+}
+
+export function isDebugUiEnabled(search: string, session: Session | null): boolean {
+  return new URLSearchParams(search).has("deb") && Boolean(session?.admin);
+}
+
 export function useSession(pollForPaid = false): Session | null {
   const [session, setSession] = useState<Session | null>(null);
   useEffect(() => {

@@ -94,11 +94,11 @@ function AllowanceNote({ state, demo = false }: { state: PublicState; demo?: boo
   );
 }
 
-// Whoever already has the full app (the owner, or a local run) doesn't need it advertised,
+// Whoever already has the full app (the owner, a paid user, or a local run) doesn't need it advertised,
 // except on /demo/view, which exists to show them the logged-out page.
 function FullVersionTeaser() {
   const session = useSession();
-  if (session?.admin && !isDemo) return null;
+  if ((session?.admin || session?.user?.tier === "paid") && !isDemo) return null;
   const canManage = Boolean(session?.user && (session.user.tier === "paid" || session.user.manage_subscription));
   return (
     <FullVersionPreview
@@ -145,6 +145,7 @@ function AccountLink() {
           {session.user.name ?? "Signed in"}
           {statusLabel} ·
         </span>
+        {session.user.tier === "paid" && <a href="/">Open app</a>}
         {session.billing_available && <BillingActionButton apiBase={API_BASE} manage={canManage} />}
         <form method="post" action={`${API_BASE}/logout`} style={{ margin: 0 }}>
           <button type="submit">Sign out</button>
