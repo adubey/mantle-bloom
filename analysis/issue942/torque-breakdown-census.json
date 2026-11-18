@@ -7,6 +7,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 31,
+   "solver_residual_over_driving": {
+    "max": 4.7700661304522245e-15,
+    "median": 3.2204980263103427e-15
+   },
    "all": {
     "plate_samples": 586,
     "plate_area_share": 1.0,
@@ -191,6 +195,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 22,
+   "solver_residual_over_driving": {
+    "max": 3.570709540952868e-15,
+    "median": 2.4752870992175077e-15
+   },
    "all": {
     "plate_samples": 461,
     "plate_area_share": 1.0,
@@ -368,6 +376,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 27,
+   "solver_residual_over_driving": {
+    "max": 3.633356267633849e-15,
+    "median": 2.684919232318861e-15
+   },
    "all": {
     "plate_samples": 479,
     "plate_area_share": 1.0,
@@ -547,6 +559,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 19,
+   "solver_residual_over_driving": {
+    "max": 4.450444630207976e-15,
+    "median": 3.0232349043944573e-15
+   },
    "all": {
     "plate_samples": 443,
     "plate_area_share": 1.0,
@@ -734,6 +750,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 15,
+   "solver_residual_over_driving": {
+    "max": 3.646765789462858e-15,
+    "median": 2.6055779121208403e-15
+   },
    "all": {
     "plate_samples": 435,
     "plate_area_share": 1.0,
@@ -914,6 +934,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 15,
+   "solver_residual_over_driving": {
+    "max": 3.8485974237241665e-15,
+    "median": 2.6063147856581666e-15
+   },
    "all": {
     "plate_samples": 445,
     "plate_area_share": 1.0,
@@ -1098,6 +1122,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 19,
+   "solver_residual_over_driving": {
+    "max": 3.1628407883443677e-15,
+    "median": 2.1246844687693746e-15
+   },
    "all": {
     "plate_samples": 537,
     "plate_area_share": 1.0,
@@ -1275,6 +1303,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 26,
+   "solver_residual_over_driving": {
+    "max": 4.096776465673755e-15,
+    "median": 2.9170953180676565e-15
+   },
    "all": {
     "plate_samples": 478,
     "plate_area_share": 1.0,
@@ -1457,6 +1489,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 30,
+   "solver_residual_over_driving": {
+    "max": 4.748851807785795e-15,
+    "median": 2.8737108165180872e-15
+   },
    "all": {
     "plate_samples": 467,
     "plate_area_share": 1.0,
@@ -1642,6 +1678,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 27,
+   "solver_residual_over_driving": {
+    "max": 5.029995489357064e-15,
+    "median": 3.115788129194458e-15
+   },
    "all": {
     "plate_samples": 470,
     "plate_area_share": 1.0,
@@ -1827,6 +1867,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 25,
+   "solver_residual_over_driving": {
+    "max": 4.082011470380036e-15,
+    "median": 2.896602365675148e-15
+   },
    "all": {
     "plate_samples": 489,
     "plate_area_share": 1.0,
@@ -2008,6 +2052,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 30,
+   "solver_residual_over_driving": {
+    "max": 4.491330011231214e-15,
+    "median": 3.3288241440437136e-15
+   },
    "all": {
     "plate_samples": 486,
     "plate_area_share": 1.0,
@@ -2193,6 +2241,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 13,
+   "solver_residual_over_driving": {
+    "max": 3.762193813376497e-15,
+    "median": 2.903645511254509e-15
+   },
    "all": {
     "plate_samples": 453,
     "plate_area_share": 1.0,
@@ -2369,6 +2421,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 20,
+   "solver_residual_over_driving": {
+    "max": 3.430068248240302e-15,
+    "median": 2.0057482725318824e-15
+   },
    "all": {
     "plate_samples": 386,
     "plate_area_share": 1.0,
@@ -2543,6 +2599,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 31,
+   "solver_residual_over_driving": {
+    "max": 4.447561500896264e-15,
+    "median": 2.9644655751619786e-15
+   },
    "all": {
     "plate_samples": 495,
     "plate_area_share": 1.0,
@@ -2726,6 +2786,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 13,
+   "solver_residual_over_driving": {
+    "max": 4.674332458102302e-15,
+    "median": 2.7956604357587734e-15
+   },
    "all": {
     "plate_samples": 543,
     "plate_area_share": 1.0,
@@ -2906,6 +2970,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 20,
+   "solver_residual_over_driving": {
+    "max": 4.0992488749517634e-15,
+    "median": 2.7529416400305185e-15
+   },
    "all": {
     "plate_samples": 468,
     "plate_area_share": 1.0,
@@ -3090,6 +3158,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 17,
+   "solver_residual_over_driving": {
+    "max": 3.9544433341002235e-15,
+    "median": 2.4817436643893768e-15
+   },
    "all": {
     "plate_samples": 450,
     "plate_area_share": 1.0,
@@ -3270,6 +3342,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 13,
+   "solver_residual_over_driving": {
+    "max": 4.560492164296416e-15,
+    "median": 2.078831444315555e-15
+   },
    "all": {
     "plate_samples": 366,
     "plate_area_share": 1.0,
@@ -3445,6 +3521,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 21,
+   "solver_residual_over_driving": {
+    "max": 3.902248479721468e-15,
+    "median": 2.7691003636938395e-15
+   },
    "all": {
     "plate_samples": 505,
     "plate_area_share": 1.0,
@@ -3800,6 +3880,10 @@
    "opening_length_past_gate": 0.26679043122965207,
    "closing_down_going_share_of_band": 0.46195867316334605,
    "slab_pull_ungated_over_applied": 1.9664059157217808
+  },
+  "solver_residual_over_driving": {
+   "max": 5.029995489357064e-15,
+   "median": 2.7099317771357536e-15
   }
  }
 }

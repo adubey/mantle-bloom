@@ -11,7 +11,9 @@ acts on); the share of plate area on which each resisting term is the largest; a
 and of opening boundary length that passes the 1 cm/yr motion gate. Each is given for all plates and split at an
 `|omega| R` of 1 cm/yr. Where the runs carry them, it also gives the area-weighted speeds each plate would have
 alone (mantle flow only; all own loads with no contact), the mean prescribed mantle-flow speed under the plates,
-and the slab terms' work budget (`slab`).
+and the slab terms' work budget (`slab`). Per world and pooled, `solver_residual_over_driving` is the solver's own
+force-balance closure (residual torque over driving torque, max and median over samples): the breakdown's terms sum
+to zero by construction, because the blocked-edge term is taken as the remainder, so this is the check that can fail.
 """
 
 import argparse
@@ -124,6 +126,12 @@ def summarize(rows: list[dict]) -> dict:
     return out
 
 
+def _residual_ratio(samples: list[dict]) -> dict[str, float]:
+    ratios = sorted(s["solver"]["residual_torque_norm_nm"] / s["solver"]["driving_torque_norm_nm"]
+                    for s in samples if s["solver"]["driving_torque_norm_nm"])
+    return {"max": ratios[-1], "median": ratios[len(ratios) // 2]} if ratios else {}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("runs", type=Path)
@@ -131,17 +139,21 @@ def main() -> None:
     args = parser.parse_args()
     result: dict = {"slow_threshold_cm_per_yr": SLOW_CM_PER_YR, "worlds": {}}
     pooled: list[dict] = []
+    samples: list[dict] = []
     for path in sorted(args.runs.glob("*.json")):
         run = json.loads(path.read_text())
         rows = [row for sample in run["samples"] for row in sample["plates"]]
         pooled += rows
+        samples += run["samples"]
         result["worlds"][str(run["seed"])] = {
             "years": run["years"], "every": run["every"], "world_knobs": run["world_knobs"],
             "solver_converged_all": all(s["solver"]["solver_converged"] for s in run["samples"]),
             "blocked_contacts_max": max(s["solver"]["blocked_contacts"] for s in run["samples"]),
+            "solver_residual_over_driving": _residual_ratio(run["samples"]),
             **summarize(rows),
         }
     result["pooled"] = summarize(pooled)
+    result["pooled"]["solver_residual_over_driving"] = _residual_ratio(samples)
     text = json.dumps(result, indent=1) + "\n"
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)

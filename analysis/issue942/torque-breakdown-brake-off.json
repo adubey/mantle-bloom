@@ -9,6 +9,10 @@
    },
    "solver_converged_all": true,
    "blocked_contacts_max": 32,
+   "solver_residual_over_driving": {
+    "max": 2.113296256066737e-15,
+    "median": 5.780426520798889e-16
+   },
    "all": {
     "plate_samples": 542,
     "plate_area_share": 1.0,
@@ -190,6 +194,10 @@
    },
    "solver_converged_all": true,
    "blocked_contacts_max": 27,
+   "solver_residual_over_driving": {
+    "max": 1.4927634211898746e-15,
+    "median": 5.715204722700733e-16
+   },
    "all": {
     "plate_samples": 370,
     "plate_area_share": 1.0,
@@ -544,6 +552,10 @@
    "opening_length_past_gate": 0.681023049432225,
    "closing_down_going_share_of_band": 0.45022343114106594,
    "slab_pull_ungated_over_applied": 1.099947826388287
+  },
+  "solver_residual_over_driving": {
+   "max": 2.113296256066737e-15,
+   "median": 5.715204722700733e-16
   }
  }
 }

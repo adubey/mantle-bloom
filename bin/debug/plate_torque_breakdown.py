@@ -9,15 +9,21 @@ Generates each world with production defaults and steps it plates-only (``simula
 geometry) and writes, per plate:
 
 - each torque's component along the solved rotation axis, in N m. Positive drives the plate's motion and negative
-  resists it; the terms sum to zero. Slab pull, ridge push and the mantle-flow half of basal drag are the loads;
-  basal drag, sunk-slab drag and the contact brake (RFC 0008) are the velocity-proportional resistances; what is
-  left is the blocked-edge contact force, which the solver does not report per plate.
+  resists it. Slab pull, ridge push and the mantle-flow half of basal drag are the loads; basal drag, sunk-slab
+  drag and the contact brake (RFC 0008) are the velocity-proportional resistances. The blocked-edge contact force,
+  which the solver does not report per plate, is taken as what is left, so these terms sum to zero by
+  construction and that sum checks nothing. The independent check is the solver's own residual over its driving
+  torque (``solver.residual_torque_norm_nm / driving_torque_norm_nm``, every plate and contact at once), which
+  ``summarize_torque_breakdown.py`` reports.
 - how much of the 1 cm/yr motion gate is open: slab pull acts only where a boundary already closes faster than
   1 cm/yr and ridge push only where it opens faster than 1 cm/yr, so the script also records the boundary length
   that moves the right way at any rate, and the slab pull that length would give.
 - area-weighted mean speed of continental and oceanic crust, ``|omega| R``, area and continental share.
 - two speeds the plate would have alone, from the same snapshot: carried by mantle flow only, and under all of its
-  own loads and drags with no contact; and the mean speed of the prescribed mantle flow under the plate.
+  own loads and drags with no contact; and the mean speed of the prescribed mantle flow under the plate. Both
+  are least-squares solves, so a plate whose drag matrix is near-singular contributes the minimum-norm rotation,
+  which can understate its speed; read pooled means of these as estimates.
+- A plate with zero rotation has no axis: it enters the speed and area pools but not the torque shares.
 - over its subducting nodes, the work slab pull does and the work sunk-slab drag takes, split by trench-normal and
   trench-parallel motion, how much of the pull cancels across the plate, and how much trench is dragged unpulled.
 

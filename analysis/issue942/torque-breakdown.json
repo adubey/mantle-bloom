@@ -7,6 +7,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 31,
+   "solver_residual_over_driving": {
+    "max": 4.7700661304522245e-15,
+    "median": 3.2204980263103427e-15
+   },
    "all": {
     "plate_samples": 586,
     "plate_area_share": 1.0,
@@ -23,6 +27,7 @@
      "own_loads_no_contact:continental": 4.6864494942991515,
      "own_loads_no_contact:oceanic": 4.046035425756573
     },
+    "slab": {},
     "driving_share": {
      "mantle_flow": 0.8332752746186372,
      "slab_pull": 0.11605409835871965,
@@ -68,6 +73,7 @@
      "own_loads_no_contact:continental": 4.771445291197114,
      "own_loads_no_contact:oceanic": 3.908419971653375
     },
+    "slab": {},
     "driving_share": {
      "mantle_flow": 0.7022369598455378,
      "blocked_edges_residual": 0.11976575560739842,
@@ -112,6 +118,7 @@
      "own_loads_no_contact:continental": 4.667650308730157,
      "own_loads_no_contact:oceanic": 4.067653649354165
     },
+    "slab": {},
     "driving_share": {
      "mantle_flow": 0.8589537564326021,
      "slab_pull": 0.11664380759627375,
@@ -146,6 +153,10 @@
    "world_knobs": {},
    "solver_converged_all": true,
    "blocked_contacts_max": 22,
+   "solver_residual_over_driving": {
+    "max": 3.570709540952868e-15,
+    "median": 2.4752870992175077e-15
+   },
    "all": {
     "plate_samples": 461,
     "plate_area_share": 1.0,
@@ -162,6 +173,7 @@
      "own_loads_no_contact:continental": 2.4622075172664797,
      "own_loads_no_contact:oceanic": 2.450084134276771
     },
+    "slab": {},
     "driving_share": {
      "mantle_flow": 0.7301524860800335,
      "slab_pull": 0.20626400207603235,
@@ -205,6 +217,7 @@
      "own_loads_no_contact:continental": 2.12888008116087,
      "own_loads_no_contact:oceanic": 1.818289510547107
     },
+    "slab": {},
     "driving_share": {
      "mantle_flow": 0.8160568913011184,
      "blocked_edges_residual": 0.07310762066996192,
@@ -248,6 +261,7 @@
      "own_loads_no_contact:continental": 4.667430641068929,
      "own_loads_no_contact:oceanic": 4.002466174706254
     },
+    "slab": {},
     "driving_share": {
      "mantle_flow": 0.6258078469214219,
      "slab_pull": 0.3724457428573694,
@@ -290,6 +304,7 @@
     "own_loads_no_contact:continental": 3.56939806461454,
     "own_loads_no_contact:oceanic": 3.2545805157988683
    },
+   "slab": {},
    "driving_share": {
     "mantle_flow": 0.7984452972520198,
     "slab_pull": 0.14652271687888832,
@@ -335,6 +350,7 @@
     "own_loads_no_contact:continental": 2.58145229055395,
     "own_loads_no_contact:oceanic": 2.1581346086248043
    },
+   "slab": {},
    "driving_share": {
     "mantle_flow": 0.774012723550937,
     "blocked_edges_residual": 0.09034276065935604,
@@ -379,6 +395,7 @@
     "own_loads_no_contact:continental": 4.6676197202034855,
     "own_loads_no_contact:oceanic": 4.051506068019913
    },
+   "slab": {},
    "driving_share": {
     "mantle_flow": 0.8086078105277295,
     "slab_pull": 0.17188213634078597,
@@ -405,6 +422,10 @@
    "opening_length_past_gate": 0.21508632507738065,
    "closing_down_going_share_of_band": 0.4513318655063961,
    "slab_pull_ungated_over_applied": 2.902207508189031
+  },
+  "solver_residual_over_driving": {
+   "max": 4.7700661304522245e-15,
+   "median": 2.9408669872822903e-15
   }
  }
 }

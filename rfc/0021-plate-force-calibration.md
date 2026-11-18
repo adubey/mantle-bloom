@@ -78,7 +78,7 @@ motion inherits the pattern and speed of a prescribed flow field, not the forces
 and contacts. A retune of the flow rate or the brake to restore the mean speed would also violate principle 9:
 *do not tune a parameter to compensate* for a missing or misformed force. The invariants that will show the fix
 are the force shares above, the subducting/non-subducting speed ratio, and the census speed distribution, with the
-breakdown's terms summing to zero at every sample.
+solver's own residual torque a negligible share of its driving torque at every sample (today at most 5×10⁻¹⁵).
 
 ## Proposed solutions
 
@@ -175,19 +175,31 @@ current term; with B.3's force column at 50–100 Myr it gives 2.0–2.1×10¹²
 
 **B.2 Sunk-slab drag on sinking only.** `slab_drag_coefficient_matrix` uses `c_i (I − p_i p_iᵀ)`, resisting the
 node's whole tangential velocity. The slab resists its own descent, which a surface node feels as motion toward
-the trench. The corrected form projects on the trench normal `n_i` (`direction_to_neighbor`):
+the trench. Let `p_i` be the node's unit position and `n̂_i` the trench normal: `direction_to_neighbor` projected
+into the tangent plane and normalized, `n̂_i = (n_i − (n_i·p_i) p_i) / |n_i − (n_i·p_i) p_i|`. The node's velocity is
+`v_i = ω × p_i` (as in `slab_drag_force_vectors_n`), so its trench-normal speed is
+`v_i · n̂_i = (ω × p_i) · n̂_i = ω · (p_i × n̂_i)`. A drag `F_i = −c_i (v_i · n̂_i) n̂_i` then has torque
+`p_i × F_i = −c_i (p_i × n̂_i)(p_i × n̂_i)ᵀ ω`, so the coefficient matrix, in the same rotation space as today's
+`c_i (I − p_i p_iᵀ)`, is
 
-    K_slab = Σ_i c_i (p_i × n_i)(p_i × n_i)ᵀ,   over nodes with positive pull
+    K_slab = Σ_i c_i (p_i × n̂_i)(p_i × n̂_i)ᵀ,   over nodes with positive pull
 
-so the drag acts only on the pulled length and only on trench-normal motion. Trench-parallel motion and unpulled
+`p_i × n̂_i` lies along the trench as a surface direction, but as a rotation axis it is the one that moves `p_i`
+along `n̂_i`; the velocity-space form of the same drag would be `n̂_i n̂_iᵀ`. The drag acts only on the pulled
+length and only on trench-normal motion. Trench-parallel motion and unpulled
 buoyant length are left to basal drag, which already covers every node. `K_slab` stays symmetric positive
 semidefinite, so the implicit solve is unchanged. In #942's brake-off budget the trench-parallel part alone was
 46% of the pull's work; without it the pooled slab work would have netted about +24% in place of −22%.
 
 **B.3 Age-based force column.** For slab pull and ridge push only, an oceanic cell's mantle lithosphere is taken
-as `H_f = min(h₁ √(age / 1 Myr), H_max) − Hc`, with `age` from `node_created_years`, `h₁` = 13 km and
-`H_max` = 95 km. Continental cells keep their Hm. Pull per node is then `max(B(H_f), 0) × L_sink × ds` as now
-(`column_buoyancy_pa`). Scale check, from the model's constants: 54, 81 and 84 km at 25, 50 and 100 Myr give 6.6,
+as `H_f = max(Hm, min(h₁ √(age / 1 Myr), H_max) − Hc)`, with `age` from `node_created_years`, `h₁` = 13 km,
+`H_max` = 95 km and `Hc` the cell's crust (the oceanic reference is `REFERENCE_HC_OCEANIC_M` = 11 km). The floor at
+the cell's own `Hm` matters near the ridge: without it `H_f` would be negative under about 0.7 Myr with 11 km of
+crust, and B.1's column integral would be undefined there. With it a young ridge keeps the model's
+`YOUNG_RIDGE_HM_M` = 8 km, and a cell without a known age keeps its `Hm`. This is the form #950's
+`rift_strength.oceanic_strength_hm` already uses, which also thins the column by the rift strain applied to it. Continental cells keep their Hm. Pull per node is then `max(B(H_f), 0) × L_sink × ds` as now
+(`column_buoyancy_pa`). Scale check, from the model's constants with `Hc` = 11 km: 54, 81 and 84 km at 25, 50 and
+100 Myr give 6.6,
 9.9 and 10.3×10¹² N/m of pull, against 4.9 at 40 km today. The plate's own Hm and its elevation are not changed;
 whether to make them follow age is alternative D.
 
@@ -300,17 +312,29 @@ world took 5–6 minutes and about 0.5 GB on the rift-line method, as on the gre
      probe.
    - Freeze a held-out set for this RFC by the RFC 0018 scheme (SHA-256 of
      `mantle-bloom/rfc0021/v1/heldout/{index:02d}`, first four bytes big-endian masked with `0x7fffffff`,
-     excluding every seed already in `analysis/issue797/g2-seed-preregistration.json` and the development set),
-     20 seeds, committed before any G2 run.
+     taking indices from 0 upward and skipping any value that repeats an earlier one after the mask or is already
+     in `analysis/issue797/g2-seed-preregistration.json` or the development set, until 20 seeds are taken), with
+     an assertion in the freezing script that the set and the development set are disjoint, committed before any
+     G2 run.
    - Extend #942's brake-off breakdown from 2 to the 20 development worlds, on the rifting baseline, so G1's
      baseline is not two worlds and not the great-circle split.
    - Build the scorer: `plate_torque_breakdown.py`'s measures plus RFC 0008's collision measures plus RFC 0018's
      realism score from #955's `bin/debug/rift_line_recorder.py` and `score_rift_lines.py`, one JSON per setting.
+     The breakdown does not measure two targets yet, and the scorer adds them:
+     - **T4:** per node, `|basal_drag_force_vectors_n|` over the node's accounting area (Pa), area-weighted over
+       plates with no node in the subducting mask, pooled over samples.
+     - **T5:** per divergent node, the ridge-push force over its shared front length (N/m), length-weighted over
+       ridges whose plate has oceanic floor at least 50 Myr old, the age at which B.3's column reaches 81 km of
+       its 84.
+     - **Closure:** the solver's `residual_torque_norm_nm / driving_torque_norm_nm` per sample, which
+       `summarize_torque_breakdown.py` now reports. The breakdown's own terms sum to zero by construction,
+       because the blocked-edge term is taken as the remainder, so they check nothing.
 2. **G1: one correction at a time.** Each of B.1, B.2, B.3 and B.4 (a and b) alone, then all adopted ones
    together, brake on and brake off, on the five stage 1 worlds #955 scored, as causal probes with predictions posted before
    each run. A correction is adopted if it moves its own measure the predicted way (B.1: ridge push into T5's
    band; B.2: slab work positive; B.3: pull per metre up; B.4: gated share of closing down-going length up) and
-   breaks no invariant (the breakdown sums to zero; the solver converges; ledgers close). G1 reports each one's
+   breaks no invariant (the solver's residual stays under 10⁻⁹ of its driving torque; the solver converges; ledgers
+   close). G1 reports each one's
    effect on speed, T2 and the split rate, and what alternative D would change in bathymetry and land fraction.
    If no combination raises the T2 ratio above 1.5 at the current constants, the premise is in doubt (see
    falsification).
@@ -352,7 +376,9 @@ removed.
   knobs, `rift_strength.oceanic_strength_hm` for the cooling law B.3 shares, and `rift_damage.force_inputs`, which
   reads the same per-node forces B.1–B.4 change.
 - Tests: `backend/unit_tests/test_torque.py` (each corrected form against a manufactured case: ridge push equals
-  the GPE difference of two known columns; slab drag has no trench-parallel component; pull grows with age),
+  the GPE difference of two known columns; slab drag resists a purely trench-normal rotation and gives zero torque
+  for a purely trench-parallel one, including with a `direction_to_neighbor` that is not exactly tangent; pull
+  grows with age; the force column never goes below the cell's `Hm`),
   `test_quasistatic.py` (the solve still converges and stays symmetric), `test_world.py` and
   `test_persistence.py` (old saves load with the new fields).
 - Scripts: `bin/debug/plate_torque_breakdown.py`, `summarize_torque_breakdown.py`, `summarize_speed_census.py`
@@ -405,8 +431,10 @@ removed.
       the time-averaged largest plate stays under 40% of the surface; mean plate count within 25%.
 - [ ] Step check: on three held-out worlds, 0.5 Myr steps give T1 within 15% and T2 within 20% of 1 Myr steps.
 - [ ] Full stepping: on one held-out world for 50 Myr, mean crust speed within 25% of its plates-only run.
-- [ ] The breakdown's terms sum to zero at every sample (blocked-edge residual reported); ledgers close within
-      1e-9; the solver converges at every step.
+- [ ] At every sample the solver's residual torque is under 10⁻⁹ of its driving torque, and the blocked-edge
+      share (the breakdown's remainder) is reported; the crust and mantle-lithosphere ledgers of rift thinning
+      (`rift_runtime.ledger_gap`, relative, worst over steps) close within 1e-9; the solver converges at every
+      step.
 - [ ] Step time at density 4 changes by less than 2%.
 - [ ] Unit tests above pass; affected tests, ruff and `bin/quality_check.sh` are green; saves from before the change
       load.

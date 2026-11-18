@@ -144,9 +144,11 @@ prescribed flow (`mantle.flow_at`, centres of 2–6 cm/yr). Its net effect is to
   section estimates that from each snapshot.
 
 **Validity.** The solver converged at every sample. Speeds are near the #888 brake-on arm (1.14/1.35 and 0.41/0.56
-cm/yr, rift-line prototype). The closure check (terms summing to zero) could only be read where there are no
-blocked edges, since the residual is the blocked-edge term; at 2 Myr with none it was 10⁻¹⁵ of the driving torque.
-Both worlds had blocked edges (up to 31 and 22).
+cm/yr, rift-line prototype). The breakdown's terms sum to zero by construction, because the blocked-edge term
+is taken as the remainder, so that sum checks nothing; at 2 Myr, with no blocked edges, the remainder was 10⁻¹⁵ of the
+driving torque. Both worlds had blocked edges (up to 31 and 22). The independent check is the solver's own residual
+torque over its driving torque, which `summarize_torque_breakdown.py` reports as `solver_residual_over_driving`: at
+most 4.8×10⁻¹⁵ here, 2.1×10⁻¹⁵ on the brake-off slab run and 5.0×10⁻¹⁵ on the 20-world census (PR #949 review).
 
 **Limits.** Two worlds, plates-only stepping, one sample per 10 Myr.
 
