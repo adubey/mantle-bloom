@@ -21,8 +21,7 @@ import numpy as np
 
 import rfc0019_g3_compare as g3
 import rfc0019_g3_ridge_rainout as ridge
-from rfc0019_coarse_moisture import build_transport_rates, solve_bounded_budget
-from rfc0019_g3_archive_cap import _broad_meridional_capacity, _convergence_correction, _signed_faces
+from rfc0019_coarse_moisture import solve_bounded_budget
 from rfc0019_g3_mixing import RAIN_RATE, SOURCE_DEPTH_M, SOURCE_SECONDS, TUNING_SAVES
 
 WARMUPS = 1
@@ -41,14 +40,7 @@ def _candidate_update(world, climate, biomes, hydrology, solver):
     tags, _ = g3._flux_sources(proxies, area, SOURCE_DEPTH_M, SOURCE_SECONDS)
     grid = g3._aggregate_tagged_sources(fields.is_ocean, tags, density=DENSITY)
 
-    if solver == "finite_volume":
-        original = build_transport_rates(grid, fields.wind_u[::-1], fields.wind_v[::-1], 0.0)
-        signed = original.forward - original.reverse
-        correction = _convergence_correction(grid, original.first, original.second, signed)
-        capacity = signed - correction + 0.5 * _broad_meridional_capacity(grid, original)
-        faces = _signed_faces(original.first, original.second, capacity)
-    else:
-        faces = ridge._wind_arrow_faces(grid, fields.wind_u[::-1], fields.wind_v[::-1])
+    faces = ridge._candidate_faces(grid, fields.wind_u[::-1], fields.wind_v[::-1], solver)
 
     surface_temp = fields.air_temperature_c[::-1].ravel()
     qsat = climate.saturation_specific_humidity_g_kg(surface_temp)

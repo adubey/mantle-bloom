@@ -550,6 +550,18 @@ def _wind_arrow_faces(grid, native_u, native_v):
     )
 
 
+def _candidate_faces(grid, wind_u, wind_v, solver):
+    if solver == "finite_volume":
+        original = build_transport_rates(grid, wind_u, wind_v, 0.0)
+        signed = original.forward - original.reverse
+        correction = _convergence_correction(grid, original.first, original.second, signed)
+        capacity = signed - correction + 0.5 * _broad_meridional_capacity(grid, original)
+        return _signed_faces(original.first, original.second, capacity)
+    if solver == "wind_arrows":
+        return _wind_arrow_faces(grid, wind_u, wind_v)
+    raise ValueError(f"unsupported transport solver: {solver}")
+
+
 def _solve_arms(
     fields, archive, freeze, arms, *, solver="finite_volume", dry_scale=None, sink_profiles=None,
 ):
@@ -557,16 +569,7 @@ def _solve_arms(
     if fields.is_ocean.shape != (GRID_SHAPE[0] * density_factor, GRID_SHAPE[1] * density_factor):
         raise ValueError("capture grid must be density 1 or 4")
     grid = aggregate_inputs(fields.is_ocean[::-1], {}, factor=density_factor)
-    if solver == "finite_volume":
-        original = build_transport_rates(grid, fields.wind_u[::-1], fields.wind_v[::-1], 0.0)
-        signed = original.forward - original.reverse
-        correction = _convergence_correction(grid, original.first, original.second, signed)
-        capacity = signed - correction + 0.5 * _broad_meridional_capacity(grid, original)
-        faces = _signed_faces(original.first, original.second, capacity)
-    elif solver == "wind_arrows":
-        faces = _wind_arrow_faces(grid, fields.wind_u[::-1], fields.wind_v[::-1])
-    else:
-        raise ValueError(f"unsupported transport solver: {solver}")
+    faces = _candidate_faces(grid, fields.wind_u[::-1], fields.wind_v[::-1], solver)
     native_elevation = fields.elevation_m[::-1].ravel()
     elevation_by_reservoir = np.bincount(
         grid.native_ids.ravel(),
