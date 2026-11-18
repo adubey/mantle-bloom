@@ -605,6 +605,14 @@ merge_split.py       plate consumption, sustained-collision continental merging 
                      at most one per step), mantle-flow-driven splitting, periodic geometric
                      defragmentation (severed-lobe / stranded-node cleanup deform() can't do),
                      event log messages
+rift_damage.py       optional plate breakup along rift lines (RFC 0018), used when
+                     `World.split_method == "rift_lines"`: the per-step damage pass for every
+                     plate, thinning with flank transfer, the split along a broken line, and
+                     damage inheritance at new margins
+rift_lines.py        array kernels behind it: section pull, corridors, the line search, the
+                     sub-stepped strain integrator, and the two-daughter split masks
+rift_strength.py     `RiftLineParams`, the line-cut load tensor, the capacity table lookup,
+                     weakness multipliers, softening and the flank-transfer thinning
 terranes.py          shared buoyant-crust tracers and ledger (RFC 0007): per-plate plateau,
                      arc and mobile-cover moments, docking-probability draws, and the
                      emplaced/thinned/reset/subducted/converted/foundered/clipped balance

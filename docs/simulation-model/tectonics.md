@@ -1030,6 +1030,126 @@ routine per-step motion.
   alone here, not deleted. This runs before the collision and split passes so a severed
   lobe stops polluting neighbour territory and collision detection first.
 
+### Splitting along rift lines
+
+`World.split_method` chooses how a plate breaks up. The default, `"great_circle"`, is the split
+described above. `"rift_lines"` replaces it with RFC 0018's method
+(`rift_damage.py`, `rift_lines.py`, `rift_strength.py`): each plate strains along one line placed
+where it is being pulled apart, the strain is stored in the rock, and the plate splits when the
+line has broken. A world on the default method never runs this code, and its rift fields stay
+zero.
+
+To turn it on for a world, from Python:
+
+```python
+world.split_method = "rift_lines"
+world.rift_line_params = {"k_cap": 0.14, "eps_dot0": 4.6e-8}   # optional overrides
+```
+
+Both are saved with the world. There is no API route or UI control for them yet.
+
+Each step, `merge_split.apply_topology_changes` runs `rift_damage.damage_pass` for every plate
+before the split loop, so the one-split-per-step rule cannot skip a plate's straining. For each
+plate the pass does the following.
+
+1. **Load.** `rift_damage.force_inputs` takes the torque engine's per-node forces (slab pull,
+   ridge push, basal drag, contact drag). `rift_strength.balanced_tangent_force` removes their
+   rigid-rotation part, which turns the plate without stressing it.
+   `rift_strength.cut_tensor` fits a membrane tensor (N/m) to the pull across straight line
+   cuts in six directions, and `rift_lines.section_profile` keeps the total pull (N) across each
+   straight section.
+2. **Strength.** `N_eff = k_cap × N_cap × M × W` (N/m). `N_cap` is the column's extensional
+   capacity, interpolated by `rift_strength.capacity` from `data/rift_capacity_table.npz` by
+   crust kind, crust thickness, mantle-lithosphere thickness and Moho thermal lag. `M` is the
+   product of the inherited-weakness multipliers (belt 0.65, volcano 0.65, plume heat 0.65,
+   fault 0.60), clamped to `[0.12, 1]`. `W` is strain softening, averaged over a disk of
+   diameter `w0_m` so a band cannot be narrower than that.
+3. **Line.** For each of the six directions whose peak pull is within `c_dir` of the largest,
+   the corridor is the run of sections around the peak with at least `c_corr` of it, leaving
+   `a_min` of the plate's area on each side. One Dijkstra search finds the cheapest chain of
+   cells across the corridor, where an intact cell costs `N_eff` times its length and a broken
+   cell costs nothing. The plate's line is the candidate with the largest section load
+   `Λ = P / S`: the pull across the line over the strength of its intact cells. No line is
+   stored between steps.
+4. **Strain.** When `Λ` exceeds `lam_grow`, line cells strain at
+   `eps_dot0 × (Λ / lam_grow − 1) × exp(−d / l_tip_m)` per year, where `d` is the distance along
+   the line to the nearest cell already strained past `eps_cand`. The ratio `Λ / lam_grow` is
+   capped at `r_max`. Cells within half the band width of a line cell strain with it.
+   `rift_lines.advance_rift` integrates this in sub-steps of at most `d_eps_max` strain,
+   recomputing `Λ` and the softening each time. Warm strain decays with e-folding time
+   `tau_heal_yr`.
+5. **Thinning.** A strained cell's crust and mantle lithosphere thin by `exp(−Δε)`, down to
+   `RIFT_CRITICAL_THICKNESS_M` and `MIN_MANTLE_LITHOSPHERE_THICKNESS_M`.
+   `rift_strength.thin_with_flank_transfer` moves the removed volume, with continental
+   material, mobile cover and the buoyant-crust tracers, to unbroken cells of the same plate
+   and the same crust type outside the band. The search for recipients starts at `flank_rows`
+   hops and widens past cells of the other type, so continental crust is never priced as ocean
+   floor. A donor with no recipient of its type on the plate is held and does not strain. A
+   recipient takes only what fits under `MAX_CRUSTAL_THICKNESS_M` and
+   `MAX_MANTLE_LITHOSPHERE_THICKNESS_M`. Its donors keep the rest, the same share of each layer,
+   so they thin less than their strain asks. The total is in the `cap_held_m3` counter. A donor
+   whose recipients are all at a cap gives up nothing, and like a held cell it does not strain
+   that step.
+   Craton crust thins in place and its loss is booked to `rifted_stretch_m3`.
+   The cell subsides isostatically. A cell whose crust reaches the floor, or whose strain reaches
+   `eps_break`, is marked broken.
+
+`merge_split.maybe_split_plate` keeps its size and cooldown gates and then calls
+`rift_damage.breakthrough`. The plate splits when at least `f_break` of the line's length is
+broken and the pull across the line is at least the strength of its intact cells. Both are read at
+the end of the step, with plume load and weakening on wherever plume heat lasts past it.
+`rift_lines.split_masks` removes the line and takes the two largest pieces as the daughters. It
+refuses the split if a stray piece is larger than `a_stray` of the plate or a daughter is smaller
+than `a_min`. Both margins are marked as belt.
+
+**State.** Three surface fields hold the damage: `rift_strain` (the extensional strain applied
+to the column), `rift_warm_strain` (the part that still heals, never above `rift_strain`) and
+`rift_broken`. A cell that erupts loses its damage (`rift_damage.reset_erupted`). A new margin
+cell opened by spreading inherits its donors' strain times its stretched share
+(`rift_damage.inherit_margin_damage`). `World.rift_runtime` holds the last pass's per-plate
+records, the split events and counters; it is rebuilt each pass and not saved.
+`rift_damage.damage_pass` computes every plate from the world as it was at the step's start,
+then writes them all. The result doesn't depend on plate order, and an error on any plate
+leaves every plate unwritten.
+
+**Parameters.** `rift_strength.RiftLineParams` holds the starting values, and
+`World.rift_line_params` overrides them by name. `merge_split.check_split_settings` checks
+`split_method` and these overrides at the start of every step, before anything moves. Each of
+these raises `ValueError` and leaves the world unchanged:
+- an unknown name;
+- a value of the wrong kind;
+- a fraction for a whole-number knob (it is not truncated);
+- zero for a knob that divides or sets a scale (`lam_grow`, `eps_soft`, `tau_heal_yr`,
+  `l_tip_m` and the others listed in `rift_strength._POSITIVE`);
+- a share or softening above 1 (`s_max` must be below 1).
+
+RFC 0018 searches six of them:
+
+| Name | Symbol | Start | Unit | Meaning |
+|---|---|---:|---|---|
+| `eps_dot0` | `ε̇_0` | 8e-8 | 1/yr | Strain rate of a line at twice its growth threshold |
+| `s_warm` | `s_warm` | 0.40 | none | Softening of recently strained rock, which heals |
+| `k_cap` | `k_cap` | 1.0 | none | Scale on every column's capacity; lower splits more |
+| `n_plume` | `N_plume` | 0.5e12 | N/m | Isotropic tension added over plume heat |
+| `lam_grow` | `Λ_grow` | 0.3 | none | Pull over strength above which a line strains |
+| `l_tip_m` | `ℓ_tip` | 250e3 | m | Distance over which strain rate falls off ahead of a rift's tips |
+
+Four more change the strength map (#888):
+
+| Name | Start | Meaning |
+|---|---:|---|
+| `oceanic_age_strength` | on | Oceanic `N_cap` uses a cooling plate's thickness, `min(13 km × sqrt(age / Myr), 95 km)` less the crust, instead of the model's mantle lithosphere, which relaxes to 40 km at any age. The plate's own thickness and isostasy do not change |
+| `craton_root_m` | 0 | Extra mantle lithosphere under cratons in `N_cap`, in metres, scaled by craton strength |
+| `mark_power` | 1 | Power applied to the weakness multipliers (2.8 takes 0.65 to 0.30) |
+| `route_mark_power` | 1 | The same power applied to the line's path cost only |
+
+The remaining fields of `RiftLineParams` are fixed by RFC 0018 or are numerical limits.
+
+**Limits.** The method is not tuned: RFC 0018's D1 search met 6 of its 10 realism targets on the
+20 development worlds (`analysis/issue888/README.md`), and tuning is the subject of RFC 0021. The
+capacity table is built by `bin/debug/build_rift_capacity_table.py`, which can also verify it
+against the yield envelope.
+
 ## Gap filling
 
 The model checks that plate cells cover the whole planet. Small uncovered patches can be

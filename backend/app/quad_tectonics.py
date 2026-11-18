@@ -56,6 +56,7 @@ from . import (
     orogeny,
     phase_budget,
     rheology,
+    rift_damage,
     shortening,
     terrain_noise,
     terranes,
@@ -1988,7 +1989,15 @@ def grow_frontier(
 
         rifted = ~arc[inserted]
         if np.any(rifted):
+            # Crust stretched into a new margin cell carries its donors' rift strain (RFC 0018); read it before
+            # `_open_rift` thins them.
+            follows_rift_lines = world is not None and world.split_method == "rift_lines"
+            donor_damage = (
+                rift_damage.margin_donor_damage(plate, new_index, new_index[rifted], K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION)
+                if follows_rift_lines else None
+            )
             _open_rift(plate, world, _ADVANCE_RNG_INDEX + 2 * layer, new_index, new_index[rifted], stretch_share[inserted][rifted], years)
+            rift_damage.inherit_margin_damage(plate, new_index[rifted], stretch_share[inserted][rifted], donor_damage)
     return max_cells - budget
 
 

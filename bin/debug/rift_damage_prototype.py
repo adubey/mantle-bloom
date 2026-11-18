@@ -21,6 +21,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from app import lithosphere, thin_shell
+from app.rift_strength import normal_component
 
 RADIUS_M = lithosphere.PLANET_RADIUS_M
 
@@ -98,12 +99,6 @@ def principal(tensor: np.ndarray):
     xx, yy, xy = tensor[:, 0], tensor[:, 1], tensor[:, 2]
     mean, radius = 0.5 * (xx + yy), np.hypot(0.5 * (xx - yy), xy)
     return mean + radius, mean - radius, 0.5 * np.arctan2(2.0 * xy, xx - yy)
-
-
-def normal_component(tensor: np.ndarray, normal_ab: np.ndarray) -> np.ndarray:
-    """n̂ᵀ𝐍n̂ for in-plane unit normals given as (a, b) in the tangent basis."""
-    a, b = normal_ab[:, 0], normal_ab[:, 1]
-    return tensor[:, 0] * a * a + tensor[:, 1] * b * b + 2.0 * tensor[:, 2] * a * b
 
 
 def ligament_splits(tensor, normal_ab, ds, intact, n_eff) -> bool:
