@@ -1,0 +1,118 @@
+{
+ "seeds": [
+  106533960,
+  1097624328,
+  1397817354,
+  1629738962,
+  591453549
+ ],
+ "production_rate_per_world_100myr": 7.7,
+ "ranked": [
+  {
+   "arm": "route-marks",
+   "targets_passed": 6,
+   "violation_total": 1.121397021058508,
+   "splits": 31,
+   "splits_per_world_100myr": 3.1,
+   "continent_majority_splits": 10,
+   "splits_mostly_weak": 0.7096774193548387,
+   "weak_share_lines": 0.6433949864495776,
+   "weak_share_random": 0.45356723974687607,
+   "completed_median_myr": 52.0,
+   "failed_share": 0.9341085271317829,
+   "transition_ratio": 1.040767156898975,
+   "localization_violations": 0,
+   "onset_width_km": 128.64165588724043,
+   "ledger_gap": 4.827311245447938e-16,
+   "errors": [],
+   "met": [
+    "onset_width_km",
+    "width_growth",
+    "inherited_weakness",
+    "localization",
+    "no_microplates",
+    "line_shape"
+   ],
+   "not_evaluable": []
+  },
+  {
+   "arm": "deep-marks",
+   "targets_passed": 6,
+   "violation_total": 1.9763440976741298,
+   "splits": 78,
+   "splits_per_world_100myr": 7.8,
+   "continent_majority_splits": 25,
+   "splits_mostly_weak": 0.7948717948717948,
+   "weak_share_lines": 0.679241837753776,
+   "weak_share_random": 0.4573023506157688,
+   "completed_median_myr": 63.5,
+   "failed_share": 0.8833819241982507,
+   "transition_ratio": 1.500377327968864,
+   "localization_violations": 9,
+   "onset_width_km": 133.106231051508,
+   "ledger_gap": 5.575691624743366e-16,
+   "errors": [],
+   "met": [
+    "onset_width_km",
+    "width_growth",
+    "inherited_weakness",
+    "no_microplates",
+    "line_shape",
+    "splits_happen"
+   ],
+   "not_evaluable": []
+  },
+  {
+   "arm": "base",
+   "targets_passed": 5,
+   "violation_total": 1.8181952722833592,
+   "splits": 45,
+   "splits_per_world_100myr": 4.5,
+   "continent_majority_splits": 16,
+   "splits_mostly_weak": 0.5333333333333333,
+   "weak_share_lines": 0.5638415905678373,
+   "weak_share_random": 0.45671252550455627,
+   "completed_median_myr": 63.0,
+   "failed_share": 0.9250814332247557,
+   "transition_ratio": 2.7458213492737,
+   "localization_violations": 2,
+   "onset_width_km": 125.24113217541395,
+   "ledger_gap": 4.4346667903962406e-16,
+   "errors": [],
+   "met": [
+    "onset_width_km",
+    "width_growth",
+    "no_microplates",
+    "line_shape",
+    "splits_happen"
+   ],
+   "not_evaluable": []
+  },
+  {
+   "arm": "craton-root",
+   "targets_passed": 4,
+   "violation_total": 2.4904578058115265,
+   "splits": 35,
+   "splits_per_world_100myr": 3.5000000000000004,
+   "continent_majority_splits": 11,
+   "splits_mostly_weak": 0.4857142857142857,
+   "weak_share_lines": 0.5545126302397808,
+   "weak_share_random": 0.4265600523582462,
+   "completed_median_myr": 70.0,
+   "failed_share": 0.9014084507042254,
+   "transition_ratio": 1.6226818230995335,
+   "localization_violations": 1,
+   "onset_width_km": 129.39694995126507,
+   "ledger_gap": 8.06393525579318e-16,
+   "errors": [],
+   "met": [
+    "onset_width_km",
+    "width_growth",
+    "no_microplates",
+    "line_shape"
+   ],
+   "not_evaluable": []
+  }
+ ],
+ "excluded": []
+}

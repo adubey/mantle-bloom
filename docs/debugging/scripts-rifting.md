@@ -164,3 +164,26 @@ backend/.venv/bin/python bin/debug/compare_rift_load_maps.py --g0-script <measur
     --snapshots <rfc0018-g0-snapshots> --seeds <seed> ... --saves <a.mbworld> ... \
     --out analysis/issue876/load-maps.json --rows <private-dir>/load-map-rows.jsonl
 ```
+
+### Scoring the rift-line method on D1's targets (issue 888)
+
+These scripts score the production rift-line split method (`World.split_method = "rift_lines"`,
+`app/rift_damage.py`) on the ten realism targets RFC 0018's D1 predeclared, for tuning under RFC 0021.
+
+- `run_rift_lines_d1.py` generates one development world, steps it plates-only at 1 Myr, and records every split.
+  `--params` becomes `World.rift_line_params`, `--world-knobs` sets other world attributes (the contact brake, for
+  example), and `--split-method great_circle` gives the production splitter's rate on the same world.
+- `rift_line_recorder.py` follows each strained patch (cells with `rift_strain >= eps_cand`) from step to step as a
+  rift candidate, and scores the pooled candidates and split events. The scoring rules are in its docstring.
+- `run_rift_lines_arms.py` runs every (arm, seed) pair of an arms file, a few at a time, and resumes where it
+  stopped. Follow the compute-budget skill first and count the whole queue as one run.
+- `score_rift_lines.py` pools each arm's worlds, scores it against the great-circle arm's rate, and ranks the arms.
+
+A held-out or reserve seed of the G2 preregistration is refused. Findings: [issue 888](../../analysis/issue888/rift-lines-baseline/README.md).
+
+```bash
+backend/.venv/bin/python bin/debug/run_rift_lines_arms.py --arms analysis/issue888/rift-lines-baseline/arms.json \
+    --out ~/mantle-bloom-captures/issue888/rift-lines-baseline --jobs 3
+backend/.venv/bin/python bin/debug/score_rift_lines.py --runs ~/mantle-bloom-captures/issue888/rift-lines-baseline \
+    --out analysis/issue888/rift-lines-baseline/scores.json
+```
