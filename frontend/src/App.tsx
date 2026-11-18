@@ -42,6 +42,7 @@ import { CRATON_LEGEND_LABEL, faultKindForLegendLabel, highlightTargetFor } from
 import { centerOfRotation, IDENTITY_ROTATION, rotationForCenter } from "./rotation";
 import type { Mat3 } from "./rotation";
 import { getCookie, setCookie } from "./cookies";
+import { saveRecordedVideo } from "./download";
 
 // The map is displayed at DISPLAY_WIDTH x DISPLAY_HEIGHT (CSS pixels, unchanged from
 // before), but the image requested from the server is RENDER_SCALE times bigger -- a
@@ -698,6 +699,8 @@ export default function App() {
   // cleanly and still returns the video (see handleStopAnimation below).
   const [animation, setAnimation] = useState<{ frame: number; total: number; unbounded: boolean } | null>(null);
   const [animationResult, setAnimationResult] = useState<AnimateResponse | null>(null);
+  // Why the save dialog's last Save failed; the dialog stays open so the video isn't lost (#961).
+  const [animationSaveError, setAnimationSaveError] = useState<string | null>(null);
   // A recording that failed mid-run (#638): the dialog replaces the old bare error,
   // offering recovery from the server's per-frame checkpoints. `recovery` is the
   // animate/recovery payload fetched when the failure landed (null when the run never
@@ -1044,6 +1047,7 @@ export default function App() {
       setShowAnimationModal(false);
       setError(null);
       setAnimationResult(null);
+      setAnimationSaveError(null);
       setAnimation({ frame: 0, total: numFrames, unbounded });
       animationFrameRef.current = 0;
       setOverlayCollapsed(false);
@@ -1144,23 +1148,25 @@ export default function App() {
   }, []);
 
   // The save-or-discard dialog's "Save" button (see SaveAnimationModal.tsx) -- downloads the
-  // finished MP4, then closes the dialog same as Discard would.
-  const handleSaveAnimation = useCallback(async () => {
+  // finished MP4, then closes the dialog same as Discard would. A failed save keeps the dialog
+  // open with the reason, so the video can still be saved rather than silently lost (#961).
+  const handleSaveAnimation = useCallback(() => {
     if (!animationResult) return;
-    const { mime, videoBase64, elapsed_years, seed: animSeed } = animationResult;
-    const blob = await (await fetch(`data:${mime};base64,${videoBase64}`)).blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `mantle-bloom-seed${animSeed}-animation-${Math.round(elapsed_years)}y.mp4`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      saveRecordedVideo(animationResult);
+    } catch (e) {
+      console.error("[mantle-bloom] Saving the recording failed", e);
+      setAnimationSaveError(String(e));
+      return;
+    }
+    setAnimationSaveError(null);
     setAnimationResult(null);
   }, [animationResult]);
 
   // The save-or-discard dialog's "Discard" button -- throws away the finished video. Doesn't
   // touch the world itself, which already permanently advanced when the recording ran.
   const handleDiscardAnimation = useCallback(() => {
+    setAnimationSaveError(null);
     setAnimationResult(null);
   }, []);
 
@@ -2962,6 +2968,7 @@ export default function App() {
       {animationResult && (
         <SaveAnimationModal
           result={animationResult}
+          saveError={animationSaveError}
           onSave={handleSaveAnimation}
           onDiscard={handleDiscardAnimation}
         />

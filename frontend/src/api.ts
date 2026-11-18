@@ -1099,7 +1099,7 @@ export async function importWorld(file: Blob, opts?: { name?: string; allowDupli
 }
 
 export interface AnimateResponse extends WorldSummary {
-  // The rendered animation, base64-encoded -- decode via `data:${mime};base64,${videoBase64}`.
+  // The rendered animation, base64-encoded -- download.ts's saveRecordedVideo decodes it.
   videoBase64: string;
   // The video's MIME type (currently always "video/mp4" -- H.264, see backend
   // app/render_image.py's stream_animation_mp4).
