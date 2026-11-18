@@ -26,6 +26,10 @@ geometry) and writes, per plate:
 - A plate with zero rotation has no axis: it enters the speed and area pools but not the torque shares.
 - over its subducting nodes, the work slab pull does and the work sunk-slab drag takes, split by trench-normal and
   trench-parallel motion, how much of the pull cancels across the plate, and how much trench is dragged unpulled.
+- each plate's area-weighted speed in the no-net-rotation frame, and the sample's net rotation (#958).
+- RFC 0021's G0 measures (#958, `_g0_terms`): the boundary length that is slab-attached under a test that does not
+  read the gate (T2), the area-weighted basal traction in Pa (T4), the ridge push per metre of front at the nodes
+  that push (T5), and the oldest oceanic floor on the plate.
 
 Writes ``<out>/<seed>.json`` (existing files are kept, so a run resumes).
 """
@@ -102,6 +106,85 @@ def _slab_terms(plate, inputs, subducting: np.ndarray, spacing: float, omega: np
     }
 
 
+def _oceanic_age_myr(plate, world) -> np.ndarray:
+    """Per node, the age of oceanic floor in Myr from `node_created_years`; NaN where undated (the field's sentinel)."""
+    from app.surface_fields import SURFACE_FIELDS
+
+    created = plate.collect("node_created_years")
+    undated = created == SURFACE_FIELDS["node_created_years"].sentinel
+    return np.where(undated, np.nan, (world.elapsed_years - created) / 1e6)
+
+
+def geometric_slab_mask(plate, inputs, reach: float, ages_by_plate: dict[int, np.ndarray], own_age: np.ndarray) -> np.ndarray:
+    """RFC 0021 B.4b's subduction test, read for T2 without the 1 cm/yr gate (#958): down-going crust in the boundary
+    band at a contact that isn't diverging (closing >= -1 cm/yr, `jam_mask`'s contact test), and, where both sides
+    are oceanic, only the older side: denser floor goes under. Continental fronts are decided by `down_going_crust`
+    (only oceanic or slab-attached continental crust goes down), so the age tie-break is only for ocean against
+    ocean. An undated side counts as older, so an undated contact keeps both sides, as the gate does today."""
+    from app import torque
+
+    contact = torque._jam_contact(plate, inputs, reach) & torque.down_going_crust(plate, inputs, reach)
+    if not contact.any():
+        return contact
+    neighbour_age = np.full(len(own_age), np.nan)
+    for plate_id, ages in ages_by_plate.items():
+        at = contact & (inputs.neighbor_plate_id == plate_id) & (inputs.neighbor_node_index >= 0)
+        neighbour_age[at] = ages[inputs.neighbor_node_index[at]]
+    younger = inputs.neighbor_is_oceanic & (own_age < neighbour_age)  # NaN compares False: undated stays in
+    return contact & ~younger
+
+
+def _consumed_area_km2(plate, world) -> float:
+    """Oceanic floor this plate lost under a neighbour in the last `EVIDENCE_LOOKBACK_YEARS` (10 Myr), from
+    `collision_polarity`'s consumption evidence: one bin per place, so this is the area of distinct bins, an upper
+    bound on the consumed area at the bin's resolution. A plate with no slab has none; T2's candidate definitions
+    read it as the plate having a slab of its own, built by past convergence rather than its current speed (#958)."""
+    from app import collision_polarity as polarity, lithosphere
+
+    store = (getattr(world, "collision_evidence", None) or {}).get(plate.plate_id)
+    if store is None or not len(store):
+        return 0.0
+    recent = (store.source == polarity.SOURCE_CONSUMPTION) & (store.role == polarity.ROLE_LOWER)
+    recent &= store.last_seen >= world.elapsed_years - polarity.EVIDENCE_LOOKBACK_YEARS
+    return float(len(np.unique(store.keys[recent])) * (store.bin_rad * lithosphere.PLANET_RADIUS_M / 1e3) ** 2)
+
+
+def _g0_terms(plate, world, inputs, masks: dict, spacing: float, omega: np.ndarray, areas: np.ndarray) -> dict:
+    """RFC 0021 G0's per-plate measures (#958): T2's slab-attached length, T4's basal traction, T5's ridge push."""
+    from app import lithosphere, mantle, torque
+
+    length = torque.boundary_node_length_m(inputs, spacing)
+    points = inputs.own_points
+    relative = (mantle.flow_at(points, world.mantle_centers) - np.cross(omega, points)) * lithosphere.PLANET_RADIUS_M / torque.SECONDS_PER_YEAR
+    traction = torque.ASTHENOSPHERE_VISCOSITY_PA_S / torque.SHEAR_ZONE_THICKNESS_M * np.linalg.norm(relative, axis=1)
+    divergent = masks["divergent"]
+    push = np.linalg.norm(torque.ridge_push_force_vectors_n(plate, inputs, divergent, spacing), axis=1)[divergent]
+    front = length[divergent]
+    age = masks["oceanic_age_myr"]
+    oceanic = ~masks["continental"] & np.isfinite(age)
+    return {
+        "geometric_slab_km": float(length[masks["geometric_slab"]].sum() / 1e3),
+        "consumed_10myr_km2": _consumed_area_km2(plate, world),
+        "basal_traction_pa": float(np.dot(traction, areas) / areas.sum()),
+        "ridge_push_km": float(front.sum() / 1e3),
+        "ridge_push_n_per_m": float(push.sum() / front.sum()) if front.sum() else None,
+        "oceanic_age_max_myr": float(age[oceanic].max()) if oceanic.any() else None,
+        "has_subducting_node": bool(masks["subducting"].any()),
+    }
+
+
+def _net_rotation(local: dict) -> np.ndarray:
+    """The lithosphere's area-weighted net rotation, `(sum A (I - p pT))^-1 sum A (I - p pT) omega`, in rad/yr: the
+    rotation that no-net-rotation speeds remove, as published plate models' NNR frame does (RFC 0021 T1, #958)."""
+    k_total, moment = np.zeros((3, 3)), np.zeros(3)
+    for item in local.values():
+        points, areas = item["points"], item["areas"]
+        k = areas.sum() * np.eye(3) - np.einsum("n,ni,nj->ij", areas, points, points)
+        k_total += k
+        moment += k @ item["omega"]
+    return np.linalg.solve(k_total, moment) if np.linalg.det(k_total) > 0.0 else np.zeros(3)
+
+
 def sample(world) -> dict:
     from app import lithosphere, mantle, torque
     from app.elevation_lines import line_spacing_rad
@@ -116,6 +199,7 @@ def sample(world) -> dict:
 
     local: dict[int, dict] = {}
     side_k: dict[tuple[int, int], dict[int, np.ndarray]] = {}
+    ages = {plate.plate_id: _oceanic_age_myr(plate, world) for plate in plates}
     for plate in plates:
         neighbours = cache.neighbours(plate, plates, reach)
         inputs = torque.gather_boundary_force_inputs(plate, neighbours, spacing, reach, cache)
@@ -149,10 +233,15 @@ def sample(world) -> dict:
         continental = torque.own_is_continental(plate, inputs)
         omega = omegas[plate.plate_id]
         solved = _crust_speeds(omega, points, areas, continental, radius_cm)
+        g0 = _g0_terms(plate, world, inputs, {
+            "divergent": divergent, "subducting": subducting, "continental": continental, "oceanic_age_myr": ages[plate.plate_id],
+            "geometric_slab": geometric_slab_mask(plate, inputs, reach, ages, ages[plate.plate_id]),
+        }, spacing, omega, areas)
         slab_pull = torque.slab_pull_torque(plate, inputs, subducting, spacing)
         ridge_push = torque.ridge_push_torque(plate, inputs, divergent, spacing)
         flow_speed = np.linalg.norm(mantle.flow_at(points, world.mantle_centers), axis=1) * radius_cm
         local[plate.plate_id] = {
+            "points": points, "areas": areas,
             "omega": omega, "basal_b": basal_b, "basal_k": basal_k, "slab_k": slab_k,
             "slab_pull": slab_pull,
             "slab_pull_ungated": torque.slab_pull_torque(plate, inputs, closing_any, spacing),
@@ -175,6 +264,7 @@ def sample(world) -> dict:
                 "mantle_flow_under_plate_cm_per_yr": float(np.dot(flow_speed, areas) / areas.sum()),
                 "slab": _slab_terms(plate, inputs, subducting, spacing, omega),
                 "continental_area_km2": float(areas[continental].sum() / 1e6),
+                "g0": g0,
                 "boundary_km": {
                     "band_total": float(length[band].sum() / 1e3),
                     "down_going_closing_any_rate": float(length[closing_any].sum() / 1e3),
@@ -196,9 +286,12 @@ def sample(world) -> dict:
         brake[a] -= pair_k @ relative
         brake[b] += pair_k @ relative
 
+    net = _net_rotation(local)
     rows = []
     for plate in plates:
         item = local[plate.plate_id]
+        item["row"]["speed_nnr_cm_per_yr"] = _crust_speeds(item["omega"] - net, item["points"], item["areas"],
+                                                           np.ones(len(item["points"]), dtype=bool), radius_cm)["all"]
         omega = item["omega"]
         rate = float(np.linalg.norm(omega))
         row = item["row"]
@@ -225,6 +318,7 @@ def sample(world) -> dict:
     return {
         "myr": world.elapsed_years / 1e6,
         "plates": rows,
+        "net_rotation_cm_per_yr": float(np.linalg.norm(net) * radius_cm),
         "solver": {k: diagnostics[k] for k in ("solver_converged", "blocked_contacts", "yielded_contacts", "residual_torque_norm_nm", "driving_torque_norm_nm")},
     }
 

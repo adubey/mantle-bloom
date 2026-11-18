@@ -1,6 +1,7 @@
 # RFC 0021: Plates are driven by their slabs: correct and calibrate the plate forces and the rifting knobs together
 
-- **Status:** Draft
+- **Status:** Accepted (owner merged PR #949 and confirmed acceptance on 2026-11-17)
+- **Tracking issue:** [#957](https://github.com/adubey/mantle-bloom/issues/957)
 - **Date:** 2026-11-17
 - **Related:** #942 (diagnosis, [`analysis/issue942/`](../analysis/issue942/README.md)), #888 (RFC 0018 D1,
   where the slow plates were found), #797 (RFC 0018 tracking), #396 (RFC 0008 tracking), #399, #423, #760 (the
@@ -262,7 +263,7 @@ Pooled over development worlds, area-weighted, brake as calibrated:
 
 | # | Target | Value | Source |
 |---|---|---|---|
-| T1 | Mean crust speed | 3–6 cm/yr | Working Earth figure 4–5 cm/yr, checked in G0 |
+| T1 | Mean crust speed, no-net-rotation frame | 3–5 cm/yr | PB2002's 3.76 cm/yr in the same frame [[Bird, 2003]](#ref-bird2003) (G0; was 3–6 cm/yr against a working 4–5) |
 | T2 | Speed ratio, slab-attached to other plates | at least 2.5 | Earth about 4 [[Conrad & Lithgow-Bertelloni, 2004]](#ref-conrad2004); 3–4 [[van Summeren et al., 2012]](#ref-vansummeren2012) |
 | T3 | Slab pull share of the driving torque | at least 50% | [[Conrad & Lithgow-Bertelloni, 2002]](#ref-conrad2002); [[Conrad & Lithgow-Bertelloni, 2004]](#ref-conrad2004) |
 | T4 | Mean basal traction under plates without slabs | at most 1 MPa | [[Bird et al., 2008]](#ref-bird2008) |
@@ -272,9 +273,15 @@ Pooled over development worlds, area-weighted, brake as calibrated:
 | T8 | RFC 0008's collision measures | not worse than `origin/main` (see acceptance) | RFC 0008 |
 | T9 | RFC 0018's realism targets | as many as RFC 0018 defines, scored by its own rules | RFC 0018 |
 
-T2 needs a definition that does not depend on motion, because #942 found the current one circular: a plate is
-"slab-attached" when at least a set share of its boundary length is down-going crust under B.4's test at the
-reference geometry, with the share fixed in G0 before any G2 run.
+T2 needs a definition that does not depend on the plate's current speed, because #942 found the current one
+circular. G0 found the geometric test this paragraph first proposed (B.4b at the generation snapshot) useless: at
+generation every plate has zero rotation, and the boundaries cut through continuously dated ocean floor, so 98% of
+plate area counted as slab-attached at a 20% share (see G0 below). The owner chose instead (2026-11-18): a plate is
+**slab-attached when it has a slab of its own**, that is, when the oceanic floor it lost under its neighbours in the
+last 10 Myr (`collision_polarity`'s consumption evidence) is at least **10%** of its area. The owner fixed the share on
+G0's 20-world baseline run before any G1 probe (2026-11-18): at 10% the slab-attached plates hold 32% of plate area,
+close to the share of Earth's surface on the plates Forsyth and Uyeda found slab-attached, and the baseline's ratio is
+1.5–1.7 at every share from 5% to 50%, so the choice does not decide the verdict. The test is built by past convergence, not the plate's current speed.
 
 ### Diagnosis gates
 
@@ -308,8 +315,8 @@ world took 5–6 minutes and about 0.5 GB on the rift-line method, as on the gre
    - Check T1's Earth figure against a published plate model (area-weighted mean of `|ω × r|` from published
      Euler poles and plate areas), and record the result. If it is outside 4–5 cm/yr, T1's band moves with it,
      with the owner's agreement.
-   - Fix T2's slab-attached definition and threshold on development worlds' generation snapshots, before any
-     probe.
+   - Fix T2's slab-attached definition and threshold before any probe (revised by the owner after the generation
+     census failed: see T2 above).
    - Freeze a held-out set for this RFC by the RFC 0018 scheme (SHA-256 of
      `mantle-bloom/rfc0021/v1/heldout/{index:02d}`, first four bytes big-endian masked with `0x7fffffff`,
      taking indices from 0 upward and skipping any value that repeats an earlier one after the mask or is already
@@ -348,6 +355,51 @@ world took 5–6 minutes and about 0.5 GB on the rift-line method, as on the gre
 4. **G3: held-out acceptance** of the frozen setting, at 1 Myr and at 0.5 Myr on three seeds, plus one held-out
    world for 50 Myr with full stepping (climate and surface processes on) to check that plates-only stepping did
    not mislead.
+
+**G0 result (#958; evidence in [`analysis/issue958/`](../analysis/issue958/README.md)).**
+
+- *Rifting baseline:* #955's `deep-marks` arm of `analysis/issue888/rift-lines-baseline/arms.json`, run on PR #950 at
+  `6bda6906` with `run_rift_lines_arms.py` and `score_rift_lines.py` at `bd7b2c3b`; run labels
+  `issue888/rift-lines-baseline/deep-marks/<seed>` for the five stage 1 worlds. On `main` it is the
+  `rifting-baseline` setting (brake on) and `rifting-baseline-brake-off` setting of `analysis/issue958/settings.json`.
+- *T1:* PB2002's 52 plates [[Bird, 2003]](#ref-bird2003), with their net rotation removed, move at an area-weighted
+  mean of 3.76 cm/yr (RMS 4.39; 6.06 Pacific-fixed), below the working 4–5 cm/yr. The owner moved T1 to 3–5 cm/yr in
+  the no-net-rotation frame (2026-11-18). `bin/debug/earth_plate_speed.py`, `earth-plate-speed.json`.
+- *T2:* on the 20 generation snapshots (282 plates) B.4b's test marks a median 63% of a plate's boundary band
+  slab-attached, 98% of plate area clears a 20% share, and continental-majority plates (median 69%) are not
+  separated. Generation leaves every plate at zero rotation, so "not diverging" passes everywhere, and ocean floor
+  ages across an ocean–ocean contact differ by a median 3.3 Myr, so the older side is a coin toss. After 10 Myr of
+  stepping the test still marks about half of every band, with a rank correlation of −0.25 to +0.28 with speed.
+  The owner replaced the definition (see T2 above). `t2-census.json`.
+- *Held-out set:* frozen in `analysis/issue958/heldout-seeds.json` by `bin/debug/freeze_rfc0021_heldout.py`
+  (20 seeds, none skipped, disjoint from the development set and RFC 0018's preregistration).
+- *Harness:* `bin/debug/calibrate_plate_forces.py` runs one setting per world, recording the torque breakdown with
+  T2's, T4's and T5's measures, no-net-rotation speeds and the solver closure, RFC 0008's contact probe
+  (`probe_craton_contacts.py`, whose tap now passes #760's brake gains) and RFC 0018's recorder, and scores a setting
+  on T1–T5, T7, T8 and T9.
+- *20-world brake-off breakdown* (`rifting-baseline-brake-off`, 200 Myr, 1 Myr steps, sampled every 10 Myr;
+  `g0-baseline-brake-off.json`):
+
+  | Target | Baseline | Band | |
+  |---|---:|---|---|
+  | T1 mean speed, no net rotation | 1.88 cm/yr | 3–5 | fails |
+  | T2 speed ratio, slab-attached (32% of area) to the rest | 1.54 | ≥ 2.5 | fails |
+  | T3 slab pull share of driving torque | 55% | ≥ 50% | passes |
+  | T4 basal traction under plates without slabs | 0.22 MPa | ≤ 1 | passes |
+  | T5 ridge push, oceanic floor ≥ 50 Myr | 4.5×10¹⁰ N/m | 1–4×10¹² | fails, 20–90× low |
+  | T7 fastest to slowest world | 2.0 | ≤ 3 | passes |
+  | T9 RFC 0018 targets met | 5 | | split rate unscored (needs the great-circle rate on these worlds) |
+
+  Resisting torque is sunk-slab drag 51% and basal drag 45%; ridge push is 0.6% of the driving torque. The solver
+  closure is at most 6.5×10⁻¹⁵ and every sample converged. The harness reproduces #942's two brake-off worlds to
+  four decimals. T6 is recorded per step but not yet scored. The baseline fails T1, T2 and T5 and passes T3, T4 and
+  T7: slab pull already leads the drive, but sunk-slab and basal drag cancel it, as #942 found, so G1's corrections
+  are the next step.
+- *0.5 Myr step check* (worlds 106533960, 1097624328, 1397817354; `g0-step0.5-brake-off.json`): T1 +5.1% and T2
+  −4.7% against the same worlds at 1 Myr, inside the 15% and 20% of the step-check criterion. T3, T5 and T7 move
+  under 4%; T4 halves (0.91 to 0.47 MPa) on this small sample. The rift-line splitter is not step-converged: 73
+  splits against 48 (+52%; 38 against 23 on 106533960), 19.2 plates against 17.5. RFC 0018's split rate therefore
+  depends on step length, and G2 and G3 must score it at 1 Myr steps throughout.
 
 Rough cost, from 5–6 min per 200 Myr world plates-only (about 0.5 GB) on either split method (#942, #955):
 G0's 20-world brake-off breakdown 2 h; G1 about 12 runs × 5 worlds, 6 h; G2 stage 1, 24 × 5, 11 h, and the same
@@ -396,7 +448,9 @@ removed.
   and `L_sink` absorb the difference, which is why their values are calibration assumptions, not measurements.
 - **The flow stays prescribed.** Slab suction, the other half of Earth's slab drive, has no counterpart except the
   random flow. A good calibration under B still has a flow pattern unrelated to the trenches.
-- **Earth's mean speed is a working figure.** T1's 4–5 cm/yr is from the issue and is checked in G0.
+- **Earth's mean speed is frame-dependent.** T1's figure is PB2002's in the no-net-rotation frame (G0); in the Pacific-fixed
+  frame the same model gives 6.06 cm/yr. The model's prescribed flow defines a mantle frame, so T1 removes the model's own net
+  rotation before comparing.
 - **Plates-only stepping.** Every gate except G3's one run leaves out climate and surface processes, which change
   relief and crust and so the brake and buoyancy. G3 checks this on one world.
 - **Shared knobs with RFC 0018.** The rifting baseline (#955) was scored with the brake off against today's forces,
@@ -411,13 +465,13 @@ removed.
 
 ## Acceptance criteria
 
-- [ ] **G0** recorded in this RFC: the rifting baseline's run labels and commit; T1's Earth figure checked; T2's
+- [x] **G0** recorded in this RFC: the rifting baseline's run labels and commit; T1's Earth figure checked; T2's
       definition fixed; the held-out set frozen and committed; the 20-world brake-off breakdown reported.
 - [ ] **G1** recorded: each correction's predeclared probe and outcome, and the corrections adopted.
 - [ ] **G2** recorded: stage 1 and 2 scores for the corrected search and the control arm, the frozen setting and
       its trade-off ridge.
 - [ ] On the 20 held-out worlds at 1 Myr steps for 200 Myr, plates-only, with the frozen setting:
-  - [ ] T1: mean crust speed 3–6 cm/yr;
+  - [ ] T1: mean crust speed 3–5 cm/yr in the no-net-rotation frame;
   - [ ] T2: slab-attached plates at least 2.5 times faster than the others;
   - [ ] T3: slab pull at least 50% of the driving torque;
   - [ ] T4: mean basal traction under slabless plates at most 1 MPa;
@@ -459,6 +513,8 @@ removed.
 
 ## References
 
+- <a id="ref-bird2003"></a>Bird, P. (2003). An updated digital model of plate boundaries. *Geochemistry, Geophysics,
+  Geosystems*, 4(3). [doi:10.1029/2001GC000252](https://doi.org/10.1029/2001GC000252)
 - <a id="ref-bird2008"></a>Bird, P., Liu, Z., & Rucker, W. K. (2008). Stresses that drive the plates from below:
   Definitions, computational path, model optimization, and error analysis. *Journal of Geophysical Research:
   Solid Earth*, 113. [doi:10.1029/2007JB005460](https://doi.org/10.1029/2007JB005460)
