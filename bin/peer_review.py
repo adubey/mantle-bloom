@@ -568,9 +568,10 @@ def sync_from_github_payload(
         return req
 
 
-def fetch_github_pr_payload(pr: int) -> dict[str, Any] | None:
+def gh_pr_json(pr: int, fields: str) -> dict[str, Any] | None:
+    """`gh pr view <pr> --json <fields>`, or None when gh fails or prints nothing usable."""
     proc = subprocess.run(
-        ["gh", "pr", "view", str(pr), "--json", "reviews,comments"],
+        ["gh", "pr", "view", str(pr), "--json", fields],
         capture_output=True,
         text=True,
         check=False,
@@ -581,6 +582,10 @@ def fetch_github_pr_payload(pr: int) -> dict[str, Any] | None:
         return json.loads(proc.stdout)
     except json.JSONDecodeError:
         return None
+
+
+def fetch_github_pr_payload(pr: int) -> dict[str, Any] | None:
+    return gh_pr_json(pr, "reviews,comments")
 
 
 def wait_for_reviews(
@@ -636,7 +641,29 @@ def resolve_binary(name: str) -> str:
     return name
 
 
-def build_cli_command(req: ReviewRequest, slot: ReviewSlot, worktree: Path) -> list[str]:
+# What a headless `claude -p` reviewer may run without a prompt. With no one to approve, every other command fails,
+# and the PR #950 reviewer wrote its review but could neither post it nor mark its slot complete. The list covers the
+# brief: read the diff, inspect it in a detached worktree, run targeted tests, post a comment, notify the author.
+# With no prompt, an allowed command runs whatever asked for it, so the list is only what a review needs (PR #951
+# review): reviews are posted as comments, and of this script only `complete` is allowed.
+CLAUDE_REVIEW_ALLOW = (
+    "Read", "Grep", "Glob",
+    "Bash(gh pr view *)", "Bash(gh pr diff *)", "Bash(gh pr checks *)", "Bash(gh issue view *)",
+    "Bash(gh pr comment *)",
+    "Bash(git fetch *)", "Bash(git worktree add *)", "Bash(git worktree remove *)", "Bash(git log *)",
+    "Bash(git show *)", "Bash(git diff *)", "Bash(git grep *)", "Bash(git rev-parse *)",
+    "Bash(python3 bin/peer_review.py complete *)", "Bash(python3 bin/compute_budget.py check *)",
+    "Bash(./bin/setup.sh)", "Bash(./bin/unit_test.sh *)", "Bash(backend/.venv/bin/python -m pytest *)",
+)
+# Denied even if another rule would allow them: a reviewer never approves (`gh pr review` can) or merges.
+CLAUDE_REVIEW_DENY = ("Bash(gh pr review *)", "Bash(gh pr merge *)", "Bash(gh api *)")
+
+
+def build_cli_command(
+    req: ReviewRequest, slot: ReviewSlot, worktree: Path, writable: tuple[Path, ...] = ()
+) -> list[str]:
+    """The headless reviewer's command line. `writable` lists directories outside `worktree` the reviewer must
+    write to: the review state (to mark its slot complete) and the git common dir (to fetch the PR head)."""
     prompt = format_review_brief(req, slot)
     if slot.agent == "codex":
         bin_path = resolve_binary("codex")
@@ -645,6 +672,12 @@ def build_cli_command(req: ReviewRequest, slot: ReviewSlot, worktree: Path) -> l
             cmd.extend(["-m", slot.model])
         if slot.reasoning != "default":
             cmd.extend(["-c", f"model_reasoning_effort={slot.reasoning}"])
+        # `codex exec` defaults to a read-only sandbox with no network and no approvals, so the PR #948 reviewer could
+        # not post or complete its slot. Keep the sandbox, but let it write the review tree and the dirs it must, and
+        # reach GitHub for `gh`.
+        cmd.extend(["-s", "workspace-write", "-c", "sandbox_workspace_write.network_access=true"])
+        for path in writable:
+            cmd.extend(["--add-dir", str(path)])
         cmd.append(prompt)
         return cmd
     if slot.agent == "claude":
@@ -654,6 +687,9 @@ def build_cli_command(req: ReviewRequest, slot: ReviewSlot, worktree: Path) -> l
             cmd.extend(["--model", slot.model])
         if slot.reasoning != "default":
             cmd.extend(["--effort", slot.reasoning])
+        # One JSON argument, not `--allowedTools`, whose variadic values would swallow the prompt after them.
+        permissions = {"allow": list(CLAUDE_REVIEW_ALLOW), "deny": list(CLAUDE_REVIEW_DENY)}
+        cmd.extend(["--settings", json.dumps({"permissions": permissions})])
         cmd.append(prompt)
         return cmd
     if slot.agent == "muse":
@@ -663,6 +699,9 @@ def build_cli_command(req: ReviewRequest, slot: ReviewSlot, worktree: Path) -> l
             cmd.extend(["--model", slot.model])
         if slot.reasoning != "default":
             cmd.extend(["--reasoning-effort", slot.reasoning])
+        # Load the repo's AGENTS.md and skills, which Muse skips in a workspace it hasn't been told to trust. The
+        # sandbox and approval stay on.
+        cmd.append("--trust-workspace")
         cmd.append(prompt)
         return cmd
     if slot.agent == "antigravity":
@@ -679,22 +718,12 @@ def build_cli_command(req: ReviewRequest, slot: ReviewSlot, worktree: Path) -> l
     )
 
 
-def detect_git_metadata() -> tuple[str, str]:
-    branch_proc = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    sha_proc = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    branch = branch_proc.stdout.strip() if branch_proc.returncode == 0 else ""
-    sha = sha_proc.stdout.strip() if sha_proc.returncode == 0 else ""
-    return branch, sha
+def detect_pr_metadata(pr: int) -> tuple[str, str]:
+    """The PR's own head branch and commit, from GitHub. Not the current checkout's: a request made from another
+    worktree gave the PR #948 reviewers PR #951's commit. ("", "") when gh can't say, so the brief shows "(see PR)"
+    rather than a wrong commit."""
+    data = gh_pr_json(pr, "headRefName,headRefOid") or {}
+    return str(data.get("headRefName", "")), str(data.get("headRefOid", ""))
 
 
 def resolve_primary_checkout(state_dir: Path | None = None) -> Path:
@@ -732,6 +761,50 @@ def review_worktree_path(
     return primary.parent / f"{primary.name}-{name}"
 
 
+def reviewer_writable_dirs(state_dir: Path) -> tuple[Path, ...]:
+    """The review state dir and the git common dir, which a sandboxed reviewer writes to outside its own tree."""
+    state = state_dir.resolve()
+    proc = subprocess.run(["git", "rev-parse", "--git-common-dir"], capture_output=True, text=True, check=False)
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return (state,)
+    common = Path(proc.stdout.strip()).resolve()
+    # The state dir normally sits inside the common dir; MANTLE_BLOOM_REVIEWS_DIR can move it elsewhere.
+    return (common,) if common == state or common in state.parents else (common, state)
+
+
+def prepare_review_tree(pr: int, wt_dir: Path, expect_sha: str = "", tries: int = 10, wait_s: float = 2.0) -> bool:
+    """Put `wt_dir` at the PR's current head, creating it if needed. Returns True when it was created.
+
+    GitHub updates `pull/<N>/head` a few seconds after a push. So when the request knows the head (`expect_sha`,
+    from the PR), the fetch is retried until it arrives. Otherwise a request made right after a push could review
+    the previous commit, as this function's first live run did.
+
+    An existing tree from an earlier round is moved to the new head. It used to be handed over as it was, which
+    would have had a second #950 reviewer review the code from before that round's fixes. A tree with changes
+    is refused rather than overwritten. The head goes to an explicit ref, not FETCH_HEAD, so concurrent requests
+    don't race."""
+    ref = f"refs/remotes/origin/pr/{pr}"
+    for attempt in range(tries):
+        subprocess.run(["git", "fetch", "origin", f"+pull/{pr}/head:{ref}"], check=True, capture_output=True, text=True)
+        got = subprocess.run(["git", "rev-parse", ref], capture_output=True, text=True, check=False).stdout.strip()
+        if not expect_sha or got.startswith(expect_sha) or expect_sha.startswith(got or "-"):
+            break
+        if attempt == tries - 1:
+            raise RuntimeError(f"GitHub's pull/{pr}/head is still {got[:8]}, not the PR head {expect_sha[:8]}; retry shortly")
+        time.sleep(wait_s)
+    if not wt_dir.exists():
+        subprocess.run(["git", "worktree", "add", "--detach", str(wt_dir), ref], check=True, capture_output=True, text=True)
+        return True
+    status = subprocess.run(["git", "-C", str(wt_dir), "status", "--porcelain"], capture_output=True, text=True, check=False)
+    if status.returncode != 0 or status.stdout.strip():
+        raise RuntimeError(
+            f"review tree {wt_dir} has changes or is not a git worktree; finish or remove it "
+            "(`git worktree remove <path>`) before requesting another review"
+        )
+    subprocess.run(["git", "-C", str(wt_dir), "checkout", "--detach", ref], check=True, capture_output=True, text=True)
+    return False
+
+
 def spawn_cli_reviewer(
     state_dir: Path,
     req: ReviewRequest,
@@ -740,25 +813,12 @@ def spawn_cli_reviewer(
 ) -> subprocess.Popen[bytes]:
     wt_dir = review_worktree_path(state_dir, req.pr, slot.slot, worktree_root)
     # 1. Build command upfront to catch unsupported CLI builders (e.g. muse) before any side-effects
-    cmd = build_cli_command(req, slot, wt_dir)
+    cmd = build_cli_command(req, slot, wt_dir, reviewer_writable_dirs(state_dir))
 
     created_wt = False
     log_handle = None
     try:
-        if not wt_dir.exists():
-            subprocess.run(
-                ["git", "fetch", "origin", f"pull/{req.pr}/head"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            subprocess.run(
-                ["git", "worktree", "add", "--detach", str(wt_dir), "FETCH_HEAD"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            created_wt = True
+        created_wt = prepare_review_tree(req.pr, wt_dir, req.head_sha)
 
         claim_slot(state_dir, req.pr, slot.slot)
         log_path = state_dir / f"pr-{req.pr}-{slot.slot}.log"
@@ -766,6 +826,7 @@ def spawn_cli_reviewer(
         proc = subprocess.Popen(
             cmd,
             cwd=str(wt_dir),
+            stdin=subprocess.DEVNULL,  # a detached reviewer never reads the author's terminal
             stdout=log_handle,
             stderr=subprocess.STDOUT,
             start_new_session=True,
@@ -805,7 +866,7 @@ def format_status_report(req: ReviewRequest) -> str:
 
 
 def cmd_request(args: argparse.Namespace, state_dir: Path) -> int:
-    branch, sha = detect_git_metadata()
+    branch, sha = (args.branch, args.head_sha) if args.branch and args.head_sha else detect_pr_metadata(args.pr)
     spawn = not args.no_spawn
     req = create_review_request(
         state_dir=state_dir,
@@ -954,8 +1015,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reviewer spec AGENT[:MODEL[:REASONING]] (repeatable)",
     )
     p_req.add_argument("--author", default="", help="Author agent identifier")
-    p_req.add_argument("--branch", default="", help="PR branch name")
-    p_req.add_argument("--head-sha", default="", help="PR head commit SHA")
+    p_req.add_argument("--branch", default="", help="PR branch name (default: the PR's, from GitHub)")
+    p_req.add_argument("--head-sha", default="", help="PR head commit SHA (default: the PR's, from GitHub)")
     p_req.add_argument(
         "--no-spawn",
         action="store_true",

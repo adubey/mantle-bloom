@@ -97,6 +97,21 @@ loads part of a save:
 - `UnsupportedSaveVersionError`: an envelope version outside 1–5 (including a non-integer), or
   a quad plate in another surface format version.
 
+On upload routes (`POST /worlds/import` and `POST /worlds/{world_id}/load`), the v5 loader
+checks ZIP central-directory sizes before reading any member (`enforce_size_limits=True`).
+Total declared uncompressed size is capped at 512 MiB, and `manifest.json` at 128 MiB; local
+and debug loaders leave those expansion bounds off. Default saves are deflated to about 30%
+of stored size, while exact saves are stored; representative worlds are documented as
+100–400 MB stored in `persistence.save_world_bytes`, leaving headroom below the cap.
+`World.stats_history` is packed into columnar `.npy` array members
+(`a/world/stats_history.*.npy`) rather than repeated JSON dicts so `manifest.json` stays
+small on mature worlds (#936). Dataclass names in the manifest must resolve under `app.`
+before Python imports them. A saved HEALPix grid must use a positive power-of-two `nside`
+no larger than 512. Imported saved names longer than 100 characters are ignored as advisory
+metadata, matching the explicit import-name limit without letting a tampered label block an
+otherwise valid world load. These bounds keep uploads and manifest metadata from allocating
+beyond the save format's supported range (#925, #936).
+
 `POST /worlds/{world_id}/load` returns `400` with `invalid or incompatible world file: <reason>` for
 either.
 
@@ -109,7 +124,9 @@ plume-free and its first steps schedule heads exactly as a fresh world would. A 
 reads as its `surface_fields.SURFACE_FIELDS` default, the value the retired `ElevationLine`
 backfilled lazily. The eustatic water budget, if missing or in its pre-#257
 units, is re-snapshotted from the save's own hypsometry and sea level, so the shoreline
-doesn't move. Attributes an older build set on `World` that this build no longer declares
+doesn't move; saves already carrying `ocean_water_volume_m3` from before #917 re-solve on
+their first step under the flotation-aware ice debit (shifting sea level by the old
+over-debit, `≤ 0.08 m` on the diagnosis saves). Attributes an older build set on `World` that this build no longer declares
 (found in real saves: `gap_fill_algorithm`, `volcanic_field_plate_ids`, the old
 `ocean_water_column_m`, the line engine's `corner_notch_log`) are inert. All but
 `volcanic_field_plate_ids` are dropped on load, so a loaded world and its next save carry no

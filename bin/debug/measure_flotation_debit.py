@@ -155,10 +155,16 @@ def measure(world, h_s_prev: float) -> dict:
     h_g = s.solve_generalised()
     ocean_area = float(s.areas[s.mask(h_t) & (s.z < h_t)].sum())
     v_den = float(np.dot(s.areas, s.ice_m)) * (RHO_ICE / RHO_WATER - RHO_ICE / RHO_OCEAN)
+    hydro = getattr(world, "hydrology_cache", None)
+    land_ledger = getattr(hydro, "land_water_ledger", None) if hydro is not None else None
+    glacier_ledger = getattr(hydro, "glacier_water_ledger", None) if hydro is not None else None
     return {
         "age_myr": float(world.elapsed_years) / 1e6,
         "seeded_mask": s.seeded,
         "classes": s.classes(h_t),
+        "total_ice_km3": float(np.dot(s.areas, s.ice_m)) / 1e9,
+        "land_water_residual_m3": float(land_ledger.residual_m3) if land_ledger is not None else None,
+        "glacier_water_residual_m3": float(glacier_ledger.residual_m3) if glacier_ledger is not None else None,
         "ocean_area_km2": ocean_area / 1e6,
         "debit_today_km3": s.ice_debit_today / 1e9,
         "debit_d6_km3": debit_s / 1e9,

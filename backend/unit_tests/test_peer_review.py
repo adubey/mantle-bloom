@@ -206,11 +206,26 @@ def test_build_cli_command_passes_model_and_reasoning(tmp_path):
     ]
     assert codex_cmd[6] == "-c"
     assert codex_cmd[7] == "model_reasoning_effort=xhigh"
-    assert "PR #825" in codex_cmd[8]
+    # Sandboxed, but able to write its tree and the given dirs and to reach GitHub; the prompt stays last.
+    assert codex_cmd[8:12] == ["-s", "workspace-write", "-c", "sandbox_workspace_write.network_access=true"]
+    assert "PR #825" in codex_cmd[12] and "--add-dir" not in codex_cmd
+    state, common = tmp_path / "state", tmp_path / "common"
+    with_dirs = pr_mod.build_cli_command(req, codex_slot, tmp_path, (common, state))
+    assert with_dirs[12:16] == ["--add-dir", str(common), "--add-dir", str(state)] and "PR #825" in with_dirs[16]
 
     claude_slot = pr_mod.ReviewSlot("claude", "claude", "opus", "high", "cli")
     claude_cmd = pr_mod.build_cli_command(req, claude_slot, tmp_path)
     assert claude_cmd[1:6] == ["-p", "--model", "opus", "--effort", "high"]
+    # A headless reviewer has no one to approve its commands, so it is pre-allowed what the brief asks of it, in
+    # one JSON argument that leaves the prompt last.
+    assert claude_cmd[6] == "--settings" and "PR #825" in claude_cmd[8]
+    permissions = json.loads(claude_cmd[7])["permissions"]
+    allow, deny = permissions["allow"], permissions["deny"]
+    assert {"Bash(gh pr comment *)", "Bash(python3 bin/peer_review.py complete *)"} <= set(allow)
+    # Nothing that approves, merges or starts more reviews runs unprompted (PR #951 review).
+    assert not any(word in rule for rule in allow for word in ("gh pr review", "merge", "gh api", "approve"))
+    assert not any(rule.startswith("Bash(python3 bin/peer_review.py") and "complete" not in rule for rule in allow)
+    assert {"Bash(gh pr review *)", "Bash(gh pr merge *)", "Bash(gh api *)"} <= set(deny)
 
     muse_slot = pr_mod.ReviewSlot("muse", "muse", "opus", "high", "cli")
     muse_cmd = pr_mod.build_cli_command(req, muse_slot, tmp_path)
@@ -223,6 +238,7 @@ def test_build_cli_command_passes_model_and_reasoning(tmp_path):
         "--reasoning-effort",
     ]
     assert muse_cmd[7] == "high"
+    assert muse_cmd[8] == "--trust-workspace" and "PR #825" in muse_cmd[9]  # loads AGENTS.md and the skills
 
     agy_slot = pr_mod.ReviewSlot("antigravity", "antigravity", "pro", "high", "cli")
     agy_cmd = pr_mod.build_cli_command(req, agy_slot, tmp_path)
@@ -302,7 +318,29 @@ def test_request_guard_prevents_accidental_overwrite(tmp_path):
     assert req.slots[0].agent == "muse"
 
 
-def test_cli_end_to_end_workflow(tmp_path, capsys):
+def test_request_records_the_prs_own_head_not_the_current_checkouts(monkeypatch):
+    calls = []
+
+    class Done:
+        returncode, stdout = 0, '{"headRefName": "claude/start-issue-lighter-reads", "headRefOid": "159e1bc"}'
+
+    def fake_run(cmd, **_kwargs):
+        calls.append(cmd)
+        return Done()
+
+    monkeypatch.setattr(pr_mod.subprocess, "run", fake_run)
+    assert pr_mod.detect_pr_metadata(948) == ("claude/start-issue-lighter-reads", "159e1bc")
+    assert calls == [["gh", "pr", "view", "948", "--json", "headRefName,headRefOid"]]
+
+    class Failed:
+        returncode, stdout = 1, ""
+
+    monkeypatch.setattr(pr_mod.subprocess, "run", lambda *a, **k: Failed())
+    assert pr_mod.detect_pr_metadata(948) == ("", "")  # the brief then says "(see PR)", never a wrong commit
+
+
+def test_cli_end_to_end_workflow(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(pr_mod, "detect_pr_metadata", lambda pr: ("antigravity/issue-829-test", "abc829"))
     base = ["--state-dir", str(tmp_path)]
     assert (
         pr_mod.main(
@@ -370,3 +408,78 @@ def test_cli_end_to_end_workflow(tmp_path, capsys):
     status_json = json.loads(capsys.readouterr().out)
     assert status_json["pr"] == 829
     assert [s["status"] for s in status_json["slots"]] == ["completed", "completed"]
+
+
+def test_reviewer_writable_dirs_cover_the_state_and_the_git_common_dir(tmp_path, monkeypatch):
+    common = (tmp_path / "repo" / ".git").resolve()
+    inside = common / "mantle-bloom-handoff" / "reviews"
+    outside = tmp_path / "elsewhere"
+
+    class Done:
+        returncode, stdout = 0, f"{common}\n"
+
+    monkeypatch.setattr(pr_mod.subprocess, "run", lambda *a, **k: Done())
+    assert pr_mod.reviewer_writable_dirs(inside) == (common,)  # the state dir sits in the common dir
+    assert pr_mod.reviewer_writable_dirs(outside) == (common, outside.resolve())  # MANTLE_BLOOM_REVIEWS_DIR moved it
+
+    class Failed:
+        returncode, stdout = 128, ""
+
+    monkeypatch.setattr(pr_mod.subprocess, "run", lambda *a, **k: Failed())
+    assert pr_mod.reviewer_writable_dirs(outside) == (outside.resolve(),)
+
+
+def _fake_git(monkeypatch, dirty: bool = False, heads=("6bda6906",)):
+    """Stub git: `status` reports a change when `dirty`; `rev-parse` of the fetched ref returns `heads` in turn,
+    the last one repeating, as GitHub's pull ref does while it catches up with a push."""
+    calls, heads = [], list(heads)
+
+    class Result:
+        def __init__(self, stdout=""):
+            self.returncode, self.stdout = 0, stdout
+
+    def run(cmd, **_kwargs):
+        calls.append(cmd)
+        if "status" in cmd:
+            return Result(" M backend/app/world.py\n" if dirty else "")
+        if cmd[:2] == ["git", "rev-parse"]:
+            return Result((heads.pop(0) if len(heads) > 1 else heads[0]) + "\n")
+        return Result()
+
+    monkeypatch.setattr(pr_mod.subprocess, "run", run)
+    return calls
+
+
+def test_a_new_review_tree_is_made_at_the_prs_fetched_head(tmp_path, monkeypatch):
+    calls = _fake_git(monkeypatch)
+    wt = tmp_path / "mantle-bloom-review-950-muse"
+    assert pr_mod.prepare_review_tree(950, wt) is True
+    assert calls == [
+        ["git", "fetch", "origin", "+pull/950/head:refs/remotes/origin/pr/950"],
+        ["git", "rev-parse", "refs/remotes/origin/pr/950"],
+        ["git", "worktree", "add", "--detach", str(wt), "refs/remotes/origin/pr/950"],
+    ]
+
+
+def test_an_existing_review_tree_moves_to_the_new_head_and_a_changed_one_is_refused(tmp_path, monkeypatch):
+    wt = tmp_path / "mantle-bloom-review-950-muse"
+    wt.mkdir()
+    calls = _fake_git(monkeypatch)
+    assert pr_mod.prepare_review_tree(950, wt) is False  # a second round: not handed over at the old commit
+    assert calls[-1] == ["git", "-C", str(wt), "checkout", "--detach", "refs/remotes/origin/pr/950"]
+    calls = _fake_git(monkeypatch, dirty=True)
+    with pytest.raises(RuntimeError, match="has changes"):
+        pr_mod.prepare_review_tree(950, wt)
+    assert not any("checkout" in cmd for cmd in calls)
+
+
+def test_the_fetch_waits_for_githubs_pull_ref_to_reach_the_pr_head(tmp_path, monkeypatch):
+    wt = tmp_path / "mantle-bloom-review-950-codex"
+    wt.mkdir()
+    monkeypatch.setattr(pr_mod.time, "sleep", lambda _s: None)
+    calls = _fake_git(monkeypatch, heads=("1fae9ce7", "1fae9ce7", "6bda6906"))  # lags two fetches behind the push
+    assert pr_mod.prepare_review_tree(950, wt, "6bda69063541ea84803a86fc20e5462e7dc038d1") is False
+    assert sum(cmd[:2] == ["git", "fetch"] for cmd in calls) == 3 and calls[-1][-1] == "refs/remotes/origin/pr/950"
+    _fake_git(monkeypatch, heads=("1fae9ce7",))  # never catches up: refuse rather than review the old commit
+    with pytest.raises(RuntimeError, match="still 1fae9ce7"):
+        pr_mod.prepare_review_tree(950, wt, "6bda6906", tries=3)

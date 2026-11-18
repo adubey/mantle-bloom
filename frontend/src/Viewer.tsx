@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE } from "./api";
+import FullVersionPreview, { BillingActionButton } from "./FullVersionPreview";
 import Legend from "./Legend";
 import MapCanvas from "./MapCanvas";
 import ProgressBar from "./ProgressBar";
@@ -93,12 +94,64 @@ function AllowanceNote({ state, demo = false }: { state: PublicState; demo?: boo
   );
 }
 
-function AccountLink() {
+// Whoever already has the full app (the owner, or a local run) doesn't need it advertised,
+// except on /demo/view, which exists to show them the logged-out page.
+function FullVersionTeaser() {
   const session = useSession();
+  if (session?.admin && !isDemo) return null;
+  const canManage = Boolean(session?.user && (session.user.tier === "paid" || session.user.manage_subscription));
+  return (
+    <FullVersionPreview
+      repoUrl={REPO_URL}
+      apiBase={API_BASE}
+      billingAvailable={Boolean(session?.billing_available && !isDemo)}
+      signedIn={Boolean(session?.user)}
+      manageSubscription={canManage}
+    />
+  );
+}
+
+function AccountLink() {
+  const [billingSuccess] = useState(() => new URLSearchParams(window.location.search).get("billing") === "success");
+  const session = useSession(billingSuccess);
+
+  useEffect(() => {
+    if (!billingSuccess) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("billing")) {
+      url.searchParams.delete("billing");
+      window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+  }, [billingSuccess]);
+
   // Always offered once the session state is known: on a server without login configured
   // the /login page explains the setup (#626), instead of /view silently having no login
   // entry at all.
   if (isDemo || !session || session.admin) return null;
+  // A signed-in user (#929, #945): identity, optional billing action, and sign-out.
+  if (session.user) {
+    const canManage = Boolean(session.user.tier === "paid" || session.user.manage_subscription);
+    const statusLabel =
+      session.user.tier === "paid"
+        ? " (Paid)"
+        : session.user.manage_subscription
+          ? " (Payment issue)"
+          : billingSuccess
+            ? " (Activating…)"
+            : "";
+    return (
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+        <span style={{ opacity: 0.7 }}>
+          {session.user.name ?? "Signed in"}
+          {statusLabel} ·
+        </span>
+        {session.billing_available && <BillingActionButton apiBase={API_BASE} manage={canManage} />}
+        <form method="post" action={`${API_BASE}/logout`} style={{ margin: 0 }}>
+          <button type="submit">Sign out</button>
+        </form>
+      </div>
+    );
+  }
   return <a href={`${API_BASE}/login`}>Sign in</a>;
 }
 
@@ -225,6 +278,7 @@ export default function Viewer() {
         </div>
       )}
       {worldId && <WorldView key={worldId} worldId={worldId} />}
+      <FullVersionTeaser />
     </main>
   );
 }

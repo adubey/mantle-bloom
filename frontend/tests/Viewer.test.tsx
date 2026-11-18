@@ -60,16 +60,19 @@ interface FetchMockOptions {
   worlds: () => PublicWorldListing[];
   states?: Record<string, Partial<PublicState>>;
   onStep?: (worldId: string) => Response | Promise<Response>;
+  admin?: boolean;
+  billingAvailable?: boolean;
+  user?: { name: string | null; provider: string; tier?: "free" | "paid"; manage_subscription?: boolean } | null;
 }
 
-function installFetchMock({ worlds, states = {}, onStep }: FetchMockOptions): { worldsCalls: () => number } {
+function installFetchMock({ worlds, states = {}, onStep, admin = false, billingAvailable = false, user = null }: FetchMockOptions): { worldsCalls: () => number } {
   let publicWorldsCalls = 0;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const rawUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const url = new URL(rawUrl, "http://localhost");
 
     if (url.pathname === "/auth/session") {
-      return jsonResponse({ admin: false, local: false, login: null, login_available: false });
+      return jsonResponse({ admin, local: false, login: admin ? "owner" : null, login_available: false, billing_available: billingAvailable, user });
     }
     if (url.pathname === "/public/worlds") {
       publicWorldsCalls += 1;
@@ -238,5 +241,93 @@ describe("Viewer (/view)", () => {
     fireEvent.click(advanceBtn);
     await waitFor(() => assert.equal(advanceBtn.disabled, true));
     assert.ok(screen.getByText(/You've used all 3 of this browser's advances\./));
+  });
+
+  it("offers guests a closed expando of the full version's other views (#560)", async () => {
+    installFetchMock({ worlds: () => [makeListing({ world_id: "w1", name: "Kepler-186 f" })] });
+
+    render(<Viewer />);
+
+    await screen.findByText("Kepler-186 f");
+    const details = screen.getByText("Features of the full version").closest("details");
+    assert.ok(details);
+    // Closed until asked for: the full version isn't live yet.
+    assert.equal(details.open, false);
+    const images = [...details.querySelectorAll("img")];
+    assert.deepEqual(
+      images.map((img) => img.getAttribute("src")),
+      ["/preview/temperature.webp", "/preview/ocean-currents.webp", "/preview/cross-section.webp"],
+    );
+    // Lazy, so a closed expando downloads nothing.
+    assert.ok(images.every((img) => img.getAttribute("alt") && img.getAttribute("loading") === "lazy"));
+  });
+
+  it("offers the expando even when no world is public yet (#560)", async () => {
+    installFetchMock({ worlds: () => [] });
+
+    render(<Viewer />);
+
+    await screen.findByText("No world has been generated yet. Check back later.");
+    assert.ok(screen.getByText("Features of the full version"));
+  });
+
+  it("shows a signed-in free user their name and a sign-out form instead of Sign in (#929)", async () => {
+    installFetchMock({
+      worlds: () => [makeListing({ world_id: "w1", name: "Kepler-186 f" })],
+      user: { name: "Ada Lovelace", provider: "google" },
+    });
+
+    render(<Viewer />);
+
+    const signOut = await screen.findByRole("button", { name: "Sign out" });
+    assert.ok(screen.getByText(/Ada Lovelace/));
+    assert.equal(screen.queryByRole("link", { name: "Sign in" }), null);
+    const form = signOut.closest("form");
+    assert.equal(form?.getAttribute("method"), "post");
+    assert.ok(form?.getAttribute("action")?.endsWith("/logout"));
+    // Signed in is still the free viewer: the browser's step allowance is unchanged. Awaited,
+    // because the session can resolve before the world's state has loaded.
+    assert.ok(await screen.findByText(/3 of 3 advances left in this browser/));
+  });
+
+  it("offers Sign in to a signed-out visitor (#929)", async () => {
+    installFetchMock({ worlds: () => [makeListing({ world_id: "w1", name: "Kepler-186 f" })] });
+
+    render(<Viewer />);
+
+    const link = await screen.findByRole("link", { name: "Sign in" });
+    assert.ok(link.getAttribute("href")?.endsWith("/login"));
+    assert.equal(screen.queryByRole("button", { name: "Sign out" }), null);
+  });
+
+  it("hides the preview from the admin, who already has the full app (#560)", async () => {
+    installFetchMock({ worlds: () => [makeListing({ world_id: "w1", name: "Kepler-186 f" })], admin: true });
+
+    render(<Viewer />);
+
+    await screen.findByText("Kepler-186 f");
+    await waitFor(() => assert.equal(screen.queryByText("Features of the full version"), null));
+  });
+
+  it("offers Upgrade and Manage subscription buttons when billing is available (#945)", async () => {
+    installFetchMock({
+      worlds: () => [makeListing({ world_id: "w1", name: "Kepler-186 f" })],
+      billingAvailable: true,
+      user: { name: "Ada Lovelace", provider: "google", tier: "free", manage_subscription: false },
+    });
+
+    const { unmount } = render(<Viewer />);
+    const upgradeButtons = await screen.findAllByRole("button", { name: "Upgrade" });
+    assert.ok(upgradeButtons.length >= 1);
+    unmount();
+
+    installFetchMock({
+      worlds: () => [makeListing({ world_id: "w1", name: "Kepler-186 f" })],
+      billingAvailable: true,
+      user: { name: "Ada Lovelace", provider: "google", tier: "paid", manage_subscription: true },
+    });
+    render(<Viewer />);
+    const manageButtons = await screen.findAllByRole("button", { name: "Manage subscription" });
+    assert.ok(manageButtons.length >= 1);
   });
 });

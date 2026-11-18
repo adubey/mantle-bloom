@@ -98,6 +98,7 @@ class UserStore(ABC):
         provider_subscription_id: str | None = None,
         plan: str = "paid",
         current_period_end: str | None = None,
+        updated_at: str | None = None,
     ) -> Subscription:
         """Upsert the cached billing truth for a user. Raises `KeyError` if missing."""
 
@@ -194,6 +195,7 @@ class MemoryUserStore(UserStore):
         provider_subscription_id: str | None = None,
         plan: str = "paid",
         current_period_end: str | None = None,
+        updated_at: str | None = None,
     ) -> Subscription:
         _check_status(status)
         with self._lock:
@@ -202,7 +204,7 @@ class MemoryUserStore(UserStore):
             sub = Subscription(
                 user_id=user_id,
                 status=status,
-                updated_at=_now(),
+                updated_at=updated_at or _now(),
                 provider_customer_id=provider_customer_id,
                 provider_subscription_id=provider_subscription_id,
                 plan=plan,
@@ -394,12 +396,13 @@ class SqliteUserStore(UserStore):
         provider_subscription_id: str | None = None,
         plan: str = "paid",
         current_period_end: str | None = None,
+        updated_at: str | None = None,
     ) -> Subscription:
         _check_status(status)
         sub = Subscription(
             user_id=user_id,
             status=status,
-            updated_at=_now(),
+            updated_at=updated_at or _now(),
             provider_customer_id=provider_customer_id,
             provider_subscription_id=provider_subscription_id,
             plan=plan,
@@ -490,6 +493,23 @@ def open_user_store() -> UserStore:
     if not path:
         return MemoryUserStore()
     return SqliteUserStore(path)
+
+
+_shared: UserStore | None = None
+_shared_lock = threading.Lock()
+
+
+def shared_store() -> UserStore:
+    """This process's one store, opened on first use (#929). Sign-in (`auth.py`) and the
+    simulator (`main.py`) must see the same users, and a memory-backed store exists only
+    in the instance that holds it. On Railway the front process and its worker are two
+    processes with one store each, which agree only through the SQLite file -- set
+    `MANTLE_BLOOM_USER_DB_PATH` there."""
+    global _shared
+    with _shared_lock:
+        if _shared is None:
+            _shared = open_user_store()
+        return _shared
 
 
 def seed_test_users(store: UserStore) -> dict[str, int]:

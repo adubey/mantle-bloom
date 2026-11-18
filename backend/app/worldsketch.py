@@ -49,6 +49,10 @@ SKETCH_GRID_H = 360
 # larger-than-this source are downscaled here too, same as any other oversized upload.
 _MAX_INPUT_DIM = 2200
 
+# Restrict Image.open to web raster formats matching the frontend file picker (#926) so
+# Pillow never dispatches legacy/obscure decoders (TIFF, GIF, BMP, EPS, etc.) by content.
+ALLOWED_SKETCH_FORMATS = ("PNG", "JPEG", "WEBP")
+
 # Dilation iterations (3x3 structuring element) applied to the coastline mask, at working-grid
 # resolution, before flood-filling -- closes small pen gaps so a rough, not-quite-closed
 # coastline doesn't leak ocean into land or vice versa. Each iteration closes the coastline in
@@ -199,7 +203,7 @@ def parse_sketch_image(image_bytes: bytes) -> SketchMasks:
     stretched onto the working `SKETCH_GRID_W` x `SKETCH_GRID_H` grid, matching the assumption
     the in-app drawing tool's own fixed-aspect canvas already guarantees."""
     try:
-        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        img = Image.open(io.BytesIO(image_bytes), formats=ALLOWED_SKETCH_FORMATS).convert("RGB")
     except Exception as exc:
         raise ValueError("could not decode sketch image") from exc
     if max(img.size) > _MAX_INPUT_DIM:

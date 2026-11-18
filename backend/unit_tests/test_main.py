@@ -7,6 +7,7 @@ import math
 import tempfile
 import threading
 import time
+import zipfile
 from types import SimpleNamespace
 import av
 import numpy as np
@@ -1402,6 +1403,31 @@ def test_load_reports_a_save_from_a_newer_build_as_unsupported(client):
     assert "unsupported save format version" in resp.json()["detail"]
 
 
+def test_load_enforces_online_v5_manifest_cap_and_allows_over_16_mib(client, monkeypatch):
+    import io
+    import json
+    import zipfile
+    from app import npz_save
+
+    raw = _saved_bytes(client, seed=5)
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(raw)) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            data = src.read(item.filename)
+            if item.filename == "manifest.json":
+                manifest = json.loads(data)
+                manifest["_pad"] = "x" * (17 * 1024 * 1024)
+                data = json.dumps(manifest).encode()
+            dst.writestr(item, data)
+    padded = out.getvalue()
+    assert client.post("/world/load", content=padded).status_code == 200
+
+    monkeypatch.setattr(npz_save, "MAX_V5_MANIFEST_BYTES", 1024)
+    resp = client.post("/world/load", content=padded)
+    assert resp.status_code == 400
+    assert "manifest exceeds" in resp.json()["detail"]
+
+
 def test_uploads_refuse_a_legacy_pickled_save_without_unpickling_it(client, monkeypatch):
     # #555 F1: unpickling runs code, so no upload route loads a v1-v4 save. The loader must
     # never be reached, and the refusal says how to convert the file offline.
@@ -1427,6 +1453,91 @@ def _saved_bytes(client, seed=5):
     record name, "test", the save's manifest therefore carries)."""
     _post_generate(client, json={"seed": seed, "num_plates": 4})
     return client.get("/world/save").content
+
+
+def _saved_bytes_with_name(client, name):
+    saved = _saved_bytes(client)
+    with zipfile.ZipFile(io.BytesIO(saved)) as source:
+        manifest = json.loads(source.read("manifest.json"))
+        manifest["name"] = name
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as target:
+            target.writestr("manifest.json", json.dumps(manifest))
+            for info in source.infolist():
+                if info.filename != "manifest.json":
+                    target.writestr(info, source.read(info.filename))
+    return out.getvalue()
+
+
+@pytest.mark.parametrize(
+    "request_body",
+    [
+        {"num_plates": -1},
+        {"num_plates": 0},
+        {"num_plates": main.MAX_GENERATE_PLATES + 1},
+        {"num_mantle_centers": -1},
+        {"num_mantle_centers": main.MAX_GENERATE_MANTLE_CENTERS + 1},
+    ],
+)
+def test_generate_rejects_unbounded_plate_and_mantle_counts(client, request_body):
+    response = client.post("/world/generate", json=request_body)
+    assert response.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "request_body",
+    [
+        {"num_plates": 1},
+        {"num_plates": main.MAX_GENERATE_PLATES},
+        {"num_mantle_centers": 0},
+        {"num_mantle_centers": main.MAX_GENERATE_MANTLE_CENTERS},
+    ],
+)
+def test_generate_resource_limits_accept_boundaries(request_body):
+    main._validate_generate_resource_limits(main.GenerateRequest(**request_body))
+
+
+def test_import_rejects_an_overlong_query_name_before_loading(client, monkeypatch):
+    def unexpected_load(_upload):
+        raise AssertionError("invalid query name reached the save loader")
+
+    monkeypatch.setattr(persistence, "load_world_file", unexpected_load)
+    response = client.post("/worlds/import", params={"name": "x" * 101}, content=b"not read")
+    assert response.status_code == 422
+
+
+def test_import_ignores_an_overlong_manifest_name(client):
+    saved = _saved_bytes_with_name(client, "x" * 101)
+    response = client.post("/worlds/import", params={"name": "Valid name"}, content=saved)
+    assert response.status_code == 201
+    assert response.json()["name"] == "Valid name"
+
+
+@pytest.mark.parametrize("route", ["/world/load", "/worlds/import"])
+def test_upload_routes_load_saves_off_the_event_loop(client, monkeypatch, route):
+    saved = _saved_bytes(client)
+    loop_threads = []
+    loader_threads = []
+    real_to_thread = asyncio.to_thread
+    real_loader = persistence.load_world_file
+
+    async def recording_to_thread(func, *args, **kwargs):
+        loop_threads.append(threading.get_ident())
+        return await real_to_thread(func, *args, **kwargs)
+
+    def recording_loader(upload):
+        loader_threads.append(threading.get_ident())
+        return real_loader(upload)
+
+    monkeypatch.setattr(main.asyncio, "to_thread", recording_to_thread)
+    monkeypatch.setattr(persistence, "load_world_file", recording_loader)
+    params = {"allow_duplicate": True} if route == "/worlds/import" else None
+    response = client.post(route, params=params, content=saved)
+
+    assert response.status_code in (200, 201)
+    assert loop_threads
+    assert loader_threads
+    assert all(loader_thread not in loop_threads for loader_thread in loader_threads)
 
 
 def test_import_adds_a_new_record_and_leaves_the_open_world_alone(client):
@@ -2530,6 +2641,19 @@ def test_generate_weights_follow_the_request(client, monkeypatch):
     _post_generate(client, json={"seed": 7, "cratons_first": False})
     assert "Dividing the sphere into plates" not in captured["weights"]
     assert "Seeding rivers and glaciers" not in captured["weights"]
+
+
+def test_generate_rejects_disallowed_sketch_format(client):
+    import base64
+    import io
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (32, 16), "white").save(buf, format="GIF")
+    encoded = base64.b64encode(buf.getvalue()).decode("ascii")
+    resp = _post_generate(client, json={"seed": 7, "sketch": {"image_base64": encoded}})
+    assert resp.status_code == 400
+    assert "invalid sketch image" in resp.json()["detail"]
 
 
 @pytest.fixture

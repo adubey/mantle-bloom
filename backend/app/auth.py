@@ -19,6 +19,12 @@ the `Host` and forwarding-header checks are what keep its traffic out of the byp
 
 Without a complete OAuth configuration, the guard fails closed: remote requests get no admin
 access, and `/login` says login isn't configured.
+
+Google sign-in (#929, the first of #560's providers) makes signed-in free users. It is a
+second kind of session in the same cookie: its payload names a row in the user store
+(`users.py`) under `user`, where the owner's carries the GitHub ID under `uid`. Admin is
+read only from `uid`, so no Google account, the owner's own included, can become admin.
+Google is configured by its own two variables and works with or without the GitHub login.
 """
 
 from __future__ import annotations
@@ -40,6 +46,8 @@ from dataclasses import dataclass
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
+from . import users
+
 SESSION_COOKIE = "mb_session"
 STATE_COOKIE = "mb_oauth_state"
 SESSION_MAX_AGE_S = 14 * 24 * 3600
@@ -51,7 +59,11 @@ MIN_SESSION_SECRET_BYTES = 32
 GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
 GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
 GITHUB_USER_URL = "https://api.github.com/user"
-GITHUB_TIMEOUT_S = 10
+# Google's OpenID Connect endpoints. They are fixed, so the discovery document isn't fetched.
+GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
+PROVIDER_TIMEOUT_S = 10
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 _LOOPBACK_HOSTNAMES = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -70,7 +82,8 @@ LOGIN_ERRORS = {
     "state": "That sign-in attempt expired or was already used. Please try again.",
     "github": "Couldn't reach GitHub to finish signing in. Please try again.",
     "forbidden": "That GitHub account isn't allowed to administer this server.",
-    "unconfigured": "GitHub login isn't configured on this server.",
+    "google": "Couldn't reach Google to finish signing in. Please try again.",
+    "unconfigured": "Sign-in isn't configured on this server.",
 }
 
 
@@ -82,13 +95,25 @@ class AuthConfig:
     session_secret: bytes
     public_url: str
     local_no_login: bool
+    google_client_id: str = ""
+    google_client_secret: str = ""
 
     @property
     def login_configured(self) -> bool:
+        """Whether the owner's GitHub login, the only way to admin, is usable."""
         return bool(
             self.client_id
             and self.client_secret
             and self.owner_id is not None
+            and len(self.session_secret) >= MIN_SESSION_SECRET_BYTES
+        )
+
+    @property
+    def google_configured(self) -> bool:
+        # No owner ID needed: a Google session is never admin (#929).
+        return bool(
+            self.google_client_id
+            and self.google_client_secret
             and len(self.session_secret) >= MIN_SESSION_SECRET_BYTES
         )
 
@@ -107,6 +132,8 @@ def load_config(request: Request | None = None) -> AuthConfig:
             os.environ.get("MANTLE_BLOOM_LOCAL_NO_LOGIN", "1").strip() != "0"
             and (request is None or request.scope.get("mantle_bloom_allow_local", True))
         ),
+        google_client_id=os.environ.get("MANTLE_BLOOM_GOOGLE_CLIENT_ID", "").strip(),
+        google_client_secret=os.environ.get("MANTLE_BLOOM_GOOGLE_CLIENT_SECRET", "").strip(),
     )
 
 
@@ -177,6 +204,23 @@ def session_user(request: Request, config: AuthConfig) -> dict | None:
     if payload is None or payload.get("uid") != config.owner_id:
         return None
     return payload
+
+
+def signed_in_user(request: Request, config: AuthConfig) -> tuple[users.User, str] | None:
+    """The store user behind a provider session and the provider they signed in with, or
+    None (#929). The user is looked up on every call, so a session outlives neither its
+    user nor, on a memory-backed store, a restart. Never admin: see `session_user`."""
+    if not config.google_configured:
+        return None
+    payload = read_token(request.cookies.get(SESSION_COOKIE), config.session_secret, "session")
+    if payload is None:
+        return None
+    user_id = payload.get("user")
+    # bool is an int subclass; a forged-shape payload must not index the store with True.
+    if not isinstance(user_id, int) or isinstance(user_id, bool):
+        return None
+    user = users.shared_store().get_user(user_id)
+    return None if user is None else (user, str(payload.get("via", "")))
 
 
 def is_admin(request: Request, config: AuthConfig) -> bool:
@@ -258,18 +302,18 @@ class AuthMiddleware:
         await self.app(scope, receive, send)
 
 
-class GitHubError(Exception):
+class ProviderError(Exception):
     pass
 
 
 def _http_json(req: urllib.request.Request) -> dict:
     try:
-        with urllib.request.urlopen(req, timeout=GITHUB_TIMEOUT_S) as resp:
+        with urllib.request.urlopen(req, timeout=PROVIDER_TIMEOUT_S) as resp:
             payload = json.load(resp)
     except (urllib.error.URLError, TimeoutError, ValueError) as exc:
-        raise GitHubError(str(exc)) from exc
+        raise ProviderError(str(exc)) from exc
     if not isinstance(payload, dict):
-        raise GitHubError("unexpected GitHub response")
+        raise ProviderError("unexpected sign-in provider response")
     return payload
 
 
@@ -287,11 +331,35 @@ def fetch_github_user(config: AuthConfig, code: str, verifier: str, redirect_uri
     ))
     access_token = token.get("access_token")
     if not isinstance(access_token, str) or not access_token:
-        raise GitHubError(f"token exchange failed: {token.get('error', 'no access_token')}")
+        raise ProviderError(f"token exchange failed: {token.get('error', 'no access_token')}")
     return _http_json(urllib.request.Request(GITHUB_USER_URL, headers={
         "Accept": "application/vnd.github+json",
         "Authorization": f"Bearer {access_token}",
         "User-Agent": "mantle-bloom",
+    }))
+
+
+def fetch_google_user(config: AuthConfig, code: str, verifier: str, redirect_uri: str) -> dict:
+    """Trade an authorization code for the Google account it was issued to. The claims come
+    from the userinfo endpoint over TLS, using the access token this server was just handed
+    by the token endpoint, so there is no ID token whose signature needs checking."""
+    form = urllib.parse.urlencode({
+        "grant_type": "authorization_code",
+        "client_id": config.google_client_id,
+        "client_secret": config.google_client_secret,
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "code_verifier": verifier,
+    }).encode()
+    token = _http_json(urllib.request.Request(
+        GOOGLE_TOKEN_URL, data=form, headers={"Accept": "application/json"}, method="POST",
+    ))
+    access_token = token.get("access_token")
+    if not isinstance(access_token, str) or not access_token:
+        raise ProviderError(f"token exchange failed: {token.get('error', 'no access_token')}")
+    return _http_json(urllib.request.Request(GOOGLE_USERINFO_URL, headers={
+        "Accept": "application/json",
+        "Authorization": f"Bearer {access_token}",
     }))
 
 
@@ -303,16 +371,55 @@ def _delete_cookie(response: Response, name: str, path: str = "/") -> None:
     response.delete_cookie(name, path=path, secure=True, httponly=True, samesite="lax")
 
 
-def _callback_url(request: Request, config: AuthConfig) -> str:
+def _callback_url(request: Request, config: AuthConfig, provider: str = "github") -> str:
     # Behind a TLS-terminating proxy, request.base_url says http://; MANTLE_BLOOM_PUBLIC_URL
-    # pins the URL that's registered with the GitHub OAuth app.
+    # pins the URL that's registered with the provider's OAuth app.
     base = config.public_url or str(request.base_url).rstrip("/")
-    return f"{base}/auth/github/callback"
+    return f"{base}/auth/{provider}/callback"
 
 
-def _login_failure(code: str) -> RedirectResponse:
+def _login_failure(code: str, provider: str = "github") -> RedirectResponse:
     response = RedirectResponse(f"/login?error={code}", status_code=303)
-    _delete_cookie(response, STATE_COOKIE, path="/auth/github")
+    _delete_cookie(response, STATE_COOKIE, path=f"/auth/{provider}")
+    return response
+
+
+def _start_oauth(config: AuthConfig, provider: str, authorize_url: str, params: dict) -> Response:
+    """Redirect to a provider's authorize page with fresh state and a PKCE challenge, both
+    kept in a signed cookie scoped to that provider's routes."""
+    state = secrets.token_urlsafe(24)
+    # PKCE, so a leaked authorization code is useless without this cookie's verifier.
+    verifier = secrets.token_urlsafe(48)
+    challenge = _b64(hashlib.sha256(verifier.encode()).digest())
+    query = urllib.parse.urlencode({
+        **params, "state": state, "code_challenge": challenge, "code_challenge_method": "S256",
+    })
+    response = RedirectResponse(f"{authorize_url}?{query}", status_code=303)
+    # The purpose names the provider, so one provider's state can't complete another's flow.
+    token = sign_token({"state": state, "verifier": verifier}, config.session_secret,
+                       f"oauth-state-{provider}", STATE_MAX_AGE_S)
+    _set_cookie(response, STATE_COOKIE, token, STATE_MAX_AGE_S, path=f"/auth/{provider}")
+    return response
+
+
+def _callback_verifier(
+    request: Request, config: AuthConfig, provider: str, code: str | None, state: str | None, error: str | None
+) -> str | RedirectResponse:
+    """The PKCE verifier for a callback whose state matches this browser's cookie, or the
+    redirect that refuses it."""
+    if error:
+        return _login_failure("denied", provider)
+    expected = read_token(request.cookies.get(STATE_COOKIE), config.session_secret, f"oauth-state-{provider}")
+    if not code or not state or expected is None or not _same(state, str(expected.get("state"))):
+        return _login_failure("state", provider)
+    return str(expected.get("verifier"))
+
+
+def _signed_in(config: AuthConfig, provider: str, payload: dict, destination: str) -> RedirectResponse:
+    response = RedirectResponse(destination, status_code=303)
+    _delete_cookie(response, STATE_COOKIE, path=f"/auth/{provider}")
+    session = sign_token(payload, config.session_secret, "session", SESSION_MAX_AGE_S)
+    _set_cookie(response, SESSION_COOKIE, session, SESSION_MAX_AGE_S)
     return response
 
 
@@ -330,14 +437,41 @@ p {{ opacity: 0.75; }}
 a.button {{ display: inline-block; margin: 16px 0; padding: 10px 18px; border-radius: 6px;
   background: #e6e8ef; color: #0f1117; text-decoration: none; font-weight: 600; }}
 a {{ color: #9db8ff; }}
+/* Google's light sign-in button, per its branding guidelines: white fill, #747775 border,
+   #1f1f1f label, the unmodified four-colour "G" at 18px. */
+a.google {{ display: inline-flex; align-items: center; gap: 10px; margin: 16px 0; height: 40px;
+  padding: 0 12px; border: 1px solid #747775; border-radius: 4px; background: #fff;
+  color: #1f1f1f; text-decoration: none; font: 500 14px/20px Roboto, system-ui, sans-serif; }}
 </style></head>
 <body><main>
 <h1>Mantle-Bloom</h1>
-<p>Sign in to run the full simulator.</p>
+<p>{lead}</p>
 {error}{action}{help}
 <p><a href="/view">Back to the viewer</a></p>
 </main></body></html>
 """
+
+
+_GOOGLE_BUTTON_HTML = """<a class="google" href="/auth/google"><svg aria-hidden="true" width="18"
+height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9
+2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path
+fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78
+7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92
+16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0
+11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98
+6.19C6.51 42.62 14.62 48 24 48z"/></svg>Sign in with Google</a>"""
+
+
+def _login_actions(config: AuthConfig) -> tuple[str, str]:
+    """(lead sentence, sign-in controls) for whichever providers are configured. With Google
+    present it is the branded button and the owner's GitHub login drops to a text link
+    (#560's layout); alone, GitHub keeps the button it has always had."""
+    if not config.google_configured:
+        button = '<a class="button" href="/auth/github">Sign in with GitHub</a>' if config.login_configured else ""
+        return "Sign in to run the full simulator.", button
+    owner = '<p><a href="/auth/github">Administrator sign-in with GitHub</a></p>' if config.login_configured else ""
+    lead = "Sign in for a free account. It shows the same shared world today; your own worlds are planned."
+    return lead, _GOOGLE_BUTTON_HTML + owner
 
 
 router = APIRouter()
@@ -358,13 +492,14 @@ def login_page(request: Request, error: str | None = None, demo: bool = False) -
     config = load_config(request)
     if is_admin(request, config) and not demo:
         return RedirectResponse("/", status_code=303)
-    if not config.login_configured:
+    configured = config.login_configured or config.google_configured
+    if not configured:
         error = "unconfigured"
     message = LOGIN_ERRORS.get(error or "")
     error_html = f'<p class="error" role="alert">{html.escape(message)}</p>' if message else ""
-    action = '<a class="button" href="/auth/github">Sign in with GitHub</a>' if config.login_configured else ""
-    help_html = _UNCONFIGURED_HELP_HTML if not config.login_configured else ""
-    return HTMLResponse(_LOGIN_PAGE.format(error=error_html, action=action, help=help_html))
+    lead, action = _login_actions(config)
+    help_html = "" if configured else _UNCONFIGURED_HELP_HTML
+    return HTMLResponse(_LOGIN_PAGE.format(lead=lead, error=error_html, action=action, help=help_html))
 
 
 @router.get("/auth/github", include_in_schema=False)
@@ -372,23 +507,12 @@ def github_start(request: Request) -> Response:
     config = load_config()
     if not config.login_configured:
         return RedirectResponse("/login?error=unconfigured", status_code=303)
-    state = secrets.token_urlsafe(24)
-    # PKCE, so a leaked authorization code is useless without this cookie's verifier.
-    verifier = secrets.token_urlsafe(48)
-    challenge = _b64(hashlib.sha256(verifier.encode()).digest())
-    query = urllib.parse.urlencode({
+    return _start_oauth(config, "github", GITHUB_AUTHORIZE_URL, {
         "client_id": config.client_id,
         "redirect_uri": _callback_url(request, config),
-        "state": state,
         "scope": "",
         "allow_signup": "false",
-        "code_challenge": challenge,
-        "code_challenge_method": "S256",
     })
-    response = RedirectResponse(f"{GITHUB_AUTHORIZE_URL}?{query}", status_code=303)
-    token = sign_token({"state": state, "verifier": verifier}, config.session_secret, "oauth-state", STATE_MAX_AGE_S)
-    _set_cookie(response, STATE_COOKIE, token, STATE_MAX_AGE_S, path="/auth/github")
-    return response
 
 
 @router.get("/auth/github/callback", include_in_schema=False)
@@ -398,23 +522,72 @@ def github_callback(
     config = load_config()
     if not config.login_configured:
         return _login_failure("unconfigured")
-    if error:
-        return _login_failure("denied")
-    expected = read_token(request.cookies.get(STATE_COOKIE), config.session_secret, "oauth-state")
-    if not code or not state or expected is None or not _same(state, str(expected.get("state"))):
-        return _login_failure("state")
+    verifier = _callback_verifier(request, config, "github", code, state, error)
+    if not isinstance(verifier, str):
+        return verifier
     try:
-        user = fetch_github_user(config, code, str(expected.get("verifier")), _callback_url(request, config))
-    except GitHubError:
+        user = fetch_github_user(config, code or "", verifier, _callback_url(request, config))
+    except ProviderError:
         return _login_failure("github")
     if user.get("id") != config.owner_id:
         return _login_failure("forbidden")
-    response = RedirectResponse("/", status_code=303)
-    _delete_cookie(response, STATE_COOKIE, path="/auth/github")
-    session = sign_token({"uid": config.owner_id, "login": str(user.get("login", ""))},
-                         config.session_secret, "session", SESSION_MAX_AGE_S)
-    _set_cookie(response, SESSION_COOKIE, session, SESSION_MAX_AGE_S)
-    return response
+    return _signed_in(config, "github", {"uid": config.owner_id, "login": str(user.get("login", ""))}, "/")
+
+
+@router.get("/auth/google", include_in_schema=False)
+def google_start(request: Request) -> Response:
+    config = load_config()
+    if not config.google_configured:
+        return RedirectResponse("/login?error=unconfigured", status_code=303)
+    return _start_oauth(config, "google", GOOGLE_AUTHORIZE_URL, {
+        "client_id": config.google_client_id,
+        "redirect_uri": _callback_url(request, config, "google"),
+        "response_type": "code",
+        "scope": "openid email profile",
+    })
+
+
+def _google_store_user(info: dict) -> users.User | None:
+    """Find or create the store user behind a Google account (#929). The account is keyed
+    by Google's `sub`, which never changes, not by its email, which can. The email is kept
+    only when Google says it is verified, for linking other providers to this user later."""
+    subject = info.get("sub")
+    if not isinstance(subject, str) or not subject:
+        return None
+    store = users.shared_store()
+    user = store.user_for_identity("google", subject)
+    if user is not None:
+        return user
+    name, email = info.get("name"), info.get("email")
+    user = store.create_user(name.strip()[:users.MAX_DISPLAY_NAME_LEN] or None if isinstance(name, str) else None)
+    verified = isinstance(email, str) and info.get("email_verified") is True
+    try:
+        store.link_identity("google", subject, user.id, email=email if verified else None)
+    except ValueError:
+        # Two first sign-ins raced and the other linked first: use its user.
+        return store.user_for_identity("google", subject)
+    return user
+
+
+@router.get("/auth/google/callback", include_in_schema=False)
+def google_callback(
+    request: Request, code: str | None = None, state: str | None = None, error: str | None = None
+) -> Response:
+    config = load_config()
+    if not config.google_configured:
+        return _login_failure("unconfigured", "google")
+    verifier = _callback_verifier(request, config, "google", code, state, error)
+    if not isinstance(verifier, str):
+        return verifier
+    try:
+        info = fetch_google_user(config, code or "", verifier, _callback_url(request, config, "google"))
+    except ProviderError:
+        return _login_failure("google", "google")
+    user = _google_store_user(info)
+    if user is None:
+        return _login_failure("google", "google")
+    # `user`, never `uid`: this session can't satisfy session_user, so it is never admin.
+    return _signed_in(config, "google", {"user": user.id, "via": "google"}, "/view")
 
 
 @router.post("/logout", include_in_schema=False)
@@ -427,12 +600,29 @@ def logout() -> Response:
 
 @router.get("/auth/session")
 def auth_session(request: Request) -> dict:
+    # Function-local import breaks the circular dependency with billing (which imports auth).
+    from . import billing
+
     config = load_config(request)
     session = session_user(request, config)
     local = is_local_request(request, config)
+    signed_in = signed_in_user(request, config)
+    user_payload: dict | None = None
+    if signed_in is not None:
+        store = users.shared_store()
+        sub = store.get_subscription(signed_in[0].id)
+        user_payload = {
+            "name": signed_in[0].display_name,
+            "provider": signed_in[1],
+            "tier": store.tier(signed_in[0].id),
+            "manage_subscription": billing.can_manage_subscription(sub),
+        }
     return {
         "admin": local or session is not None,
         "local": local,
         "login": session.get("login") if session else None,
-        "login_available": config.login_configured,
+        "login_available": config.login_configured or config.google_configured,
+        "billing_available": billing.load_config().configured,
+        # A signed-in user (#929, #945): identity and subscription status for UI controls.
+        "user": user_payload,
     }

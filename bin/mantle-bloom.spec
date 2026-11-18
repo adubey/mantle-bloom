@@ -42,7 +42,7 @@ a = Analysis(
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
-    excludes=["tkinter", "pytest", "httpx", "matplotlib", "IPython"],
+    excludes=["tkinter", "pytest", "httpx", "matplotlib", "IPython", "polar"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)

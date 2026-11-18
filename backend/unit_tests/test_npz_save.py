@@ -1,5 +1,6 @@
 import io
 import json
+import struct
 import zipfile
 
 import numpy as np
@@ -341,6 +342,96 @@ def test_loading_a_v5_with_a_bad_healpix_nside_raises(stepped_bytes):
         persistence.load_world_bytes(_remanifested(stepped_bytes, spoil))
 
 
+def test_loading_a_v5_with_an_oversized_healpix_nside_does_not_build_a_grid(monkeypatch):
+    def unexpected_build(_nside):
+        raise AssertionError("unbounded HEALPix grid allocation was reached")
+
+    monkeypatch.setattr(npz_save.healpix_grid, "build", unexpected_build)
+    with pytest.raises(persistence.CorruptSaveError, match="bad HEALPix nside"):
+        npz_save.thaw({"__healpix_grid__": npz_save.MAX_V5_HEALPIX_NSIDE * 2}, None)
+
+
+def test_oversized_v5_manifest_is_rejected_before_reading_it(monkeypatch):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+        zf.writestr("manifest.json", b" " * (npz_save.MAX_V5_MANIFEST_BYTES + 1))
+    data = buf.getvalue()
+
+    read_manifest = False
+    real_read = zipfile.ZipFile.read
+
+    def track_read(zf, name, *args, **kwargs):
+        nonlocal read_manifest
+        read_manifest |= name == "manifest.json"
+        return real_read(zf, name, *args, **kwargs)
+
+    monkeypatch.setattr(zipfile.ZipFile, "read", track_read)
+    with pytest.raises(persistence.CorruptSaveError, match="manifest exceeds"):
+        persistence.load_world_bytes(data, enforce_size_limits=True)
+    assert not read_manifest
+
+
+def test_v5_total_uncompressed_limit_is_checked_before_reading_members(monkeypatch):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+        zf.writestr("manifest.json", b"{}")
+        zf.writestr("a/array.npy", b"x")
+    data = bytearray(buf.getvalue())
+    central = data.find(b"PK\x01\x02")
+    assert central >= 0
+    # The central directory is the declared uncompressed length source. The loader
+    # must reject it without attempting to read the mismatched entry.
+    struct.pack_into("<I", data, central + 24, npz_save.MAX_V5_UNCOMPRESSED_BYTES + 1)
+
+    read_called = False
+    real_read = zipfile.ZipFile.read
+
+    def track_read(zf, name, *args, **kwargs):
+        nonlocal read_called
+        read_called = True
+        return real_read(zf, name, *args, **kwargs)
+
+    monkeypatch.setattr(zipfile.ZipFile, "read", track_read)
+    with pytest.raises(persistence.CorruptSaveError, match="expands beyond"):
+        persistence.load_world_bytes(bytes(data), enforce_size_limits=True)
+    assert not read_called
+
+
+def test_manifest_over_16_mib_loads_even_with_size_limits_enforced(stepped_bytes):
+    # Regression test for #936: mature worlds had >16 MiB manifests and must load
+    # both locally and on upload routes (`enforce_size_limits=True`).
+    padding = "x" * (17 * 1024 * 1024)
+    padded = _remanifested(stepped_bytes, lambda m: m.update({"_pad": padding}))
+    with zipfile.ZipFile(io.BytesIO(padded)) as zf:
+        assert zf.getinfo("manifest.json").file_size > 16 * 1024 * 1024
+    loaded = persistence.load_world_bytes(padded, enforce_size_limits=True)
+    assert loaded.steps_taken > 0
+
+
+def test_local_load_allows_manifest_over_online_limit(stepped_bytes, monkeypatch):
+    monkeypatch.setattr(npz_save, "MAX_V5_MANIFEST_BYTES", 1024)
+    with pytest.raises(persistence.CorruptSaveError, match="manifest exceeds"):
+        persistence.load_world_bytes(stepped_bytes, enforce_size_limits=True)
+    loaded = persistence.load_world_bytes(stepped_bytes)
+    assert loaded.steps_taken > 0
+
+
+def test_stats_history_is_packed_in_arrays_and_round_trips(stepped_world):
+    stepped_world.stats_history = [
+        {"elapsed_years": 0.0, "plate_count": 4, "nullable": None, "nested": {"a": 1.5, "b": 2}},
+        {"elapsed_years": 1e6, "plate_count": 5, "nullable": 3.5, "nested": {"a": 2.5}, "extra": "ok"},
+        {"elapsed_years": 2e6, "plate_count": 5, "nullable": None, "nested": None},
+    ]
+    data = persistence.save_world_bytes(stepped_world)
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        manifest = json.loads(zf.read("manifest.json"))
+        assert "__stats_history__" in manifest["world"]["stats_history"]
+        assert "a/world/stats_history.float64.npy" in zf.namelist()
+        assert "a/world/stats_history.int64.npy" in zf.namelist()
+    loaded = persistence.load_world_bytes(data)
+    assert loaded.stats_history == stepped_world.stats_history
+
+
 def test_loading_a_v5_with_duplicate_plate_ids_raises(stepped_bytes):
     def duplicate(manifest):
         manifest["plates"].append(manifest["plates"][0])
@@ -459,17 +550,32 @@ def test_compact_cfd_mode_load_steps_without_crashing():
 
 
 def test_resolve_rejects_non_dataclass():
-    with pytest.raises(persistence.CorruptSaveError, match="non-dataclass"):
+    with pytest.raises(persistence.CorruptSaveError, match="outside app"):
         npz_save._resolve("builtins.dict")
-    with pytest.raises(persistence.CorruptSaveError, match="non-dataclass"):
+    with pytest.raises(persistence.CorruptSaveError, match="outside app"):
         npz_save._resolve("os.makedirs")
+
+
+def test_resolve_rejects_external_module_before_importing_it(monkeypatch):
+    imported = []
+    monkeypatch.setattr(npz_save.importlib, "import_module", lambda name: imported.append(name))
+
+    with pytest.raises(persistence.CorruptSaveError, match="outside app"):
+        npz_save._resolve("untrusted_payload.Exploit")
+    assert imported == []
+
+
+@pytest.mark.parametrize("dotted", ["app.world.NoSuchClass", "app.no_such_module.SomeClass"])
+def test_resolve_rejects_missing_app_class_as_corrupt(dotted):
+    with pytest.raises(persistence.CorruptSaveError, match="unresolved class"):
+        npz_save._resolve(dotted)
 
 
 def test_loading_a_v5_naming_a_non_dataclass_raises(stepped_bytes):
     def retag(manifest):
         _first_with_key(manifest, "__dc__")["__dc__"] = "builtins.dict"
 
-    with pytest.raises(persistence.CorruptSaveError, match="non-dataclass"):
+    with pytest.raises(persistence.CorruptSaveError, match="outside app"):
         persistence.load_world_bytes(_remanifested(stepped_bytes, retag))
 
 
@@ -524,7 +630,7 @@ def test_loading_a_v5_with_an_unresolvable_class_raises(stepped_bytes):
     def retag(manifest):
         _first_with_key(manifest, "__dc__")["__dc__"] = "no.such.module.Class"
 
-    with pytest.raises(persistence.CorruptSaveError, match="contradicts itself"):
+    with pytest.raises(persistence.CorruptSaveError, match="outside app"):
         persistence.load_world_bytes(_remanifested(stepped_bytes, retag))
 
 

@@ -19,7 +19,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.routing import Route
 
-from . import auth, checkpoint, public_view, security_headers
+from . import auth, billing, body_limit, checkpoint, public_view, security_headers, users
 from .frontend_files import mount_frontend
 from .hosted_worker import HostedWorker, WorkerUnavailable
 
@@ -458,10 +458,17 @@ def _require_admin(request: Request) -> None:
 
 def create_app(dist: str | None = None) -> FastAPI:
     app = FastAPI(title="Mantle-Bloom", lifespan=_lifespan, openapi_url=None)
+    # Sign-in runs in this process (#929): open its user store now, so an unusable
+    # MANTLE_BLOOM_USER_DB_PATH stops startup instead of failing someone's first sign-in.
+    users.shared_store()
     app.add_middleware(auth.AuthMiddleware, allow_local=False)
+    # Bodies are capped here as well as in the worker (#920): a declared oversize is refused
+    # before it reaches the worker, and a chunked one stops streaming to it at the cap.
+    body_limit.install(app)
     # After the auth guard, so it wraps it: a 401 or the /view redirect carries the headers too.
     security_headers.install(app)
     app.include_router(auth.router)
+    app.include_router(billing.router)
     app.add_api_route("/healthz", _health)
     # The schema describes the admin API and waking the worker to build it costs memory, so
     # the schema and its viewers are owner-only (#555 follow-up). Guarded here, not in

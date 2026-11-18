@@ -180,18 +180,36 @@ and there are no proxy headers (`Forwarded`, `Via`, any `X-Forwarded-*`, `X-Real
 `CF-Connecting-IP` and similar). That covers `bin/restart.sh` and the desktop build, so
 neither needs login. The OAuth flow uses PKCE and a signed, short-lived `state` cookie.
 
+Google sign-in makes signed-in free users (#929, the first provider of #560). Its callback,
+`/auth/google/callback`, finds or creates the row in the user store (`users.py`) for the
+Google account, keyed by Google's `sub`, and sets the same `mb_session` cookie with a
+different payload: `{user, via, exp}`, where `user` is the store's user ID. Admin is read
+only from `uid`, which only the GitHub callback writes, so a Google session is never the
+admin: it gets `401` from every `/worlds/*` route and the same guest step allowance as a
+signed-out visitor. `auth.signed_in_user` looks the user up in the store on each call, so
+a session ends when its user is gone. The account's email is stored only when Google
+reports it verified. Nothing links accounts across providers yet. Sign-in and the simulator
+share one store per process (`users.shared_store`); on Railway the front process and its
+worker are separate processes, so they share users only through the SQLite file at
+`MANTLE_BLOOM_USER_DB_PATH`.
+
 Configuration is read from the environment on every request:
 
 | Variable | Meaning |
 |---|---|
 | `MANTLE_BLOOM_GITHUB_CLIENT_ID`, `MANTLE_BLOOM_GITHUB_CLIENT_SECRET` | The GitHub OAuth app. Its callback URL is `<public URL>/auth/github/callback`. |
 | `MANTLE_BLOOM_GITHUB_OWNER_ID` | The one GitHub user ID allowed in (`gh api user -q .id`). |
+| `MANTLE_BLOOM_GOOGLE_CLIENT_ID`, `MANTLE_BLOOM_GOOGLE_CLIENT_SECRET` | Optional. The Google OAuth client for free accounts. Its redirect URI is `<public URL>/auth/google/callback`. |
 | `MANTLE_BLOOM_SESSION_SECRET` | At least 32 bytes, used to sign cookies. Rotating it signs everyone out. |
 | `MANTLE_BLOOM_PUBLIC_URL` | Optional. The public `https://` URL. The OAuth callback is built from it, and its origin is trusted for writes. Needed behind a TLS-terminating or `Host`-rewriting proxy. |
 | `MANTLE_BLOOM_LOCAL_NO_LOGIN` | `0` turns off the local no-login rule. Set it behind a same-host proxy that rewrites `Host` to loopback and adds no forwarding headers. |
+| `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`, `POLAR_PRODUCT_ID`, `POLAR_ENVIRONMENT` | Optional. Polar subscription billing (#945); `POLAR_ENVIRONMENT` is `sandbox` or `production` (default `production`). |
 
-Missing any of the first four leaves login unconfigured, and the guard fails closed: remote
-requests never get admin access, and `/login` says login isn't configured.
+Missing any of the three GitHub variables or the session secret leaves the owner login
+unconfigured, and the guard fails closed: remote requests never get admin access. Google
+sign-in needs only its own two variables and the session secret, so it can be on without
+the owner login and the reverse. `/login` offers whichever are configured and says sign-in
+isn't configured when neither is.
 
 ### Response security headers (`backend/app/security_headers.py`)
 
@@ -213,6 +231,27 @@ script, so their policy is only `frame-ancestors 'none'`. A header the route alr
 kept. When the frontend starts loading from another origin (a CDN, an analytics script, a
 font host), add that origin to `CONTENT_SECURITY_POLICY`, or the browser blocks it.
 
+### Request body cap (`backend/app/body_limit.py`)
+
+`body_limit.install(app)` (called by `main.py` and `hosted.py`) refuses an oversized request
+body with `413` before a route reads it. FastAPI buffers a JSON body whole before validating
+it, so without the cap a logged-out visitor could make the worker hold a body of any size
+(#920). The hosted public process applies the cap too: a declared oversize is refused before
+it reaches the worker, and a chunked one stops streaming to it at the cap. In `main.py` the
+cap sits inside `CORSMiddleware`, so the dev frontend can read the `413`.
+
+| Routes | Cap | Why |
+|---|---|---|
+| `/public/*` | `MAX_PUBLIC_BODY_BYTES` (4 KiB) | The only body is a step's `{"revision": ...}`. |
+| `POST /worlds/import`, `POST /worlds/{world_id}/load` | none here | They stream to disk under `MAX_LOAD_WORLD_BYTES` (512 MB). |
+| Everything else | `MAX_BODY_BYTES` (32 MiB) | Room for a generate request carrying a base64 sketch image. |
+
+A declared `Content-Length` over the cap is refused before any of the body is read. A body
+with no declared length is counted as it streams: the route receives up to the cap, then
+the read fails with `413`. A sketch image over roughly 24 MiB no longer fits a generate
+request once base64-encoded. A new route that
+takes a large body needs its own entry in `body_limit.limit_for`.
+
 <a id="public-viewer"></a>
 ### The public viewer (`backend/app/public_view.py`)
 
@@ -224,6 +263,13 @@ reaches the world only through `/public/worlds/{world_id}/world`, `/public/world
 api-reference.md). Those routes accept no projection, rotation, step size or other setting,
 so creating, saving, loading, animating and reconfiguring a world all stay behind the
 `/worlds/*` guard above.
+
+Below the map, visitors who aren't the admin get a "Features of the full version" expando
+(#560, `FullVersionPreview.tsx`), closed by default while the hosted full version isn't
+live: screenshots of views the public routes don't serve (temperature,
+ocean currents, the lithosphere cross-section). They are static files in
+`frontend/public/preview/`, served by the frontend fallback, so the preview adds no public
+route and costs no render. Replace a screenshot by overwriting its `.webp` there.
 
 Each browser may trigger at most 30 step computations. The count is kept in an HMAC-signed
 `mb_guest` cookie, so it can't be edited down, though clearing the cookie resets it (a usage
@@ -319,7 +365,10 @@ The layout is a registry index plus one subdirectory per world:
 
 The [hosted entry point](../backend/app/hosted.py) reads the index and snapshots without
 importing the simulation. It forwards simulation requests over a private Unix socket to
-one [worker process](../backend/app/hosted_worker.py). The worker defers loading stopped
+one [worker process](../backend/app/hosted_worker.py). The request path is forwarded exactly as
+received; a path the HTTP client would rewrite on the way (one with `.` or `..` segments)
+gets `404` instead, so the worker never routes a path other than the one this process
+matched and authorised (#920). The worker defers loading stopped
 worlds with a valid hosted summary until a request needs the world. It restores running
 worlds on startup. A snapshot is served only when its checkpoint generation matches the
 current world file and the index still marks the world public. The saved revision survives
@@ -666,8 +715,10 @@ hydroclimate/atmosphere_cfd.py      the atmospheric wind solver: a genuine time-
 main.py              FastAPI routes
 world_names.py       default world names in exoplanet style: a star name plus a lowercase
                      discovery letter (#597)
-auth.py              single-owner GitHub login: the request guard, OAuth routes and signed
-                     session cookies (see #access-control above)
+auth.py              the request guard, the owner's GitHub login, Google sign-in for free
+                     accounts (#929) and signed session cookies (see #access-control above)
+billing.py           Polar subscription billing (#945): checkout, customer portal, and
+                     Standard Webhooks sync into UserStore
 users.py             per-user store behind the paid tier (#620): users, linked identities,
                      the subscription cache and world ownership; SQLite at
                      MANTLE_BLOOM_USER_DB_PATH, in-memory when unset, tier() for

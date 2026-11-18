@@ -20,17 +20,43 @@ a world. An unusable volume fails startup or returns `503`. [Hosting](hosting.md
 ## Login routes
 
 - `GET /login`: the sign-in page. It redirects to `/` when the request is already the admin.
-  `?error=denied|state|github|forbidden|unconfigured` shows a fixed message for a failed
-  attempt.
+  `?error=denied|state|github|google|forbidden|unconfigured` shows a fixed message for a
+  failed attempt. It offers Google when that is configured, with the owner's GitHub login
+  as a text link beside it.
 - `GET /auth/github`: starts GitHub OAuth (with PKCE). It sets a short-lived signed `state`
   cookie and redirects to GitHub.
 - `GET /auth/github/callback`: checks `state`, exchanges the code and fetches the GitHub
   user. If the user ID is the configured owner, it sets the session cookie and redirects to
   `/`. Otherwise it redirects to `/login?error=...` without a session.
+- `GET /auth/google`: starts Google sign-in (authorization code with PKCE, scope
+  `openid email profile`), with its own signed `state` cookie. Redirects to
+  `/login?error=unconfigured` when no Google client is configured.
+- `GET /auth/google/callback`: checks `state`, exchanges the code and reads the account
+  from Google's userinfo endpoint. It finds or creates the store user for that account,
+  sets a session cookie for it and redirects to `/view`. This session is never the admin
+  (#929).
 - `POST /logout`: clears the session cookie and redirects (`303`) to `/view`.
 - `GET /auth/session`: `{"admin": bool, "local": bool, "login": str | null,
-  "login_available": bool}`. `local` means the no-login local rule applied. `login` is the
-  GitHub login of a real session.
+  "login_available": bool, "billing_available": bool, "user": {"name": str | null,
+  "provider": str, "tier": "free" | "paid", "manage_subscription": bool} | null}`. `local`
+  means the no-login local rule applied. `login` is the GitHub login of the owner's
+  session. `user` is a signed-in account; it is `null` for the owner and for anyone
+  signed out. `login_available` is true when either sign-in is configured;
+  `billing_available` is true when Polar billing is configured.
+
+## Billing routes
+
+- `POST /billing/checkout`: requires a signed-in `UserStore` session (`401` otherwise).
+  Creates a Polar checkout session with `external_customer_id` set to the store `user_id`
+  and returns `{"url": str}`. Returns `409` if the user already has a `paid`
+  subscription, and `503` when Polar billing is unconfigured.
+- `POST /billing/portal`: requires a signed-in `UserStore` session (`401` otherwise).
+  Creates a Polar customer portal session for `external_customer_id` and returns
+  `{"url": str}`. Returns `503` when Polar billing is unconfigured.
+- `POST /billing/webhook`: verifies Polar's Standard Webhooks signature headers
+  (`webhook-id`, `webhook-timestamp`, `webhook-signature`) against `POLAR_WEBHOOK_SECRET`
+  (`403` on invalid or missing signatures, `503` when unconfigured) and syncs
+  subscription lifecycle events for `POLAR_PRODUCT_ID` into `UserStore.set_subscription(...)`.
 
 ## Public viewer routes
 
@@ -159,6 +185,9 @@ cratons-first ones (`plates.CONTINENTAL_AREA_FRACTION = 0.5` when omitted; the r
 share is bounded to 0.05–0.9), a layout
 selected by `cratons_first` -- see
 [simulation-model/foundations.md#initial-plate-generation](simulation-model/foundations.md#initial-plate-generation-platespy).
+Explicit `num_plates` values must be 1–64, and `num_mantle_centers` must be 0–64; values
+outside those bounds return `400` before generation starts. The UI's manual plate slider is
+8–40.
 `cratons_first` selects random-world terrain generation. By default, continental cratons are
 laid out before plates and relief is generated from that layout
 (`continent_layout.CRATONS_FIRST_DEFAULT = True`). Pass false for the plate-first layout.
@@ -384,6 +413,9 @@ existing record is empty), and `suggested_name` (the first unused `"<name> (1)"`
 `409` past the world cap, like `POST /worlds`. The new record is private.
 
 Same spooling, size cap, v5-only rule, and `400` contract as `POST /worlds/{world_id}/load` below.
+The optional `name` query parameter is 1–100 characters; an overlong saved manifest name is
+also rejected. V5 ZIP and manifest expansion limits are described in
+[save-compatibility.md](save-compatibility.md#2-save-format).
 
 ## `POST /worlds/{world_id}/load`
 
@@ -410,6 +442,9 @@ falls back to a partial load.
 The body streams to a temp file and loads from disk, so a large upload never sits in
 RAM twice (as bytes and as a world). Bodies past 512 MB (`MAX_LOAD_WORLD_BYTES` in
 `backend/app/main.py`) are refused with `413` while still streaming.
+
+Every other route refuses a body past its own cap with `413`: 4 KiB under `/public/*`,
+32 MiB elsewhere (see [architecture](architecture.md#request-body-cap-backendappbody_limitpy)).
 
 `503` while a generation, step or animation is in progress, so a running step can't keep
 changing a world that has already been replaced.

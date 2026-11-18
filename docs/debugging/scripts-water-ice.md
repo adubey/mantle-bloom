@@ -59,6 +59,20 @@ backend/.venv/bin/python bin/debug/measure_river_endings.py world.mbworld --myr 
     --backend ../mantle-bloom-baseline/backend --out /tmp/main.json
 ```
 
+### `river_style_sheet.py`
+
+Renders one saved world under several river styles as a labelled contact sheet (#933): one
+column per style, one row per crop of the map. The map is rendered once without rivers and
+each style draws on a copy. A style is `LABEL=field=value,...` over `render_image.RiverStyle`;
+an empty field list is the current default. A crop is `x0,y0,x1,y1` as fractions of the image.
+The script's docstring gives the settings that reproduce the look before #933.
+
+```bash
+backend/.venv/bin/python bin/debug/river_style_sheet.py world.mbworld sheet.png \
+    --style "A default=" --style "B stronger canyon=canyon_shade=0.25" \
+    --crop 0.36,0.06,0.54,0.24 --view combined --projection eckert4
+```
+
 ### `measure_river_hops.py`
 
 Counts river lines drawn across lakes (#520). At the loaded save and at each checkpoint, it

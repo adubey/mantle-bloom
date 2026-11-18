@@ -70,11 +70,14 @@ and apply them with `railway config apply`. Secrets and environment-specific val
 Railway's variables, not committed to the repository:
 
 - GitHub OAuth client ID and secret
+- Google OAuth client ID and secret, when free accounts are offered (see below)
 - The numeric GitHub user ID allowed into the full app
 - Session signing secret
 - Public service URL
 - User database file (`MANTLE_BLOOM_USER_DB_PATH`, a SQLite file on the volume;
   unset means the in-memory store, the desktop default -- see #620)
+- Polar billing credentials (`POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`,
+  `POLAR_PRODUCT_ID`, and optional `POLAR_ENVIRONMENT`, see below)
 
 ### Hosted hydrology stop-gap
 
@@ -109,6 +112,46 @@ gets. Checklist when the dashboard is unreachable (#626):
 Rotating the session secret signs everyone out; changing the owner ID invalidates
 existing sessions.
 
+### Offering Google sign-in
+
+Google sign-in gives visitors a free account (#929). It grants nothing beyond `/view`
+today; it exists so a subscription and a user's worlds have an account to attach to
+(#560). It is off until both variables are set:
+
+1. In the Google Cloud console, configure the OAuth consent screen (external, with the
+   `openid`, `email` and `profile` scopes) and create an OAuth client of type "Web
+   application" whose authorized redirect URI is
+   `https://<service-domain>/auth/google/callback`.
+2. Set `MANTLE_BLOOM_GOOGLE_CLIENT_ID` and `MANTLE_BLOOM_GOOGLE_CLIENT_SECRET`.
+   `MANTLE_BLOOM_SESSION_SECRET` and `MANTLE_BLOOM_PUBLIC_URL` are shared with the GitHub
+   login.
+3. Set `MANTLE_BLOOM_USER_DB_PATH` to a file on the volume (for example
+   `/data/users.db`). Without it accounts are kept in memory: every restart forgets them
+   and signs their users out, and a returning user gets a new account.
+
+While the consent screen is in Google's "Testing" state, only the test users listed there
+can sign in.
+
+### Polar subscription billing
+
+Polar handles paid subscriptions (#945), updating `UserStore` via signed webhooks so
+signed-in users can upgrade and manage their subscription from `/view`. Billing is off
+(and remote billing routes fail closed with `503`) until all three required variables are
+set:
+
+1. Create a recurring product in Polar (sandbox or production) and a webhook endpoint
+   pointing at `https://<service-domain>/billing/webhook` subscribed to subscription
+   lifecycle events (`subscription.created`, `subscription.active`, `subscription.updated`,
+   `subscription.canceled`, `subscription.past_due`, `subscription.revoked`). Note that
+   Polar's `subscription.canceled` means "will not renew" and still carries `status:
+   active` until period end, when `subscription.revoked` downgrades the user to `free`.
+2. Set `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`, and `POLAR_PRODUCT_ID` in Railway's
+   variables. Set `POLAR_ENVIRONMENT=sandbox` when using Polar's sandbox (defaults to
+   `production` when unset).
+3. Ensure `MANTLE_BLOOM_USER_DB_PATH` is set on the persistent volume so subscription state
+   survives service restarts. Local/desktop loopback mode remains unlocked with no Polar
+   configuration required.
+
 The Railway service mounts its persistent volume at `/data`. `RAILWAY_VOLUME_MOUNT_PATH` is
 provided by Railway, and the app uses it for checkpoints. The service definition requires the
 mount and its health check verifies that the checkpoint directory can be written. See
@@ -139,6 +182,12 @@ These record the deployment findings of the first-pass security review
   Unix socket inside the container.
 - **Browser security headers** are set on every response; see
   [architecture](architecture.md#response-security-headers-backendappsecurity_headerspy).
+- **Request bodies are capped** on every route, so a visitor can't make the worker buffer a
+  large one; see [architecture](architecture.md#request-body-cap-backendappbody_limitpy).
+
+The second pass ([#920](https://github.com/adubey/mantle-bloom/issues/920)) recorded its
+dependency scan, frontend XSS audit and local checks in
+[analysis/issue920](../analysis/issue920/README.md).
 
 ## Hosting boundary
 
