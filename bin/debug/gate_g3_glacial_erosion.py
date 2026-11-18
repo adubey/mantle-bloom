@@ -180,7 +180,7 @@ def _run_replay(ns: argparse.Namespace) -> dict:
     if sys.platform != "darwin":
         rss_bytes *= 1024
     return {
-        "issue": 940,
+        "issue": 973,
         "commit": commit,
         "save": ns.save.name,
         "sha256": hashlib.sha256(raw).hexdigest(),
