@@ -774,6 +774,7 @@ class IceStep:
     ledger: IceLedger
     bodies: list[BodyBalance] = field(default_factory=list)
     frozen_precipitation: FrozenPrecipitation | None = None
+    abrasion_depth_m: np.ndarray | None = None
 
 
 @dataclass

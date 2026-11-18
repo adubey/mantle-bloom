@@ -1,0 +1,33 @@
+{
+  "status": "preregistered",
+  "issue": 973,
+  "law": {
+    "name": "Cook et al. 2020",
+    "coefficient_m_per_yr": 0.0001,
+    "exponent": 0.65,
+    "multiplier": 1.0
+  },
+  "horizon_myr": 10.0,
+  "step_schedules_myr": {
+    "quarter": 0.25,
+    "annual": 1.0
+  },
+  "working_target_step_gap_fraction": 0.2,
+  "failure_threshold_step_gap_fraction": 0.5,
+  "controls": {
+    "ice_ages": "disabled",
+    "d2_baseline": "origin/main",
+    "d3_branch": "codex/issue-973-rfc0015-d3-ice-march"
+  },
+  "saves": [
+    {
+      "name": "mantle-bloom-seed649658380-6400000y.bloom",
+      "sha256": "06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b6b31131f"
+    },
+    {
+      "name": "mantle-bloom-seed997271774-87400000y.bloom",
+      "sha256": "07971ee25cdbc364cd887ea8f4fffc69ceed49b1933d09ea38e3864ea95328b8"
+    }
+  ],
+  "results": []
+}

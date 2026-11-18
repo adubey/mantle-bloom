@@ -1024,9 +1024,10 @@ since climate.py runs *before* this module each step).
   is in physical units, so these are m/yr of real ice.
   Material riding the ice (`HydrologyFields.ice_flow_target`: glacial till, landslide debris
   on the ice) moves down the ice surface on visible ice and down the ground off it.
-- **Erosion and flattening**: see [Erosion](surface-processes.md#erosion-erosionpy). Glacial abrasion now scales with this
-  step's sliding speed, so ice frozen to its bed doesn't erode the way sliding ice does;
-  flattening is still driven by the *previous* step's `glacier_depth`.
+- **Erosion and flattening**: see [Erosion](surface-processes.md#erosion-erosionpy). Glacial
+  abrasion integrates physical basal sliding through each ice-march interval and feeds the
+  lowered working bed into the next solve (RFC 0015 D3); flattening is still driven by the
+  *previous* step's `glacier_depth`.
 - **Cost.** Two Dijkstra passes per step, then per body a few numba sweeps per root-find
   evaluation and one flux sweep, times the march's substeps (about 13-16 on a settled
   step, the whole step when it never settles). The median step-time cost is measured on

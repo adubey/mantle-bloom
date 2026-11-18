@@ -74,7 +74,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from .. import continental_ledger, cratons, faults, geometry, lithosphere, trace
-from . import biomes, climate, hydrology, mobile_cover, river_substeps
+from . import biomes, climate, glacier_erosion, hydrology, mobile_cover, river_substeps
 from ..elevation_lines import (
     ELEV_CHANGE_COASTAL_LEVELING,
     ELEV_CHANGE_COLLISION,
@@ -212,25 +212,15 @@ DEPOSITION_SPEED_THRESHOLD = 2.0
 DEPOSITION_MIN_FLOW_M = 0.05
 DEPOSITION_FRACTION = 0.15
 
-# Glacier erosion (issue #353): abrasion scales with basal sliding speed,
-# GLACIER_ABRASION_COEFFICIENT * u_b ** GLACIER_ABRASION_EXPONENT (Hallet 1979). u_b is
-# ice_sheet.py's sliding speed in physical m/yr, a share of the balance velocity on a warm
-# (thawed) bed and zero on a frozen one, so ice frozen to its bed no longer erodes the way
-# sliding ice does. Herman et al. (2015) fit an exponent near 2 on one Alpine glacier; Cook
-# et al. (2020) find sub-linear scaling across a global compilation. 1 sits between them, and
-# keeps the calibration linear; RFC D3 (G3) fits the physical law (K_G = 1e-4, l = 0.65).
+# Glacier abrasion scales with physical basal sliding speed (Hallet 1979). Cook et al.
+# (2020)'s global fit sets the RFC 0015 D3 starting law (K_G = 1e-4, l = 0.65). The linear
+# alternative is K_G = 1e-4, l = 1 (Humphrey & Raymond 1994); the exponent-2 fit from Herman
+# et al. (2015) remains out until its coefficient is verified.
 #
-# The coefficient is calibrated, not physical: set so total glacial erosion on the reference
-# replay matches the old depth * slope law it replaced (see analysis/issue353/README.md).
-# That old law's own calibration -- equal to RAIN_EROSION_COEFFICIENT at 100 m of ice,
-# against the global compilation of glacial erosion rates in issue #145 -- is what this
-# inherits. The old calibration ran on model-unit sliding (~54,500x slower than real ice);
-# physical sliding (RFC 0015 D1, #789) divides that scale back out -- 430.0 * MODEL_UNIT_SCALE
-# written with the surviving constants -- or abrasion runs ~54,500x too fast (#806 review).
-GLACIER_ABRASION_COEFFICIENT = (
-    430.0 * hydrology.GLACIER_ACCUMULATION_RATE / (1000.0 / lithosphere.RHO_ICE * 1.0e-3 * 1.0e6)
-)
-GLACIER_ABRASION_EXPONENT = 1.0
+# Kept as m/Myr for the diagnostic scripts; production abrasion integrates the physical
+# m/yr law through hydrology's ice march (RFC 0015 D3).
+GLACIER_ABRASION_COEFFICIENT = glacier_erosion.GLACIAL_ABRASION_COEFFICIENT_M_PER_YR * 1.0e6
+GLACIER_ABRASION_EXPONENT = glacier_erosion.GLACIAL_ABRASION_EXPONENT
 
 # Ice-thickness scale for the glacial flattening blur below: the blur rate grows linearly with
 # ice depth up to GLACIER_EROSION_MAX_FACTOR times its value under
@@ -1984,7 +1974,11 @@ def apply_erosion(
     weathering = WEATHERING_COEFFICIENT * world.wind_erosion_multiplier * wind_speed * humidity_norm * relief_factor * dt_myr
     ice_factor = np.clip(prior_glacier_depth / GLACIER_EROSION_REFERENCE_DEPTH_M, 0.0, GLACIER_EROSION_MAX_FACTOR)
     sliding = hydro.ice.sliding_speed_m_per_yr if hydro.ice is not None else np.zeros(n)
-    glacier = GLACIER_ABRASION_COEFFICIENT * world.glacier_erosion_multiplier * np.power(sliding, GLACIER_ABRASION_EXPONENT) * dt_myr
+    glacier = (
+        np.asarray(hydro.ice.abrasion_depth_m, dtype=float)
+        if hydro.ice is not None and hydro.ice.abrasion_depth_m is not None
+        else glacier_erosion.abrasion_depth_m(sliding, years, world.glacier_erosion_multiplier)
+    )
     # See SEISMIC_EROSION_* constants' own comment: elevation (clipped/normalized against
     # SEISMIC_EROSION_ELEVATION_REFERENCE_M, then raised to a superlinear power) stands in for
     # how tectonically active/seismic a mountain range is, this model having no separate
@@ -2060,7 +2054,7 @@ def apply_erosion(
     # use everywhere else): every source here is a subaerial process. The sea floor and the
     # shoreline get their own erosion separately, below (submarine + coastal erosion -- see
     # SUBMARINE_EROSION_* / COASTAL_EROSION_*).
-    raw_erosion_total = rain + river + weathering + glacier + seismic
+    raw_erosion_total = rain + river + weathering + seismic
     detach_capacity = np.where(is_ocean_node, 0.0, np.clip(raw_erosion_total, 0.0, None))
     # Capped at the drop to the lowest neighbor so a single step can't erode a node below the
     # valley floor it drains into, and at the Hc headroom. A cap cuts substrate before cover
@@ -2092,8 +2086,20 @@ def apply_erosion(
     # rather than with water (issue #275 phase 4, see MASS_WASTING_*), so it stays out of the
     # water-routed pool and runs out along its own path below.
     applied_weathering = weathering * applied_scale
-    applied_glacier = glacier * applied_scale
     applied_seismic = seismic * applied_scale
+    # D3's interval integration replaces the shared neighbor-drop cap for abrasion. Its
+    # independent material limit remains: after other sources, only the remaining Hc
+    # headroom can be transferred from cover and substrate.
+    glacier_headroom = np.clip(removable_m - erosion_amount, 0.0, None)
+    glacier_cover = np.minimum(np.clip(cover_m, 0.0, None), np.minimum(glacier, glacier_headroom))
+    glacier_substrate = np.minimum(
+        np.clip(glacier - glacier_cover, 0.0, None),
+        np.clip(glacier_headroom - glacier_cover, 0.0, None),
+    ) * craton_keep
+    applied_glacier = glacier_cover + glacier_substrate
+    cover_entrained = cover_entrained + glacier_cover
+    cover_m = cover_m - glacier_cover
+    erosion_amount = erosion_amount + applied_glacier
     glacier_till = applied_glacier * GLACIER_TILL_FRACTION
     glacier_carried = applied_glacier - glacier_till
     wind_redeposit_source = applied_weathering * WIND_DEPOSITION_FRACTION
