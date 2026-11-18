@@ -45,6 +45,7 @@ sys.path[:0] = [str(HERE), str(REPO / "backend")]
 
 HELDOUT_FILE = REPO / "analysis/issue958/heldout-seeds.json"
 T2_SHARE_FILE = REPO / "analysis/issue958/t2-threshold.json"
+T2_LEAD_MYR = 10.0  # T2 reads speed one sample after the consumption it judges, as long as its lookback (#958)
 T5_MIN_FLOOR_AGE_MYR = 50.0  # RFC 0021 T5: B.3's column reaches 81 of its 84 km at 50 Myr
 
 
@@ -197,13 +198,32 @@ def force_targets(rows: list[dict], share: float) -> dict:
         "T1_speed_cm_per_yr": _weighted([(r["speed_cm_per_yr"]["all"], r["area_km2"]) for r in rows]),
         # In the no-net-rotation frame, as T1's Earth figure is (`earth_plate_speed.py`); older runs lack it.
         "T1_speed_nnr_cm_per_yr": _weighted([(r["speed_nnr_cm_per_yr"], r["area_km2"]) for r in rows if "speed_nnr_cm_per_yr" in r]),
-        "T2_slab_attached_ratio": fast / slow if fast is not None and slow else None,
+        # Speed at the sample itself: fast plates consume more floor, so this ratio partly measures speed persistence.
+        "T2_same_time_ratio": fast / slow if fast is not None and slow else None,
         "T2_slab_attached_area_share": sum(w for _, w in attached) / sum(r["area_km2"] for r in rows) if rows else None,
         "T3_slab_pull_driving_share": pooled["driving_share"].get("slab_pull"),
         "T4_slabless_basal_traction_mpa": None if _weighted(slabless) is None else _weighted(slabless) / 1e6,
         "T5_old_ridge_push_n_per_m": _weighted(old),
         "breakdown": pooled,
     }
+
+
+def t2_ratio(runs: list[dict], share: float) -> dict:
+    """T2 with each plate's area-mean speed T2_LEAD_MYR after the sample, not at it (owner, 2026-11-18): the slab is
+    judged on floor consumed before the speed is read. Plates gone by then, and the last sample, are left out. On
+    G0's baseline it barely moves the ratio (1.54 at the sample, 1.52 at +10 Myr, 1.47 at +40), because a plate's
+    speed persists for tens of Myr; the lag can't separate a slab's drive from that persistence."""
+    attached, other = [], []
+    for run in runs:
+        by_myr = {round(s["myr"], 6): {r["plate_id"]: r for r in s["plates"]} for s in run["samples"]}
+        for myr, rows in by_myr.items():
+            later = by_myr.get(round(myr + T2_LEAD_MYR, 6))
+            for plate_id, row in (rows.items() if later else ()):
+                if plate_id in later:
+                    pair = (later[plate_id]["speed_cm_per_yr"]["all"], row["area_km2"])
+                    (attached if slab_attached(row, share) else other).append(pair)
+    fast, slow = _weighted(attached), _weighted(other)
+    return {"T2_slab_attached_ratio": fast / slow if fast is not None and slow else None, "T2_lead_myr": T2_LEAD_MYR}
 
 
 def _world_speeds(runs: list[dict]) -> dict:
@@ -286,7 +306,7 @@ def score(args: argparse.Namespace) -> None:
     rate = args.production_rate if args.production_rate is not None else production_rate(args.production_runs) if args.production_runs else None
     result = {
         "setting": runs[0]["setting"] if runs else None, "seeds": [run["seed"] for run in runs], "t2_share": share, "production_rate_per_world_100myr": rate,
-        **force_targets(rows, share), **_world_speeds(runs), "closure": _closure(runs),
+        **t2_ratio(runs, share), **force_targets(rows, share), **_world_speeds(runs), "closure": _closure(runs),
         "T8_contacts": contact_measures(directories), "T9_rifting": rifting_score(args.runs, rate),
     }
     text = json.dumps(result, indent=1, default=float) + "\n"

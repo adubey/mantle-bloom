@@ -282,6 +282,10 @@ last 10 Myr (`collision_polarity`'s consumption evidence) is at least **10%** of
 G0's 20-world baseline run before any G1 probe (2026-11-18): at 10% the slab-attached plates hold 32% of plate area,
 close to the share of Earth's surface on the plates Forsyth and Uyeda found slab-attached, and the baseline's ratio is
 1.5–1.7 at every share from 5% to 50%, so the choice does not decide the verdict. The test is built by past convergence, not the plate's current speed.
+The plate's speed is read 10 Myr after the sample, at the next one (owner, 2026-11-18), so the slab is judged on
+floor consumed before the speed it is credited with. On G0's baseline that barely moves the ratio (1.54 at the
+sample, 1.52 at +10 Myr, 1.47 at +40): plate speeds persist for tens of Myr, so T2 still cannot separate a slab's
+drive from a fast plate staying fast, and an improvement in it has to come with the force shares G1 measures.
 
 ### Diagnosis gates
 
@@ -386,7 +390,7 @@ world took 5–6 minutes and about 0.5 GB on the rift-line method, as on the gre
   | Target | Baseline | Band | |
   |---|---:|---|---|
   | T1 mean speed, no net rotation | 1.88 cm/yr | 3–5 | fails |
-  | T2 speed ratio, slab-attached (32% of area) to the rest | 1.54 | ≥ 2.5 | fails |
+  | T2 speed ratio, slab-attached (32% of area) to the rest, speed 10 Myr later | 1.52 | ≥ 2.5 | fails |
   | T3 slab pull share of driving torque | 55% | ≥ 50% | passes |
   | T4 basal traction under plates without slabs | 0.22 MPa | ≤ 1 | passes |
   | T5 ridge push, oceanic floor ≥ 50 Myr | 4.5×10¹⁰ N/m | 1–4×10¹² | fails, 20–90× low |
@@ -399,7 +403,7 @@ world took 5–6 minutes and about 0.5 GB on the rift-line method, as on the gre
   T7: slab pull already leads the drive, but sunk-slab and basal drag cancel it, as #942 found, so G1's corrections
   are the next step.
 - *0.5 Myr step check* (worlds 106533960, 1097624328, 1397817354; `g0-step0.5-brake-off.json`): T1 +5.1% and T2
-  −4.7% against the same worlds at 1 Myr, inside the 15% and 20% of the step-check criterion. T3, T5 and T7 move
+  −5.1% against the same worlds at 1 Myr, inside the 15% and 20% of the step-check criterion. T3, T5 and T7 move
   under 4%; T4 halves (0.91 to 0.47 MPa) on this small sample. The rift-line splitter is not step-converged: 73
   splits against 48 (+52%; 38 against 23 on 106533960), 19.2 plates against 17.5. RFC 0018's split rate therefore
   depends on step length, and G2 and G3 must score it at 1 Myr steps throughout.
@@ -502,9 +506,9 @@ removed.
   the premise that the force forms cancel or omit the drive is wrong: the cause is in the column (alternative D) or
   the flow (alternative C). Revise toward D or C.
   - This replaces a bar of slab pull under a third of the driving torque or a T2 ratio under 1.5 after G1's
-    combined corrections. G0's uncorrected baseline already clears both (55%, 1.54), so that bar could not fail.
+    combined corrections. G0's uncorrected baseline already clears both (55%, and 1.54 at the sample or 1.52 with speed 10 Myr later), so that bar could not fail.
   - The bar sits at the end of G1, at the slab-favourable ends of G2's ranges, so that a miss can't be blamed on
-    untuned constants. 2.0 is about halfway from the baseline to T2's 2.5.
+    untuned constants. 2.0 is about halfway from the baseline's 1.52 to T2's 2.5.
   - The owner agreed this (2026-11-18).
 - **Constants alone are enough.** If G2's control arm meets at least as many of T1–T7 as the corrected search,
   with T2 and T3 among them, the corrections are not needed: adopt the control arm's setting (alternative A) and

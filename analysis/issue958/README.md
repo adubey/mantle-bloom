@@ -84,8 +84,14 @@ median share is 15% of the plate's area, and the share's rank correlation with n
 | Speed ratio, slab-attached to the rest | 1.52 | 1.58 | 1.59 | 1.61 | 1.66 | 1.70 |
 
 **The owner fixed the share at 10% (2026-11-18)**, which puts about Earth's share of the surface on slab-attached
-plates. The ratio is under 2.5 at every share, so the choice does not decide the baseline's verdict. (The scorer's
-1.54 differs from this table's 1.58 because it also counts the 0 Myr sample.) The owner also asked to think about seeding this at
+plates. The ratio is under 2.5 at every share, so the choice does not decide the baseline's verdict. (This table reads speed at
+the sample and leaves out the 0 Myr one.)
+
+**The owner also had T2 read each plate's speed 10 Myr later, at the next sample (2026-11-18)**, so that floor
+consumed before the window, not the speed that consumed it, is credited. It barely moves the ratio, because plate speeds
+persist: at 10%, 1.54 with speed at the sample (`T2_same_time_ratio`), 1.52 at +10 Myr (`T2_slab_attached_ratio`),
+1.50 at +20 and 1.47 at +40, with the share's rank correlation with speed falling only from 0.51 to 0.44. So T2 can't
+tell a slab's drive from a fast plate staying fast; G1 has to read its gains beside the force shares. The owner also asked to think about seeding this at
 generation with a pseudo-history, so that worlds start with slabs (see tracking issue #957).
 
 ## Held-out set
@@ -139,7 +145,7 @@ driving torque, sunk-slab drag 49.9% and basal drag 44.0% of the resisting.
 | Target | Baseline | Band | |
 |---|---:|---|---|
 | T1 mean speed, no net rotation | 1.88 cm/yr (1.90 with it) | 3–5 | fails |
-| T2 speed ratio, slab-attached (32% of area) to the rest | 1.54 | ≥ 2.5 | fails |
+| T2 speed ratio, slab-attached (32% of area) to the rest, speed 10 Myr later | 1.52 | ≥ 2.5 | fails |
 | T3 slab pull share of driving torque | 55% | ≥ 50% | passes |
 | T4 basal traction under plates without slabs | 0.22 MPa | ≤ 1 | passes |
 | T5 ridge push, oceanic floor ≥ 50 Myr | 4.5×10¹⁰ N/m | 1–4×10¹² | fails |
@@ -156,7 +162,7 @@ pre- and post-contact speeds are in each run's `breakdown.json`, not yet scored.
 | | 1 Myr | 0.5 Myr | Change |
 |---|---:|---:|---:|
 | T1 (cm/yr, no net rotation) | 1.89 | 1.98 | +5.1% |
-| T2 ratio | 1.88 | 1.79 | −4.7% |
+| T2 ratio, speed 10 Myr later | 1.90 | 1.80 | −5.1% |
 | T3 | 48% | 49% | +2.0% |
 | T4 (MPa) | 0.91 | 0.47 | −49% |
 | T5 (10¹⁰ N/m) | 3.76 | 3.89 | +3.5% |
