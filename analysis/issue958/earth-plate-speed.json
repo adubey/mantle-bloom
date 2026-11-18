@@ -1,0 +1,220 @@
+{
+ "model": "PB2002 (Bird 2003, doi:10.1029/2001GC000252), Pacific-fixed poles, NNR by removing the net rotation",
+ "grid_points": 100000,
+ "unassigned_share": 0.0,
+ "multiply_assigned_share": 0.0,
+ "net_rotation_deg_per_myr": 0.6490188051504945,
+ "mean_speed_nnr_cm_per_yr": 3.7570548963798687,
+ "rms_speed_nnr_cm_per_yr": 4.391620536298282,
+ "mean_speed_pacific_fixed_cm_per_yr": 6.059241380610417,
+ "plates": {
+  "PA": {
+   "area_share": 0.20523,
+   "nnr_cm_per_yr": 6.464690661872958
+  },
+  "AF": {
+   "area_share": 0.11454,
+   "nnr_cm_per_yr": 2.8403264862572817
+  },
+  "AN": {
+   "area_share": 0.11401,
+   "nnr_cm_per_yr": 1.3217253822007544
+  },
+  "NA": {
+   "area_share": 0.10874,
+   "nnr_cm_per_yr": 1.9215283974568098
+  },
+  "EU": {
+   "area_share": 0.0952,
+   "nnr_cm_per_yr": 2.330525338304366
+  },
+  "AU": {
+   "area_share": 0.09007,
+   "nnr_cm_per_yr": 6.250155282913542
+  },
+  "SA": {
+   "area_share": 0.08198,
+   "nnr_cm_per_yr": 1.2400345945785274
+  },
+  "SO": {
+   "area_share": 0.03754,
+   "nnr_cm_per_yr": 2.7840082018103445
+  },
+  "NZ": {
+   "area_share": 0.03157,
+   "nnr_cm_per_yr": 7.438311983119499
+  },
+  "IN": {
+   "area_share": 0.02436,
+   "nnr_cm_per_yr": 5.618539688716958
+  },
+  "SU": {
+   "area_share": 0.01748,
+   "nnr_cm_per_yr": 3.966651009282268
+  },
+  "PS": {
+   "area_share": 0.01068,
+   "nnr_cm_per_yr": 4.137905676631872
+  },
+  "AM": {
+   "area_share": 0.01044,
+   "nnr_cm_per_yr": 3.3079703953497437
+  },
+  "AR": {
+   "area_share": 0.00961,
+   "nnr_cm_per_yr": 4.80345440554576
+  },
+  "OK": {
+   "area_share": 0.00593,
+   "nnr_cm_per_yr": 2.504514438058358
+  },
+  "CA": {
+   "area_share": 0.00581,
+   "nnr_cm_per_yr": 1.2623167187613342
+  },
+  "CO": {
+   "area_share": 0.00569,
+   "nnr_cm_per_yr": 7.29994617269649
+  },
+  "YA": {
+   "area_share": 0.00433,
+   "nnr_cm_per_yr": 3.919764410784743
+  },
+  "SC": {
+   "area_share": 0.00335,
+   "nnr_cm_per_yr": 1.3034977129889864
+  },
+  "CL": {
+   "area_share": 0.00297,
+   "nnr_cm_per_yr": 5.957509387370312
+  },
+  "ND": {
+   "area_share": 0.00192,
+   "nnr_cm_per_yr": 1.1388749096812658
+  },
+  "AP": {
+   "area_share": 0.00166,
+   "nnr_cm_per_yr": 1.7333422197378412
+  },
+  "BS": {
+   "area_share": 0.00138,
+   "nnr_cm_per_yr": 3.550466231090057
+  },
+  "NH": {
+   "area_share": 0.00125,
+   "nnr_cm_per_yr": 8.459541439779663
+  },
+  "AT": {
+   "area_share": 0.00113,
+   "nnr_cm_per_yr": 1.2351216783603676
+  },
+  "BH": {
+   "area_share": 0.00103,
+   "nnr_cm_per_yr": 6.675006060543779
+  },
+  "BU": {
+   "area_share": 0.00102,
+   "nnr_cm_per_yr": 5.3363598380892086
+  },
+  "KE": {
+   "area_share": 0.00099,
+   "nnr_cm_per_yr": 4.105525735060666
+  },
+  "WL": {
+   "area_share": 0.00091,
+   "nnr_cm_per_yr": 6.380975964505567
+  },
+  "MS": {
+   "area_share": 0.00083,
+   "nnr_cm_per_yr": 2.286355503230515
+  },
+  "MA": {
+   "area_share": 0.00081,
+   "nnr_cm_per_yr": 1.6661397779388634
+  },
+  "NB": {
+   "area_share": 0.00075,
+   "nnr_cm_per_yr": 6.994144892564297
+  },
+  "TI": {
+   "area_share": 0.00068,
+   "nnr_cm_per_yr": 5.203816144033218
+  },
+  "ON": {
+   "area_share": 0.00064,
+   "nnr_cm_per_yr": 6.124329552313587
+  },
+  "AS": {
+   "area_share": 0.00062,
+   "nnr_cm_per_yr": 1.535440938262702
+  },
+  "SB": {
+   "area_share": 0.00061,
+   "nnr_cm_per_yr": 4.413129995127731
+  },
+  "PM": {
+   "area_share": 0.00055,
+   "nnr_cm_per_yr": 1.9284205688636074
+  },
+  "JF": {
+   "area_share": 0.00052,
+   "nnr_cm_per_yr": 2.1041757011637965
+  },
+  "TO": {
+   "area_share": 0.00049,
+   "nnr_cm_per_yr": 11.261652778099783
+  },
+  "BR": {
+   "area_share": 0.00039,
+   "nnr_cm_per_yr": 4.522549941794305
+  },
+  "SW": {
+   "area_share": 0.00036,
+   "nnr_cm_per_yr": 7.3387836455033675
+  },
+  "EA": {
+   "area_share": 0.0003,
+   "nnr_cm_per_yr": 4.142928749157295
+  },
+  "CR": {
+   "area_share": 0.00028,
+   "nnr_cm_per_yr": 3.1145633400352617
+  },
+  "NI": {
+   "area_share": 0.00025,
+   "nnr_cm_per_yr": 8.553084343379739
+  },
+  "SS": {
+   "area_share": 0.00023,
+   "nnr_cm_per_yr": 7.05622056909443
+  },
+  "MO": {
+   "area_share": 0.00021,
+   "nnr_cm_per_yr": 6.448889098499739
+  },
+  "RI": {
+   "area_share": 0.00021,
+   "nnr_cm_per_yr": 1.2687771901035052
+  },
+  "JZ": {
+   "area_share": 0.0002,
+   "nnr_cm_per_yr": 7.890314062112351
+  },
+  "SL": {
+   "area_share": 0.00015,
+   "nnr_cm_per_yr": 2.231349209254613
+  },
+  "FT": {
+   "area_share": 5e-05,
+   "nnr_cm_per_yr": 3.97726245118046
+  },
+  "GP": {
+   "area_share": 3e-05,
+   "nnr_cm_per_yr": 6.091221298472129
+  },
+  "MN": {
+   "area_share": 2e-05,
+   "nnr_cm_per_yr": 4.300444810060257
+  }
+ }
+}

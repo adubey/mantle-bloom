@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import type { MapView, WorldImportConflict, WorldRecord } from "./api";
 import { exportHexGrid, importWorld, saveWorld, WorldImportConflictError } from "./api";
+import { downloadBlob } from "./download";
 import ModalShell from "./ModalShell";
 import { useModalAction } from "./useModalAction";
 
@@ -27,15 +28,6 @@ interface Props {
   onClose: () => void;
   // A load adds a brand-new world record -- the caller refreshes the list and selects it.
   onWorldImported: (record: WorldRecord) => Promise<void>;
-}
-
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 export default function FileModal({

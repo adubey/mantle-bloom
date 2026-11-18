@@ -7,9 +7,13 @@ the world is always addressed explicitly (#563). Registry routes (`GET /worlds`,
 `POST /worlds`, `PATCH /worlds/{world_id}`, `DELETE /worlds/{world_id}`) manage the
 records themselves.
 
-Every `/worlds/*` route requires the admin: a GitHub session for the configured owner, or a
-request made on the server's own machine. Anyone else gets `401`. Cross-site writes get
-`403`. See [architecture.md#access-control](architecture.md#access-control).
+Every `/worlds/*` route requires either the admin (a GitHub session for the configured owner,
+or a request made on the server's own machine) or a signed-in `paid` user (#953). Paid users
+see and manage only the worlds they own (other users' and admin worlds return `404`), may
+mark their own worlds `is_public`, and cannot set the global `/view` `is_default` or call
+debug routes (`/debug/*`, `POST /worlds/{world_id}/generate_debug`,
+`GET /worlds/{world_id}/replay-logs`, which return `403`). Free and signed-out callers get
+`401`. Cross-site writes get `403`. See [architecture.md#access-control](architecture.md#access-control).
 
 ## `GET /healthz`
 
@@ -459,7 +463,7 @@ Request body (all fields optional, independently settable -- the "Controls" wind
 only whichever control the user touched):
 
 ```json
-{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "ice_age_period_years": 300000, "simulate_plate_movement": true, "simulate_climate_biomes": true, "simulate_glacier_march": true, "wind_model": "cfd", "fault_deformation_mode": "fault" }
+{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "ice_age_period_years": 300000, "simulate_plate_movement": true, "simulate_climate_biomes": true, "simulate_glacier_march": true, "wind_model": "cfd", "fault_deformation_mode": "fault", "split_method": "great_circle" }
 ```
 
 Live-adjusts `World.sea_level_m` (default `0.0`), `World.solar_multiplier` (default `1.0`,
@@ -499,6 +503,11 @@ other value) picks where plate-boundary deformation is applied: `"boundary"` is 
 distance-band thickening at the polygon edge, `"fault"` localises it onto active fault traces
 (and scales the fault-relief layer up to compensate), `"both"` runs both. See
 simulation-model/tectonics.md#faults.
+
+`split_method` (`"great_circle"` default, or `"rift_lines"` -- a `400` for any other value)
+picks how plates break up: `"great_circle"` cuts along a great circle between mantle-flow
+regimes, `"rift_lines"` uses RFC 0018's weak-line damage and rifting algorithm. See
+simulation-model/tectonics.md#splitting-along-rift-lines.
 
 The body also accepts the sixteen **geomorphic-budget tuning multipliers**
 (`world.TUNING_MULTIPLIER_FIELDS`): `rain_erosion_multiplier`, `river_erosion_multiplier`,

@@ -5,7 +5,7 @@ import {
   RunStateRefused, TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
-  AnimateResponse, AnimationRecovery, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, ViewerView, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
+  AnimateResponse, AnimationRecovery, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, SplitMethod, TuningKey, TuningMultipliers, ViewerView, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
 } from "./api";
 import { withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
 import MapCanvas from "./MapCanvas";
@@ -35,12 +35,14 @@ import RunOverlay from "./RunOverlay";
 import { PLAYING_FALLBACK_PHASE, playingPhaseView } from "./phaseInfo";
 import ModalShell from "./ModalShell";
 import AdminSession from "./AdminSession";
+import { isDebugUiEnabled, useSession } from "./session";
 import ProbePopup from "./ProbePopup";
 import { PREMADE_WORLDS } from "./premadeWorlds";
 import { CRATON_LEGEND_LABEL, faultKindForLegendLabel, highlightTargetFor } from "./legendData";
 import { centerOfRotation, IDENTITY_ROTATION, rotationForCenter } from "./rotation";
 import type { Mat3 } from "./rotation";
 import { getCookie, setCookie } from "./cookies";
+import { saveRecordedVideo } from "./download";
 
 // The map is displayed at DISPLAY_WIDTH x DISPLAY_HEIGHT (CSS pixels, unchanged from
 // before), but the image requested from the server is RENDER_SCALE times bigger -- a
@@ -54,7 +56,7 @@ import { getCookie, setCookie } from "./cookies";
 // whole page load, not something that changes while the app is open. Works identically on the
 // packaged prod server and the dev/debug server -- it only ever looks at the URL the browser
 // actually loaded, never which backend is serving it.
-const DEBUG_UI = new URLSearchParams(window.location.search).has("deb");
+const HAS_DEB_PARAM = new URLSearchParams(window.location.search).has("deb");
 
 // How often the World list re-polls itself (see the worlds effect below): new,
 // renamed, published, or newly running worlds show up without a reload (#597).
@@ -187,6 +189,9 @@ const DEFAULT_WIND_MODEL = "diagnostic";
 // edge); "both" runs the boundary bands plus the scaled-up fault relief. See faults.py /
 // lithosphere_plate.deform_columns.
 const DEFAULT_FAULT_DEFORMATION_MODE = "fault";
+// Matching backend app/world.py's World.split_method default ("great_circle"). Off by default
+// until RFC 0018's rift-line splitter is promoted.
+const DEFAULT_SPLIT_METHOD: SplitMethod = "great_circle";
 // Off by default for an ordinarily-generated/loaded world -- see World.debug_diagnostics.
 const DEFAULT_DEBUG_DIAGNOSTICS = false;
 
@@ -229,7 +234,7 @@ const MAP_VIEW_CHOICES = new Set<MapView>([
   "resources", "soilQuality", "geomorph", "elevReason", "overlapAge", "nodeAge", "plateInspector", "riverInspector", "lakeInspector", "platesAndFaults", "hc", "hm", "craton", "plumes",
 ]);
 const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4", "globe"]);
-// The Map View select's "Debug >" optgroup (see the DEBUG_UI comment above) -- kept as its own
+// The Map View select's "Debug >" optgroup (see the HAS_DEB_PARAM comment above) -- kept as its own
 // set so a restored VIEW_COOKIE_NAME cookie pointing at one of these can be sanitized back to
 // the default when the page loads without ?deb, rather than landing on a view whose picker
 // option is no longer there to switch away from.
@@ -286,6 +291,9 @@ export default function App() {
   // (and for every other tab, where it's simply unused).
   const [premadeWorldId, setPremadeWorldId] = useState<"earth" | "pangaea" | "got" | null>(null);
   const [showSketchEditor, setShowSketchEditor] = useState(false);
+  const session = useSession();
+  // ?deb / &deb is admin-only (#953): paid users get no debug UI even if they add it to the URL.
+  const debugUi = isDebugUiEnabled(window.location.search, session);
   // "Debugging Worlds" tab (see backend debug_worlds.py) -- tiny scripted plate scenarios for
   // fast iteration on the gap-filling problem. The scenario list is fetched once (static,
   // server-authoritative so the frontend never hardcodes it) and the picker defaults to
@@ -293,7 +301,7 @@ export default function App() {
   const [debugScenarios, setDebugScenarios] = useState<DebugScenario[]>([]);
   const [debugScenario, setDebugScenario] = useState<string>("");
   useEffect(() => {
-    if (!DEBUG_UI) return; // "Debugging Worlds" tab is hidden without ?deb -- nothing to populate it with
+    if (!debugUi) return; // "Debugging Worlds" tab is hidden without ?deb -- nothing to populate it with
     fetchDebugScenarios()
       .then((r) => {
         setDebugScenarios(r.scenarios);
@@ -303,7 +311,7 @@ export default function App() {
         // Best-effort -- if this fails the "Debugging Worlds" tab just shows an empty picker;
         // every other Generate World tab is unaffected.
       });
-  }, []);
+  }, [debugUi]);
   // "Load an image" (Human-made tab) -- a hidden file input triggered by a plain button, read
   // via FileReader straight to a data URL, same shape SketchEditor's own "Done" produces.
   const loadImageInputRef = useRef<HTMLInputElement>(null);
@@ -323,9 +331,13 @@ export default function App() {
   const [syntheticRelief, setSyntheticRelief] = useState(true);
   const [keepLandOffPoles, setKeepLandOffPoles] = useState(false);
   // The Generate World dialog's name field (blank: keep the record's name) and
-  // Public checkbox (fresh worlds default to public, #597).
+  // Public checkbox: admin worlds default to public (#597); paid users opt in (#953).
   const [generateName, setGenerateName] = useState("");
-  const [generatePublic, setGeneratePublic] = useState(true);
+  const [generatePublic, setGeneratePublic] = useState(false);
+  const defaultGeneratePublic = Boolean(session?.admin);
+  useEffect(() => {
+    if (session) setGeneratePublic(Boolean(session.admin));
+  }, [session]);
   const [continentalPercent, setContinentalPercent] = useState(DEFAULT_CONTINENTAL_PERCENT);
   const [landPercent, setLandPercent] = useState(DEFAULT_LAND_PERCENT);
   const [axialTiltDeg, setAxialTiltDeg] = useState(DEFAULT_AXIAL_TILT_DEG);
@@ -346,9 +358,18 @@ export default function App() {
 
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
   const [projection, setProjection] = useState<Projection>(initialView?.projection ?? "eckert4");
+  // Never start on a debug view before `session` resolves: a paid user visiting `/?deb`
+  // with a debug view in their saved cookie must not fire a debug render on initial load.
   const [mapView, setMapView] = useState<MapView>(
-    initialView && (DEBUG_UI || !DEBUG_MAP_VIEWS.has(initialView.mapView)) ? initialView.mapView : "combined",
+    initialView && !DEBUG_MAP_VIEWS.has(initialView.mapView) ? initialView.mapView : "combined",
   );
+  useEffect(() => {
+    if (session?.admin && HAS_DEB_PARAM && initialView && DEBUG_MAP_VIEWS.has(initialView.mapView)) {
+      setMapView(initialView.mapView);
+    } else if (session && !session.admin && DEBUG_MAP_VIEWS.has(mapView)) {
+      setMapView("combined");
+    }
+  }, [session, mapView]);
   // These controls describe only the cross-section's great-circle cut. Keep them independent
   // of the map projection/rotation state, and retain their values when switching views.
   const [crossSectionPlaneAngleDeg, setCrossSectionPlaneAngleDeg] = useState(0);
@@ -616,6 +637,8 @@ export default function App() {
   // "boundary" / "fault" / "both" -- see backend app/world.py's World.fault_deformation_mode.
   // Live-adjustable via Controls like windModel.
   const [faultDeformationMode, setFaultDeformationMode] = useState(DEFAULT_FAULT_DEFORMATION_MODE);
+  // "great_circle" (default) or "rift_lines" (RFC 0018) -- see backend World.split_method.
+  const [splitMethod, setSplitMethod] = useState<SplitMethod>(DEFAULT_SPLIT_METHOD);
   // Gate for the debug-only diagnostics -- see backend World.debug_diagnostics. Live-adjustable
   // via Controls like windModel.
   const [debugDiagnostics, setDebugDiagnostics] = useState(DEFAULT_DEBUG_DIAGNOSTICS);
@@ -676,6 +699,8 @@ export default function App() {
   // cleanly and still returns the video (see handleStopAnimation below).
   const [animation, setAnimation] = useState<{ frame: number; total: number; unbounded: boolean } | null>(null);
   const [animationResult, setAnimationResult] = useState<AnimateResponse | null>(null);
+  // Why the save dialog's last Save failed; the dialog stays open so the video isn't lost (#961).
+  const [animationSaveError, setAnimationSaveError] = useState<string | null>(null);
   // A recording that failed mid-run (#638): the dialog replaces the old bare error,
   // offering recovery from the server's per-frame checkpoints. `recovery` is the
   // animate/recovery payload fetched when the failure landed (null when the run never
@@ -855,6 +880,7 @@ export default function App() {
     simulateGlacierMarch?: boolean;
     windModel?: string;
     faultDeformationMode?: string;
+    splitMethod?: SplitMethod;
     debugDiagnostics?: boolean;
     tuning?: Partial<TuningMultipliers>;
   }>({});
@@ -927,6 +953,11 @@ export default function App() {
     pushControls({ faultDeformationMode: v });
   }, [pushControls]);
 
+  const handleSplitMethodChange = useCallback((v: SplitMethod) => {
+    setSplitMethod(v);
+    pushControls({ splitMethod: v });
+  }, [pushControls]);
+
   const handleDebugDiagnosticsChange = useCallback((v: boolean) => {
     setDebugDiagnostics(v);
     pushControls({ debugDiagnostics: v });
@@ -979,6 +1010,7 @@ export default function App() {
       setSimulateGlacierMarch(controls.simulate_glacier_march);
       setWindModel(controls.wind_model);
       setFaultDeformationMode(controls.fault_deformation_mode);
+      setSplitMethod(controls.split_method);
       setDebugDiagnostics(controls.debug_diagnostics);
       setTuning(Object.fromEntries(TUNING_MULTIPLIER_KEYS.map((k) => [k, controls[k]])) as TuningMultipliers);
       await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
@@ -1015,6 +1047,7 @@ export default function App() {
       setShowAnimationModal(false);
       setError(null);
       setAnimationResult(null);
+      setAnimationSaveError(null);
       setAnimation({ frame: 0, total: numFrames, unbounded });
       animationFrameRef.current = 0;
       setOverlayCollapsed(false);
@@ -1115,23 +1148,25 @@ export default function App() {
   }, []);
 
   // The save-or-discard dialog's "Save" button (see SaveAnimationModal.tsx) -- downloads the
-  // finished MP4, then closes the dialog same as Discard would.
-  const handleSaveAnimation = useCallback(async () => {
+  // finished MP4, then closes the dialog same as Discard would. A failed save keeps the dialog
+  // open with the reason, so the video can still be saved rather than silently lost (#961).
+  const handleSaveAnimation = useCallback(() => {
     if (!animationResult) return;
-    const { mime, videoBase64, elapsed_years, seed: animSeed } = animationResult;
-    const blob = await (await fetch(`data:${mime};base64,${videoBase64}`)).blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `mantle-bloom-seed${animSeed}-animation-${Math.round(elapsed_years)}y.mp4`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      saveRecordedVideo(animationResult);
+    } catch (e) {
+      console.error("[mantle-bloom] Saving the recording failed", e);
+      setAnimationSaveError(String(e));
+      return;
+    }
+    setAnimationSaveError(null);
     setAnimationResult(null);
   }, [animationResult]);
 
   // The save-or-discard dialog's "Discard" button -- throws away the finished video. Doesn't
   // touch the world itself, which already permanently advanced when the recording ran.
   const handleDiscardAnimation = useCallback(() => {
+    setAnimationSaveError(null);
     setAnimationResult(null);
   }, []);
 
@@ -1284,13 +1319,13 @@ export default function App() {
   // suggestion only lands if the user hasn't typed something meanwhile.
   const openGenerateDialog = useCallback(() => {
     setGenerateName("");
-    setGeneratePublic(true);
+    setGeneratePublic(defaultGeneratePublic);
     setShowGenerateDialog(true);
     fetchSuggestedName().then(
       ({ name }) => setGenerateName((prev) => (prev === "" ? name : prev)),
       () => {},
     );
-  }, []);
+  }, [defaultGeneratePublic]);
 
   // Shares one world creation between rapid Generate confirmations: without it
   // a double-confirm could mint two worlds (and orphan one) before either selects.
@@ -1478,6 +1513,7 @@ export default function App() {
       setSimulateGlacierMarch(DEFAULT_SIMULATE_GLACIER_MARCH);
       setWindModel(DEFAULT_WIND_MODEL);
       setFaultDeformationMode(DEFAULT_FAULT_DEFORMATION_MODE);
+      setSplitMethod(DEFAULT_SPLIT_METHOD);
       // A debug world starts with diagnostics already on server-side (see debug_worlds.py) --
       // match that here rather than resetting to the ordinary default.
       setDebugDiagnostics(generateMode === "debug" ? true : DEFAULT_DEBUG_DIAGNOSTICS);
@@ -1699,7 +1735,7 @@ export default function App() {
           <p style={{ opacity: 0.7, marginTop: 0, marginBottom: 16 }}>
             Physical World Builder
           </p>
-          <AdminSession />
+          <AdminSession session={session} />
 
           <button
             onClick={() => setShowFileModal(true)}
@@ -1891,7 +1927,7 @@ export default function App() {
                 <option value="resources">Resources</option>
                 <option value="soilQuality">Soil Quality</option>
               </optgroup>
-              {DEBUG_UI && (
+              {debugUi && (
                 <optgroup label="Debug &gt;">
                   <option value="platesDetail">Points</option>
                   <option value="speckle">Coastal dither (speckle)</option>
@@ -2022,8 +2058,8 @@ export default function App() {
           </fieldset>
 
           {/* Reloads the same page with &deb added, turning on the developer-only UI
-              described at DEBUG_UI above. Hidden once already in debug mode. */}
-          {!DEBUG_UI && (
+              described at HAS_DEB_PARAM above. Hidden for non-admins and once already in debug mode. */}
+          {Boolean(session?.admin) && !debugUi && (
             <a href={debugUrl()} style={{ fontSize: 11, color: "#5b8cff" }}>
               Debug...
             </a>
@@ -2238,7 +2274,7 @@ export default function App() {
             </ModalShell>
           )}
 
-          {DEBUG_UI && (
+          {debugUi && (
             <EventConsole
               events={[...(summary?.events ?? []), ...(summary?.replay_logs ?? [])].sort(
                 (a, b) => a.elapsed_years - b.elapsed_years,
@@ -2533,7 +2569,7 @@ export default function App() {
             <h2 style={{ fontSize: 16, marginTop: 0, marginBottom: 12 }}>Generate World</h2>
 
             <div style={{ display: "flex", marginBottom: 16, borderBottom: "1px solid #333" }}>
-              {(DEBUG_UI
+              {(debugUi
                 ? (["random", "human", "premade", "debug"] as const)
                 : (["random", "human", "premade"] as const)
               ).map((mode) => (
@@ -2858,6 +2894,7 @@ export default function App() {
           simulateGlacierMarch={simulateGlacierMarch}
           windModel={windModel}
           faultDeformationMode={faultDeformationMode}
+          splitMethod={splitMethod}
           debugDiagnostics={debugDiagnostics}
           tuning={tuning}
           onSeaLevelChange={handleSeaLevelChange}
@@ -2868,6 +2905,7 @@ export default function App() {
           onSimulateGlacierMarchChange={handleSimulateGlacierMarchChange}
           onWindModelChange={handleWindModelChange}
           onFaultDeformationModeChange={handleFaultDeformationModeChange}
+          onSplitMethodChange={handleSplitMethodChange}
           onDebugDiagnosticsChange={handleDebugDiagnosticsChange}
           onTuningChange={handleTuningChange}
           onTuningReset={handleTuningReset}
@@ -2907,6 +2945,7 @@ export default function App() {
         <ManageWorldsModal
           worlds={worlds}
           selectedWorldId={worldId}
+          isAdmin={Boolean(session?.admin)}
           onRename={handleRenameWorld}
           onDelete={handleDeleteWorld}
           onSetDefault={handleWorldDefaultChange}
@@ -2929,6 +2968,7 @@ export default function App() {
       {animationResult && (
         <SaveAnimationModal
           result={animationResult}
+          saveError={animationSaveError}
           onSave={handleSaveAnimation}
           onDiscard={handleDiscardAnimation}
         />

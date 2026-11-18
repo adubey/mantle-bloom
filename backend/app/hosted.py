@@ -198,10 +198,13 @@ async def _proxy(request: Request) -> Response:
     return await worker.forward(request, activity=not _passive(request))
 
 
-def _admin_records(root: checkpoint.CheckpointStore) -> dict:
+def _admin_records(root: checkpoint.CheckpointStore, *, allowed_ids: set[str] | None = None) -> dict:
     worlds = []
     cap = checkpoint.max_worlds()
-    for index, row in enumerate(_records(root)):
+    rows = _records(root)
+    if allowed_ids is not None:
+        rows = [row for row in rows if row.get("world_id") in allowed_ids]
+    for index, row in enumerate(rows):
         store = root.for_world(row["world_id"])
         load_error = None
         summary = None
@@ -230,7 +233,7 @@ async def _public_records(request: Request) -> Response:
     for row in records[:checkpoint.max_worlds()]:
         store = root.for_world(row["world_id"])
         running = store.load_status().running
-        if not (row["is_public"] or running):
+        if not (row["is_public"] or (running and users.shared_store().world_owner(row["world_id"]) is None)):
             continue
         summary = _summary(store)
         if summary is None and store.world_path.is_file():
@@ -404,16 +407,39 @@ async def _render(
     return await _proxy(request)
 
 
+def _filter_worlds_for_actor(worlds: list[dict], actor: auth.Actor) -> list[dict]:
+    if actor.is_admin:
+        return worlds
+    owned = set(users.shared_store().user_worlds(actor.user_id)) if actor.user_id is not None else set()
+    return [row for row in worlds if row.get("world_id") in owned]
+
+
 async def _admin_list(request: Request) -> Response:
-    active = await _active(request)
-    if active is not None:
-        return active
+    actor = auth.current_actor()
+    if actor.is_admin:
+        active = await _active(request)
+        if active is not None:
+            return active
+        allowed_ids: set[str] | None = None
+    else:
+        resp = await request.app.state.worker.read("/worlds", request)
+        if resp is not None:
+            if resp.status_code != 200:
+                return Response(
+                    content=resp.content,
+                    status_code=resp.status_code,
+                    media_type=resp.headers.get("content-type"),
+                )
+            data = resp.json()
+            data["worlds"] = _filter_worlds_for_actor(data.get("worlds", []), actor)
+            return JSONResponse(data, headers=_NO_STORE)
+        allowed_ids = set(users.shared_store().user_worlds(actor.user_id)) if actor.user_id is not None else set()
     root = _root()
-    payload = _admin_records(root)
+    payload = _admin_records(root, allowed_ids=allowed_ids)
     if any(
         row["summary"] is None and row["load_error"] is None and root.for_world(row["world_id"]).world_path.is_file()
         for row in payload["worlds"]
-    ) or (not payload["worlds"] and root.world_path.is_file()):
+    ) or (actor.is_admin and not payload["worlds"] and root.world_path.is_file()):
         return await _proxy(request)
     return JSONResponse(payload, headers=_NO_STORE)
 
@@ -421,6 +447,9 @@ async def _admin_list(request: Request) -> Response:
 async def _admin_run(request: Request) -> Response:
     world_id = request.path_params["world_id"]
     if _WORLD_ID.fullmatch(world_id) is None:
+        raise HTTPException(404, "unknown world")
+    actor = auth.current_actor()
+    if not actor.is_admin and users.shared_store().world_owner(world_id) != actor.user_id:
         raise HTTPException(404, "unknown world")
     # An active run already vetoes sleep. Preserve its existing event-driven
     # poll and use a disk response once the worker is gone.

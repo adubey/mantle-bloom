@@ -1,0 +1,14 @@
+{
+ "note": "D1's brake-off strength-map arms (analysis/issue888 on PR #890) rerun on the production method of PR #950: stage 1 setting 0 with ocean-floor strength from age, k_cap 0.14, the contact brake off. The great-circle arm is the production splitter at its defaults, for the splits-happen rate.",
+ "seeds": [106533960, 1097624328, 1397817354, 1629738962, 591453549],
+ "years": 200.0,
+ "common_params": {"eps_dot0": 4.595934101500222e-08, "s_warm": 0.15853359860913005, "k_cap": 0.14, "n_plume": 618452193851.9977,
+                   "lam_grow": 0.543797610780998, "l_tip_m": 143394.7340879273, "oceanic_age_strength": true},
+ "arms": {
+  "great-circle": {"split_method": "great_circle"},
+  "base": {"world_knobs": {"contact_drag_multiplier": 0.0}},
+  "craton-root": {"params": {"craton_root_m": 80000.0}, "world_knobs": {"contact_drag_multiplier": 0.0}},
+  "deep-marks": {"params": {"mark_power": 2.8}, "world_knobs": {"contact_drag_multiplier": 0.0}},
+  "route-marks": {"params": {"route_mark_power": 2.8}, "world_knobs": {"contact_drag_multiplier": 0.0}}
+ }
+}

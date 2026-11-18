@@ -288,16 +288,27 @@ def record_rift_cut(world: "World", plate: "Plate", points: np.ndarray, cut_norm
     """Count one split cut of `kind` (CRATON_RIFT_CUT_KINDS) through `plate` along the great
     circle with unit normal `cut_normal`, and the area and craton area of the nodes (world
     positions `points`, in collect order) within `band_sin` of it."""
+    in_band = np.abs(points @ np.asarray(cut_normal, dtype=float)) < band_sin
+    record_cut_areas(world, kind, *band_cut_areas(world, plate, in_band))
+
+
+def band_cut_areas(world: "World", plate: "Plate", in_band: np.ndarray) -> tuple[float, float]:
+    """(area, craton area), in m2, of the nodes of `plate` in the boolean mask `in_band` (collect order). Read it
+    before the plate is cut."""
+    areas = _areas(world, plate)[in_band]
+    return float(areas.sum()), float(areas[plate.collect("craton_crust_m")[in_band] > 0.0].sum())
+
+
+def record_cut_areas(world: "World", kind: str, band_area: float, craton_area: float) -> None:
+    """Count one cut of `kind` (CRATON_RIFT_CUT_KINDS) with its band's area and craton area. Both split methods book
+    their cuts here, so the account names live in one place (the rift-line method's band follows its line, PR #950)."""
     if kind not in CRATON_RIFT_CUT_KINDS:
         raise KeyError(f"unknown rift cut kind: {kind}")
     ensure_ledger(world)
-    in_band = np.abs(points @ np.asarray(cut_normal, dtype=float)) < band_sin
-    areas = _areas(world, plate)[in_band]
-    craton_area = float(areas[plate.collect("craton_crust_m")[in_band] > 0.0].sum())
     ledger = world.craton_ledger
     ledger[f"{kind}_cuts"] += 1.0
     ledger[f"{kind}_cuts_through_craton"] += float(craton_area > 0.0)
-    ledger[f"{kind}_band_area_m2"] += float(areas.sum())
+    ledger[f"{kind}_band_area_m2"] += band_area
     ledger[f"{kind}_band_craton_area_m2"] += craton_area
 
 

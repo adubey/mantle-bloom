@@ -30,6 +30,7 @@ Withdrawn RFCs are archived in [abandoned/](abandoned/).
 | [0018](0018-plates-split-along-weak-open-paths.md) | Plates split along weak paths that are pulling apart | Accepted (revised 2026-11-14: rift lines placed by whole-plate pull replace cell-by-cell damage bands after #894; revised 2026-11-14: damage bands replace the eigensolve candidate search after #848 and #876; gates are D0–D3. Earlier revision 2026-11-09) |
 | [0019](0019-conservative-atmospheric-moisture.md) | Conserve atmospheric moisture in diagnostic rain and transport | Accepted (2026-11-18: G3 formally failed after three tuning rounds; owner exception allows RFC continuation with the inland-rain mismatch recorded as a modeling simplification; prior held-out failures and diagnosis in [#898](https://github.com/adubey/mantle-bloom/issues/898)) |
 | [0020](0020-ux-telemetry-and-experiments.md) | Logging & Experimentation | Draft |
+| [0021](0021-plate-force-calibration.md) | Plates are driven by their slabs: correct and calibrate the plate forces and the rifting knobs together | Accepted (owner confirmation 2026-11-17; diagnosis in [#942](https://github.com/adubey/mantle-bloom/issues/942)) |
 
 RFCs 0001–0007 come from one investigation: a 19.2 Gyr run (seed 456862899) that lost
 almost all of its continental crust and all of its cratons. The run is used as a stress
@@ -91,6 +92,12 @@ shortcuts stayed far above the runtime gate (#848) and whose validity checks mea
 It draws on RFC 0010's failed minimum-cut, detected-route and damage work (#487, #699), and on
 #770's finding that weaker pseudo-suture route cost alone did not reduce tiny breakups. RFC 0010 remains accepted until its withdrawal
 is completed after RFC 0018's gates settle. Tracking issue: [#797](https://github.com/adubey/mantle-bloom/issues/797).
+
+RFC 0021 corrects the plate-driving force forms #942 found misformed (ridge push from the water load only,
+sunk-slab drag on all tangential motion, slab pull from an age-independent column, a speed-dependent
+subduction gate), then calibrates those forces, RFC 0008's brake and RFC 0018's rift knobs together. It
+depends on RFC 0018's rift-line method (#950) and moves its calibration. Tracking issue:
+[#957](https://github.com/adubey/mantle-bloom/issues/957).
 
 ## Writing and reviewing
 

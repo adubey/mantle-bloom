@@ -1,0 +1,2886 @@
+{
+ "seeds": [
+  106533960,
+  146046339,
+  487506346,
+  494568917,
+  591453549,
+  600370317,
+  604997962,
+  704718994,
+  763144949,
+  870996356,
+  954941394,
+  969845080,
+  1097624328,
+  1097710202,
+  1397817354,
+  1439649077,
+  1629738962,
+  1630166320,
+  1643146570,
+  1854897345
+ ],
+ "worlds": {
+  "106533960": [
+   {
+    "plate_id": 0,
+    "area_km2": 29271318,
+    "continental_share": 0.768,
+    "band_km": 21625,
+    "geometric_slab_km": 15179,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.434
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 30267583,
+    "continental_share": 0.738,
+    "band_km": 17875,
+    "geometric_slab_km": 4755,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.919
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 22601051,
+    "continental_share": 0.041,
+    "band_km": 15500,
+    "geometric_slab_km": 12188,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.627
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 41970942,
+    "continental_share": 0.973,
+    "band_km": 25375,
+    "geometric_slab_km": 21812,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.096
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 45416475,
+    "continental_share": 0.614,
+    "band_km": 24000,
+    "geometric_slab_km": 12741,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 3.048
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 41558554,
+    "continental_share": 0.249,
+    "band_km": 22125,
+    "geometric_slab_km": 11805,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 2.737
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 27510689,
+    "continental_share": 0.321,
+    "band_km": 17750,
+    "geometric_slab_km": 13826,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.465
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 17244819,
+    "continental_share": 0.309,
+    "band_km": 14125,
+    "geometric_slab_km": 7707,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.046
+   },
+   {
+    "plate_id": 8,
+    "area_km2": 32558481,
+    "continental_share": 0.261,
+    "band_km": 20375,
+    "geometric_slab_km": 9225,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.421
+   },
+   {
+    "plate_id": 9,
+    "area_km2": 20914148,
+    "continental_share": 0.549,
+    "band_km": 17625,
+    "geometric_slab_km": 14114,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.473
+   },
+   {
+    "plate_id": 10,
+    "area_km2": 13841400,
+    "continental_share": 0.447,
+    "band_km": 14625,
+    "geometric_slab_km": 9400,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.51
+   },
+   {
+    "plate_id": 11,
+    "area_km2": 13962704,
+    "continental_share": 0.0,
+    "band_km": 13125,
+    "geometric_slab_km": 7625,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.726
+   },
+   {
+    "plate_id": 12,
+    "area_km2": 16790957,
+    "continental_share": 0.449,
+    "band_km": 15625,
+    "geometric_slab_km": 11099,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.811
+   },
+   {
+    "plate_id": 13,
+    "area_km2": 30672540,
+    "continental_share": 0.533,
+    "band_km": 19000,
+    "geometric_slab_km": 16573,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.702
+   },
+   {
+    "plate_id": 14,
+    "area_km2": 12963103,
+    "continental_share": 0.694,
+    "band_km": 11750,
+    "geometric_slab_km": 6062,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.963
+   },
+   {
+    "plate_id": 15,
+    "area_km2": 41046966,
+    "continental_share": 0.555,
+    "band_km": 25750,
+    "geometric_slab_km": 10752,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 2.079
+   },
+   {
+    "plate_id": 16,
+    "area_km2": 31911596,
+    "continental_share": 0.208,
+    "band_km": 24875,
+    "geometric_slab_km": 15243,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.403
+   },
+   {
+    "plate_id": 17,
+    "area_km2": 14927207,
+    "continental_share": 0.54,
+    "band_km": 14750,
+    "geometric_slab_km": 8088,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.665
+   },
+   {
+    "plate_id": 18,
+    "area_km2": 24503176,
+    "continental_share": 0.8,
+    "band_km": 16125,
+    "geometric_slab_km": 8610,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.956
+   }
+  ],
+  "146046339": [
+   {
+    "plate_id": 0,
+    "area_km2": 27608285,
+    "continental_share": 0.543,
+    "band_km": 17000,
+    "geometric_slab_km": 5686,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.716
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 21693710,
+    "continental_share": 0.159,
+    "band_km": 12625,
+    "geometric_slab_km": 11105,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.893
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 25073744,
+    "continental_share": 1.0,
+    "band_km": 19125,
+    "geometric_slab_km": 0,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.217
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 38661578,
+    "continental_share": 0.15,
+    "band_km": 23250,
+    "geometric_slab_km": 20099,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.66
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 61488842,
+    "continental_share": 0.579,
+    "band_km": 26375,
+    "geometric_slab_km": 20022,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.625
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 30988134,
+    "continental_share": 0.191,
+    "band_km": 20125,
+    "geometric_slab_km": 11454,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.43
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 33661206,
+    "continental_share": 0.316,
+    "band_km": 19875,
+    "geometric_slab_km": 11358,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.728
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 33077049,
+    "continental_share": 0.282,
+    "band_km": 20500,
+    "geometric_slab_km": 14577,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.213
+   },
+   {
+    "plate_id": 8,
+    "area_km2": 48161063,
+    "continental_share": 0.93,
+    "band_km": 25125,
+    "geometric_slab_km": 22232,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.251
+   },
+   {
+    "plate_id": 9,
+    "area_km2": 18444299,
+    "continental_share": 1.0,
+    "band_km": 16000,
+    "geometric_slab_km": 0,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.521
+   },
+   {
+    "plate_id": 10,
+    "area_km2": 34777747,
+    "continental_share": 0.173,
+    "band_km": 16750,
+    "geometric_slab_km": 11094,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.739
+   },
+   {
+    "plate_id": 11,
+    "area_km2": 29069314,
+    "continental_share": 0.781,
+    "band_km": 16375,
+    "geometric_slab_km": 8034,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.543
+   },
+   {
+    "plate_id": 12,
+    "area_km2": 25221913,
+    "continental_share": 0.821,
+    "band_km": 19750,
+    "geometric_slab_km": 7327,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.157
+   },
+   {
+    "plate_id": 13,
+    "area_km2": 22550222,
+    "continental_share": 0.0,
+    "band_km": 17875,
+    "geometric_slab_km": 8970,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.69
+   },
+   {
+    "plate_id": 14,
+    "area_km2": 37593417,
+    "continental_share": 0.819,
+    "band_km": 20875,
+    "geometric_slab_km": 11221,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.116
+   },
+   {
+    "plate_id": 15,
+    "area_km2": 21754031,
+    "continental_share": 0.053,
+    "band_km": 16750,
+    "geometric_slab_km": 7085,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.983
+   }
+  ],
+  "487506346": [
+   {
+    "plate_id": 0,
+    "area_km2": 26565868,
+    "continental_share": 0.343,
+    "band_km": 17250,
+    "geometric_slab_km": 11250,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.824
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 33132151,
+    "continental_share": 0.518,
+    "band_km": 24250,
+    "geometric_slab_km": 18214,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.229
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 16006085,
+    "continental_share": 0.29,
+    "band_km": 12125,
+    "geometric_slab_km": 8956,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.561
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 19844266,
+    "continental_share": 0.578,
+    "band_km": 16250,
+    "geometric_slab_km": 9169,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.531
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 24900292,
+    "continental_share": 0.796,
+    "band_km": 17250,
+    "geometric_slab_km": 5890,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.904
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 26879747,
+    "continental_share": 0.8,
+    "band_km": 18125,
+    "geometric_slab_km": 14326,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.583
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 14274088,
+    "continental_share": 0.0,
+    "band_km": 11125,
+    "geometric_slab_km": 6323,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.794
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 43396577,
+    "continental_share": 0.443,
+    "band_km": 20375,
+    "geometric_slab_km": 16245,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.029
+   },
+   {
+    "plate_id": 8,
+    "area_km2": 10734372,
+    "continental_share": 0.438,
+    "band_km": 9375,
+    "geometric_slab_km": 4779,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.113
+   },
+   {
+    "plate_id": 9,
+    "area_km2": 31000571,
+    "continental_share": 0.493,
+    "band_km": 17750,
+    "geometric_slab_km": 13363,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.866
+   },
+   {
+    "plate_id": 10,
+    "area_km2": 17312014,
+    "continental_share": 0.498,
+    "band_km": 12125,
+    "geometric_slab_km": 5617,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.494
+   },
+   {
+    "plate_id": 11,
+    "area_km2": 21566880,
+    "continental_share": 0.297,
+    "band_km": 18750,
+    "geometric_slab_km": 13214,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.243
+   },
+   {
+    "plate_id": 12,
+    "area_km2": 38872573,
+    "continental_share": 0.363,
+    "band_km": 23375,
+    "geometric_slab_km": 14747,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.225
+   },
+   {
+    "plate_id": 13,
+    "area_km2": 34870393,
+    "continental_share": 0.607,
+    "band_km": 20875,
+    "geometric_slab_km": 5250,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.084
+   },
+   {
+    "plate_id": 14,
+    "area_km2": 32487636,
+    "continental_share": 0.375,
+    "band_km": 18750,
+    "geometric_slab_km": 11987,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.701
+   },
+   {
+    "plate_id": 15,
+    "area_km2": 42886689,
+    "continental_share": 0.902,
+    "band_km": 22125,
+    "geometric_slab_km": 7552,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.845
+   },
+   {
+    "plate_id": 16,
+    "area_km2": 11759351,
+    "continental_share": 0.0,
+    "band_km": 10625,
+    "geometric_slab_km": 3850,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 2.423
+   },
+   {
+    "plate_id": 17,
+    "area_km2": 28303992,
+    "continental_share": 0.759,
+    "band_km": 17500,
+    "geometric_slab_km": 15574,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.554
+   },
+   {
+    "plate_id": 18,
+    "area_km2": 35488603,
+    "continental_share": 0.272,
+    "band_km": 24125,
+    "geometric_slab_km": 18005,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.008
+   }
+  ],
+  "494568917": [
+   {
+    "plate_id": 0,
+    "area_km2": 26479120,
+    "continental_share": 0.0,
+    "band_km": 21250,
+    "geometric_slab_km": 13475,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.956
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 91208390,
+    "continental_share": 0.528,
+    "band_km": 29250,
+    "geometric_slab_km": 23269,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.745
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 44906728,
+    "continental_share": 0.263,
+    "band_km": 22750,
+    "geometric_slab_km": 6627,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.478
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 44619355,
+    "continental_share": 0.589,
+    "band_km": 23125,
+    "geometric_slab_km": 10797,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.845
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 37502002,
+    "continental_share": 0.5,
+    "band_km": 22625,
+    "geometric_slab_km": 15865,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.104
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 70685556,
+    "continental_share": 0.437,
+    "band_km": 26125,
+    "geometric_slab_km": 18667,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.883
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 91619915,
+    "continental_share": 0.716,
+    "band_km": 32375,
+    "geometric_slab_km": 21791,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.725
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 56692448,
+    "continental_share": 0.512,
+    "band_km": 25125,
+    "geometric_slab_km": 8410,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.196
+   },
+   {
+    "plate_id": 8,
+    "area_km2": 46620589,
+    "continental_share": 0.527,
+    "band_km": 24125,
+    "geometric_slab_km": 20704,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.333
+   }
+  ],
+  "591453549": [
+   {
+    "plate_id": 0,
+    "area_km2": 24298350,
+    "continental_share": 0.0,
+    "band_km": 15250,
+    "geometric_slab_km": 7691,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.686
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 26299778,
+    "continental_share": 0.627,
+    "band_km": 19875,
+    "geometric_slab_km": 14388,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.368
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 40091853,
+    "continental_share": 0.643,
+    "band_km": 21500,
+    "geometric_slab_km": 15050,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.383
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 23606935,
+    "continental_share": 0.338,
+    "band_km": 19750,
+    "geometric_slab_km": 9845,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.212
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 41421198,
+    "continental_share": 0.396,
+    "band_km": 22000,
+    "geometric_slab_km": 10130,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.012
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 21305004,
+    "continental_share": 0.263,
+    "band_km": 14625,
+    "geometric_slab_km": 8633,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.461
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 26256551,
+    "continental_share": 0.833,
+    "band_km": 16375,
+    "geometric_slab_km": 3505,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.538
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 38714418,
+    "continental_share": 0.918,
+    "band_km": 20125,
+    "geometric_slab_km": 15888,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.577
+   },
+   {
+    "plate_id": 8,
+    "area_km2": 18290341,
+    "continental_share": 0.949,
+    "band_km": 13500,
+    "geometric_slab_km": 5152,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.818
+   },
+   {
+    "plate_id": 9,
+    "area_km2": 20239240,
+    "continental_share": 0.667,
+    "band_km": 15125,
+    "geometric_slab_km": 7365,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.705
+   },
+   {
+    "plate_id": 10,
+    "area_km2": 12558056,
+    "continental_share": 0.346,
+    "band_km": 12125,
+    "geometric_slab_km": 7099,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.923
+   },
+   {
+    "plate_id": 11,
+    "area_km2": 23155093,
+    "continental_share": 0.464,
+    "band_km": 14625,
+    "geometric_slab_km": 9413,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.721
+   },
+   {
+    "plate_id": 12,
+    "area_km2": 24142428,
+    "continental_share": 0.21,
+    "band_km": 19625,
+    "geometric_slab_km": 11612,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.204
+   },
+   {
+    "plate_id": 13,
+    "area_km2": 30473784,
+    "continental_share": 0.798,
+    "band_km": 16000,
+    "geometric_slab_km": 12900,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.384
+   },
+   {
+    "plate_id": 14,
+    "area_km2": 22153934,
+    "continental_share": 0.303,
+    "band_km": 16125,
+    "geometric_slab_km": 12845,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.534
+   },
+   {
+    "plate_id": 15,
+    "area_km2": 31055612,
+    "continental_share": 0.417,
+    "band_km": 18250,
+    "geometric_slab_km": 12767,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.353
+   },
+   {
+    "plate_id": 16,
+    "area_km2": 27511501,
+    "continental_share": 0.0,
+    "band_km": 15750,
+    "geometric_slab_km": 11881,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.161
+   },
+   {
+    "plate_id": 17,
+    "area_km2": 17638105,
+    "continental_share": 0.331,
+    "band_km": 15875,
+    "geometric_slab_km": 11398,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.256
+   },
+   {
+    "plate_id": 18,
+    "area_km2": 29725037,
+    "continental_share": 0.814,
+    "band_km": 18875,
+    "geometric_slab_km": 17387,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.504
+   },
+   {
+    "plate_id": 19,
+    "area_km2": 10656546,
+    "continental_share": 0.0,
+    "band_km": 10125,
+    "geometric_slab_km": 4312,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.827
+   }
+  ],
+  "600370317": [
+   {
+    "plate_id": 0,
+    "area_km2": 90571354,
+    "continental_share": 0.775,
+    "band_km": 30375,
+    "geometric_slab_km": 26092,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.21
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 59603140,
+    "continental_share": 0.181,
+    "band_km": 23750,
+    "geometric_slab_km": 12878,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.602
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 53632531,
+    "continental_share": 0.201,
+    "band_km": 27875,
+    "geometric_slab_km": 20581,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.133
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 72618155,
+    "continental_share": 0.853,
+    "band_km": 30000,
+    "geometric_slab_km": 24772,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.438
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 73651456,
+    "continental_share": 0.484,
+    "band_km": 29000,
+    "geometric_slab_km": 19239,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.155
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 44830943,
+    "continental_share": 0.453,
+    "band_km": 24250,
+    "geometric_slab_km": 12458,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.272
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 47195084,
+    "continental_share": 0.095,
+    "band_km": 26125,
+    "geometric_slab_km": 16035,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.386
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 67654396,
+    "continental_share": 0.6,
+    "band_km": 28875,
+    "geometric_slab_km": 23461,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.268
+   }
+  ],
+  "604997962": [
+   {
+    "plate_id": 0,
+    "area_km2": 51053298,
+    "continental_share": 0.446,
+    "band_km": 23125,
+    "geometric_slab_km": 20156,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.789
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 30837770,
+    "continental_share": 0.556,
+    "band_km": 21125,
+    "geometric_slab_km": 12531,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.94
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 31174309,
+    "continental_share": 0.343,
+    "band_km": 17875,
+    "geometric_slab_km": 7810,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.801
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 28270098,
+    "continental_share": 0.629,
+    "band_km": 19000,
+    "geometric_slab_km": 13145,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.649
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 39428889,
+    "continental_share": 0.473,
+    "band_km": 19750,
+    "geometric_slab_km": 13727,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.074
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 43133071,
+    "continental_share": 0.31,
+    "band_km": 25625,
+    "geometric_slab_km": 13221,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.141
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 29133871,
+    "continental_share": 0.665,
+    "band_km": 16500,
+    "geometric_slab_km": 15409,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.559
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 22317887,
+    "continental_share": 0.548,
+    "band_km": 15625,
+    "geometric_slab_km": 8141,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.949
+   },
+   {
+    "plate_id": 8,
+    "area_km2": 42613706,
+    "continental_share": 0.444,
+    "band_km": 24625,
+    "geometric_slab_km": 16893,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.646
+   },
+   {
+    "plate_id": 9,
+    "area_km2": 36807369,
+    "continental_share": 0.764,
+    "band_km": 21250,
+    "geometric_slab_km": 13294,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.071
+   },
+   {
+    "plate_id": 10,
+    "area_km2": 29683898,
+    "continental_share": 0.0,
+    "band_km": 18125,
+    "geometric_slab_km": 979,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.555
+   },
+   {
+    "plate_id": 11,
+    "area_km2": 25470812,
+    "continental_share": 0.748,
+    "band_km": 17625,
+    "geometric_slab_km": 10923,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.491
+   },
+   {
+    "plate_id": 12,
+    "area_km2": 19686224,
+    "continental_share": 0.767,
+    "band_km": 17875,
+    "geometric_slab_km": 15394,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.988
+   },
+   {
+    "plate_id": 13,
+    "area_km2": 51278077,
+    "continental_share": 0.522,
+    "band_km": 22875,
+    "geometric_slab_km": 15744,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.084
+   },
+   {
+    "plate_id": 14,
+    "area_km2": 12192241,
+    "continental_share": 0.282,
+    "band_km": 12000,
+    "geometric_slab_km": 7237,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.495
+   },
+   {
+    "plate_id": 15,
+    "area_km2": 16877658,
+    "continental_share": 0.677,
+    "band_km": 13500,
+    "geometric_slab_km": 5600,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.216
+   }
+  ],
+  "704718994": [
+   {
+    "plate_id": 0,
+    "area_km2": 19202065,
+    "continental_share": 0.197,
+    "band_km": 16750,
+    "geometric_slab_km": 10124,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.725
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 25200508,
+    "continental_share": 0.301,
+    "band_km": 16125,
+    "geometric_slab_km": 9462,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.872
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 32734738,
+    "continental_share": 0.741,
+    "band_km": 21000,
+    "geometric_slab_km": 13485,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.017
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 15464320,
+    "continental_share": 0.069,
+    "band_km": 11750,
+    "geometric_slab_km": 8249,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.831
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 26414073,
+    "continental_share": 0.239,
+    "band_km": 20000,
+    "geometric_slab_km": 13479,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.975
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 14078114,
+    "continental_share": 0.0,
+    "band_km": 14250,
+    "geometric_slab_km": 5486,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 3.254
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 46855686,
+    "continental_share": 0.971,
+    "band_km": 24125,
+    "geometric_slab_km": 11805,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.728
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 24877150,
+    "continental_share": 0.0,
+    "band_km": 17500,
+    "geometric_slab_km": 4984,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 2.544
+   },
+   {
+    "plate_id": 8,
+    "area_km2": 16952622,
+    "continental_share": 0.055,
+    "band_km": 10500,
+    "geometric_slab_km": 7084,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.936
+   },
+   {
+    "plate_id": 9,
+    "area_km2": 26322667,
+    "continental_share": 0.161,
+    "band_km": 16000,
+    "geometric_slab_km": 10679,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.993
+   },
+   {
+    "plate_id": 10,
+    "area_km2": 22154320,
+    "continental_share": 0.44,
+    "band_km": 15125,
+    "geometric_slab_km": 7419,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.56
+   },
+   {
+    "plate_id": 11,
+    "area_km2": 12782577,
+    "continental_share": 0.0,
+    "band_km": 13125,
+    "geometric_slab_km": 6304,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 2.103
+   },
+   {
+    "plate_id": 12,
+    "area_km2": 20806965,
+    "continental_share": 0.845,
+    "band_km": 17250,
+    "geometric_slab_km": 8275,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.283
+   },
+   {
+    "plate_id": 13,
+    "area_km2": 28666578,
+    "continental_share": 0.0,
+    "band_km": 16625,
+    "geometric_slab_km": 16432,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.707
+   },
+   {
+    "plate_id": 14,
+    "area_km2": 53693541,
+    "continental_share": 0.856,
+    "band_km": 22250,
+    "geometric_slab_km": 14110,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.971
+   },
+   {
+    "plate_id": 15,
+    "area_km2": 16947392,
+    "continental_share": 1.0,
+    "band_km": 15125,
+    "geometric_slab_km": 0,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.638
+   },
+   {
+    "plate_id": 16,
+    "area_km2": 29521873,
+    "continental_share": 0.0,
+    "band_km": 20625,
+    "geometric_slab_km": 10479,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 2.06
+   },
+   {
+    "plate_id": 17,
+    "area_km2": 76407982,
+    "continental_share": 0.924,
+    "band_km": 28375,
+    "geometric_slab_km": 15190,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.144
+   }
+  ],
+  "763144949": [
+   {
+    "plate_id": 0,
+    "area_km2": 27009371,
+    "continental_share": 0.35,
+    "band_km": 16000,
+    "geometric_slab_km": 10330,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.899
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 19997262,
+    "continental_share": 0.305,
+    "band_km": 15750,
+    "geometric_slab_km": 6284,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.342
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 28072353,
+    "continental_share": 0.424,
+    "band_km": 16125,
+    "geometric_slab_km": 8678,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.467
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 29489453,
+    "continental_share": 0.454,
+    "band_km": 18000,
+    "geometric_slab_km": 12684,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.509
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 33169661,
+    "continental_share": 0.36,
+    "band_km": 19125,
+    "geometric_slab_km": 10853,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.874
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 28986479,
+    "continental_share": 0.911,
+    "band_km": 17875,
+    "geometric_slab_km": 12179,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.579
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 34280118,
+    "continental_share": 0.29,
+    "band_km": 23375,
+    "geometric_slab_km": 17009,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.141
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 39440534,
+    "continental_share": 0.579,
+    "band_km": 26750,
+    "geometric_slab_km": 23918,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.261
+   },
+   {
+    "plate_id": 8,
+    "area_km2": 26534917,
+    "continental_share": 0.108,
+    "band_km": 15250,
+    "geometric_slab_km": 12060,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.115
+   },
+   {
+    "plate_id": 9,
+    "area_km2": 31141323,
+    "continental_share": 0.659,
+    "band_km": 20625,
+    "geometric_slab_km": 16700,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.214
+   },
+   {
+    "plate_id": 10,
+    "area_km2": 22733285,
+    "continental_share": 0.055,
+    "band_km": 15125,
+    "geometric_slab_km": 6892,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.91
+   },
+   {
+    "plate_id": 11,
+    "area_km2": 70132464,
+    "continental_share": 0.714,
+    "band_km": 26875,
+    "geometric_slab_km": 19614,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.931
+   },
+   {
+    "plate_id": 12,
+    "area_km2": 36109804,
+    "continental_share": 0.719,
+    "band_km": 21125,
+    "geometric_slab_km": 12508,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.726
+   },
+   {
+    "plate_id": 13,
+    "area_km2": 12625691,
+    "continental_share": 0.604,
+    "band_km": 11125,
+    "geometric_slab_km": 8496,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.357
+   },
+   {
+    "plate_id": 14,
+    "area_km2": 57240826,
+    "continental_share": 0.605,
+    "band_km": 24250,
+    "geometric_slab_km": 17528,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.226
+   },
+   {
+    "plate_id": 15,
+    "area_km2": 13377345,
+    "continental_share": 0.076,
+    "band_km": 11500,
+    "geometric_slab_km": 5516,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.157
+   }
+  ],
+  "870996356": [
+   {
+    "plate_id": 0,
+    "area_km2": 81526516,
+    "continental_share": 0.895,
+    "band_km": 29250,
+    "geometric_slab_km": 17242,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.426
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 14500916,
+    "continental_share": 0.0,
+    "band_km": 11250,
+    "geometric_slab_km": 5871,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.928
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 10481768,
+    "continental_share": 0.059,
+    "band_km": 9000,
+    "geometric_slab_km": 4513,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.346
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 81079805,
+    "continental_share": 0.531,
+    "band_km": 25375,
+    "geometric_slab_km": 15960,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.242
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 15781677,
+    "continental_share": 0.0,
+    "band_km": 10625,
+    "geometric_slab_km": 2494,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.498
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 31053776,
+    "continental_share": 0.425,
+    "band_km": 23250,
+    "geometric_slab_km": 16000,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.291
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 33848318,
+    "continental_share": 0.116,
+    "band_km": 18125,
+    "geometric_slab_km": 9419,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.365
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 25038983,
+    "continental_share": 0.0,
+    "band_km": 20500,
+    "geometric_slab_km": 10208,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.297
+   },
+   {
+    "plate_id": 8,
+    "area_km2": 22530361,
+    "continental_share": 0.911,
+    "band_km": 14250,
+    "geometric_slab_km": 12737,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.346
+   },
+   {
+    "plate_id": 9,
+    "area_km2": 24285702,
+    "continental_share": 0.0,
+    "band_km": 14125,
+    "geometric_slab_km": 1428,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.513
+   },
+   {
+    "plate_id": 10,
+    "area_km2": 41183274,
+    "continental_share": 0.705,
+    "band_km": 25625,
+    "geometric_slab_km": 13485,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.274
+   },
+   {
+    "plate_id": 11,
+    "area_km2": 16096761,
+    "continental_share": 0.0,
+    "band_km": 12875,
+    "geometric_slab_km": 5688,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.387
+   },
+   {
+    "plate_id": 12,
+    "area_km2": 24971547,
+    "continental_share": 0.715,
+    "band_km": 19875,
+    "geometric_slab_km": 10123,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.344
+   },
+   {
+    "plate_id": 13,
+    "area_km2": 54273951,
+    "continental_share": 0.735,
+    "band_km": 26500,
+    "geometric_slab_km": 15940,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.727
+   },
+   {
+    "plate_id": 14,
+    "area_km2": 32965608,
+    "continental_share": 0.427,
+    "band_km": 20125,
+    "geometric_slab_km": 13825,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.454
+   }
+  ],
+  "954941394": [
+   {
+    "plate_id": 0,
+    "area_km2": 38786365,
+    "continental_share": 0.184,
+    "band_km": 20750,
+    "geometric_slab_km": 11385,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.174
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 21189652,
+    "continental_share": 0.348,
+    "band_km": 15375,
+    "geometric_slab_km": 12220,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.205
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 52736860,
+    "continental_share": 0.915,
+    "band_km": 26875,
+    "geometric_slab_km": 22386,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.153
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 31514616,
+    "continental_share": 0.406,
+    "band_km": 21375,
+    "geometric_slab_km": 12405,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.367
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 28136852,
+    "continental_share": 0.0,
+    "band_km": 16375,
+    "geometric_slab_km": 8217,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.593
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 13663057,
+    "continental_share": 0.334,
+    "band_km": 13500,
+    "geometric_slab_km": 8632,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.152
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 26092150,
+    "continental_share": 0.75,
+    "band_km": 17000,
+    "geometric_slab_km": 13355,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.417
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 59954184,
+    "continental_share": 0.58,
+    "band_km": 24375,
+    "geometric_slab_km": 20928,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.452
+   },
+   {
+    "plate_id": 8,
+    "area_km2": 37613236,
+    "continental_share": 0.83,
+    "band_km": 15750,
+    "geometric_slab_km": 12039,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.374
+   },
+   {
+    "plate_id": 9,
+    "area_km2": 26776797,
+    "continental_share": 0.513,
+    "band_km": 16250,
+    "geometric_slab_km": 7975,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.23
+   },
+   {
+    "plate_id": 10,
+    "area_km2": 25619065,
+    "continental_share": 0.92,
+    "band_km": 19500,
+    "geometric_slab_km": 9913,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.33
+   },
+   {
+    "plate_id": 11,
+    "area_km2": 43208786,
+    "continental_share": 0.536,
+    "band_km": 21625,
+    "geometric_slab_km": 12577,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.178
+   },
+   {
+    "plate_id": 12,
+    "area_km2": 34774057,
+    "continental_share": 0.107,
+    "band_km": 17500,
+    "geometric_slab_km": 12102,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.443
+   },
+   {
+    "plate_id": 13,
+    "area_km2": 31430626,
+    "continental_share": 0.58,
+    "band_km": 18500,
+    "geometric_slab_km": 8281,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.313
+   },
+   {
+    "plate_id": 14,
+    "area_km2": 23118096,
+    "continental_share": 0.291,
+    "band_km": 17000,
+    "geometric_slab_km": 8961,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.268
+   },
+   {
+    "plate_id": 15,
+    "area_km2": 15385852,
+    "continental_share": 0.056,
+    "band_km": 14125,
+    "geometric_slab_km": 9886,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.063
+   }
+  ],
+  "969845080": [
+   {
+    "plate_id": 0,
+    "area_km2": 21067779,
+    "continental_share": 0.0,
+    "band_km": 17125,
+    "geometric_slab_km": 2949,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.662
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 56490141,
+    "continental_share": 0.414,
+    "band_km": 23875,
+    "geometric_slab_km": 18538,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.318
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 82419160,
+    "continental_share": 0.473,
+    "band_km": 32375,
+    "geometric_slab_km": 24167,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.294
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 94448749,
+    "continental_share": 0.866,
+    "band_km": 29375,
+    "geometric_slab_km": 28612,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.436
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 80087048,
+    "continental_share": 0.528,
+    "band_km": 26125,
+    "geometric_slab_km": 17213,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.201
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 45961701,
+    "continental_share": 0.189,
+    "band_km": 23875,
+    "geometric_slab_km": 12435,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.392
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 42129591,
+    "continental_share": 0.15,
+    "band_km": 24750,
+    "geometric_slab_km": 11194,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.35
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 87445829,
+    "continental_share": 0.615,
+    "band_km": 30125,
+    "geometric_slab_km": 26198,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.518
+   }
+  ],
+  "1097624328": [
+   {
+    "plate_id": 0,
+    "area_km2": 30372669,
+    "continental_share": 0.592,
+    "band_km": 18000,
+    "geometric_slab_km": 10409,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.518
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 60438341,
+    "continental_share": 0.509,
+    "band_km": 25500,
+    "geometric_slab_km": 9146,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.829
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 41367257,
+    "continental_share": 0.82,
+    "band_km": 24875,
+    "geometric_slab_km": 18372,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.143
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 33059965,
+    "continental_share": 0.294,
+    "band_km": 21875,
+    "geometric_slab_km": 15605,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.851
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 84451416,
+    "continental_share": 0.584,
+    "band_km": 28750,
+    "geometric_slab_km": 20897,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.127
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 101964550,
+    "continental_share": 0.484,
+    "band_km": 29625,
+    "geometric_slab_km": 14707,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.466
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 70114173,
+    "continental_share": 0.359,
+    "band_km": 27375,
+    "geometric_slab_km": 20548,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.955
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 56890833,
+    "continental_share": 0.674,
+    "band_km": 26375,
+    "geometric_slab_km": 18898,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.47
+   },
+   {
+    "plate_id": 8,
+    "area_km2": 31373025,
+    "continental_share": 0.012,
+    "band_km": 19625,
+    "geometric_slab_km": 9742,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.649
+   }
+  ],
+  "1097710202": [
+   {
+    "plate_id": 0,
+    "area_km2": 24647081,
+    "continental_share": 0.183,
+    "band_km": 17875,
+    "geometric_slab_km": 9859,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.407
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 16294480,
+    "continental_share": 0.968,
+    "band_km": 14125,
+    "geometric_slab_km": 9777,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.513
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 30824446,
+    "continental_share": 0.351,
+    "band_km": 18750,
+    "geometric_slab_km": 10130,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.754
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 17057302,
+    "continental_share": 0.609,
+    "band_km": 13625,
+    "geometric_slab_km": 5306,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.602
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 26234325,
+    "continental_share": 0.366,
+    "band_km": 19375,
+    "geometric_slab_km": 10598,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.586
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 24826768,
+    "continental_share": 0.581,
+    "band_km": 15750,
+    "geometric_slab_km": 10691,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.324
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 29453182,
+    "continental_share": 0.556,
+    "band_km": 19375,
+    "geometric_slab_km": 11857,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.783
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 18252985,
+    "continental_share": 0.0,
+    "band_km": 13500,
+    "geometric_slab_km": 7952,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.639
+   },
+   {
+    "plate_id": 8,
+    "area_km2": 13000873,
+    "continental_share": 0.706,
+    "band_km": 12500,
+    "geometric_slab_km": 9947,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.966
+   },
+   {
+    "plate_id": 9,
+    "area_km2": 30305052,
+    "continental_share": 0.586,
+    "band_km": 17625,
+    "geometric_slab_km": 12269,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.447
+   },
+   {
+    "plate_id": 10,
+    "area_km2": 62178077,
+    "continental_share": 0.82,
+    "band_km": 26000,
+    "geometric_slab_km": 17989,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.824
+   },
+   {
+    "plate_id": 11,
+    "area_km2": 30690248,
+    "continental_share": 0.753,
+    "band_km": 21250,
+    "geometric_slab_km": 15244,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.578
+   },
+   {
+    "plate_id": 12,
+    "area_km2": 26702340,
+    "continental_share": 0.0,
+    "band_km": 17500,
+    "geometric_slab_km": 10146,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.674
+   },
+   {
+    "plate_id": 13,
+    "area_km2": 16367499,
+    "continental_share": 0.656,
+    "band_km": 16875,
+    "geometric_slab_km": 13447,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.649
+   },
+   {
+    "plate_id": 14,
+    "area_km2": 13044437,
+    "continental_share": 0.667,
+    "band_km": 11500,
+    "geometric_slab_km": 7735,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.538
+   },
+   {
+    "plate_id": 15,
+    "area_km2": 30736337,
+    "continental_share": 0.324,
+    "band_km": 19000,
+    "geometric_slab_km": 10323,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.476
+   },
+   {
+    "plate_id": 16,
+    "area_km2": 38013564,
+    "continental_share": 0.309,
+    "band_km": 24000,
+    "geometric_slab_km": 16546,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.673
+   },
+   {
+    "plate_id": 17,
+    "area_km2": 44270073,
+    "continental_share": 0.657,
+    "band_km": 22375,
+    "geometric_slab_km": 13760,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.675
+   },
+   {
+    "plate_id": 18,
+    "area_km2": 17019297,
+    "continental_share": 0.104,
+    "band_km": 12625,
+    "geometric_slab_km": 8421,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.615
+   }
+  ],
+  "1397817354": [
+   {
+    "plate_id": 0,
+    "area_km2": 29566181,
+    "continental_share": 0.472,
+    "band_km": 19125,
+    "geometric_slab_km": 9864,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.193
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 61700080,
+    "continental_share": 0.546,
+    "band_km": 28500,
+    "geometric_slab_km": 23531,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.766
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 35103990,
+    "continental_share": 0.692,
+    "band_km": 24750,
+    "geometric_slab_km": 20696,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.633
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 61670224,
+    "continental_share": 0.0,
+    "band_km": 24500,
+    "geometric_slab_km": 4183,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.682
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 63272307,
+    "continental_share": 0.705,
+    "band_km": 24875,
+    "geometric_slab_km": 18257,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.231
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 41415154,
+    "continental_share": 0.195,
+    "band_km": 21750,
+    "geometric_slab_km": 20828,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.368
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 60465911,
+    "continental_share": 0.642,
+    "band_km": 26875,
+    "geometric_slab_km": 17228,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.469
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 67356800,
+    "continental_share": 0.551,
+    "band_km": 30375,
+    "geometric_slab_km": 20981,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.115
+   },
+   {
+    "plate_id": 8,
+    "area_km2": 58135862,
+    "continental_share": 0.707,
+    "band_km": 26500,
+    "geometric_slab_km": 20355,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.84
+   },
+   {
+    "plate_id": 9,
+    "area_km2": 31690565,
+    "continental_share": 0.422,
+    "band_km": 22625,
+    "geometric_slab_km": 14042,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.074
+   }
+  ],
+  "1439649077": [
+   {
+    "plate_id": 0,
+    "area_km2": 16440074,
+    "continental_share": 0.015,
+    "band_km": 15375,
+    "geometric_slab_km": 8420,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.554
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 30839032,
+    "continental_share": 0.387,
+    "band_km": 20500,
+    "geometric_slab_km": 15150,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.275
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 63536222,
+    "continental_share": 0.782,
+    "band_km": 30500,
+    "geometric_slab_km": 22046,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.24
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 48064074,
+    "continental_share": 0.039,
+    "band_km": 23250,
+    "geometric_slab_km": 12700,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.76
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 28841649,
+    "continental_share": 0.277,
+    "band_km": 23000,
+    "geometric_slab_km": 16496,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.486
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 89162203,
+    "continental_share": 0.595,
+    "band_km": 31625,
+    "geometric_slab_km": 13300,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.297
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 54436761,
+    "continental_share": 0.53,
+    "band_km": 27000,
+    "geometric_slab_km": 19370,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.416
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 73750486,
+    "continental_share": 0.519,
+    "band_km": 27500,
+    "geometric_slab_km": 16569,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.537
+   },
+   {
+    "plate_id": 8,
+    "area_km2": 39599747,
+    "continental_share": 0.781,
+    "band_km": 21375,
+    "geometric_slab_km": 15370,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.4
+   },
+   {
+    "plate_id": 9,
+    "area_km2": 46907870,
+    "continental_share": 0.627,
+    "band_km": 24375,
+    "geometric_slab_km": 22509,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.303
+   },
+   {
+    "plate_id": 10,
+    "area_km2": 18918911,
+    "continental_share": 0.149,
+    "band_km": 15375,
+    "geometric_slab_km": 11168,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.331
+   }
+  ],
+  "1629738962": [
+   {
+    "plate_id": 0,
+    "area_km2": 11563542,
+    "continental_share": 0.366,
+    "band_km": 13875,
+    "geometric_slab_km": 7887,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.437
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 25516251,
+    "continental_share": 0.266,
+    "band_km": 16750,
+    "geometric_slab_km": 6274,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.597
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 15852782,
+    "continental_share": 0.844,
+    "band_km": 10500,
+    "geometric_slab_km": 6472,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.485
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 20678140,
+    "continental_share": 0.588,
+    "band_km": 14500,
+    "geometric_slab_km": 9482,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.061
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 30760447,
+    "continental_share": 0.602,
+    "band_km": 20625,
+    "geometric_slab_km": 16702,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.342
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 16599925,
+    "continental_share": 0.119,
+    "band_km": 12500,
+    "geometric_slab_km": 5579,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 2.588
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 33615265,
+    "continental_share": 0.389,
+    "band_km": 17250,
+    "geometric_slab_km": 9085,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.524
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 20081078,
+    "continental_share": 0.923,
+    "band_km": 14500,
+    "geometric_slab_km": 12864,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.333
+   },
+   {
+    "plate_id": 8,
+    "area_km2": 32462961,
+    "continental_share": 0.628,
+    "band_km": 17500,
+    "geometric_slab_km": 15589,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.141
+   },
+   {
+    "plate_id": 9,
+    "area_km2": 46400001,
+    "continental_share": 0.505,
+    "band_km": 23750,
+    "geometric_slab_km": 18202,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.549
+   },
+   {
+    "plate_id": 10,
+    "area_km2": 51969902,
+    "continental_share": 0.295,
+    "band_km": 25375,
+    "geometric_slab_km": 13544,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.621
+   },
+   {
+    "plate_id": 11,
+    "area_km2": 49921217,
+    "continental_share": 0.634,
+    "band_km": 25625,
+    "geometric_slab_km": 25089,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.556
+   },
+   {
+    "plate_id": 12,
+    "area_km2": 50661891,
+    "continental_share": 0.711,
+    "band_km": 22875,
+    "geometric_slab_km": 11114,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.181
+   },
+   {
+    "plate_id": 13,
+    "area_km2": 39909040,
+    "continental_share": 0.124,
+    "band_km": 20000,
+    "geometric_slab_km": 12835,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.242
+   },
+   {
+    "plate_id": 14,
+    "area_km2": 49489888,
+    "continental_share": 0.545,
+    "band_km": 23500,
+    "geometric_slab_km": 19614,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.825
+   },
+   {
+    "plate_id": 15,
+    "area_km2": 14454734,
+    "continental_share": 0.548,
+    "band_km": 13125,
+    "geometric_slab_km": 6792,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.448
+   }
+  ],
+  "1630166320": [
+   {
+    "plate_id": 0,
+    "area_km2": 37939898,
+    "continental_share": 0.53,
+    "band_km": 23000,
+    "geometric_slab_km": 9684,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.464
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 54036840,
+    "continental_share": 0.533,
+    "band_km": 24625,
+    "geometric_slab_km": 19283,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.215
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 38916027,
+    "continental_share": 0.578,
+    "band_km": 19125,
+    "geometric_slab_km": 15021,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.612
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 15291095,
+    "continental_share": 0.0,
+    "band_km": 11000,
+    "geometric_slab_km": 5740,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.688
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 33328907,
+    "continental_share": 0.688,
+    "band_km": 26750,
+    "geometric_slab_km": 18581,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.377
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 23269990,
+    "continental_share": 0.008,
+    "band_km": 18375,
+    "geometric_slab_km": 4184,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.665
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 21101231,
+    "continental_share": 0.0,
+    "band_km": 17625,
+    "geometric_slab_km": 8679,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.01
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 42056808,
+    "continental_share": 0.53,
+    "band_km": 24500,
+    "geometric_slab_km": 18335,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.403
+   },
+   {
+    "plate_id": 8,
+    "area_km2": 27257784,
+    "continental_share": 0.05,
+    "band_km": 16750,
+    "geometric_slab_km": 7226,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.532
+   },
+   {
+    "plate_id": 9,
+    "area_km2": 32499986,
+    "continental_share": 0.134,
+    "band_km": 21375,
+    "geometric_slab_km": 9038,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.27
+   },
+   {
+    "plate_id": 10,
+    "area_km2": 56807885,
+    "continental_share": 0.873,
+    "band_km": 26875,
+    "geometric_slab_km": 17784,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.466
+   },
+   {
+    "plate_id": 11,
+    "area_km2": 33827408,
+    "continental_share": 0.786,
+    "band_km": 20125,
+    "geometric_slab_km": 18484,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.36
+   },
+   {
+    "plate_id": 12,
+    "area_km2": 38420061,
+    "continental_share": 0.729,
+    "band_km": 23875,
+    "geometric_slab_km": 21476,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.298
+   },
+   {
+    "plate_id": 13,
+    "area_km2": 37767116,
+    "continental_share": 0.588,
+    "band_km": 20250,
+    "geometric_slab_km": 18906,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.416
+   },
+   {
+    "plate_id": 14,
+    "area_km2": 16946155,
+    "continental_share": 0.367,
+    "band_km": 16375,
+    "geometric_slab_km": 12513,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.285
+   }
+  ],
+  "1643146570": [
+   {
+    "plate_id": 0,
+    "area_km2": 21986743,
+    "continental_share": 0.513,
+    "band_km": 20375,
+    "geometric_slab_km": 15239,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.611
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 30905042,
+    "continental_share": 0.457,
+    "band_km": 20750,
+    "geometric_slab_km": 11188,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.632
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 60169989,
+    "continental_share": 0.542,
+    "band_km": 28500,
+    "geometric_slab_km": 20440,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.615
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 66971238,
+    "continental_share": 0.579,
+    "band_km": 29125,
+    "geometric_slab_km": 19425,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.04
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 59451734,
+    "continental_share": 0.897,
+    "band_km": 26625,
+    "geometric_slab_km": 15706,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.548
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 47823245,
+    "continental_share": 0.331,
+    "band_km": 22250,
+    "geometric_slab_km": 12983,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.91
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 89051964,
+    "continental_share": 0.384,
+    "band_km": 28500,
+    "geometric_slab_km": 14513,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.112
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 22873932,
+    "continental_share": 0.959,
+    "band_km": 16500,
+    "geometric_slab_km": 8753,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.999
+   },
+   {
+    "plate_id": 8,
+    "area_km2": 78419790,
+    "continental_share": 0.205,
+    "band_km": 31875,
+    "geometric_slab_km": 22018,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.84
+   },
+   {
+    "plate_id": 9,
+    "area_km2": 32637935,
+    "continental_share": 0.521,
+    "band_km": 19875,
+    "geometric_slab_km": 14016,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.872
+   }
+  ],
+  "1854897345": [
+   {
+    "plate_id": 0,
+    "area_km2": 53076301,
+    "continental_share": 0.081,
+    "band_km": 20500,
+    "geometric_slab_km": 6379,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 2.008
+   },
+   {
+    "plate_id": 1,
+    "area_km2": 97407159,
+    "continental_share": 0.57,
+    "band_km": 30125,
+    "geometric_slab_km": 19948,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.511
+   },
+   {
+    "plate_id": 2,
+    "area_km2": 22676973,
+    "continental_share": 0.389,
+    "band_km": 20000,
+    "geometric_slab_km": 12452,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.686
+   },
+   {
+    "plate_id": 3,
+    "area_km2": 53435524,
+    "continental_share": 0.422,
+    "band_km": 23625,
+    "geometric_slab_km": 19092,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.425
+   },
+   {
+    "plate_id": 4,
+    "area_km2": 31451836,
+    "continental_share": 0.766,
+    "band_km": 20125,
+    "geometric_slab_km": 18823,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.158
+   },
+   {
+    "plate_id": 5,
+    "area_km2": 26349916,
+    "continental_share": 0.399,
+    "band_km": 20250,
+    "geometric_slab_km": 17246,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.033
+   },
+   {
+    "plate_id": 6,
+    "area_km2": 40835591,
+    "continental_share": 0.804,
+    "band_km": 20875,
+    "geometric_slab_km": 12676,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.831
+   },
+   {
+    "plate_id": 7,
+    "area_km2": 72107703,
+    "continental_share": 0.928,
+    "band_km": 28375,
+    "geometric_slab_km": 22666,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.103
+   },
+   {
+    "plate_id": 8,
+    "area_km2": 16334247,
+    "continental_share": 0.152,
+    "band_km": 15875,
+    "geometric_slab_km": 9804,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.527
+   },
+   {
+    "plate_id": 9,
+    "area_km2": 46537278,
+    "continental_share": 0.461,
+    "band_km": 25875,
+    "geometric_slab_km": 9541,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.204
+   },
+   {
+    "plate_id": 10,
+    "area_km2": 22736801,
+    "continental_share": 0.072,
+    "band_km": 16250,
+    "geometric_slab_km": 6394,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 1.905
+   },
+   {
+    "plate_id": 11,
+    "area_km2": 26526567,
+    "continental_share": 0.147,
+    "band_km": 15875,
+    "geometric_slab_km": 10144,
+    "closing_down_going_km": 0,
+    "past_gate_km": 0,
+    "rate_cm_per_yr": 0.796
+   }
+  ]
+ }
+}

@@ -159,10 +159,14 @@ Tab/Shift+Tab). The event console is the one other exception: it just displays w
 The full app is single-owner (#372). `auth.AuthMiddleware` sits inside the CORS middleware
 and checks every request before routing:
 
-- `GET /` from someone who isn't the admin redirects to `/view`, the logged-out page (the
-  frontend's `main.tsx` renders `Viewer.tsx` there and `App.tsx` everywhere else).
-- Every `/worlds/{world_id}/*` route answers `401` to anyone who isn't the admin, including direct API
-  calls.
+- `GET /` from someone who isn't the admin or a `paid` user redirects to `/view`, the
+  logged-out/free page (the frontend's `main.tsx` renders `Viewer.tsx` there and `App.tsx`
+  everywhere else).
+- Every `/worlds/{world_id}/*` route answers `401` to free/signed-out callers, including direct
+  API calls. Paid users see and manage only their own worlds (`404` on others' worlds) and may
+  mark them `is_public`, while the global `/view` default (`is_default`) and debug routes
+  (`/debug/*`, `/worlds/{world_id}/generate_debug`, `/worlds/{world_id}/replay-logs`) remain
+  admin-only (`403` for paid users, and `&deb` / `Debug...` are hidden in the UI) (#953).
 - Any non-GET request whose `Origin` is another site (or `Sec-Fetch-Site: cross-site` when
   there's no `Origin`) is refused with `403`. This is the CSRF guard. Same-site means the
   request's own `Host` or the origin of `MANTLE_BLOOM_PUBLIC_URL`, so a proxy that rewrites
@@ -605,6 +609,14 @@ merge_split.py       plate consumption, sustained-collision continental merging 
                      at most one per step), mantle-flow-driven splitting, periodic geometric
                      defragmentation (severed-lobe / stranded-node cleanup deform() can't do),
                      event log messages
+rift_damage.py       optional plate breakup along rift lines (RFC 0018), used when
+                     `World.split_method == "rift_lines"`: the per-step damage pass for every
+                     plate, thinning with flank transfer, the split along a broken line, and
+                     damage inheritance at new margins
+rift_lines.py        array kernels behind it: section pull, corridors, the line search, the
+                     sub-stepped strain integrator, and the two-daughter split masks
+rift_strength.py     `RiftLineParams`, the line-cut load tensor, the capacity table lookup,
+                     weakness multipliers, softening and the flank-transfer thinning
 terranes.py          shared buoyant-crust tracers and ledger (RFC 0007): per-plate plateau,
                      arc and mobile-cover moments, docking-probability draws, and the
                      emplaced/thinned/reset/subducted/converted/foundered/clipped balance

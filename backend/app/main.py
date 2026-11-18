@@ -42,6 +42,7 @@ from . import (
     public_view,
     render_image,
     replay_log,
+    rift_damage,
     security_headers,
     run_control,
     stats,
@@ -309,6 +310,7 @@ class ControlsRequest(BaseModel):
     simulate_glacier_march: bool | None = None
     wind_model: str | None = None
     fault_deformation_mode: str | None = None
+    split_method: str | None = None
     # Issue #133 phase-1 proving-out flag -- see World.node_cloud_resample_mode. "kdtree"
     # (default) or "healpix". Backend/API-only for now, no Controls-panel entry.
     node_cloud_resample_mode: str | None = None
@@ -338,6 +340,7 @@ class ControlsRequest(BaseModel):
 
 WIND_MODEL_CHOICES = ("cfd", "diagnostic")
 FAULT_DEFORMATION_MODE_CHOICES = faults.FAULT_DEFORMATION_MODES
+SPLIT_METHOD_CHOICES = rift_damage.SPLIT_METHODS
 NODE_CLOUD_RESAMPLE_MODE_CHOICES = healpix_grid.NODE_CLOUD_RESAMPLE_MODE_CHOICES
 
 
@@ -366,7 +369,8 @@ def _parse_view_rotation(rotation: str | None) -> np.ndarray:
 
 def _session_or_404(world_id: str, *, hydrate: bool = True) -> WorldSession:
     session = _registry.find(world_id)
-    if session is None:
+    actor = auth.current_actor()
+    if session is None or (not actor.is_admin and users.shared_store().world_owner(world_id) != actor.user_id):
         raise HTTPException(status_code=404, detail=f"unknown world {world_id!r}")
     if hydrate:
         _hydrate(session)
@@ -419,15 +423,20 @@ def _apply_generate_identity(session: WorldSession, name: str | None, is_public:
         _save_index()
 
 
+def _is_publicly_visible(world_id: str, is_public: bool, running: bool) -> bool:
+    """Public worlds are always visible; private worlds only while running if admin-owned (#597, #953)."""
+    return is_public or (running and users.shared_store().world_owner(world_id) is None)
+
+
 def _public_session_or_404(world_id: str) -> WorldSession:
     """A session the public viewer may address. Private idle worlds and unknown
     IDs are indistinguishable (both 404) so the public API cannot reveal private
-    worlds -- but a world whose run loop is on answers while it runs (#597), so
+    worlds -- but an admin world whose run loop is on answers while it runs (#597), so
     anyone can watch a planet that is currently stepping."""
     session = _registry.find(world_id)
     if session is None or session.deleted or (session.world is None and session.deferred_summary is None):
         raise HTTPException(status_code=404, detail="no such public world")
-    if not session.is_public and not _session_running(session):
+    if not _is_publicly_visible(world_id, session.is_public, _session_running(session)):
         raise HTTPException(status_code=404, detail="no such public world")
     return session
 
@@ -1047,11 +1056,39 @@ class PatchWorldRequest(BaseModel):
     viewer_rotation: list[float] | None = None
 
 
+def _visible_sessions() -> list[WorldSession]:
+    """All worlds for admin, or only the signed-in paid user's own worlds (#953)."""
+    sessions = _registry.list()
+    actor = auth.current_actor()
+    if actor.is_admin:
+        return sessions
+    owned = set(users.shared_store().user_worlds(actor.user_id)) if actor.user_id is not None else set()
+    return [s for s in sessions if s.world_id in owned]
+
+
+def _create_owned_session(name: str | None = None, *, is_public: bool = False) -> WorldSession:
+    """Create a world record enforcing per-user caps for paid callers (#953)."""
+    actor = auth.current_actor()
+    if not actor.is_admin and len(_visible_sessions()) >= _registry.max_worlds:
+        raise HTTPException(status_code=409, detail=checkpoint.world_limit_error(_registry.max_worlds))
+    try:
+        session = _registry.create(name=name, is_public=is_public, enforce_limit=actor.is_admin)
+    except WorldLimitReached as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not actor.is_admin and actor.user_id is not None:
+        try:
+            users.shared_store().add_world(session.world_id, actor.user_id)
+        except Exception:
+            _registry.remove(session.world_id)
+            raise
+    return session
+
+
 @app.get("/worlds")
 def list_worlds() -> dict:
-    """Every world record in this process (#563)."""
+    """Every world record visible to the caller (#563, #953)."""
     worlds = []
-    for session in _registry.list():
+    for session in _visible_sessions():
         # The summary reads world arrays a concurrent step mutates in place;
         # hold the session lock so a record can't tear mid-step.
         with session.lock:
@@ -1062,10 +1099,7 @@ def list_worlds() -> dict:
 @app.post("/worlds", status_code=201)
 def create_world(req: CreateWorldRequest) -> dict:
     """Create an empty world record. Generate or Load populates it afterwards."""
-    try:
-        session = _registry.create(name=req.name, is_public=req.is_public)
-    except WorldLimitReached as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    session = _create_owned_session(name=req.name, is_public=req.is_public)
     _wire_session(session)
     _save_index()
     return _record_json(session)
@@ -1076,7 +1110,7 @@ def suggest_world_name() -> dict:
     """An unused exoplanet-style name for the Generate World dialog to offer up
     front (#597): advisory only, duplicate display names are allowed (identity
     is the world_id)."""
-    return {"name": world_names.default_world_name({s.name for s in _registry.list()})}
+    return {"name": world_names.default_world_name({s.name for s in _visible_sessions()})}
 
 
 @app.get("/worlds/{world_id}")
@@ -1141,6 +1175,8 @@ def _apply_viewer_patch(session: WorldSession, req: PatchWorldRequest) -> None:
 @app.patch("/worlds/{world_id}")
 def patch_world(world_id: str, req: PatchWorldRequest) -> dict:
     _validate_viewer_patch(req)
+    if req.is_default is not None and not auth.current_actor().is_admin:
+        raise HTTPException(status_code=403, detail="Admin required")
     session = _session_or_404(world_id)
     # A /view patch can pre-render (_apply_viewer_patch), and rendering must
     # hold the compute gate like every other render: take it before the
@@ -1208,6 +1244,10 @@ def delete_world(world_id: str) -> dict:
         session.runner.set_status(checkpoint.RunStatus(running=False, step_years=session.runner.status().step_years), persist=False)
         session.runner.close()
     _registry.remove(world_id)
+    try:
+        users.shared_store().remove_world(world_id)
+    except KeyError:
+        pass
     if _checkpoint_root is not None and session.checkpoint_store is not None:
         import shutil
 
@@ -1852,16 +1892,14 @@ async def import_world(
     upload_path = await _spool_upload_to_tempfile(request)
     saved_name, world = await _load_uploaded_world(upload_path, read_manifest_name=True)
     _discard_stale_hydrology_cache(world)
+    visible = _visible_sessions()
     resolved = name or saved_name
     if not resolved:
-        resolved = world_names.default_world_name({s.name for s in _registry.list()})
-    existing = next((s for s in _registry.list() if s.name == resolved), None)
+        resolved = world_names.default_world_name({s.name for s in visible})
+    existing = next((s for s in visible if s.name == resolved), None)
     if existing is not None and not allow_duplicate:
         raise HTTPException(status_code=409, detail=_duplicate_import_conflict(resolved, existing, world))
-    try:
-        session = _registry.create(name=resolved)
-    except WorldLimitReached as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    session = _create_owned_session(name=resolved)
     _wire_session(session)
     _save_index()
     # Fresh session, nothing contends with it -- the lock just honors `_set_world`'s contract.
@@ -2299,10 +2337,29 @@ def animation_recovery(world_id: str) -> dict:
     return progress
 
 
+def _validate_controls_request(req: ControlsRequest) -> dict[str, float]:
+    """Validate choice fields and tuning multipliers on a ControlsRequest."""
+    choice_fields = (
+        ("wind_model", req.wind_model, WIND_MODEL_CHOICES),
+        ("fault_deformation_mode", req.fault_deformation_mode, FAULT_DEFORMATION_MODE_CHOICES),
+        ("split_method", req.split_method, SPLIT_METHOD_CHOICES),
+        ("node_cloud_resample_mode", req.node_cloud_resample_mode, NODE_CLOUD_RESAMPLE_MODE_CHOICES),
+    )
+    for name, value, choices in choice_fields:
+        if value is not None and value not in choices:
+            raise HTTPException(status_code=400, detail=f"unknown {name} {value!r}; choices are {choices}")
+    tuning_updates = {name: getattr(req, name) for name in TUNING_MULTIPLIER_FIELDS if getattr(req, name) is not None}
+    for name, value in tuning_updates.items():
+        if not np.isfinite(value) or value < 0.0:
+            raise HTTPException(status_code=400, detail=f"{name} must be finite and >= 0 (got {value})")
+    return tuning_updates
+
+
 @app.post("/worlds/{world_id}/controls")
 def set_controls(world_id: str, req: ControlsRequest) -> dict:
     """Live-adjusts sea level, solar heat, ice-age frequency, the plate-movement/climate-biomes
-    step toggles, the wind model, and/or the geomorphic-budget tuning multipliers
+    step toggles, the wind model, fault deformation mode, plate split method, and/or the
+    geomorphic-budget tuning multipliers
     (world.TUNING_MULTIPLIER_FIELDS -- rain/river/wind/ocean/glacier/seismic erosion,
     coastal leveling, river/ocean deposition, collision uplift rate & reach, contact
     braking (whole brake and craton-only), volcanism,
@@ -2318,27 +2375,7 @@ def set_controls(world_id: str, req: ControlsRequest) -> dict:
     user has turned off per-step climate computation to speed up stepping. `400` for an
     unknown wind model or a negative multiplier; `404` if no world has been generated yet."""
     session = _session_or_404(world_id)
-    if req.wind_model is not None and req.wind_model not in WIND_MODEL_CHOICES:
-        raise HTTPException(
-            status_code=400, detail=f"unknown wind_model {req.wind_model!r}; choices are {WIND_MODEL_CHOICES}"
-        )
-    if req.fault_deformation_mode is not None and req.fault_deformation_mode not in FAULT_DEFORMATION_MODE_CHOICES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"unknown fault_deformation_mode {req.fault_deformation_mode!r}; choices are {FAULT_DEFORMATION_MODE_CHOICES}",
-        )
-    if req.node_cloud_resample_mode is not None and req.node_cloud_resample_mode not in NODE_CLOUD_RESAMPLE_MODE_CHOICES:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"unknown node_cloud_resample_mode {req.node_cloud_resample_mode!r}; "
-                f"choices are {NODE_CLOUD_RESAMPLE_MODE_CHOICES}"
-            ),
-        )
-    tuning_updates = {name: getattr(req, name) for name in TUNING_MULTIPLIER_FIELDS if getattr(req, name) is not None}
-    for name, value in tuning_updates.items():
-        if not np.isfinite(value) or value < 0.0:
-            raise HTTPException(status_code=400, detail=f"{name} must be finite and >= 0 (got {value})")
+    tuning_updates = _validate_controls_request(req)
     with _compute_gate.hold(), session.lock:
         _hydrate_locked(session)
         world = _require_world(session)
@@ -2361,6 +2398,13 @@ def set_controls(world_id: str, req: ControlsRequest) -> dict:
             world.wind_model = req.wind_model
         if req.fault_deformation_mode is not None:
             world.fault_deformation_mode = req.fault_deformation_mode
+        if req.split_method is not None:
+            if req.split_method == "rift_lines":
+                try:
+                    rift_damage.RiftLineParams.with_overrides(world.rift_line_params)
+                except (TypeError, ValueError) as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+            world.split_method = req.split_method
         if req.node_cloud_resample_mode is not None:
             world.node_cloud_resample_mode = req.node_cloud_resample_mode
         if req.debug_diagnostics is not None:
@@ -2390,6 +2434,7 @@ def _controls_state(world: World) -> dict:
         "simulate_glacier_march": world.simulate_glacier_march,
         "wind_model": world.wind_model,
         "fault_deformation_mode": world.fault_deformation_mode,
+        "split_method": world.split_method,
         "node_cloud_resample_mode": world.node_cloud_resample_mode,
         "debug_diagnostics": world.debug_diagnostics,
         **{name: getattr(world, name) for name in TUNING_MULTIPLIER_FIELDS},
@@ -3095,7 +3140,7 @@ def public_worlds() -> dict:
             # A generated world answers while it is public -- and while its run
             # loop is on even when private, so /view can watch a planet that is
             # currently stepping (#597). It drops back out when the run stops.
-            if summary is not None and (session.is_public or running):
+            if summary is not None and _is_publicly_visible(session.world_id, session.is_public, running):
                 worlds.append({
                     "world_id": session.world_id, "name": session.feed.name(), "running": running,
                     "is_default": session.is_default, **summary,

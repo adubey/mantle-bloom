@@ -341,6 +341,7 @@ def _backfill_added_fields(world: World) -> None:
         ("pending_magma_parcels", list),
         ("mantle_plumes", list),
         ("plume_stream", dict),
+        ("rift_line_params", dict),
         ("initial_rock_ages", dict),
         ("overlap_progress", dict),
         ("faults", list),

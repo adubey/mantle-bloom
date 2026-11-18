@@ -2,6 +2,8 @@ import type { AnimateResponse } from "./api";
 
 interface Props {
   result: AnimateResponse;
+  // Why the last Save failed, if it did. The dialog stays up so Save can be retried (#961).
+  saveError?: string | null;
   onSave: () => void;
   onDiscard: () => void;
 }
@@ -12,7 +14,7 @@ interface Props {
 // for in a sidebar panel. No backdrop-dismiss: the recording already permanently advanced the
 // world either way (see AnimationModal.tsx), so losing the video by clicking past this needs to
 // be a deliberate Discard, not an accidental click outside the box.
-export default function SaveAnimationModal({ result, onSave, onDiscard }: Props) {
+export default function SaveAnimationModal({ result, saveError, onSave, onDiscard }: Props) {
   const myr = (result.elapsed_years / 1e6).toFixed(1);
   return (
     <div
@@ -36,6 +38,11 @@ export default function SaveAnimationModal({ result, onSave, onDiscard }: Props)
         {result.error && (
           <div style={{ fontSize: 11, marginBottom: 16, overflowWrap: "anywhere" }}>
             The recording contains the completed frames. Error: {result.error}
+          </div>
+        )}
+        {saveError && (
+          <div role="alert" style={{ fontSize: 11, marginBottom: 16, color: "#ff8a8a", overflowWrap: "anywhere" }}>
+            Saving failed: {saveError}
           </div>
         )}
         <div style={{ display: "flex", gap: 6 }}>

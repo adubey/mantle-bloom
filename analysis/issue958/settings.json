@@ -1,0 +1,36 @@
+{
+ "note": "RFC 0021 G0 settings (#958). common_params is #955's stage 1 setting 0 with k_cap 0.14 and ocean-floor strength from age; the rifting baseline adds mark_power 2.8 (#955's deeper-marks arm).",
+ "common_params": {
+  "eps_dot0": 4.595934101500222e-08,
+  "s_warm": 0.15853359860913005,
+  "k_cap": 0.14,
+  "n_plume": 618452193851.9977,
+  "lam_grow": 0.543797610780998,
+  "l_tip_m": 143394.7340879273,
+  "oceanic_age_strength": true
+ },
+ "settings": {
+  "rifting-baseline-brake-off": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "contact_drag_multiplier": 0.0
+   }
+  },
+  "rifting-baseline": {
+   "params": {
+    "mark_power": 2.8
+   }
+  },
+  "great-circle": {
+   "split_method": "great_circle"
+  },
+  "great-circle-brake-off": {
+   "split_method": "great_circle",
+   "world_knobs": {
+    "contact_drag_multiplier": 0.0
+   }
+  }
+ }
+}

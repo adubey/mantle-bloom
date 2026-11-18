@@ -1,0 +1,7 @@
+{
+ "share": 0.10,
+ "definition": "slab-attached: oceanic floor consumed under neighbours (collision_evidence, ROLE_LOWER) in the last 10 Myr is at least this share of the plate's area",
+ "fixed_on": "g0/rifting-baseline-brake-off, 20 development worlds, samples from 10 Myr",
+ "chosen_by": "owner, 2026-11-18",
+ "reason": "marks 32% of plate area slab-attached, near Earth's share; the baseline ratio is 1.5-1.7 at every share from 5% to 50%"
+}
