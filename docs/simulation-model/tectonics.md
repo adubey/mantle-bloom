@@ -294,6 +294,24 @@ equation checks are in `backend/unit_tests/test_torque.py`. The discretization s
 one `ds` to each distinct represented neighbour front node, so the represented length can
 differ slightly from the geometric boundary span at coarse density or near the band edge.
 
+**Experimental force-form switches (RFC 0021, #971).** Four `World` fields, plus two tuners, change the
+form of the driving and resisting forces. `torque.force_forms` reads them, and `torque.apply_force_forms`
+attaches them to a plate's `BoundaryForceInputs`. Both the motion solve and the rift-line load
+(`rift_damage.force_inputs`) call it, so the two see the same forces. Every default is the form described
+above, so a world, or a save made before the fields existed, moves exactly as before.
+
+| Field | Default | Other values |
+|---|---|---|
+| `ridge_push_form` (B.1) | `water_load` | `potential_energy`: the column's potential-energy difference to the oceanic reference column, `∫ [p_node − p_ref] dz` (`ridge_push_potential_energy_n_per_m`). That gives 5.3×10¹¹ N/m for an 8 km ridge against the 40 km reference. |
+| `slab_drag_form` (B.2) | `isotropic` | `trench_normal`: sunk-slab drag acts on motion toward the trench only, `c (p × n)(p × n)ᵀ` (`trench_normal`) |
+| `age_force_column` (B.3) | off | Slab pull and ridge push read an oceanic cell's mantle lithosphere from its age (`force_column_hm`). This uses the same cooling law and the same two `rift_line_params` values as RFC 0018's ocean-floor strength. With B.1, the reference column is the force column of the plate's oldest dated floor. |
+| `subduction_test` (B.4) | `gate` (closing over 1 cm/yr) | `ramp`: pull scaled by `closing / subduction_gate_cm_per_yr` from zero closing (`subduction_pull_weight`). `geometric`: down-going crust at any contact that isn't diverging, and only the older side where ocean meets ocean. |
+| `slab_pull_fraction` (`f_pull`) | 1.0 | the share of the column's negative buoyancy applied as pull, in [0, 1] |
+
+They are for RFC 0021's G1 probes and G2 calibration. None is adopted yet, and none is on the
+`/world/controls` route. `collision_polarity`'s slab evidence keeps today's gate whatever
+`subduction_test` says. The tests are in `backend/unit_tests/test_torque.py`.
+
 **Spatial load transfer for rift diagnosis (#487, 2026-10-19).**
 `torque.gather_per_node_force_field` returns each existing slab-pull, slab-drag, ridge-push,
 basal-drag and contact-drag contribution as a per-node vector in N, before plate torque

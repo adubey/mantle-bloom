@@ -72,7 +72,8 @@ def _slab_terms(plate, inputs, subducting: np.ndarray, spacing: float, omega: np
     Powers are in W at the solved `omega`: force times the node's own velocity. Slab pull acts along the direction
     to the trench, so it does work only on the trench-normal part of the motion, positive where the plate moves
     toward its trench and negative where it moves away (the neighbour overrides it). Sunk-slab drag acts against
-    the whole velocity, so its dissipation splits into a trench-normal and a trench-parallel part.
+    the whole velocity, so its dissipation splits into a trench-normal and a trench-parallel part; under RFC 0021's
+    B.2 (`slab_drag_form = "trench_normal"`) it acts on the normal part alone and the parallel part is zero.
     """
     from app import lithosphere, torque
 
@@ -96,11 +97,12 @@ def _slab_terms(plate, inputs, subducting: np.ndarray, spacing: float, omega: np
         # Trench-normal speed already past pull / drag: there the drag exceeds the pull on the normal motion alone.
         "past_terminal_speed_km": float(length[normal * drag_per_speed > pull].sum() / 1e3),
         "pull_n": float(pull.sum()),
-        "hm_km_length_weighted": float(np.dot(inputs.own_hm[subducting], length) / length.sum() / 1e3),
+        "hm_km_length_weighted": float(np.dot(inputs.column_hm[subducting], length) / length.sum() / 1e3),
         "pull_power_toward_trench_w": float(pull_power[normal > 0.0].sum()),
         "pull_power_away_from_trench_w": float(pull_power[normal < 0.0].sum()),
         "drag_power_trench_normal_w": float(np.dot(drag_per_speed, normal**2)),
-        "drag_power_trench_parallel_w": float(np.dot(drag_per_speed, np.clip(speed_sq - normal**2, 0.0, None))),
+        "drag_power_trench_parallel_w": 0.0 if inputs.forms.slab_drag == "trench_normal"
+        else float(np.dot(drag_per_speed, np.clip(speed_sq - normal**2, 0.0, None))),
         "pull_torque_surviving_cancellation": float(np.linalg.norm(moments.sum(axis=0)) / moment_sum) if moment_sum else None,
         "pull_moment_sum_nm": moment_sum,
     }
@@ -200,9 +202,11 @@ def sample(world) -> dict:
     local: dict[int, dict] = {}
     side_k: dict[tuple[int, int], dict[int, np.ndarray]] = {}
     ages = {plate.plate_id: _oceanic_age_myr(plate, world) for plate in plates}
+    forms = torque.force_forms(world)
     for plate in plates:
         neighbours = cache.neighbours(plate, plates, reach)
         inputs = torque.gather_boundary_force_inputs(plate, neighbours, spacing, reach, cache)
+        torque.apply_force_forms(world, plate, neighbours, inputs, forms)  # as the solve does (RFC 0021, #971)
         _convergent, divergent, _transform, contested = torque.classify_boundary_nodes(plate, neighbours, inputs, reach, cache)
         collision = torque.continental_contact_mask(plate, inputs, contested)
         subducting = torque.subducting_boundary_mask(plate, inputs, reach)

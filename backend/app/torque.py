@@ -20,15 +20,16 @@ unit systems.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
 from . import cratons, geometry, mantle, plates as plate_geometry, trace
 from .boundary import TRANSFORM_RATE_THRESHOLD
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
-from . import lithosphere
+from . import lithosphere, rift_strength
 from .plates import query_workers
+from .surface_fields import SURFACE_FIELDS
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +121,69 @@ COLLISION_RELIEF_FRICTION_SCALE_M = 4000.0
 JAM_MIN_CRUST_M = 15_000.0
 JAM_FULL_CRUST_M = 30_000.0
 
+# RFC 0021's force-form switches (#971), each off by default; off, a form is exactly the one
+# before RFC 0021. G1 probes them one at a time and G2 calibrates the ones adopted.
+RIDGE_PUSH_FORMS = ("water_load", "potential_energy")  # B.1
+SLAB_DRAG_FORMS = ("isotropic", "trench_normal")  # B.2
+SUBDUCTION_TESTS = ("gate", "ramp", "geometric")  # B.4: today's 1 cm/yr gate, (a) a ramp from zero, (b) geometric
+_RIFT_DEFAULTS = rift_strength.RiftLineParams()
+
+
+@dataclass(frozen=True)
+class ForceForms:
+    """Which form each RFC 0021 force correction takes, read from the world by `force_forms`.
+
+    - `ridge_push` (B.1): `water_load` is today's water-load term; `potential_energy` is the column
+      potential-energy difference to the reference column (`ridge_push_potential_energy_n_per_m`).
+    - `slab_drag` (B.2): `isotropic` resists all of a pulled node's motion; `trench_normal` only its
+      motion toward the trench (`slab_drag_coefficient_matrix`).
+    - `age_column` (B.3): slab pull and ridge push read an oceanic cell's mantle lithosphere from its
+      age (`force_column_hm`), with the cooling law and values RFC 0018's ocean-floor strength uses.
+    - `subduction_test` (B.4): `gate` pulls only past 1 cm/yr of closing; `ramp` scales the pull by
+      `closing / gate_cm_per_yr` from zero closing; `geometric` pulls down-going crust at any contact
+      that isn't diverging, the older side where ocean meets ocean (`subducting_boundary_mask`).
+    - `pull_fraction` (`f_pull`): the share of the column's negative buoyancy applied as pull."""
+
+    ridge_push: str = "water_load"
+    slab_drag: str = "isotropic"
+    age_column: bool = False
+    subduction_test: str = "gate"
+    pull_fraction: float = 1.0
+    gate_cm_per_yr: float = 1.0
+    ocean_cooling_m_per_sqrt_myr: float = _RIFT_DEFAULTS.ocean_cooling_m_per_sqrt_myr
+    ocean_plate_thickness_m: float = _RIFT_DEFAULTS.ocean_plate_thickness_m
+    elapsed_years: float = 0.0
+
+    def __post_init__(self) -> None:
+        for name, value, allowed in (("ridge_push", self.ridge_push, RIDGE_PUSH_FORMS), ("slab_drag", self.slab_drag, SLAB_DRAG_FORMS),
+                                     ("subduction_test", self.subduction_test, SUBDUCTION_TESTS)):
+            if value not in allowed:
+                raise ValueError(f"force form {name}={value!r}; known: {allowed}")
+        if not 0.0 <= self.pull_fraction <= 1.0:
+            raise ValueError(f"pull_fraction must be in [0, 1], got {self.pull_fraction!r}")
+        if not self.gate_cm_per_yr > 0.0:
+            raise ValueError(f"gate_cm_per_yr must be > 0, got {self.gate_cm_per_yr!r}")
+
+    @property
+    def needs_ages(self) -> bool:
+        return self.age_column or self.subduction_test == "geometric"
+
+
+DEFAULT_FORCE_FORMS = ForceForms()
+
+
+def force_forms(world) -> ForceForms:
+    """The world's RFC 0021 force forms. B.3's cooling law takes its two values from the world's rift-line
+    parameters, so the column that pulls and pushes is the one that resists rifting (RFC 0021 B.3)."""
+    params = rift_strength.RiftLineParams.with_overrides(world.rift_line_params) if world.age_force_column else _RIFT_DEFAULTS
+    return ForceForms(
+        ridge_push=world.ridge_push_form, slab_drag=world.slab_drag_form, age_column=world.age_force_column,
+        subduction_test=world.subduction_test, pull_fraction=world.slab_pull_fraction, gate_cm_per_yr=world.subduction_gate_cm_per_yr,
+        ocean_cooling_m_per_sqrt_myr=params.ocean_cooling_m_per_sqrt_myr, ocean_plate_thickness_m=params.ocean_plate_thickness_m,
+        elapsed_years=float(world.elapsed_years),
+    )
+
+
 # Boundary-line integrals (slab-pull/ridge-push) share a `spacing_rad * PLANET_RADIUS_M`
 # stretch among all band rows mapped to the same neighbour front node (#468).
 
@@ -147,6 +211,12 @@ class BoundaryForceInputs:
     own_craton_m: np.ndarray | None = None  # (N,) craton_crust_m, for the keel's buoyancy (RFC 0008, #400)
     boundary_length_m: np.ndarray | None = None  # (N,) shared front-node length measure (#468)
     boundary_length_spacing_rad: float | None = None
+    # RFC 0021's force forms and the per-node values they read, set by `apply_force_forms`; left at
+    # their defaults, every force takes its form from before RFC 0021.
+    forms: ForceForms = DEFAULT_FORCE_FORMS
+    own_age_yr: np.ndarray | None = None  # (N,) node age, NaN where undated
+    neighbor_age_yr: np.ndarray | None = None  # (N,) the nearest neighbour node's age, NaN where undated or none
+    force_hm: np.ndarray | None = None  # (N,) the mantle lithosphere slab pull and ridge push read (B.3)
 
     def __post_init__(self) -> None:
         n = len(self.own_points)
@@ -156,6 +226,11 @@ class BoundaryForceInputs:
             self.neighbor_node_index = np.full(n, -1, dtype=np.int64)
         if self.own_craton_m is None:
             self.own_craton_m = np.zeros(n)
+
+    @property
+    def column_hm(self) -> np.ndarray:
+        """Mantle lithosphere for slab pull and ridge push: B.3's age column when on, else the cell's own."""
+        return self.own_hm if self.force_hm is None else self.force_hm
 
 
 @dataclass(frozen=True)
@@ -359,6 +434,43 @@ def gather_boundary_force_inputs(
     )
 
 
+def node_age_yr(world, plate) -> np.ndarray:
+    """Per node of `plate`, its age in years from `node_created_years`, NaN where undated."""
+    created = plate.collect("node_created_years")
+    return np.where(created == SURFACE_FIELDS["node_created_years"].sentinel, np.nan, world.elapsed_years - created)
+
+
+def force_column_hm(plate, inputs: BoundaryForceInputs, forms: ForceForms) -> np.ndarray:
+    """B.3's force column (RFC 0021): an oceanic cell's mantle lithosphere from a cooling plate of its age less its
+    crust, `max(Hm, min(h1 sqrt(age), H_max) - Hc)`, by `rift_strength.oceanic_strength_hm`'s law without its
+    rift-strain thinning. The floor at the cell's own Hm keeps a young ridge at `YOUNG_RIDGE_HM_M` and leaves an
+    undated cell as it is; continental cells keep their Hm. Only slab pull and ridge push read it: the plate's own
+    column and its elevation don't change (that is RFC 0021's alternative D)."""
+    law = replace(_RIFT_DEFAULTS, ocean_cooling_m_per_sqrt_myr=forms.ocean_cooling_m_per_sqrt_myr,
+                  ocean_plate_thickness_m=forms.ocean_plate_thickness_m)
+    aged = rift_strength.oceanic_strength_hm(inputs.own_hc, inputs.own_hm, inputs.own_age_yr, 0.0, law)
+    return np.where(own_is_continental(plate, inputs), inputs.own_hm, aged)
+
+
+def apply_force_forms(world, plate, neighbours: list, inputs: BoundaryForceInputs, forms: ForceForms) -> BoundaryForceInputs:
+    """Attach the world's RFC 0021 force forms to a plate's boundary inputs, with the node ages and force column
+    they read. The motion solve and the rift-line load (`rift_damage.force_inputs`) call it, so both see the same
+    forces. With the default forms it changes nothing."""
+    inputs.forms = forms
+    if not forms.needs_ages or len(inputs.own_points) == 0:
+        return inputs
+    inputs.own_age_yr = node_age_yr(world, plate)
+    if forms.age_column:
+        inputs.force_hm = force_column_hm(plate, inputs, forms)
+    if forms.subduction_test == "geometric":
+        inputs.neighbor_age_yr = np.full(len(inputs.own_points), np.nan)
+        for neighbour in neighbours:
+            at = (inputs.neighbor_plate_id == neighbour.plate_id) & (inputs.neighbor_node_index >= 0)
+            if np.any(at):
+                inputs.neighbor_age_yr[at] = node_age_yr(world, neighbour)[inputs.neighbor_node_index[at]]
+    return inputs
+
+
 def subducting_boundary_mask(plate, inputs: BoundaryForceInputs, reach_rad: float) -> np.ndarray:
     """This plate's own boundary-band nodes that are genuinely subducting: the node's crust goes
     down (`down_going_crust`), it is within `reach_rad` of a neighbour, *and*
@@ -366,9 +478,33 @@ def subducting_boundary_mask(plate, inputs: BoundaryForceInputs, reach_rad: floa
     `TRANSFORM_RATE_THRESHOLD` `merge_split` uses). The convergence check is what this used to
     be missing: slab pull was applied to the plate's *entire* near-neighbour band, ridge and
     transform stretches included, so a plate spreading at three of its four edges still felt a
-    full-perimeter pull and railed at MAX_PLATE_RATE. A ridge does not pull a slab down."""
+    full-perimeter pull and railed at MAX_PLATE_RATE. A ridge does not pull a slab down.
+
+    RFC 0021's B.4 (`inputs.forms.subduction_test`) replaces the gate, which passed only 11% of the
+    closing down-going length and only once the contact already moved (#942): `ramp` keeps every
+    node closing at all and scales its pull (`subduction_pull_weight`); `geometric` keeps down-going
+    crust at any contact that isn't diverging (`jam_mask`'s contact test), dropping the younger side
+    where ocean meets ocean, since the denser, older floor goes under. An undated side counts as
+    older, so an undated ocean contact keeps both sides, as the gate does."""
+    test = inputs.forms.subduction_test
+    if test == "geometric":
+        contact = _jam_contact(plate, inputs, reach_rad) & down_going_crust(plate, inputs, reach_rad)
+        if inputs.own_age_yr is None or inputs.neighbor_age_yr is None:
+            return contact
+        younger = inputs.neighbor_is_oceanic & (inputs.own_age_yr < inputs.neighbor_age_yr)  # NaN compares False
+        return contact & ~younger
     band = inputs.dist_to_neighbor <= reach_rad
-    return band & (closing_rad_per_yr(plate, inputs) > TRANSFORM_RATE_THRESHOLD) & down_going_crust(plate, inputs, reach_rad)
+    threshold = 0.0 if test == "ramp" else TRANSFORM_RATE_THRESHOLD
+    return band & (closing_rad_per_yr(plate, inputs) > threshold) & down_going_crust(plate, inputs, reach_rad)
+
+
+def subduction_pull_weight(plate, inputs: BoundaryForceInputs, subducting_mask: np.ndarray) -> np.ndarray | None:
+    """B.4a's ramp (RFC 0021): per subducting node, `clip(closing / v_gate, 0, 1)`; None under the other tests,
+    which pull at full strength. The drag on the same nodes is not scaled: it already vanishes with the motion."""
+    if inputs.forms.subduction_test != "ramp":
+        return None
+    gate_rad_per_yr = inputs.forms.gate_cm_per_yr / 100.0 / lithosphere.PLANET_RADIUS_M
+    return np.clip(closing_rad_per_yr(plate, inputs)[subducting_mask] / gate_rad_per_yr, 0.0, 1.0)
 
 
 def own_is_continental(plate, inputs: BoundaryForceInputs) -> np.ndarray:
@@ -514,12 +650,19 @@ def slab_pull_force_n(plate, inputs: BoundaryForceInputs, subducting_mask: np.nd
     column's buoyancy (`column_buoyancy_pa`) times `SUBDUCTION_LSINK_M` and its stretch of
     boundary. A buoyant column pulls nothing (RFC 0008, #400): before, every node pulled with
     its Hm alone, so a continental terrane or a craton was dragged into the trench at full
-    strength, and a thick cratonic keel pulled *harder* than ocean floor."""
+    strength, and a thick cratonic keel pulled *harder* than ocean floor.
+
+    RFC 0021: the column's Hm is B.3's force column when it's on (`inputs.column_hm`), the pull is
+    `f_pull` of the buoyancy (`inputs.forms.pull_fraction`), and B.4a's ramp scales it per node."""
     ds = boundary_node_length_m(inputs, spacing_rad)[subducting_mask]
     buoyancy = column_buoyancy_pa(
-        continental_crust_m(plate, inputs)[subducting_mask], inputs.own_hm[subducting_mask], inputs.own_craton_m[subducting_mask]
+        continental_crust_m(plate, inputs)[subducting_mask], inputs.column_hm[subducting_mask], inputs.own_craton_m[subducting_mask]
     )
-    return np.clip(buoyancy, 0.0, None) * SUBDUCTION_LSINK_M * ds
+    pull = np.clip(buoyancy, 0.0, None) * SUBDUCTION_LSINK_M * ds
+    if inputs.forms.pull_fraction != 1.0:
+        pull = pull * inputs.forms.pull_fraction
+    weight = subduction_pull_weight(plate, inputs, subducting_mask)
+    return pull if weight is None else pull * weight
 
 
 def slab_pull_force_vectors_n(plate, inputs: BoundaryForceInputs, subducting_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
@@ -551,9 +694,22 @@ def slab_drag_force_vectors_n(inputs: BoundaryForceInputs, subducting_mask: np.n
     lengths = boundary_node_length_m(inputs, spacing_rad)[subducting_mask]
     area_m2 = SUBDUCTION_LSINK_M * lengths
     velocity_m_s = np.cross(np.asarray(omega, dtype=float), points) * lithosphere.PLANET_RADIUS_M / SECONDS_PER_YEAR
+    if inputs.forms.slab_drag == "trench_normal":
+        normal = trench_normal(inputs, subducting_mask)
+        velocity_m_s = np.sum(velocity_m_s * normal, axis=1)[:, None] * normal
     traction_pa = -(SLAB_MANTLE_VISCOSITY_PA_S / SHEAR_ZONE_THICKNESS_M) * velocity_m_s
     forces[subducting_mask] = traction_pa * area_m2[:, None]
     return forces
+
+
+def trench_normal(inputs: BoundaryForceInputs, subducting_mask: np.ndarray) -> np.ndarray:
+    """B.2's trench normal at each subducting node (RFC 0021): `direction_to_neighbor` projected into the node's
+    tangent plane and normalized, zero where it has no tangent part."""
+    points = inputs.own_points[subducting_mask]
+    direction = inputs.direction_to_neighbor[subducting_mask]
+    tangent = direction - np.sum(direction * points, axis=1)[:, None] * points
+    norm = np.linalg.norm(tangent, axis=1)
+    return np.divide(tangent, norm[:, None], out=np.zeros_like(tangent), where=norm[:, None] > 0.0)
 
 
 def slab_drag_coefficient_matrix(inputs: BoundaryForceInputs, subducting_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
@@ -564,7 +720,14 @@ def slab_drag_coefficient_matrix(inputs: BoundaryForceInputs, subducting_mask: n
     it would overshoot the same way. `b` is zero: the deep mantle it shears against is taken
     at rest (unlike the asthenosphere, which carries `mantle.flow_at`), so the drag is purely
     `-K @ omega`. Without this term slab pull is unopposed and every subducting oceanic plate
-    rails at `MAX_PLATE_RATE` (see `SLAB_MANTLE_VISCOSITY_PA_S`)."""
+    rails at `MAX_PLATE_RATE` (see `SLAB_MANTLE_VISCOSITY_PA_S`).
+
+    RFC 0021's B.2 (`trench_normal`): the slab resists its own descent, which the surface node feels
+    as motion toward the trench, so the drag acts on `v . n` alone, with `n` the trench normal
+    (`trench_normal`). As a torque that is `c_i (p_i x n_i)(p_i x n_i)^T`: still symmetric
+    positive semidefinite, so the solve is unchanged, and zero for trench-parallel motion, which
+    basal drag already resists. In #942's brake-off budget the trench-parallel part was 46% of the
+    pull's work."""
     pts = inputs.own_points[subducting_mask]
     if len(pts) == 0:
         return np.zeros((3, 3))
@@ -575,6 +738,9 @@ def slab_drag_coefficient_matrix(inputs: BoundaryForceInputs, subducting_mask: n
         * lithosphere.PLANET_RADIUS_M**2
         / SECONDS_PER_YEAR
     )
+    if inputs.forms.slab_drag == "trench_normal":
+        axis = np.cross(pts, trench_normal(inputs, subducting_mask))
+        return np.einsum("n,ni,nj->ij", c, axis, axis)
     return c.sum() * np.eye(3) - np.einsum("n,ni,nj->ij", c, pts, pts)
 
 
@@ -592,9 +758,14 @@ def ridge_push_force_vectors_n(plate, inputs: BoundaryForceInputs, divergent_mas
         return force
     ds = boundary_node_length_m(inputs, spacing_rad)[divergent_mask]
     rho_c = lithosphere.node_crust_density(inputs.own_crust_type_codes[divergent_mask], plate.crust_type)
-    z = lithosphere.isostatic_elevation(inputs.own_hc[divergent_mask], inputs.own_hm[divergent_mask], rho_c)
-    e_r = np.clip(z - ABYSSAL_PLAIN_REFERENCE_ELEVATION_M, 0.0, None)
-    force_mag = 0.5 * lithosphere.GRAVITY_M_S2 * (lithosphere.RHO_ASTHENOSPHERE - lithosphere.RHO_WATER) * e_r**2 * ds
+    hc, hm = inputs.own_hc[divergent_mask], inputs.column_hm[divergent_mask]
+    if inputs.forms.ridge_push == "potential_energy":
+        ref_hm = ridge_push_reference_hm(plate, inputs)
+        force_mag = np.clip(ridge_push_potential_energy_n_per_m(hc, hm, rho_c, ref_hm), 0.0, None) * ds
+    else:
+        z = lithosphere.isostatic_elevation(hc, hm, rho_c)
+        e_r = np.clip(z - ABYSSAL_PLAIN_REFERENCE_ELEVATION_M, 0.0, None)
+        force_mag = 0.5 * lithosphere.GRAVITY_M_S2 * (lithosphere.RHO_ASTHENOSPHERE - lithosphere.RHO_WATER) * e_r**2 * ds
     direction = -inputs.direction_to_neighbor[divergent_mask]
     # No neighbour within reach (an isolated ridge segment, direction left at zero) -- fall
     # back to the node's own outward radial tangent component is unnecessary here since
@@ -604,6 +775,54 @@ def ridge_push_force_vectors_n(plate, inputs: BoundaryForceInputs, divergent_mas
     # active spreading boundary the plate as a whole would feel a coherent push from.
     force[divergent_mask] = force_mag[:, None] * direction
     return force
+
+
+def ridge_push_reference_hm(plate, inputs: BoundaryForceInputs) -> float:
+    """B.1's reference column, the one a ridge column becomes (RFC 0021): the model's mature ocean floor,
+    `REFERENCE_HM_OCEANIC_M`, or with B.3 the force column of the plate's oldest dated oceanic floor, since ridge
+    push grows with the age of the floor behind the ridge (Turcotte & Schubert) and stops at the plate thickness."""
+    if inputs.force_hm is None or inputs.own_age_yr is None:
+        return lithosphere.REFERENCE_HM_OCEANIC_M
+    oceanic = ~own_is_continental(plate, inputs) & np.isfinite(inputs.own_age_yr)
+    if not np.any(oceanic):
+        return lithosphere.REFERENCE_HM_OCEANIC_M
+    oldest = np.argmax(np.where(oceanic, inputs.own_age_yr, -np.inf))
+    law = replace(_RIFT_DEFAULTS, ocean_cooling_m_per_sqrt_myr=inputs.forms.ocean_cooling_m_per_sqrt_myr,
+                  ocean_plate_thickness_m=inputs.forms.ocean_plate_thickness_m)
+    hm = rift_strength.oceanic_strength_hm(np.array([lithosphere.REFERENCE_HC_OCEANIC_M]), np.array([lithosphere.YOUNG_RIDGE_HM_M]),
+                                           inputs.own_age_yr[oldest:oldest + 1], 0.0, law)
+    return float(hm[0])
+
+
+def _column_pressure_integral(hc, hm, rho_c, elevation, depth_m) -> np.ndarray:
+    """∫₀^D p(d) dd for a column from sea level down to `depth_m` (D), in N/m: water to the column's isostatic
+    elevation when it is below sea level, then crust, mantle lithosphere and asthenosphere. By parts, the integral
+    is `g Σ ρ_k [(D − a_k)² − (D − b_k)²] / 2` over the layers between depths `a_k` and `b_k`; air above a column
+    adds nothing, so two columns compare from any common height above both."""
+    top = -np.asarray(elevation, dtype=float)  # depth of the crust's top; negative above sea level, where air adds nothing
+    layers = ((np.zeros_like(top), np.clip(top, 0.0, None), lithosphere.RHO_WATER), (top, top + hc, rho_c), (top + hc, top + hc + hm, lithosphere.RHO_LITHOSPHERE_MANTLE),
+              (top + hc + hm, depth_m, lithosphere.RHO_ASTHENOSPHERE))
+    total = np.zeros_like(np.asarray(hc, dtype=float))
+    for a, b, rho in layers:
+        a, b = np.minimum(a, depth_m), np.minimum(b, depth_m)
+        total = total + rho * ((depth_m - a) ** 2 - (depth_m - b) ** 2) / 2.0
+    return lithosphere.GRAVITY_M_S2 * total
+
+
+def ridge_push_potential_energy_n_per_m(hc, hm, rho_c, ref_hm: float) -> np.ndarray:
+    """B.1 (RFC 0021): ridge push per metre of ridge, the difference in vertically integrated lithostatic pressure
+    between a ridge column (`hc`, `hm`) and the oceanic reference column it becomes (`REFERENCE_HC_OCEANIC_M`,
+    `ref_hm`), down to a compensation depth below both, `∫ [p_node(z) − p_ref(z)] dz`. Each column floats at its
+    own isostatic elevation (`lithosphere.isostatic_elevation`), so the pressures match below both and the depth
+    only has to clear them. A hand calculation from the model's constants gives 5.3×10¹¹ N/m for an 8 km ridge
+    against the 40 km reference, 94 times today's water-load term; Copley et al. (2010) give about 2.5×10¹²."""
+    hc, hm = np.asarray(hc, dtype=float), np.asarray(hm, dtype=float)
+    ref_hc = np.full_like(hc, lithosphere.REFERENCE_HC_OCEANIC_M)
+    ref_hm_arr = np.full_like(hc, ref_hm)
+    z_node = lithosphere.isostatic_elevation(hc, hm, rho_c)
+    z_ref = lithosphere.isostatic_elevation(ref_hc, ref_hm_arr, lithosphere.RHO_OCEANIC_CRUST)
+    depth = np.maximum(np.clip(-z_node, 0.0, None) + hc + hm, np.clip(-z_ref, 0.0, None) + ref_hc + ref_hm_arr) + 1_000.0
+    return _column_pressure_integral(hc, hm, rho_c, z_node, depth) - _column_pressure_integral(ref_hc, ref_hm_arr, lithosphere.RHO_OCEANIC_CRUST, z_ref, depth)
 
 
 def ridge_push_torque(plate, inputs: BoundaryForceInputs, divergent_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
@@ -1086,11 +1305,13 @@ def solve_plates_quasistatic(world, *, diagnostics: dict | None = None) -> dict[
     pair_side_k: dict[tuple[int, int], dict[int, np.ndarray]] = {}
     boundary_inputs_by_id: dict[int, dict] = {}
     driving_terms_by_id: dict[int, dict[str, np.ndarray]] = {}
+    forms = force_forms(world)
 
     for i, plate in enumerate(plates):
         start = 3 * i
         neighbours = cache.neighbours(plate, plates, reach_rad)
         inputs = gather_boundary_force_inputs(plate, neighbours, spacing_rad, reach_rad, cache)
+        apply_force_forms(world, plate, neighbours, inputs, forms)
         inputs_by_id[plate.plate_id] = inputs
         convergent, divergent, transform, contested = classify_boundary_nodes(
             plate, neighbours, inputs, reach_rad, cache
