@@ -243,32 +243,45 @@ describe("Viewer (/view)", () => {
     assert.ok(screen.getByText(/You've used all 3 of this browser's advances\./));
   });
 
-  it("offers guests a closed expando of the full version's other views (#560)", async () => {
+  it("offers guests an open expando of the full version's other views (#560)", async () => {
     installFetchMock({ worlds: () => [makeListing({ world_id: "w1", name: "Kepler-186 f" })] });
 
     render(<Viewer />);
 
     await screen.findByText("Kepler-186 f");
-    const details = screen.getByText("Features of the full version").closest("details");
+    const summary = await screen.findByText("Features of the full version");
+    const details = summary.closest("details");
     assert.ok(details);
-    // Closed until asked for: the full version isn't live yet.
-    assert.equal(details.open, false);
+    assert.equal(details.open, true);
     const images = [...details.querySelectorAll("img")];
     assert.deepEqual(
       images.map((img) => img.getAttribute("src")),
       ["/preview/temperature.webp", "/preview/ocean-currents.webp", "/preview/cross-section.webp"],
     );
-    // Lazy, so a closed expando downloads nothing.
-    assert.ok(images.every((img) => img.getAttribute("alt") && img.getAttribute("loading") === "lazy"));
+    // Scheduling hints so preview images stay low priority behind the map render.
+    assert.ok(
+      images.every(
+        (img) =>
+          img.getAttribute("alt") &&
+          img.getAttribute("loading") === "lazy" &&
+          img.getAttribute("fetchpriority") === "low",
+      ),
+    );
+
+    fireEvent.click(summary);
+    assert.equal(details.open, false);
   });
 
-  it("offers the expando even when no world is public yet (#560)", async () => {
+  it("offers the open expando even when no world is public yet (#560)", async () => {
     installFetchMock({ worlds: () => [] });
 
     render(<Viewer />);
 
     await screen.findByText("No world has been generated yet. Check back later.");
-    assert.ok(screen.getByText("Features of the full version"));
+    const summary = await screen.findByText("Features of the full version");
+    const details = summary.closest("details");
+    assert.ok(details);
+    assert.equal(details.open, true);
   });
 
   it("shows a signed-in free user their name and a sign-out form instead of Sign in (#929)", async () => {
