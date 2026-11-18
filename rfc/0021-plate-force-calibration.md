@@ -5,7 +5,8 @@
 - **Related:** #942 (diagnosis, [`analysis/issue942/`](../analysis/issue942/README.md)), #888 (RFC 0018 D1,
   where the slow plates were found), #797 (RFC 0018 tracking), #396 (RFC 0008 tracking), #399, #423, #760 (the
   contact brake and its tuners), #468 (boundary-load normalization), #783 (plate speed in the Stats panel);
-  #846 and PR #950 (RFC 0018's rift-line method in the model, behind `World.split_method`); RFCs
+  #846 and PR #950 (RFC 0018's rift-line method in the model, behind `World.split_method`), PR #955 (its
+  baseline scores); RFCs
   [0008](0008-craton-collision-jamming.md) (contact brake), [0012](0012-physics-first-simulation.md)
   (quasi-static motion solve), [0018](0018-plates-split-along-weak-open-paths.md) (rifting; its tunable
   knobs are in scope here)
@@ -228,9 +229,11 @@ Development worlds only for every search; held-out worlds only for acceptance.
 | `CONTACT_RESISTANCE_N_PER_M` | 5×10¹² N/m | [[Copley et al., 2010]](#ref-copley2010): 5–6×10¹² | Fixed; the multiplier scales it |
 | `craton_drag_multiplier` | 1.0 | #760 | Fixed; no measurable effect (#888) |
 | `COLLISION_RELIEF_FRICTION_SCALE_M` | 4 km | RFC 0008 | Fixed; sensitivity at 2 and 8 km |
-| RFC 0018's searched rift knobs, in `World.rift_line_params` (#950): `eps_dot0`, `s_warm`, `k_cap`, `n_plume`, `lam_grow`, `l_tip_m` | The setting RFC 0018's D1 re-run freezes on the #950 code | RFC 0018 | G2, over D1's ranges, recentred on the re-run's setting |
-| RFC 0018's strength-map knobs: `mark_power`, `craton_root_m` | The re-run's values (#950 defaults: 1, 0) | #888's strength-map arms | G2, over the ranges those arms tried |
-| `route_mark_power` | The re-run's value (#950 default: 1) | #888 | G2 only if the re-run keeps it away from 1; route-only marks gave 90 Myr median rifts in #888 |
+| RFC 0018's searched rift knobs, in `World.rift_line_params` (#950): `eps_dot0`, `s_warm`, `k_cap`, `n_plume`, `lam_grow`, `l_tip_m` | The rifting baseline: 4.6×10⁻⁸ /yr, 0.159, 0.14, 6.2×10¹¹ N/m, 0.544, 143 km | D1 stage 1 setting 0 with `k_cap` 0.14 (#888, #955) | G2, over D1's ranges |
+| `mark_power` | 2.8 | #955's deeper-marks arm | G2 over 1–2.8 |
+| `route_mark_power` | 1 | #955's route-marks arm used 2.8 | G2 over 1–2.8 |
+| `craton_root_m` | 0 | #955: 80 km lost a target and a quarter of the splits | Fixed at 0 |
+| `oceanic_age_strength` | on | #888, #955 | Fixed; shares B.3's law |
 | Every other `RiftLineParams` field (`a_min`, `c_dir`, `c_corr`, `f_break`, healing, sub-step limits) | #950's values | RFC 0018 | Fixed: set by RFC 0018 or numerical. `a_min` (15%) is RFC 0018's guard against microplates and stays its decision |
 
 `f_pull`, the viscosities and `L_sink` trade off against each other (the terminal speed goes as
@@ -267,12 +270,29 @@ Development worlds are RFC 0018's 20 (#888); every gate runs plates-only (`simul
 1 Myr steps for 200 Myr unless stated, and reports at 0.5 Myr on three of them. From G0 on, every run splits plates
 with `World.split_method = "rift_lines"` (#950) at the rifting baseline below, unless stated.
 
+**Rifting baseline.** RFC 0018's D1 strength-map arms were rerun on the production method (#955, on #950 at
+`6bda6906`; `analysis/issue888/rift-lines-baseline/`), brake off, on the five stage 1 worlds. D1's prototype tables
+are not a baseline: #950's reviews changed plume heat at the split test, flank transfer under the crust cap and
+capped donors.
+
+| Brake off, `k_cap` 0.14 | Base | Craton root | Deeper marks | Route marks |
+|---|---:|---:|---:|---:|
+| RFC 0018 targets met (of 10) | 5 | 4 | 6 | 6 |
+| Splits per world per 100 Myr (need 3.85) | 4.5 | 3.5 | 7.8 | 3.1 |
+| Splits mostly on weak rock (need 67%) | 53% | 49% | 79% | 71% |
+| Completed-rift median (Myr, 10–50) | 63 | 70 | 64 | 52 |
+| Failed share (20–80%) | 93% | 90% | 88% | 93% |
+| Transition ratio (need 3) | 2.75 | 1.62 | 1.50 | 1.04 |
+| Localization violations (need 0) | 2 | 1 | 9 | 0 |
+
+The **rifting baseline** for G0 and G1 is the deeper-marks arm (`mark_power` 2.8): it ties route marks on targets
+met and has the most splits, so it shows the split rate's response to the forces most clearly. Route marks enter
+G2 through `route_mark_power`. The failed share, the completed-rift duration and the transition ratio fail on every
+arm. They are what T9 most needs from the joint calibration, and the ones the owner may waive. Each plates-only
+world took 5–6 minutes and about 0.5 GB on the rift-line method, as on the great-circle split.
+
 1. **G0: targets and harness.**
-   - Take the rifting baseline from RFC 0018's D1 re-run on the #950 code (#888), and record its setting, its
-     brake setting (RFC 0018 runs with `contact_drag_multiplier = 0` for now) and the commit it ran on. D1's
-     earlier tables are not a baseline: #950's reviews changed plume heat at the split test, flank transfer under
-     the crust cap and capped donors, so the production method does not reproduce them. If the re-run has not
-     frozen a setting when G0 starts, G0 waits for it rather than choosing one.
+   - Record the rifting baseline above in this RFC, with its run labels and commit.
    - Check T1's Earth figure against a published plate model (area-weighted mean of `|ω × r|` from published
      Euler poles and plate areas), and record the result. If it is outside 4–5 cm/yr, T1's band moves with it,
      with the owner's agreement.
@@ -283,11 +303,11 @@ with `World.split_method = "rift_lines"` (#950) at the rifting baseline below, u
      excluding every seed already in `analysis/issue797/g2-seed-preregistration.json` and the development set),
      20 seeds, committed before any G2 run.
    - Extend #942's brake-off breakdown from 2 to the 20 development worlds, on the rifting baseline, so G1's
-     baseline is not two worlds and not the great-circle split. Measure the rift-line method's step cost there.
+     baseline is not two worlds and not the great-circle split.
    - Build the scorer: `plate_torque_breakdown.py`'s measures plus RFC 0008's collision measures plus RFC 0018's
-     realism score, one JSON per setting.
+     realism score from #955's `bin/debug/rift_line_recorder.py` and `score_rift_lines.py`, one JSON per setting.
 2. **G1: one correction at a time.** Each of B.1, B.2, B.3 and B.4 (a and b) alone, then all adopted ones
-   together, brake on and brake off, on five development worlds, as causal probes with predictions posted before
+   together, brake on and brake off, on the five stage 1 worlds #955 scored, as causal probes with predictions posted before
    each run. A correction is adopted if it moves its own measure the predicted way (B.1: ridge push into T5's
    band; B.2: slab work positive; B.3: pull per metre up; B.4: gated share of closing down-going length up) and
    breaks no invariant (the breakdown sums to zero; the solver converges; ledgers close). G1 reports each one's
@@ -305,11 +325,10 @@ with `World.split_method = "rift_lines"` (#950) at the rifting baseline below, u
    world for 50 Myr with full stepping (climate and surface processes on) to check that plates-only stepping did
    not mislead.
 
-Rough cost, from #942's measured 5.7 min per 200 Myr world plates-only (0.54 GB peak) on the great-circle split:
+Rough cost, from 5–6 min per 200 Myr world plates-only (about 0.5 GB) on either split method (#942, #955):
 G0's 20-world brake-off breakdown 2 h; G1 about 12 runs × 5 worlds, 6 h; G2 stage 1, 24 × 5, 11 h, and the same
 again for the control arm; stage 2, 3 × 20 for each arm, 12 h; G3 about 3 h plus the full-stepping run (about
-385 s/Myr, 5 h). The rift-line method costs more per step; G0 measures how much, and these figures scale with it.
-All in series under the compute budget.
+385 s/Myr, 5 h). All in series under the compute budget.
 
 ### Runtime and saves
 
@@ -354,9 +373,11 @@ removed.
 - **Earth's mean speed is a working figure.** T1's 4–5 cm/yr is from the issue and is checked in G0.
 - **Plates-only stepping.** Every gate except G3's one run leaves out climate and surface processes, which change
   relief and crust and so the brake and buoyancy. G3 checks this on one world.
-- **Shared knobs with RFC 0018.** RFC 0018's rifting baseline is being re-run on the #950 code with the brake off,
-  against today's forces. Calibrating its knobs here assumes RFC 0018's owner-approved targets stay as they are;
-  the owner may waive RFC 0018 failures judged fixable by tuning here, and those waivers are recorded against T9.
+- **Shared knobs with RFC 0018.** The rifting baseline (#955) was scored with the brake off against today's forces,
+  on five worlds. Calibrating its knobs here assumes RFC 0018's owner-approved targets stay as they are; the owner
+  may waive RFC 0018 failures judged fixable by tuning here, and those waivers are recorded against T9. The base
+  arm's transition ratio rose from 1.02 in D1 to 2.75 on the production method, and which of #950's changes did
+  that has not been checked.
 - **The case against alternative A is argued, not measured.** It rests on one breakdown of the force forms. G2's
   control arm measures it.
 - **Two-world evidence.** The brake-off breakdown and the slab work budget are on two worlds; G0 extends the
@@ -364,7 +385,7 @@ removed.
 
 ## Acceptance criteria
 
-- [ ] **G0** recorded in this RFC: the rifting baseline and the commit it ran on; T1's Earth figure checked; T2's
+- [ ] **G0** recorded in this RFC: the rifting baseline's run labels and commit; T1's Earth figure checked; T2's
       definition fixed; the held-out set frozen and committed; the 20-world brake-off breakdown reported.
 - [ ] **G1** recorded: each correction's predeclared probe and outcome, and the corrections adopted.
 - [ ] **G2** recorded: stage 1 and 2 scores for the corrected search and the control arm, the frozen setting and
@@ -376,8 +397,8 @@ removed.
   - [ ] T4: mean basal traction under slabless plates at most 1 MPa;
   - [ ] T5: ridge push on old flanks 1–4×10¹² N/m;
   - [ ] T7: fastest-to-slowest world speed ratio at most 3;
-  - [ ] T9: RFC 0018's realism targets, scored by its rules, at least as many met as the rifting baseline (the
-        D1 re-run's setting on today's forces), apart from any the owner waives.
+  - [ ] T9: RFC 0018's realism targets, scored by its rules (`bin/debug/score_rift_lines.py`, #955), at least as
+        many met as the rifting baseline's 6 of 10, apart from any the owner waives.
 - [ ] T6 and T8, RFC 0008's measures, against `origin/main` on the same held-out worlds: no jammed pair has its
       collision time dropped while still in contact; no plate's speed falls below 20% of its pre-contact speed
       from braking alone; the craton-on-craton overlap volume at fusion is not more than 25% above `origin/main`'s;
