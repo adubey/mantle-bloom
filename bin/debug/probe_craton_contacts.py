@@ -120,10 +120,10 @@ class Probe:
         self.pull["cratonic"] += float(torque_mag[cratonic].sum())
         self.pull["plates"].append(round(buoyant / total, 4) if total > 0.0 else 0.0)
 
-    def on_collision_drag(self, plate, inputs, collision_mask, craton_m, jam) -> None:
-        """The brake as applied per node, `torque.contact_drag_pa_s_per_m` (with the jam, #400)
-        times the node's area and real relative speed, summed per neighbour."""
-        coefficient = torque.contact_drag_pa_s_per_m(plate, inputs, collision_mask, self.spacing, craton_m, jam)
+    def on_collision_drag(self, plate, inputs, collision_mask, craton_m, jam, **gains) -> None:
+        """The brake as applied per node, `torque.contact_drag_pa_s_per_m` (with the jam, #400, and the
+        world's brake gains, #760) times the node's area and real relative speed, summed per neighbour."""
+        coefficient = torque.contact_drag_pa_s_per_m(plate, inputs, collision_mask, self.spacing, craton_m, jam, **gains)
         mask = coefficient > 0.0
         if not np.any(mask):
             return
@@ -399,9 +399,9 @@ def install(probe: Probe) -> None:
         probe.on_slab_pull(plate, inputs, mask)
         return slab_pull_torque(plate, inputs, mask, spacing_rad)
 
-    def tapped_collision_drag_coefficients(plate, inputs, mask, spacing_rad, craton_m=None, jam=None):
-        probe.on_collision_drag(plate, inputs, mask, craton_m, jam)
-        return collision_drag_coefficients(plate, inputs, mask, spacing_rad, craton_m, jam)
+    def tapped_collision_drag_coefficients(plate, inputs, mask, spacing_rad, craton_m=None, jam=None, **gains):
+        probe.on_collision_drag(plate, inputs, mask, craton_m, jam, **gains)
+        return collision_drag_coefficients(plate, inputs, mask, spacing_rad, craton_m, jam, **gains)
 
     def tapped_update_collision_progress(world, years):
         before = dict(world.collision_progress)

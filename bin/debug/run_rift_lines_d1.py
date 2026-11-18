@@ -108,8 +108,9 @@ def make_world(args):
     return world
 
 
-def step_all(world, args, out: Path, recorder):
-    """Step the world, recording every split the splitter applies. Returns (splits, plate counts, kinematics)."""
+def step_all(world, args, out: Path, recorder, on_step=None):
+    """Step the world, recording every split the splitter applies. Returns (splits, plate counts, kinematics).
+    `on_step(world, myr)`, if given, runs after each step's own recording (RFC 0021's runner, #958)."""
     splits, plate_counts, motion = [], [], []
     original = merge_split.maybe_split_plate
 
@@ -132,6 +133,8 @@ def step_all(world, args, out: Path, recorder):
             plate_counts.append((myr, len(world.plates)))
             if recorder is not None:
                 recorder.observe(world, args.step_myr * 1e6)
+            if on_step is not None:
+                on_step(world, myr)
             if args.snapshot_every and round(myr / args.snapshot_every) * args.snapshot_every == myr:
                 snapshot(world, out / "snapshots" / f"t{int(myr):03d}.npz")
             if k % 10 == 0:
