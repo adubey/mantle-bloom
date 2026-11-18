@@ -1,15 +1,13 @@
 # Teaching Earth science with Mantle-Bloom
 
+This living document explores ways Mantle-Bloom could support Earth science education.
+It describes possible classroom activities and the learning goals they may serve. The
+ideas are exploratory. Classroom trials and teacher feedback can guide future revisions.
+
 Mantle-Bloom runs an Earth-like planet forward in time and lets learners inspect how its
-terrain, climate, and water systems interact.
-This living document explores how Mantle-Bloom could serve as a teaching aid for Earth
-science. Classroom trials and teacher feedback can guide future revisions.
-
-
-This document explores some classroom activities that students can
-do to make a process visible, test an explanation, or explore the consequences of a change.
-The research below comes from other learning environments. The proposed pilot would test
-how these ideas work with Mantle-Bloom. [Simulation model](../docs/simulation-model.md)
+terrain, climate, and water systems interact. These capabilities may help students make
+a process visible, test an explanation, or explore the consequences of a change.
+See the [simulation model overview](../docs/simulation-model.md).
 
 ## When the model can help students learn
 
@@ -18,9 +16,11 @@ how these ideas work with Mantle-Bloom. [Simulation model](../docs/simulation-mo
 Start a comparison from the same saved state, change one setting, and measure one
 outcome at the same elapsed time. Ask for a prediction and an explanation of the observed
 difference. A high-school extension could compare precipitation over the same terrain
-using Mantle-Bloom's diagnostic and CFD wind settings. Students could identify one
-conclusion supported by both runs and one that depends on the setting. The model
-documentation reports substantial precipitation differences in one such comparison.
+using Mantle-Bloom's diagnostic and
+[computational fluid dynamics (CFD)](https://en.wikipedia.org/wiki/Computational_fluid_dynamics)
+wind settings. Students could identify one conclusion supported by both runs and one
+that depends on the setting. The model documentation reports substantial precipitation
+differences in one such comparison.
 [Mantle-Bloom wind model](../docs/simulation-model/climate.md#wind-model-diagnostic-default-vs-cfd)
 
 Start a systems lesson with a few causal links students can explain. For example, trace
@@ -34,19 +34,19 @@ Reasoning about hidden processes and cycles remained harder.
 
 For a deep-time lesson, pause before a change and ask students what will move next.
 Compare dated frames using the same map view and a distance scale. Students can estimate
-how quickly a landmark moves and compare their estimate with measured plate-motion
-rates. For a question about where precipitation falls, labeled stills can give students
-time to read the maps. A review of instructional animations found the clearest learning
-benefit when students needed to understand the features of change itself.
+how quickly a landmark moves and compare their estimate with plate-motion measurements
+from Cascadia. For a question about where precipitation falls, labeled stills can give
+students time to read the maps. A review of instructional animations found the clearest
+learning benefit when students needed to understand the features of change itself.
 [Ploetzner et al., 2020](https://onlinelibrary.wiley.com/doi/10.1111/jcal.12476),
-[USGS Cascadia GPS data](https://www.usgs.gov/special-topics/subduction-zone-science/science/cascadia-subduction-zone-database)
-
+and the [U.S. Geological Survey (USGS) Cascadia database](https://www.usgs.gov/special-topics/subduction-zone-science/science/cascadia-subduction-zone-database)
 
 ### Give teachers prompts, examples, and a way to check transfer
 
-Teachers in the GEODE plate tectonics study particularly valued sample student answers
-and explanations of why answers were correct or incorrect. A three-year study of two
-high-school teachers documented how they adapted a model-based climate curriculum to
+Teachers in the [GEODE plate tectonics project](https://concord.org/our-work/research-projects/geode/)
+particularly valued sample student answers and explanations of why answers were correct
+or incorrect. A three-year study documented how two high-school teachers adapted a
+model-based climate curriculum to
 their students and schedules. For Mantle-Bloom, a one-page teacher guide could include
 a marked map, a sample explanation, a common incomplete explanation, and a discussion
 prompt. An extension could add a quantitative comparison and a question about model
@@ -58,7 +58,6 @@ guidance on learning outcomes. A useful lesson sequence is to ask students to no
 a relevant difference, explain it, get feedback, and apply the explanation to a fresh
 case. The fresh case gives the teacher a way to assess whether students can use the
 idea independently. [Lazonder and Harmsen, 2016](https://journals.sagepub.com/doi/10.3102/0034654315627366)
-
 
 
 
@@ -75,7 +74,7 @@ to interpret depth and notice patterns in a visualization. A grade-eight classro
 study offers a precedent for pairing discussion with student-generated drawings.
 [Pallant et al., 2023](https://doi.org/10.1080/09500693.2023.2217471),
 [Focus on the notice](https://link.springer.com/article/10.1186/s41235-020-00263-0),
-[Grade-eight drawing study](https://www.tandfonline.com/doi/full/10.1080/09500693.2023.2214688)
+and [the grade-eight drawing study](https://www.tandfonline.com/doi/full/10.1080/09500693.2023.2214688)
 
 ## A possible first pilot
 
@@ -97,8 +96,10 @@ Prepared frames and a one-page teacher guide are enough to try the sequence. Rec
 which steps fit in the period and where students' explanations break down. A later
 comparison could give two groups the same prompts and transfer question, with one
 group using prepared frames and the other using the interactive model.
-[Washington State Climate Office](https://climate.uw.edu/washingtons-climate/),
-[PRISM precipitation normals](https://www.prism.oregonstate.edu/normals/)
+Compare the model with observed precipitation using the
+[Washington State Climate Office's overview](https://climate.uw.edu/washingtons-climate/)
+and the [Parameter-elevation Regressions on Independent Slopes Model (PRISM)](https://prism.oregonstate.edu/faq/)
+[precipitation normals](https://www.prism.oregonstate.edu/normals/).
 
 ## Other uses to explore
 
