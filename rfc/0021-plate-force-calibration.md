@@ -5,7 +5,8 @@
 - **Related:** #942 (diagnosis, [`analysis/issue942/`](../analysis/issue942/README.md)), #888 (RFC 0018 D1,
   where the slow plates were found), #797 (RFC 0018 tracking), #396 (RFC 0008 tracking), #399, #423, #760 (the
   contact brake and its tuners), #468 (boundary-load normalization), #783 (plate speed in the Stats panel);
-  RFCs [0008](0008-craton-collision-jamming.md) (contact brake), [0012](0012-physics-first-simulation.md)
+  #846 and PR #950 (RFC 0018's rift-line method in the model, behind `World.split_method`); RFCs
+  [0008](0008-craton-collision-jamming.md) (contact brake), [0012](0012-physics-first-simulation.md)
   (quasi-static motion solve), [0018](0018-plates-split-along-weak-open-paths.md) (rifting; its tunable
   knobs are in scope here)
 
@@ -106,11 +107,27 @@ breakdown's terms summing to zero at every sample.
 
 ### Alternatives
 
-**A. Retune the existing constants only.** Raise `MANTLE_FLOW_REFERENCE_RATE` (about 8 cm/yr would probably give
-Earth's mean) and loosen the brake. Cheap and immediately reversible. It keeps plates carried by a random, fixed
-flow pattern, raises basal tractions past the 1 MPa bound, leaves slabs as a net brake and ridge push absent, and
-makes speed right for the wrong reason (principle 9). Rejected as the main route; the flow rate stays a calibrated
-knob.
+**A. Retune the existing constants only.** Search today's constants (the flow rate, the brake, the viscosities,
+`L_sink`, the gate threshold) and the rifting knobs with no force formula changed. Cheap and immediately reversible.
+The breakdown predicts that it can reach T1's mean speed but not the force balance, because each defect is in the
+form of a term rather than its value:
+
+- Ridge push is `½ g (ρ_a − ρ_w) e²`. Its only inputs are densities and the ridge's height: reaching 10¹² N/m
+  needs a ridge about 9.5 km high, and Earth's own 3 km gives only 10¹¹, because the form leaves out the
+  lithosphere's thickening.
+- Sunk-slab drag resists all tangential motion. Lowering `SLAB_MANTLE_VISCOSITY_PA_S` cuts the trench-normal drag
+  that sets a slab's terminal speed by the same factor as the trench-parallel drag that should not be there.
+- Pull comes from an Hm that relaxes to 40 km at any age, so `L_sink` and `f_pull` scale every slab alike and
+  cannot make old slabs pull harder.
+- Loosening the gate adds slabs that, under today's drag, brake: in #942's brake-off run the gated share went
+  from 11% (20 worlds, brake on) to 66% (two worlds, brake off), and slabs still netted −22% of their pull's work.
+- That leaves the flow rate. About 8 cm/yr would probably give Earth's mean, with plates carried by the random
+  centres: basal traction at about Bird's 1 MPa bound, world speed following the flow draw (T7), and slab-attached
+  plates no faster (T2, T3).
+
+This is an inference from one breakdown, not a measured result, so A is not rejected on argument: G2 runs it as a
+**control arm** with every correction off. If the control arm meets as many targets as the corrected search, A
+wins (see falsification).
 
 **B. Correct the force forms the diagnosis found, then calibrate forces, brake and rifting knobs together
 (recommended).** Four form corrections, each separately switchable so a gate can adopt or reject it:
@@ -137,7 +154,7 @@ strength map at once. Out of scope; B.3's force column is the cheap stand-in, an
 
 **Recommendation: B.** It addresses each finding with the force that is missing or misformed, keeps the motion
 solve, and puts every knob that sets speed and rifting through one calibration, so they do not drift against each
-other. A and C stay available: A as the knob range in G2, C as follow-up work.
+other. A and C stay available: A as G2's control arm, C as follow-up work.
 
 ## Design
 
@@ -168,10 +185,17 @@ semidefinite, so the implicit solve is unchanged. In #942's brake-off budget the
 
 **B.3 Age-based force column.** For slab pull and ridge push only, an oceanic cell's mantle lithosphere is taken
 as `H_f = min(h₁ √(age / 1 Myr), H_max) − Hc`, with `age` from `node_created_years`, `h₁` = 13 km and
-`H_max` = 95 km (the law #888 used for ocean-floor strength). Continental cells keep their Hm. Pull per node is
-then `max(B(H_f), 0) × L_sink × ds` as now (`column_buoyancy_pa`). Scale check, from the model's constants: 54, 81
-and 84 km at 25, 50 and 100 Myr give 6.6, 9.9 and 10.3×10¹² N/m of pull, against 4.9 at 40 km today. The plate's
-own Hm, its elevation and its strength are not changed; whether to make them follow age is alternative D.
+`H_max` = 95 km. Continental cells keep their Hm. Pull per node is then `max(B(H_f), 0) × L_sink × ds` as now
+(`column_buoyancy_pa`). Scale check, from the model's constants: 54, 81 and 84 km at 25, 50 and 100 Myr give 6.6,
+9.9 and 10.3×10¹² N/m of pull, against 4.9 at 40 km today. The plate's own Hm and its elevation are not changed;
+whether to make them follow age is alternative D.
+
+This is the same cooling law, with the same two values, that #950's rift-line method uses for ocean-floor strength
+(`oceanic_age_strength`, `rift_strength.oceanic_strength_hm`, with `ocean_cooling_m_per_sqrt_myr` and
+`ocean_plate_thickness_m` in `RiftLineParams`). B.3 must share one law and one pair of values with it, so the column
+that resists rifting is the column that pulls and pushes. The implementation issue decides whether the law moves to
+`lithosphere.py` with both callers reading it, or B.3 reads it from the world's rift parameters; either way a
+setting cannot give the two different values.
 
 **B.4 Subduction test.** Today a node pulls only if it is down-going crust within reach of a neighbour and the
 previous step's motion closes it faster than 1 cm/yr (`subducting_boundary_mask`, `TRANSFORM_RATE_THRESHOLD`).
@@ -198,17 +222,24 @@ Development worlds only for every search; held-out worlds only for acceptance.
 | `SLAB_MANTLE_VISCOSITY_PA_S` | 10²¹ Pa·s | Design choice | G2 over 10²⁰–10²¹ |
 | `SUBDUCTION_LSINK_M` | 250 km | Design choice | G2 over 150–660 km |
 | `f_pull` (new): share of slab buoyancy applied as pull | 1.0 | [[van Summeren et al., 2012]](#ref-vansummeren2012): about 20% (anchored roots) to at least half | G2 over 0.2–1.0 |
-| `h₁`, `H_max` (new, B.3) | 13 km, 95 km | #888's ocean-strength law; a cooling-plate design choice | Fixed; sensitivity at 11 km and 125 km |
+| `h₁`, `H_max` (B.3; #950's `ocean_cooling_m_per_sqrt_myr`, `ocean_plate_thickness_m`) | 13 km, 95 km | #888's ocean-strength law; a cooling-plate design choice | Fixed, one pair for force and strength; sensitivity at 11 km and 125 km |
 | `v_gate` (new, B.4a) | 1 cm/yr | Current threshold | G1 picks the test; G2 over 0.25–2 cm/yr if (a) |
 | `contact_drag_multiplier` | 1.0 | RFC 0008, #760 | G2 over 0–1 |
 | `CONTACT_RESISTANCE_N_PER_M` | 5×10¹² N/m | [[Copley et al., 2010]](#ref-copley2010): 5–6×10¹² | Fixed; the multiplier scales it |
 | `craton_drag_multiplier` | 1.0 | #760 | Fixed; no measurable effect (#888) |
 | `COLLISION_RELIEF_FRICTION_SCALE_M` | 4 km | RFC 0008 | Fixed; sensitivity at 2 and 8 km |
-| RFC 0018 rifting knobs: `ε̇_0`, `s_warm`, `k_cap`, `N_plume`, `Λ_grow`, `ℓ_tip` | RFC 0018's frozen D1 values | RFC 0018 | G2, over RFC 0018's D1 ranges |
-| Further RFC 0018 knobs | — | RFC 0018's pending revision | Added at G0 once that revision lists them |
+| RFC 0018's searched rift knobs, in `World.rift_line_params` (#950): `eps_dot0`, `s_warm`, `k_cap`, `n_plume`, `lam_grow`, `l_tip_m` | The setting RFC 0018's D1 re-run freezes on the #950 code | RFC 0018 | G2, over D1's ranges, recentred on the re-run's setting |
+| RFC 0018's strength-map knobs: `mark_power`, `craton_root_m` | The re-run's values (#950 defaults: 1, 0) | #888's strength-map arms | G2, over the ranges those arms tried |
+| `route_mark_power` | The re-run's value (#950 default: 1) | #888 | G2 only if the re-run keeps it away from 1; route-only marks gave 90 Myr median rifts in #888 |
+| Every other `RiftLineParams` field (`a_min`, `c_dir`, `c_corr`, `f_break`, healing, sub-step limits) | #950's values | RFC 0018 | Fixed: set by RFC 0018 or numerical. `a_min` (15%) is RFC 0018's guard against microplates and stays its decision |
 
 `f_pull`, the viscosities and `L_sink` trade off against each other (the terminal speed goes as
 `f_pull B / (μ_slab/d_s)`), so G2 reports the ridge of equally good settings, not one point.
+
+The rift knobs change how many plates there are and how large, not the forces that drive them; they reach speed
+only through plate size and the ridges new rifts open. They are tuned here because their effect depends on the
+forces: the same `k_cap` splits about 2.5 times as often with the brake off as with it on (#888), and B.1–B.3
+raise the pull across plates further.
 
 ### Calibration targets
 
@@ -233,9 +264,15 @@ reference geometry, with the share fixed in G0 before any G2 run.
 ### Diagnosis gates
 
 Development worlds are RFC 0018's 20 (#888); every gate runs plates-only (`simulate_climate_biomes = False`) at
-1 Myr steps for 200 Myr unless stated, and reports at 0.5 Myr on three of them.
+1 Myr steps for 200 Myr unless stated, and reports at 0.5 Myr on three of them. From G0 on, every run splits plates
+with `World.split_method = "rift_lines"` (#950) at the rifting baseline below, unless stated.
 
 1. **G0: targets and harness.**
+   - Take the rifting baseline from RFC 0018's D1 re-run on the #950 code (#888), and record its setting, its
+     brake setting (RFC 0018 runs with `contact_drag_multiplier = 0` for now) and the commit it ran on. D1's
+     earlier tables are not a baseline: #950's reviews changed plume heat at the split test, flank transfer under
+     the crust cap and capped donors, so the production method does not reproduce them. If the re-run has not
+     frozen a setting when G0 starts, G0 waits for it rather than choosing one.
    - Check T1's Earth figure against a published plate model (area-weighted mean of `|ω × r|` from published
      Euler poles and plate areas), and record the result. If it is outside 4–5 cm/yr, T1's band moves with it,
      with the owner's agreement.
@@ -245,7 +282,8 @@ Development worlds are RFC 0018's 20 (#888); every gate runs plates-only (`simul
      `mantle-bloom/rfc0021/v1/heldout/{index:02d}`, first four bytes big-endian masked with `0x7fffffff`,
      excluding every seed already in `analysis/issue797/g2-seed-preregistration.json` and the development set),
      20 seeds, committed before any G2 run.
-   - Extend #942's brake-off breakdown from 2 to the 20 development worlds, so G1's baseline is not two worlds.
+   - Extend #942's brake-off breakdown from 2 to the 20 development worlds, on the rifting baseline, so G1's
+     baseline is not two worlds and not the great-circle split. Measure the rift-line method's step cost there.
    - Build the scorer: `plate_torque_breakdown.py`'s measures plus RFC 0008's collision measures plus RFC 0018's
      realism score, one JSON per setting.
 2. **G1: one correction at a time.** Each of B.1, B.2, B.3 and B.4 (a and b) alone, then all adopted ones
@@ -260,13 +298,18 @@ Development worlds are RFC 0018's 20 (#888); every gate runs plates-only (`simul
    Stage 1: 24 settings on 5 development worlds; stage 2: the best 3 on all 20, scored on T1–T9 (targets met,
    ties broken by total violation as in #888). Reports the trade-off ridge between `f_pull`, viscosities and
    `L_sink`.
+   - **Control arm (alternative A).** The same design, run the same way, over the knobs that exist today
+     (everything in the table except `f_pull` and `v_gate`) with every correction off. It tests the claim that
+     constants alone cannot meet T2–T7; its stage 2 best is scored beside the corrected one.
 4. **G3: held-out acceptance** of the frozen setting, at 1 Myr and at 0.5 Myr on three seeds, plus one held-out
    world for 50 Myr with full stepping (climate and surface processes on) to check that plates-only stepping did
    not mislead.
 
-Rough cost, from #942's measured 5.7 min per 200 Myr world plates-only (0.54 GB peak): G0's 20-world brake-off
-breakdown 2 h; G1 about 12 runs × 5 worlds, 6 h; G2 stage 1, 24 × 5, 11 h; stage 2, 3 × 20, 6 h; G3 about 3 h plus
-the full-stepping run (about 385 s/Myr, 5 h). All in series under the compute budget.
+Rough cost, from #942's measured 5.7 min per 200 Myr world plates-only (0.54 GB peak) on the great-circle split:
+G0's 20-world brake-off breakdown 2 h; G1 about 12 runs × 5 worlds, 6 h; G2 stage 1, 24 × 5, 11 h, and the same
+again for the control arm; stage 2, 3 × 20 for each arm, 12 h; G3 about 3 h plus the full-stepping run (about
+385 s/Myr, 5 h). The rift-line method costs more per step; G0 measures how much, and these figures scale with it.
+All in series under the compute budget.
 
 ### Runtime and saves
 
@@ -282,11 +325,13 @@ removed.
 - `backend/app/torque.py`: `ridge_push_force_vectors_n` (B.1), `slab_drag_coefficient_matrix` and
   `slab_drag_force_vectors_n` (B.2), `slab_pull_force_n` and `column_buoyancy_pa` callers (B.3, `f_pull`),
   `subducting_boundary_mask` (B.4); the diagnostics in `solve_plates_quasistatic`.
-- `backend/app/lithosphere.py`: a new helper for the force column from age (B.3) beside
-  `REFERENCE_HM_OCEANIC_M`.
+- `backend/app/lithosphere.py`: the force column from age (B.3) beside `REFERENCE_HM_OCEANIC_M`, if the cooling
+  law moves here from `rift_strength` so both callers share it.
 - `backend/app/mantle.py`: `MANTLE_FLOW_REFERENCE_RATE`, `generate_convection_centers`.
 - `backend/app/world.py`: new switches and tuners beside `contact_drag_multiplier` and `craton_drag_multiplier`.
-- RFC 0018's rifting module, wherever its knobs land after its pending revision.
+- RFC 0018's rift-line method (#950): `rift_strength.RiftLineParams` and `World.rift_line_params` for the rift
+  knobs, `rift_strength.oceanic_strength_hm` for the cooling law B.3 shares, and `rift_damage.force_inputs`, which
+  reads the same per-node forces B.1–B.4 change.
 - Tests: `backend/unit_tests/test_torque.py` (each corrected form against a manufactured case: ridge push equals
   the GPE difference of two known columns; slab drag has no trench-parallel component; pull grows with age),
   `test_quasistatic.py` (the solve still converges and stays symmetric), `test_world.py` and
@@ -309,18 +354,21 @@ removed.
 - **Earth's mean speed is a working figure.** T1's 4–5 cm/yr is from the issue and is checked in G0.
 - **Plates-only stepping.** Every gate except G3's one run leaves out climate and surface processes, which change
   relief and crust and so the brake and buoyancy. G3 checks this on one world.
-- **Shared knobs with RFC 0018.** RFC 0018's rifting knobs were frozen against today's slow forces. Calibrating
-  them here assumes RFC 0018's owner-approved targets stay as they are; its pending revision may add knobs, which
-  join G2 when it lands.
+- **Shared knobs with RFC 0018.** RFC 0018's rifting baseline is being re-run on the #950 code with the brake off,
+  against today's forces. Calibrating its knobs here assumes RFC 0018's owner-approved targets stay as they are;
+  the owner may waive RFC 0018 failures judged fixable by tuning here, and those waivers are recorded against T9.
+- **The case against alternative A is argued, not measured.** It rests on one breakdown of the force forms. G2's
+  control arm measures it.
 - **Two-world evidence.** The brake-off breakdown and the slab work budget are on two worlds; G0 extends the
   first to 20.
 
 ## Acceptance criteria
 
-- [ ] **G0** recorded in this RFC: T1's Earth figure checked; T2's definition fixed; the held-out set frozen and
-      committed; the 20-world brake-off breakdown reported.
+- [ ] **G0** recorded in this RFC: the rifting baseline and the commit it ran on; T1's Earth figure checked; T2's
+      definition fixed; the held-out set frozen and committed; the 20-world brake-off breakdown reported.
 - [ ] **G1** recorded: each correction's predeclared probe and outcome, and the corrections adopted.
-- [ ] **G2** recorded: stage 1 and 2 scores, the frozen setting and its trade-off ridge.
+- [ ] **G2** recorded: stage 1 and 2 scores for the corrected search and the control arm, the frozen setting and
+      its trade-off ridge.
 - [ ] On the 20 held-out worlds at 1 Myr steps for 200 Myr, plates-only, with the frozen setting:
   - [ ] T1: mean crust speed 3–6 cm/yr;
   - [ ] T2: slab-attached plates at least 2.5 times faster than the others;
@@ -328,8 +376,8 @@ removed.
   - [ ] T4: mean basal traction under slabless plates at most 1 MPa;
   - [ ] T5: ridge push on old flanks 1–4×10¹² N/m;
   - [ ] T7: fastest-to-slowest world speed ratio at most 3;
-  - [ ] T9: RFC 0018's realism targets, scored by its rules, at least as many met as RFC 0018's own frozen
-        setting on today's forces.
+  - [ ] T9: RFC 0018's realism targets, scored by its rules, at least as many met as the rifting baseline (the
+        D1 re-run's setting on today's forces), apart from any the owner waives.
 - [ ] T6 and T8, RFC 0008's measures, against `origin/main` on the same held-out worlds: no jammed pair has its
       collision time dropped while still in contact; no plate's speed falls below 20% of its pre-contact speed
       from braking alone; the craton-on-craton overlap volume at fusion is not more than 25% above `origin/main`'s;
@@ -347,6 +395,9 @@ removed.
 - **Slab forces cannot drive these plates.** If G1's combined corrections, brake off, leave slab pull under a
   third of the driving torque or the T2 ratio under 1.5, the premise that the missing drive is in the force forms
   is wrong: the cause is in the column (alternative D) or the flow (alternative C). Revise toward D or C.
+- **Constants alone are enough.** If G2's control arm meets at least as many of T1–T7 as the corrected search,
+  with T2 and T3 among them, the corrections are not needed: adopt the control arm's setting (alternative A) and
+  drop B.1–B.4.
 - **The corrections only trade one knob for another.** If G2's best settings meet T1 only with
   `MANTLE_FLOW_REFERENCE_RATE` above 6 cm/yr or `contact_drag_multiplier` under 0.2, the speed still comes from the
   flow or from removing resistance, not from slabs. Revise; do not accept on T1 alone.
