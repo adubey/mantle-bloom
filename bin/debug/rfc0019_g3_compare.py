@@ -27,6 +27,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 from scipy.spatial import cKDTree
 
+from rfc0019_coarse_moisture import aggregate_inputs
 from rfc0019_transport_prototypes import transition_rates, solve_stationary
 
 EARTH_RADIUS_M = 6_371_000.0
@@ -287,6 +288,43 @@ def _flux_sources(
     return tagged, sum(tagged.values())
 
 
+def _aggregate_tagged_sources(is_ocean, tags, density=1):
+    """Aggregate native-tagged sources into the common G3 reservoir grid."""
+    return aggregate_inputs(
+        is_ocean[::-1], {name: values[::-1] for name, values in tags.items()}, factor=density,
+    )
+
+
+def _prepare_source_grid(fields, world, climate, hydrology, area, depth_m, tau_s, density=1):
+    """Build tagged flux sources and coarse reservoirs for the G3 diagnostic scripts."""
+    proxies = _surface_source_proxies(fields, world, climate, hydrology)
+    np.testing.assert_array_equal(proxies["is_ocean"], fields.is_ocean)
+    tags, _ = _flux_sources(proxies, area, depth_m, tau_s)
+    return proxies, tags, _aggregate_tagged_sources(fields.is_ocean, tags, density)
+
+
+def _load_tuning_world(save, parser, tuning_saves, density=1):
+    """Validate and load one registered tuning world at its requested climate grid."""
+    digest = _sha256(save)
+    if digest != tuning_saves.get(save.name):
+        parser.error("save name or hash does not match a registered tuning input")
+    root = Path(__file__).resolve().parents[2]
+    backend_path = str(root / "backend")
+    if backend_path not in sys.path:
+        sys.path.insert(0, backend_path)
+    from app import persistence
+    from app.hydroclimate import biomes, climate, hydrology
+
+    with save.open("rb") as save_file:
+        world = persistence.load_world_file(save_file)
+    if world.atmosphere_cfd_state is None:
+        raise ValueError("registered tuning save is missing its saved CFD wind state")
+    world.climate_density = float(density)
+    shape = climate.grid_dimensions(float(density))
+    world.climate_cache, cache_resampled = _cache_on_grid(world.climate_cache, shape)
+    return root, digest, world, biomes, climate, hydrology, cache_resampled, shape
+
+
 def _solve_saturation_convection(
     source: np.ndarray,
     area: np.ndarray,
@@ -463,6 +501,7 @@ def _difference_map_color(values: np.ndarray, maximum: float) -> np.ndarray:
 def _save_common_scale_rain_map(
     map_dir: Path, save: Path, density: int, wind: str, solver: str, arm: str,
     current_rain: np.ndarray, candidate_rain: np.ndarray, area: np.ndarray,
+    *, labels: tuple[str, str, str] = ("Current source", "Conservative candidate", "Candidate minus current"),
 ) -> str:
     target_shape = (current_rain.shape if density == 1 else
                     (current_rain.shape[0] // 4, current_rain.shape[1] // 4))
@@ -478,7 +517,6 @@ def _save_common_scale_rain_map(
     image = Image.new("RGB", (gutter + 3 * (panel_width + gutter), header + panel_height + footer),
                       (248, 248, 248))
     draw = ImageDraw.Draw(image)
-    labels = ("Current source", "Conservative candidate", "Candidate − current")
     fields = (current, candidate, difference)
     for index, (label, field) in enumerate(zip(labels, fields)):
         left = gutter + index * (panel_width + gutter)
@@ -491,12 +529,12 @@ def _save_common_scale_rain_map(
         image.paste(raster, (left, header))
         draw.rectangle((left, header, left + panel_width - 1, header + panel_height - 1),
                        outline=(70, 70, 70))
-        draw.text((left, header + panel_height + 6), "90°N", fill=(25, 25, 25))
+        draw.text((left, header + panel_height + 6), "-180°", fill=(25, 25, 25))
         draw.text((left + panel_width // 2 - 12, header + panel_height + 6), "0°", fill=(25, 25, 25))
-        draw.text((left + panel_width - 26, header + panel_height + 6), "90°S", fill=(25, 25, 25))
+        draw.text((left + panel_width - 26, header + panel_height + 6), "180°", fill=(25, 25, 25))
     draw.text((gutter, image.height - 13),
               f"Rain (mm/yr), shared log scale to p99.5={shared_max:.0f}; "
-              f"difference scale ±{difference_max:.0f}; longitude 0° → 360°",
+              f"difference scale ±{difference_max:.0f}; north at top",
               fill=(25, 25, 25))
     map_dir.mkdir(parents=True, exist_ok=True)
     name = f"{save.stem}-d{density}-{wind}-{solver}-{arm}-common-scale.png"

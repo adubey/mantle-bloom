@@ -1,6 +1,6 @@
 # RFC 0019: Conserve atmospheric moisture in diagnostic rain and transport
 
-**Status:** Accepted (revised 2026-11-15 after G3 source/rainout, steady-formulation, and local-lift screens; revised 2026-11-14 after G0; owner confirmation 2026-11-14)
+**Status:** Accepted (revised 2026-11-16 after G3 tuning and owner scope clarification; revised 2026-11-15 after G3 tuning screens; revised 2026-11-14 after G0; owner confirmation 2026-11-14)
 **Date:** 2026-11-03
 **Revisions:** See [Revision note](#revision-note).
 **Related:** [tracking #898](https://github.com/adubey/mantle-bloom/issues/898), [#771](https://github.com/adubey/mantle-bloom/issues/771), RFC 0015, RFC 0016; issues #522, #526, #530, #358
@@ -13,7 +13,7 @@ This violates **design principle 6, account for material through every process**
 
 The downstream effect is measured. RFC 0016's [G1b result](../analysis/rfc0016/README.md#g1b-result) reports that coupling plant transpiration to humidity raised land rain by 38–51% and increased water exported to the ocean. The report attributes that multiplication to rain not being debited from humidity. Those are measurements on its pinned source and windows, not a forecast of a conserving model's result. G1b cannot evaluate the intended land-water coupling until this RFC's question is resolved.
 
-The scope is the annual-mean diagnostic water cycle used by erosion, hydrology, biomes, and ice. It is not a weather model and does not resolve clouds, convective storms, seasons, or vertical atmospheric structure. The proposal must preserve a useful long-term precipitation field without claiming those omitted processes.
+The scope is the annual-mean diagnostic water cycle used by erosion, hydrology, biomes, and ice. The model should produce visually recognizable rain belts, wetter windward slopes and drier leeward rain shadows, dry continental interiors, and plausible precipitation on cold land where moisture can reach it. Approximate intensities and geographic positions are acceptable on synthetic worlds. The water budget must still close, and the delivered rain and snow must support plausible downstream behavior. Clouds, individual storms, seasonal variability, and vertical atmospheric structure are represented only through bulk effects.
 
 ## Proposed solutions
 
@@ -39,7 +39,7 @@ Add column vapour, evaporation, condensation, and precipitation to `AtmosphereCF
 
 ### Recommendation
 
-Take option A through diagnosis, and compare it with option B as an arrow-following alternative. Do not assume B is cheaper; use the diagnosis gates to compare runtime, closure, and climate structure before choosing either for implementation. Do not restore the retired CFD humidity equation as-is. The key difference from the current model is the conserved extensive column quantity, with each water source and rain sink in physical units. The diagnosis gates below decide whether either representation retains useful climate structure and is affordable before an implementation is authorized.
+Keep option A as the next G3 prototype. G2 established that options A and B can both conserve water. The G3 screens show that the next design must improve regional water delivery as well as the cost of the solve. Use a coarse finite-volume budget with explicit mixing, then place the rain it supplies on the native climate grid. Use current diagnostic and CFD winds as separate inputs to the same budget. Option C remains a fallback if a steady diagnostic cannot produce useful climates at acceptable cost.
 
 ## Design
 
@@ -53,7 +53,45 @@ The global residual is `Σ A_i W_i,new - Σ A_i W_i,old - Δt Σ A_i(E_i-P_i)`; 
 
 Use a conservative donor-cell flux on the spherical climate grid. Cell area is calculated from latitude-edge bands and longitude width, rather than treating every latitude row as equal area. Longitude wraps; polar faces have zero area; east/west fluxes use the same value with opposite signs in their two adjacent cells. Clip negative numerical values to zero only with their clipped mass added to the local precipitation/sink ledger; otherwise fail the solve. Preserve the climate-density meaning of `World.climate_density`: cell fluxes and totals are area-weighted and should converge with resolution.
 
-Use `surface_wind` from either wind mode for the first prototype. It is in m/s and targets a 10 m wind; the CFD solver currently reaches only 0.42–0.66 of its target on the reported diagnosis. The moisture-bearing column wind is not observed by this model. Start with an effective transport multiplier of **1.0 (design choice)** and a separately named, dimensionless multiplier fitted only on the tuning set by comparing model flux against ERA5 vertically integrated vapour transport resampled to this grid. Sweep 0.5, 1.0, and 2.0 as sensitivities; report diagnostic and CFD wind separately. Do not call the product of column water and 10 m wind a measured atmospheric flux.
+Use `surface_wind` from either wind mode for the first prototype. It is in m/s and targets a 10 m wind; the CFD solver currently reaches only 0.42–0.66 of its target on the reported diagnosis. The moisture-bearing column wind is not observed by this model. Start with an effective transport multiplier of **1.0 (design choice)**. Retain 0.5, 1.0, and 2.0 as sensitivities and report diagnostic and CFD wind separately. The ERA5 vertically integrated vapour transport comparison informs the uncertainty in this proxy; any selected multiplier must earn its place by improving delivery on the tuning worlds. Label column water times near-surface wind as modeled transport.
+
+### Coarse transport and fine rain placement
+
+The initial G3 screen held evaporation and rainout fixed and tested
+shared-face mixing with both wind modes at 2°.
+Mean flow omits moisture carried by transient circulation
+[[Seager et al., 2010]](#ref-seager2010); down-gradient exchange is a
+simple test of redistribution, with no guarantee that it reproduces the
+direction of that missing transport. Preserve water transferred across
+coasts and between latitude bands in the ledger. Keep separate land and
+ocean rain budgets wherever a coarse cell includes both.
+
+Spend each coarse rain budget exactly once. Use bounded terrain exposure and
+a modest rain-belt cue inspired by the current climate to distribute it over
+the native cells. This can improve windward slopes and rain shadows without
+introducing an extra local rain sink that intercepts moisture before it can
+reach cold land. The broad wet belts, dry interiors and cold-land supply still
+depend on the regional solution. Compare rain maps, biomes and those regional
+metrics alongside the approved G3 tests. A transport-only multiplier may be
+selected separately for each mode from the existing sensitivity range on tuning
+worlds if a paired comparison supports it. Keep it separate from the actual
+surface wind and evaporation calculation.
+
+The [G3 implementation plan](../analysis/rfc0017/g3-coarse-transport-plan.md)
+specifies the grid, fluxes, coastal bookkeeping, weights, checks and timing
+protocol. The separate [wind follow-up](../analysis/rfc0017/wind-transport-handoff.md)
+describes how to isolate and test possible changes to wind direction, drag and
+the CFD surface conversion. Those changes are outside this RFC's transport
+prototype.
+
+The current tuning candidate uses a convergence-adjusted carrier with a
+limited broad meridional contribution. A local saturation cap removes
+excess vapor once. A bounded assignment of that condensate to nearby
+cells spreads the wet belts and preserves ocean, land and freezing-land
+rain totals. Terrain weighting inside the coarse budgets produced weak
+rain shadows. Intercepting vapor as it crosses a ridge made the windward
+cells wetter and the lee drier, while reducing cold inland supply on A CFD.
+Trace the moisture reaching that region before selecting a ridge rule.
 
 ### Rain and the atmospheric column
 
@@ -103,7 +141,7 @@ Run these only after the project owner accepts this Draft RFC. Record scripts, s
 3. **G2 — Conservative offline prototype.** Implement only a diagnostic script or isolated prototype first. On analytic source/transport cases, test closed-sphere global closure, local availability, source attribution, orographic removal, zero sources, cap behavior, pole/seam handling, and climate-density convergence. For option B, verify that transitions follow local arrows and test convergence, divergence, calm cells, closed loops with rainout, and closed classes without a sink. Compare option A with option B for runtime and closure. If neither can close to `1e-8` relative to total source in double precision and remain positive, revise the discretization before production code.
    **G2 result, 2026-11-15:** The isolated prototype in [the G2 analysis](../analysis/rfc0017/README.md#g2-preliminary-analytic-prototype-screen) compares an upwind finite-volume face-flux scheme with local wind-arrow transitions. Both close below `1.3e-16` globally and `1.6e-17` per-cell on an 8×16 ocean-source case, remain nonnegative, preserve source-tag linearity, produce land rain only from transported ocean moisture, and handle zero source, calm flow, convergence/divergence, and a closed loop with positive rainout. A localized enhanced sink raises local rain and global closure remains within `5.7e-16`; a one-cell finite-interval check caps rain to opening mass. The prototype also checks longitude wrap, latitude bounds, wind-arrow alignment, sinkless closed-class detection, and uniform-source invariance from 4×8 to 16×32. At 90×180 (climate density 1), both schemes remain positive and close globally within `1.3e-16` and locally within `6.0e-18`. Separate uncontended sparse-solve measurements are 0.02865 s for finite volume and 0.02824 s for arrows, effectively equal at this scale. Peak RSS and density-4 (360×720) scaling remain unmeasured; the one-cell cap check is not a time-integrated transport update. G2's analytic and density-1 prototype gate passes.
    **Owner review, 2026-11-15:** The owner approved moving to G3 after reviewing the G2 results. G3's numerical climate-fidelity and runtime limits are preregistered in [the G3 plan](../analysis/rfc0017/g3-preregistration.md) before any G3 comparison.
-4. **G3 — Climate impact and runtime.** After owner review of G2, run climate-only comparisons on the registered windows and held-out saves with both wind modes and climate densities 1 and 4. Report area-weighted ocean/land rain shares, latitude-band means, Köppen shares, precipitation rel-RMS to current source, surface-source amounts, wind transport, per-update closure, and median step-time cost. If held-out acceptance thresholds cannot be met without violating closure or exceeding the runtime budget, return to the RFC for a design choice before implementation.
+4. **G3 — Rainfall patterns, budget, and runtime.** Use the registered tuning windows and, after the candidate and checks are frozen, the registered held-out saves. Compare both wind modes and climate densities 1 and 4. Evaluate wet belts, rain shadows, dry interiors, and cold-land precipitation using [regional diagnostics and maps](../analysis/rfc0017/g3-coarse-transport-plan.md#proposed-g3-regional-pattern-checks). Continue reporting legacy land/ocean shares, latitude-band means, Köppen shares, and precipitation relative RMS, along with source amounts, transport, column water, closure, and climate-update time. The proposed gate revision below needs owner approval of the replacement checks before any held-out run.
 5. **G4 — Downstream coupling.** Only after G3, rerun the eligible RFC 0016 coupling screen under the accepted atmospheric version. Report land rain, lake supply/volume, ocean export, frozen precipitation share, and ledger changes against its control. Recheck glacier accumulation, erosion, and biome distributions. This gate informs RFC 0016; it does not itself implement land-water storage or RFC 0015.
 
    **G3 tuning screen, 2026-11-15:** The preregistered proxy-to-source hypothesis closes the stationary water budget (maximum relative residual below `3e-15`) and is resolution-convergent (density-1/4 global rain changes by at most 0.10%). The tuning screen indicates it cannot meet the held-out climate-pattern target and it exceeds the density-4 runtime limit. Even after fitting one uniform precipitation scale, wind-arrow precipitation rel-RMS is 0.669–0.695 at density 1 and 0.897–0.911 at density 4; the density-4 climate update takes 2.97–3.65× current-source time at the selected parameters. A complete window-A bracket sweep found no setting below 0.50 best-fit RMS or 2× runtime. These are tuning-screen results, not held-out acceptance measurements. The two acceptance-only saves remain unopened, G3 is incomplete, and G4 is not authorized. See the [G3 tuning report](../analysis/rfc0017/README.md#g3-tuning-screen-initial-source-mapping-does-not-pass). The source mapping and/or transport approach needs a design revision before held-out evaluation.
@@ -124,9 +162,10 @@ Run these only after the project owner accepts this Draft RFC. Record scripts, s
 ## Assumptions and uncertainty
 
 - A steady annual-mean moisture budget is an adequate representation for the simulator's geological timestep and current diagnostic precipitation consumers. It omits transient weather and atmospheric storage changes between climate calls.
-- Column water multiplied by near-surface wind is not the true vertically integrated transport. The model needs a measured mapping or an explicit calibration range.
+- One effective wind transports the whole water column. Variation in wind and humidity with height, and variations within the averaging period, can change the strength and direction of moisture delivery. Their contribution to the tuning-world errors is unmeasured. Retain an explicit calibration range and track improvements to vertical transport in [#944](https://github.com/adubey/mantle-bloom/issues/944).
 - A first-order rainout time is a bulk closure law, not cloud microphysics. The nine-day global scale does not set local rainout, convective efficiency, or storm tracks.
 - Ocean evaporation, lake/river evaporation, and transpiration are surface fluxes with different drivers. Existing g/kg-equivalent source formulas do not constrain their physical rates without additional evidence.
+- A biome-weighted recycling fraction is an acceptable provisional transpiration proxy when a named surface reservoir pays for the water. Vegetation contributed 1.4–1.7% of total source in the A and cold control snapshots, so direct plant supply explains little of the measured rain concentration at those settings. The runs do not quantify coupled feedback. Improved transpiration physics is tracked in [#944](https://github.com/adubey/mantle-bloom/issues/944).
 - Land ET can cycle water repeatedly and therefore gross precipitation can exceed oceanic input locally and over a chosen interval. Conservation means each evaporation, atmospheric transport, precipitation, and surface storage transfer has one owner; it does not prohibit recycling.
 - ERA5 is a modern-Earth comparison, while synthetic topography, wind, and land cover vary. Use it to constrain scales and patterns, not as a universal geological forcing.
 - Changing rain affects erosion, lakes, Köppen classes, and glacier accumulation. Their movement is an impact to measure, not a reason to introduce a hidden rain floor.
@@ -139,7 +178,8 @@ Run these only after the project owner accepts this Draft RFC. Record scripts, s
 - [ ] With a zero land source, total land precipitation is no greater than ocean-origin moisture entering land, within ledger tolerance.
 - [ ] A saturation cap and each precipitation enhancement convert their removed moisture to rain exactly once; there is no unaccounted humidity floor or ocean reset.
 - [ ] Area-weighted closure holds at climate densities 1 and 4; global rainfall changes by no more than 5% relative and land/ocean rainfall shares by no more than 5 percentage points between densities on registered cases.
-- [ ] On preregistered held-out saves, report land/ocean rain share, latitude bands, Köppen shares, and precipitation rel-RMS. The owner-approved limits are recorded in the [G3 preregistration](../analysis/rfc0017/g3-preregistration.md) and cannot be tuned on held-out saves.
+- [ ] Demonstrate recognizable wet belts, windward/leeward contrast, dry interiors, and sustained precipitation on exposed cold land where the geography supports each pattern. Review common-scale maps and preregistered regional measurements. Report legacy land/ocean rain shares, latitude bands, Köppen shares, and relative RMS for comparison. The [original numerical climate limits](../analysis/rfc0017/g3-preregistration.md) remain in force until the owner approves the replacement regional checks.
+- [ ] Effective column water stays physically plausible under the stated density and depth assumptions. Report the upper tail and spatial concentration of water and precipitation. Any additional rain used to limit accumulation debits the atmospheric budget exactly once.
 - [ ] Both diagnostic and CFD wind complete the same budget; report step-time change and keep median density-4 climate-update time within the owner-approved 2× current-source budget.
 - [ ] RFC 0016's rerun reports the coupled and control changes with closed land and atmosphere ledgers; no treatment is used to tune G0–G3.
 - [ ] Old saves load; option A adds no persistent state or save-size cost.
@@ -153,6 +193,61 @@ Run these only after the project owner accepts this Draft RFC. Record scripts, s
 - If plausible rainout and transport sensitivities produce order-of-magnitude differences in land rain or lake supply, the current literature and diagnostics do not constrain this design enough for implementation; gather new evidence or withdraw the recommendation.
 
 ## Revision note
+
+**2026-11-16 — G3 ridge rainout screen.** Intercepting water at a crest
+improved paired windward/lee contrasts in both wind modes. The weak arm
+still reduced cold inland rain on A CFD by 14%, explained by lower net
+inflow into those regions. Turning down the effect in dry air weakened
+the shadows and retained the A deficit. The atmospheric budget closed in
+all arms. G3 remains open. See the
+[ridge comparisons](../analysis/rfc0017/g3-coarse-transport-plan.md#rainout-during-ridge-crossings).
+
+**2026-11-16 — G3 rain belt and terrain screens.** Modulating the local
+rainout rate produced little belt contrast. Restoring broad moisture
+transport and spreading only saturation overflow produced broader rain
+belts with exact water accounting. The fixed-budget fine terrain test
+changed median windward/lee differences by less than 1 mm/yr in every
+case. A ridge-scale rainout candidate still needs tuning, and the native
+density-4 budget, runtime and held-out behavior remain unverified. See the
+[tuning report](../analysis/rfc0017/g3-coarse-transport-plan.md#broad-rainout-tuning-screen).
+
+**2026-11-16 — G3 bounded-column and transport screen.** The local saturation
+cap closed the budget and removed the vapor excess, but 62–64% of rain came
+from immediate overflow and narrow wet stripes remained. Removing the
+convergent component of transport reduced overflow to 3–6% with the same cap
+and sources. It softened the stripes, improved some cold-land supply, and
+left weak rain belts and rain shadows. The next tuning candidate separates
+the broad rainout cue and terrain-weighted placement from the corrected
+transport. G3 remains open. See the [paired results](../analysis/rfc0017/g3-coarse-transport-plan.md#convergence-adjustment-with-the-local-cap-in-both-modes).
+
+**2026-11-16 — G3 rainfall-pattern scope.** The owner asked RFC 0019 to produce
+recognizable rain belts, rain shadows, dry interiors, and cold-land precipitation
+at useful approximation for synthetic worlds. The proposed G3 change is to
+replace numerical agreement with the current-source rain and biome fields,
+including the 0.50 relative RMS limit, with checks of those four regional
+patterns. Keep the original comparisons as diagnostics for the size and location
+of downstream changes. Retain closure, nonnegativity, availability, resolution,
+the 2× density-4 runtime limit, and G4 downstream checks. Freeze measurable
+regional checks with the owner before evaluating the held-out saves.
+
+The [latest A and cold tuning screen](../analysis/rfc0017/g3-coarse-transport-plan.md#targeted-convergence-result)
+reduced excessive convergence, but regional water delivery moved in both
+directions and the effective water column still exceeded its assumed air mass
+in one cold CFD snapshot. Stop tuning that setting. The next candidate should
+keep the coarse conservative solve, bound accumulation using a budgeted sink,
+and test regional delivery before spending time on fine rain placement. Keep
+the single-layer wind and transpiration simplifications documented. The more
+complete physics is a deferred [follow-up in #944](https://github.com/adubey/mantle-bloom/issues/944).
+G3 remains incomplete and G4 follows G3.
+
+**2026-11-16 — G3 coarse transport plan.** After reviewing #913 and the
+exploratory comparison in [#923](https://github.com/adubey/mantle-bloom/issues/923),
+the owner chose coarse transport, conservative mixing, and bounded rain placement
+as the next design to plan. The #923 full-resolution run stopped without a result;
+it is a supporting diagnostic and does not measure either wind solver's error.
+G0–G2 stand on their original evidence; new operator and allocation checks
+extend G2 before the new G3 screen. G3 limits and held-out cases remain as
+registered, and G4 depends on G3.
 
 **2026-11-14 — G0 interpretation ([PR #903](https://github.com/adubey/mantle-bloom/pull/903)).** The original gate required the exact #771 source
 worlds, current climate-field output and area-weighted physical source/sink totals.
@@ -181,6 +276,9 @@ See the [tuning report](../analysis/rfc0017/README.md#g3-tuning-screen-initial-s
 **2026-11-15 — G3 local-lift screen (#913).** The preregistered 250 km smoothed ascent sink improved coarse-scale RMS and windward/leeward contrast on both tuning saves at density 1, but decreased ≥60° land rain in diagnostic and CFD modes on both saves. Stop this local-lift formulation under the preregistered cold-land criterion. G3 remains incomplete, held-out saves remain unopened, and no G3 limit changes. Findings and private capture hashes are recorded in the [issue #913 report](../analysis/issue913/README.md).
 
 ## References
+
+- <a id="ref-seager2010"></a>
+Seager, R., Naik, N., & Vecchi, G. A. (2010). Thermodynamic and dynamic mechanisms for large-scale changes in the hydrological cycle in response to global warming. *Journal of Climate*, 23, 4651–4668. [doi](https://doi.org/10.1175/2010JCLI3655.1)
 
 - <a id="ref-trenberth1998"></a>
 Trenberth, K. E. (1998). Atmospheric moisture residence times and cycling: Implications for rainfall rates and climate change. *Climatic Change*, 39, 667–694. [doi](https://doi.org/10.1023/A:1005319109110)

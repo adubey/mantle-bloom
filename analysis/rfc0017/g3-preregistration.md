@@ -4,6 +4,11 @@
 limits below before any G3 comparison. These limits are fixed for the registered held-out
 cases; do not tune parameters or criteria against those cases.
 
+On 2026-11-16 the owner clarified that the objective is four recognizable rainfall
+patterns on synthetic worlds. The [proposed regional checks](g3-coarse-transport-plan.md#proposed-g3-regional-pattern-checks)
+would replace the legacy climate-field agreement limits after owner approval. The held-out
+saves remain sealed. Closure, density convergence and runtime limits are carried forward.
+
 ## Registered cases
 
 Use only the already registered tuning inputs for initial calibration: #771 windows A, D,
