@@ -1,41 +1,17 @@
 # Teaching Earth science with Mantle-Bloom
 
+Mantle-Bloom runs an Earth-like planet forward in time and lets learners inspect how its
+terrain, climate, and water systems interact.
 This living document explores how Mantle-Bloom could serve as a teaching aid for Earth
 science. Classroom trials and teacher feedback can guide future revisions.
 
-Mantle-Bloom runs an Earth-like planet forward in time and lets learners inspect how its
-terrain, climate, and water systems interact. A classroom activity can use those views to
-make a process visible, test an explanation, or explore the consequences of a change.
+
+This document explores some classroom activities that students can
+do to make a process visible, test an explanation, or explore the consequences of a change.
 The research below comes from other learning environments. The proposed pilot would test
 how these ideas work with Mantle-Bloom. [Simulation model](../docs/simulation-model.md)
 
 ## When the model can help students learn
-
-### Make the evidence easy to find
-
-A mystery landscape gives students a reason to look for evidence. Give them a marked
-region, two plausible explanations, and a worked example of reading one layer. Ask them
-to connect two observations to a process, then revise a sketch or written explanation
-after discussing the evidence. In a study of 950 secondary students using Tectonic
-Explorer, 7% gave a fully sequenced causal explanation for a convergence task and 3%
-did so for a harder task involving processes on opposite sides of a plate. Another
-middle-school study found that students with stronger spatial skills were more likely
-to interpret depth and notice patterns in a visualization. A grade-eight classroom
-study offers a precedent for pairing discussion with student-generated drawings.
-[Pallant et al., 2023](https://doi.org/10.1080/09500693.2023.2217471),
-[Focus on the notice](https://link.springer.com/article/10.1186/s41235-020-00263-0),
-[Grade-eight drawing study](https://www.tandfonline.com/doi/full/10.1080/09500693.2023.2214688)
-
-### Use playback when the sequence or rate matters
-
-For a deep-time lesson, pause before a change and ask students what will move next.
-Compare dated frames using the same map view and a distance scale. Students can estimate
-how quickly a landmark moves and compare their estimate with measured plate-motion
-rates. For a question about where precipitation falls, labeled stills can give students
-time to read the maps. A review of instructional animations found the clearest learning
-benefit when students needed to understand the features of change itself.
-[Ploetzner et al., 2020](https://onlinelibrary.wiley.com/doi/10.1111/jcal.12476),
-[USGS Cascadia GPS data](https://www.usgs.gov/special-topics/subduction-zone-science/science/cascadia-subduction-zone-database)
 
 ### Compare one change and explain the outcome
 
@@ -54,6 +30,18 @@ eighth-grade water-cycle study, many students gained a more connected view of th
 Reasoning about hidden processes and cycles remained harder.
 [Assaraf and Orion, 2005](https://onlinelibrary.wiley.com/doi/10.1002/tea.20061)
 
+### Use playback when the sequence or rate matters
+
+For a deep-time lesson, pause before a change and ask students what will move next.
+Compare dated frames using the same map view and a distance scale. Students can estimate
+how quickly a landmark moves and compare their estimate with measured plate-motion
+rates. For a question about where precipitation falls, labeled stills can give students
+time to read the maps. A review of instructional animations found the clearest learning
+benefit when students needed to understand the features of change itself.
+[Ploetzner et al., 2020](https://onlinelibrary.wiley.com/doi/10.1111/jcal.12476),
+[USGS Cascadia GPS data](https://www.usgs.gov/special-topics/subduction-zone-science/science/cascadia-subduction-zone-database)
+
+
 ### Give teachers prompts, examples, and a way to check transfer
 
 Teachers in the GEODE plate tectonics study particularly valued sample student answers
@@ -70,6 +58,24 @@ guidance on learning outcomes. A useful lesson sequence is to ask students to no
 a relevant difference, explain it, get feedback, and apply the explanation to a fresh
 case. The fresh case gives the teacher a way to assess whether students can use the
 idea independently. [Lazonder and Harmsen, 2016](https://journals.sagepub.com/doi/10.3102/0034654315627366)
+
+
+
+
+### Make the evidence easy to find
+
+A mystery landscape gives students a reason to look for evidence. Give them a marked
+region, two plausible explanations, and a worked example of reading one layer. Ask them
+to connect two observations to a process, then revise a sketch or written explanation
+after discussing the evidence. In a study of 950 secondary students using Tectonic
+Explorer, 7% gave a fully sequenced causal explanation for a convergence task and 3%
+did so for a harder task involving processes on opposite sides of a plate. Another
+middle-school study found that students with stronger spatial skills were more likely
+to interpret depth and notice patterns in a visualization. A grade-eight classroom
+study offers a precedent for pairing discussion with student-generated drawings.
+[Pallant et al., 2023](https://doi.org/10.1080/09500693.2023.2217471),
+[Focus on the notice](https://link.springer.com/article/10.1186/s41235-020-00263-0),
+[Grade-eight drawing study](https://www.tandfonline.com/doi/full/10.1080/09500693.2023.2214688)
 
 ## A possible first pilot
 
