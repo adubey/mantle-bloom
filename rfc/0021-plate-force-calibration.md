@@ -343,8 +343,11 @@ world took 5–6 minutes and about 0.5 GB on the rift-line method, as on the gre
    breaks no invariant (the solver's residual stays under 10⁻⁹ of its driving torque; the solver converges; ledgers
    close). G1 reports each one's
    effect on speed, T2 and the split rate, and what alternative D would change in bathymetry and land fraction.
-   If no combination raises the T2 ratio above 1.5 at the current constants, the premise is in doubt (see
-   falsification).
+   - **Best-case check.** G1 then runs the combined adopted corrections, brake off, at the four most
+     slab-favourable corners of G2's ranges: `ASTHENOSPHERE_VISCOSITY_PA_S` 2×10¹⁹ and `f_pull` 1.0, with
+     `SLAB_MANTLE_VISCOSITY_PA_S` 10²⁰ or 10²¹ and `SUBDUCTION_LSINK_M` 150 or 660 km. If none of them reaches a
+     T2 ratio of 2.0, the premise fails (see falsification) before G2 is spent. Untuned constants can't explain
+     a miss at the ends of the ranges G2 would search. The check costs about 4 settings × 5 worlds.
 3. **G2: joint calibration.** A scrambled Latin hypercube over the G2 knobs above, with the adopted corrections.
    Stage 1: 24 settings on 5 development worlds; stage 2: the best 3 on all 20, scored on T1–T9 (targets met,
    ties broken by total violation as in #888). Reports the trade-off ridge between `f_pull`, viscosities and
@@ -402,7 +405,7 @@ world took 5–6 minutes and about 0.5 GB on the rift-line method, as on the gre
   depends on step length, and G2 and G3 must score it at 1 Myr steps throughout.
 
 Rough cost, from 5–6 min per 200 Myr world plates-only (about 0.5 GB) on either split method (#942, #955):
-G0's 20-world brake-off breakdown 2 h; G1 about 12 runs × 5 worlds, 6 h; G2 stage 1, 24 × 5, 11 h, and the same
+G0's 20-world brake-off breakdown 2 h; G1 about 12 runs × 5 worlds, 6 h, and its best-case check 4 × 5, 2 h; G2 stage 1, 24 × 5, 11 h, and the same
 again for the control arm; stage 2, 3 × 20 for each arm, 12 h; G3 about 3 h plus the full-stepping run (about
 385 s/Myr, 5 h). All in series under the compute budget.
 
@@ -495,9 +498,14 @@ removed.
 
 ## Falsification criteria
 
-- **Slab forces cannot drive these plates.** If G1's combined corrections, brake off, leave slab pull under a
-  third of the driving torque or the T2 ratio under 1.5, the premise that the missing drive is in the force forms
-  is wrong: the cause is in the column (alternative D) or the flow (alternative C). Revise toward D or C.
+- **Slab forces cannot drive these plates.** If no setting of G1's best-case check reaches a T2 ratio of 2.0,
+  the premise that the force forms cancel or omit the drive is wrong: the cause is in the column (alternative D) or
+  the flow (alternative C). Revise toward D or C.
+  - This replaces a bar of slab pull under a third of the driving torque or a T2 ratio under 1.5 after G1's
+    combined corrections. G0's uncorrected baseline already clears both (55%, 1.54), so that bar could not fail.
+  - The bar sits at the end of G1, at the slab-favourable ends of G2's ranges, so that a miss can't be blamed on
+    untuned constants. 2.0 is about halfway from the baseline to T2's 2.5.
+  - The owner agreed this (2026-11-18).
 - **Constants alone are enough.** If G2's control arm meets at least as many of T1–T7 as the corrected search,
   with T2 and T3 among them, the corrections are not needed: adopt the control arm's setting (alternative A) and
   drop B.1–B.4.
