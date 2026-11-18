@@ -1,6 +1,7 @@
 # RFC 0021: Plates are driven by their slabs: correct and calibrate the plate forces and the rifting knobs together
 
-- **Status:** Draft
+- **Status:** Accepted (owner merged PR #949 and confirmed acceptance on 2026-11-17)
+- **Tracking issue:** [#957](https://github.com/adubey/mantle-bloom/issues/957)
 - **Date:** 2026-11-17
 - **Related:** #942 (diagnosis, [`analysis/issue942/`](../analysis/issue942/README.md)), #888 (RFC 0018 D1,
   where the slow plates were found), #797 (RFC 0018 tracking), #396 (RFC 0008 tracking), #399, #423, #760 (the
