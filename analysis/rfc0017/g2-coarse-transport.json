@@ -1,0 +1,41 @@
+{
+  "zero_mixing_90x180": {
+    "mass_relative_to_max_reference": 7.273385166032687e-16,
+    "rain_relative_to_max_reference": 5.860113134211918e-15,
+    "global_relative": 1.3724009668010323e-16,
+    "max_cell_relative": 1.6082823829699596e-18,
+    "summed_cell_relative": 7.855057712918715e-16
+  },
+  "mixing_and_geometry": {
+    "seam_transfer_kg_s": 0.0064619644635252275,
+    "global_relative": 2.220446049250313e-16,
+    "max_cell_relative": 2.220446049250313e-16,
+    "summed_cell_relative": 2.257382253889604e-16
+  },
+  "hemisphere_mirror": {
+    "rain_relative_to_max_reference": 1.0071071851450715e-15
+  },
+  "mixed_coastal_island": {
+    "land_rain_kg_s": 0.015601266985299336,
+    "gross_ocean_to_land_kg_s": 0.015601266985299348,
+    "gross_land_to_ocean_kg_s": 0.0,
+    "max_native_allocation_error_kg_s": 0.0,
+    "global_relative": 0.0,
+    "max_cell_relative": 1.1102230246251565e-16,
+    "summed_cell_relative": 1.231653667943533e-16
+  },
+  "internal_shoreline_wind": {
+    "internal_wind_faces": 2
+  },
+  "opposing_flow_and_source_tags": {
+    "source_tag_rain_relative_to_max_reference": 1.2556763847199427e-16,
+    "ocean_tag_gross_import_kg_s": 3.2983947247058216,
+    "ocean_tag_gross_return_kg_s": 0.6506996089937549,
+    "global_relative": 1.7080354225002407e-16,
+    "max_cell_relative": 6.405132834375903e-17,
+    "summed_cell_relative": 1.7080354225002407e-16
+  },
+  "aligned_resolution": {
+    "rain_relative_to_max_reference": 3.309196057623002e-16
+  }
+}

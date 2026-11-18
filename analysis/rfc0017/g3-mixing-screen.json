@@ -1,0 +1,460 @@
+{
+  "grid": [
+    90,
+    180
+  ],
+  "diffusivities_m2_s": [
+    0,
+    30000
+  ],
+  "captures": {
+    "A": {
+      "base_commit": "251af936fec80c4e700fdb88b4263a2f7f90ef2b",
+      "script_sha256": {
+        "rfc0019_g3_mixing.py": "976d173119d5ad6451e489171868b78a60f9d82261dc373a23fb2e0812e72c78",
+        "rfc0019_g3_compare.py": "c40aa998623473be733cad27924c872160a5afb350e93b11f936a91f8135964a",
+        "rfc0019_coarse_moisture.py": "8132e878bd4e2716e764a226bc191279051b2c453b0a3c5823820adaf2732e58"
+      },
+      "save": "seed910211954-221.6myr.bloom",
+      "save_sha256": "1f167a8d9e0edf06c3c52b23598dc2f776adc2927f843beb992b5193ad30fd67",
+      "lagged_climate_cache_resampled": true,
+      "peak_rss_mb_process": 1073.790976,
+      "label": "g3-mixing-a",
+      "results_sha256": "7137c6a385b2974322934c05d80acc514d27efb6fe190529c90c60cf574745b4",
+      "winds": {
+        "diagnostic": {
+          "reference": {
+            "land_rain_mm_yr": 385.26531113537334,
+            "land_rain_by_distance_to_ocean_km": {
+              "0_to_500": {
+                "rain_mm_yr": 683.2496475094314,
+                "fraction_of_land": 0.25496357756946847
+              },
+              "500_to_1500": {
+                "rain_mm_yr": 393.6005052826736,
+                "fraction_of_land": 0.32129313121167263
+              },
+              "1500_plus": {
+                "rain_mm_yr": 199.65011741230978,
+                "fraction_of_land": 0.42374329121885884
+              }
+            },
+            "high_latitude_land_mean_mm_yr": 133.9398772763188,
+            "below_freezing_land_rain_mm_yr": 166.95584768235832,
+            "koppen_dry_fraction": 0.26086190834165934,
+            "windward_leeward_ratio": 4.108083252325921
+          },
+          "paired_rain_rms": 0.14487226155578023,
+          "arms": [
+            {
+              "diffusivity_m2_s": 0.0,
+              "total_source_kg_s": 14210690218.202143,
+              "total_rain_kg_s": 14210690218.202137,
+              "global_closure_relative": 4.026578449446646e-16,
+              "summed_cell_closure_relative": 2.9915159312219953e-15,
+              "rms_to_current_source": {
+                "raw_rel_rms": 1.7489778275545298,
+                "bestfit_scale": 0.25038246263806524,
+                "bestfit_rel_rms": 0.8610754698724709
+              },
+              "face_transport": {
+                "gross_ocean_to_land_kg_s": 2634450133.5103145,
+                "gross_land_to_ocean_kg_s": 1317274321.2915418,
+                "net_ocean_to_land_kg_s": 1317175812.2187726,
+                "ocean_origin_land_rain_kg_s": 1356624713.4408994,
+                "poleward_across_60s_kg_s": -9157066.661121864,
+                "poleward_across_60n_kg_s": 107533916.1046922
+              },
+              "land_rain_mm_yr": 298.3269236442811,
+              "land_rain_by_distance_to_ocean_km": {
+                "0_to_500": {
+                  "rain_mm_yr": 542.5018320676195,
+                  "fraction_of_land": 0.25496357756946847
+                },
+                "500_to_1500": {
+                  "rain_mm_yr": 319.4046786558233,
+                  "fraction_of_land": 0.32129313121167263
+                },
+                "1500_plus": {
+                  "rain_mm_yr": 135.42677267709905,
+                  "fraction_of_land": 0.42374329121885884
+                }
+              },
+              "high_latitude_land_mean_mm_yr": 113.81755163708976,
+              "below_freezing_land_rain_mm_yr": 154.16028634775128,
+              "koppen_dry_fraction": 0.4316075348979031,
+              "windward_leeward_ratio": 1.4019926991342646
+            },
+            {
+              "diffusivity_m2_s": 30000.0,
+              "total_source_kg_s": 14210690218.202143,
+              "total_rain_kg_s": 14210690218.202122,
+              "global_closure_relative": 1.4764120981304368e-15,
+              "summed_cell_closure_relative": 5.05931805095151e-15,
+              "rms_to_current_source": {
+                "raw_rel_rms": 1.6247237600558082,
+                "bestfit_scale": 0.27852033790692154,
+                "bestfit_rel_rms": 0.8442994414324977
+              },
+              "face_transport": {
+                "gross_ocean_to_land_kg_s": 2660313774.0144715,
+                "gross_land_to_ocean_kg_s": 1314662511.905778,
+                "net_ocean_to_land_kg_s": 1345651262.1086938,
+                "ocean_origin_land_rain_kg_s": 1385728847.3535957,
+                "poleward_across_60s_kg_s": 317772734.05953664,
+                "poleward_across_60n_kg_s": 109691203.00505659
+              },
+              "land_rain_mm_yr": 303.4124663034227,
+              "land_rain_by_distance_to_ocean_km": {
+                "0_to_500": {
+                  "rain_mm_yr": 558.3855936108837,
+                  "fraction_of_land": 0.25496357756946847
+                },
+                "500_to_1500": {
+                  "rain_mm_yr": 321.123951903597,
+                  "fraction_of_land": 0.32129313121167263
+                },
+                "1500_plus": {
+                  "rain_mm_yr": 136.56748998317056,
+                  "fraction_of_land": 0.42374329121885884
+                }
+              },
+              "high_latitude_land_mean_mm_yr": 115.83642512495511,
+              "below_freezing_land_rain_mm_yr": 153.6483056639855,
+              "koppen_dry_fraction": 0.4259380867940966,
+              "windward_leeward_ratio": 1.2975411888442123
+            }
+          ]
+        },
+        "cfd": {
+          "reference": {
+            "land_rain_mm_yr": 510.5871594433741,
+            "land_rain_by_distance_to_ocean_km": {
+              "0_to_500": {
+                "rain_mm_yr": 752.5798146782423,
+                "fraction_of_land": 0.25496357756946847
+              },
+              "500_to_1500": {
+                "rain_mm_yr": 489.3706298850622,
+                "fraction_of_land": 0.32129313121167263
+              },
+              "1500_plus": {
+                "rain_mm_yr": 381.06867727196965,
+                "fraction_of_land": 0.42374329121885884
+              }
+            },
+            "high_latitude_land_mean_mm_yr": 353.03428003593143,
+            "below_freezing_land_rain_mm_yr": 165.77172262511107,
+            "koppen_dry_fraction": 0.5758563945083237,
+            "windward_leeward_ratio": 2.6772286430279033
+          },
+          "paired_rain_rms": 0.135035690833154,
+          "arms": [
+            {
+              "diffusivity_m2_s": 0.0,
+              "total_source_kg_s": 14482586506.967083,
+              "total_rain_kg_s": 14482586506.967072,
+              "global_closure_relative": 7.901966814677499e-16,
+              "summed_cell_closure_relative": 3.68316147136513e-15,
+              "rms_to_current_source": {
+                "raw_rel_rms": 1.7638626073529624,
+                "bestfit_scale": 0.2457661835342463,
+                "bestfit_rel_rms": 0.8655683683029138
+              },
+              "face_transport": {
+                "gross_ocean_to_land_kg_s": 2731387685.851547,
+                "gross_land_to_ocean_kg_s": 1378290040.084333,
+                "net_ocean_to_land_kg_s": 1353097645.7672138,
+                "ocean_origin_land_rain_kg_s": 1401041445.0917573,
+                "poleward_across_60s_kg_s": -140757267.12869364,
+                "poleward_across_60n_kg_s": 16444304.131687384
+              },
+              "land_rain_mm_yr": 353.40982557678785,
+              "land_rain_by_distance_to_ocean_km": {
+                "0_to_500": {
+                  "rain_mm_yr": 566.4546149871198,
+                  "fraction_of_land": 0.25496357756946847
+                },
+                "500_to_1500": {
+                  "rain_mm_yr": 376.9827268706349,
+                  "fraction_of_land": 0.32129313121167263
+                },
+                "1500_plus": {
+                  "rain_mm_yr": 207.3485799084304,
+                  "fraction_of_land": 0.42374329121885884
+                }
+              },
+              "high_latitude_land_mean_mm_yr": 89.86220594776456,
+              "below_freezing_land_rain_mm_yr": 86.97529430172142,
+              "koppen_dry_fraction": 0.8964218053738892,
+              "windward_leeward_ratio": 1.3881537173871898
+            },
+            {
+              "diffusivity_m2_s": 30000.0,
+              "total_source_kg_s": 14482586506.967083,
+              "total_rain_kg_s": 14482586506.96706,
+              "global_closure_relative": 1.5803933629354997e-15,
+              "summed_cell_closure_relative": 6.0777252512017826e-15,
+              "rms_to_current_source": {
+                "raw_rel_rms": 1.6444855878190365,
+                "bestfit_scale": 0.2719270373138943,
+                "bestfit_rel_rms": 0.8507151199016408
+              },
+              "face_transport": {
+                "gross_ocean_to_land_kg_s": 2780698612.6786094,
+                "gross_land_to_ocean_kg_s": 1386907900.4766662,
+                "net_ocean_to_land_kg_s": 1393790712.201943,
+                "ocean_origin_land_rain_kg_s": 1444149200.6628597,
+                "poleward_across_60s_kg_s": 159710486.80991724,
+                "poleward_across_60n_kg_s": 76623827.08317506
+              },
+              "land_rain_mm_yr": 360.6773604563104,
+              "land_rain_by_distance_to_ocean_km": {
+                "0_to_500": {
+                  "rain_mm_yr": 588.3731870009964,
+                  "fraction_of_land": 0.25496357756946847
+                },
+                "500_to_1500": {
+                  "rain_mm_yr": 375.1558360743235,
+                  "fraction_of_land": 0.32129313121167263
+                },
+                "1500_plus": {
+                  "rain_mm_yr": 212.69631013788396,
+                  "fraction_of_land": 0.42374329121885884
+                }
+              },
+              "high_latitude_land_mean_mm_yr": 145.34167618275603,
+              "below_freezing_land_rain_mm_yr": 99.13479865936277,
+              "koppen_dry_fraction": 0.8831559030278066,
+              "windward_leeward_ratio": 1.341483894424007
+            }
+          ]
+        }
+      }
+    },
+    "cold": {
+      "base_commit": "251af936fec80c4e700fdb88b4263a2f7f90ef2b",
+      "script_sha256": {
+        "rfc0019_g3_mixing.py": "976d173119d5ad6451e489171868b78a60f9d82261dc373a23fb2e0812e72c78",
+        "rfc0019_g3_compare.py": "c40aa998623473be733cad27924c872160a5afb350e93b11f936a91f8135964a",
+        "rfc0019_coarse_moisture.py": "8132e878bd4e2716e764a226bc191279051b2c453b0a3c5823820adaf2732e58"
+      },
+      "save": "mantle-bloom-seed317739385-200800000y.bloom",
+      "save_sha256": "c7e8c4094376b2b57158e36b1066cf529eb475ac0bbf54a6b888b391f294d344",
+      "lagged_climate_cache_resampled": true,
+      "peak_rss_mb_process": 1642.954752,
+      "label": "g3-mixing-cold",
+      "results_sha256": "97cdf8c0bd748ce66aae1593563e583a142869434c4fab2ee795e09d7a57775b",
+      "winds": {
+        "diagnostic": {
+          "reference": {
+            "land_rain_mm_yr": 778.4636404832503,
+            "land_rain_by_distance_to_ocean_km": {
+              "0_to_500": {
+                "rain_mm_yr": 847.0237788829078,
+                "fraction_of_land": 0.5291577958824017
+              },
+              "500_to_1500": {
+                "rain_mm_yr": 680.7238159862051,
+                "fraction_of_land": 0.4407721187333062
+              },
+              "1500_plus": {
+                "rain_mm_yr": 1004.663789910906,
+                "fraction_of_land": 0.03007008538429193
+              }
+            },
+            "high_latitude_land_mean_mm_yr": 292.2543689358668,
+            "below_freezing_land_rain_mm_yr": 462.83161038816576,
+            "koppen_dry_fraction": 0.23430884159675427,
+            "windward_leeward_ratio": 4.502353047824913
+          },
+          "paired_rain_rms": 0.13357298125812087,
+          "arms": [
+            {
+              "diffusivity_m2_s": 0.0,
+              "total_source_kg_s": 16165521612.439228,
+              "total_rain_kg_s": 16165521612.439224,
+              "global_closure_relative": 2.3597736943357422e-16,
+              "summed_cell_closure_relative": 3.4044511558003255e-15,
+              "rms_to_current_source": {
+                "raw_rel_rms": 1.7207637199514072,
+                "bestfit_scale": 0.24667081631530927,
+                "bestfit_rel_rms": 0.8743528265425413
+              },
+              "face_transport": {
+                "gross_ocean_to_land_kg_s": 8011041118.088945,
+                "gross_land_to_ocean_kg_s": 5055401634.575284,
+                "net_ocean_to_land_kg_s": 2955639483.513662,
+                "ocean_origin_land_rain_kg_s": 3023092080.9843597,
+                "poleward_across_60s_kg_s": 193256927.41621852,
+                "poleward_across_60n_kg_s": 244327518.49880528
+              },
+              "land_rain_mm_yr": 941.7309938284102,
+              "land_rain_by_distance_to_ocean_km": {
+                "0_to_500": {
+                  "rain_mm_yr": 932.8080821212484,
+                  "fraction_of_land": 0.5291577958824017
+                },
+                "500_to_1500": {
+                  "rain_mm_yr": 988.542536347553,
+                  "fraction_of_land": 0.4407721187333062
+                },
+                "1500_plus": {
+                  "rain_mm_yr": 412.58070103165824,
+                  "fraction_of_land": 0.03007008538429193
+                }
+              },
+              "high_latitude_land_mean_mm_yr": 527.1448005656599,
+              "below_freezing_land_rain_mm_yr": 1023.9236116778812,
+              "koppen_dry_fraction": 0.5110469493023844,
+              "windward_leeward_ratio": 3.8403633305777176
+            },
+            {
+              "diffusivity_m2_s": 30000.0,
+              "total_source_kg_s": 16165521612.439228,
+              "total_rain_kg_s": 16165521612.439209,
+              "global_closure_relative": 1.1798868471678711e-15,
+              "summed_cell_closure_relative": 5.780912611683636e-15,
+              "rms_to_current_source": {
+                "raw_rel_rms": 1.5943321217907398,
+                "bestfit_scale": 0.27625871578314176,
+                "bestfit_rel_rms": 0.8585029532477689
+              },
+              "face_transport": {
+                "gross_ocean_to_land_kg_s": 8034775162.5599375,
+                "gross_land_to_ocean_kg_s": 5093604348.513746,
+                "net_ocean_to_land_kg_s": 2941170814.046192,
+                "ocean_origin_land_rain_kg_s": 3010343478.726222,
+                "poleward_across_60s_kg_s": 348324844.8421164,
+                "poleward_across_60n_kg_s": 369273324.1720158
+              },
+              "land_rain_mm_yr": 937.5967570622508,
+              "land_rain_by_distance_to_ocean_km": {
+                "0_to_500": {
+                  "rain_mm_yr": 958.3091734913328,
+                  "fraction_of_land": 0.5291577958824017
+                },
+                "500_to_1500": {
+                  "rain_mm_yr": 948.378159388836,
+                  "fraction_of_land": 0.4407721187333062
+                },
+                "1500_plus": {
+                  "rain_mm_yr": 415.07485628892465,
+                  "fraction_of_land": 0.03007008538429193
+                }
+              },
+              "high_latitude_land_mean_mm_yr": 618.0713276568245,
+              "below_freezing_land_rain_mm_yr": 970.0716442162336,
+              "koppen_dry_fraction": 0.4657062882403085,
+              "windward_leeward_ratio": 3.5936232580124816
+            }
+          ]
+        },
+        "cfd": {
+          "reference": {
+            "land_rain_mm_yr": 859.0127713991149,
+            "land_rain_by_distance_to_ocean_km": {
+              "0_to_500": {
+                "rain_mm_yr": 891.6731940985602,
+                "fraction_of_land": 0.5291577958824017
+              },
+              "500_to_1500": {
+                "rain_mm_yr": 784.5645990554143,
+                "fraction_of_land": 0.4407721187333062
+              },
+              "1500_plus": {
+                "rain_mm_yr": 1375.5447723239663,
+                "fraction_of_land": 0.03007008538429193
+              }
+            },
+            "high_latitude_land_mean_mm_yr": 395.5042874685537,
+            "below_freezing_land_rain_mm_yr": 443.6038327798209,
+            "koppen_dry_fraction": 0.4221430642586763,
+            "windward_leeward_ratio": 3.7195156588613267
+          },
+          "paired_rain_rms": 0.16496737243316406,
+          "arms": [
+            {
+              "diffusivity_m2_s": 0.0,
+              "total_source_kg_s": 16324511550.098606,
+              "total_rain_kg_s": 16324511550.098598,
+              "global_closure_relative": 4.67358212087143e-16,
+              "summed_cell_closure_relative": 3.842152304349179e-15,
+              "rms_to_current_source": {
+                "raw_rel_rms": 1.7173474771028323,
+                "bestfit_scale": 0.24768353421160222,
+                "bestfit_rel_rms": 0.8735158632971292
+              },
+              "face_transport": {
+                "gross_ocean_to_land_kg_s": 8087958525.04932,
+                "gross_land_to_ocean_kg_s": 5273293597.556567,
+                "net_ocean_to_land_kg_s": 2814664927.492755,
+                "ocean_origin_land_rain_kg_s": 2890931417.9047575,
+                "poleward_across_60s_kg_s": 414050246.81338036,
+                "poleward_across_60n_kg_s": 116496748.98060171
+              },
+              "land_rain_mm_yr": 948.1685710929818,
+              "land_rain_by_distance_to_ocean_km": {
+                "0_to_500": {
+                  "rain_mm_yr": 863.5381801197676,
+                  "fraction_of_land": 0.5291577958824017
+                },
+                "500_to_1500": {
+                  "rain_mm_yr": 1029.3027720831776,
+                  "fraction_of_land": 0.4407721187333062
+                },
+                "1500_plus": {
+                  "rain_mm_yr": 1248.1722912214943,
+                  "fraction_of_land": 0.03007008538429193
+                }
+              },
+              "high_latitude_land_mean_mm_yr": 298.91810694405814,
+              "below_freezing_land_rain_mm_yr": 564.0650090704588,
+              "koppen_dry_fraction": 0.7882755308353464,
+              "windward_leeward_ratio": 2.136411703008608
+            },
+            {
+              "diffusivity_m2_s": 30000.0,
+              "total_source_kg_s": 16324511550.098606,
+              "total_rain_kg_s": 16324511550.098587,
+              "global_closure_relative": 1.1683955302178576e-15,
+              "summed_cell_closure_relative": 5.9309708922648915e-15,
+              "rms_to_current_source": {
+                "raw_rel_rms": 1.5833961275850057,
+                "bestfit_scale": 0.27932088482999723,
+                "bestfit_rel_rms": 0.8564916630344896
+              },
+              "face_transport": {
+                "gross_ocean_to_land_kg_s": 8253938758.056988,
+                "gross_land_to_ocean_kg_s": 5414461854.486298,
+                "net_ocean_to_land_kg_s": 2839476903.5706882,
+                "ocean_origin_land_rain_kg_s": 2920885546.5215454,
+                "poleward_across_60s_kg_s": 417108479.4228474,
+                "poleward_across_60n_kg_s": 348184329.888958
+              },
+              "land_rain_mm_yr": 955.2582750891291,
+              "land_rain_by_distance_to_ocean_km": {
+                "0_to_500": {
+                  "rain_mm_yr": 879.1572409753823,
+                  "fraction_of_land": 0.5291577958824017
+                },
+                "500_to_1500": {
+                  "rain_mm_yr": 1028.89295337048,
+                  "fraction_of_land": 0.4407721187333062
+                },
+                "1500_plus": {
+                  "rain_mm_yr": 1215.0959914717716,
+                  "fraction_of_land": 0.03007008538429193
+                }
+              },
+              "high_latitude_land_mean_mm_yr": 464.515021320721,
+              "below_freezing_land_rain_mm_yr": 505.95170600593764,
+              "koppen_dry_fraction": 0.7680041080821305,
+              "windward_leeward_ratio": 1.8682791874497213
+            }
+          ]
+        }
+      }
+    }
+  }
+}

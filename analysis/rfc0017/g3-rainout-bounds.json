@@ -1,0 +1,36 @@
+{
+  "g3-diagnose-a": {
+    "save": "seed910211954-221.6myr.bloom",
+    "save_sha256": "1f167a8d9e0edf06c3c52b23598dc2f776adc2927f843beb992b5193ad30fd67",
+    "results_sha256": "7b8a271e815dae84a617d2e8a56797c89e221cb954c37cbefae145bb69b677af",
+    "winds": {
+      "diagnostic": {
+        "rms_lower_bound": 0.7362225724085992,
+        "control_reconstruction_residual": 3.180280370082812e-15,
+        "excludes_fixed_transport_and_source": true
+      },
+      "cfd": {
+        "rms_lower_bound": 0.8386431475768721,
+        "control_reconstruction_residual": 3.917249921229696e-15,
+        "excludes_fixed_transport_and_source": true
+      }
+    }
+  },
+  "g3-diagnose-cold": {
+    "save": "mantle-bloom-seed317739385-200800000y.bloom",
+    "save_sha256": "c7e8c4094376b2b57158e36b1066cf529eb475ac0bbf54a6b888b391f294d344",
+    "results_sha256": "8e83989f687f6ba36332e6c7218f7893f890d9defdcb76811c72b96166be9abd",
+    "winds": {
+      "diagnostic": {
+        "rms_lower_bound": 0.6886974345736827,
+        "control_reconstruction_residual": 3.556066458935338e-15,
+        "excludes_fixed_transport_and_source": true
+      },
+      "cfd": {
+        "rms_lower_bound": 0.7324367385212222,
+        "control_reconstruction_residual": 3.973546090292687e-15,
+        "excludes_fixed_transport_and_source": true
+      }
+    }
+  }
+}
