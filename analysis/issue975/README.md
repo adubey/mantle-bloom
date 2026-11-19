@@ -60,7 +60,49 @@ B.2 net slab work +16.7% misses +20% (predicted +20 to +40%); B.3 pull per metre
 rises 3.8x and the plate count to 35; B.4a pulls 83% of the closing length, fails as predicted; B.4b pulls 73% of
 the total (predicted 55 to 70%), fails as predicted.
 
-Brake-on runs are still running.
+## Results, brake on (same worlds)
+
+| Measure | Baseline | B.1 | B.2 | B.3 | B.4a | B.4b |
+|---|---:|---:|---:|---:|---:|---:|
+| T1 NNR speed, cm/yr | 0.64 | 0.64 | 0.68 | 0.85 | 0.67 | 0.55 |
+| T2 ratio (+10 Myr) | 2.02 | 2.03 | 2.10 | 2.40 | 1.96 | 1.64 |
+| T3 pull share of drive | 12.5% | 11.2% | 15.8% | 50.2% | 40.4% | 44.0% |
+| T5 N/m | 1.9e10 | 2.5e11 | 1.0e10 | 1.7e10 | 1.5e10 | 2.2e10 |
+| Closing length pulled | 7% | 7% | 10% | 22% | 46% | 71% |
+| Splits per world per 100 Myr | 3.4 | 3.0 | 3.8 | 8.1 | 6.4 | 14.8 |
+
+The brake dominates: T1 stays under 0.9 cm/yr with any single correction. T2 is already 2.0 with the brake on, because
+the brake slows the plates without slabs, so it says little about the slab forces.
+
+## Results, combined B.1 + B.2 + B.3 (`b123`), with the B.4 tests (five stage 1 worlds)
+
+| Measure | Brake off: b123 | + B.4a | + B.4b | Brake on: b123 | + B.4a | + B.4b | Target |
+|---|---:|---:|---:|---:|---:|---:|---|
+| T1 NNR speed, cm/yr | 4.00 | 3.87 | 3.76 | 1.09 | 1.20 | 1.21 | 3-5 |
+| T2 ratio (+10 Myr) | 1.55 | 1.60 | 1.67 | 2.58 | 2.24 | 1.86 | at least 2.5 |
+| T3 pull share of drive | 61.0% | 61.9% | 55.6% | 49.4% | 64.4% | 63.7% | at least 50% |
+| T4 MPa | 1.51 | 1.64 | 1.59 | 0.41 | 0.55 | 0.15 | at most 1 |
+| T5 N/m | 1.94e12 | 1.89e12 | 1.91e12 | 1.44e12 | 1.45e12 | 1.48e12 | 1-4e12 |
+| T7 fastest/slowest world | 1.44 | 1.44 | 1.60 | 3.00 | 2.05 | 1.48 | at most 3 |
+| Net slab work | +20.7% | +19.5% | +18.3% | +67.4% | +67.1% | +51.0% | |
+| Closing length pulled | 88% | 94% | 77% | 28% | 65% | 72% | |
+| Ridge push share of drive | 20.4% | 19.9% | 22.3% | 9.1% | 10.5% | 9.9% | |
+| Splits per world per 100 Myr | 12.3 | 13.4 | 15.8 | 7.3 | 17.0 | 26.8 | |
+| Collision-time drops, jammed (T8) | 3 | 2 | 5 | 0 | 1 | 0 | |
+| Plates (mean) | 19.5 | 20.4 | 21.4 | 21.1 | 29.9 | 40.4 | |
+
+Brake off, the combined corrections reach T1 (4.00), T3 (61%) and T5 (1.94e12) at the default constants, but T2 is 1.55
+(below the baseline's 1.76) and T4 is 1.51 MPa; and three worlds' collisions drop speed while jammed, which the baseline
+does not do. Brake on, the plates are still slow (T1 1.09) and T2 is the only target above its bar. The combined B.4
+variants, brake off, pull 94% (B.4a, ramp) and 77% (B.4b, geometric) of the closing length. Solver closure stays under
+1.2e-14 of the driving torque in every run.
+
+## Still to run
+
+The best-case check (four `corner-*` settings in `settings.json`: combined corrections, brake off,
+`ASTHENOSPHERE_VISCOSITY_PA_S` 2e19, `f_pull` 1.0 (the default), `SLAB_MANTLE_VISCOSITY_PA_S` 1e20 or 1e21,
+`SUBDUCTION_LSINK_M` 150 or 660 km) and the 0.5 Myr repeat of the combined setting on three worlds. See the
+handoff in #975's follow-up issue.
 
 ## Decision (owner, 2026-11-19)
 
