@@ -728,6 +728,7 @@ def update_faults(world: "World", years: float) -> None:
 
     total_nodes = max(1, sum(p.node_count() for p in world.plates))
     for plate in world.plates:
+        trace.check_cancelled()
         _maybe_spawn_faults(world, plate, total_nodes, years_myr)
 
     _cull_scars(world)

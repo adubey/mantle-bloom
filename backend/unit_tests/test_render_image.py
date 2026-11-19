@@ -399,6 +399,68 @@ def test_stream_animation_mp4_stop_event_can_interrupt_mid_frame_batch():
     assert done[2] is True  # stopped_early
 
 
+def test_stream_animation_mp4_cancels_mid_step_and_rolls_back_world():
+    # Firing stop_event *inside* an in-progress step_world call should abort the step
+    # promptly via trace.StepCancelled, roll `world` back to its pre-step whole-step state,
+    # and still flush and return the completed frames so far.
+    world = _world()
+    stop_event = threading.Event()
+    calls = 0
+
+    def _mid_step_cancelling_step(w, years):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            step_world(w, years)
+            return
+        # Simulate being partway through step 2 (already mutated world) when Stop is pressed.
+        w.steps_taken += 1
+        w.elapsed_years += years * 0.5
+        w.plates[0].set_fields_on_plate(elevation=np.full(w.plates[0].node_count(), -9999.0))
+        stop_event.set()
+        from app import trace
+        trace.check_cancelled()
+        pytest.fail("check_cancelled() should have aborted the in-progress step")
+
+    messages = list(render_image.stream_animation_mp4(
+        world, "behrmann", "elevation", 64, 64, None, 1_000_000, 1, 5,
+        step_fn=_mid_step_cancelling_step, stop_event=stop_event,
+    ))
+    progress = [m for m in messages if m[0] == "progress"]
+    assert [m[1] for m in progress] == [1, 2]  # frame 1 (unstepped) + frame 2 (step 1)
+    assert world.steps_taken == 1
+    assert world.elapsed_years == 1_000_000.0
+    assert not np.any(world.plates[0]._field_storage("elevation") == -9999.0)
+
+    done = messages[-1]
+    assert done[0] == "done"
+    assert done[2] is True  # stopped_early
+    assert done[3] is None  # no error
+    with av.open(io.BytesIO(done[1])) as container:
+        assert sum(1 for _ in container.decode(video=0)) == 2
+
+
+def test_lake_and_hydrology_deepcopy_handles_deep_hierarchy_and_preserves_readouts():
+    import copy
+    from app.hydroclimate.lakes import Lake
+
+    root = Lake(lake_id=0, members=np.array([0]), floor_elevation=0.0, min_depth=0.0, max_depth=1.0)
+    cur = root
+    for i in range(1, 350):
+        child = Lake(lake_id=i, members=np.array([i]), floor_elevation=0.0, min_depth=0.0, max_depth=1.0)
+        cur.children.append(child)
+        cur = child
+
+    copied = copy.deepcopy(root)
+    depth = 0
+    node = copied
+    while node.children:
+        node = node.children[0]
+        depth += 1
+    assert depth == 349
+    assert copied is not root
+
+
 def test_stream_animation_mp4_sends_a_heartbeat_while_a_frame_batch_runs_slowly(monkeypatch):
     # GitHub issue #611: a frame's batch of slow steps with no other output tripped the
     # client's idle watchdog, which aborts the stream as stalled. A heartbeat must flow

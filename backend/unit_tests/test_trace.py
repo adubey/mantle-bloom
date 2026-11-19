@@ -222,3 +222,19 @@ def test_generate_weights_drop_the_phases_a_world_will_not_run():
     assert "Laying out continents and mountain belts" not in sketch
     assert "Building pseudo-history" not in sketch  # synthetic relief needs the cratons-first layout
     assert "Seeding rivers and glaciers" not in trace.generate_weights(False, seeds_rivers=False)
+
+
+def test_cancellation_scope_raises_step_cancelled_when_signalled():
+    import threading
+
+    event = threading.Event()
+    with trace.cancellation_scope(event):
+        trace.check_cancelled()
+        event.set()
+        with pytest.raises(trace.StepCancelled):
+            trace.check_cancelled()
+        with pytest.raises(trace.StepCancelled):
+            with trace.span("Updating faults"):
+                pass
+    # Outside the scope, check_cancelled is a no-op even if the event is still set.
+    trace.check_cancelled()

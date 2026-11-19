@@ -488,6 +488,17 @@ class HydrologyFields:
     # neither a pickle nor a v5 save carries them; every step's own `compute_hydrology`
     # sets them before erosion asks for the march, so a loaded cache never needs them.
 
+    def __deepcopy__(self, memo: dict) -> "HydrologyFields":
+        """Preserve live readouts/traces across in-memory snapshots (unlike `__getstate__`)."""
+        import copy
+
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+        for k, v in self.__dict__.items():
+            setattr(result, k, copy.deepcopy(v, memo))
+        return result
+
     def __getstate__(self) -> dict:
         # The spill-path drawing cache (`_spill_path_cache`) is rebuilt on first use, so a save
         # never carries paths from older drawing rules.
@@ -2403,6 +2414,7 @@ def _march_glacier(
     abrasion_depth = np.zeros(n)
     raw_abrasion_depth = np.zeros(n)
     while elapsed < years - 1e-6:
+        trace.check_cancelled()
         dt = min(sub, years - elapsed)
         ref_depth = 0.5 * (depth + prev_depth)
         ref_heat = 0.5 * (heat + prev_heat)
