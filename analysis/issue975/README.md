@@ -40,6 +40,24 @@ the predictions are the same directions, with smaller speed changes.
 If B.4a fails as predicted, the reason is `v_gate`, which G2 searches over 0.25–2 cm/yr. B.4a would then be carried
 into G2 only if it raises T1 or T2.
 
-## Results
+## Results, brake off (five stage 1 worlds, scored 2026-11-19)
 
-Running.
+| Measure | Baseline | B.1 | B.2 | B.3 | B.4a | B.4b |
+|---|---:|---:|---:|---:|---:|---:|
+| T1 NNR speed, cm/yr | 1.80 | 1.95 | 2.25 | 2.68 | 1.66 | 1.43 |
+| T2 ratio (+10 Myr) | 1.76 | 1.52 | 1.97 | 1.62 | 1.61 | 1.80 |
+| T3 pull share of drive | 54.5% | 51.8% | 52.6% | 77.7% | 58.6% | 49.0% |
+| T4 MPa | 0.80 | 1.28 | 0.74 | 0.53 | 0.33 | not scored |
+| T5 N/m | 4.3e10 | 4.0e11 | 4.7e10 | 5.9e10 | 4.3e10 | 3.8e10 |
+| Net slab work | +0.5% | -5.8% | +16.7% | +17.7% | -5.2% | -15.3% |
+| Pull per metre, N/m | 2.98e12 | 2.93e12 | 2.79e12 | 4.89e12 | 2.44e12 | 2.43e12 |
+| Closing length pulled | 69% | 71% | 73% | 80% | 83% | 73% of total |
+| Splits per world per 100 Myr | 7.8 | 8.1 | 8.1 | 29.4 | 11.3 | 14.8 |
+| Plates (mean) | 19.0 | 18.6 | 19.6 | 35.2 | 22.2 | 25.3 |
+
+Against each adoption test: B.1 T5 4.0e11 is 19% under 5e11, so it passes (T2 and T4 move the wrong way);
+B.2 net slab work +16.7% misses +20% (predicted +20 to +40%); B.3 pull per metre +64% passes, but the split rate
+rises 3.8x and the plate count to 35; B.4a pulls 83% of the closing length, fails as predicted; B.4b pulls 73% of
+the total (predicted 55 to 70%), fails as predicted.
+
+Brake-on runs are still running.
