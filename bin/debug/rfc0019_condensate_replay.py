@@ -68,8 +68,23 @@ class BasinReadout:
         self.opening_mask = upstream_catchment(hydro.flow_target, hydro.is_ocean, members)
         self.visible_depth = visible_depth
         self.runoff = None
+        self.overflow_seen = False
+
+    def record_routing_pass(self, runoff, years, *, source_pass):
+        if years != STEP_YEARS:
+            raise RuntimeError(f"expected a {STEP_YEARS}-year routing pass, got {years}")
+        if source_pass:
+            if self.runoff is not None:
+                raise RuntimeError("duplicate source routing pass before the catchment readout")
+            self.runoff = np.array(runoff, copy=True)
+            return
+        if self.runoff is None or self.overflow_seen or np.any(runoff):
+            raise RuntimeError("expected one zero-runoff overflow pass after the source pass")
+        self.overflow_seen = True
 
     def read(self, hydro, areas, precipitation):
+        if not self.overflow_seen:
+            raise RuntimeError("expected both routing passes before the catchment readout")
         if self.runoff is None or self.runoff.shape != areas.shape:
             raise RuntimeError("no aligned runoff input was captured for this step")
         inside = self.opening_mask[self.tree.query(hydro.points, k=1)[1]]
@@ -90,6 +105,7 @@ class BasinReadout:
             "visible_lake_volume_km3": float(np.dot(hydro.lake_depth[wet], areas[wet]) / 1e9),
         }
         self.runoff = None
+        self.overflow_seen = False
         return total
 
 
@@ -120,11 +136,16 @@ def install_replay_readout(runner, arm):
         target["fixed_catchment"] = basin.read(hydro, areas, precipitation)
         return target, bodies
 
-    def capture(points, elevation, is_ocean, flow_target, stores_water, runoff_m3_per_yr, *args, **kwargs):
-        # The source pass runs before the pass that routes lake overflow.
-        if basin.runoff is None:
-            basin.runoff = np.array(runoff_m3_per_yr, copy=True)
-        return route(points, elevation, is_ocean, flow_target, stores_water, runoff_m3_per_yr, *args, **kwargs)
+    def capture(
+        points, elevation, is_ocean, flow_target, stores_water, runoff_m3_per_yr,
+        meltwater_m3_per_yr, prior_storage_m3, discharge_m3_s, years, runoff_loss, meltwater_loss, **kwargs,
+    ):
+        # The pinned backend passes this keyword on the source call even when its value is None.
+        basin.record_routing_pass(runoff_m3_per_yr, years, source_pass="initial_discharge_m3_s" in kwargs)
+        return route(
+            points, elevation, is_ocean, flow_target, stores_water, runoff_m3_per_yr,
+            meltwater_m3_per_yr, prior_storage_m3, discharge_m3_s, years, runoff_loss, meltwater_loss, **kwargs,
+        )
 
     return (
         patch.object(replay, "load_replay", load_with_basin),
