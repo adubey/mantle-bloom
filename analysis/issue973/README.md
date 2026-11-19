@@ -17,6 +17,11 @@ Controls: Cook et al. (2020), coefficient 1e-4 m/yr, exponent 0.65, glacier_eros
 
 ### Results
 
+**Superseded by the post-review correction below.** These full-run numbers were captured
+before the land/ocean mask in material transfer was corrected; the inverted mask zeroed
+applied abrasion on land. The D3 rows therefore do not represent this implementation and
+must not be used to close the G3 gate. The D2 control rows remain valid.
+
 All eight preregistered 10 Myr replays completed: D2 baseline at `origin/main` (`382ddccd`)
 and D3 at implementation commit `ff61e09f`, for each save at 0.25 Myr × 40 and 1 Myr × 10.
 The captures and their `SHA256SUMS` are retained outside the repository. No other compute
@@ -55,6 +60,15 @@ ice-equilibrium diagnostics so each interval's abrasion and bed feedback are rep
 These are two deterministic diagnostic saves, not a broad stability survey. The G3 target is
 partially met; the remaining 34.1% gap on the larger save and the runtime cost remain explicit
 follow-up considerations for RFC closure.
+
+### Post-review correction
+
+Review found that the land/ocean mask in `erosion.apply_erosion` was inverted, so the transfer
+step discarded land abrasion even though the ice march fed it back into the bed. Commit
+`b94322d2` corrects the mask. A one-step 0.25 Myr smoke replay on seed649658380 then reported
+262,419.27 km³ raw and applied abrasion (applied/raw 1.000; 42.9 s, peak RSS 0.98 GB). This
+confirms the transfer now matches the march for that step, but it does not replace the four
+full D3 replay arms. The prior D3 replay table is invalidated until those arms are rerun.
 
 ### Implementation checks
 
