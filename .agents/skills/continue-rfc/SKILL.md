@@ -12,6 +12,10 @@ revision use [`rfc-authoring`](../rfc-authoring/SKILL.md); to split off an explo
 revision after new evidence, use [`edit-rfc`](../edit-rfc/SKILL.md); for a review use
 [`rfc-review`](../rfc-review/SKILL.md).
 
+If you were given a handoff issue (a `## Handoff` written with
+[`hand-off-rfc`](../hand-off-rfc/SKILL.md)), use [`pick-up-rfc`](../pick-up-rfc/SKILL.md)
+instead; it calls back into the recovery steps here where it needs them.
+
 ## 1. Identify the decision and requested work
 
 - Read `AGENTS.md`, `rfc/README.md`, and the named RFC in full, plus its linked PR/review
