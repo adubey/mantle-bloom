@@ -179,6 +179,6 @@
       }
     }
   },
-  "superseded_reason": "The implementation_commit had an inverted land/ocean mask in material transfer, zeroing land abrasion. D3 replay results are invalid; D2 control rows remain valid.",
-  "superseded_by_commit": "50cb88df"
+  "superseded_reason": "The implementation_commit had an inverted land/ocean mask in material transfer, zeroing land abrasion. D3 replay results are invalid; D2 control rows remain valid. Subsequent review found the march and transfer treated cover/headroom as separate pools and that disabling the march removed abrasion; those were fixed after the smoke capture.",
+  "superseded_by_commit": "fb0c8772"
 }
