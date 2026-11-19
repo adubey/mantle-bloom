@@ -55,3 +55,17 @@ ice-equilibrium diagnostics so each interval's abrasion and bed feedback are rep
 These are two deterministic diagnostic saves, not a broad stability survey. The G3 target is
 partially met; the remaining 34.1% gap on the larger save and the runtime cost remain explicit
 follow-up considerations for RFC closure.
+
+### Implementation checks
+
+- `ruff check`: passed.
+- `quality_check.sh`: passed (vulture, knip and jscpd; zero new duplicate clones).
+- `git diff --check`: passed.
+- Focused unit tests: `test_hydrology.py` 155 passed; `test_erosion.py` 64 passed.
+- `affected_test.sh --base origin/main -n 2`: 2,260 passed, 12 failed and 50 errors in
+  725 s. The host temp volume reached 100% capacity (116 MiB free); the reported setup and
+  upload errors include `OSError: [Errno 28] No space left on device`. The full affected run
+  needs a clean-volume rerun before treating the remaining failures as code regressions.
+- `stress_test.sh -n 2`: interrupted after 22 completed cases, all of which passed, after
+  more than 90 minutes. Workers were still CPU-bound; the suite did not finish, so this is
+  not a passing stress result. The host volume was at 100% capacity during the run.
