@@ -2419,15 +2419,11 @@ def _march_glacier(
         raw_abrasion_depth += raw_interval_abrasion
         cover_cut = np.minimum(raw_interval_abrasion, cover_remaining)
         substrate_demand = np.clip(raw_interval_abrasion - cover_cut, 0.0, None)
-        substrate_cut = np.minimum(substrate_demand, substrate_headroom * craton_keep)
+        substrate_take = np.minimum(substrate_demand, substrate_headroom)
+        substrate_cut = substrate_take * craton_keep
         interval_abrasion = cover_cut + substrate_cut
         cover_remaining -= cover_cut
-        substrate_headroom -= np.divide(
-            substrate_cut,
-            craton_keep,
-            out=np.zeros_like(substrate_cut),
-            where=craton_keep > 0.0,
-        )
+        substrate_headroom -= substrate_take
         abrasion_depth += interval_abrasion
         working_elevation -= interval_abrasion
         substeps += 1
