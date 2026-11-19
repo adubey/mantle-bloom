@@ -107,6 +107,73 @@
     "subduction_test": "geometric",
     "contact_drag_multiplier": 0.0
    }
+  },
+  "b123": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "ridge_push_form": "potential_energy",
+    "slab_drag_form": "trench_normal",
+    "age_force_column": true
+   }
+  },
+  "b123-brake-off": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "ridge_push_form": "potential_energy",
+    "slab_drag_form": "trench_normal",
+    "age_force_column": true,
+    "contact_drag_multiplier": 0.0
+   }
+  },
+  "b123-b4a": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "ridge_push_form": "potential_energy",
+    "slab_drag_form": "trench_normal",
+    "age_force_column": true,
+    "subduction_test": "ramp"
+   }
+  },
+  "b123-b4a-brake-off": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "ridge_push_form": "potential_energy",
+    "slab_drag_form": "trench_normal",
+    "age_force_column": true,
+    "subduction_test": "ramp",
+    "contact_drag_multiplier": 0.0
+   }
+  },
+  "b123-b4b": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "ridge_push_form": "potential_energy",
+    "slab_drag_form": "trench_normal",
+    "age_force_column": true,
+    "subduction_test": "geometric"
+   }
+  },
+  "b123-b4b-brake-off": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "ridge_push_form": "potential_energy",
+    "slab_drag_form": "trench_normal",
+    "age_force_column": true,
+    "subduction_test": "geometric",
+    "contact_drag_multiplier": 0.0
+   }
   }
  }
 }
