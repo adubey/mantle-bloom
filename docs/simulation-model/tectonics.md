@@ -303,7 +303,7 @@ above, so a world, or a save made before the fields existed, moves exactly as be
 | Field | Default | Other values |
 |---|---|---|
 | `ridge_push_form` (B.1) | `water_load` | `potential_energy`: the column's potential-energy difference to the oceanic reference column, `∫ [p_node − p_ref] dz` (`ridge_push_potential_energy_n_per_m`). That gives 5.3×10¹¹ N/m for an 8 km ridge against the 40 km reference. |
-| `slab_drag_form` (B.2) | `isotropic` | `trench_normal`: sunk-slab drag acts on motion toward the trench only, `c (p × n)(p × n)ᵀ` (`trench_normal`) |
+| `slab_drag_form` (B.2) | `isotropic` | `trench_normal`: sunk-slab drag acts on motion toward the trench only, on nodes with positive pull, `c (p × n)(p × n)ᵀ` (`trench_normal`, `slab_drag_nodes`) |
 | `age_force_column` (B.3) | off | Slab pull and ridge push read an oceanic cell's mantle lithosphere from its age (`force_column_hm`). This uses the same cooling law and the same two `rift_line_params` values as RFC 0018's ocean-floor strength. With B.1, the reference column is the force column of the plate's oldest dated floor. |
 | `subduction_test` (B.4) | `gate` (closing over 1 cm/yr) | `ramp`: pull scaled by `closing / subduction_gate_cm_per_yr` from zero closing (`subduction_pull_weight`). `geometric`: down-going crust at any contact that isn't diverging, and only the older side where ocean meets ocean. |
 | `slab_pull_fraction` (`f_pull`) | 1.0 | the share of the column's negative buoyancy applied as pull, in [0, 1] |

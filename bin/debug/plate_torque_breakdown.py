@@ -87,6 +87,7 @@ def _slab_terms(plate, inputs, subducting: np.ndarray, spacing: float, omega: np
     normal = np.einsum("ni,ni->n", velocity, toward)
     speed_sq = np.einsum("ni,ni->n", velocity, velocity)
     drag_per_speed = torque.SLAB_MANTLE_VISCOSITY_PA_S / torque.SHEAR_ZONE_THICKNESS_M * torque.SUBDUCTION_LSINK_M * length
+    drag_per_speed = drag_per_speed * torque.slab_drag_nodes(plate, inputs, subducting)[subducting]  # B.2: pulled nodes only
     pull_power = pull * normal
     moments = np.cross(points * lithosphere.PLANET_RADIUS_M, pull[:, None] * toward)
     moment_sum = float(np.linalg.norm(moments, axis=1).sum())
@@ -109,9 +110,11 @@ def _slab_terms(plate, inputs, subducting: np.ndarray, spacing: float, omega: np
 
 
 def _pulled_km(plate, inputs, mask: np.ndarray, length: np.ndarray) -> float:
-    """Length of `mask` in km, each node weighted by the pull share the subduction test gives it (1 but under B.4a)."""
+    """Length of `mask` that actually pulls, in km: only negatively buoyant nodes count, each weighted by the pull
+    share the subduction test gives it (1 but under B.4a). A buoyant node is in the test's mask but pulls nothing."""
     from app import torque
 
+    mask = torque.pulling_nodes(plate, inputs, mask)
     weight = torque.subduction_pull_weight(plate, inputs, mask)
     return float((length[mask] if weight is None else length[mask] * weight).sum() / 1e3)
 
@@ -219,7 +222,7 @@ def sample(world) -> dict:
         collision = torque.continental_contact_mask(plate, inputs, contested)
         subducting = torque.subducting_boundary_mask(plate, inputs, reach)
         basal_b, basal_k = torque.basal_drag_coefficients(plate, world, spacing)
-        slab_k = torque.slab_drag_coefficient_matrix(inputs, subducting, spacing)
+        slab_k = torque.slab_drag_coefficient_matrix(inputs, torque.slab_drag_nodes(plate, inputs, subducting), spacing)
         jam = torque.contact_jam_factor(plate, world, neighbours, inputs, reach)
         craton_m = torque.contact_craton_m(plate, neighbours, inputs)
         for neighbour in neighbours:

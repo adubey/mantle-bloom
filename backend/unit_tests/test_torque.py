@@ -1099,6 +1099,30 @@ def test_trench_normal_slab_drag_forces_add_up_to_its_matrix():
     np.testing.assert_allclose(torque_nm, expected, rtol=0.0, atol=1e-10 * np.linalg.norm(expected))
 
 
+def test_trench_normal_slab_drag_acts_only_on_nodes_that_pull():
+    # #979 review: RFC 0021's K_slab sums "over nodes with positive pull". A buoyant continental node behind the slab
+    # has no sunk slab to shear, so under B.2 it gets no drag, and today's isotropic form is left as it was.
+    spacing = line_spacing_rad(1.0)
+    plate, inputs, mask = _contact_band(spacing, 4, hc=0.0, hm=40_000.0)
+    half = len(mask) // 2
+    inputs.own_hc[half:] = 35_000.0  # the second half of the band is a continental terrane: buoyant
+    inputs.own_hm[half:] = 10_000.0
+    force = torque.slab_pull_force_n(plate, inputs, mask, spacing)
+    pulls = force > 0.0
+    assert pulls[:half].all() and not pulls[half:].any()
+    np.testing.assert_array_equal(torque.pulling_nodes(plate, inputs, mask), pulls)
+    omega = np.array([1e-9, -2e-9, 3e-9])
+    inputs.forms = _forms(slab_drag="trench_normal")
+    drag_nodes = torque.slab_drag_nodes(plate, inputs, mask)
+    np.testing.assert_array_equal(drag_nodes, pulls)
+    only_pulled = torque.slab_drag_coefficient_matrix(inputs, pulls, spacing)
+    np.testing.assert_allclose(torque.slab_drag_torque(plate, inputs, mask, spacing), -only_pulled @ plate.omega)
+    forces = torque.slab_drag_force_vectors_n(inputs, drag_nodes, spacing, omega)
+    assert not np.any(forces[~pulls])
+    inputs.forms = _forms()
+    np.testing.assert_array_equal(torque.slab_drag_nodes(plate, inputs, mask), mask)
+
+
 def test_age_force_column_follows_the_cooling_law_and_never_drops_below_the_cells_hm():
     # B.3 (RFC 0021): 54, 81 and 84 km at 25, 50 and 100 Myr with 11 km of crust; the cell's own Hm near the ridge
     # and where undated; a continental cell keeps its Hm.
