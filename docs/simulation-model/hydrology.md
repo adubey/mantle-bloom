@@ -883,9 +883,14 @@ since climate.py runs *before* this module each step).
   deflection; only the lapse correction sees the equilibrium target. Glacial abrasion is
   integrated from each interval's basal sliding. The working bed is lowered by the amount
   that can be removed from mobile cover and remaining Hc above the crustal floor, with
-  craton resistance on substrate, then used by the next solve. This matches the material
-  transferred at the end of the step; raw demand and unapplied demand are logged and booked
-  in the erosion budget. Glacier abrasion is transferred before other subaerial erosion so
+  cover counted inside the shared Hc headroom and craton resistance applied once to substrate,
+  then used by the next solve. This matches the material transferred at the end of the step;
+  raw demand and unapplied demand are logged and booked
+  in the erosion budget. The basal yield-strength and frictional-heat inputs still use the
+  step-opening mobile-cover field; erosion changes those basal inputs on the following step.
+  If a node becomes ocean during the march, the final ocean mask can further limit its
+  transfer, and the erosion budget records that unapplied demand. Glacier abrasion is
+  transferred before other subaerial erosion so
   the same headroom is not consumed twice. It is exempt from the shared neighbor-drop cap.
   Two settle tests run side by side, but neither ends the D3 march (#842; `settle_test` in the
   log says which).
@@ -904,7 +909,8 @@ since climate.py runs *before* this module each step).
   marching. `cap_fill` does not change this behavior. `World.simulate_glacier_march` (`false`
   in the UI's Controls, off by default
   for UI-created worlds) skips the march: the ice is solved once per step and frozen
-  there, the same zero-length path the `MARCH_GLACIERS` test knob takes. A world with
+  there. Abrasion still integrates that solve's sliding speed over the step, without bed
+  feedback. A zero-duration call has no abrasion. A world with
   no ice and no snowfall takes the same one-solve fast path automatically (an
   endpoint solve is the identical answer there). Each substep's sea-level re-solve
   warm-starts its bisection around the last level (validated, same converged value),

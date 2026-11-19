@@ -2304,18 +2304,19 @@ def _march_glacier(
     craton_keep = 1.0 - cratons.CRATON_EROSION_RESISTANCE * cratons.strength(
         np.concatenate([p.collect("craton_crust_m") for p in plates_in_order])
     )
-    cover_remaining = np.clip(
-        np.asarray(mobile_cover_m, dtype=float), 0.0,
-        np.where(crust_h_m > 0.0, crust_h_m, np.inf),
-    )
-    # Match erosion.apply_erosion's source order: glacier removes loose cover first, then
-    # substrate above the Hc floor scaled by craton resistance. The interval bed feedback
-    # must not include rock the final material transfer cannot remove.
-    substrate_headroom = np.where(
+    removable_hc_m = np.where(
         crust_h_m > 0.0,
         np.clip(crust_h_m - lithosphere.MIN_CRUSTAL_THICKNESS_M, 0.0, None),
         np.inf,
     )
+    cover_remaining = np.minimum(
+        np.clip(np.asarray(mobile_cover_m, dtype=float), 0.0, None),
+        removable_hc_m,
+    )
+    # Match erosion.apply_erosion's source order: glacier removes loose cover first, then
+    # substrate above the Hc floor scaled by craton resistance. The interval bed feedback
+    # must not include rock the final material transfer cannot remove.
+    substrate_headroom = np.clip(removable_hc_m - cover_remaining, 0.0, None)
     working_elevation = np.asarray(elevation, dtype=float).copy()
     elevations = working_elevation
     _, hyps_areas = eustasy.hypsometry(world)

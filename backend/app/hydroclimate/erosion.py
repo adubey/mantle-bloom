@@ -74,7 +74,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from .. import continental_ledger, cratons, faults, geometry, lithosphere, trace
-from . import biomes, climate, hydrology, mobile_cover, river_substeps
+from . import biomes, climate, glacier_erosion, hydrology, mobile_cover, river_substeps
 from ..elevation_lines import (
     ELEV_CHANGE_COASTAL_LEVELING,
     ELEV_CHANGE_COLLISION,
@@ -1970,16 +1970,27 @@ def apply_erosion(
     relief_factor = np.clip(slope / WEATHERING_RELIEF_REFERENCE_SLOPE, 0.0, 1.0)
     weathering = WEATHERING_COEFFICIENT * world.wind_erosion_multiplier * wind_speed * humidity_norm * relief_factor * dt_myr
     ice_factor = np.clip(prior_glacier_depth / GLACIER_EROSION_REFERENCE_DEPTH_M, 0.0, GLACIER_EROSION_MAX_FACTOR)
-    glacier = (
-        np.asarray(hydro.ice.abrasion_depth_m, dtype=float)
-        if hydro.ice is not None and hydro.ice.abrasion_depth_m is not None
-        else np.zeros(n)
-    )
-    raw_glacier = (
-        np.asarray(hydro.ice.raw_abrasion_depth_m, dtype=float)
-        if hydro.ice is not None and hydro.ice.raw_abrasion_depth_m is not None
-        else glacier.copy()
-    )
+    march_active = hydrology.MARCH_GLACIERS and getattr(world, "simulate_glacier_march", True)
+    marched_abrasion = getattr(hydro.ice, "abrasion_depth_m", None) if hydro.ice is not None else None
+    if march_active and marched_abrasion is not None:
+        glacier = np.asarray(marched_abrasion, dtype=float)
+        raw_marched_abrasion = getattr(hydro.ice, "raw_abrasion_depth_m", None)
+        raw_glacier = (
+            np.asarray(raw_marched_abrasion, dtype=float)
+            if raw_marched_abrasion is not None else glacier.copy()
+        )
+        march_limited_abrasion = True
+    else:
+        # Keep the existing no-march mode useful: its single closing ice solve has no bed
+        # feedback, but its sliding law still integrates across the requested step.
+        sliding = getattr(hydro.ice, "sliding_speed_m_per_yr", None) if hydro.ice is not None else None
+        if sliding is None:
+            sliding = np.zeros(n)
+        raw_glacier = glacier_erosion.abrasion_depth_m(
+            np.asarray(sliding, dtype=float), years, world.glacier_erosion_multiplier,
+        )
+        glacier = raw_glacier.copy()
+        march_limited_abrasion = False
     # See SEISMIC_EROSION_* constants' own comment: elevation (clipped/normalized against
     # SEISMIC_EROSION_ELEVATION_REFERENCE_M, then raised to a superlinear power) stands in for
     # how tectonically active/seismic a mountain range is, this model having no separate
@@ -2064,11 +2075,15 @@ def apply_erosion(
     # clamps against remaining Hc headroom without applying that resistance a second time.
     # Glacier removal is independent of the neighbor-drop limit, but still consumes cover and
     # Hc headroom.
-    glacier_cover = np.minimum(np.clip(prior_cover, 0.0, None), glacier)
+    glacier_cover = np.minimum(
+        np.minimum(np.clip(prior_cover, 0.0, None), removable_m), glacier,
+    )
     glacier_substrate = np.minimum(
         np.clip(glacier - glacier_cover, 0.0, None),
         np.clip(removable_m - glacier_cover, 0.0, None),
     )
+    if not march_limited_abrasion:
+        glacier_substrate *= craton_keep
     applied_glacier = glacier_cover + glacier_substrate
     cover_after_glacier = np.clip(prior_cover - glacier_cover, 0.0, None)
     # Other subaerial sources retain the shared neighbor-drop and Hc caps, reduced by the
