@@ -17,7 +17,8 @@ reconstructing an RFC with no handoff, use [`continue-rfc`](../continue-rfc/SKIL
   `gh issue view <N> --comments`. The handoff is the `## Handoff` body or comment (take the
   latest if there are several; the older ones are history). If the user gave no issue
   number, look through the RFC tracking issue's sub-issues
-  (`gh api repos/:owner/:repo/issues/<tracking>/sub_issues`) for a `## Handoff` that nobody
+  (`gh api repos/:owner/:repo/issues/<tracking>/sub_issues`), or, for an RFC still in draft
+  with no tracker, the comments on its proposal PR, for a `## Handoff` that nobody
   has picked up, and confirm it with the user rather than guessing.
 - Read the RFC's status line and gate record (see [`start-issue`](../start-issue/SKILL.md)),
   and the handoff PR's description and `## Handoff status`. Read the rest of the RFC only
@@ -31,13 +32,19 @@ reconstructing an RFC with no handoff, use [`continue-rfc`](../continue-rfc/SKIL
 Check each of these against live state, and note every mismatch. Don't assume a stale
 handoff is correct, and don't silently recreate anything that is missing:
 
-- **Branch and PR:** `git fetch origin`, then the branch exists at the SHA the handoff names
-  (or a descendant), and the PR's draft or ready state matches what it says.
-  `gh pr view <P>` shows its state. **A ready PR must be merged before you start.** If it
-  isn't, tell the user it is waiting on them to merge it, and stop; don't work from its
-  branch instead. A draft PR is the exception, handled in section 4.
+- **PR and code:** check the PR first with `gh pr view <P>`; its branch may be gone, because
+  merged branches are deleted. The state must match what the handoff says.
+  - **Ready PR:** it must be **merged** before you start. If it isn't, tell the user it is
+    waiting on them to merge it, and stop; don't work from its branch instead. Once merged,
+    `git fetch origin` and confirm its merge commit is in `origin/main`
+    (`git merge-base --is-ancestor <merge sha> origin/main`).
+  - **Draft PR:** fetch its head by ref, not branch name
+    (`git fetch origin pull/<P>/head:refs/remotes/origin/pr/<P>`) and confirm it is at the
+    SHA the handoff names (or a descendant). Check the scripts and findings the handoff
+    names against that head, since a new file won't be in `origin/main`.
 - **Files:** each save, capture and script the handoff names exists, and its SHA-256 matches
-  the handoff. Get them (section 3) before checking.
+  the handoff. Get them (section 3) before checking. Files tracked in Git are checked against
+  the merge commit or the draft head above, not against `origin/main` alone.
 - **Checks:** the failing and unchecked items it lists are still what they say. Don't rerun
   a whole suite to find out. Run only what the next action needs (`AGENTS.md` and
   [`compute-budget`](../compute-budget/SKILL.md) apply).
@@ -58,11 +65,15 @@ gone), stop and ask.
 
   ```bash
   bin/b2_saves.py list
-  MANTLE_BLOOM_SAVES_DIR=~/mantle-bloom-captures/<rfc-or-issue> bin/b2_saves.py pull <name>
-  (cd ~/mantle-bloom-captures/<rfc-or-issue> && shasum -a 256 -c SHA256SUMS)
+  cd ~/mantle-bloom-captures/<rfc-or-issue>        # create it first
+  MANTLE_BLOOM_SAVES_DIR=$PWD bin/b2_saves.py pull <bucket name>   # each name from the issue
   ```
 
-  Pull `SHA256SUMS` and the private note by name the same way. If a file is not in the
+  Pull each file by the **bucket name** the handoff records, which can differ from the local
+  name. Then rename it to the local name in the issue, and the manifest
+  `SHA256SUMS.<rfc-or-issue>` to `SHA256SUMS`, and check:
+  `shasum -a 256 -c SHA256SUMS`. The private note is pulled the same way and lands in this
+  captures directory, not in `mantle-bloom-handoff/`; read it there. If a file is not in the
   bucket, say so; the previous agent may still have it locally.
 - Don't reproduce a costly run when a verified output exists. Check
   [`continue-rfc`](../continue-rfc/SKILL.md#3-recover-run-information-before-repeating-work)
@@ -77,7 +88,7 @@ gone), stop and ask.
 - **If the handoff PR was ready and has merged,** its changes are already in `origin/main`.
   Nothing more to bring in.
 - **If the handoff PR is a draft,** patch its changes into your branch, for example
-  `git cherry-pick <first>^..<last>` of its commits (or `git merge --no-ff` it into your
+  `git cherry-pick <first>^..<last>` of the commits on `origin/pr/<P>` (or `git merge --no-ff` it into your
   branch if the history is clean), and resolve conflicts against current `main`. Check
   that what arrived is what the handoff says it contains. Open **your own PR** with those
   changes and your own work, with a `## Summary` that says which changes came from the draft

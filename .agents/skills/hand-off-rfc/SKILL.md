@@ -65,36 +65,35 @@ findings go entirely in the issue). Say that you skipped it and why.
 
    Leave out saves, full replay output, logs, personal paths and scratch files. If you find
    files you didn't create and can't explain, leave them alone and mention them in the issue.
-2. **Commit and push your own agent branch.** Use the commit style in `AGENTS.md`. A commit
-   that is knowingly incomplete says so in its body, for example "WIP: ... fails
-   test_x". Branch from `origin/main` per the [`worktree` skill](../worktree/SKILL.md) if
-   you don't have an issue branch yet, and use the issue-evidence pattern in
-   [`edit-rfc`](../edit-rfc/SKILL.md#1-split-in-the-origin-session) when the evidence
-   shouldn't wait for a PR.
+2. **Run [`pre-push-check`](../pre-push-check/SKILL.md) before the first push**, then commit
+   and push your own agent branch. For a ready PR it must pass. For a draft it may fail, but
+   put its outcome in the PR so the next agent knows what is already clean; a draft can't
+   hide a failure. Use the commit style in `AGENTS.md`. A commit that is knowingly incomplete
+   says so in its body, for example "WIP: ... fails test_x". Branch from `origin/main` per the
+   [`worktree` skill](../worktree/SKILL.md) if you don't have an issue branch yet, and use the
+   issue-evidence pattern in [`edit-rfc`](../edit-rfc/SKILL.md#1-split-in-the-origin-session)
+   when the evidence shouldn't wait for a PR.
 3. **Open the PR** with the `AGENTS.md` format: a `## Summary` saying what changed and why,
    replay numbers if the model moved, and `Closes #<N>` only if this PR really completes
    that issue (otherwise `Part of #<N>`). Add a `## Handoff status` section that states
    what is done, what is not, and what is failing or unchecked. Open it as a **draft** unless
    the user said ready.
-4. **If it is a draft**, run [`pre-push-check`](../pre-push-check/SKILL.md) anyway and put
-   its outcome in the PR, so the next agent knows what is already clean. A draft may fail
-   checks, but it can't hide that.
-5. **If it is ready (not a draft)**:
-   - `pre-push-check` must pass first, and the `backend` and `frontend` checks should be
-     green or running.
-   - Request **at least one** and optionally two peer reviews with
-     [`peer-review`](../peer-review/SKILL.md) (`bin/peer_review.py request`), choosing
-     different agents when you ask for two. Ask the user which agents or models they want if
-     they haven't said; otherwise pick two different from yourself and note that one is
-     optional.
-   - Peer-review state is **per machine** (`mantle-bloom-handoff/reviews/`). If the next
-     agent is on another machine, don't hand off a ready PR with reviews outstanding: wait
-     for the reviews to complete (`bin/peer_review.py wait --pr <N>`, in the background),
-     respond to them per `peer-review` section 4, and only then hand off. If the user can't
-     wait, convert the PR to a draft (`gh pr ready --undo <N>`) and say that reviews were not
-     done.
-   - On the same machine you needn't wait. Record the review request in the issue (section
-     3), and the pick-up agent answers the reviews.
+4. **If it is ready (not a draft)**, the `backend` and `frontend` checks should be green or
+   running, and it needs peer reviews before you ask the owner to merge:
+   - Request **one required** reviewer and optionally a second, different agent, with
+     [`peer-review`](../peer-review/SKILL.md) (`bin/peer_review.py request`, one `--reviewer`
+     each). `request` can't mark a reviewer optional, so you keep the distinction yourself:
+     the first is required, the second is advisory. Ask the user which agents or models they
+     want if they haven't said; otherwise pick two other than yourself.
+   - **You** wait for the required review, address it per `peer-review` section 4, and only
+     then ask the owner to merge. `bin/peer_review.py wait --pr <N>` returns only when every
+     requested slot is done, so run it in the background but don't let it gate the handoff:
+     once the required reviewer's comment is on the PR, proceed. If the advisory review is
+     still running, say so in the issue and the pick-up agent reads it afterward.
+   - Peer-review state is **per machine** (`mantle-bloom-handoff/reviews/`), which is why the
+     outgoing agent owns the required review whichever machine the next agent is on. If the
+     user can't wait for it, convert the PR to a draft (`gh pr ready --undo <N>`) and say that
+     reviews were not done.
 
 Never merge. Merging is the owner's job. **The next agent starts from `origin/main`, so a
 ready PR must be merged before it picks up.** Say so in the handoff (section 3) and tell the
@@ -111,19 +110,26 @@ dropped something.
 
 1. **Put them in one place**, `~/mantle-bloom-captures/<rfc-or-issue>/`, per
    [`AGENTS.md`](../../../AGENTS.md#workflow), never `/tmp` (volatile) or the repo. Move or
-   copy them there if they are elsewhere, and write a `SHA256SUMS` file beside them
-   (`shasum -a 256 <files> > SHA256SUMS`).
+   copy them there if they are elsewhere, and write a `SHA256SUMS` file beside them. Run it
+   from inside that directory, so it records bare file names:
+   `(cd ~/mantle-bloom-captures/<rfc-or-issue> && shasum -a 256 <files> > SHA256SUMS)`.
 2. **Same machine:** that directory is enough. Put the directory name and any private note
    in `$handoff` (below); the issue gets file names and checksums only.
 3. **Another machine:** upload with the [`b2-saves`](../b2-saves/SKILL.md) skill:
 
    ```bash
-   bin/b2_saves.py push ~/mantle-bloom-captures/<rfc-or-issue>/* --note "<rfc-or-issue> handoff"
+   cd ~/mantle-bloom-captures/<rfc-or-issue>
+   cp SHA256SUMS SHA256SUMS.<rfc-or-issue>     # the bucket keeps one object per name
+   bin/b2_saves.py push <saves...> SHA256SUMS.<rfc-or-issue> --note "<rfc-or-issue> handoff"
+   bin/b2_saves.py push "$handoff/rfc-<NNNN>-handoff-<issue>.md" --note "<rfc-or-issue> handoff note"
    bin/b2_saves.py list      # confirm every file appears, with the expected size
    ```
 
-   Push `SHA256SUMS` and the private note too. Verify by name and size in the listing, and
-   don't delete the local copies until the user says the next agent has them.
+   The note lives outside the captures directory, so it needs its own `push` (write it first,
+   in step 4). `push` may rename a file whose name collides, or reuse an existing object with
+   the same content, so read each file's **actual bucket name** from `list` and put it in the
+   issue's evidence. Don't delete the local copies until the user says the next agent has
+   them.
 4. **Private note.** Put local-only details in
    `$handoff/rfc-<NNNN>-handoff-<issue>.md`, resolving `$handoff` as `AGENTS.md` describes:
    worktree path and branch, captures directory, ports, any log or diagnostic output that
@@ -134,8 +140,11 @@ dropped something.
 
 ## 3. Find or create the handoff issue
 
-1. **Find the RFC tracking issue** from `rfc/README.md` or the RFC's header. List its
-   sub-issues:
+1. **Find the RFC tracking issue** from `rfc/README.md` or the RFC's header. An RFC still in
+   draft has none (the tracker is created at acceptance, per the
+   [RFC lifecycle](../../../rfc/README.md#lifecycle)). Then the **proposal PR** is the home of
+   the handoff: post the `## Handoff` as a comment there, create no sub-issue, and
+   `pick-up-rfc` looks for it on that PR. Otherwise list the tracker's sub-issues:
 
    ```bash
    gh api repos/:owner/:repo/issues/<tracking>/sub_issues --jq '.[] | "\(.number) \(.state) \(.title)"'
@@ -149,7 +158,7 @@ dropped something.
 3. **Otherwise create a new sub-issue** with [`create-issue`](../create-issue/SKILL.md),
    with `--parent <tracking>`, add it to the tracking checklist in dependency order, and put
    it on the project board per [`project-management`](../project-management/SKILL.md#creating-an-issue)
-   as `Ready` (a handoff issue starts as `Ready`, even when it waits on a PR merge). Use the handoff text as the body, starting with `## Handoff`. Follow the RFC
+   as `Ready` (the owner chose `Ready` for every handoff issue, even one waiting on a PR merge. That is a deliberate exception to the `On Hold` rule in `project-management`, so don't "fix" it). Use the handoff text as the body, starting with `## Handoff`. Follow the RFC
    lifecycle's rules about which issues are eligible; if the RFC isn't accepted or a gate
    hasn't passed, the handoff is for that gate or revision step, not for implementation.
 4. If your own issue is unfinished, leave it open and say in its comments that the work
@@ -178,7 +187,7 @@ in it. Use neutral run labels and no personal paths.
 
 **Evidence** (for each run the next agent needs)
 - `<run label>`: command `<...>`, save `<name>` sha256 `<...>`, seed `<...>`, steps `<...>`,
-  commit `<sha>`, result `<number>`. Where: <B2 (`bin/b2_saves.py pull <name>`) | this
+  commit `<sha>`, result `<number>`. Where: <B2 as `<bucket name>` (`bin/b2_saves.py pull <bucket name>`; local name `<name>`) | this
   machine, see private note `<file name>`>
 
 **Don't repeat / ruled out:** <what failed or was null, and the number that showed it>
