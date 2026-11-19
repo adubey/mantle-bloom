@@ -60,9 +60,9 @@ ice-equilibrium diagnostics so each interval's abrasion and bed feedback are rep
 | seed649658380 | 2,948,871 | 2,755,594 | 88,442,666 | 89,406,672 |
 | seed997271774 | 9,737,452 | 12,238,086 | 255,421,127 | 259,873,597 |
 
-These are two deterministic diagnostic saves, not a broad stability survey. The G3 target is
-partially met; the remaining 34.1% gap on the larger save and the runtime cost remain explicit
-follow-up considerations for RFC closure.
+These are two deterministic diagnostic saves, not a broad stability survey. Their D3 gap and
+runtime conclusions apply only to `ff61e09f`; the current D3 step-size gap and runtime remain
+unknown until the four arms are rerun.
 
 ### Post-review correction
 
@@ -76,10 +76,9 @@ seed649658380 at `50cb88df` reported 262,419.27 km³ raw and applied abrasion (a
 is preliminary only. It does not replace the four full D3 replay arms or validate the current
 head; the prior D3 replay table is invalid until the arms are rerun.
 
-At `68feea52`, a one-step 0.25 Myr smoke replay on seed997271774 with the `trend-1k`
-preset reported 4,547,586.24 km³ raw and 4,547,349.52 km³ applied abrasion (applied/raw
-0.99995; 53.1 s, peak RSS 0.86 GB). The small unapplied share is consistent with final-state
-ocean masking. This smoke did not strongly bind the shared-cover/headroom or craton limits, so
+At `f81c0755`, a one-step 0.25 Myr smoke replay on seed997271774 with the `trend-1k`
+preset reported 4,547,586.24 km³ raw and applied abrasion (applied/raw 1.000; 49.5 s, peak
+RSS 0.90 GB). This smoke did not strongly bind the shared-cover/headroom or craton limits, so
 it is not a regression test for those caps and does not validate G3.
 
 ### Implementation checks
