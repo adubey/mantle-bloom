@@ -178,6 +178,14 @@ private capture directory and are checksummed in its `SHA256SUMS` file.
 - `quality_check.sh`: passed (vulture, knip and jscpd; zero new duplicate clones).
 - `git diff --check`: passed.
 - Focused unit tests: `test_hydrology.py` 155 passed; `test_erosion.py` 64 passed.
+- Post-merge GitHub backend and frontend checks passed on PR #976 / merge commit `aa217ab4`.
+- The later local post-review unit command accidentally ran the whole backend suite: 2,643
+  passed, 1 failed and 8 errored. All hydrology and erosion tests passed; the unrelated B2
+  failures came from sandbox-blocked loopback binds and writes to the user state-cache
+  directory.
+- The G3 replay harness now defaults a missing fast-path march abrasion log value to zero,
+  avoiding a `KeyError` on an iceless gate step. Ruff, `py_compile`, and `quality_check.sh`
+  pass on the follow-up branch.
 - `affected_test.sh --base origin/main -n 2`: 2,260 passed, 12 failed and 50 errors in
   725 s. The host temp volume reached 100% capacity (116 MiB free); the reported setup and
   upload errors include `OSError: [Errno 28] No space left on device`. The full affected run

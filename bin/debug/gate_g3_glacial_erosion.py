@@ -130,7 +130,7 @@ def _run_replay(ns: argparse.Namespace) -> dict:
         step_capture["applied_glacial_erosion_m3"] = float(res.budget["glacial_erosion_m3"])
         step_capture["unapplied_glacial_erosion_m3"] = float(res.budget["glacial_erosion_unapplied_m3"])
         step_capture["march_applied_glacial_abrasion_m3"] = float(
-            ice_sheet.MARCH_LOG[-1]["applied_glacial_abrasion_m3"]
+            ice_sheet.MARCH_LOG[-1].get("applied_glacial_abrasion_m3", 0.0)
         )
         step_capture["total_removed_m3"] = float(res.budget["removed_m3"])
         return res
