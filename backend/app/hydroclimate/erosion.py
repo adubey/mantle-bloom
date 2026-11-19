@@ -2060,12 +2060,15 @@ def apply_erosion(
     raw_erosion_total = rain + river + weathering + seismic
     detach_capacity = np.where(is_ocean_node, 0.0, np.clip(raw_erosion_total, 0.0, None))
     # Glacier is transferred first, matching the material reserved during the ice march.
-    # It is independent of the neighbor-drop limit, but still consumes cover and Hc headroom.
+    # The march already applied craton resistance to its substrate cut, so this final transfer
+    # clamps against remaining Hc headroom without applying that resistance a second time.
+    # Glacier removal is independent of the neighbor-drop limit, but still consumes cover and
+    # Hc headroom.
     glacier_cover = np.minimum(np.clip(prior_cover, 0.0, None), glacier)
     glacier_substrate = np.minimum(
         np.clip(glacier - glacier_cover, 0.0, None),
         np.clip(removable_m - glacier_cover, 0.0, None),
-    ) * craton_keep
+    )
     applied_glacier = glacier_cover + glacier_substrate
     cover_after_glacier = np.clip(prior_cover - glacier_cover, 0.0, None)
     # Other subaerial sources retain the shared neighbor-drop and Hc caps, reduced by the
