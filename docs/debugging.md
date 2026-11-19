@@ -178,6 +178,8 @@ Gate 2 load, mesh and capacity diagnostics.
 | [`measure_ice_loading.py`](debugging/scripts-water-ice.md#measure_ice_loadingpy) | isostatic ice-load deflection |
 | [`measure_meltwater_faults.py`](debugging/scripts-water-ice.md#measure_meltwater_faultspy) | earthquakes triggered by ice unloading |
 | [`measure_climate_fields.py`](debugging/scripts-water-ice.md#measure_climate_fieldspy) | temperature, humidity and precipitation by latitude band in two trees |
+| [`rfc0019_condensate_fallout.py`](debugging/scripts-water-ice.md#rfc0019_condensate_falloutpy) | effect of six-hour ocean condensate transport on RFC 0019's climate patterns and update time |
+| [`rfc0019_condensate_replay.py`](debugging/scripts-water-ice.md#rfc0019_condensate_replaypy) | paired rank-16 lake replay with fixed-catchment hydrology measurements |
 
 ### Surface, saves, sweeps and profiling
 

@@ -298,6 +298,21 @@ backend/.venv/bin/python bin/debug/measure_meltwater_faults.py --controlled --se
 
 ## Climate
 
+### `rfc0019_condensate_fallout.py`
+
+Screens the six-hour ocean condensate perturbation from #978 against immediate fallout.
+Pass registered G3 capture directories to compare both wind modes. Pass `--live-save`
+and `--g4-runner` to measure density convergence and climate update time on a
+registered save. The live mode verifies the pinned G4 runner's SHA-256 before loading it.
+See [the #978 report](../../analysis/issue978/README.md) for the commands and findings.
+
+### `rfc0019_condensate_replay.py`
+
+Runs either rank-16 coupled arm for 40 steps at 10 kyr from the registered checkpoint.
+It records precipitation, generated runoff, settled lake supply, river evaporation,
+and visible lake area and volume inside the opening catchment on every step.
+See [the #978 report](../../analysis/issue978/README.md#rank-16-replay) for the paired commands.
+
 ### `measure_climate_fields.py`
 
 Measures the climate fields on a save in either tree (#522). At each checkpoint it computes a
