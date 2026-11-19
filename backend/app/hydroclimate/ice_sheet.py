@@ -762,7 +762,7 @@ class IceStep:
 
     `thickness` is the plastic profile's ice thickness at each node and `covered` the cell's
     ice-covered fraction. `calved_m3` is ice that left for the ocean, unrouted. The sliding
-    speed is m/yr in model units (a calibrated proxy while mass balance stays in model units).
+    speed is reported in m/yr as a calibrated estimate from the model's mass-balance flux.
     D3's `abrasion_depth_m` is the material-limited depth fed back into the working bed;
     `raw_abrasion_depth_m` retains uncapped physical demand for the erosion budget."""
 
