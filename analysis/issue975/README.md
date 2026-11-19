@@ -61,3 +61,9 @@ rises 3.8x and the plate count to 35; B.4a pulls 83% of the closing length, fail
 the total (predicted 55 to 70%), fails as predicted.
 
 Brake-on runs are still running.
+
+## Decision (owner, 2026-11-19)
+
+B.2 is adopted although its net slab work (+16.7%) missed the +20% bar: it raises T1 (2.25 cm/yr) and T2 (1.97)
+without raising the split rate, and the bar was a prediction, not a derived limit. Adopted so far: B.1 and B.3
+(pass), B.2 (owner). B.4a and B.4b failed and go to G2 only through the gate-speed search.
