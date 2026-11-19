@@ -1316,6 +1316,7 @@ def step_ice(
         ends = np.searchsorted(sorted_labels, body_ids, side="right")
         for b, start, end in zip(body_ids, starts, ends):
             dom_nodes = order[start:end]
+            trace.check_cancelled()
             body_nodes = np.flatnonzero(comp == b)
             in_domain[dom_nodes] = True
             opening = float(np.dot(h0[body_nodes], area[body_nodes]))

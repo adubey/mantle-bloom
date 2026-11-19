@@ -1153,6 +1153,7 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
     main.py's /world/controls) -- elapsed_years always advances regardless of either flag.
     """
     merge_split.check_split_settings(world)  # before anything moves, so a bad setting leaves the world untouched
+    trace.check_cancelled()
     world.steps_taken += 1
     # The render path's cached node-cloud k-d tree (see World.node_kdtree_cache) and its
     # positions-only sibling shared with climate.py (World.node_position_tree_cache) are both
@@ -1213,6 +1214,7 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
         # credit its share of the overlay's bar) after the first plate (#801).
         with trace.span("Reshaping plates", trace.PLATES, user=True):
             for plate in order:
+                trace.check_cancelled()
                 others = [p for p in world.plates if p.plate_id != plate.plate_id]
                 plate.deform(world, others, years, distances.get(plate.plate_id, 0.0))
                 done_units += 1
