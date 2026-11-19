@@ -129,6 +129,9 @@ def _run_replay(ns: argparse.Namespace) -> dict:
         res = orig_apply_erosion(w, years, **kwargs)
         step_capture["applied_glacial_erosion_m3"] = float(res.budget["glacial_erosion_m3"])
         step_capture["unapplied_glacial_erosion_m3"] = float(res.budget["glacial_erosion_unapplied_m3"])
+        step_capture["march_applied_glacial_abrasion_m3"] = float(
+            ice_sheet.MARCH_LOG[-1]["applied_glacial_abrasion_m3"]
+        )
         step_capture["total_removed_m3"] = float(res.budget["removed_m3"])
         return res
 
@@ -147,6 +150,7 @@ def _run_replay(ns: argparse.Namespace) -> dict:
             state = _snapshot_state(world)
             raw_m3 = step_capture["raw_glacial_erosion_m3"]
             app_m3 = step_capture["applied_glacial_erosion_m3"]
+            march_app_m3 = step_capture["march_applied_glacial_abrasion_m3"]
             flat_m3 = step_capture["glacial_flatten_m3"]
             ratio = app_m3 / raw_m3 if raw_m3 > 0.0 else 1.0
             rec = {
@@ -155,6 +159,8 @@ def _run_replay(ns: argparse.Namespace) -> dict:
                 **state,
                 "raw_glacial_erosion_m3": raw_m3,
                 "applied_glacial_erosion_m3": app_m3,
+                "march_applied_glacial_abrasion_m3": march_app_m3,
+                "march_transfer_delta_m3": app_m3 - march_app_m3,
                 "applied_raw_ratio": ratio,
                 "glacial_flatten_m3": flat_m3,
                 "total_removed_m3": step_capture["total_removed_m3"],
@@ -163,6 +169,7 @@ def _run_replay(ns: argparse.Namespace) -> dict:
             print(
                 f"step {i:2d}/{ns.steps}: {wall:4.1f}s age={state['age_myr']:6.2f} "
                 f"raw={raw_m3/1e9:9.2f} app={app_m3/1e9:8.2f} km3 "
+                f"march_delta={(app_m3-march_app_m3)/1e9:+.5f} km3 "
                 f"ratio={ratio:.4f} flat={flat_m3/1e9:8.2f} km3 "
                 f"ice_area={state['land_ice_area_km2']/1e6:.2f}M land_vol={state['land_volume_above_sea_km3']/1e6:.2f}M",
                 flush=True,
@@ -201,6 +208,9 @@ def _run_replay(ns: argparse.Namespace) -> dict:
             "cumulative_raw_glacial_erosion_km3": total_raw / 1.0e9,
             "cumulative_applied_glacial_erosion_km3": total_app / 1.0e9,
             "cumulative_applied_raw_ratio": total_app / total_raw if total_raw > 0.0 else 1.0,
+            "max_abs_march_transfer_delta_m3": max(
+                (abs(s["march_transfer_delta_m3"]) for s in steps), default=0.0,
+            ),
             "cumulative_glacial_flatten_km3": total_flat / 1.0e9,
             "flatten_to_applied_abrasion_ratio": total_flat / total_app if total_app > 0.0 else None,
             "opening_land_ice_area_km2": opening["land_ice_area_km2"],
