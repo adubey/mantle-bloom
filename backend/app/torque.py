@@ -645,6 +645,28 @@ def boundary_node_length_m(inputs: BoundaryForceInputs, spacing_rad: float) -> n
     return lengths
 
 
+def pulling_nodes(plate, inputs: BoundaryForceInputs, mask: np.ndarray) -> np.ndarray:
+    """The nodes of `mask` whose column is negatively buoyant, so that they pull (`slab_pull_force_n` is positive).
+    A buoyant continental node behind a slab, or a craton, pulls nothing, and under RFC 0021's B.2 it has no sunk
+    slab to drag either (#979 review)."""
+    pulling = np.zeros_like(mask)
+    if mask.any():
+        buoyancy = column_buoyancy_pa(
+            continental_crust_m(plate, inputs)[mask], inputs.column_hm[mask], inputs.own_craton_m[mask]
+        )
+        pulling[mask] = buoyancy > 0.0
+    return pulling
+
+
+def slab_drag_nodes(plate, inputs: BoundaryForceInputs, subducting_mask: np.ndarray) -> np.ndarray:
+    """The nodes sunk-slab drag acts on: today's form drags every subducting node; B.2 (`trench_normal`) drags only
+    the ones that pull, as RFC 0021 specifies ("over nodes with positive pull"), since a node without a slab has
+    nothing to shear against the mantle. Pass the result where the solve passes `subducting_mask` to the drag."""
+    if inputs.forms.slab_drag != "trench_normal":
+        return subducting_mask
+    return pulling_nodes(plate, inputs, subducting_mask)
+
+
 def slab_pull_force_n(plate, inputs: BoundaryForceInputs, subducting_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
     """Per subducting node (`subducting_mask`), the magnitude of its slab pull in N: its
     column's buoyancy (`column_buoyancy_pa`) times `SUBDUCTION_LSINK_M` and its stretch of
@@ -748,7 +770,7 @@ def slab_drag_torque(plate, inputs: BoundaryForceInputs, subducting_mask: np.nda
     """`slab_drag_coefficient_matrix` evaluated at the plate's current `omega` (`-K @ omega`)
     -- a standalone entry point for tests / callers that just want the resistive torque.
     The coupled solve assembles the matrix directly instead of evaluating this helper."""
-    return -slab_drag_coefficient_matrix(inputs, subducting_mask, spacing_rad) @ plate.omega
+    return -slab_drag_coefficient_matrix(inputs, slab_drag_nodes(plate, inputs, subducting_mask), spacing_rad) @ plate.omega
 
 
 def ridge_push_force_vectors_n(plate, inputs: BoundaryForceInputs, divergent_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
@@ -1027,7 +1049,7 @@ def gather_per_node_force_field(
         points_xyz=np.asarray(inputs.own_points, dtype=float),
         areas_m2=areas_m2,
         slab_pull_n=slab_pull_force_vectors_n(plate, inputs, subducting_mask, spacing_rad),
-        slab_drag_n=slab_drag_force_vectors_n(inputs, subducting_mask, spacing_rad, plate.omega),
+        slab_drag_n=slab_drag_force_vectors_n(inputs, slab_drag_nodes(plate, inputs, subducting_mask), spacing_rad, plate.omega),
         ridge_push_n=ridge_push_force_vectors_n(plate, inputs, divergent_mask, spacing_rad),
         basal_drag_n=basal_drag_force_vectors_n(plate, world, spacing_rad),
         contact_drag_n=contact_drag_force_vectors_n(
@@ -1319,7 +1341,7 @@ def solve_plates_quasistatic(world, *, diagnostics: dict | None = None) -> dict[
         collision_mask = continental_contact_mask(plate, inputs, contested)
         subducting = subducting_boundary_mask(plate, inputs, reach_rad)
         basal_b, local_drag = basal_drag_coefficients(plate, world, spacing_rad)
-        local_drag += slab_drag_coefficient_matrix(inputs, subducting, spacing_rad)
+        local_drag += slab_drag_coefficient_matrix(inputs, slab_drag_nodes(plate, inputs, subducting), spacing_rad)
         drag[start : start + 3, start : start + 3] = local_drag
         slab_pull = slab_pull_torque(plate, inputs, subducting, spacing_rad)
         ridge_push = ridge_push_torque(plate, inputs, divergent, spacing_rad)
