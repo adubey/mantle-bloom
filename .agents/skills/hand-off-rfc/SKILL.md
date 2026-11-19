@@ -158,7 +158,7 @@ dropped something.
 3. **Otherwise create a new sub-issue** with [`create-issue`](../create-issue/SKILL.md),
    with `--parent <tracking>`, add it to the tracking checklist in dependency order, and put
    it on the project board per [`project-management`](../project-management/SKILL.md#creating-an-issue)
-   as `Ready` (the owner chose `Ready` for every handoff issue, even one waiting on a PR merge. That is a deliberate exception to the `On Hold` rule in `project-management`, so don't "fix" it). Use the handoff text as the body, starting with `## Handoff`. Follow the RFC
+   as `Ready`, or `On Hold` if it waits on a ready PR's merge (the prerequisite rule in `project-management`). Whoever finds the PR merged moves it to `Ready`, or `In Progress` if starting. Use the handoff text as the body, starting with `## Handoff`. Follow the RFC
    lifecycle's rules about which issues are eligible; if the RFC isn't accepted or a gate
    hasn't passed, the handoff is for that gate or revision step, not for implementation.
 4. If your own issue is unfinished, leave it open and say in its comments that the work
