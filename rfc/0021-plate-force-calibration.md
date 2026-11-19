@@ -342,10 +342,16 @@ world took 5–6 minutes and about 0.5 GB on the rift-line method, as on the gre
        because the blocked-edge term is taken as the remainder, so they check nothing.
 2. **G1: one correction at a time.** Each of B.1, B.2, B.3 and B.4 (a and b) alone, then all adopted ones
    together, brake on and brake off, on the five stage 1 worlds #955 scored, as causal probes with predictions posted before
-   each run. A correction is adopted if it moves its own measure the predicted way (B.1: ridge push into T5's
-   band; B.2: slab work positive; B.3: pull per metre up; B.4: gated share of closing down-going length up) and
+   each run. A correction is adopted if it moves its own measure the predicted way and
    breaks no invariant (the solver's residual stays under 10⁻⁹ of its driving torque; the solver converges; ledgers
-   close). G1 reports each one's
+   close). The tests, sharpened by the owner on 2026-11-18 after G0's baseline already met two of the first ones
+   (net slab work +0.5%, 69% of the closing down-going length pulling, on the five stage 1 worlds; #975):
+   - B.1: T5 within 20% of the column calculation alone (about 5×10¹¹ N/m), and in T5's band with B.3.
+   - B.2: net slab work at least +20% of pull's power.
+   - B.3: pull per metre of subducting length up at least 30%.
+   - B.4: closing down-going length that pulls, ramp-weighted, at least 90%.
+
+   G1 reports each one's
    effect on speed, T2 and the split rate, and what alternative D would change in bathymetry and land fraction.
    - **Best-case check.** G1 then runs the combined adopted corrections, brake off, at the four most
      slab-favourable corners of G2's ranges: `ASTHENOSPHERE_VISCOSITY_PA_S` 2×10¹⁹ and `f_pull` 1.0, with
