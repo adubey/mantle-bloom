@@ -888,9 +888,10 @@ since climate.py runs *before* this module each step).
   raw demand and unapplied demand are logged and booked
   in the erosion budget. The basal yield-strength and frictional-heat inputs still use the
   step-opening mobile-cover field; erosion changes those basal inputs on the following step.
-  If a node becomes ocean during the march, the final ocean mask can further limit its
-  transfer, and the erosion budget records that unapplied demand. Glacier abrasion is
-  transferred before other subaerial erosion so
+  The working bed includes surface lowering between intervals, but its isostatic response is
+  deferred until the normal end-of-step material update. Each interval's ocean mask gates its
+  abrasion before that cut changes the working bed or enters the accumulated transfer.
+  Glacier abrasion is transferred before other subaerial erosion so
   the same headroom is not consumed twice. It is exempt from the shared neighbor-drop cap.
   Two settle tests run side by side, but neither ends the D3 march (#842; `settle_test` in the
   log says which).
