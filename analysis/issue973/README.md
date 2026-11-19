@@ -10,6 +10,40 @@ Before replaying, expect the integrated abrasion total at 0.25 Myr and 1 Myr to 
 
 Controls: Cook et al. (2020), coefficient 1e-4 m/yr, exponent 0.65, glacier_erosion_multiplier = 1, ice ages disabled, same 10 Myr horizon and deterministic save for each paired run. Use each save at 0.25 Myr × 40 steps and 1 Myr × 10 steps. D2 baseline runs use origin/main; D3 runs use the issue branch. Do not tune coefficients after seeing these results.
 
+### Post-merge validation preregistration (2026-11-19)
+
+The four D3 arms below will rerun on the merged implementation (`aa217ab4`, PR #976)
+because the prior full D3 table predates the shared-headroom, craton-resistance and ocean-mask
+corrections. The D2 controls remain the previously recorded runs at `382ddccd`; no D2 rerun is
+planned. Before any arm runs, the gate script is instrumented to record each step's march
+interval count as well as its existing measures. That diagnostic-only change does not alter
+the simulation model.
+
+| Save | SHA-256 | Step schedule | Arms |
+|---|---|---|---|
+| `mantle-bloom-seed649658380-6400000y.bloom` | `06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b6b31131f` | 0.25 Myr × 40; 1 Myr × 10 | D3 Cook2020 |
+| `mantle-bloom-seed997271774-87400000y.bloom` | `07971ee25cdbc364cd887ea8f4fffc69ceed49b1933d09ea38e3864ea95328b8` | 0.25 Myr × 40; 1 Myr × 10 | D3 Cook2020 |
+
+Controls are `K_G = 1e-4`, exponent `0.65`, glacier and flatten multipliers `1`, ice-age
+period `0`, and 10 Myr per arm. D3 uses the merged `trend-1k` march. Existing D2 control
+rows use the fixed-250 yr march at `382ddccd`, the same saves, step schedules and horizon.
+Each save is deterministic; there is one run per arm, with no replicate planned unless a
+result lands close enough to a threshold that machine or numerical variation could change
+the decision.
+
+Primary metric: for each save, the quarter-to-annual applied-abrasion gap is
+`(applied_0.25Myr - applied_1Myr) / applied_0.25Myr`. The expected direction is below the
+G3 Cook-law gaps (66.5% and 70.4%). The existing working target is <20% on each save; >50%
+means D3 has not removed the dominant step-size sensitivity. A 20–50% result is partial and
+will be reported without claiming the working target passed. Secondary measures are raw and
+applied abrasion, applied/raw, flattening volume, march-to-transfer difference, closing ice
+area/volume and land volume. Runtime, peak RSS and total march intervals will be reported
+against the existing D2 control rows. No coefficients or thresholds will be tuned after
+results are observed.
+
+This preregistration is committed before the replays. Full arm JSON and checksums remain in
+the private capture directory; only compact per-arm summaries will be checked in.
+
 | Save | Age | SHA-256 |
 |---|---:|---|
 | mantle-bloom-seed649658380-6400000y.bloom | 6.4 Myr | 06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b6b31131f |
