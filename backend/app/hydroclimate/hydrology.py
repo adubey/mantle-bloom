@@ -2423,7 +2423,7 @@ def _march_glacier(
         substrate_cut = substrate_take * craton_keep
         interval_abrasion = cover_cut + substrate_cut
         cover_remaining -= cover_cut
-        substrate_headroom -= substrate_take
+        substrate_headroom -= substrate_cut
         abrasion_depth += interval_abrasion
         working_elevation -= interval_abrasion
         substeps += 1
