@@ -17,10 +17,13 @@ Controls: Cook et al. (2020), coefficient 1e-4 m/yr, exponent 0.65, glacier_eros
 
 ### Results
 
-**Superseded by the post-review correction below.** These full-run numbers were captured
-before the land/ocean mask in material transfer was corrected; the inverted mask zeroed
-applied abrasion on land. The D3 rows therefore do not represent this implementation and
-must not be used to close the G3 gate. The D2 control rows remain valid.
+**Superseded by the post-review correction below.** These full-run numbers were captured at
+`ff61e09f`, before the review-driven revision of the march/transfer material accounting. The
+current branch now reserves abrasion against one shared Hc pool and transfers the same
+material, so those D3 numbers do not measure the current implementation and cannot close G3.
+The land/ocean-mask inversion and double craton resistance were introduced in later review
+fixes and corrected afterward; neither was present in the `ff61e09f` replay. The D2 control
+rows remain valid.
 
 All eight preregistered 10 Myr replays completed: D2 baseline at `origin/main` (`382ddccd`)
 and D3 at implementation commit `ff61e09f`, for each save at 0.25 Myr × 40 and 1 Myr × 10.
