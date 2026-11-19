@@ -31,6 +31,7 @@ held-out and reserve seeds and RFC 0021's held-out seeds are refused unless ``--
 
 import argparse
 import json
+import math
 import subprocess
 import sys
 import time
@@ -72,6 +73,8 @@ def apply_module_knobs(knobs: dict) -> None:
         module_name, _, name = dotted.partition(".")
         if name not in MODULE_KNOBS.get(module_name, ()):
             sys.exit(f"{dotted!r} is not a module knob; known: {MODULE_KNOBS}")
+        if not math.isfinite(float(value)) or float(value) <= 0.0:
+            sys.exit(f"{dotted!r} must be a positive, finite number, got {value!r}")
         setattr(importlib.import_module(f"app.{module_name}"), name, float(value))
 
 
@@ -119,12 +122,14 @@ def run_one(args: argparse.Namespace) -> None:
     if args.seed in refused_seeds() and not args.heldout:
         sys.exit(f"seed {args.seed} is held out (G2 preregistration or RFC 0021); only G3 may run it, with --heldout")
     setting = load_setting(args.settings, args.setting)
-    apply_module_knobs(setting["module_knobs"])
     out = args.out
     out.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
     world = d1.make_world(SimpleNamespace(seed=args.seed, node_density=1.0, world_knobs=setting["world_knobs"],
                                           split_method=setting["split_method"], params=setting["params"]))
+    # After generation: the generation-time solve dates the ocean floor, and a force-constant override must not change
+    # the starting world a seed gives (#979 review). Each run is its own process, so it never leaks into another.
+    apply_module_knobs(setting["module_knobs"])
     recorder = rec.Recorder(rift_damage.runtime(world).params.eps_cand) if setting["split_method"] == "rift_lines" else None
     radius_cm = lithosphere.PLANET_RADIUS_M * 100.0
     samples, speeds = [], []
@@ -164,12 +169,24 @@ def run_one(args: argparse.Namespace) -> None:
     print(json.dumps({"seed": args.seed, "splits": len(splits), "step_s": round(step_s)}), flush=True)
 
 
+def check_cached_run(path: Path, args: argparse.Namespace) -> None:
+    """Refuse to reuse a finished run made for a different experiment: the step length, the sampling cadence or the
+    resolved setting (world and module knobs). Skipping on the directory name alone let a 0.5 Myr request pass on a
+    1 Myr result (#979 review)."""
+    saved = json.loads(path.read_text())
+    requested = {"step_myr": args.step_myr, "every": args.every, "setting": load_setting(args.settings, args.setting)}
+    different = [key for key, value in requested.items() if saved.get(key) != json.loads(json.dumps(value))]
+    if different:
+        sys.exit(f"{path.parent} holds a run with a different {', '.join(different)}; use another --out or move it aside")
+
+
 def queue(args: argparse.Namespace) -> None:
     seeds = args.seeds or json.loads(args.seeds_file.read_text())["seeds"]
     failed = []
     for seed in seeds:
         target = args.out / args.setting / str(seed)
         if (target / "run.json").exists():
+            check_cached_run(target / "run.json", args)
             continue
         command = [sys.executable, __file__, "run", "--settings", str(args.settings), "--setting", args.setting, "--seed", str(seed),
                    "--out", str(target), "--years", str(args.years), "--step-myr", str(args.step_myr), "--every", str(args.every)]
