@@ -116,7 +116,7 @@ Run from the repo root (or worktree root).
   `explore-problem`, `create-issue`, `start-issue`, `worktree`,
   `start-rfc`, `continue-rfc`, `edit-rfc`, `project-management`, `compute-budget`,
   `replay-ab`, `b2-saves`, `peer-review`, `pre-push-check`, `rfc-authoring`, `rfc-review`,
-  `complete-rfc`, `documentation`.
+  `complete-rfc`, `hand-off-rfc`, `pick-up-rfc`, `documentation`.
 
 ## Conventions
 

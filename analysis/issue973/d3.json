@@ -1,0 +1,184 @@
+{
+  "status": "superseded",
+  "issue": 973,
+  "law": {
+    "name": "Cook et al. 2020",
+    "coefficient_m_per_yr": 0.0001,
+    "exponent": 0.65,
+    "multiplier": 1.0
+  },
+  "horizon_myr": 10.0,
+  "step_schedules_myr": {
+    "quarter": 0.25,
+    "annual": 1.0
+  },
+  "working_target_step_gap_fraction": 0.2,
+  "failure_threshold_step_gap_fraction": 0.5,
+  "controls": {
+    "ice_ages": "disabled",
+    "d2_baseline": "origin/main",
+    "d3_branch": "codex/issue-973-rfc0015-d3-ice-march"
+  },
+  "saves": [
+    {
+      "name": "mantle-bloom-seed649658380-6400000y.bloom",
+      "sha256": "06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b6b31131f"
+    },
+    {
+      "name": "mantle-bloom-seed997271774-87400000y.bloom",
+      "sha256": "07971ee25cdbc364cd887ea8f4fffc69ceed49b1933d09ea38e3864ea95328b8"
+    }
+  ],
+  "results": [
+    {
+      "save_prefix": "mantle-bloom-seed649658380-",
+      "arms": {
+        "d2": {
+          "quarter": {
+            "step_myr": 0.25,
+            "steps": 40,
+            "elapsed_s": 331.38,
+            "peak_rss_gb": 1.09,
+            "raw_abrasion_km3": 4217.017543124195,
+            "applied_abrasion_km3": 17274.44710103556,
+            "applied_raw_ratio": 4.096365956362067,
+            "flatten_km3": 1982805.9558516815,
+            "closing_land_ice_area_km2": 2920496.0229161526,
+            "closing_land_volume_km3": 88616717.18031022,
+            "capture_sha256": "1d8a8471fec53fb1a3ad53982fbe641cc79bc888d617c34a974c71b15b545f52"
+          },
+          "annual": {
+            "step_myr": 1.0,
+            "steps": 10,
+            "elapsed_s": 81.97,
+            "peak_rss_gb": 1.23,
+            "raw_abrasion_km3": 4384.142535909923,
+            "applied_abrasion_km3": 17303.964729606578,
+            "applied_raw_ratio": 3.946943920703336,
+            "flatten_km3": 1650973.9730168793,
+            "closing_land_ice_area_km2": 2951059.238668562,
+            "closing_land_volume_km3": 89617656.9588187,
+            "capture_sha256": "66f891435282e84d9506c43e298dbcf5011e7ae43ab59a43cef8bd69bb965adf"
+          }
+        },
+        "d3": {
+          "quarter": {
+            "step_myr": 0.25,
+            "steps": 40,
+            "elapsed_s": 1759.59,
+            "peak_rss_gb": 1.05,
+            "raw_abrasion_km3": 7054389.040780257,
+            "applied_abrasion_km3": 7054388.961734203,
+            "applied_raw_ratio": 0.9999999887947697,
+            "flatten_km3": 1980694.0710739738,
+            "closing_land_ice_area_km2": 2948871.4782432597,
+            "closing_land_volume_km3": 88442665.85426527,
+            "capture_sha256": "1aa49c61aec749be2bbd2db6ba1fa41d7d6b332c678e9a818a9ffb8958f51783"
+          },
+          "annual": {
+            "step_myr": 1.0,
+            "steps": 10,
+            "elapsed_s": 1138.8,
+            "peak_rss_gb": 1.03,
+            "raw_abrasion_km3": 5932272.403951039,
+            "applied_abrasion_km3": 5932272.325029031,
+            "applied_raw_ratio": 0.9999999866961592,
+            "flatten_km3": 2036031.3471421935,
+            "closing_land_ice_area_km2": 2755594.4192808247,
+            "closing_land_volume_km3": 89406671.52296081,
+            "capture_sha256": "977c33c9ebb62776869278f8fdcba9372d86b1f1ee537690e1d16becacbc2b77"
+          }
+        }
+      }
+    },
+    {
+      "save_prefix": "mantle-bloom-seed997271774-",
+      "arms": {
+        "d2": {
+          "quarter": {
+            "step_myr": 0.25,
+            "steps": 40,
+            "elapsed_s": 623.88,
+            "peak_rss_gb": 1.5,
+            "raw_abrasion_km3": 169373.9752204698,
+            "applied_abrasion_km3": 457849.2931575484,
+            "applied_raw_ratio": 2.703185613737752,
+            "flatten_km3": 16240047.336704092,
+            "closing_land_ice_area_km2": 13096410.974549383,
+            "closing_land_volume_km3": 256418476.71867135,
+            "capture_sha256": "9fb8aa1302dd78501060d04a719aa061810b16f6779d647ed11e32b3a8c05816"
+          },
+          "annual": {
+            "step_myr": 1.0,
+            "steps": 10,
+            "elapsed_s": 259.18,
+            "peak_rss_gb": 1.58,
+            "raw_abrasion_km3": 177328.36465063438,
+            "applied_abrasion_km3": 349649.1399498226,
+            "applied_raw_ratio": 1.9717609229560544,
+            "flatten_km3": 12203414.971144842,
+            "closing_land_ice_area_km2": 14051225.445925454,
+            "closing_land_volume_km3": 260529461.232778,
+            "capture_sha256": "140db1c9f83291236b4a4eb3823dbb59332af03f71325d0ee8e2e8495c42a77a"
+          }
+        },
+        "d3": {
+          "quarter": {
+            "step_myr": 0.25,
+            "steps": 40,
+            "elapsed_s": 2262.45,
+            "peak_rss_gb": 1.36,
+            "raw_abrasion_km3": 135680425.11283946,
+            "applied_abrasion_km3": 100053492.65837155,
+            "applied_raw_ratio": 0.7374202474318713,
+            "flatten_km3": 14105498.776780603,
+            "closing_land_ice_area_km2": 9737451.892078416,
+            "closing_land_volume_km3": 255421127.30988312,
+            "capture_sha256": "f9d3cad34d562af1f74d70d69f02c9fc62e18791f03c5012485032ca13a0a64a"
+          },
+          "annual": {
+            "step_myr": 1.0,
+            "steps": 10,
+            "elapsed_s": 1598.62,
+            "peak_rss_gb": 1.42,
+            "raw_abrasion_km3": 99720996.56330597,
+            "applied_abrasion_km3": 65953273.43478022,
+            "applied_raw_ratio": 0.6613780017020893,
+            "flatten_km3": 10786491.464418907,
+            "closing_land_ice_area_km2": 12238086.220349312,
+            "closing_land_volume_km3": 259873597.55625588,
+            "capture_sha256": "0b36a7a646f4b38be3646de040e858cfef227133c88c520768455835749a64d6"
+          }
+        }
+      }
+    }
+  ],
+  "implementation_commit": "ff61e09fb2d43302fd1dd07c438cb3c1afb4bf55",
+  "baseline_commit": "382ddccd",
+  "interpretation": {
+    "d3_quarter_vs_annual_gap_fraction": {
+      "seed649658380": 0.1590664521537511,
+      "seed997271774": 0.34081987862257945
+    },
+    "working_target_met_saves": [
+      "seed649658380"
+    ],
+    "failure_threshold_exceeded_saves": [],
+    "prior_g3_cook_gap_fraction_range": [
+      0.66,
+      0.73
+    ],
+    "runtime_slowdown_d3_over_d2": {
+      "seed649658380": {
+        "annual": 13.892887641820177,
+        "quarter": 5.309885931558935
+      },
+      "seed997271774": {
+        "annual": 6.1679913573578204,
+        "quarter": 3.6264185420273125
+      }
+    }
+  },
+  "superseded_reason": "The implementation_commit had an inverted land/ocean mask in material transfer, zeroing land abrasion. D3 replay results are invalid; D2 control rows remain valid. Subsequent review found the march and transfer treated cover/headroom as separate pools and that disabling the march removed abrasion; those were fixed after the smoke capture.",
+  "superseded_by_commit": "fb0c8772"
+}

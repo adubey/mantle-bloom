@@ -2496,10 +2496,9 @@ def test_d1_precipitation_partition_sums_to_p():
 
 
 @pytest.mark.usefixtures("march_glaciers")
-def test_d2_march_hold_never_books_more_loss_than_exists():
-    # A sheet that melts away early must not keep booking its transient melt over the
-    # held remainder: held losses are clamped to the available ice, so the residual
-    # stays ~zero instead of going deeply negative (#806 review).
+def test_d3_march_continues_after_the_ice_sheet_melts_away():
+    # D3 continues the full time integration after the ice sheet melts away; there is
+    # no held remainder whose transient losses could overdraw the opening ice (#806).
     ice_sheet.MARCH_LOG.clear()
     theta = 0.002 * np.arange(12)
     elevation = 500.0 - 30.0 * np.arange(12)
@@ -2515,7 +2514,8 @@ def test_d2_march_hold_never_books_more_loss_than_exists():
     assert abs(ledger.residual_m3) <= 0.01 * available
     entry = ice_sheet.MARCH_LOG[-1]
     assert entry["settled"] is True
-    assert entry["held_years"] > 0.0
+    assert entry["marched_years"] == pytest.approx(250_000.0)
+    assert entry["held_years"] == 0.0
 
 
 @pytest.mark.usefixtures("march_glaciers")
@@ -2593,6 +2593,72 @@ def test_march_carries_state_across_three_substeps():
     assert ledger.accumulation_m3 > 0.0
     assert abs(ledger.residual_m3) <= 1e-3 * ledger.accumulation_m3
     assert float(np.dot(fields.glacier_depth, _node_areas(world))) == pytest.approx(ledger.closing_m3)
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_march_integrates_abrasion_and_feeds_the_changed_bed_to_the_next_interval(monkeypatch):
+    from app.hydroclimate import glacier_erosion
+    from app import cratons, lithosphere
+
+    world = _flow_line_march_world()
+    world.simulate_glacier_march = True
+    world.glacier_erosion_multiplier = 10_000.0
+    target = 0
+    plate = world.plates[0]
+    hc = plate.collect("crustal_thickness_m")
+    cover = plate.collect("mobile_cover_m")
+    craton = plate.collect("craton_crust_m")
+    hc[target] = 1000.0
+    cover[target] = 400.0
+    craton[target] = cratons.CRATON_FULL_STRENGTH_HC_M
+    plate.set_fields_on_plate(
+        crustal_thickness_m=hc, mobile_cover_m=cover, craton_crust_m=craton,
+    )
+    original_step_ice = ice_sheet.step_ice
+    beds = []
+    interval_sliding = []
+    interval_ocean = []
+
+    def observe_step_ice(*args, **kwargs):
+        beds.append(np.asarray(args[3]).copy())
+        interval_ocean.append(np.asarray(args[9]).copy())
+        result = original_step_ice(*args, **kwargs)
+        # The flow-line's natural bed is frozen. Set a controlled physical sliding field
+        # so this test exercises interval integration and bed feedback directly.
+        result[2].sliding_speed_m_per_yr[:] = 0.0
+        result[2].sliding_speed_m_per_yr[target] = 10.0
+        interval_sliding.append(result[2].sliding_speed_m_per_yr.copy())
+        return result
+
+    monkeypatch.setattr(ice_sheet, "step_ice", observe_step_ice)
+    fields = hydrology.compute_hydrology(
+        world, np.full(12, 800.0), np.full(12, -3.0), years=750,
+    )
+
+    assert len(beds) == 3
+    cover_remaining = np.zeros(len(hc))
+    cover_remaining[target] = 400.0
+    substrate_headroom = np.zeros(len(hc))
+    substrate_headroom[target] = 1000.0 - lithosphere.MIN_CRUSTAL_THICKNESS_M - 400.0
+    craton_keep = np.ones(len(hc))
+    craton_keep[target] = 1.0 - cratons.CRATON_EROSION_RESISTANCE
+    expected_intervals = []
+    for speed, ocean in zip(interval_sliding, interval_ocean, strict=True):
+        raw = np.where(ocean, 0.0, glacier_erosion.abrasion_depth_m(
+            speed, 250.0, world.glacier_erosion_multiplier,
+        ))
+        cover_cut = np.minimum(raw, cover_remaining)
+        substrate_take = np.minimum(np.clip(raw - cover_cut, 0.0, None), substrate_headroom)
+        substrate_cut = substrate_take * craton_keep
+        expected_intervals.append(cover_cut + substrate_cut)
+        cover_remaining -= cover_cut
+        substrate_headroom -= substrate_cut
+    expected_total = np.sum(expected_intervals, axis=0)
+    np.testing.assert_allclose(fields.ice.abrasion_depth_m, expected_total)
+    np.testing.assert_allclose(beds[1], beds[0] - expected_intervals[0])
+    np.testing.assert_allclose(beds[2], beds[1] - expected_intervals[1])
+    assert np.any(fields.ice.abrasion_depth_m > 0.0)
+    assert 400.0 < fields.ice.abrasion_depth_m[target] <= 500.0
 
 
 @pytest.mark.usefixtures("march_glaciers")
@@ -2747,16 +2813,16 @@ def _march_with(monkeypatch, cost, years, world=None):
 
 
 @pytest.mark.usefixtures("march_glaciers")
-def test_march_substep_cap_holds_the_remainder(monkeypatch):
-    # #822 option 1: an unsettled march stops at the cap and holds the rest of the step
-    # on its window's mean flows, like a settled hold.
+def test_march_substep_cap_keeps_integrating_for_d3(monkeypatch):
+    # D3 treats max_substeps as a cost diagnostic; it cannot hold the remaining time
+    # because abrasion must keep changing the bed used by subsequent ice solves.
     fields, entry = _march_with(monkeypatch, ice_sheet.MarchCost(max_substeps=6), 10_000)
     assert entry["capped"] is True
     assert entry["settled"] is False
-    assert entry["substeps"] == 6
-    assert entry["marched_years"] == pytest.approx(1_500.0)
-    assert entry["held_years"] == pytest.approx(8_500.0)
-    # Held ice doesn't move: the closing ice is the capped substep's.
+    assert entry["substeps"] == 40
+    assert entry["marched_years"] == pytest.approx(10_000.0)
+    assert entry["held_years"] == 0.0
+    # The closing ice is the final integrated interval's state.
     assert float(np.dot(fields.glacier_depth, _node_areas(_flow_line_march_world()))) == pytest.approx(
         fields.ice.ledger.closing_m3
     )
@@ -2764,15 +2830,15 @@ def test_march_substep_cap_holds_the_remainder(monkeypatch):
 
 
 @pytest.mark.usefixtures("march_glaciers")
-def test_march_substep_cap_endpoint_closes_its_ledger(monkeypatch):
-    # #822 option 1, endpoint fill: one backward-Euler substep over the remainder after
-    # the cap, so the step is fully marched and the ice ledger closes like D2's.
+def test_march_substep_cap_endpoint_setting_keeps_d3_interval_size(monkeypatch):
+    # D3 does not replace all remaining intervals with a single endpoint solve, regardless
+    # of the D2 cap_fill setting.
     fields, entry = _march_with(monkeypatch, ice_sheet.MarchCost(max_substeps=6, cap_fill="endpoint"), 10_000)
     assert entry["capped"] is True
-    assert entry["substeps"] == 7
+    assert entry["substeps"] == 40
     assert entry["marched_years"] == pytest.approx(10_000.0)
     assert entry["held_years"] == 0.0
-    assert entry["max_substep_years"] == pytest.approx(8_500.0)
+    assert entry["max_substep_years"] == pytest.approx(250.0)
     ledger = fields.ice.ledger
     assert ledger.accumulation_m3 > 0.0
     assert abs(ledger.residual_m3) <= 1e-3 * ledger.accumulation_m3
@@ -2949,25 +3015,30 @@ def test_breach_surge_accum_leaves_no_flux_stranded_on_flow_cycles():
 
 
 @pytest.mark.usefixtures("march_glaciers")
-def test_real_march_settles_by_recurrence_on_the_flow_line_cycle(monkeypatch):
-    # With the pair test off (tolerance 0), the fixture falls into an exact period-3 cycle
-    # that only the recurrence test sees; the rest of the step is held (#839 review).
+def test_real_march_keeps_integrating_after_recurrence_is_detected(monkeypatch):
+    # Isolate the recurrence diagnostic from D3 bed feedback, which deliberately breaks
+    # the fixture's exact period-3 cycle when abrasion is active. The separate abrasion
+    # integration test verifies that the working bed changes while the march continues.
     monkeypatch.setattr(ice_sheet, "MARCH_SETTLE_TOLERANCE", 0.0)
-    _, entry = _march_with(monkeypatch, ice_sheet.MarchCost(recurrence=True), 200_000)
-    assert entry["settled"] is True and entry["settle_test"] == "recurrence"
+    world = _flow_line_march_world()
+    world.glacier_erosion_multiplier = 0.0
+    _, entry = _march_with(monkeypatch, ice_sheet.MarchCost(recurrence=True), 200_000, world=world)
+    assert entry["settle_test"] == "recurrence"
     assert entry["period"] == 3
-    assert entry["held_years"] > 0.0
-    assert entry["marched_years"] + entry["held_years"] == pytest.approx(200_000.0)
+    assert entry["marched_years"] == pytest.approx(200_000.0)
+    assert entry["held_years"] == 0.0
 
 
 @pytest.mark.usefixtures("march_glaciers")
-def test_real_march_holds_on_the_trend_test(monkeypatch):
+def test_real_march_keeps_integrating_after_trend_is_detected(monkeypatch):
     monkeypatch.setattr(ice_sheet, "MARCH_SETTLE_TOLERANCE", 0.0)
     fields, entry = _march_with(monkeypatch, ice_sheet.MarchCost(trend=True, trend_grow=False), 200_000)
-    assert entry["settled"] is True and entry["settle_test"] == "trend"
-    assert entry["period"] is None and entry["trend_changes"]
-    assert entry["marched_years"] + entry["held_years"] == pytest.approx(200_000.0)
-    # The held ice is the last substep's, so the ledger's closing ice is the march's final ice.
+    assert entry["settle_test"] == "trend"
+    assert entry["trend_changes"]
+    assert entry["period"] is None
+    assert entry["marched_years"] == pytest.approx(200_000.0)
+    assert entry["held_years"] == 0.0
+    # The ledger's closing ice is the march's final interval state.
     assert fields.ice.ledger.closing_m3 == pytest.approx(entry["volume_path_km3"][-1] * 1e9, rel=1e-2)
 
 

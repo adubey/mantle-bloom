@@ -19,9 +19,8 @@ Replays `--myr` from the save in `--step-years` steps and records, at every chec
 
 Issue #368 adds the mass-balance scaling probe. `--accumulation-scale` multiplies input
 precipitation (the whole water cycle, not just snowfall), `--melt-scale` multiplies both
-degree-day factors, and
-`--abrasion-coefficient` replaces GLACIER_ABRASION_COEFFICIENT; `--meltwater-density` is
-kept for CLI compatibility but is a no-op now that meltwater always converts by mass
+degree-day factors, and `--abrasion-coefficient` replaces D3's physical K_G in m/yr;
+`--meltwater-density` is kept for CLI compatibility but is a no-op now that meltwater always converts by mass
 (RFC 0015 D1). The knobs are patched in-process, so the defaults reproduce the backend
 unchanged. Each window also reports routed meltwater, mean discharge into the ocean, and
 how often (and on how many nodes) the GLACIER_MAX_DEPTH_M guard bit:
@@ -53,14 +52,16 @@ def add_scaling_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--meltwater-density", action="store_true")
 
 
-def scale_mass_balance(args: argparse.Namespace, hydrology, ice_sheet, erosion) -> dict:
+def scale_mass_balance(args: argparse.Namespace, hydrology, ice_sheet, erosion, glacier_erosion=None) -> dict:
     """Patch the glacier mass-balance knobs for issue #368's probe; returns what was used.
     Post-D1 the knobs are physical: snowfall has no rate constant (it is input
     precipitation, scaled at the tap below), and melt scales both degree-day factors.
     `--meltwater-density` is no longer patched: meltwater always converts by mass now."""
     ice_sheet.DDF_SNOW_MM_WATER_PER_DAY_K *= args.melt_scale
     ice_sheet.DDF_ICE_MM_WATER_PER_DAY_K *= args.melt_scale
-    if args.abrasion_coefficient is not None:
+    if args.abrasion_coefficient is not None and glacier_erosion is not None:
+        glacier_erosion.GLACIAL_ABRASION_COEFFICIENT = args.abrasion_coefficient
+    elif args.abrasion_coefficient is not None:
         erosion.GLACIER_ABRASION_COEFFICIENT = args.abrasion_coefficient
     return {
         "accumulation_scale": args.accumulation_scale,
@@ -68,7 +69,11 @@ def scale_mass_balance(args: argparse.Namespace, hydrology, ice_sheet, erosion) 
         "meltwater_density": "always-by-mass",
         "ddf_snow_mm_water_per_day_k": ice_sheet.DDF_SNOW_MM_WATER_PER_DAY_K,
         "ddf_ice_mm_water_per_day_k": ice_sheet.DDF_ICE_MM_WATER_PER_DAY_K,
-        "glacier_abrasion_coefficient": erosion.GLACIER_ABRASION_COEFFICIENT,
+        "glacier_abrasion_coefficient": (
+            glacier_erosion.GLACIAL_ABRASION_COEFFICIENT
+            if glacier_erosion is not None
+            else erosion.GLACIER_ABRASION_COEFFICIENT
+        ),
     }
 
 
@@ -79,8 +84,42 @@ def import_ice_sheet(args: argparse.Namespace, hydrology, erosion, result: dict)
         from app.hydroclimate import ice_sheet  # noqa: E402
     except ImportError:
         return None
-    result["mass_balance"] = scale_mass_balance(args, hydrology, ice_sheet, erosion)
+    try:
+        from app.hydroclimate import glacier_erosion  # noqa: E402
+    except ImportError:
+        glacier_erosion = None
+    result["mass_balance"] = scale_mass_balance(args, hydrology, ice_sheet, erosion, glacier_erosion)
     return ice_sheet
+
+
+def glacial_erosion_km3(res, hydro, years, world, plates_mod, line_spacing_rad, erosion, prior_glacier):
+    areas = plates_mod.collect_all_accounting_areas_m2(
+        hydro.plates_in_order, line_spacing_rad(world.node_density)
+    )
+    land = ~hydro.is_ocean
+    budget = res.budget or {}
+    integrated_raw = getattr(hydro.ice, "raw_abrasion_depth_m", None) if hydro.ice is not None else None
+    if "glacial_erosion_raw_m3" in budget:
+        raw_km3 = budget["glacial_erosion_raw_m3"] / 1e9
+        raw_method = "march-integrated-demand"
+    elif integrated_raw is not None:
+        raw = np.asarray(integrated_raw, dtype=float)
+        raw_km3 = float(np.sum(raw[land] * areas[land])) / 1e9
+        raw_method = "march-integrated-demand"
+    elif hasattr(erosion, "GLACIER_ABRASION_COEFFICIENT"):
+        sliding = hydro.ice.sliding_speed_m_per_yr if hydro.ice is not None else np.zeros(len(areas))
+        dt_myr = years / 1e6
+        raw = erosion.GLACIER_ABRASION_COEFFICIENT * world.glacier_erosion_multiplier * np.power(sliding, erosion.GLACIER_ABRASION_EXPONENT) * dt_myr
+        raw_km3 = float(np.sum(raw[land] * areas[land])) / 1e9
+        raw_method = "legacy-endpoint-estimate-not-march-integrated"
+    else:
+        dt_myr = years / 1e6
+        ice_factor = np.clip(prior_glacier / erosion.GLACIER_EROSION_REFERENCE_DEPTH_M, 0.0, erosion.GLACIER_EROSION_MAX_FACTOR)
+        raw = erosion.GLACIER_EROSION_COEFFICIENT * world.glacier_erosion_multiplier * res.slope * ice_factor * dt_myr
+        raw_km3 = float(np.sum(raw[land] * areas[land])) / 1e9
+        raw_method = "legacy-depth-law"
+    applied = budget.get("glacial_erosion_m3")
+    return raw_km3, None if applied is None else applied / 1e9, raw_method
 
 
 def main() -> None:
@@ -123,19 +162,6 @@ def main() -> None:
 
         ice_sheet.step_ice = timed_step_ice
 
-    def glacial_erosion_km3(res, hydro, years) -> tuple[float, float | None]:
-        areas = plates_mod.collect_all_accounting_areas_m2(hydro.plates_in_order, line_spacing_rad(world.node_density))
-        land = ~hydro.is_ocean
-        dt_myr = years / 1e6
-        if hasattr(erosion, "GLACIER_ABRASION_COEFFICIENT"):
-            sliding = hydro.ice.sliding_speed_m_per_yr if hydro.ice is not None else np.zeros(len(areas))
-            raw = erosion.GLACIER_ABRASION_COEFFICIENT * world.glacier_erosion_multiplier * np.power(sliding, erosion.GLACIER_ABRASION_EXPONENT) * dt_myr
-        else:
-            ice_factor = np.clip(tap["prior_glacier"] / erosion.GLACIER_EROSION_REFERENCE_DEPTH_M, 0.0, erosion.GLACIER_EROSION_MAX_FACTOR)
-            raw = erosion.GLACIER_EROSION_COEFFICIENT * world.glacier_erosion_multiplier * res.slope * ice_factor * dt_myr
-        applied = (res.budget or {}).get("glacial_erosion_m3")
-        return float(np.sum(raw[land] * areas[land])) / 1e9, None if applied is None else applied / 1e9
-
     def snapshot() -> dict:
         hydro = world.hydrology_cache
         if hydro is None:
@@ -162,7 +188,7 @@ def main() -> None:
 
     def empty_window() -> dict:
         return {
-            "raw": 0.0, "applied": 0.0, "seconds": 0.0, "ice_seconds": 0.0, "ledger": {}, "worst_residual_m3": 0.0,
+            "raw": 0.0, "raw_method": None, "applied": 0.0, "seconds": 0.0, "ice_seconds": 0.0, "ledger": {}, "worst_residual_m3": 0.0,
             "meltwater_km3": 0.0, "ocean_inflow_m3_s": 0.0, "steps": 0, "cap_steps": 0, "cap_nodes_max": 0,
         }
 
@@ -185,8 +211,14 @@ def main() -> None:
         tap["ice_seconds"] = 0.0
         res, hydro = world.erosion_cache, world.hydrology_cache
         if res is not None and hydro is not None:
-            raw, applied = glacial_erosion_km3(res, hydro, args.step_years)
+            raw, applied, raw_method = glacial_erosion_km3(
+                res, hydro, args.step_years, world, plates_mod, line_spacing_rad, erosion, tap["prior_glacier"]
+            )
             window["raw"] += raw
+            if window["raw_method"] not in (None, raw_method):
+                window["raw_method"] = "mixed"
+            elif window["raw_method"] is None:
+                window["raw_method"] = raw_method
             window["applied"] = None if applied is None or window["applied"] is None else window["applied"] + applied
             window["steps"] += 1
             discharge = getattr(hydro, "discharge_m3_s", None)
@@ -200,6 +232,7 @@ def main() -> None:
         nonlocal window
         closed = {
             "glacial_erosion_raw_km3": window["raw"],
+            "glacial_erosion_raw_method": window["raw_method"],
             "glacial_erosion_applied_km3": window["applied"],
             "lake_frozen_km3": window["ledger"].get("frozen_lake_m3", tap["lake_frozen_km3"]),
             "step_seconds_mean": window["seconds"] / steps,

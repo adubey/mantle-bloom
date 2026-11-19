@@ -101,15 +101,12 @@ class MarchCost:
     the "trend-1k" preset (#842) and the alternatives are selected by preset (`MARCH_COST_PRESETS`)
     or by replacing `MARCH_COST`. They compose: a preset is just one combination.
 
-    1. Substep cap with hold-extrapolation (#806 review item 12): after `max_substeps`
-       unsettled substeps, the rest of the step is filled from the last
-       MARCH_HOLD_WINDOW substeps, exactly like a settled hold: `cap_fill="hold"` keeps
-       the ice where it is (an unsettled sheet's net drift over the remainder lands in
-       the ledger residual). `"endpoint"` instead runs one last backward-Euler substep
-       over the whole remainder from the capped state, which closes its own ledger and
-       lets the margin move. A per-node linear extrapolation was tried first and
-       dropped: on a growing sheet it stacks ice in place instead of advancing the
-       margin, and the depth cap then breaks the ledger (78-95% residual, #822).
+    1. `max_substeps` records when the former D2 cost guard would have triggered.
+       D3 cannot hold or fill the remainder with one endpoint solve without omitting
+       within-step bed feedback. It leaves the current
+       adaptive interval unchanged. `cap_fill` and the `cap-hold`/`cap-endpoint` names
+       are retained for configuration compatibility; they do not bound D3 cost or alter
+       its integration.
     2. Adaptive substeps (#806 latency review item 3): after each settle pair whose
        pair-mean change is below `adaptive_grow_below`, the substep grows by
        `adaptive_growth`, up to `adaptive_max_substep_years`; a pair change above
@@ -124,19 +121,20 @@ class MarchCost:
        `dijkstra_limit_m` caps the outside distance's reach; a member it would cut off,
        or one past half the limit, falls back to the unlimited search.
 
-    Two extra settle tests run beside D2's pair test, either one ending the march early:
+    Two extra settle tests run beside D2's pair test. Under D3 they report equilibrium and
+    guide substep adaptation; they do not end the march early:
 
     - `recurrence`: the march settles once its depth field repeats itself, i.e. the
       area-weighted L1 distance to the state p substeps back is below `recurrence_tol`
       of the ice for some p <= `recurrence_max_period`, MARCH_SETTLE_PATIENCE substeps
       running with the same p. The never-settling marches sit on exact limit cycles
       (period 30 on the seed-5 world's 0.25 Myr step), which pair means can never
-      settle. The hold then uses whole periods' flows, so its mean is the cycle mean.
+      settle. The detected period is retained in the march log.
     - `trend`: every `trend_window` substeps, the area-weighted L1 change between
       consecutive window-mean depth fields, as a fraction of the ice. While that change
       shrinks (ratio r < 1), the change still to come is ~ D r / (1 - r); otherwise it is
-      D times the windows left. Below `trend_tol` the march holds on the last window's
-      flows; still shrinking, the substep grows by `adaptive_growth` up to
+      D times the windows left. Below `trend_tol` the watch records a settle; still
+      shrinking, the substep grows by `adaptive_growth` up to
       `trend_max_substep_years` (when `trend_grow`); a ratio above `trend_shrink_ratio`
       drops it back to MARCH_SUBSTEP_YEARS. A window that is a whole number of cycle
       periods cancels the cycle.
@@ -264,8 +262,9 @@ ICE_FLOTATION_PASSES = 6
 
 _FLOTATION_RATIO = RHO_WATER / RHO_ICE
 
-# End-of-step march log (RFC 0015 D2, #789): one entry per marched step, with substeps,
-# marched/held years, whether the ice settled, the volume path, and any tipping-point growth.
+# End-of-step march log (RFC 0015, #789): one entry per marched step, with substeps,
+# marched/held years, whether an equilibrium diagnostic fired, the volume path, and any
+# tipping-point growth. Under D3 `settled` is diagnostic only; it does not mean the march held.
 # Bounded: a long-running server would otherwise grow this list forever, and readers only
 # ever need the latest entry (#806 review).
 MARCH_LOG: deque[dict] = deque(maxlen=64)
@@ -763,7 +762,9 @@ class IceStep:
 
     `thickness` is the plastic profile's ice thickness at each node and `covered` the cell's
     ice-covered fraction. `calved_m3` is ice that left for the ocean, unrouted. The sliding
-    speed is m/yr in model units (a calibrated proxy while mass balance stays in model units)."""
+    speed is reported in m/yr as a calibrated estimate from the model's mass-balance flux.
+    D3's `abrasion_depth_m` is the material-limited depth fed back into the working bed;
+    `raw_abrasion_depth_m` retains uncapped physical demand for the erosion budget."""
 
     thickness: np.ndarray
     covered: np.ndarray
@@ -774,6 +775,8 @@ class IceStep:
     ledger: IceLedger
     bodies: list[BodyBalance] = field(default_factory=list)
     frozen_precipitation: FrozenPrecipitation | None = None
+    abrasion_depth_m: np.ndarray | None = None
+    raw_abrasion_depth_m: np.ndarray | None = None
 
 
 @dataclass

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""RFC 0015 gate G3 (#940): glacial erosion and its limits.
+"""RFC 0015 gate G3 follow-up (#973): integrated glacial abrasion and its limits.
 
 Replays a save with `step_world` under one of three glacial abrasion laws:
 
-- `main`: `origin/main` baseline (`GLACIER_ABRASION_COEFFICIENT` = 430 * MODEL_UNIT_SCALE,
-  exponent = 1.0)
+- `legacy-law`: D2's legacy coefficient expressed in the new m/yr law, exponent = 1.0
 - `cook2020`: D3 start (`K_G = 1e-4`, `l = 0.65`, Cook et al., 2020)
 - `humphrey1994`: D3 alternative (`K_G = 1e-4`, `l = 1.0`, Humphrey & Raymond, 1994)
 
@@ -46,13 +45,13 @@ sys.path.insert(0, str(DEBUG_DIR))
 from app import cratons, persistence, stats  # noqa: E402
 from app import world as world_mod  # noqa: E402
 from app.elevation_lines import line_spacing_rad  # noqa: E402
-from app.hydroclimate import erosion, hydrology, ice_sheet  # noqa: E402
+from app.hydroclimate import erosion, glacier_erosion, hydrology, ice_sheet  # noqa: E402
 from sweep_lib import _land_volume_above_sea_km3  # noqa: E402
 
-ARMS: dict[str, tuple[float, float] | None] = {
-    "main": None,
-    "cook2020": (1.0e-4 * 1.0e6, 0.65),
-    "humphrey1994": (1.0e-4 * 1.0e6, 1.0),
+ARMS: dict[str, tuple[float, float]] = {
+    "legacy-law": (430.0 * hydrology.GLACIER_ACCUMULATION_RATE / (1000.0 / 917.0 * 1.0e-3 * 1.0e6) / 1.0e6, 1.0),
+    "cook2020": (1.0e-4, 0.65),
+    "humphrey1994": (1.0e-4, 1.0),
 }
 
 
@@ -95,10 +94,9 @@ def _run_replay(ns: argparse.Namespace) -> dict:
     world.glacier_erosion_multiplier = ns.multiplier
 
     arm_cfg = ARMS[ns.arm]
-    orig_coeff = erosion.GLACIER_ABRASION_COEFFICIENT
-    orig_exp = erosion.GLACIER_ABRASION_EXPONENT
-    if arm_cfg is not None:
-        erosion.GLACIER_ABRASION_COEFFICIENT, erosion.GLACIER_ABRASION_EXPONENT = arm_cfg
+    orig_coeff = glacier_erosion.GLACIAL_ABRASION_COEFFICIENT
+    orig_exp = glacier_erosion.GLACIAL_ABRASION_EXPONENT
+    glacier_erosion.GLACIAL_ABRASION_COEFFICIENT, glacier_erosion.GLACIAL_ABRASION_EXPONENT = arm_cfg
 
     preset = next((k for k, v in ice_sheet.MARCH_COST_PRESETS.items() if v == ice_sheet.MARCH_COST), "custom")
     commit = subprocess.run(
@@ -118,15 +116,11 @@ def _run_replay(ns: argparse.Namespace) -> dict:
             np.concatenate([p.collect("craton_crust_m") for p in plates_in_order])
         )
         flatten_removed = (send * craton_keep[:, None]).sum(axis=1)
-        sliding = hydro.ice.sliding_speed_m_per_yr if hydro.ice is not None else np.zeros(len(hydro.elevation))
-        dt_myr = years / 1_000_000.0
-        glacier = (
-            erosion.GLACIER_ABRASION_COEFFICIENT
-            * world.glacier_erosion_multiplier
-            * np.power(sliding, erosion.GLACIER_ABRASION_EXPONENT)
-            * dt_myr
+        raw_glacier = (
+            np.asarray(hydro.ice.raw_abrasion_depth_m, dtype=float)
+            if hydro.ice is not None and hydro.ice.raw_abrasion_depth_m is not None
+            else np.zeros(len(hydro.elevation))
         )
-        raw_glacier = np.where(hydro.is_ocean, 0.0, np.clip(glacier, 0.0, None))
         step_capture["raw_glacial_erosion_m3"] = float(np.sum(raw_glacier * area))
         step_capture["glacial_flatten_m3"] = float(np.sum(flatten_removed * area))
         return send
@@ -134,6 +128,10 @@ def _run_replay(ns: argparse.Namespace) -> dict:
     def _wrapped_apply_erosion(w, years, **kwargs):
         res = orig_apply_erosion(w, years, **kwargs)
         step_capture["applied_glacial_erosion_m3"] = float(res.budget["glacial_erosion_m3"])
+        step_capture["unapplied_glacial_erosion_m3"] = float(res.budget["glacial_erosion_unapplied_m3"])
+        step_capture["march_applied_glacial_abrasion_m3"] = float(
+            ice_sheet.MARCH_LOG[-1]["applied_glacial_abrasion_m3"]
+        )
         step_capture["total_removed_m3"] = float(res.budget["removed_m3"])
         return res
 
@@ -152,6 +150,7 @@ def _run_replay(ns: argparse.Namespace) -> dict:
             state = _snapshot_state(world)
             raw_m3 = step_capture["raw_glacial_erosion_m3"]
             app_m3 = step_capture["applied_glacial_erosion_m3"]
+            march_app_m3 = step_capture["march_applied_glacial_abrasion_m3"]
             flat_m3 = step_capture["glacial_flatten_m3"]
             ratio = app_m3 / raw_m3 if raw_m3 > 0.0 else 1.0
             rec = {
@@ -160,6 +159,8 @@ def _run_replay(ns: argparse.Namespace) -> dict:
                 **state,
                 "raw_glacial_erosion_m3": raw_m3,
                 "applied_glacial_erosion_m3": app_m3,
+                "march_applied_glacial_abrasion_m3": march_app_m3,
+                "march_transfer_delta_m3": app_m3 - march_app_m3,
                 "applied_raw_ratio": ratio,
                 "glacial_flatten_m3": flat_m3,
                 "total_removed_m3": step_capture["total_removed_m3"],
@@ -168,6 +169,7 @@ def _run_replay(ns: argparse.Namespace) -> dict:
             print(
                 f"step {i:2d}/{ns.steps}: {wall:4.1f}s age={state['age_myr']:6.2f} "
                 f"raw={raw_m3/1e9:9.2f} app={app_m3/1e9:8.2f} km3 "
+                f"march_delta={(app_m3-march_app_m3)/1e9:+.5f} km3 "
                 f"ratio={ratio:.4f} flat={flat_m3/1e9:8.2f} km3 "
                 f"ice_area={state['land_ice_area_km2']/1e6:.2f}M land_vol={state['land_volume_above_sea_km3']/1e6:.2f}M",
                 flush=True,
@@ -175,8 +177,8 @@ def _run_replay(ns: argparse.Namespace) -> dict:
     finally:
         erosion._flatten = orig_flatten
         erosion.apply_erosion = orig_apply_erosion
-        erosion.GLACIER_ABRASION_COEFFICIENT = orig_coeff
-        erosion.GLACIER_ABRASION_EXPONENT = orig_exp
+        glacier_erosion.GLACIAL_ABRASION_COEFFICIENT = orig_coeff
+        glacier_erosion.GLACIAL_ABRASION_EXPONENT = orig_exp
 
     total_raw = sum(s["raw_glacial_erosion_m3"] for s in steps)
     total_app = sum(s["applied_glacial_erosion_m3"] for s in steps)
@@ -186,14 +188,14 @@ def _run_replay(ns: argparse.Namespace) -> dict:
     if sys.platform != "darwin":
         rss_bytes *= 1024
     return {
-        "issue": 940,
+        "issue": 973,
         "commit": commit,
         "save": ns.save.name,
         "sha256": hashlib.sha256(raw).hexdigest(),
         "march_preset": preset,
         "arm": ns.arm,
-        "coefficient_m_per_myr": erosion.GLACIER_ABRASION_COEFFICIENT if arm_cfg is None else arm_cfg[0],
-        "exponent": erosion.GLACIER_ABRASION_EXPONENT if arm_cfg is None else arm_cfg[1],
+        "coefficient_m_per_yr": arm_cfg[0],
+        "exponent": arm_cfg[1],
         "glacier_erosion_multiplier": ns.multiplier,
         "flatten_multiplier": ns.flatten_multiplier if ns.flatten_multiplier is not None else ns.multiplier,
         "ice_age_period_years": float(world.ice_age_period_years),
@@ -206,6 +208,9 @@ def _run_replay(ns: argparse.Namespace) -> dict:
             "cumulative_raw_glacial_erosion_km3": total_raw / 1.0e9,
             "cumulative_applied_glacial_erosion_km3": total_app / 1.0e9,
             "cumulative_applied_raw_ratio": total_app / total_raw if total_raw > 0.0 else 1.0,
+            "max_abs_march_transfer_delta_m3": max(
+                (abs(s["march_transfer_delta_m3"]) for s in steps), default=0.0,
+            ),
             "cumulative_glacial_flatten_km3": total_flat / 1.0e9,
             "flatten_to_applied_abrasion_ratio": total_flat / total_app if total_app > 0.0 else None,
             "opening_land_ice_area_km2": opening["land_ice_area_km2"],
