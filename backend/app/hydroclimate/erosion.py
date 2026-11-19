@@ -2055,7 +2055,7 @@ def apply_erosion(
     # use everywhere else): every source here is a subaerial process. The sea floor and the
     # shoreline get their own erosion separately, below (submarine + coastal erosion -- see
     # SUBMARINE_EROSION_* / COASTAL_EROSION_*).
-    glacier = np.where(is_ocean_node, np.clip(glacier, 0.0, None), 0.0)
+    glacier = np.where(is_ocean_node, 0.0, np.clip(glacier, 0.0, None))
     raw_glacier = np.clip(raw_glacier, 0.0, None)
     raw_erosion_total = rain + river + weathering + seismic
     detach_capacity = np.where(is_ocean_node, 0.0, np.clip(raw_erosion_total, 0.0, None))
