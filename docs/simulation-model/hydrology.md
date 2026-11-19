@@ -872,7 +872,7 @@ since climate.py runs *before* this module each step).
   bisection over the domain. In the march it is looked for first around the body's margin
   from the previous substep (`margin_hints`), which finds the same extent with fewer
   profiles because V(d) is nondecreasing (#147).
-- **End-of-step march** (RFC 0015 D2). Fast ice reaches balance within a step, so each step
+- **End-of-step march** (RFC 0015 D3). Each step
   marches the ice there in substeps of 250 yr to 1 kyr (`hydrology._march_glacier`, each one an
   ordinary `step_ice` solve from the current ice). Between substeps the fast inputs are
   recomputed from it: frictional heat (damped: the mean of the last two substeps' heat),
@@ -880,31 +880,38 @@ since climate.py runs *before* this module each step).
   and sea level (re-solved from the current ice debit, with the ocean mask, anchored on
   the march's own current-step mask rather than last step's cache; Earth's forced straits
   stay connected). Grounding and flotation keep the opening bed, a one-step lag on the
-  deflection; only the lapse correction sees the equilibrium target. Two settle tests run
-  side by side, and either ends the march (#842; `settle_test` in the log says which).
+  deflection; only the lapse correction sees the equilibrium target. Glacial abrasion is
+  integrated from each interval's basal sliding. The working bed is lowered by the amount
+  that can be removed from mobile cover and remaining Hc above the crustal floor, with
+  cover counted inside the shared Hc headroom and craton resistance applied once to substrate,
+  then used by the next solve. This matches the material transferred at the end of the step;
+  raw demand and unapplied demand are logged and booked
+  in the erosion budget. The basal yield-strength and frictional-heat inputs still use the
+  step-opening mobile-cover field; erosion changes those basal inputs on the following step.
+  The working bed includes surface lowering between intervals, but its isostatic response is
+  deferred until the normal end-of-step material update. Each interval's ocean mask gates its
+  abrasion before that cut changes the working bed or enters the accumulated transfer.
+  Glacier abrasion is transferred before other subaerial erosion so
+  the same headroom is not consumed twice. It is exempt from the shared neighbor-drop cap.
+  Two settle tests run side by side, but neither ends the D3 march (#842; `settle_test` in the
+  log says which).
   The pair test runs on non-overlapping substep pairs: when the last two pair-means differ
-  by less than 0.1% three checks in a row the ice has settled and the rest of the step is
-  held, keeping the mean rates (melt, calving, ledger flows) of the last 6 substeps. The
+  by less than 0.1% three checks in a row the ice has reached diagnostic equilibrium. The
   trend test, added because pair-means of an exact limit cycle never coincide (#822),
-  compares 30-substep window-mean depth fields. It holds once the change still to come
+  compares 30-substep window-mean depth fields. It records equilibrium once the change still to come
   (projected from the ratio of successive changes, and never more than the change times the
-  windows left) is under 0.1%, keeping the last window's mean rates. While the change
-  shrinks it doubles the substep, up to 1 kyr, and it drops back to 250 yr when the change
-  jumps. Held losses can never
-  exceed the available ice: the hold scaling clamps to fit, so a sheet that melts away
-  holds ~zero loss instead of booking a transient's mean melt. A body of ice that never
-  settles marches the whole step. Every step logs substeps, marched/held years,
+  windows left) is under 0.1%. While the change shrinks it doubles the substep, up to 1 kyr,
+  and it drops back to 250 yr when the change jumps. A body of ice always marches the full
+  step; equilibrium only guides interval adaptation. Every step logs substeps, marched/held years,
   settlement, the volume path, and any tipping-point growth (bounded
   `ice_sheet.MARCH_LOG`, last 64 entries). Each marched step warns about the depth guard
-  at most once, on the summed ledger. A settled march costs ~13-32 ice solves against the
-  endpoint solve's one, which is why steps run over the +15% budget on the diagnosis
-  replays. The trend test cut the median step time to 0.35-0.98x of the fixed-250 yr march
-  on the diagnosis saves without ice ages (round 3, #842). Ice at 10 Myr differs from the
-  fixed-250 yr march by up to 17% on a world where that march never settles; neither is a
-  converged reference there (#822). Saves replayed with ice ages have no passing evidence
-  (ice ages are out of scope for RFC 0015). `World.simulate_glacier_march` (`false` in the UI's Controls, off by default
+  at most once, on the summed ledger. The configured `max_substeps` marks when the former
+  D2 cost guard would have fired; D3 preserves the current adaptive interval and keeps
+  marching. `cap_fill` does not change this behavior. `World.simulate_glacier_march` (`false`
+  in the UI's Controls, off by default
   for UI-created worlds) skips the march: the ice is solved once per step and frozen
-  there, the same zero-length path the `MARCH_GLACIERS` test knob takes. A world with
+  there. Abrasion still integrates that solve's sliding speed over the step, without bed
+  feedback. A zero-duration call has no abrasion. A world with
   no ice and no snowfall takes the same one-solve fast path automatically (an
   endpoint solve is the identical answer there). Each substep's sea-level re-solve
   warm-starts its bisection around the last level (validated, same converged value),
@@ -915,14 +922,15 @@ since climate.py runs *before* this module each step).
 - **March cost options** (#822; all but the default are experimental). `ice_sheet.MARCH_COST`
   (a `MarchCost`, chosen by name from `ice_sheet.MARCH_COST_PRESETS`) selects the march.
   The production default, `trend-1k` (#842), is the march above with the trend settle test
-  and a 1 kyr longest substep. The `d2` preset is the fixed-250 yr march with the pair test
-  only, bit-identical to the march before #842, and is what accuracy and correctness
-  checks select (the replay probe's `--preset d2`, or a test setting `MARCH_COST`). There
-  is no environment variable or UI switch. The options compose:
-  - A substep cap (`max_substeps`). After the cap, an unsettled march fills the rest
-    of the step with the settled hold (`cap_fill="hold"`, which leaves a still-moving
-    sheet's net drift in the ledger residual) or with one backward-Euler substep over
-    the whole remainder (`"endpoint"`, which closes its own ledger).
+  and a 1 kyr longest substep. The `d2` preset uses fixed-250 yr intervals with the pair
+  equilibrium diagnostic and no trend or recurrence watch. Under D3 it still integrates the
+  full interval march; it is not bit-identical to pre-D3 behavior. There is no environment
+  variable or UI switch. The options compose:
+  - `max_substeps` records when the former cost guard is reached. D3 continues with its
+    current interval so bed feedback is not skipped. `cap_fill` and the `cap-hold` /
+    `cap-endpoint` presets are compatibility labels only; they do not bound runtime or
+    select different D3 behavior. Reaching the configured cap emits a warning and sets
+    `MARCH_LOG.capped`.
   - Adaptive substeps (`adaptive`). The substep doubles after each settle pair whose
     pair-mean change is under 1%, up to 4 kyr, and drops back to 250 yr above 5%. Both
     substeps of a pair always share one length.
@@ -932,14 +940,13 @@ since climate.py runs *before* this module each step).
     same result as the full search; since #147 every search runs that way and the
     flag selects nothing. `dijkstra_limit_m` caps the outside distance's
     reach, and falls back to the full search when the cap would cut off a body member.
-  - Two extra settle tests, run beside the pair test. `recurrence` settles once the
-    depth field repeats the one p substeps back (p <= 64), which catches the exact
-    limit cycles that pair means never settle; the hold then averages whole periods.
-    `trend` compares 30-substep window-mean depth fields. It holds once the change
-    still to come (projected from the ratio of successive changes) is under 0.1%. While
-    the change shrinks it can also double the substep (`trend_grow`, up to
-    `trend_max_substep_years`: 1 kyr in the default, 4 kyr in `trend-adapt`), and it drops
-    back to 250 yr when the change jumps.
+  - Two extra equilibrium diagnostics, run beside the pair test. `recurrence` detects
+    when the depth field repeats the one p substeps back (p <= 64), which catches exact
+    limit cycles that pair means never settle. `trend` compares 30-substep window-mean
+    depth fields and records equilibrium when projected change is under 0.1%. These
+    diagnostics never hold the D3 march. While the change shrinks, `trend_grow` can double
+    the interval up to `trend_max_substep_years` (1 kyr in the default, 4 kyr in
+    `trend-adapt`); a jump drops it back to 250 yr.
 
   Every march log entry also records `capped`, `max_substep_years`, the sea-level
   re-solve/skip counts, and which test settled it (`settle_test`, with the cycle
@@ -1024,9 +1031,10 @@ since climate.py runs *before* this module each step).
   is in physical units, so these are m/yr of real ice.
   Material riding the ice (`HydrologyFields.ice_flow_target`: glacial till, landslide debris
   on the ice) moves down the ice surface on visible ice and down the ground off it.
-- **Erosion and flattening**: see [Erosion](surface-processes.md#erosion-erosionpy). Glacial abrasion now scales with this
-  step's sliding speed, so ice frozen to its bed doesn't erode the way sliding ice does;
-  flattening is still driven by the *previous* step's `glacier_depth`.
+- **Erosion and flattening**: see [Erosion](surface-processes.md#erosion-erosionpy). Glacial
+  abrasion integrates physical basal sliding through each ice-march interval and feeds the
+  lowered working bed into the next solve (RFC 0015 D3); flattening is still driven by the
+  *previous* step's `glacier_depth`.
 - **Cost.** Two Dijkstra passes per step, then per body a few numba sweeps per root-find
   evaluation and one flux sweep, times the march's substeps (about 13-16 on a settled
   step, the whole step when it never settles). The median step-time cost is measured on

@@ -1113,6 +1113,119 @@ def test_glacial_erosion_carves_channels_rivers_can_inherit():
     assert np.max(after - before) > 0.1
 
 
+@pytest.mark.usefixtures("march_glaciers")
+def test_march_limited_glacier_transfer_uses_shared_cover_headroom_and_craton_once(monkeypatch):
+    from dataclasses import replace
+
+    from app import cratons
+    from app.hydroclimate import hydrology
+
+    world = generate_world(seed=3, num_plates=2, node_density=0.25, climate_density=0.25, fluid_density=0.25)
+    world.simulate_glacier_march = True
+    world.glacier_erosion_multiplier = 0.0
+    world.rain_erosion_multiplier = 0.0
+    world.river_erosion_multiplier = 0.0
+    world.wind_erosion_multiplier = 0.0
+    world.seismic_erosion_multiplier = 0.0
+    _, elevation, _, _, _, plates_in_order = erosion._gather_nodes(world)
+    areas = erosion._gather_areas(world, plates_in_order)
+    target = int(np.flatnonzero(elevation > world.sea_level_m + 1000.0)[0])
+    offset = 0
+    for plate in plates_in_order:
+        count = plate.node_count()
+        if offset <= target < offset + count:
+            local = target - offset
+            hc = plate.collect("crustal_thickness_m")
+            cover = plate.collect("mobile_cover_m")
+            craton = plate.collect("craton_crust_m")
+            hc[local] = 1000.0
+            cover[local] = 400.0
+            craton[local] = cratons.CRATON_FULL_STRENGTH_HC_M
+            plate.set_fields_on_plate(
+                crustal_thickness_m=hc, mobile_cover_m=cover, craton_crust_m=craton,
+            )
+            break
+        offset += count
+
+    real_compute = hydrology.compute_hydrology
+    seen = {}
+
+    def force_integrated_abrasion(*args, **kwargs):
+        hydro = real_compute(*args, **kwargs)
+        applied = np.zeros(len(hydro.elevation))
+        raw = np.zeros(len(hydro.elevation))
+        applied[target] = 425.0  # 400 m cover + 100 m substrate take × 0.25 keep
+        raw[target] = 1000.0
+        seen["is_ocean"] = hydro.is_ocean.copy()
+        ice = replace(
+            hydro.ice, abrasion_depth_m=applied, raw_abrasion_depth_m=raw,
+        )
+        return replace(hydro, ice=ice)
+
+    monkeypatch.setattr(hydrology, "compute_hydrology", force_integrated_abrasion)
+    result = erosion.apply_erosion(world, years=750)
+
+    assert not seen["is_ocean"][target]
+    expected_applied_m3 = 425.0 * areas[target]
+    assert result.budget["glacial_erosion_m3"] == pytest.approx(expected_applied_m3)
+    assert result.budget["glacial_erosion_raw_m3"] == pytest.approx(1000.0 * areas[target])
+    assert result.budget["glacial_erosion_unapplied_m3"] == pytest.approx(575.0 * areas[target])
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_no_march_glacial_abrasion_integrates_sliding_and_masks_ocean_budget(monkeypatch):
+    from dataclasses import replace
+
+    from app.hydroclimate import glacier_erosion, hydrology
+
+    world = generate_world(seed=3, num_plates=2, node_density=0.25, climate_density=0.25, fluid_density=0.25)
+    world.simulate_glacier_march = False
+    world.glacier_erosion_multiplier = 1.0
+    world.rain_erosion_multiplier = 0.0
+    world.river_erosion_multiplier = 0.0
+    world.wind_erosion_multiplier = 0.0
+    world.seismic_erosion_multiplier = 0.0
+    _, elevation, _, _, _, plates_in_order = erosion._gather_nodes(world)
+    areas = erosion._gather_areas(world, plates_in_order)
+    land_idx = int(np.argmax(elevation))
+    offset = 0
+    for plate in plates_in_order:
+        count = plate.node_count()
+        if offset <= land_idx < offset + count:
+            local = land_idx - offset
+            hc = plate.collect("crustal_thickness_m")
+            craton = plate.collect("craton_crust_m")
+            hc[local] = 5000.0
+            craton[local] = 0.0
+            plate.set_fields_on_plate(crustal_thickness_m=hc, craton_crust_m=craton)
+            break
+        offset += count
+    real_compute = hydrology.compute_hydrology
+    seen = {}
+    years = 1_000_000.0
+
+    def force_closing_sliding(*args, **kwargs):
+        hydro = real_compute(*args, **kwargs)
+        sliding = np.zeros(len(hydro.elevation))
+        ocean_idx = int(np.flatnonzero(hydro.is_ocean)[0])
+        assert not hydro.is_ocean[land_idx]
+        sliding[[land_idx, ocean_idx]] = 100.0
+        seen.update(land_idx=land_idx, ocean_idx=ocean_idx)
+        ice = replace(
+            hydro.ice, sliding_speed_m_per_yr=sliding,
+            abrasion_depth_m=np.zeros_like(sliding), raw_abrasion_depth_m=np.zeros_like(sliding),
+        )
+        return replace(hydro, ice=ice)
+
+    monkeypatch.setattr(hydrology, "compute_hydrology", force_closing_sliding)
+    result = erosion.apply_erosion(world, years=years)
+
+    demand_m = float(glacier_erosion.abrasion_depth_m(np.array([100.0]), years, 1.0)[0])
+    assert result.budget["glacial_erosion_raw_m3"] == pytest.approx(demand_m * areas[seen["land_idx"]])
+    assert result.budget["glacial_erosion_m3"] > 0.0
+    assert result.budget["glacial_erosion_unapplied_m3"] == pytest.approx(0.0, abs=1e-6)
+
+
 def _set_channel_state(world, depth_m, uplift_m):
     """Every node gets `depth_m` of channel and a reference elevation `uplift_m` below its
     current elevation, as if it had risen that much since last step's erosion."""

@@ -111,21 +111,19 @@ law produced (see the formula below).
   flip rate in the same test; the remainder is rain erosion (already slope-gated, but tuned
   with a large coefficient to balance mountain-building rates) eroding low-lying land with
   nonzero slope -- a separate, not-yet-addressed contributor to the same overall trend.
-- **Glacier erosion** = `GLACIER_ABRASION_COEFFICIENT * u_b ** GLACIER_ABRASION_EXPONENT *
-  dt_myr` (issue #353), where `u_b` is this step's basal sliding speed from the ice solve
-  (`HydrologyFields.ice.sliding_speed_m_per_yr`, see [Glaciation](hydrology.md#glaciation-hydrologypy)): a share of
-  the balance velocity on a thawed bed, zero on a frozen one, so ice frozen to its bed no
-  longer abrades the way sliding ice does (Hallet 1979). Herman et al. (2015) fit an exponent
-  near 2 on one Alpine glacier; Cook et al. (2020) find sub-linear scaling across a global
-  compilation; the exponent is 1, between them, which also keeps the calibration linear.
-  While glacier mass balance stays in model units the sliding speed is a proxy ~50,000x
-  slower than real ice, so the coefficient is calibrated, not physical: total glacial erosion
-  on the reference replay matches the old law it replaced (see
-  `analysis/issue353/README.md`). That old law was `GLACIER_EROSION_COEFFICIENT * slope *
-  ice_factor * dt_myr`, `ice_factor = clip(glacier_depth / GLACIER_EROSION_REFERENCE_DEPTH_M,
-  0, GLACIER_EROSION_MAX_FACTOR)`, with the coefficient set equal to the rain coefficient at
-  100 m of ice against a global compilation of glacial erosion rates (#145); `ice_factor`
-  still scales the flattening blur below.
+- **Glacier abrasion** follows `E = K_G * u_b ** l`, with physical basal sliding speed `u_b`
+  in m/yr, coefficient `K_G = 1e-4`, and exponent `l = 0.65` (RFC 0015 D3, Cook et al.
+  2020). Sliding is a share of balance velocity on a thawed bed and zero on a frozen bed.
+  Raw abrasion demand is integrated in each ice-march interval. Bed feedback is limited to
+  available mobile cover and remaining Hc above the crustal floor, with craton resistance on
+  substrate; this is also the amount reserved for the glacier's first-priority material
+  transfer at the end of the world step. The next ice solve reads that lowered working bed.
+  Raw and unapplied demand are exposed in the erosion budget. This replaces the former
+  calibrated model-unit coefficient and the shared neighbor-drop cap; crustal headroom and
+  the existing sediment transport ledger still constrain the transfer. The
+  alternative linear fit is `K_G = 1e-4`, `l = 1` (Humphrey & Raymond 1994). `l = 2` remains
+  out until its coefficient is verified from Herman et al. (2015). `ice_factor` still scales
+  the flattening blur below.
 - **Seismic erosion** = `SEISMIC_EROSION_COEFFICIENT * slope * mountain_height_factor^
   SEISMIC_EROSION_ELEVATION_EXPONENT * dt_myr`, a mantle-bloom-original addition modeling
   earthquake-triggered landsliding -- a real, well-documented contributor in young,
@@ -590,7 +588,7 @@ rejected with a `400`.
 | `wind_erosion_multiplier` | wind-driven weathering term | `erosion.apply_erosion` |
 | `ocean_erosion_multiplier` | submarine slump + coastal wave/frost attack | `erosion.apply_erosion` |
 | `coastal_leveling_multiplier` | the symmetric near-shore planation *grind* (`ground_off`) | `erosion.apply_erosion` |
-| `glacier_erosion_multiplier` | glacial abrasion term **and** the ice-flattening blur (`_flatten`) | `erosion.apply_erosion` |
+| `glacier_erosion_multiplier` | glacial abrasion through the ice march **and** the ice-flattening blur (`_flatten`) | `hydrology._march_glacier`, `erosion.apply_erosion` |
 | `seismic_erosion_multiplier` | earthquake-triggered landsliding term | `erosion.apply_erosion` |
 | `river_deposition_multiplier` | floodplain/delta settle-out fraction (`DEPOSITION_FRACTION`, clamped `< 0.95`) | `erosion.apply_erosion` |
 | `ocean_deposition_multiplier` | *settled* beach + marine sediment (see caveat below) | `erosion.apply_erosion` |
