@@ -180,5 +180,5 @@
     }
   },
   "superseded_reason": "The implementation_commit had an inverted land/ocean mask in material transfer, zeroing land abrasion. D3 replay results are invalid; D2 control rows remain valid.",
-  "superseded_by_commit": "b94322d26c478a911186bc6023c731e08f87e1ce"
+  "superseded_by_commit": "50cb88df"
 }

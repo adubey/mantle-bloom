@@ -64,11 +64,13 @@ follow-up considerations for RFC closure.
 ### Post-review correction
 
 Review found that the land/ocean mask in `erosion.apply_erosion` was inverted, so the transfer
-step discarded land abrasion even though the ice march fed it back into the bed. Commit
-`b94322d2` corrects the mask. A one-step 0.25 Myr smoke replay on seed649658380 then reported
-262,419.27 km³ raw and applied abrasion (applied/raw 1.000; 42.9 s, peak RSS 0.98 GB). This
-confirms the transfer now matches the march for that step, but it does not replace the four
-full D3 replay arms. The prior D3 replay table is invalidated until those arms are rerun.
+step discarded land abrasion even though the ice march fed it back into the bed. A follow-up
+review also found craton resistance was applied twice at transfer. Commits `b94322d2` and
+`50cb88df` correct these mismatches. A one-step 0.25 Myr smoke replay on seed649658380 at
+`50cb88df` reported 262,419.27 km³ raw and applied abrasion (applied/raw 1.000; 43.7 s, peak
+RSS 0.89 GB). This confirms the transfer matches the march for that step; it does not replace
+the four full D3 replay arms. The prior D3 replay table is invalidated until those arms are
+rerun.
 
 ### Implementation checks
 
