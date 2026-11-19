@@ -1,0 +1,60 @@
+{
+  "issue": 973,
+  "commit": "68feea525c60f2df8bf9832618f24ba6267f55e3",
+  "save": "mantle-bloom-seed997271774-87400000y.bloom",
+  "sha256": "07971ee25cdbc364cd887ea8f4fffc69ceed49b1933d09ea38e3864ea95328b8",
+  "march_preset": "trend-1k",
+  "arm": "cook2020",
+  "coefficient_m_per_yr": 0.0001,
+  "exponent": 0.65,
+  "glacier_erosion_multiplier": 1.0,
+  "flatten_multiplier": 1.0,
+  "ice_age_period_years": 0.0,
+  "steps": 1,
+  "myr_per_step": 0.25,
+  "total_myr": 0.25,
+  "elapsed_s": 53.1,
+  "peak_rss_gb": 0.86,
+  "summary": {
+    "cumulative_raw_glacial_erosion_km3": 4547586.242794935,
+    "cumulative_applied_glacial_erosion_km3": 4547349.520862326,
+    "cumulative_applied_raw_ratio": 0.9999479455869619,
+    "cumulative_glacial_flatten_km3": 129642.31681117821,
+    "flatten_to_applied_abrasion_ratio": 0.0285094242737237,
+    "opening_land_ice_area_km2": 8775304.051611513,
+    "closing_land_ice_area_km2": 14418007.944427585,
+    "opening_visible_ice_area_km2": 9205829.308013484,
+    "closing_visible_ice_area_km2": 14527636.296257515,
+    "opening_land_volume_above_sea_km3": 234786030.90680015,
+    "closing_land_volume_above_sea_km3": 235918355.5313557,
+    "opening_ice_volume_km3": 5603809.698947975,
+    "closing_ice_volume_km3": 12311420.014955232
+  },
+  "opening": {
+    "age_myr": 87.4,
+    "sea_level_m": -408.1539494189735,
+    "land_volume_above_sea_km3": 234786030.90680015,
+    "land_area_km2": 147149539.8743478,
+    "ice_volume_km3": 5603809.698947975,
+    "visible_ice_area_km2": 9205829.308013484,
+    "land_ice_area_km2": 8775304.051611513
+  },
+  "per_step": [
+    {
+      "step": 0,
+      "wall_s": 52.94,
+      "age_myr": 87.65,
+      "sea_level_m": -429.94901236602914,
+      "land_volume_above_sea_km3": 235918355.5313557,
+      "land_area_km2": 149524490.6469585,
+      "ice_volume_km3": 12311420.014955232,
+      "visible_ice_area_km2": 14527636.296257515,
+      "land_ice_area_km2": 14418007.944427585,
+      "raw_glacial_erosion_m3": 4547586242794935.0,
+      "applied_glacial_erosion_m3": 4547349520862326.0,
+      "applied_raw_ratio": 0.9999479455869619,
+      "glacial_flatten_m3": 129642316811178.22,
+      "total_removed_m3": 3.2321358968246664e+16
+    }
+  ]
+}

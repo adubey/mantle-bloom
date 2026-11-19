@@ -73,6 +73,12 @@ seed649658380 at `50cb88df` reported 262,419.27 km³ raw and applied abrasion (a
 is preliminary only. It does not replace the four full D3 replay arms or validate the current
 head; the prior D3 replay table is invalid until the arms are rerun.
 
+At `68feea52`, a one-step 0.25 Myr smoke replay on seed997271774 with the `trend-1k`
+preset reported 4,547,586.24 km³ raw and 4,547,349.52 km³ applied abrasion (applied/raw
+0.99995; 53.1 s, peak RSS 0.86 GB). The small unapplied share is consistent with final-state
+ocean masking. This smoke did not strongly bind the shared-cover/headroom or craton limits, so
+it is not a regression test for those caps and does not validate G3.
+
 ### Implementation checks
 
 - `ruff check`: passed.
