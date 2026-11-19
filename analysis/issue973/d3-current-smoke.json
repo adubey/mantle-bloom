@@ -1,6 +1,6 @@
 {
   "issue": 973,
-  "commit": "62a27924eb0d627d0aebaf099e6d26286608504a",
+  "commit": "0e9fa3b4ff5ddf6035b6344c09b1704165e6b761",
   "save": "mantle-bloom-seed997271774-87400000y.bloom",
   "sha256": "07971ee25cdbc364cd887ea8f4fffc69ceed49b1933d09ea38e3864ea95328b8",
   "march_preset": "trend-1k",
@@ -13,8 +13,8 @@
   "steps": 1,
   "myr_per_step": 0.25,
   "total_myr": 0.25,
-  "elapsed_s": 49.49,
-  "peak_rss_gb": 0.95,
+  "elapsed_s": 52.08,
+  "peak_rss_gb": 0.92,
   "summary": {
     "cumulative_raw_glacial_erosion_km3": 4570363.044939635,
     "cumulative_applied_glacial_erosion_km3": 3294829.5808267645,
@@ -43,7 +43,7 @@
   "per_step": [
     {
       "step": 0,
-      "wall_s": 49.34,
+      "wall_s": 51.91,
       "age_myr": 87.65,
       "sea_level_m": -431.2532304285892,
       "land_volume_above_sea_km3": 235966349.14286348,

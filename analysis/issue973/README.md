@@ -76,7 +76,7 @@ seed649658380 at `50cb88df` reported 262,419.27 km³ raw and applied abrasion (a
 is preliminary only. It does not replace the four full D3 replay arms or validate the current
 head; the prior D3 replay table is invalid until the arms are rerun.
 
-At `62a27924`, a one-step 0.25 Myr smoke replay on seed997271774 with the `trend-1k` preset
+At `0e9fa3b4`, a one-step 0.25 Myr smoke replay on seed997271774 with the `trend-1k` preset
 reported 4,570,363.04 km³ raw and 3,294,829.58 km³ applied abrasion (applied/raw 0.7209;
 49.5 s, peak RSS 0.95 GB). The march-applied volume and final transfer agree within 0.5 m³.
 The save has ice on craton-bearing nodes, so the lower applied share is expected to include

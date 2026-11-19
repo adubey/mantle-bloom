@@ -2598,8 +2598,22 @@ def test_march_carries_state_across_three_substeps():
 @pytest.mark.usefixtures("march_glaciers")
 def test_march_integrates_abrasion_and_feeds_the_changed_bed_to_the_next_interval(monkeypatch):
     from app.hydroclimate import glacier_erosion
+    from app import cratons, lithosphere
 
     world = _flow_line_march_world()
+    world.simulate_glacier_march = True
+    world.glacier_erosion_multiplier = 10_000.0
+    target = 0
+    plate = world.plates[0]
+    hc = plate.collect("crustal_thickness_m")
+    cover = plate.collect("mobile_cover_m")
+    craton = plate.collect("craton_crust_m")
+    hc[target] = 1000.0
+    cover[target] = 400.0
+    craton[target] = cratons.CRATON_FULL_STRENGTH_HC_M
+    plate.set_fields_on_plate(
+        crustal_thickness_m=hc, mobile_cover_m=cover, craton_crust_m=craton,
+    )
     original_step_ice = ice_sheet.step_ice
     beds = []
     interval_sliding = []
@@ -2611,7 +2625,8 @@ def test_march_integrates_abrasion_and_feeds_the_changed_bed_to_the_next_interva
         result = original_step_ice(*args, **kwargs)
         # The flow-line's natural bed is frozen. Set a controlled physical sliding field
         # so this test exercises interval integration and bed feedback directly.
-        result[2].sliding_speed_m_per_yr[:] = 10.0
+        result[2].sliding_speed_m_per_yr[:] = 0.0
+        result[2].sliding_speed_m_per_yr[target] = 10.0
         interval_sliding.append(result[2].sliding_speed_m_per_yr.copy())
         return result
 
@@ -2621,15 +2636,29 @@ def test_march_integrates_abrasion_and_feeds_the_changed_bed_to_the_next_interva
     )
 
     assert len(beds) == 3
-    expected_intervals = [
-        np.where(ocean, 0.0, glacier_erosion.abrasion_depth_m(speed, 250.0, 1.0))
-        for speed, ocean in zip(interval_sliding, interval_ocean, strict=True)
-    ]
+    cover_remaining = np.zeros(len(hc))
+    cover_remaining[target] = 400.0
+    substrate_headroom = np.zeros(len(hc))
+    substrate_headroom[target] = 1000.0 - lithosphere.MIN_CRUSTAL_THICKNESS_M - 400.0
+    craton_keep = np.ones(len(hc))
+    craton_keep[target] = 1.0 - cratons.CRATON_EROSION_RESISTANCE
+    expected_intervals = []
+    for speed, ocean in zip(interval_sliding, interval_ocean, strict=True):
+        raw = np.where(ocean, 0.0, glacier_erosion.abrasion_depth_m(
+            speed, 250.0, world.glacier_erosion_multiplier,
+        ))
+        cover_cut = np.minimum(raw, cover_remaining)
+        substrate_take = np.minimum(np.clip(raw - cover_cut, 0.0, None), substrate_headroom)
+        substrate_cut = substrate_take * craton_keep
+        expected_intervals.append(cover_cut + substrate_cut)
+        cover_remaining -= cover_cut
+        substrate_headroom -= substrate_cut
     expected_total = np.sum(expected_intervals, axis=0)
     np.testing.assert_allclose(fields.ice.abrasion_depth_m, expected_total)
     np.testing.assert_allclose(beds[1], beds[0] - expected_intervals[0])
     np.testing.assert_allclose(beds[2], beds[1] - expected_intervals[1])
     assert np.any(fields.ice.abrasion_depth_m > 0.0)
+    assert 400.0 < fields.ice.abrasion_depth_m[target] <= 500.0
 
 
 @pytest.mark.usefixtures("march_glaciers")
@@ -2987,10 +3016,13 @@ def test_breach_surge_accum_leaves_no_flux_stranded_on_flow_cycles():
 
 @pytest.mark.usefixtures("march_glaciers")
 def test_real_march_keeps_integrating_after_recurrence_is_detected(monkeypatch):
-    # Recurrence remains diagnostic, but D3 marches the full duration so basal abrasion
-    # continues to modify the working bed after the ice state repeats.
+    # Isolate the recurrence diagnostic from D3 bed feedback, which deliberately breaks
+    # the fixture's exact period-3 cycle when abrasion is active. The separate abrasion
+    # integration test verifies that the working bed changes while the march continues.
     monkeypatch.setattr(ice_sheet, "MARCH_SETTLE_TOLERANCE", 0.0)
-    _, entry = _march_with(monkeypatch, ice_sheet.MarchCost(recurrence=True), 200_000)
+    world = _flow_line_march_world()
+    world.glacier_erosion_multiplier = 0.0
+    _, entry = _march_with(monkeypatch, ice_sheet.MarchCost(recurrence=True), 200_000, world=world)
     assert entry["settle_test"] == "recurrence"
     assert entry["period"] == 3
     assert entry["marched_years"] == pytest.approx(200_000.0)
