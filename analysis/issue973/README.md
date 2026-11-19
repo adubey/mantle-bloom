@@ -44,6 +44,14 @@ results are observed.
 This preregistration is committed before the replays. Full arm JSON and checksums remain in
 the private capture directory; only compact per-arm summaries will be checked in.
 
+**Runtime-only protocol amendment (2026-11-19, before the remaining arms).** The first
+seed649658380 / 0.25 Myr arm started after an empty-run budget check, but a separate unit-test
+process appeared during that replay and was detected immediately after it finished. Keep its
+deterministic abrasion and state measures as the primary result, but flag its elapsed time as
+non-comparable. Once the unit run exits and a fresh budget check lists no other runs, repeat
+that one arm solely to obtain an uncontended runtime and RSS measurement. Preserve both
+captures and checksums; do not include the repeated values a second time in the abrasion gap.
+
 | Save | Age | SHA-256 |
 |---|---:|---|
 | mantle-bloom-seed649658380-6400000y.bloom | 6.4 Myr | 06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b6b31131f |
