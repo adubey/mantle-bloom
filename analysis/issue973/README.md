@@ -52,6 +52,15 @@ non-comparable. Once the unit run exits and a fresh budget check lists no other 
 that one arm solely to obtain an uncontended runtime and RSS measurement. Preserve both
 captures and checksums; do not include the repeated values a second time in the abrasion gap.
 
+**Runtime-only protocol amendment 2 (2026-11-19, after all four primary arms).** The other
+three arms were run under explicit owner overrides while independent simulations were active,
+so all four observed D3 elapsed times are load-affected. Do not compare any of those times to
+D2. If the runtime comparison is needed to close #973, repeat each of the four D3 arms once
+with no other runs listed by `compute_budget.py`; use those repeats only for runtime/RSS, not
+for abrasion totals, gaps or closing states. Keep the existing D2 runtimes at `382ddccd` as the
+controls. This amendment is about runtime validity only and does not change the preregistered
+scientific metrics or thresholds.
+
 | Save | Age | SHA-256 |
 |---|---:|---|
 | mantle-bloom-seed649658380-6400000y.bloom | 6.4 Myr | 06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b6b31131f |
@@ -124,6 +133,44 @@ reported 4,570,363.04 km³ raw and 3,294,829.58 km³ applied abrasion (applied/r
 The save has ice on craton-bearing nodes, so the lower applied share is expected to include
 craton resistance; this one step does not isolate the share due to resistance from headroom or
 cover limits. It is a targeted smoke check, not a regression test or full G3 validation.
+
+### Post-merge replay results (2026-11-19)
+
+All four preregistered 10 Myr D3 arms ran from `b74d88af`; the production simulation tree is
+the merged PR #976 implementation at `aa217ab4` (the follow-up commits only add evidence and
+diagnostic interval counting). The D2 runtime controls below remain the same-save, same-horizon
+runs at `382ddccd`.
+
+| Save | Schedule | Raw abrasion (km³) | Applied (km³) | Applied/raw | Flattening (km³) | March intervals | D3 elapsed* | Peak RSS |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| seed649658380 | 0.25 Myr × 40 | 6,897,278 | 6,897,278 | 1.0000 | 2,035,533 | 17,437 | 1,715 s | 1.05 GB |
+| seed649658380 | 1 Myr × 10 | 5,750,860 | 5,750,860 | 1.0000 | 2,021,584 | 12,553 | 1,257 s | 0.96 GB |
+| seed997271774 | 0.25 Myr × 40 | 143,832,735 | 111,931,582 | 0.7782 | 14,651,958 | 17,842 | 2,170 s | 1.35 GB |
+| seed997271774 | 1 Myr × 10 | 102,514,794 | 71,136,782 | 0.6939 | 11,267,660 | 14,663 | 1,647 s | 1.30 GB |
+
+| Save | 0.25 vs 1 Myr applied-abrasion gap | G3 Cook-law gap | Working target |
+|---|---:|---:|---|
+| seed649658380 | 16.62% | 66.5% | Pass (<20%) |
+| seed997271774 | 36.45% | 70.4% | Partial (20–50%; below the >50% failure threshold) |
+
+Both saves improve on G3's original step-size gap, and neither reaches the preregistered
+failure range. The smaller save meets the <20% working target; the larger save does not, so D3
+is a partial result against that target and should not be reported as a full pass. Applied/raw
+is 1.0 on the smaller save and 0.69–0.78 on the larger save, consistent with material limits
+remaining active on the larger world. The maximum absolute march-to-transfer difference is
+2 m³ across the four arms.
+
+**Runtime is not comparable.** Other agents' simulations overlapped the D3 arms, so the elapsed
+times above are recorded but must not be divided by the D2 controls to claim a slowdown. D2
+runtime controls are 331/82 s for seed649658380 (0.25/1 Myr) and 624/259 s for seed997271774.
+The D3 runtime comparison remains open until D3 arms are timed without overlapping runs. Peak
+RSS and interval totals are reported descriptively. The machine also logged the existing 5 km
+glacier-depth guard during the seed997271774 replays; those warnings are part of the observed
+outcome. Because the 36.45% gap is in the preregistered partial band, #973 remains open for the
+owner's decision on that result as well as the runtime comparison.
+
+The per-step compact summaries are in `d3-postmerge-results.json`. Full captures remain in the
+private capture directory and are checksummed in its `SHA256SUMS` file.
 
 ### Implementation checks
 

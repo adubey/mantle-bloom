@@ -1,0 +1,92 @@
+{
+  "issue": 973,
+  "production_commit": "aa217ab478b534248c261457d129475b0c2e4f50",
+  "replay_commit": "b74d88af",
+  "d2_runtime_baseline_commit": "382ddccd3aa01b1469f3083c29df26fe262e5f3f",
+  "runtime_comparable": false,
+  "runtime_note": "Other simulations overlapped the D3 arms; do not compute slowdown ratios from their elapsed times.",
+  "step_gap_definition": "(applied_0.25Myr - applied_1Myr) / applied_0.25Myr",
+  "working_target_each_save": "<20%",
+  "failure_threshold_each_save": ">50%",
+  "arms": [
+    {
+      "save": "mantle-bloom-seed649658380-6400000y.bloom",
+      "sha256": "06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b6b31131f",
+      "age_myr": 6.4,
+      "myr_per_step": 0.25,
+      "steps": 40,
+      "raw_abrasion_km3": 6897277.88196109,
+      "applied_abrasion_km3": 6897277.88196109,
+      "applied_raw_ratio": 1.0,
+      "flattening_km3": 2035533.239488148,
+      "max_abs_march_transfer_delta_m3": 0.0625,
+      "march_intervals": 17437,
+      "elapsed_s_observed_not_comparable": 1715.39,
+      "peak_rss_gb": 1.05,
+      "d2_runtime_s": 331
+    },
+    {
+      "save": "mantle-bloom-seed649658380-6400000y.bloom",
+      "sha256": "06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b6b31131f",
+      "age_myr": 6.4,
+      "myr_per_step": 1.0,
+      "steps": 10,
+      "raw_abrasion_km3": 5750860.021583667,
+      "applied_abrasion_km3": 5750860.021583667,
+      "applied_raw_ratio": 1.0,
+      "flattening_km3": 2021584.1272374685,
+      "max_abs_march_transfer_delta_m3": 0.125,
+      "march_intervals": 12553,
+      "elapsed_s_observed_not_comparable": 1256.53,
+      "peak_rss_gb": 0.96,
+      "d2_runtime_s": 82
+    },
+    {
+      "save": "mantle-bloom-seed997271774-87400000y.bloom",
+      "sha256": "07971ee25cdbc364cd887ea8f4fffc69ceed49b1933d09ea38e3864ea95328b8",
+      "age_myr": 87.4,
+      "myr_per_step": 0.25,
+      "steps": 40,
+      "raw_abrasion_km3": 143832735.10626644,
+      "applied_abrasion_km3": 111931582.14552666,
+      "applied_raw_ratio": 0.7782065888049018,
+      "flattening_km3": 14651957.770709254,
+      "max_abs_march_transfer_delta_m3": 1.0,
+      "march_intervals": 17842,
+      "elapsed_s_observed_not_comparable": 2169.88,
+      "peak_rss_gb": 1.35,
+      "d2_runtime_s": 624
+    },
+    {
+      "save": "mantle-bloom-seed997271774-87400000y.bloom",
+      "sha256": "07971ee25cdbc364cd887ea8f4fffc69ceed49b1933d09ea38e3864ea95328b8",
+      "age_myr": 87.4,
+      "myr_per_step": 1.0,
+      "steps": 10,
+      "raw_abrasion_km3": 102514793.8,
+      "applied_abrasion_km3": 71136781.9,
+      "applied_raw_ratio": 0.6939,
+      "flattening_km3": 11267659.8,
+      "max_abs_march_transfer_delta_m3": 2.0,
+      "march_intervals": 14663,
+      "elapsed_s_observed_not_comparable": 1647.2,
+      "peak_rss_gb": 1.3,
+      "d2_runtime_s": 259
+    }
+  ],
+  "paired_gaps": [
+    {
+      "save": "mantle-bloom-seed649658380-6400000y.bloom",
+      "applied_abrasion_gap_pct": 16.621308869919908,
+      "g3_cook_gap_pct": 66.5,
+      "working_target_met": true
+    },
+    {
+      "save": "mantle-bloom-seed997271774-87400000y.bloom",
+      "applied_abrasion_gap_pct": 36.44619282851366,
+      "g3_cook_gap_pct": 70.4,
+      "working_target_met": false,
+      "result": "partial; below failure threshold"
+    }
+  ]
+}
