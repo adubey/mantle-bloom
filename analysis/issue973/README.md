@@ -15,6 +15,43 @@ Controls: Cook et al. (2020), coefficient 1e-4 m/yr, exponent 0.65, glacier_eros
 | mantle-bloom-seed649658380-6400000y.bloom | 6.4 Myr | 06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b6b31131f |
 | mantle-bloom-seed997271774-87400000y.bloom | 87.4 Myr | 07971ee25cdbc364cd887ea8f4fffc69ceed49b1933d09ea38e3864ea95328b8 |
 
-### Runs
+### Results
 
-Pending preregistered D2 and D3 replays.
+All eight preregistered 10 Myr replays completed: D2 baseline at `origin/main` (`382ddccd`)
+and D3 at implementation commit `ff61e09f`, for each save at 0.25 Myr × 40 and 1 Myr × 10.
+The captures and their `SHA256SUMS` are retained outside the repository. No other compute
+runs were listed during these replay arms.
+
+| Save | Arm | Schedule | Raw abrasion (km³) | Applied (km³) | Applied/raw | Runtime | Peak RSS |
+|---|---|---:|---:|---:|---:|---:|---:|
+| seed649658380 | D2 | 0.25 Myr | 4,217 | 17,274 | 4.096* | 331 s | 1.09 GB |
+| seed649658380 | D2 | 1 Myr | 4,384 | 17,304 | 3.947* | 82 s | 1.23 GB |
+| seed649658380 | D3 | 0.25 Myr | 7,054,389 | 7,054,389 | 1.000 | 1,760 s | 1.05 GB |
+| seed649658380 | D3 | 1 Myr | 5,932,272 | 5,932,272 | 1.000 | 1,139 s | 1.03 GB |
+| seed997271774 | D2 | 0.25 Myr | 169,374 | 457,849 | 2.703* | 624 s | 1.50 GB |
+| seed997271774 | D2 | 1 Myr | 177,328 | 349,649 | 1.972* | 259 s | 1.58 GB |
+| seed997271774 | D3 | 0.25 Myr | 135,680,425 | 100,053,493 | 0.737 | 2,262 s | 1.36 GB |
+| seed997271774 | D3 | 1 Myr | 99,720,997 | 65,953,273 | 0.661 | 1,599 s | 1.42 GB |
+
+The D3 quarter-to-annual abrasion gap is 15.9% on seed649658380 and 34.1% on seed997271774.
+Thus the first save meets the <20% working target and the second does not; both are below the
+50% failure threshold, and both improve on G3's 66–73% Cook-law gap. D3 removes the dominant
+step-size sensitivity on these cases, while the larger save still has meaningful residual
+sensitivity. Applied/raw is essentially 1.0 on the first save. On the second it is 0.66–0.74,
+consistent with limited crustal headroom at some locations; max-depth guard warnings occurred
+in the quarter-step run and should be interpreted alongside that result.
+
+`*` D2 used the legacy baseline law and its raw/applied measures are not comparable to the
+Cook-law D3 volumes; these rows serve as same-save runtime and closing-state controls. Relative
+to D2, D3 runtime was 13.9× (annual) and 5.31× (quarter) on seed649658380, and 6.17× (annual)
+and 3.63× (quarter) on seed997271774. This cost reflects continued interval marching after
+ice-equilibrium diagnostics so each interval's abrasion and bed feedback are represented.
+
+| Save | D3 0.25 Myr closing land ice area (km²) | D3 1 Myr closing land ice area (km²) | D3 0.25 Myr closing land volume (km³) | D3 1 Myr closing land volume (km³) |
+|---|---:|---:|---:|---:|
+| seed649658380 | 2,948,871 | 2,755,594 | 88,442,666 | 89,406,672 |
+| seed997271774 | 9,737,452 | 12,238,086 | 255,421,127 | 259,873,597 |
+
+These are two deterministic diagnostic saves, not a broad stability survey. The G3 target is
+partially met; the remaining 34.1% gap on the larger save and the runtime cost remain explicit
+follow-up considerations for RFC closure.
