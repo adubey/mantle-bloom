@@ -114,11 +114,13 @@ law produced (see the formula below).
 - **Glacier abrasion** follows `E = K_G * u_b ** l`, with physical basal sliding speed `u_b`
   in m/yr, coefficient `K_G = 1e-4`, and exponent `l = 0.65` (RFC 0015 D3, Cook et al.
   2020). Sliding is a share of balance velocity on a thawed bed and zero on a frozen bed.
-  Abrasion is integrated in each ice-march interval; the working bed is lowered by that
-  interval's amount before the next ice solve, feeding bed change back into sliding. The
-  accumulated rock is transferred once with the normal terrain/material update. This replaces
-  the former calibrated model-unit coefficient and the shared neighbor-drop cap; crustal
-  headroom and the existing sediment transport ledger still constrain the transfer. The
+  Raw abrasion demand is integrated in each ice-march interval. Bed feedback is limited to
+  available mobile cover and remaining Hc above the crustal floor, with craton resistance on
+  substrate; this is also the amount reserved for the glacier's first-priority material
+  transfer at the end of the world step. The next ice solve reads that lowered working bed.
+  Raw and unapplied demand are exposed in the erosion budget. This replaces the former
+  calibrated model-unit coefficient and the shared neighbor-drop cap; crustal headroom and
+  the existing sediment transport ledger still constrain the transfer. The
   alternative linear fit is `K_G = 1e-4`, `l = 1` (Humphrey & Raymond 1994). `l = 2` remains
   out until its coefficient is verified from Herman et al. (2015). `ice_factor` still scales
   the flattening blur below.

@@ -94,9 +94,9 @@ def _run_replay(ns: argparse.Namespace) -> dict:
     world.glacier_erosion_multiplier = ns.multiplier
 
     arm_cfg = ARMS[ns.arm]
-    orig_coeff = glacier_erosion.GLACIAL_ABRASION_COEFFICIENT_M_PER_YR
+    orig_coeff = glacier_erosion.GLACIAL_ABRASION_COEFFICIENT
     orig_exp = glacier_erosion.GLACIAL_ABRASION_EXPONENT
-    glacier_erosion.GLACIAL_ABRASION_COEFFICIENT_M_PER_YR, glacier_erosion.GLACIAL_ABRASION_EXPONENT = arm_cfg
+    glacier_erosion.GLACIAL_ABRASION_COEFFICIENT, glacier_erosion.GLACIAL_ABRASION_EXPONENT = arm_cfg
 
     preset = next((k for k, v in ice_sheet.MARCH_COST_PRESETS.items() if v == ice_sheet.MARCH_COST), "custom")
     commit = subprocess.run(
@@ -117,8 +117,8 @@ def _run_replay(ns: argparse.Namespace) -> dict:
         )
         flatten_removed = (send * craton_keep[:, None]).sum(axis=1)
         raw_glacier = (
-            np.asarray(hydro.ice.abrasion_depth_m, dtype=float)
-            if hydro.ice is not None and hydro.ice.abrasion_depth_m is not None
+            np.asarray(hydro.ice.raw_abrasion_depth_m, dtype=float)
+            if hydro.ice is not None and hydro.ice.raw_abrasion_depth_m is not None
             else np.zeros(len(hydro.elevation))
         )
         step_capture["raw_glacial_erosion_m3"] = float(np.sum(raw_glacier * area))
@@ -128,6 +128,7 @@ def _run_replay(ns: argparse.Namespace) -> dict:
     def _wrapped_apply_erosion(w, years, **kwargs):
         res = orig_apply_erosion(w, years, **kwargs)
         step_capture["applied_glacial_erosion_m3"] = float(res.budget["glacial_erosion_m3"])
+        step_capture["unapplied_glacial_erosion_m3"] = float(res.budget["glacial_erosion_unapplied_m3"])
         step_capture["total_removed_m3"] = float(res.budget["removed_m3"])
         return res
 
@@ -169,7 +170,7 @@ def _run_replay(ns: argparse.Namespace) -> dict:
     finally:
         erosion._flatten = orig_flatten
         erosion.apply_erosion = orig_apply_erosion
-        glacier_erosion.GLACIAL_ABRASION_COEFFICIENT_M_PER_YR = orig_coeff
+        glacier_erosion.GLACIAL_ABRASION_COEFFICIENT = orig_coeff
         glacier_erosion.GLACIAL_ABRASION_EXPONENT = orig_exp
 
     total_raw = sum(s["raw_glacial_erosion_m3"] for s in steps)

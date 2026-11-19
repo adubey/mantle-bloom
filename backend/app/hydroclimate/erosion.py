@@ -74,7 +74,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from .. import continental_ledger, cratons, faults, geometry, lithosphere, trace
-from . import biomes, climate, glacier_erosion, hydrology, mobile_cover, river_substeps
+from . import biomes, climate, hydrology, mobile_cover, river_substeps
 from ..elevation_lines import (
     ELEV_CHANGE_COASTAL_LEVELING,
     ELEV_CHANGE_COLLISION,
@@ -219,9 +219,6 @@ DEPOSITION_FRACTION = 0.15
 #
 # Kept as m/Myr for the diagnostic scripts; production abrasion integrates the physical
 # m/yr law through hydrology's ice march (RFC 0015 D3).
-GLACIER_ABRASION_COEFFICIENT = glacier_erosion.GLACIAL_ABRASION_COEFFICIENT_M_PER_YR * 1.0e6
-GLACIER_ABRASION_EXPONENT = glacier_erosion.GLACIAL_ABRASION_EXPONENT
-
 # Ice-thickness scale for the glacial flattening blur below: the blur rate grows linearly with
 # ice depth up to GLACIER_EROSION_MAX_FACTOR times its value under
 # GLACIER_EROSION_REFERENCE_DEPTH_M of ice.
@@ -1973,11 +1970,15 @@ def apply_erosion(
     relief_factor = np.clip(slope / WEATHERING_RELIEF_REFERENCE_SLOPE, 0.0, 1.0)
     weathering = WEATHERING_COEFFICIENT * world.wind_erosion_multiplier * wind_speed * humidity_norm * relief_factor * dt_myr
     ice_factor = np.clip(prior_glacier_depth / GLACIER_EROSION_REFERENCE_DEPTH_M, 0.0, GLACIER_EROSION_MAX_FACTOR)
-    sliding = hydro.ice.sliding_speed_m_per_yr if hydro.ice is not None else np.zeros(n)
     glacier = (
         np.asarray(hydro.ice.abrasion_depth_m, dtype=float)
         if hydro.ice is not None and hydro.ice.abrasion_depth_m is not None
-        else glacier_erosion.abrasion_depth_m(sliding, years, world.glacier_erosion_multiplier)
+        else np.zeros(n)
+    )
+    raw_glacier = (
+        np.asarray(hydro.ice.raw_abrasion_depth_m, dtype=float)
+        if hydro.ice is not None and hydro.ice.raw_abrasion_depth_m is not None
+        else glacier.copy()
     )
     # See SEISMIC_EROSION_* constants' own comment: elevation (clipped/normalized against
     # SEISMIC_EROSION_ELEVATION_REFERENCE_M, then raised to a superlinear power) stands in for
@@ -2054,16 +2055,31 @@ def apply_erosion(
     # use everywhere else): every source here is a subaerial process. The sea floor and the
     # shoreline get their own erosion separately, below (submarine + coastal erosion -- see
     # SUBMARINE_EROSION_* / COASTAL_EROSION_*).
+    glacier = np.where(is_ocean_node, np.clip(glacier, 0.0, None), 0.0)
+    raw_glacier = np.clip(raw_glacier, 0.0, None)
     raw_erosion_total = rain + river + weathering + seismic
     detach_capacity = np.where(is_ocean_node, 0.0, np.clip(raw_erosion_total, 0.0, None))
-    # Capped at the drop to the lowest neighbor so a single step can't erode a node below the
-    # valley floor it drains into, and at the Hc headroom. A cap cuts substrate before cover
-    # (the cover is on top, so it goes first).
+    # Glacier is transferred first, matching the material reserved during the ice march.
+    # It is independent of the neighbor-drop limit, but still consumes cover and Hc headroom.
+    glacier_cover = np.minimum(np.clip(prior_cover, 0.0, None), glacier)
+    glacier_substrate = np.minimum(
+        np.clip(glacier - glacier_cover, 0.0, None),
+        np.clip(removable_m - glacier_cover, 0.0, None),
+    ) * craton_keep
+    applied_glacier = glacier_cover + glacier_substrate
+    cover_after_glacier = np.clip(prior_cover - glacier_cover, 0.0, None)
+    # Other subaerial sources retain the shared neighbor-drop and Hc caps, reduced by the
+    # abrasion already removed this step.
     erosion_cap_m = np.minimum(np.maximum(drop_to_lowest_neighbor_m, march_cut_m), removable_m)
-    cover_entrained, substrate_detached = _strip_mobile_cover(prior_cover, detach_capacity)
-    cover_entrained = np.minimum(cover_entrained, erosion_cap_m)
-    erosion_amount = cover_entrained + np.minimum(substrate_detached, erosion_cap_m - cover_entrained) * craton_keep
-    cover_m = prior_cover - cover_entrained
+    remaining_cap_m = np.clip(erosion_cap_m - applied_glacier, 0.0, None)
+    other_cover, substrate_detached = _strip_mobile_cover(cover_after_glacier, detach_capacity)
+    other_cover = np.minimum(other_cover, remaining_cap_m)
+    other_erosion = other_cover + np.minimum(
+        substrate_detached, remaining_cap_m - other_cover,
+    ) * craton_keep
+    cover_entrained = glacier_cover + other_cover
+    cover_m = cover_after_glacier - other_cover
+    erosion_amount = applied_glacier + other_erosion
     # channel_depth is the terrain's own carved-channel record, so it must track what actually
     # got taken off this point's elevation: river's (and glacier's -- see new_channel_depth)
     # contribution is scaled by applied_scale, what came off over what the substrate laws
@@ -2072,7 +2088,7 @@ def apply_erosion(
     # MAX_CHANNEL_DEPTH_M while its elevation barely moves, decoupling the two fields. Mobile
     # cover can push it up to MOBILE_COVER_ERODIBILITY_FACTOR: a channel cuts through loose
     # sediment that much faster than through rock.
-    applied_scale = np.divide(erosion_amount, raw_erosion_total, out=np.zeros_like(raw_erosion_total), where=raw_erosion_total > 0)
+    applied_scale = np.divide(other_erosion, raw_erosion_total, out=np.zeros_like(raw_erosion_total), where=raw_erosion_total > 0)
     applied_river = river * applied_scale
 
     # Split off the sources with genuinely non-water transport (see module comment above
@@ -2087,19 +2103,6 @@ def apply_erosion(
     # water-routed pool and runs out along its own path below.
     applied_weathering = weathering * applied_scale
     applied_seismic = seismic * applied_scale
-    # D3's interval integration replaces the shared neighbor-drop cap for abrasion. Its
-    # independent material limit remains: after other sources, only the remaining Hc
-    # headroom can be transferred from cover and substrate.
-    glacier_headroom = np.clip(removable_m - erosion_amount, 0.0, None)
-    glacier_cover = np.minimum(np.clip(cover_m, 0.0, None), np.minimum(glacier, glacier_headroom))
-    glacier_substrate = np.minimum(
-        np.clip(glacier - glacier_cover, 0.0, None),
-        np.clip(glacier_headroom - glacier_cover, 0.0, None),
-    ) * craton_keep
-    applied_glacier = glacier_cover + glacier_substrate
-    cover_entrained = cover_entrained + glacier_cover
-    cover_m = cover_m - glacier_cover
-    erosion_amount = erosion_amount + applied_glacier
     glacier_till = applied_glacier * GLACIER_TILL_FRACTION
     glacier_carried = applied_glacier - glacier_till
     wind_redeposit_source = applied_weathering * WIND_DEPOSITION_FRACTION
@@ -2616,6 +2619,8 @@ def apply_erosion(
     budget = {
         "removed_m3": removed_m3,
         "glacial_erosion_m3": float(np.sum(applied_glacier * area)),
+        "glacial_erosion_raw_m3": float(np.sum(raw_glacier * area)),
+        "glacial_erosion_unapplied_m3": float(np.sum(np.clip(raw_glacier - applied_glacier, 0.0, None) * area)),
         "deposited_m3": deposited_m3,
         # Net material the ocean_deposition_multiplier knob adds (> 1) or withholds (< 1).
         "ocean_deposition_knob_m3": float(beach_deposit.sum() + marine_unscaled.sum() + landslide_marine_unscaled.sum())

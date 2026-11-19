@@ -102,9 +102,11 @@ class MarchCost:
     or by replacing `MARCH_COST`. They compose: a preset is just one combination.
 
     1. `max_substeps` records when the former D2 cost guard would have triggered.
-       D3 continues at the base interval because holding or filling the remainder with
-       one endpoint solve would omit within-step bed feedback. `cap_fill` is retained
-       for configuration compatibility but does not alter D3's integration.
+       D3 cannot hold or fill the remainder with one endpoint solve without omitting
+       within-step bed feedback. It leaves the current
+       adaptive interval unchanged. `cap_fill` and the `cap-hold`/`cap-endpoint` names
+       are retained for configuration compatibility; they do not bound D3 cost or alter
+       its integration.
     2. Adaptive substeps (#806 latency review item 3): after each settle pair whose
        pair-mean change is below `adaptive_grow_below`, the substep grows by
        `adaptive_growth`, up to `adaptive_max_substep_years`; a pair change above
@@ -260,8 +262,9 @@ ICE_FLOTATION_PASSES = 6
 
 _FLOTATION_RATIO = RHO_WATER / RHO_ICE
 
-# End-of-step march log (RFC 0015 D2, #789): one entry per marched step, with substeps,
-# marched/held years, whether the ice settled, the volume path, and any tipping-point growth.
+# End-of-step march log (RFC 0015, #789): one entry per marched step, with substeps,
+# marched/held years, whether an equilibrium diagnostic fired, the volume path, and any
+# tipping-point growth. Under D3 `settled` is diagnostic only; it does not mean the march held.
 # Bounded: a long-running server would otherwise grow this list forever, and readers only
 # ever need the latest entry (#806 review).
 MARCH_LOG: deque[dict] = deque(maxlen=64)
@@ -759,7 +762,9 @@ class IceStep:
 
     `thickness` is the plastic profile's ice thickness at each node and `covered` the cell's
     ice-covered fraction. `calved_m3` is ice that left for the ocean, unrouted. The sliding
-    speed is m/yr in model units (a calibrated proxy while mass balance stays in model units)."""
+    speed is m/yr in model units (a calibrated proxy while mass balance stays in model units).
+    D3's `abrasion_depth_m` is the material-limited depth fed back into the working bed;
+    `raw_abrasion_depth_m` retains uncapped physical demand for the erosion budget."""
 
     thickness: np.ndarray
     covered: np.ndarray
@@ -771,6 +776,7 @@ class IceStep:
     bodies: list[BodyBalance] = field(default_factory=list)
     frozen_precipitation: FrozenPrecipitation | None = None
     abrasion_depth_m: np.ndarray | None = None
+    raw_abrasion_depth_m: np.ndarray | None = None
 
 
 @dataclass

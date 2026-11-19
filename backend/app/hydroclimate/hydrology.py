@@ -2187,15 +2187,16 @@ class _SettleWatch:
         ratio = change / prev_change if prev_change > 0.0 else (0.0 if change == 0.0 else np.inf)
         windows_left = remaining / max(sub * cost.trend_window, 1e-9)
         to_come = change * ratio / (1.0 - ratio) if ratio < 1.0 else change * windows_left
-        if min(to_come, change * windows_left) < cost.trend_tol:
+        settled = min(to_come, change * windows_left) < cost.trend_tol
+        if settled:
             self.hold_window = cost.trend_window
             self.settled_by = "trend"
-            return True, None
         if ratio > cost.trend_shrink_ratio:
-            return False, self.base_sub
+            return settled, self.base_sub
         if ratio < 1.0 and cost.trend_grow:
-            return False, min(sub * cost.adaptive_growth, max(cost.trend_max_substep_years, self.base_sub))
-        return False, None
+            grown = min(sub * cost.adaptive_growth, max(cost.trend_max_substep_years, self.base_sub))
+            return settled, grown
+        return settled, None
 
     def observe(self, depth: np.ndarray, volumes: list[float], sub: float, remaining: float) -> tuple[bool, float | None]:
         if self.cost.recurrence and self._recurs(depth, volumes):
@@ -2233,21 +2234,21 @@ def _march_glacier(
 ) -> tuple[np.ndarray, np.ndarray, "ice_sheet.IceStep"]:
     """March ice and integrate D3 basal abrasion through the world step (RFC 0015 D3).
 
-    Each interval solves from the current ice and working bed. After the solve, physical
-    abrasion is integrated from that interval's basal sliding and lowers the working bed
-    before the next solve. The accumulated depth is returned on IceStep for one material
-    transfer by erosion.apply_erosion at the end of the world step. Ice membership, yield
-    stress, frictional heat and the mass-balance lapse surface are recomputed between
-    intervals. The sea-level bracket, membership loop and deflection loop of the old
-    endpoint solve stay deleted. Grounding and flotation keep the opening deflection
+    Each interval solves from the current ice and working bed. After the solve, raw physical
+    abrasion is integrated from that interval's basal sliding. The working bed is lowered by
+    the share available from mobile cover and Hc headroom after craton resistance, matching
+    the depth reserved for the final material transfer by erosion.apply_erosion. Ice
+    membership, yield stress, frictional heat and the mass-balance lapse surface are
+    recomputed between intervals. The sea-level bracket, membership loop and deflection
+    loop of the old endpoint solve stay deleted. Grounding and flotation keep the opening deflection
     (a one-step lag); only the lapse correction sees the equilibrium target each interval.
 
     MARCH_COST still selects substep adaptation, sea-level skips and distance-search
     options. Settle tests remain diagnostic and may adapt interval lengths, but cannot hold
     time at equilibrium: ongoing abrasion changes the working bed and may move the ice away
     from that state. A configured max_substeps records when the D2 cost guard is reached;
-    D3 continues at the base interval instead of filling the remainder with a held state or
-    one endpoint solve.
+    D3 preserves the current adaptive interval instead of filling the remainder with a held
+    state or one endpoint solve.
 
     Every interval is a full ice solve and may trigger a sea-level re-solve. A world with
     no ice and no snowfall still takes a one-solve fast path. Re-solves warm-start their
@@ -2300,6 +2301,21 @@ def _march_glacier(
     crust_h_m = collect_all_crustal_thickness(plates_in_order)
     mantle_h_m = collect_all_mantle_lithosphere_thickness(plates_in_order)
     rho_crust = np.concatenate([lithosphere.node_crust_density(p.collect("crust_type_code"), p.crust_type) for p in plates_in_order])
+    craton_keep = 1.0 - cratons.CRATON_EROSION_RESISTANCE * cratons.strength(
+        np.concatenate([p.collect("craton_crust_m") for p in plates_in_order])
+    )
+    cover_remaining = np.clip(
+        np.asarray(mobile_cover_m, dtype=float), 0.0,
+        np.where(crust_h_m > 0.0, crust_h_m, np.inf),
+    )
+    # Match erosion.apply_erosion's source order: glacier removes loose cover first, then
+    # substrate above the Hc floor scaled by craton resistance. The interval bed feedback
+    # must not include rock the final material transfer cannot remove.
+    substrate_headroom = np.where(
+        crust_h_m > 0.0,
+        np.clip(crust_h_m - lithosphere.MIN_CRUSTAL_THICKNESS_M, 0.0, None),
+        np.inf,
+    )
     working_elevation = np.asarray(elevation, dtype=float).copy()
     elevations = working_elevation
     _, hyps_areas = eustasy.hypsometry(world)
@@ -2334,6 +2350,7 @@ def _march_glacier(
     if years <= 1e-6:
         new_depth, melt, ice = solve_once(0.0, depth, heat)
         ice.abrasion_depth_m = np.zeros(n)
+        ice.raw_abrasion_depth_m = np.zeros(n)
         ice_sheet.warn_if_capped(ice.ledger)
         ice_sheet.MARCH_LOG.append({
             "substeps": 0, "marched_years": 0.0, "held_years": 0.0, "settled": True,
@@ -2350,6 +2367,7 @@ def _march_glacier(
     if not _snow_can_start_ice(depth, dry_precip_mm, dry_snow_mm, temperature_at_nodes, seasonal_amplitude):
         new_depth, melt, ice = solve_once(float(years), depth, heat)
         ice.abrasion_depth_m = np.zeros(n)
+        ice.raw_abrasion_depth_m = np.zeros(n)
         ice_sheet.warn_if_capped(ice.ledger)
         ice_sheet.MARCH_LOG.append({
             "substeps": 0, "marched_years": float(years), "held_years": 0.0, "settled": True,
@@ -2382,6 +2400,7 @@ def _march_glacier(
     frozen_retained_total = 0.0
     frozen_bare_melted_total = 0.0
     abrasion_depth = np.zeros(n)
+    raw_abrasion_depth = np.zeros(n)
     while elapsed < years - 1e-6:
         dt = min(sub, years - elapsed)
         ref_depth = 0.5 * (depth + prev_depth)
@@ -2392,10 +2411,22 @@ def _march_glacier(
             # tell this one where to look for its opening extent (#147, same answer).
             hints = None if ice is None else ice_sheet.margin_hints(n, ice.bodies)
             new_depth, melt, ice = solve_once(dt, ref_depth, ref_heat, hints)
-        interval_abrasion = glacier_erosion.abrasion_depth_m(
+        raw_interval_abrasion = glacier_erosion.abrasion_depth_m(
             ice.sliding_speed_m_per_yr, dt, world.glacier_erosion_multiplier,
         )
-        interval_abrasion = np.where(ocean_mask, 0.0, interval_abrasion)
+        raw_interval_abrasion = np.where(ocean_mask, 0.0, raw_interval_abrasion)
+        raw_abrasion_depth += raw_interval_abrasion
+        cover_cut = np.minimum(raw_interval_abrasion, cover_remaining)
+        substrate_demand = np.clip(raw_interval_abrasion - cover_cut, 0.0, None)
+        substrate_cut = np.minimum(substrate_demand, substrate_headroom * craton_keep)
+        interval_abrasion = cover_cut + substrate_cut
+        cover_remaining -= cover_cut
+        substrate_headroom -= np.divide(
+            substrate_cut,
+            craton_keep,
+            out=np.zeros_like(substrate_cut),
+            where=craton_keep > 0.0,
+        )
         abrasion_depth += interval_abrasion
         working_elevation -= interval_abrasion
         substeps += 1
@@ -2452,15 +2483,19 @@ def _march_glacier(
         sub = sub if watch_sub is None else watch_sub
         if not capped and cost.max_substeps is not None and substeps >= cost.max_substeps and elapsed < years - 1e-6:
             capped = True
-            # D3 cannot fill the remaining interval with a held state or one endpoint solve:
-            # abrasion must keep changing the working bed and feed that change into each next
-            # ice solve. Keep marching at the configured interval after the D2 cost guard.
-            sub = min(base_sub, years - elapsed)
+            # D3 cannot fill the remaining interval with a held state or one endpoint solve.
+            # Keep the current adaptive interval: resetting to base_sub would turn this cost
+            # diagnostic into a slowdown amplifier after the cap is reached.
+            _logger.warning(
+                "glacier march reached max_substeps=%d; D3 continues at %.0f yr intervals "
+                "(cap_fill=%s is ignored)",
+                cost.max_substeps, sub, cost.cap_fill,
+            )
     remaining = max(years - elapsed, 0.0)
     ledger_total.closing_m3 = float(np.dot(depth, areas))
     # The interim glacier-water account (RFC 0016 G0, #732) reads one step's frozen
-    # precipitation: the march sums every substep (plus the hold share) so it sees the
-    # whole step, not the last 250 yr.
+    # precipitation: the march sums every substep so it sees the whole step, not just the
+    # final interval.
     frozen_precipitation = ice_sheet.FrozenPrecipitation(
         land_m3=frozen_land_total,
         ocean_retained_m3=frozen_ocean_retained_total,
@@ -2470,15 +2505,19 @@ def _march_glacier(
     tipping_growth = None
     if settled < ice_sheet.MARCH_SETTLE_PATIENCE and len(pair_changes) >= 2 and pair_changes[0] > 0.0:
         tipping_growth = pair_changes[-1] / pair_changes[0]
+    settle_diagnostic_fired = settled >= ice_sheet.MARCH_SETTLE_PATIENCE or watch.settled_by is not None
     ice_sheet.MARCH_LOG.append({
         "substeps": substeps, "marched_years": elapsed, "held_years": max(remaining, 0.0),
-        "settled": settled >= ice_sheet.MARCH_SETTLE_PATIENCE or watch.settled_by is not None,
+        "settled": settle_diagnostic_fired,
         "settle_test": watch.settled_by or ("pair" if settled >= ice_sheet.MARCH_SETTLE_PATIENCE else None),
         "period": watch.period if watch.settled_by == "recurrence" else None,
         "trend_changes": [round(c, 8) for c in watch.trend_changes[-8:]],
         "last_change": None if last_change is None else round(last_change, 6), "sea_level_m": sea_level,
         "volume_path_km3": [round(v / 1e9, 6) for v in volumes[:: max(1, len(volumes) // 25)]],
         "worst_substep_move": _worst_substep_move(volumes),
+        "raw_glacial_abrasion_m3": float(np.dot(raw_abrasion_depth, areas)),
+        "applied_glacial_abrasion_m3": float(np.dot(abrasion_depth, areas)),
+        "unapplied_glacial_abrasion_m3": float(np.dot(raw_abrasion_depth - abrasion_depth, areas)),
         "tipping_growth": None if tipping_growth is None else round(tipping_growth, 6),
         "capped": capped, "max_substep_years": max_dt,
         "sea_level_resolves": resolves, "sea_level_skipped": skipped_resolves,
@@ -2486,11 +2525,12 @@ def _march_glacier(
     _logger.info(
         "glacier march: %d substeps, %.0f marched + %.0f held of %.0f yr, settled=%s, last_change=%s",
         substeps, elapsed, max(remaining, 0.0), years,
-        settled >= ice_sheet.MARCH_SETTLE_PATIENCE, last_change,
+        settle_diagnostic_fired, last_change,
     )
     ice.calved_m3 = calved_total
     ice.ledger = ledger_total
     ice.abrasion_depth_m = abrasion_depth
+    ice.raw_abrasion_depth_m = raw_abrasion_depth
     # One cap warning per step on the summed ledger, not one per substep (#806 review).
     ice_sheet.warn_if_capped(ledger_total)
     ice.frozen_precipitation = frozen_precipitation

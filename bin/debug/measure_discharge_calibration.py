@@ -118,6 +118,7 @@ def replay(args, world, plate_arrays, line_spacing_rad, erosion_mod, hydrology, 
     every = max(1, round(args.checkpoint_myr * 1e6 / args.step_years))
     totals = {key: 0.0 for key in (
         "river_erosion_raw_km3", "glacial_erosion_raw_km3", "glacial_erosion_applied_km3",
+        "glacial_erosion_unapplied_km3",
         "removed_km3", "deposited_km3", "ice_accumulation_km3", "ice_frozen_lake_km3",
         "ice_meltwater_km3", "ice_frozen_river_km3", "ice_calving_km3", "step_seconds",
     )}
@@ -134,21 +135,26 @@ def replay(args, world, plate_arrays, line_spacing_rad, erosion_mod, hydrology, 
             )
             land = ~hydro.is_ocean
             totals["river_erosion_raw_km3"] += float(np.dot(erosion.river[land], area[land])) / 1e9
-            integrated_abrasion = getattr(hydro.ice, "abrasion_depth_m", None) if hydro.ice is not None else None
-            if integrated_abrasion is not None:
-                glacier_raw = np.asarray(integrated_abrasion, dtype=float)
+            integrated_raw = getattr(hydro.ice, "raw_abrasion_depth_m", None) if hydro.ice is not None else None
+            budget = erosion.budget or {}
+            if "glacial_erosion_raw_m3" in budget:
+                totals["glacial_erosion_raw_km3"] += budget["glacial_erosion_raw_m3"] / 1e9
+            elif integrated_raw is not None:
+                glacier_raw = np.asarray(integrated_raw, dtype=float)
+                totals["glacial_erosion_raw_km3"] += float(np.dot(glacier_raw[land], area[land])) / 1e9
             else:
                 sliding = hydro.ice.sliding_speed_m_per_yr if hydro.ice is not None else np.zeros(len(area))
-                glacier_raw = (
-                    erosion_mod.GLACIER_ABRASION_COEFFICIENT
-                    * world.glacier_erosion_multiplier
-                    * np.power(sliding, erosion_mod.GLACIER_ABRASION_EXPONENT)
-                    * args.step_years / 1e6
-                )
-            totals["glacial_erosion_raw_km3"] += float(np.dot(glacier_raw[land], area[land])) / 1e9
-            budget = erosion.budget or {}
+                if hasattr(erosion_mod, "GLACIER_ABRASION_COEFFICIENT"):
+                    glacier_raw = (
+                        erosion_mod.GLACIER_ABRASION_COEFFICIENT
+                        * world.glacier_erosion_multiplier
+                        * np.power(sliding, erosion_mod.GLACIER_ABRASION_EXPONENT)
+                        * args.step_years / 1e6
+                    )
+                    totals["glacial_erosion_raw_km3"] += float(np.dot(glacier_raw[land], area[land])) / 1e9
             for key, budget_key in (
                 ("glacial_erosion_applied_km3", "glacial_erosion_m3"),
+                ("glacial_erosion_unapplied_km3", "glacial_erosion_unapplied_m3"),
                 ("removed_km3", "removed_m3"),
                 ("deposited_km3", "deposited_m3"),
             ):

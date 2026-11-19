@@ -2991,7 +2991,8 @@ def test_real_march_keeps_integrating_after_recurrence_is_detected(monkeypatch):
     # continues to modify the working bed after the ice state repeats.
     monkeypatch.setattr(ice_sheet, "MARCH_SETTLE_TOLERANCE", 0.0)
     _, entry = _march_with(monkeypatch, ice_sheet.MarchCost(recurrence=True), 200_000)
-    assert entry["settled"] is False or entry["settle_test"] is not None
+    assert entry["settle_test"] == "recurrence"
+    assert entry["period"] == 3
     assert entry["marched_years"] == pytest.approx(200_000.0)
     assert entry["held_years"] == 0.0
 
@@ -3000,7 +3001,8 @@ def test_real_march_keeps_integrating_after_recurrence_is_detected(monkeypatch):
 def test_real_march_keeps_integrating_after_trend_is_detected(monkeypatch):
     monkeypatch.setattr(ice_sheet, "MARCH_SETTLE_TOLERANCE", 0.0)
     fields, entry = _march_with(monkeypatch, ice_sheet.MarchCost(trend=True, trend_grow=False), 200_000)
-    assert entry["settle_test"] in (None, "trend")
+    assert entry["settle_test"] == "trend"
+    assert entry["trend_changes"]
     assert entry["period"] is None
     assert entry["marched_years"] == pytest.approx(200_000.0)
     assert entry["held_years"] == 0.0
