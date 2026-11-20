@@ -50,7 +50,7 @@ def _saved_run(tmp_path, settings, **override):
 
 
 def _args(settings, **override):
-    values = {"settings": settings, "setting": "s", "step_myr": 1.0, "every": 10.0, "years": 200.0, "no_contacts": False}
+    values = {"settings": settings, "setting": "s", "step_myr": 1.0, "every": 10.0, "years": 200.0, "no_contacts": False, "world_checks": False}
     return SimpleNamespace(**{**values, **override})
 
 
@@ -69,3 +69,11 @@ def test_resume_refuses_a_finished_run_made_for_another_experiment(tmp_path):
     with pytest.raises(SystemExit, match="contacts"):
         calibrate.check_cached_run(path, _args(settings, no_contacts=True))
     calibrate.check_cached_run(_saved_run(tmp_path, settings, contacts=False), _args(settings, no_contacts=True))
+
+
+def test_resume_refuses_a_run_without_world_checks_when_they_are_requested(tmp_path):
+    settings = _settings_file(tmp_path)
+    path = _saved_run(tmp_path, settings)  # an older run: no `world_checks` key, none recorded
+    calibrate.check_cached_run(path, _args(settings))
+    with pytest.raises(SystemExit, match="world_checks"):
+        calibrate.check_cached_run(path, _args(settings, world_checks=True))
