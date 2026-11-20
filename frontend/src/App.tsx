@@ -1749,9 +1749,8 @@ export default function App() {
   // its learn links) is the text, once the server has reported one.
   const recordingPhase = animation && animationPhase ? animationPhase : null;
   const shownPhase = recordingPhase ? recordingPhase.label : runPhase;
-  const shownGroup = recordingPhase
-    ? [runPhase, recordingPhase.group ? groupName(recordingPhase.group) : null].filter(Boolean).join(" · ")
-    : runGroup;
+  const shownGroup = recordingPhase ? recordingPhase.group : runGroup;
+  const shownContext = recordingPhase ? runPhase : null;
   const overlayFraction =
     animation && !animation.unbounded && animation.total > 0
       ? animation.frame / animation.total
@@ -1782,7 +1781,7 @@ export default function App() {
           {(busy || (runActive && overlayCollapsed)) && (
             <ProgressBar
               label={overlayHeadline}
-              text={shownPhase ? `${overlayHeadline}: ${shownGroup ? `${shownGroup} · ` : ""}${shownPhase}` : overlayHeadline}
+              text={shownPhase ? `${overlayHeadline}: ${shownContext ? `${shownContext} · ` : shownGroup ? `${groupName(shownGroup)} · ` : ""}${shownPhase}` : overlayHeadline}
               fraction={overlayFraction}
               onExpand={overlayCollapsed ? () => setOverlayCollapsed(false) : undefined}
             />
@@ -1798,6 +1797,7 @@ export default function App() {
               headline={overlayHeadline}
               phase={shownPhase}
               group={shownGroup}
+              context={shownContext}
               fraction={overlayFraction}
               onCollapse={() => setOverlayCollapsed(true)}
             />

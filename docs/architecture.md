@@ -403,11 +403,14 @@ can only yield between its own statements, and erosion is one statement. The end
 stream before releasing the session lock and compute gate, which joins the worker, so an error on
 the request side never leaves it stepping the world unlocked. A running world
 (`_run_step_once`) publishes the same events on its `WorldRunner`, and `GET /worlds/{world_id}/run`
-returns them as `phase`. A recording (`/animate`) and a guest's Advance on `/view` publish the same
+returns them as `phase`. A recording (`/animate`), a manual Step and a guest's Advance on `/view` publish the same
 way (`_publishing_phases`): the recording tab polls `/run` between frame lines, and
 `/public/worlds/{world_id}/world`'s `step_progress` carries the running span's label, group and
 fraction (falling back to a guest step's own progress line until its first span), so `/view`
-names the phase of any step, Play's and animation's included. The bar's fraction is the share of each phase's typical time
+names the phase of any step, Play's and animation's included. While one animation step runs, the
+stream sends a heartbeat every 30 s (`_next_animation_message`) so a step slower than the client's
+3-minute idle watchdog isn't mistaken for a dead server; they stop after 30 minutes with no phase
+change, so a hung step still surfaces. The bar's fraction is the share of each phase's typical time
 (`trace.STEP_WEIGHTS`, `GENERATE_WEIGHTS`, measured on a young world, minus the phases the
 world's settings skip) already finished, held below 1. A mature world spends its time differently, so the fraction is a guide, not a clock.
 

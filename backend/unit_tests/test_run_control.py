@@ -202,10 +202,12 @@ def test_the_phase_is_stored_without_moving_the_run_version():
     assert runner.phase() is None
 
 
-def test_a_finished_step_clears_its_phase(harness):
+def test_the_loop_leaves_a_phase_it_did_not_publish_alone(harness):
+    # #801 review: the step clears its own phase under the session lock; the loop clearing it
+    # afterwards could erase the first label of a guest step or recording that took the lock.
     harness.runner.set_phase("Updating faults", "Stepping/Moving plates", 0.25)
     harness.runner.set_status(RunStatus(running=True, step_years=1.0))
     assert harness.stepped.wait(5)
     harness.runner.set_status(RunStatus(running=False, step_years=1.0))
     harness.runner.close()
-    assert harness.runner.phase() is None
+    assert harness.runner.phase() == {"label": "Updating faults", "group": "Stepping/Moving plates", "fraction": 0.25}

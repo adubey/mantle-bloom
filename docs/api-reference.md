@@ -84,7 +84,9 @@ Open to anyone, for the logged-out `/view` page (#373). See
   step's live position, whoever triggered it (a guest, Play or an animation frame) -- the
   wait progress bar's feed -- or null when no step is computing (#653). `phase` and `group`
   name the running trace span (#801); `group` is null for a progress line from a step that
-  runs no spans. `404` for a private,
+  runs no spans. `progress_seq` is a cursor that moves on every phase change; send it back
+  as `progress=<seq>` with the next long poll so a change landing between two polls
+  answers at once. `404` for a private,
   unknown, or still-empty world -- the listing never advertises the other cases.
 - `GET /public/worlds/{world_id}/world?after=<revision>`: the same response, but held open until the world's
   revision differs from `after`, or for at most 25 s (then answered with the unchanged

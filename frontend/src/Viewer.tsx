@@ -354,14 +354,17 @@ function WorldView({ worldId }: { worldId: WorldId }) {
   // step progress (same revision) still commits: that is the wait progress
   // bar's live feed (#653). So does a rename or a run starting or stopping (#711).
   const followKeyRef = useRef<string | null>(null);
+  // The phase cursor of the last answer, sent with each poll (#801).
+  const progressSeqRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!loaded) return;
     const seen = revision ?? "";
     const controller = new AbortController();
     let timer: number | undefined;
     const poll = () => {
-      fetchPublicState(worldId, seen, controller.signal, isDemo).then(
+      fetchPublicState(worldId, seen, controller.signal, isDemo, progressSeqRef.current).then(
         (next) => {
+          progressSeqRef.current = next.progress_seq;
           const followKey = JSON.stringify([next.name, next.running, next.view, next.rotation, next.step_progress ?? null]);
           const sameRevision = (next.world?.revision ?? "") === seen;
           if (sameRevision && followKey === followKeyRef.current) {

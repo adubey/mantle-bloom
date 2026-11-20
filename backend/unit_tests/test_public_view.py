@@ -265,6 +265,24 @@ def test_public_world_reports_the_span_phase_of_any_step(guest, steps):
     assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["step_progress"] is None
 
 
+def test_a_phase_change_between_polls_still_answers_the_next_poll(guest, steps):
+    # #801 review: the long poll compares against the cursor the viewer last saw, not a snapshot
+    # taken when its next request arrives, so a phase that began (or cleared) in between is
+    # answered at once instead of becoming the baseline of a wait.
+    url = f"/public/worlds/{_S.world_id}/world"
+    seen = guest.get(url).json()
+    revision = seen["world"]["revision"]
+    main._publish_phase(_S, "Updating faults", "Stepping/Moving plates", 0.2)
+    try:
+        started = time.monotonic()
+        answer = guest.get(url, params={"after": revision, "progress": seen["progress_seq"]}).json()
+        assert time.monotonic() - started < 5.0
+        assert answer["step_progress"]["phase"] == "Updating faults"
+        assert answer["progress_seq"] != seen["progress_seq"]
+    finally:
+        main._publish_phase(_S, None)
+
+
 def test_animation_frame_publishes_for_viewers():
     # #653: each animation frame publishes its revision, so /view watches the steps
     # instead of nothing until the run's final publish. No checkpoint store: the

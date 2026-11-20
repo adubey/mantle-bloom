@@ -9,6 +9,8 @@ interface Props {
   phase: string | null;
   // The phase's "<bar>/<group>" (#801), shown above the phase text; null when the run reports none.
   group?: string | null;
+  // A line above the group for run context that is not a phase, e.g. a recording's "Frame 3 of 10".
+  context?: string | null;
   // Real percent-complete when the run reports one; undefined for indeterminate runs
   // (recordings with no fixed frame count, the debug-generate path).
   fraction?: number;
@@ -19,7 +21,7 @@ interface Props {
 // phase, and learn links for it (#629). Non-modal on purpose -- it never takes a scrim,
 // so Play's Stop button stays clickable underneath. The X drops back to just the
 // sidebar's pulsing line, whose pop-out icon re-opens this.
-export default function RunOverlay({ headline, phase, group, fraction, onCollapse }: Props) {
+export default function RunOverlay({ headline, phase, group, context, fraction, onCollapse }: Props) {
   const links = phaseLinks(phase);
   return (
     <div
@@ -58,6 +60,7 @@ export default function RunOverlay({ headline, phase, group, fraction, onCollaps
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
         <span className="run-spinner" aria-hidden="true" />
         <div style={{ display: "flex", flexDirection: "column" }}>
+          {context && <span style={{ fontSize: 11, opacity: 0.65 }}>{context}</span>}
           {group && <span style={{ fontSize: 11, opacity: 0.65 }}>{groupName(group)}</span>}
           <span>{phase ?? "Working…"}</span>
         </div>

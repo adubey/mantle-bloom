@@ -49,6 +49,9 @@ export interface PublicState {
   // A guest step computing right now, whoever triggered it: the wait progress
   // bar's live position, or null when no step is running (#653).
   step_progress: PublicStepProgress | null;
+  // A counter that moves on every phase change; sent back with the next long poll so a change
+  // landing between two polls is answered at once (#801).
+  progress_seq?: number;
   snapshot_first?: boolean;
 }
 
@@ -77,10 +80,11 @@ export function fetchPublicWorlds(): Promise<{ worlds: PublicWorldListing[] }> {
 // With `after` (the revision on screen), the server holds the request until the
 // addressed world moves past it or ~25 s pass, so every viewer follows other
 // viewers' steps (#374).
-export function fetchPublicState(worldId: WorldId, after?: string, signal?: AbortSignal, guestDemo = false): Promise<PublicState> {
+export function fetchPublicState(worldId: WorldId, after?: string, signal?: AbortSignal, guestDemo = false, progress?: number): Promise<PublicState> {
   const params = new URLSearchParams();
   if (after !== undefined) params.set("after", after);
   if (guestDemo) params.set("guest_demo", "true");
+  if (progress !== undefined) params.set("progress", String(progress));
   const encoded = params.toString();
   const query = encoded ? `?${encoded}` : "";
   return fetch(`${publicWorldBase(API_BASE, worldId)}/world${query}`, { signal }).then(asJson<PublicState>);

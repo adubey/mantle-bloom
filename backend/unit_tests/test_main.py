@@ -1669,6 +1669,78 @@ def test_animate_publishes_each_step_s_phases_on_the_runner(client, monkeypatch)
     assert client.get("/world/run").json()["phase"] is None
 
 
+def test_animate_keeps_the_stream_alive_while_one_step_runs_longer_than_the_watchdog(monkeypatch):
+    # #801: heartbeats used to fire only between steps, so one step slower than the client's idle
+    # watchdog (3 minutes) looked like a dead server. The wait now sends a heartbeat every interval.
+    import time
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(main, "ANIMATION_KEEPALIVE_INTERVAL_S", 0.05)
+    session = SimpleNamespace(runner=None)
+
+    def slow():
+        time.sleep(0.3)
+        yield ("progress", 1, 2, b"", 0.0)
+
+    lines = []
+    gen = main._next_animation_message(session, SimpleNamespace(elapsed_years=7.0), slow(), 0, 2)
+    try:
+        while True:
+            lines.append(next(gen))
+    except StopIteration as done:
+        message = done.value
+    beats = [json.loads(line) for line in lines]
+    assert len(beats) >= 3
+    assert all(b == {"type": "heartbeat", "frame": 1, "total": 2, "elapsed_years": 7.0} for b in beats)
+    assert message[0] == "progress"
+
+
+def test_animate_stops_sending_keepalives_once_the_phase_has_not_moved_for_the_stall_limit(monkeypatch):
+    # #801: a step that has shown no new phase for the stall limit is hung, not slow, so the
+    # keepalives stop and the client's watchdog reports it.
+    import time
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(main, "ANIMATION_KEEPALIVE_INTERVAL_S", 0.05)
+    monkeypatch.setattr(main, "ANIMATION_KEEPALIVE_STALL_LIMIT_S", 0.12)
+    session = SimpleNamespace(runner=None)
+
+    def slow():
+        time.sleep(0.5)
+        yield ("done", b"", False, None)
+
+    gen = main._next_animation_message(session, SimpleNamespace(elapsed_years=0.0), slow(), 0, 2)
+    count = 0
+    try:
+        while True:
+            next(gen)
+            count += 1
+    except StopIteration:
+        pass
+    assert 1 <= count <= 3
+
+
+def test_a_manual_step_publishes_its_phases_and_clears_them(client, monkeypatch):
+    # #801 review: /view names the phase of a manual Step too, not only Play, animation and guests.
+    from app import trace
+
+    @trace.traced("Updating faults", trace.PLATES, user=True)
+    def faults():
+        pass
+
+    def fake_progress(session, world, years):
+        faults()
+        yield ("progress", 1.0, "Balancing sea level")
+
+    _post_generate(client, json={"seed": 5, "num_plates": 2, "node_density": 0.5})
+    published = []
+    monkeypatch.setattr(_default_session.runner, "set_phase", lambda label, group=None, fraction=0.0: published.append(label))
+    monkeypatch.setattr(main, "_step_progress", fake_progress)
+    resp = client.post("/world/step", json={"years": 1_000.0})
+    assert resp.status_code == 200
+    assert published == ["Updating faults", None]
+
+
 def test_animate_forwards_heartbeats_while_a_frame_batch_runs_slowly(client, monkeypatch):
     # GitHub issue #611: the client's idle watchdog aborts the stream after minutes
     # without bytes. A slow step batch must surface as imageless heartbeat lines --
