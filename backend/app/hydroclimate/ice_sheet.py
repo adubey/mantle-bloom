@@ -643,6 +643,7 @@ class IceLedger:
     capped_m3: float = 0.0
     capped_nodes: int = 0
     frozen_river_capped_m3: float = 0.0
+    lake_cap_transfer_m3: float = 0.0
 
     @property
     def meltwater_m3(self) -> float:
@@ -655,7 +656,8 @@ class IceLedger:
     @property
     def residual_m3(self) -> float:
         return (
-            self.opening_m3 + self.frozen_lake_m3 + self.accumulation_m3 - self.surface_melt_m3 - self.basal_melt_m3
+            self.opening_m3 + self.frozen_lake_m3 + self.lake_cap_transfer_m3 + self.accumulation_m3
+            - self.surface_melt_m3 - self.basal_melt_m3
             - self.calved_m3 - self.overflow_m3 - self.capped_m3 - self.closing_m3
         )
 
@@ -690,6 +692,7 @@ class GlacierWaterLedger:
     closing_m3: float
     # The opening came from the model ice this step, so it is initial state, not a prior closing.
     initialized_from_ice: bool
+    lake_cap_transfer_m3: float = 0.0
 
     @property
     def release_m3(self) -> float:
@@ -707,7 +710,7 @@ class GlacierWaterLedger:
 
     @property
     def residual_m3(self) -> float:
-        return self.closing_m3 - self.opening_m3 - self.frozen.retained_m3 + self.release_m3
+        return self.closing_m3 - self.opening_m3 - self.frozen.retained_m3 - self.lake_cap_transfer_m3 + self.release_m3
 
 
 def update_glacier_water_account(
@@ -727,6 +730,7 @@ def update_glacier_water_account(
     lost = melt + ledger.calved_m3 + ledger.overflow_m3 + ledger.capped_m3
     fraction = min(lost / ledger.opening_m3, 1.0) if ledger.opening_m3 > 0.0 else 0.0
     balance = opening + frozen.retained_m3
+    lake_cap_transfer_m3 = ledger.lake_cap_transfer_m3 * RHO_ICE / RHO_WATER
     per_ice_m3 = fraction * balance / lost if lost > 0.0 else 0.0
     released = {
         "melt_release_m3": per_ice_m3 * melt,
@@ -737,8 +741,9 @@ def update_glacier_water_account(
     return GlacierWaterLedger(
         opening_m3=float(opening),
         frozen=frozen,
-        closing_m3=float(max(balance - sum(released.values()), 0.0)),
+        closing_m3=float(max(balance - sum(released.values()), 0.0) + lake_cap_transfer_m3),
         initialized_from_ice=initialized,
+        lake_cap_transfer_m3=lake_cap_transfer_m3,
         **{key: float(value) for key, value in released.items()},
     )
 

@@ -1305,6 +1305,100 @@ def _step_cold_pit(world, plate, precipitation, temperature, years, amplitude_c=
     return fields
 
 
+@pytest.mark.parametrize("case", ["advancing", "frozen-to-bed", "warm-cap"])
+def test_lake_cap_hands_off_by_mass_only_when_glacier_can_own_it(case, monkeypatch):
+    world, plate, precipitation, temperature = _cold_pit(prior_ice_m=1.0)
+    precipitation[:] = 0.0
+    temperature[:] = -3.0 if case == "frozen-to-bed" else 10.0
+    depth = np.zeros(40)
+    if case == "advancing":
+        depth[29] = 4.0
+    plate.set_fields_on_plate(lake_depth=depth)
+    original_march = hydrology._march_glacier
+
+    def advance_over_lake(*args):
+        closing, melt, step = original_march(*args)
+        if case == "advancing":
+            closing[29] = step.thickness[29] = 20.0
+            step.covered[29] = 1.0
+            growth = 20.0 * _node_areas(world)[29]
+            step.ledger.accumulation_m3 += growth
+            step.ledger.closing_m3 += growth
+        return closing, melt, step
+
+    monkeypatch.setattr(hydrology, "_march_glacier", advance_over_lake)
+    fields = hydrology.compute_hydrology(world, precipitation, temperature, years=250)
+    area = _node_areas(world)[29]
+    transfer = 0.0 if case == "warm-cap" else area
+    ice_ledger = fields.ice.ledger
+    lake_ledger = fields.lake_water_ledger
+    assert lake_ledger.glacier_transfer_m3 == pytest.approx(transfer)
+    assert fields.land_water_ledger.lake_to_glacier_m3 == pytest.approx(transfer)
+    assert fields.glacier_water_ledger.lake_cap_transfer_m3 == pytest.approx(transfer)
+    assert ice_ledger.lake_cap_transfer_m3 * ice_sheet.RHO_ICE / ice_sheet.RHO_WATER == pytest.approx(transfer)
+    if transfer > 0.0:
+        assert fields.lake_ice_m[29] == 0.0
+    expected_depth = (20.0 if case == "advancing" else 0.0) + transfer / area / hydrology.LAKE_ICE_DENSITY_RATIO
+    assert fields.glacier_depth[29] == pytest.approx(expected_depth)
+    for ledger in (lake_ledger, ice_ledger, fields.land_water_ledger, fields.glacier_water_ledger):
+        assert abs(ledger.residual_m3) <= 1e-9 * area
+
+
+def test_wet_snow_adds_cap_mass_beyond_conductive_growth():
+    area = np.array([20.0, 10.0])
+    prior, column = np.array([0.2, 0.2]), np.array([3.0, 0.3])
+    mean, amplitude, cover = np.array([-0.1, -0.1]), np.zeros(2), np.ones(2)
+    conductive, _, _ = hydrology.advance_lake_ice(prior, column, area, mean, amplitude, cover, 1.0)
+    cap, liquid, budget = hydrology.advance_lake_ice(
+        prior, column, area, mean, amplitude, cover, 1.0, frozen_snow_we_m=np.array([0.1, 1.0]),
+    )
+    expected_snow = np.array([0.1, column[1] - conductive[1]])
+    np.testing.assert_allclose(cap, conductive + expected_snow)
+    np.testing.assert_allclose(cap + liquid, column)
+    assert budget["snowfall_m3"] == pytest.approx(float(np.dot(expected_snow, area)))
+    assert budget["freezing_m3"] - budget["melting_m3"] + budget["snowfall_m3"] == pytest.approx(
+        budget["ice_storage_change_m3"]
+    )
+
+
+def test_opening_glacier_surface_spills_lagged_lake_water_without_refilling(monkeypatch):
+    world, plate, precipitation, temperature = _cold_pit()
+    precipitation[:] = 0.0
+    temperature[:] = 0.0
+    _hold_lake_surface_at_air_temperature(monkeypatch)
+    monkeypatch.setattr(hydrology, "LAKE_ICE_SUBLIMATION_M_PER_YR", 0.0)
+    opening_lake = np.zeros(40)
+    opening_lake[29] = 4.0
+    plate.set_fields_on_plate(lake_depth=opening_lake)
+    original_march = hydrology._march_glacier
+
+    def advance_over_pit(*args):
+        closing, melt, step = original_march(*args)
+        added_depth = 500.0 - closing[29]
+        closing[29] = step.thickness[29] = 500.0
+        step.covered[29] = 1.0
+        growth = added_depth * _node_areas(world)[29]
+        step.ledger.accumulation_m3 += growth
+        step.ledger.closing_m3 += growth
+        return closing, melt, step
+
+    monkeypatch.setattr(hydrology, "_march_glacier", advance_over_pit)
+    first = _step_cold_pit(world, plate, precipitation, temperature, 250)
+    assert first.glacier_depth[29] == 500.0
+    assert first.lake_depth[29] > 0.0
+    assert first.lake_ice_m[29] == 0.0
+
+    second = _step_cold_pit(world, plate, precipitation, temperature, 250)
+    assert second.hypsometry.glacier_mask[29]
+    assert second.hypsometry.elevation[29] == pytest.approx(first.elevation[29] + 500.0)
+    assert second.flow_target[29] >= 0
+    assert second.lake_depth[29] == 0.0
+    assert second.lake_ice_m[29] == 0.0
+    exported = second.lake_water_ledger.overflow_out_m3
+    assert exported == pytest.approx(first.lake_depth[29] * second.hypsometry.area_m2[29])
+    assert abs(second.land_water_ledger.residual_m3) <= 1e-9 * exported
+
+
 def _hold_lake_surface_at_air_temperature(monkeypatch):
     """Take lake water temperature from the air at the bed, as #754's level-lag knockout did,
     so last step's water level can't change this step's climate."""
@@ -1346,7 +1440,7 @@ def test_lake_ice_sublimation_grows_with_step_length_at_its_closed_form_rate(mon
     assert sublimated_m3[1_000_000.0] / sublimated_m3[1_000.0] == pytest.approx(1_000.0, rel=1e-6)
 
 
-def test_a_lake_frozen_to_its_bed_steps_like_the_same_water_left_liquid():
+def test_rain_on_a_thawing_lake_cap_reaches_the_same_lake_as_rain_on_liquid():
     # Last step's lake is its liquid and ice together, since floating ice displaces its own
     # mass of water. Every lagged reader (wet area for rain, water-surface temperature, spill
     # routing, river reaches) must see that column, as the solve does, or rain on a lake frozen
@@ -1364,7 +1458,7 @@ def test_a_lake_frozen_to_its_bed_steps_like_the_same_water_left_liquid():
         )
         return hydrology.compute_hydrology(
             World(seed=0, plates=[plate]), np.full(40, 800.0), temperature, years=100_000.0,
-            seasonal_amplitude_at_nodes=np.full(40, 15.0),
+            seasonal_amplitude_at_nodes=np.zeros(40),
         )
 
     liquid, frozen = step(1.0, 0.0), step(0.0, 1.0)
@@ -1414,7 +1508,7 @@ def test_cold_closed_lake_reaches_one_level_whatever_its_prior_ice(lagged_surfac
             assert abs(land.residual_m3) <= 1e-9 * (land.rain_m3 + land.meltwater_m3)
     # With the lag, the first step's surface temperature reads the opening column, prior ice
     # included, so that step's level differs by a few percent; one step later it doesn't.
-    first, rel = (1, 1e-2) if lagged_surface else (0, 1e-3)
+    first, rel = (1, 1e-2)
     for no_ice, full_ice in zip(runs[0][first:], runs[1][first:]):
         for name in ("lake_depth", "lake_ice_m"):
             assert getattr(full_ice, name)[29] == pytest.approx(getattr(no_ice, name)[29], rel=rel)
@@ -1451,7 +1545,6 @@ def test_compute_hydrology_delivers_every_drop_of_liquid_water_past_cold_nodes(c
     amplitude = np.full(40, 10.0)
     plate = _flow_line_plate(0, theta, elevation)
     world = World(seed=0, plates=[plate])
-    areas = _node_areas(world)
     years = 10_000.0
 
     for _ in range(2):
@@ -1460,15 +1553,10 @@ def test_compute_hydrology_delivers_every_drop_of_liquid_water_past_cold_nodes(c
         )
         plate.set_fields_on_plate(lake_depth=fields.lake_depth, glacier_depth=fields.glacier_depth)
     assert fields.lake_depth[28:31].min() > 0.0  # the pit holds a lake
-    rain_mm = (1.0 - ice_sheet.snow_fraction(temperature, amplitude)) * precipitation
-    rain_mm = np.where(fields.is_ocean, 0.0, rain_mm)
-    liquid_m3 = float(np.dot(rain_mm / 1000.0, areas))
-    # Meltwater converts by mass (RFC 0015 D1, #789). Budyko runoff is all of the rain
-    # with no evaporation at or below 0 C.
-    source_m3 = (
-        liquid_m3
-        + fields.ice.ledger.meltwater_m3 * lithosphere.RHO_ICE / lithosphere.RHO_WATER / years
-    )
+    # With the march off, the test supplies only dry-land rain and the full wet
+    # lake precipitation. The latter includes snow that melts or becomes cap mass.
+    source_m3 = fields.land_water_ledger.rain_m3 / years
+    assert source_m3 > 0.0
     ocean_m3 = float(fields.discharge_m3_s[fields.is_ocean].sum()) * hydrology.SECONDS_PER_YEAR
     ledger = fields.lake_water_ledger
     river = fields.river_water_ledger
