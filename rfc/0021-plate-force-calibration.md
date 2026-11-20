@@ -416,6 +416,23 @@ world took 5–6 minutes and about 0.5 GB on the rift-line method, as on the gre
   splits against 48 (+52%; 38 against 23 on 106533960), 19.2 plates against 17.5. RFC 0018's split rate therefore
   depends on step length, and G2 and G3 must score it at 1 Myr steps throughout.
 
+**G1 result (#975, #980; evidence in [`analysis/issue975/`](../analysis/issue975/README.md) and
+[`analysis/issue980/`](../analysis/issue980/README.md)).**
+
+- *Adopted:* B.1, B.2 and B.3 (`b123`); B.4a and B.4b failed (56% and 42% of closing length pulled against 90%) and
+  reach G2 only through the gate-speed search. Brake off, `b123` reaches T1 4.25, T3 60% and T5 1.9×10¹² at default
+  constants, but T2 is 1.59 (baseline 1.76) and T4 1.52 MPa.
+- *Best-case check (#980):* the combined corrections, brake off, at the four slab-favourable corners (`μ_a` 2×10¹⁹,
+  `f_pull` 1.0) give T2 **1.84** (μ_slab 10²⁰, L_sink 150 km), 1.30 (10²⁰, 660 km), 1.53 (10²¹, 150 km) and 1.22
+  (10²¹, 660 km). None reaches 2.0, so the falsification criterion "Slab forces cannot drive these plates" is met.
+  As pull grows the slab-attached share of area rises from 56% to 94%, which shrinks T2's comparison group. The
+  owner decides what follows (alternative D or C, or revising T2's definition); G2 has not been started.
+- *0.5 Myr repeat of `b123`, brake off, three worlds:* T1 +3.3%, T2 −4.9%, T3 −1.0%, T4 −9.1%, T5 +3.1%, T7 −0.3%
+  against 1 Myr: the step check passes.
+- *Ledgers and alternative D:* continental-material, craton and mobile-cover ledgers close to round-off (≤ 2×10⁻¹⁵);
+  the Hm ledger's residual reaches 6×10⁻⁴ of the initial inventory. Alternative D would deepen 92% of the ocean floor,
+  lower sea level by about 570 m and raise land from 30.2% to 32.4% (static estimate).
+
 Rough cost, from 5–6 min per 200 Myr world plates-only (about 0.5 GB) on either split method (#942, #955):
 G0's 20-world brake-off breakdown 2 h; G1 about 12 runs × 5 worlds, 6 h, and its best-case check 4 × 5, 2 h; G2 stage 1, 24 × 5, 11 h, and the same
 again for the control arm; stage 2, 3 × 20 for each arm, 12 h; G3 about 3 h plus the full-stepping run (about
@@ -482,7 +499,7 @@ removed.
 
 - [x] **G0** recorded in this RFC: the rifting baseline's run labels and commit; T1's Earth figure checked; T2's
       definition fixed; the held-out set frozen and committed; the 20-world brake-off breakdown reported.
-- [ ] **G1** recorded: each correction's predeclared probe and outcome, and the corrections adopted.
+- [x] **G1** recorded: each correction's predeclared probe and outcome, and the corrections adopted.
 - [ ] **G2** recorded: stage 1 and 2 scores for the corrected search and the control arm, the frozen setting and
       its trade-off ridge.
 - [ ] On the 20 held-out worlds at 1 Myr steps for 200 Myr, plates-only, with the frozen setting:

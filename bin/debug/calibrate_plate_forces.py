@@ -130,6 +130,13 @@ def run_one(args: argparse.Namespace) -> None:
     # After generation: the generation-time solve dates the ocean floor, and a force-constant override must not change
     # the starting world a seed gives (#979 review). Each run is its own process, so it never leaks into another.
     apply_module_knobs(setting["module_knobs"])
+    initial_hm = None
+    if args.world_checks:
+        import g1_world_checks as checks
+
+        world.debug_diagnostics = True  # the Hm ledger books only with it; `world.reset_phase_budget` starts it from here
+        world.reset_phase_budget()
+        initial_hm = checks.hm_inventory_m3(world)
     recorder = rec.Recorder(rift_damage.runtime(world).params.eps_cand) if setting["split_method"] == "rift_lines" else None
     radius_cm = lithosphere.PLANET_RADIUS_M * 100.0
     samples, speeds = [], []
@@ -149,6 +156,8 @@ def run_one(args: argparse.Namespace) -> None:
         if round(myr / args.every) * args.every == myr:
             with _Taps(probe):
                 samples.append(breakdown.sample(world))
+                if args.world_checks:
+                    samples[-1]["world_checks"] = checks.sample(world, initial_hm)
 
     stepping = SimpleNamespace(years=args.years, step_myr=args.step_myr, max_steps=None, snapshot_every=0.0)
     splits, plate_counts, motion, years_myr, step_s = d1.step_all(world, stepping, out, recorder, on_step)
@@ -159,7 +168,7 @@ def run_one(args: argparse.Namespace) -> None:
         handle.write(json.dumps({"end_craton_m3": cratons.live_volume_m3(world), "ledger": dict(world.craton_ledger), "wall_s": time.perf_counter() - started}) + "\n")
         handle.close()
     meta = {"seed": args.seed, "setting": setting, "years": years_myr, "step_myr": args.step_myr, "every": args.every,
-            "contacts": not args.no_contacts}
+            "contacts": not args.no_contacts, "world_checks": args.world_checks}
     (out / "breakdown.json").write_text(json.dumps({**meta, "world_knobs": setting["world_knobs"], "samples": samples, "plate_speeds": speeds}, default=float) + "\n")
     result = {**meta, "split_method": setting["split_method"], "years_myr": years_myr, "step_s": step_s, "wall_s": time.perf_counter() - started,
               "n_splits": len(splits), "splits": splits, "plates_final": len(world.plates), "plate_counts": plate_counts[::10], "kinematics": motion,
@@ -177,8 +186,10 @@ def check_cached_run(path: Path, args: argparse.Namespace) -> None:
     saved = json.loads(path.read_text())
     # `years_myr` is the length actually stepped, a whole number of steps; old runs always captured contacts.
     requested = {"step_myr": args.step_myr, "every": args.every, "setting": load_setting(args.settings, args.setting),
-                 "years_myr": round(args.years / args.step_myr) * args.step_myr, "contacts": not args.no_contacts}
+                 "years_myr": round(args.years / args.step_myr) * args.step_myr, "contacts": not args.no_contacts,
+                 "world_checks": args.world_checks}
     saved.setdefault("contacts", True)
+    saved.setdefault("world_checks", False)
     different = [key for key, value in requested.items() if saved.get(key) != json.loads(json.dumps(value))]
     if different:
         sys.exit(f"{path.parent} holds a run with a different {', '.join(different)}; use another --out or move it aside")
@@ -194,7 +205,7 @@ def queue(args: argparse.Namespace) -> None:
             continue
         command = [sys.executable, __file__, "run", "--settings", str(args.settings), "--setting", args.setting, "--seed", str(seed),
                    "--out", str(target), "--years", str(args.years), "--step-myr", str(args.step_myr), "--every", str(args.every)]
-        command += ["--no-contacts"] * args.no_contacts + ["--heldout"] * args.heldout
+        command += ["--no-contacts"] * args.no_contacts + ["--heldout"] * args.heldout + ["--world-checks"] * args.world_checks
         if args.dry_run:
             print(" ".join(command[1:]))
             continue
@@ -349,6 +360,10 @@ def score(args: argparse.Namespace) -> None:
         **t2_ratio(runs, share), **force_targets(rows, share), **_world_speeds(runs), "closure": _closure(runs),
         "T8_contacts": contact_measures(directories), "T9_rifting": rifting_score(args.runs, rate),
     }
+    if any("world_checks" in sample for run in runs for sample in run["samples"]):
+        import g1_world_checks as checks
+
+        result["world_checks"] = checks.pool(runs)
     text = json.dumps(result, indent=1, default=float) + "\n"
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -368,6 +383,7 @@ def main() -> None:
         p.add_argument("--step-myr", type=float, default=1.0)
         p.add_argument("--every", type=float, default=10.0, help="Myr between breakdown samples")
         p.add_argument("--no-contacts", action="store_true")
+        p.add_argument("--world-checks", action="store_true", help="also record the world ledgers' closure and alternative D's bathymetry (#980)")
         p.add_argument("--heldout", action="store_true", help="allow held-out seeds (G3 only)")
     sub.choices["run"].add_argument("--seed", type=int, required=True)
     sub.choices["queue"].add_argument("--seeds", type=int, nargs="+")
