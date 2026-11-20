@@ -391,8 +391,8 @@ mechanism (#801). A *span* names a stretch of work and the user-visible group it
 `user=True` span is a label the overlay shows, a plain span is profiling detail. Spans nest by
 call stack, but the group is stated at the span, because climate, rivers, lakes and glaciers run
 inside `erosion.apply_erosion` and belong to "Hydrometeorology (climate, water & ice)" while
-erosion belongs to "Reshaping the surface". The 22 user-visible spans are `@trace.traced(label,
-group, user=True)` decorators on 21 coarse functions (plate motion, faults, gap filling,
+erosion belongs to "Reshaping the surface". The 23 user-visible spans are `@trace.traced(label,
+group, user=True)` decorators on 22 coarse functions (plate motion, faults, gap filling,
 climate, hydrology, erosion, ...) and one `trace.span` around the plate-deform loop. Nothing records unless a `Recorder` is active in the current
 context, so an unrecorded span costs one `ContextVar` lookup.
 
@@ -403,7 +403,11 @@ can only yield between its own statements, and erosion is one statement. The end
 stream before releasing the session lock and compute gate, which joins the worker, so an error on
 the request side never leaves it stepping the world unlocked. A running world
 (`_run_step_once`) publishes the same events on its `WorldRunner`, and `GET /worlds/{world_id}/run`
-returns them as `phase`. The bar's fraction is the share of each phase's typical time
+returns them as `phase`. A recording (`/animate`) and a guest's Advance on `/view` publish the same
+way (`_publishing_phases`): the recording tab polls `/run` between frame lines, and
+`/public/worlds/{world_id}/world`'s `step_progress` carries the running span's label, group and
+fraction (falling back to a guest step's own progress line until its first span), so `/view`
+names the phase of any step, Play's and animation's included. The bar's fraction is the share of each phase's typical time
 (`trace.STEP_WEIGHTS`, `GENERATE_WEIGHTS`, measured on a young world, minus the phases the
 world's settings skip) already finished, held below 1. A mature world spends its time differently, so the fraction is a guide, not a clock.
 

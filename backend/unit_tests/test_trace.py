@@ -238,3 +238,22 @@ def test_cancellation_scope_raises_step_cancelled_when_signalled():
                 pass
     # Outside the scope, check_cancelled is a no-op even if the event is still set.
     trace.check_cancelled()
+
+
+def test_the_merge_and_split_label_covers_the_topology_pass_not_just_its_validation():
+    # Regression (#801): #846 put `check_split_settings` between the decorator and
+    # `apply_topology_changes`, so the label wrapped a validator and the real work ran unlabelled.
+    from app import merge_split
+    from app.world import generate_world
+
+    world = generate_world(seed=3, num_plates=4, node_density=0.5)
+    recorder = trace.Recorder()
+    with trace.recording(recorder):
+        merge_split.apply_topology_changes(world, 1_000_000.0)
+    assert ("Merging and splitting plates",) in recorder.stats
+    assert recorder.stats[("Merging and splitting plates",)][0] > 0.0
+    world.split_method = "rift_lines"
+    recorder = trace.Recorder()
+    with trace.recording(recorder):
+        merge_split.apply_topology_changes(world, 1_000_000.0)
+    assert ("Merging and splitting plates", "Finding rifts") in recorder.stats

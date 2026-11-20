@@ -4,6 +4,7 @@ import FullVersionPreview, { BillingActionButton } from "./FullVersionPreview";
 import Legend from "./Legend";
 import MapCanvas from "./MapCanvas";
 import ProgressBar from "./ProgressBar";
+import { groupName, phaseLinks } from "./phaseInfo";
 import {
   fetchPublicState,
   fetchPublicWorlds,
@@ -72,6 +73,23 @@ function refusalMessage(err: unknown): string {
     return "The world is busy with another run right now. Try again in a moment.";
   }
   return `Advance failed: ${err instanceof Error ? err.message : String(err)}`;
+}
+
+// The learn-more links for the phase a step is in (#801), as on the full app's run overlay.
+function PhaseLinks({ phase }: { phase: string }) {
+  const links = phaseLinks(phase);
+  if (links.length === 0) return null;
+  return (
+    <div style={{ fontSize: 12, marginTop: 4 }}>
+      <span style={{ opacity: 0.7 }}>Learn more: </span>
+      {links.map((link, i) => (
+        <span key={link.url}>
+          {i > 0 && " · "}
+          <a href={link.url} target="_blank" rel="noreferrer">{link.label}</a>
+        </span>
+      ))}
+    </div>
+  );
 }
 
 function AllowanceNote({ state, demo = false }: { state: PublicState; demo?: boolean }) {
@@ -466,9 +484,10 @@ function WorldView({ worldId }: { worldId: WorldId }) {
         <div style={{ marginBottom: 12 }}>
           <ProgressBar
             label="Advance in progress"
-            text={`Advance in progress: ${state.step_progress.phase}`}
+            text={`Advance in progress: ${state.step_progress.group ? `${groupName(state.step_progress.group)} · ` : ""}${state.step_progress.phase}`}
             fraction={state.step_progress.fraction}
           />
+          <PhaseLinks phase={state.step_progress.phase} />
         </div>
       )}
       <div ref={mapWrapperRef}>

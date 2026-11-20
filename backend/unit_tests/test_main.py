@@ -1643,6 +1643,32 @@ def test_animate_advances_the_world_and_streams_progress_then_an_mp4(client):
         assert sum(1 for _ in container.decode(video=0)) == 3
 
 
+def test_animate_publishes_each_step_s_phases_on_the_runner(client, monkeypatch):
+    # #801: a recording's overlay and /view name the phase of the step under way, from the same
+    # spans Play publishes, and the phase is cleared once each frame's steps end.
+    from app import trace
+
+    @trace.traced("Updating faults", trace.PLATES, user=True)
+    def faults():
+        pass
+
+    def fake_progress(session, world, years):
+        faults()
+        yield ("progress", 1.0, "Balancing sea level")
+
+    _post_generate(client, json={"seed": 9, "num_plates": 3, "node_density": 0.5})
+    published = []
+    monkeypatch.setattr(_default_session.runner, "set_phase", lambda label, group=None, fraction=0.0: published.append(label))
+    monkeypatch.setattr(main, "_step_progress", fake_progress)
+    resp = client.post(
+        "/world/animate",
+        json={"projection": "eckert4", "view": "elevation", "width": 80, "height": 44, "step_years": 1_000_000, "num_frames": 2},
+    )
+    assert resp.status_code == 200
+    assert published == ["Updating faults", None]
+    assert client.get("/world/run").json()["phase"] is None
+
+
 def test_animate_forwards_heartbeats_while_a_frame_batch_runs_slowly(client, monkeypatch):
     # GitHub issue #611: the client's idle watchdog aborts the stream after minutes
     # without bytes. A slow step batch must surface as imageless heartbeat lines --

@@ -37,7 +37,7 @@ def _session():
 def steps(monkeypatch):
     """A stand-in world and step: each step advances elapsed time, and the list counts how many
     really ran. The routes only need seed/elapsed_years, so no real world is generated."""
-    world = SimpleNamespace(seed=7, elapsed_years=0.0)
+    world = SimpleNamespace(seed=7, elapsed_years=0.0, wind_model="diagnostic", simulate_plate_movement=True, simulate_climate_biomes=True)
     ran = []
 
     def fake_step(w, years):
@@ -241,8 +241,27 @@ def test_public_world_reports_guest_step_progress(guest, steps):
     assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["step_progress"] == {
         "fraction": 0.5,
         "phase": "Shifting plates",
+        "group": None,
     }
     _S.set_guest_step_progress(None)
+    assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["step_progress"] is None
+
+
+def test_public_world_reports_the_span_phase_of_any_step(guest, steps):
+    # #801: /view names the running span (label, group, fraction) whoever started the step --
+    # Play, an animation frame or another viewer -- and a span's phase wins over a guest
+    # step's own progress line, whose label arrives after the work it names.
+    _S.runner.set_phase("Updating faults", "Stepping/Moving plates", 0.4)
+    try:
+        _S.set_guest_step_progress((0.9, "Balancing sea level"))
+        assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["step_progress"] == {
+            "fraction": 0.4,
+            "phase": "Updating faults",
+            "group": "Stepping/Moving plates",
+        }
+    finally:
+        _S.runner.set_phase(None)
+        _S.set_guest_step_progress(None)
     assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["step_progress"] is None
 
 

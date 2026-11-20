@@ -27,6 +27,8 @@ export interface PublicWorldListing extends PublicWorld {
 export interface PublicStepProgress {
   fraction: number;
   phase: string;
+  // The phase's "<bar>/<group>" from the backend's trace spans (#801); null for a generator's own line.
+  group?: string | null;
 }
 
 export interface PublicState {

@@ -82,6 +82,10 @@ const PHASE_LINKS: Record<string, PhaseLink[]> = {
     { label: "Glacier — Wikipedia", url: `${WIKI}/Glacier` },
     { label: "Rivers and lakes in the model", url: `${DOCS}/hydrology.md#hydrology-rivers-and-lakes-hydrologypy` },
   ],
+  "Finding rifts": [
+    { label: "Rift — Wikipedia", url: `${WIKI}/Rift` },
+    { label: "Splitting along rift lines", url: `${DOCS}/tectonics.md#splitting-along-rift-lines` },
+  ],
   "Solving mantle flow and plate motion": [
     { label: "Mantle convection — Wikipedia", url: `${WIKI}/Mantle_convection` },
     { label: "Plate tectonics — Wikipedia", url: `${WIKI}/Plate_tectonics` },

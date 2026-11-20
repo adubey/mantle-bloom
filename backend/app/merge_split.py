@@ -978,7 +978,6 @@ def _merge_plates_with_craton_audit(world: "World", id_keep: int, id_absorb: int
     audit.settle("merge_capped_m3", residual_account="merge_capped_m3")
 
 
-@trace.traced("Merging and splitting plates", trace.PLATES, user=True)
 def check_split_settings(world: "World") -> None:
     """Raise ValueError for an unknown `split_method` or, on rift lines, a bad `rift_line_params`. Called before a
     step changes anything, so a bad setting leaves the world as it was rather than half stepped (PR #950 review)."""
@@ -988,6 +987,9 @@ def check_split_settings(world: "World") -> None:
         rift_damage.runtime(world)  # builds the params from the overrides, which validates them
 
 
+# The label sits here, not on `check_split_settings`: #846 inserted that validator under this decorator,
+# which left the label covering a no-op while the merge and split work ran unlabelled (#801).
+@trace.traced("Merging and splitting plates", trace.PLATES, user=True)
 def apply_topology_changes(world: "World", years: float) -> list[str]:
     """Consumption, then at most one collision merge, then splits. Returns human-readable
     event messages for anything that happened, for the UI's event console -- a plate

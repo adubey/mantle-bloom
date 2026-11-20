@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import logging
 import os
@@ -2037,6 +2038,13 @@ def _clear_animation_progress(session) -> None:
         _logger.exception("checkpoint: couldn't clear animation progress")
 
 
+def _animate_step(session: WorldSession, world: World, years: float) -> None:
+    """One animation step, publishing its phase labels for the recording tab's overlay and for
+    /view's viewers (#801); `_publishing_phases` is defined with the run loop below."""
+    with _publishing_phases(session, world):
+        _step_world(session, world, years)
+
+
 def _animate_message_line(session, world, message, last_frame, anim_spec: dict):
     """Folds one stream_animation_mp4 message into its NDJSON line plus stream state.
 
@@ -2218,7 +2226,7 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
             animation = render_image.stream_animation_mp4(
                 world, req.projection, req.view, req.width, req.height, view_rotation,
                 req.step_years, req.steps_per_frame, req.num_frames,
-                step_fn=lambda w, y: _step_world(session, w, y), stop_event=session.animation_stop_event,
+                step_fn=lambda w, y: _animate_step(session, w, y), stop_event=session.animation_stop_event,
             )
             # Static run parameters for the recovery sidecar: a resume replays the
             # same run shape from the checkpointed world (#638).
@@ -3167,15 +3175,14 @@ async def public_world(
     if _hosted_worker and following:
         session.feed.note_follower()
     if after is not None:
-        progress_before = session.guest_step_progress()
+        progress_before = _public_step_progress(session)
         await session.feed.wait_past(
             after, public_view.GUEST_POLL_WAIT_S,
-            changed=lambda: session.guest_step_progress() != progress_before,
+            changed=lambda: _public_step_progress(session) != progress_before,
         )
         # The world may have gone private during the wait (#711).
         session = _public_session_or_404(world_id)
     _, remaining = _guest_allowance(request, guest_demo)
-    progress = session.guest_step_progress()
     return {
         "name": session.feed.name(),
         "world": session.feed.summary(),
@@ -3187,7 +3194,7 @@ async def public_world(
         "steps_remaining": remaining,
         "step_limit": public_view.GUEST_STEP_LIMIT,
         "step_years": public_view.GUEST_STEP_YEARS,
-        "step_progress": None if progress is None else {"fraction": progress[0], "phase": progress[1]},
+        "step_progress": _public_step_progress(session),
     }
 
 
@@ -3300,9 +3307,13 @@ def _run_guest_step(session: WorldSession) -> None:
     world = _require_world(_public_session_or_404(session.world_id))
     completed = False
     try:
-        for message in _step_progress(session, world, public_view.GUEST_STEP_YEARS):
-            if isinstance(message, tuple) and message[0] == "progress" and len(message) == 3:
-                session.set_guest_step_progress((message[1], message[2]))
+        # The span labels (published by `_publishing_phases`) take over from the generator's
+        # progress lines once the first one speaks; those lines are the fallback for a step that
+        # runs no spans, and their labels arrive after the work they name (#801).
+        with _publishing_phases(session, world):
+            for message in _step_progress(session, world, public_view.GUEST_STEP_YEARS):
+                if isinstance(message, tuple) and message[0] == "progress" and len(message) == 3:
+                    session.set_guest_step_progress((message[1], message[2]))
         completed = True
     finally:
         session.set_guest_step_progress(None)
@@ -3439,6 +3450,41 @@ def _save_run_status(session: WorldSession, status: checkpoint.RunStatus) -> Non
         session.checkpoint_store.save_status(status)
 
 
+@contextlib.contextmanager
+def _publishing_phases(session: WorldSession, world: World, on_phase=None):
+    """Publish the step's user-visible trace spans (trace.py) as the session runner's phase for
+    the duration of the block, whoever started the step: Play, a guest's Advance on /view, or an
+    animation frame (#801). `/run` returns it to the owner's tab and `/public/worlds/{id}/world`
+    to /view's viewers, and each new label wakes the viewers' long poll. The phase is cleared on
+    exit. `on_phase(label, group, fraction)` lets a caller mirror it elsewhere."""
+    runner = session.runner
+    tracker = trace.PhaseTracker(_step_weights(world))
+
+    def publish(label: str, group: str | None) -> None:
+        if runner is not None:
+            runner.set_phase(label, group, tracker.fraction)
+        if on_phase is not None:
+            on_phase(label, group, tracker.fraction)
+        session.feed.wake()
+
+    try:
+        with trace.recording(trace.Recorder(sink=publish, on_finish=tracker.finish)):
+            yield
+    finally:
+        if runner is not None:
+            runner.set_phase(None)
+
+
+def _public_step_progress(session: WorldSession) -> dict | None:
+    """What /view shows while a step computes, whoever started it (#801): the running span's
+    label, group and fraction, else a guest step's own progress line (before its first span)."""
+    phase = session.runner.phase() if session.runner is not None else None
+    if phase is not None:
+        return {"fraction": phase["fraction"], "phase": phase["label"], "group": phase["group"]}
+    guest = session.guest_step_progress()
+    return None if guest is None else {"fraction": guest[0], "phase": guest[1], "group": None}
+
+
 def _run_step_once(session: WorldSession, step_years: float, should_step) -> bool:
     """One step of `session`'s run loop. Waits at the compute gate rather than
     refusing like POST /worlds/{id}/step: the owner's own step or animation on
@@ -3453,21 +3499,14 @@ def _run_step_once(session: WorldSession, step_years: float, should_step) -> boo
         if world is None:
             return False
         completed = False
-        runner = session.runner
-        tracker = trace.PhaseTracker(_step_weights(world))
-        recorder = trace.Recorder(
-            sink=lambda label, group: runner.set_phase(label, group, tracker.fraction),
-            on_finish=tracker.finish,
-        )
         try:
             # The overlay's phase text for a run comes from the step's own spans (trace.py),
             # published on the runner for the UI's short poll of /run.
-            with trace.recording(recorder):
+            with _publishing_phases(session, world):
                 for _ in _step_progress(session, world, step_years):
                     pass
             completed = True
         finally:
-            runner.set_phase(None)
             _world_changed(session, completed)
     return True
 

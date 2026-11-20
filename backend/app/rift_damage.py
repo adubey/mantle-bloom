@@ -29,7 +29,7 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from . import cratons, elevation_lines, faults, lithosphere, mantle, rheology, terranes, thin_shell, torque
+from . import cratons, elevation_lines, faults, lithosphere, mantle, rheology, terranes, thin_shell, torque, trace
 from . import rift_lines as lines
 from . import rift_strength as strength
 from .elevation_lines import ELEV_CHANGE_RIFT, line_spacing_rad
@@ -429,6 +429,7 @@ def _commit_step(world, plate, years: float, state: RiftRuntime, pending: _Pendi
     return step
 
 
+@trace.traced("Finding rifts", trace.PLATES, user=True)
 def damage_pass(world, years: float) -> None:
     """The damage step for every plate, once per world step, before any split is decided. Every plate is computed
     from the step-start world before any is written, so the result doesn't depend on plate order, and an error in
