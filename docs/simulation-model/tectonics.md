@@ -1089,7 +1089,11 @@ plate the pass does the following.
    material, mobile cover and the buoyant-crust tracers, to unbroken cells of the same plate
    and the same crust type outside the band. The search for recipients starts at `flank_rows`
    hops and widens past cells of the other type, so continental crust is never priced as ocean
-   floor. A donor with no recipient of its type on the plate is held and does not strain. A
+   floor. A donor that finds none within `flank_rows` takes the nearest ones, at whatever hop
+   distance. `rift_strength.flank_plan` finds that distance with one search from all the
+   recipients, then searches from each such donor only along cells that can still lead to them,
+   so its cost does not grow with the distance cubed as a widening broken band pushes recipients
+   away (#987). A donor with no recipient of its type on the plate is held and does not strain. A
    recipient takes only what fits under `MAX_CRUSTAL_THICKNESS_M` and
    `MAX_MANTLE_LITHOSPHERE_THICKNESS_M`. Its donors keep the rest, the same share of each layer,
    so they thin less than their strain asks. The total is in the `cap_held_m3` counter. A donor

@@ -263,3 +263,20 @@ def test_flank_reach_matches_a_breadth_first_search_per_donor():
         reach, held, hops = _flank_by_search(graph, band, broken, P.flank_rows, group)
         assert np.array_equal(plan.held, held) and np.array_equal(plan.hops, hops)
         assert [set(plan.reach[i].indices.tolist()) for i in range(len(reach))] == reach
+
+
+def test_flank_reach_stays_exact_when_the_nearest_recipients_are_far():
+    # #987: a widening broken corridor and a minority crust type push every recipient tens of hops from the band,
+    # the regime where the old donor x node search grew as hops^3. The reach must still match the per-donor search.
+    nx, ny = 60, 30
+    graph, n = lattice(nx, ny), nx * ny
+    col, row = np.arange(n) % nx, np.arange(n) // nx
+    band = (col >= 29) & (col <= 30) & (row >= 5) & (row < 25)
+    broken = ~band & (np.abs(col - 29.5) < 24)  # unbroken cells only at the plate's far edges
+    group = col < 50  # the band's type has recipients only on the west edge
+    group[band & (row % 4 == 0)] = False  # a few minority-type donors, whose only recipients are on the east edge
+    plan = strength.flank_plan(graph, band, broken, P.flank_rows, group=group)
+    reach, held, hops = _flank_by_search(graph, band, broken, P.flank_rows, group)
+    assert not held.any() and hops.min() >= 20
+    assert np.array_equal(plan.held, held) and np.array_equal(plan.hops, hops)
+    assert [set(plan.reach[i].indices.tolist()) for i in range(len(reach))] == reach
