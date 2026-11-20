@@ -618,7 +618,7 @@ class IceLedger:
     """The world's glacier-ice budget for one step (m^3 of ice). `opening_m3` is last step's
     glacier_depth and `closing_m3` the ice after the solve, which is next step's opening.
     `snow_melted_m3` is snowfall on ice-free ground that melts within the step and never joins
-    the ice.
+    the ice. `lake_cap_transfer_m3` is physical ice added from a lake cap after the march (#990).
 
     `frozen_lake_m3`, `frozen_river_ice_m3` and `frozen_river_capped_m3` are always 0: liquid
     water no longer freezes into the ice (RFC 0014 D2(b), #539). They stay so older code and

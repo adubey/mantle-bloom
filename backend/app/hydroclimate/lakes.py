@@ -259,7 +259,8 @@ class LakeStepLedger:
 
     `evaporation_m3` is open-water loss and `sublimation_m3` is ice-season loss; the lake solve
     charges both against the water column (#757). `freezing_m3` and `melting_m3` are the net
-    exchange between the ice layer and liquid."""
+    phase exchange, `cap_snowfall_m3` is new snow still in the cap, and
+    `glacier_transfer_m3` leaves the lake ice reservoir for glacier ice (#990)."""
 
     external_supply_m3: float
     evaporation_m3: float

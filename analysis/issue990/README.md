@@ -26,6 +26,7 @@ The opening-geometry measurement ran at `57652f9574624ce10fa90219bca4715759ffbb0
 | Geometry | Step | Liquid lake volume (km³) | Newly covered liquid (km³) | Share |
 | --- | ---: | ---: | ---: | ---: |
 | Opening glacier | 87.4–87.65 Myr | 770,477.39 | 13,558.60 | 1.7598% |
+| Closing glacier | 87.4–87.65 Myr | 1,589,473.64 | 0 | 0% |
 
 This triggered closing glacier geometry after the ice solve. The precipitation
 partition still uses opening wet area. The lake hierarchy is built once, on the
@@ -39,4 +40,13 @@ backend/.venv/bin/python bin/debug/measure_d4_lake_lag.py <save> \
 ```
 
 At the measured commit, opening geometry was the default and the flag was absent.
-The replay ran alongside two other simulations.
+The confirmation at `e1a1f4ba51f681db7b91bc258120d3dae8fbdb45` used the same save and
+one 250 kyr step with the production closing geometry. It found zero liquid lake
+water under any visible glacier. Total liquid storage rose by 818,996.26 km³
+between the two geometry arms. This is one step on one diagnostic world. The two
+replay wall times are from a shared machine with other active simulations.
+
+On the closing step the lake and land residuals were +204 and −2,690 m³ of water
+and the glacier residual was −718 m³ of ice. No cap transfer occurred on that
+step. The focused tests exercise both handoffs with nonzero transfers and compare
+their lake, land, glacier ice, and glacier water ledgers.

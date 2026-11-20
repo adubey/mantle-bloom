@@ -2756,11 +2756,10 @@ def compute_hydrology(
     air_temperature_elevation_at_nodes: np.ndarray | None = None,
 ) -> HydrologyFields:
     """Runs the full flow-routing pipeline against the world's current node cloud and this
-    step's climate: depression hierarchy + spill routing (see
-    `lakes.build_lake_hierarchy`/`lakes.compute_spill_routing`) -> flow direction ->
-    glacier mass balance and shape (`ice_sheet.step_ice`) -> precipitation(-minus-frozen)-plus-meltwater-plus-lake-
-    breach downstream accumulation -> prognostic lake storage and hierarchy spill/merge/split
-    (`lakes.solve_lakes_prognostic`) -> river
+    step's climate. Opening wet area partitions precipitation before the glacier march.
+    The lake hierarchy, spill routing, and flow directions use the closing glacier surface
+    (#990). Runoff and meltwater feed prognostic lake storage and spill, merge, and split
+    (`lakes.solve_lakes_prognostic`). The final lake extent determines river
     classification (excluding flooded lake nodes, so a river ends at a lake's shore
     rather than being treated as continuing through it). A lake that's actively spilling this
     step also adds `LAKE_BREACH_EROSION_COEFFICIENT`-scaled extra "water" into the legacy route
