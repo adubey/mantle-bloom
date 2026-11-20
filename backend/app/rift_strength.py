@@ -19,6 +19,7 @@ from pathlib import Path
 
 import numpy as np
 from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import dijkstra
 from scipy.spatial import cKDTree
 
 from . import lithosphere, rheology, thin_shell
@@ -276,13 +277,13 @@ def flank_plan(adjacency: csr_matrix, band: np.ndarray, broken: np.ndarray, rows
     """Recipients are the unbroken plate cells outside the band, of the donor's `group` when one is given (its crust
     type: continental crust moved onto ocean floor would be priced at oceanic density, PR #950 review). Each donor takes
     those within `rows` hops, and widens one hop at a time, with no upper limit, until it has some. A donor in a
-    component with none is held."""
+    component with none is held. `adjacency` is the plate's symmetric cell graph."""
     n = adjacency.shape[0]
     donors = np.flatnonzero(band)
     recipient_ok = ~band & ~broken
     if not len(donors):
         return FlankPlan(donors, csr_matrix((0, n), dtype=np.int8), np.zeros(0, bool), np.zeros(0, int))
-    pattern = (adjacency > 0).astype(np.int8)
+    pattern = (adjacency > 0).astype(np.int8).tocsr()
     if group is None:
         reach, settled, hops = _flank_reach(pattern, donors, recipient_ok, rows)
         return FlankPlan(donors, reach, ~settled, hops)
@@ -298,34 +299,66 @@ def flank_plan(adjacency: csr_matrix, band: np.ndarray, broken: np.ndarray, rows
 
 
 def _flank_reach(pattern: csr_matrix, donors: np.ndarray, recipient_ok: np.ndarray, rows: int):
-    """(reach, settled, hops) of `flank_plan` for one set of donors and the cells they may give to."""
+    """(reach, settled, hops) of `flank_plan` for one set of donors and the cells they may give to.
+
+    The widening has no upper limit, so its cost must not grow with how far the nearest recipient is (#987: a
+    donor x node matrix search grew as donors x hops^3 as a rift's broken band pushed recipients away, and animation
+    steps took hours). Every donor first searches its `rows` hops, which settles most of them. For the rest, one
+    multi-source search from the recipients gives every cell's hop distance to the nearest, which is that donor's
+    reach, and the donor searches only through cells that can still lead to a recipient within it."""
     n = pattern.shape[0]
-    visited = csr_matrix((np.ones(len(donors), dtype=np.int8), (np.arange(len(donors)), donors)), shape=(len(donors), n))
-    frontier = visited.copy()
-    result = csr_matrix((len(donors), n), dtype=np.int8)
-    ok = csr_matrix(np.where(recipient_ok, 1, 0).astype(np.int8)[None, :])
+    every = np.arange(len(donors))
+    hops = np.full(len(donors), rows)
+    pairs = _reach_pairs(pattern, every, donors, hops, np.zeros(n), recipient_ok)
     settled = np.zeros(len(donors), dtype=bool)
-    hops = np.zeros(len(donors), dtype=int)
-    hop = 0
-    while True:
-        hop += 1
-        frontier = frontier @ pattern
-        frontier.data[:] = 1
-        grown = visited + frontier
-        grown.data[:] = 1
-        stalled = grown.nnz == visited.nnz
-        visited = grown
-        if hop >= rows:
-            reach = visited.multiply(ok).tocsr()
-            take = (np.asarray(reach.sum(axis=1)).ravel() > 0) & ~settled
-            if take.any():
-                result = result + csr_matrix(reach.multiply(take[:, None].astype(np.int8)))
-                settled |= take
-                hops[take] = hop
-        if settled.all() or stalled:
-            break
-    result.data[:] = 1
-    return result.tocsr(), settled, hops
+    settled[pairs // n] = True
+    far = np.flatnonzero(~settled)
+    hops[far] = 0
+    if len(far):
+        to_recipient = _hops_to(pattern, recipient_ok)
+        near = to_recipient[donors[far]]
+        far = far[np.isfinite(near)]
+        hops[far] = to_recipient[donors[far]]
+        settled[far] = True
+        pairs = np.concatenate([pairs, _reach_pairs(pattern, far, donors[far], hops, to_recipient, recipient_ok)])
+    result = csr_matrix((np.ones(len(pairs), dtype=np.int8), (pairs // n, pairs % n)), shape=(len(donors), n))
+    return result, settled, hops
+
+
+def _reach_pairs(pattern: csr_matrix, row: np.ndarray, start: np.ndarray, budget: np.ndarray, to_recipient, recipient_ok):
+    """Keys `row * n + cell` of the recipients within `budget[row]` hops of each `start` cell, by a breadth-first
+    search per row run together. A cell k hops out whose distance to the nearest recipient (`to_recipient`, a lower
+    bound) is more than budget - k is on no shortest path to a recipient in budget, so the search skips it. Every cell
+    on such a path passes, at its true hop count, so the result is exact; with real distances the search visits the
+    corridor towards the nearest recipients rather than the whole disk (#987)."""
+    n = pattern.shape[0]
+    keys = row.astype(np.int64) * n + start
+    previous = np.zeros(0, dtype=np.int64)
+    found = [keys[recipient_ok[start]]]
+    degree_of = np.diff(pattern.indptr)
+    level = 0
+    while len(keys):
+        level += 1
+        node, owner = keys % n, keys // n
+        degree = degree_of[node]
+        offset = np.repeat(pattern.indptr[node] - np.cumsum(degree) + degree, degree) + np.arange(int(degree.sum()))
+        out_row, out_node = np.repeat(owner, degree), pattern.indices[offset]
+        keep = level + to_recipient[out_node] <= budget[out_row]
+        grown = np.unique(out_row[keep] * n + out_node[keep])
+        # In a symmetric graph a cell's neighbours lie one hop nearer, as near, or one hop farther: dropping this
+        # level and the one before leaves the next.
+        grown = grown[~np.isin(grown, keys, assume_unique=True) & ~np.isin(grown, previous, assume_unique=True)]
+        previous, keys = keys, grown
+        found.append(keys[recipient_ok[keys % n]])
+    return np.concatenate(found)
+
+
+def _hops_to(pattern: csr_matrix, target: np.ndarray) -> np.ndarray:
+    """Each cell's hop distance to the nearest `target` cell (inf where its component has none)."""
+    sources = np.flatnonzero(target)
+    if not len(sources):
+        return np.full(pattern.shape[0], np.inf)
+    return np.asarray(dijkstra(pattern, directed=False, indices=sources, unweighted=True, min_only=True))
 
 
 # The thickness-like columns thinning moves, in the order `ThinningOutcome` holds them.

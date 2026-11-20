@@ -1,0 +1,421 @@
+{
+ "run": "time_flank_plan.py --seed 106533960 --node-density 4 --steps 10 --params '{\"k_cap\": 0.14}' --extra-hops 0 5 10 20 40 80",
+ "state_digest": {
+  "branch": "5447bc37033da80e",
+  "origin_main": "5447bc37033da80e"
+ },
+ "steps": [
+  {
+   "step": 1,
+   "broken": 0,
+   "hops_max": 7,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.023,
+    "origin_main": 0.0206
+   },
+   "damage_s": {
+    "branch": 0.6918,
+    "origin_main": 0.7775
+   }
+  },
+  {
+   "step": 2,
+   "broken": 4,
+   "hops_max": 7,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0265,
+    "origin_main": 0.0245
+   },
+   "damage_s": {
+    "branch": 0.6878,
+    "origin_main": 0.8531
+   }
+  },
+  {
+   "step": 3,
+   "broken": 33,
+   "hops_max": 12,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.022,
+    "origin_main": 0.0202
+   },
+   "damage_s": {
+    "branch": 0.7278,
+    "origin_main": 0.6979
+   }
+  },
+  {
+   "step": 4,
+   "broken": 73,
+   "hops_max": 12,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0338,
+    "origin_main": 0.0214
+   },
+   "damage_s": {
+    "branch": 0.8078,
+    "origin_main": 0.7453
+   }
+  },
+  {
+   "step": 5,
+   "broken": 160,
+   "hops_max": 12,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0293,
+    "origin_main": 0.0297
+   },
+   "damage_s": {
+    "branch": 0.7397,
+    "origin_main": 0.8619
+   }
+  },
+  {
+   "step": 6,
+   "broken": 224,
+   "hops_max": 12,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0296,
+    "origin_main": 0.0376
+   },
+   "damage_s": {
+    "branch": 0.723,
+    "origin_main": 1.0544
+   }
+  },
+  {
+   "step": 7,
+   "broken": 307,
+   "hops_max": 40,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0314,
+    "origin_main": 0.2297
+   },
+   "damage_s": {
+    "branch": 0.7842,
+    "origin_main": 1.1368
+   }
+  },
+  {
+   "step": 8,
+   "broken": 468,
+   "hops_max": 14,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0329,
+    "origin_main": 0.0318
+   },
+   "damage_s": {
+    "branch": 0.7737,
+    "origin_main": 0.7967
+   }
+  },
+  {
+   "step": 9,
+   "broken": 710,
+   "hops_max": 40,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0346,
+    "origin_main": 0.1184
+   },
+   "damage_s": {
+    "branch": 0.7597,
+    "origin_main": 0.9045
+   }
+  },
+  {
+   "step": 10,
+   "broken": 935,
+   "hops_max": 12,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0349,
+    "origin_main": 0.0462
+   },
+   "damage_s": {
+    "branch": 0.7634,
+    "origin_main": 0.8924
+   }
+  }
+ ],
+ "bench": [
+  {
+   "plate": 7,
+   "cells": 16859,
+   "donors": 382,
+   "extra_hops": 0,
+   "broken": 0,
+   "hops_max": 4,
+   "hops_mean": 2.0,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0042,
+    "origin_main": 0.0024
+   },
+   "plan_identical": true
+  },
+  {
+   "plate": 7,
+   "cells": 16859,
+   "donors": 382,
+   "extra_hops": 5,
+   "broken": 1635,
+   "hops_max": 10,
+   "hops_mean": 6.7,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.005,
+    "origin_main": 0.0058
+   },
+   "plan_identical": true
+  },
+  {
+   "plate": 7,
+   "cells": 16859,
+   "donors": 382,
+   "extra_hops": 10,
+   "broken": 2981,
+   "hops_max": 19,
+   "hops_mean": 12.5,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.007,
+    "origin_main": 0.0222
+   },
+   "plan_identical": true
+  },
+  {
+   "plate": 7,
+   "cells": 16859,
+   "donors": 382,
+   "extra_hops": 20,
+   "broken": 5254,
+   "hops_max": 27,
+   "hops_mean": 23.1,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.01,
+    "origin_main": 0.065
+   },
+   "plan_identical": true
+  },
+  {
+   "plate": 7,
+   "cells": 16859,
+   "donors": 382,
+   "extra_hops": 40,
+   "broken": 8866,
+   "hops_max": 78,
+   "hops_mean": 47.6,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0254,
+    "origin_main": 1.5429
+   },
+   "plan_identical": true
+  },
+  {
+   "plate": 7,
+   "cells": 16859,
+   "donors": 382,
+   "extra_hops": 80,
+   "broken": 13398,
+   "hops_max": 101,
+   "hops_mean": 86.8,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0479,
+    "origin_main": 1.9326
+   },
+   "plan_identical": true
+  },
+  {
+   "plate": 4,
+   "cells": 15797,
+   "donors": 355,
+   "extra_hops": 0,
+   "broken": 0,
+   "hops_max": 4,
+   "hops_mean": 2.0,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0041,
+    "origin_main": 0.0021
+   },
+   "plan_identical": true
+  },
+  {
+   "plate": 4,
+   "cells": 15797,
+   "donors": 355,
+   "extra_hops": 5,
+   "broken": 1507,
+   "hops_max": 25,
+   "hops_mean": 8.1,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0057,
+    "origin_main": 0.049
+   },
+   "plan_identical": true
+  },
+  {
+   "plate": 4,
+   "cells": 15797,
+   "donors": 355,
+   "extra_hops": 10,
+   "broken": 2900,
+   "hops_max": 37,
+   "hops_mean": 13.9,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0066,
+    "origin_main": 0.1119
+   },
+   "plan_identical": true
+  },
+  {
+   "plate": 4,
+   "cells": 15797,
+   "donors": 355,
+   "extra_hops": 20,
+   "broken": 5611,
+   "hops_max": 43,
+   "hops_mean": 24.5,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0111,
+    "origin_main": 0.1402
+   },
+   "plan_identical": true
+  },
+  {
+   "plate": 4,
+   "cells": 15797,
+   "donors": 355,
+   "extra_hops": 40,
+   "broken": 10256,
+   "hops_max": 73,
+   "hops_mean": 48.5,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0281,
+    "origin_main": 0.5784
+   },
+   "plan_identical": true
+  },
+  {
+   "plate": 4,
+   "cells": 15797,
+   "donors": 355,
+   "extra_hops": 80,
+   "broken": 15291,
+   "hops_max": 175,
+   "hops_mean": 113.3,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0782,
+    "origin_main": 4.5054
+   },
+   "plan_identical": true
+  },
+  {
+   "plate": 8,
+   "cells": 11318,
+   "donors": 335,
+   "extra_hops": 0,
+   "broken": 0,
+   "hops_max": 12,
+   "hops_mean": 2.1,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0036,
+    "origin_main": 0.0107
+   },
+   "plan_identical": true
+  },
+  {
+   "plate": 8,
+   "cells": 11318,
+   "donors": 335,
+   "extra_hops": 5,
+   "broken": 1916,
+   "hops_max": 23,
+   "hops_mean": 6.9,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0048,
+    "origin_main": 0.0391
+   },
+   "plan_identical": true
+  },
+  {
+   "plate": 8,
+   "cells": 11318,
+   "donors": 335,
+   "extra_hops": 10,
+   "broken": 3657,
+   "hops_max": 24,
+   "hops_mean": 12.7,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0052,
+    "origin_main": 0.0382
+   },
+   "plan_identical": true
+  },
+  {
+   "plate": 8,
+   "cells": 11318,
+   "donors": 335,
+   "extra_hops": 20,
+   "broken": 6638,
+   "hops_max": 35,
+   "hops_mean": 23.8,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.0078,
+    "origin_main": 0.1073
+   },
+   "plan_identical": true
+  },
+  {
+   "plate": 8,
+   "cells": 11318,
+   "donors": 335,
+   "extra_hops": 40,
+   "broken": 10392,
+   "hops_max": 74,
+   "hops_mean": 49.6,
+   "held": 0,
+   "flank_s": {
+    "branch": 0.023,
+    "origin_main": 0.6414
+   },
+   "plan_identical": true
+  },
+  {
+   "plate": 8,
+   "cells": 11318,
+   "donors": 335,
+   "extra_hops": 80,
+   "broken": 10982,
+   "hops_max": 0,
+   "hops_mean": 0.0,
+   "held": 335,
+   "flank_s": {
+    "branch": 0.0011,
+    "origin_main": 7.5745
+   },
+   "plan_identical": true
+  }
+ ]
+}
