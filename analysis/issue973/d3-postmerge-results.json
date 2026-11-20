@@ -4,7 +4,7 @@
   "replay_commit": "b74d88af",
   "d2_runtime_baseline_commit": "382ddccd3aa01b1469f3083c29df26fe262e5f3f",
   "runtime_comparable": false,
-  "runtime_note": "The four original D3 runtimes overlapped other simulations. One runtime-only repeat is now complete with no other compute runs active; the other three repeats remain pending.",
+  "runtime_note": "The four original D3 runtimes overlapped other simulations. The two seed649658380 runtime-only repeats ran with no other compute jobs active and can be compared with D2. Both seed997271774 repeats overlapped another simulation, so their elapsed times are descriptive only and the full D3/D2 runtime comparison remains incomplete.",
   "runtime_only_followup": [
     {
       "save": "mantle-bloom-seed649658380-6400000y.bloom",
@@ -34,6 +34,36 @@
       "d2_runtime_s": 82,
       "d3_to_d2_runtime_ratio": 12.856341463414634,
       "other_compute_runs_active": false,
+      "use_for_science_metrics": false
+    },
+    {
+      "save": "mantle-bloom-seed997271774-87400000y.bloom",
+      "sha256": "07971ee25cdbc364cd887ea8f4fffc69ceed49b1933d09ea38e3864ea95328b8",
+      "myr_per_step": 0.25,
+      "steps": 40,
+      "capture": "d3-postmerge-runtime-only-seed997271774-025-repeat.json",
+      "capture_sha256": "839d5a384c3dc5597d19fd1a35b72e6b243085b19a3e8e3e42b4bebb395cdbb6",
+      "replay_commit": "b813aaaac77fc8230f3eed6fc85b7f2a9f1193f1",
+      "elapsed_s": 2023.48,
+      "peak_rss_gb": 1.49,
+      "d2_runtime_s": 624,
+      "d3_to_d2_runtime_ratio": null,
+      "other_compute_runs_active": true,
+      "use_for_science_metrics": false
+    },
+    {
+      "save": "mantle-bloom-seed997271774-87400000y.bloom",
+      "sha256": "07971ee25cdbc364cd887ea8f4fffc69ceed49b1933d09ea38e3864ea95328b8",
+      "myr_per_step": 1.0,
+      "steps": 10,
+      "capture": "d3-postmerge-runtime-only-seed997271774-100-repeat.json",
+      "capture_sha256": "2fcbdbc81b29e348820f40e55be69b8c649a25512e64c1af0af24600e692676d",
+      "replay_commit": "b813aaaac77fc8230f3eed6fc85b7f2a9f1193f1",
+      "elapsed_s": 1664.67,
+      "peak_rss_gb": 1.47,
+      "d2_runtime_s": 259,
+      "d3_to_d2_runtime_ratio": null,
+      "other_compute_runs_active": true,
       "use_for_science_metrics": false
     }
   ],

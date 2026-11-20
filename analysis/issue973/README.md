@@ -174,17 +174,31 @@ private capture directory and are checksummed in its `SHA256SUMS` file.
 
 ### Runtime-only follow-up (2026-11-19)
 
-Two of the four registered runtime-only repeats are complete. Both seed649658380 arms ran
-after `compute_budget.py` reported no other compute runs active. The 0.25 Myr × 40 arm took
-1,530.7 s and peaked at 1.03 GB RSS, versus the uncontended D2 control's 331 s (4.62×). Its
-private capture is `d3-postmerge-runtime-only-seed649658380-025-retry.json` (SHA-256
+All four registered runtime-only repeats have now run. Both seed649658380 arms ran after
+`compute_budget.py` reported no other compute jobs active. The 0.25 Myr × 40 arm took 1,530.7 s
+and peaked at 1.03 GB RSS, versus the uncontended D2 control's 331 s (4.62×). Its private
+capture is `d3-postmerge-runtime-only-seed649658380-025-retry.json` (SHA-256
 `04485eb7170eb6882f089c4848fdd851c6a988a27c578f0325e90018cf8d3aa5`). The 1 Myr × 10 arm
 took 1,054.22 s and peaked at 1.11 GB RSS, versus the D2 control's 82 s (12.86×). Its private
 capture is `d3-postmerge-runtime-only-seed649658380-100-repeat.json` (SHA-256
-`adee35d3678efe0aae995ef73c482b4cf3c2f177a620e3da4a2e734a60f93858`). Both repeats are for
-runtime/RSS only; their deterministic science values do not enter the preregistered results a
-second time. The two seed997271774 timing repeats remain pending, so the overall D3 runtime
-comparison remains incomplete.
+`adee35d3678efe0aae995ef73c482b4cf3c2f177a620e3da4a2e734a60f93858`).
+
+The seed997271774 0.25 Myr × 40 arm took 2,023.48 s and peaked at 1.49 GB RSS. It ran under
+the owner's explicit override while another simulation was active, so this elapsed time is
+not compared with the 624 s D2 control. Its private capture is
+`d3-postmerge-runtime-only-seed997271774-025-repeat.json` (SHA-256
+`839d5a384c3dc5597d19fd1a35b72e6b243085b19a3e8e3e42b4bebb395cdbb6`). The seed997271774
+1 Myr × 10 arm took 1,664.67 s and peaked at 1.47 GB RSS. Although the budget said RUN, it
+listed another active simulation; this timing is also load-affected and is not compared with
+the 259 s D2 control. Its private capture is
+`d3-postmerge-runtime-only-seed997271774-100-repeat.json` (SHA-256
+`2fcbdbc81b29e348820f40e55be69b8c649a25512e64c1af0af24600e692676d`).
+
+All repeats are runtime/RSS only; their deterministic science values do not enter the
+preregistered results a second time. Only the two seed649658380 D3 runtimes can be compared
+with the D2 controls. The two seed997271774 timings are descriptive only, so the full runtime
+comparison remains incomplete until those two arms are repeated with no other compute jobs
+active.
 
 ### Implementation checks
 
