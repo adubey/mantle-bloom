@@ -92,7 +92,7 @@
   "closing_down_going_length_past_gate": 1.0,
   "opening_length_past_gate": 0.6702122824127593,
   "closing_down_going_share_of_band": 0.4903899951052559,
-  "closing_down_going_length_pulled": 0.8268083908195899,
+  "closing_down_going_length_pulled": 0.5628231160539464,
   "slab_pull_ungated_over_applied": 1.0
  },
  "per_world_cm_per_yr": {
