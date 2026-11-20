@@ -31,6 +31,7 @@ held-out and reserve seeds and RFC 0021's held-out seeds are refused unless ``--
 
 import argparse
 import json
+import math
 import subprocess
 import sys
 import time
@@ -45,6 +46,7 @@ sys.path[:0] = [str(HERE), str(REPO / "backend")]
 
 HELDOUT_FILE = REPO / "analysis/issue958/heldout-seeds.json"
 T2_SHARE_FILE = REPO / "analysis/issue958/t2-threshold.json"
+T2_LEAD_MYR = 10.0  # T2 reads speed one sample after the consumption it judges, as long as its lookback (#958)
 T5_MIN_FLOOR_AGE_MYR = 50.0  # RFC 0021 T5: B.3's column reaches 81 of its 84 km at 50 Myr
 
 
@@ -53,7 +55,27 @@ def load_setting(path: Path, name: str) -> dict:
     setting = spec["settings"][name]
     method = setting.get("split_method", "rift_lines")
     params = {**spec.get("common_params", {}), **setting.get("params", {})} if method == "rift_lines" else {}
-    return {"name": name, "split_method": method, "params": params, "world_knobs": setting.get("world_knobs", {})}
+    return {"name": name, "split_method": method, "params": params, "world_knobs": setting.get("world_knobs", {}),
+            "module_knobs": setting.get("module_knobs", {})}
+
+
+# Module constants a setting may override (RFC 0021's G1 best-case check and G2, #975): the force constants are module
+# constants, not World fields. Each run is its own process, so an override never leaks into another world.
+# `mantle.MANTLE_FLOW_REFERENCE_RATE` is bound as a default argument, so it can't be overridden this way.
+MODULE_KNOBS = {"torque": ("ASTHENOSPHERE_VISCOSITY_PA_S", "SLAB_MANTLE_VISCOSITY_PA_S", "SUBDUCTION_LSINK_M")}
+
+
+def apply_module_knobs(knobs: dict) -> None:
+    """Set `module.CONSTANT` overrides, refusing any not in MODULE_KNOBS."""
+    import importlib
+
+    for dotted, value in knobs.items():
+        module_name, _, name = dotted.partition(".")
+        if name not in MODULE_KNOBS.get(module_name, ()):
+            sys.exit(f"{dotted!r} is not a module knob; known: {MODULE_KNOBS}")
+        if not math.isfinite(float(value)) or float(value) <= 0.0:
+            sys.exit(f"{dotted!r} must be a positive, finite number, got {value!r}")
+        setattr(importlib.import_module(f"app.{module_name}"), name, float(value))
 
 
 def refused_seeds() -> set[int]:
@@ -105,6 +127,9 @@ def run_one(args: argparse.Namespace) -> None:
     started = time.perf_counter()
     world = d1.make_world(SimpleNamespace(seed=args.seed, node_density=1.0, world_knobs=setting["world_knobs"],
                                           split_method=setting["split_method"], params=setting["params"]))
+    # After generation: the generation-time solve dates the ocean floor, and a force-constant override must not change
+    # the starting world a seed gives (#979 review). Each run is its own process, so it never leaks into another.
+    apply_module_knobs(setting["module_knobs"])
     recorder = rec.Recorder(rift_damage.runtime(world).params.eps_cand) if setting["split_method"] == "rift_lines" else None
     radius_cm = lithosphere.PLANET_RADIUS_M * 100.0
     samples, speeds = [], []
@@ -133,7 +158,8 @@ def run_one(args: argparse.Namespace) -> None:
             handle.write(json.dumps(row) + "\n")
         handle.write(json.dumps({"end_craton_m3": cratons.live_volume_m3(world), "ledger": dict(world.craton_ledger), "wall_s": time.perf_counter() - started}) + "\n")
         handle.close()
-    meta = {"seed": args.seed, "setting": setting, "years": years_myr, "step_myr": args.step_myr, "every": args.every}
+    meta = {"seed": args.seed, "setting": setting, "years": years_myr, "step_myr": args.step_myr, "every": args.every,
+            "contacts": not args.no_contacts}
     (out / "breakdown.json").write_text(json.dumps({**meta, "world_knobs": setting["world_knobs"], "samples": samples, "plate_speeds": speeds}, default=float) + "\n")
     result = {**meta, "split_method": setting["split_method"], "years_myr": years_myr, "step_s": step_s, "wall_s": time.perf_counter() - started,
               "n_splits": len(splits), "splits": splits, "plates_final": len(world.plates), "plate_counts": plate_counts[::10], "kinematics": motion,
@@ -144,12 +170,27 @@ def run_one(args: argparse.Namespace) -> None:
     print(json.dumps({"seed": args.seed, "splits": len(splits), "step_s": round(step_s)}), flush=True)
 
 
+def check_cached_run(path: Path, args: argparse.Namespace) -> None:
+    """Refuse to reuse a finished run made for a different experiment: the step length, the sampling cadence, the
+    run length, whether contacts were captured, or the resolved setting (world and module knobs). Skipping on the directory name alone let a 0.5 Myr request pass on a
+    1 Myr result (#979 review)."""
+    saved = json.loads(path.read_text())
+    # `years_myr` is the length actually stepped, a whole number of steps; old runs always captured contacts.
+    requested = {"step_myr": args.step_myr, "every": args.every, "setting": load_setting(args.settings, args.setting),
+                 "years_myr": round(args.years / args.step_myr) * args.step_myr, "contacts": not args.no_contacts}
+    saved.setdefault("contacts", True)
+    different = [key for key, value in requested.items() if saved.get(key) != json.loads(json.dumps(value))]
+    if different:
+        sys.exit(f"{path.parent} holds a run with a different {', '.join(different)}; use another --out or move it aside")
+
+
 def queue(args: argparse.Namespace) -> None:
     seeds = args.seeds or json.loads(args.seeds_file.read_text())["seeds"]
     failed = []
     for seed in seeds:
         target = args.out / args.setting / str(seed)
         if (target / "run.json").exists():
+            check_cached_run(target / "run.json", args)
             continue
         command = [sys.executable, __file__, "run", "--settings", str(args.settings), "--setting", args.setting, "--seed", str(seed),
                    "--out", str(target), "--years", str(args.years), "--step-myr", str(args.step_myr), "--every", str(args.every)]
@@ -197,13 +238,32 @@ def force_targets(rows: list[dict], share: float) -> dict:
         "T1_speed_cm_per_yr": _weighted([(r["speed_cm_per_yr"]["all"], r["area_km2"]) for r in rows]),
         # In the no-net-rotation frame, as T1's Earth figure is (`earth_plate_speed.py`); older runs lack it.
         "T1_speed_nnr_cm_per_yr": _weighted([(r["speed_nnr_cm_per_yr"], r["area_km2"]) for r in rows if "speed_nnr_cm_per_yr" in r]),
-        "T2_slab_attached_ratio": fast / slow if fast is not None and slow else None,
+        # Speed at the sample itself: fast plates consume more floor, so this ratio partly measures speed persistence.
+        "T2_same_time_ratio": fast / slow if fast is not None and slow else None,
         "T2_slab_attached_area_share": sum(w for _, w in attached) / sum(r["area_km2"] for r in rows) if rows else None,
         "T3_slab_pull_driving_share": pooled["driving_share"].get("slab_pull"),
         "T4_slabless_basal_traction_mpa": None if _weighted(slabless) is None else _weighted(slabless) / 1e6,
         "T5_old_ridge_push_n_per_m": _weighted(old),
         "breakdown": pooled,
     }
+
+
+def t2_ratio(runs: list[dict], share: float) -> dict:
+    """T2 with each plate's area-mean speed T2_LEAD_MYR after the sample, not at it (owner, 2026-11-18): the slab is
+    judged on floor consumed before the speed is read. Plates gone by then, and the last sample, are left out. On
+    G0's baseline it barely moves the ratio (1.54 at the sample, 1.52 at +10 Myr, 1.47 at +40), because a plate's
+    speed persists for tens of Myr; the lag can't separate a slab's drive from that persistence."""
+    attached, other = [], []
+    for run in runs:
+        by_myr = {round(s["myr"], 6): {r["plate_id"]: r for r in s["plates"]} for s in run["samples"]}
+        for myr, rows in by_myr.items():
+            later = by_myr.get(round(myr + T2_LEAD_MYR, 6))
+            for plate_id, row in (rows.items() if later else ()):
+                if plate_id in later:
+                    pair = (later[plate_id]["speed_cm_per_yr"]["all"], row["area_km2"])
+                    (attached if slab_attached(row, share) else other).append(pair)
+    fast, slow = _weighted(attached), _weighted(other)
+    return {"T2_slab_attached_ratio": fast / slow if fast is not None and slow else None, "T2_lead_myr": T2_LEAD_MYR}
 
 
 def _world_speeds(runs: list[dict]) -> dict:
@@ -286,7 +346,7 @@ def score(args: argparse.Namespace) -> None:
     rate = args.production_rate if args.production_rate is not None else production_rate(args.production_runs) if args.production_runs else None
     result = {
         "setting": runs[0]["setting"] if runs else None, "seeds": [run["seed"] for run in runs], "t2_share": share, "production_rate_per_world_100myr": rate,
-        **force_targets(rows, share), **_world_speeds(runs), "closure": _closure(runs),
+        **t2_ratio(runs, share), **force_targets(rows, share), **_world_speeds(runs), "closure": _closure(runs),
         "T8_contacts": contact_measures(directories), "T9_rifting": rifting_score(args.runs, rate),
     }
     text = json.dumps(result, indent=1, default=float) + "\n"

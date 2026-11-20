@@ -151,6 +151,7 @@ def force_inputs(world, plate):
     cache = world.boundary_search_cache
     neighbours = plate.get_neighbours(world.plates)
     inputs = torque.gather_boundary_force_inputs(plate, neighbours, spacing, reach, cache)
+    torque.apply_force_forms(world, plate, neighbours, inputs, torque.force_forms(world))
     _convergent, divergent, _transform, contested = torque.classify_boundary_nodes(plate, neighbours, inputs, reach, cache)
     collision = torque.continental_contact_mask(plate, inputs, contested)
     subducting = torque.subducting_boundary_mask(plate, inputs, reach)
