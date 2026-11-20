@@ -655,6 +655,49 @@ def test_prognostic_spill_status_unions_substeps():
     assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e3)
 
 
+def test_glacier_displacement_uses_the_receiving_lake_on_its_flow_path():
+    surface = np.array([6.0, 2.0, 0.0])
+    lake = lakes.Lake(0, np.array([2]), 0.0, 0.0, None, sink_node_idx=2)
+    area = np.array([2.0, 1.0, 4.0])
+    hyps = lakes.CellHypsometry(surface, area, np.zeros(3), 1.0, np.array([True, False, False]))
+    opening = np.array([3.0, 0.0, 1.0])
+    climate = lakes.LakeClimate(np.zeros(3), np.zeros(3))
+
+    result = lakes.solve_lakes_prognostic(
+        [lake], surface, opening, 1.0, climate, hyps, displaced_water_targets=np.array([1, 2, -1]),
+    )
+    np.testing.assert_allclose(result.lake_depth, [0.0, 0.0, 2.5])
+    assert result.ledger.external_supply_m3 == 0.0
+    assert result.ledger.overflow_out_m3 == 0.0
+    assert result.ledger.residual_m3 == pytest.approx(0.0)
+
+
+def test_glacier_covered_leaf_spills_into_a_wet_sibling_without_storing_water():
+    surface = np.array([2.0, 0.0, 5.0])
+    ice = lakes.Lake(
+        lake_id=0, members=np.array([0]), floor_elevation=2.0, min_depth=2.0,
+        max_depth=5.0, sink_node_idx=0, outlet_node_idx=0, outlet_target_idx=1,
+    )
+    exposed = lakes.Lake(
+        lake_id=1, members=np.array([1, 2]), floor_elevation=0.0, min_depth=0.0,
+        max_depth=5.0, sink_node_idx=1, outlet_node_idx=1, outlet_target_idx=0,
+    )
+    parent = lakes.Lake(
+        lake_id=2, members=np.arange(3), floor_elevation=0.0, min_depth=5.0,
+        max_depth=None, children=[ice, exposed],
+    )
+    hyps = lakes.CellHypsometry(surface, np.ones(3), np.zeros(3), 1.0, np.array([True, False, False]))
+    opening = np.array([2.0, 4.0, 0.0])
+    climate = lakes.LakeClimate(np.zeros(3), np.zeros(3))
+
+    result = lakes.solve_lakes_prognostic([parent], surface, opening, 1.0, climate, hyps)
+    assert result.lake_depth[0] == 0.0
+    assert result.lake_depth[1] >= 5.0
+    assert result.lake_depth.sum() == pytest.approx(opening.sum())
+    assert result.ledger.overflow_out_m3 == 0.0
+    assert result.ledger.residual_m3 == pytest.approx(0.0)
+
+
 def test_prognostic_depth_capped_siblings_break_a_closed_spill_cycle():
     elevation = np.array([0.0, 0.0])
     left = lakes.Lake(

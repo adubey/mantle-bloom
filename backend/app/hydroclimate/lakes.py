@@ -410,6 +410,24 @@ def _record_body_transitions(previous_bodies, current_bodies, events, seen_event
                 seen_events.add(key)
 
 
+def _receive_displaced_opening_water(depth, hypsometry, leaf_of_node, targets):
+    """Send water from a glaciated cell that left a basin into the next lake on its path."""
+    if targets is None or hypsometry.glacier_mask is None:
+        return
+    area = hypsometry.area_m2
+    displaced = np.flatnonzero(hypsometry.glacier_mask & (leaf_of_node < 0) & (depth > 0.0))
+    for origin in displaced:
+        seen = {int(origin)}
+        node = int(targets[origin])
+        while 0 <= node < len(targets) and node not in seen:
+            if leaf_of_node[node] >= 0 and area[node] > 0.0:
+                depth[node] += depth[origin] * area[origin] / area[node]
+                depth[origin] = 0.0
+                break
+            seen.add(node)
+            node = int(targets[node])
+
+
 def _export_orphaned_storage(depth, area_m2, leaf_of_node, is_ocean, accounting):
     """Route water from prior lake cells that no longer belong to a basin this step."""
     orphaned_nodes = np.flatnonzero((leaf_of_node < 0) & (depth > 0.0))
@@ -638,9 +656,13 @@ def _record_tier_cap_overflow(accounting, body, is_sea, overflow, tier_cap_limit
         accounting.lake_cap_overflow_m3 += overflow
 
 
+def _ice_only(body, hypsometry):
+    return hypsometry.glacier_mask is not None and np.all(hypsometry.glacier_mask[body.members])
+
+
 def _cap_is_artificial(body, prev_lake_depth, node_area_km2, hypsometry):
     """Whether a body's active cap prevents it from storing water up to its rim."""
-    if hypsometry.glacier_mask is not None and np.all(hypsometry.glacier_mask[body.members]):
+    if _ice_only(body, hypsometry):
         return True
     rim = body.max_depth if body.max_depth is not None else np.inf
     _, tier_depth = _classify_tier(body.members, prev_lake_depth, node_area_km2)
@@ -992,9 +1014,15 @@ def _advance_prognostic_body(
     while body.is_spilling:
         leaf_id = int(leaf_of_node[target]) if 0 <= target < node_count else -1
         receiver = body_for_leaf.get(leaf_id)
-        if receiver is None or receiver is body:
+        if receiver is None or (receiver is body and route_source is body):
             break
         if id(receiver) in traversed:
+            if _ice_only(route_source, hypsometry) or _ice_only(receiver, hypsometry):
+                # Revisit the surplus after checking whether the exposed sibling has
+                # now reached the saddle. The merged body may still hold it (#990).
+                held = accounting.cycle_surplus.setdefault(leaf_id, _CycleSurplus(0.0, route_source, receiver))
+                held.volume += overflow
+                return
             # Depth caps can bind below a sibling saddle. In that case two capped siblings
             # cannot merge, and their outlet edges form a closed hierarchy cycle. Export this
             # cap surplus once instead of circulating it through zero-duration flush passes.
@@ -1333,6 +1361,7 @@ def solve_lakes_prognostic(
     stop_on_settle: bool = True,
     is_ocean: np.ndarray | None = None,
     diagnostic_trace: bool = False,
+    displaced_water_targets: np.ndarray | None = None,
 ) -> LakeSolveResult:
     """Integrate lake storage over this timestep, promoting and splitting bodies as water
     crosses hierarchy saddles (#588).
@@ -1380,6 +1409,7 @@ def solve_lakes_prognostic(
 
     total_initial = float((depth * hypsometry.area_m2).sum())
     accounting = _new_prognostic_accounting(len(leaves), n, diagnostic_trace)
+    _receive_displaced_opening_water(depth, hypsometry, leaf_of_node, displaced_water_targets)
     _export_orphaned_storage(depth, hypsometry.area_m2, leaf_of_node, is_ocean, accounting)
     events: list[LakeEvent] = []
     seen_events: set[tuple[int, str]] = set()

@@ -283,6 +283,8 @@ GLACIER_MELT_RATE_M_PER_MYR = 400.0
 GLACIER_MELT_REFERENCE_DEGREES_C = 20.0
 GLACIER_MELT_MAX_FACTOR = 3.0
 GLACIER_VISIBLE_DEPTH_M = 10.0
+# The #990 diagnosis measured 1.76% of liquid lake volume under newly visible ice.
+LAKES_USE_CLOSING_GLACIER_ICE = True
 
 # A hard ceiling on per-node ice depth, kept as a guard (issue #353). Ice is shaped by
 # ice_sheet.py's plastic profile now, whose divide thickness is sqrt(2 c L) for a sheet whose
@@ -387,7 +389,7 @@ class HydrologyFields:
     # >= 0, nonzero only under standing water this step. Defaulted, same reasoning as above.
     silt_deposited: np.ndarray = field(default_factory=lambda: np.zeros(0))
     # This step's fully-resolved depression hierarchy (`lakes.build_lake_hierarchy`), built
-    # from this step's `elevation` and integrated against last step's lake_depth, exposed
+    # from the lake-routing surface in `hypsometry` and integrated against opening lake storage, exposed
     # here rather than discarded so a caller needing basin floor/outlet/current-water info
     # (main.py's Lake Inspector) can read it straight off these already-resolved `Lake` objects
     # instead of rebuilding its own hierarchy -- which is more than a wasted computation:
@@ -1159,7 +1161,7 @@ def meltwater_m3_per_yr(melt_m: np.ndarray, areas_m2: np.ndarray, years: float) 
     D1, #789): a metre of ice is RHO_ICE / RHO_WATER metres of water."""
     from . import ice_sheet as _ice_sheet
 
-    return _ice_sheet.RHO_ICE / _ice_sheet.RHO_WATER * melt_m * areas_m2 / max(years, 1.0)
+    return _ice_sheet.RHO_ICE / _ice_sheet.RHO_WATER * melt_m * areas_m2 / (years if years > 0.0 else 1.0)
 
 
 def _lagged_lake_wet_fraction(
@@ -2699,14 +2701,14 @@ def _bed_frozen_cap(lake_depth: np.ndarray, lake_ice_m: np.ndarray) -> np.ndarra
 
 
 def _lake_cap_handoff_mask(
-    glacier_depth, lake_depth, lake_ice_m, is_ocean, precipitation_mm, temperature_c, seasonal_amplitude,
+    glacier_depth, lake_depth, lake_ice_m, is_ocean, precipitation_mm, temperature_c, seasonal_amplitude, *, allow_bare,
 ):
     from . import ice_sheet
 
     # Once the column is frozen to bed, snowfall can sustain glacier ice across the cell.
     # Test the actual thickness and the D1 balance, including basal melt (#990).
     visible = glacier_depth >= GLACIER_VISIBLE_DEPTH_M
-    bare = _bed_frozen_cap(lake_depth, lake_ice_m) & ~is_ocean & ~visible
+    bare = _bed_frozen_cap(lake_depth, lake_ice_m) & ~is_ocean & ~visible & allow_bare
     idx = np.flatnonzero(bare)
     climate = ice_sheet.SurfaceClimate(
         precipitation_mm[idx], temperature_c[idx], seasonal_amplitude[idx], np.ones(len(idx), dtype=bool),
@@ -2852,10 +2854,9 @@ def compute_hydrology(
     # for liquid water (#503): a river reaching a warm ice node rebuilt a 600 m ice plug there
     # every step.
 
-    # The opening glacier surface changes lake storage and routing. Glacier physics and
-    # breach carving still use the rock bed (#990).
+    # Opening geometry determines precipitation's wet and dry shares. Glacier physics
+    # and breach carving use the rock bed (#990).
     hypsometry = _lake_terrain(elevation, prev_glacier_depth, areas, neighbor_idx)
-    lake_elevation = hypsometry.elevation
     prior_lake_ice_m = collect_all_lake_ice(plates_in_order)
     prev_lake_water_m = prev_lake_depth + prior_lake_ice_m
     lake_temperature_c = _lake_water_surface_temperature_c(
@@ -2888,22 +2889,24 @@ def compute_hydrology(
     # `f_snow` is the share of the year below the rain-snow threshold, on the ground and on
     # the opening ice surface; the breach gate below reads the same split at this opening
     # state (a one-step lag on the cover only), in place of the old `is_frozen` switch.
-    from . import ice_sheet as _ice_sheet_d1
+    from . import ice_sheet
 
-    _snow_ground = _ice_sheet_d1.snow_fraction(temperature_at_nodes, seasonal_amplitude)
-    _ice_lapsed = temperature_at_nodes - _ice_sheet_d1.LAPSE_RATE_C_PER_KM * np.clip(prev_glacier_depth, 0.0, None) / 1000.0
-    _snow_ice = _ice_sheet_d1.snow_fraction(_ice_lapsed, seasonal_amplitude)
-    _ice_cover_open = (np.clip(prev_glacier_depth, 0.0, None) >= GLACIER_VISIBLE_DEPTH_M).astype(float)
+    snow_ground = ice_sheet.snow_fraction(temperature_at_nodes, seasonal_amplitude)
+    ice_lapsed = temperature_at_nodes - ice_sheet.LAPSE_RATE_C_PER_KM * np.clip(prev_glacier_depth, 0.0, None) / 1000.0
+    snow_ice = ice_sheet.snow_fraction(ice_lapsed, seasonal_amplitude)
+    ice_cover_open = (prev_glacier_depth >= GLACIER_VISIBLE_DEPTH_M).astype(float)
     wet_precip_mm, ice_snow_mm, ice_rain_mm, bare_snow_mm, bare_rain_mm = glacier_rain_partition_mm(
-        precipitation_at_nodes, wet_fraction, _ice_cover_open, _snow_ground, _snow_ice,
+        precipitation_at_nodes, wet_fraction, ice_cover_open, snow_ground, snow_ice,
     )
     # Wet precipitation feeds the lake solve as a whole column. The phase split below
     # retains frozen-season snowfall as cap mass without counting the input twice (#990).
     dry_rain_mm = ice_rain_mm + bare_rain_mm
-    frozen_wet_snow_mm = wet_precip_mm * _ice_sheet_d1.snow_fraction(
+    frozen_wet_snow_mm = wet_precip_mm * ice_sheet.snow_fraction(
         lake_temperature_c, seasonal_amplitude, FREEZE_POINT_C,
     )
-    bed_frozen_snow_mm = np.where(_bed_frozen_cap(prev_lake_depth, prior_lake_ice_m), frozen_wet_snow_mm, 0.0)
+    march_active = MARCH_GLACIERS and world.simulate_glacier_march
+    bed_frozen = _bed_frozen_cap(prev_lake_depth, prior_lake_ice_m)
+    bed_frozen_snow_mm = np.where(bed_frozen & march_active, frozen_wet_snow_mm, 0.0)
     wet_precip_mm = wet_precip_mm - bed_frozen_snow_mm
     frozen_wet_snow_mm = frozen_wet_snow_mm - bed_frozen_snow_mm
     dry_share = np.clip(1.0 - np.asarray(wet_fraction, dtype=float), 0.0, 1.0)
@@ -2957,33 +2960,6 @@ def compute_hydrology(
         )
         river_substeps.note_breach(relief, breach, elevation, is_ocean, neighbor_idx)
         interface_pass = breaching.interface_pass_elevation(breach.passage_m, neighbor_idx)
-    lake_pass = _lake_interface_pass(hypsometry, neighbor_idx, interface_pass)
-    forest = lakes.build_lake_hierarchy(lake_elevation, is_ocean, neighbor_idx, interface_pass_elevation=lake_pass)
-    # Partial-cell flooding (issue #297): lake_depth is each cell's mean water depth over its
-    # sub-cell relief, so the water surface is recovered through the same hypsometry rather
-    # than as elevation + depth.
-    filled_elevation, spill_target, rim_node_idx = lakes.compute_spill_routing(
-        forest, lake_elevation, prev_lake_water_m, hypsometry
-    )
-    # Water surface above each wet cell's centre, for _compute_flow_direction's spill test
-    # (`elevation + offset >= filled_elevation`). It's the mean depth itself without relief.
-    lake_surface_offset = np.zeros(n)
-    wet_idx = np.flatnonzero(prev_lake_water_m > 0.0)
-    lake_surface_offset[wet_idx] = hypsometry.level_from_depth(prev_lake_water_m[wet_idx], wet_idx) - lake_elevation[wet_idx]
-
-    flow_target, should_spill = _compute_flow_direction(
-        lake_elevation, is_ocean, neighbor_idx, lake_surface_offset, filled_elevation, spill_target, prev_channel_depth
-    )
-    # Off the ice, material riding the ice (glacial till, landslide debris) leaves along the
-    # ground's own downhill path, as water does. On the ice it follows the ice surface instead
-    # (set below, once this step's ice is solved).
-    ice_flow_target = flow_target.copy()
-
-    # Issue #353: ice volume is conserved per ice body and shaped by a plastic ice-sheet
-    # profile (ice_sheet.py), replacing one-hop bed-slope flow. Imported here for the same
-    # reason as climate above: ice_sheet imports this module.
-    from . import ice_sheet
-
     # The march sees snow from the dry share and from caps frozen to bed.
     # The floating sea-ice cap stays outside this glacier solve.
     _mobile_cover = np.concatenate([p.collect("mobile_cover_m") for p in plates_in_order])
@@ -2996,17 +2972,44 @@ def compute_hydrology(
         # The test knob forces the march off for ice-independent tests; the world flag lets
         # users do the same (World.simulate_glacier_march, off by default for UI worlds).
         # Both take the zero-length path: one opening-state solve, ice frozen for the step.
-        years if (MARCH_GLACIERS and world.simulate_glacier_march) else 0.0,
+        years if march_active else 0.0,
     )
     # Hand off an opening cap before the lake phase split can melt or spill it. A cell
     # already under a glacier hands off even when the glacier retreats during this step.
     prior_cap = prior_lake_ice_m.copy()
     handoff = _lake_cap_handoff_mask(
         np.maximum(prev_glacier_depth, new_glacier_depth), prev_lake_depth, prior_cap,
-        is_ocean, precipitation_at_nodes, temperature_at_nodes, seasonal_amplitude,
+        is_ocean, precipitation_at_nodes, temperature_at_nodes, seasonal_amplitude, allow_bare=march_active,
     ) & (years > 0.0)
     lake_to_glacier_m3 = _transfer_lake_cap(prior_cap, handoff, new_glacier_depth, ice, areas, melt)
     lake_opening_column = prev_lake_depth + prior_cap
+    if LAKES_USE_CLOSING_GLACIER_ICE and not np.array_equal(new_glacier_depth, prev_glacier_depth):
+        hypsometry = _lake_terrain(elevation, new_glacier_depth, areas, neighbor_idx)
+    lake_elevation = hypsometry.elevation
+    lake_pass = _lake_interface_pass(hypsometry, neighbor_idx, interface_pass)
+    forest = lakes.build_lake_hierarchy(lake_elevation, is_ocean, neighbor_idx, interface_pass_elevation=lake_pass)
+    # Partial-cell flooding (issue #297): lake_depth is each cell's mean water depth over its
+    # sub-cell relief, so the water surface is recovered through the same hypsometry rather
+    # than as elevation + depth.
+    filled_elevation, spill_target, _ = lakes.compute_spill_routing(
+        forest, lake_elevation, lake_opening_column, hypsometry
+    )
+    # Water surface above each wet cell's centre, for _compute_flow_direction's spill test
+    # (`elevation + offset >= filled_elevation`). It's the mean depth itself without relief.
+    lake_surface_offset = np.zeros(n)
+    exposed_opening_water = lake_opening_column > 0.0
+    if hypsometry.glacier_mask is not None:
+        exposed_opening_water &= ~hypsometry.glacier_mask
+    wet_idx = np.flatnonzero(exposed_opening_water)
+    lake_surface_offset[wet_idx] = hypsometry.level_from_depth(lake_opening_column[wet_idx], wet_idx) - lake_elevation[wet_idx]
+
+    flow_target, _ = _compute_flow_direction(
+        lake_elevation, is_ocean, neighbor_idx, lake_surface_offset, filled_elevation, spill_target, prev_channel_depth
+    )
+    # Off the ice, material riding the ice (glacial till, landslide debris) leaves along the
+    # ground's own downhill path, as water does. On the ice it follows the ice surface instead
+    # (set below, once this step's ice is solved).
+    ice_flow_target = flow_target.copy()
 
     # Physical water (issue #355 "Water units"). Lakes use the prognostic real-unit balance
     # introduced in RFC 0014 D1b (#588):
@@ -3016,20 +3019,6 @@ def compute_hydrology(
     # through-flow is river discharge; settled external sources feed the lakes below at any
     # temperature.
     meltwater_source_m3 = meltwater_m3_per_yr(melt, areas, years)
-    routed_sources: dict[str, tuple[np.ndarray, np.ndarray]] = {}
-
-    def route_sources(targets: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Route each external source separately for the future D1 ledger (#587)."""
-        routed_sources.update(
-            _route_external_water_sources(
-                lake_elevation, is_ocean, targets, dry_runoff_m3, wet_precip_m3, meltwater_source_m3,
-                dry_transit_loss, transit_loss,
-            )
-        )
-        through = [routed_sources[key][0] for key in ("dry_runoff", "meltwater", "wet_precip")]
-        settled = [routed_sources[key][1] for key in ("dry_runoff", "meltwater", "wet_precip")]
-        return np.sum(through, axis=0), np.sum(settled, axis=0)
-
     # External sources must reach their natural leaf sinks before the prognostic solve. A
     # previously full lake can redirect its sink along the outlet edge in `flow_target`; make
     # each hierarchy leaf sink terminal for this source pass so persisted spill state cannot
@@ -3044,7 +3033,10 @@ def compute_hydrology(
     )
     leaf_sinks = leaf_sinks[(leaf_sinks >= 0) & (leaf_sinks < n)]
     source_targets[leaf_sinks] = -1
-    route_sources(source_targets)
+    routed_sources = _route_external_water_sources(
+        lake_elevation, is_ocean, source_targets, dry_runoff_m3, wet_precip_m3, meltwater_source_m3,
+        dry_transit_loss, transit_loss,
+    )
     wet_through, wet_settled = routed_sources["wet_precip"]
     # The steady through-flow above sets each reach's travel time; the delivered water then
     # comes from the river reservoirs, so a change in `river_water_m` is booked (RFC 0016, #725).
@@ -3101,6 +3093,7 @@ def compute_hydrology(
         stop_on_settle=getattr(world, "lake_stop_mode", "resolve") != "exhaust",
         is_ocean=is_ocean,
         diagnostic_trace=diagnostic_trace,
+        displaced_water_targets=source_targets,
     )
     lake_ice_m, lake_depth_after_phase, ice_budget = advance_lake_ice(
         prior_cap, lake_result.lake_depth, areas, lake_temperature_c,
@@ -3110,7 +3103,7 @@ def compute_hydrology(
     )
     handoff = _lake_cap_handoff_mask(
         new_glacier_depth, lake_depth_after_phase, lake_ice_m, is_ocean,
-        precipitation_at_nodes, temperature_at_nodes, seasonal_amplitude,
+        precipitation_at_nodes, temperature_at_nodes, seasonal_amplitude, allow_bare=march_active,
     ) & (years > 0.0)
     lake_to_glacier_m3 += _transfer_lake_cap(lake_ice_m, handoff, new_glacier_depth, ice, areas, melt)
     ice_flow_target = _ice_surface_flow_target(
