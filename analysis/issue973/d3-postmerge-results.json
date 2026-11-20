@@ -20,6 +20,21 @@
       "d3_to_d2_runtime_ratio": 4.62416918429003,
       "other_compute_runs_active": false,
       "use_for_science_metrics": false
+    },
+    {
+      "save": "mantle-bloom-seed649658380-6400000y.bloom",
+      "sha256": "06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b6b31131f",
+      "myr_per_step": 1.0,
+      "steps": 10,
+      "capture": "d3-postmerge-runtime-only-seed649658380-100-repeat.json",
+      "capture_sha256": "adee35d3678efe0aae995ef73c482b4cf3c2f177a620e3da4a2e734a60f93858",
+      "replay_commit": "776f6bdb819fece4dababc8eeb9c3b79ba1530a4",
+      "elapsed_s": 1054.22,
+      "peak_rss_gb": 1.11,
+      "d2_runtime_s": 82,
+      "d3_to_d2_runtime_ratio": 12.856341463414634,
+      "other_compute_runs_active": false,
+      "use_for_science_metrics": false
     }
   ],
   "step_gap_definition": "(applied_0.25Myr - applied_1Myr) / applied_0.25Myr",

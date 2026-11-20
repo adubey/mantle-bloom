@@ -174,15 +174,17 @@ private capture directory and are checksummed in its `SHA256SUMS` file.
 
 ### Runtime-only follow-up (2026-11-19)
 
-One of the four registered runtime-only repeats is complete. The 10 Myr seed649658380 arm at
-0.25 Myr × 40 ran after `compute_budget.py` reported `RUN: nothing else is running` on the
-16 GB machine (7.7 GB available, pressure level 2). It took 1,530.7 s and peaked at 1.03 GB
-RSS. The corresponding uncontended D2 control took 331 s, so this arm measured 4.62× D2
-runtime. The private capture is `d3-postmerge-runtime-only-seed649658380-025-retry.json`
-(SHA-256 `04485eb7170eb6882f089c4848fdd851c6a988a27c578f0325e90018cf8d3aa5`). This repeat
-is for runtime/RSS only; its deterministic science values do not enter the preregistered
-results a second time. The other three runtime-only arms remain pending, so the overall D3
-runtime comparison remains incomplete.
+Two of the four registered runtime-only repeats are complete. Both seed649658380 arms ran
+after `compute_budget.py` reported no other compute runs active. The 0.25 Myr × 40 arm took
+1,530.7 s and peaked at 1.03 GB RSS, versus the uncontended D2 control's 331 s (4.62×). Its
+private capture is `d3-postmerge-runtime-only-seed649658380-025-retry.json` (SHA-256
+`04485eb7170eb6882f089c4848fdd851c6a988a27c578f0325e90018cf8d3aa5`). The 1 Myr × 10 arm
+took 1,054.22 s and peaked at 1.11 GB RSS, versus the D2 control's 82 s (12.86×). Its private
+capture is `d3-postmerge-runtime-only-seed649658380-100-repeat.json` (SHA-256
+`adee35d3678efe0aae995ef73c482b4cf3c2f177a620e3da4a2e734a60f93858`). Both repeats are for
+runtime/RSS only; their deterministic science values do not enter the preregistered results a
+second time. The two seed997271774 timing repeats remain pending, so the overall D3 runtime
+comparison remains incomplete.
 
 ### Implementation checks
 
