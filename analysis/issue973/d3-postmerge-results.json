@@ -4,7 +4,24 @@
   "replay_commit": "b74d88af",
   "d2_runtime_baseline_commit": "382ddccd3aa01b1469f3083c29df26fe262e5f3f",
   "runtime_comparable": false,
-  "runtime_note": "Other simulations overlapped the D3 arms; do not compute slowdown ratios from their elapsed times.",
+  "runtime_note": "The four original D3 runtimes overlapped other simulations. One runtime-only repeat is now complete with no other compute runs active; the other three repeats remain pending.",
+  "runtime_only_followup": [
+    {
+      "save": "mantle-bloom-seed649658380-6400000y.bloom",
+      "sha256": "06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b6b31131f",
+      "myr_per_step": 0.25,
+      "steps": 40,
+      "capture": "d3-postmerge-runtime-only-seed649658380-025-retry.json",
+      "capture_sha256": "04485eb7170eb6882f089c4848fdd851c6a988a27c578f0325e90018cf8d3aa5",
+      "replay_commit": "9b0c30c7f840c59384f58acdb109010501bcc923",
+      "elapsed_s": 1530.7,
+      "peak_rss_gb": 1.03,
+      "d2_runtime_s": 331,
+      "d3_to_d2_runtime_ratio": 4.62416918429003,
+      "other_compute_runs_active": false,
+      "use_for_science_metrics": false
+    }
+  ],
   "step_gap_definition": "(applied_0.25Myr - applied_1Myr) / applied_0.25Myr",
   "working_target_each_save": "<20%",
   "failure_threshold_each_save": ">50%",

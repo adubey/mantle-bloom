@@ -172,6 +172,18 @@ owner's decision on that result as well as the runtime comparison.
 The per-step compact summaries are in `d3-postmerge-results.json`. Full captures remain in the
 private capture directory and are checksummed in its `SHA256SUMS` file.
 
+### Runtime-only follow-up (2026-11-19)
+
+One of the four registered runtime-only repeats is complete. The 10 Myr seed649658380 arm at
+0.25 Myr × 40 ran after `compute_budget.py` reported `RUN: nothing else is running` on the
+16 GB machine (7.7 GB available, pressure level 2). It took 1,530.7 s and peaked at 1.03 GB
+RSS. The corresponding uncontended D2 control took 331 s, so this arm measured 4.62× D2
+runtime. The private capture is `d3-postmerge-runtime-only-seed649658380-025-retry.json`
+(SHA-256 `04485eb7170eb6882f089c4848fdd851c6a988a27c578f0325e90018cf8d3aa5`). This repeat
+is for runtime/RSS only; its deterministic science values do not enter the preregistered
+results a second time. The other three runtime-only arms remain pending, so the overall D3
+runtime comparison remains incomplete.
+
 ### Implementation checks
 
 - `ruff check`: passed.
