@@ -130,7 +130,7 @@ def _run_replay(ns: argparse.Namespace) -> dict:
         step_capture["applied_glacial_erosion_m3"] = float(res.budget["glacial_erosion_m3"])
         step_capture["unapplied_glacial_erosion_m3"] = float(res.budget["glacial_erosion_unapplied_m3"])
         step_capture["march_applied_glacial_abrasion_m3"] = float(
-            ice_sheet.MARCH_LOG[-1]["applied_glacial_abrasion_m3"]
+            ice_sheet.MARCH_LOG[-1].get("applied_glacial_abrasion_m3", 0.0)
         )
         step_capture["total_removed_m3"] = float(res.budget["removed_m3"])
         return res
@@ -148,6 +148,7 @@ def _run_replay(ns: argparse.Namespace) -> dict:
             world_mod.step_world(world, ns.myr * 1.0e6)
             wall = time.perf_counter() - s0
             state = _snapshot_state(world)
+            march_log = ice_sheet.MARCH_LOG[-1] if ice_sheet.MARCH_LOG else {}
             raw_m3 = step_capture["raw_glacial_erosion_m3"]
             app_m3 = step_capture["applied_glacial_erosion_m3"]
             march_app_m3 = step_capture["march_applied_glacial_abrasion_m3"]
@@ -156,6 +157,7 @@ def _run_replay(ns: argparse.Namespace) -> dict:
             rec = {
                 "step": i,
                 "wall_s": round(wall, 2),
+                "march_substeps": int(march_log.get("substeps", 0)),
                 **state,
                 "raw_glacial_erosion_m3": raw_m3,
                 "applied_glacial_erosion_m3": app_m3,

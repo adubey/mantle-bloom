@@ -1,0 +1,60 @@
+{
+  "issue": 973,
+  "registered_before_runs": true,
+  "registered_date": "2026-11-19",
+  "d3_commit": "aa217ab478b534248c261457d129475b0c2e4f50",
+  "d2_baseline_commit": "382ddccd3aa01b1469f3083c29df26fe262e5f3f",
+  "arm": "cook2020",
+  "coefficient": 0.0001,
+  "exponent": 0.65,
+  "glacier_erosion_multiplier": 1.0,
+  "flatten_multiplier": 1.0,
+  "ice_age_period_years": 0.0,
+  "horizon_myr": 10.0,
+  "primary_metric": "(applied_0.25Myr - applied_1Myr) / applied_0.25Myr",
+  "expected_direction": "D3 gap below G3 Cook-law gaps of 66.5% and 70.4%",
+  "working_target_each_save": "<20%",
+  "failure_threshold_each_save": ">50%",
+  "intermediate_result": "20-50% is partial; report without claiming target passed",
+  "diagnosis_saves": [
+    {
+      "name": "mantle-bloom-seed649658380-6400000y.bloom",
+      "sha256": "06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b6b31131f",
+      "age_myr": 6.4,
+      "steps": [
+        {"myr_per_step": 0.25, "count": 40},
+        {"myr_per_step": 1.0, "count": 10}
+      ]
+    },
+    {
+      "name": "mantle-bloom-seed997271774-87400000y.bloom",
+      "sha256": "07971ee25cdbc364cd887ea8f4fffc69ceed49b1933d09ea38e3864ea95328b8",
+      "age_myr": 87.4,
+      "steps": [
+        {"myr_per_step": 0.25, "count": 40},
+        {"myr_per_step": 1.0, "count": 10}
+      ]
+    }
+  ],
+  "replicates": "one deterministic run per arm; add paired replicates only if variation could change a threshold decision",
+  "protocol_amendment": {
+    "registered_date": "2026-11-19",
+    "purpose": "runtime and RSS only; do not double-count this run in abrasion totals or gap",
+    "arm": "seed649658380, 0.25 Myr x 40",
+    "reason": "a unit-test process appeared after the empty-run check and overlapped most of the first arm; its abrasion and state outputs remain primary but its runtime is non-comparable",
+    "start_when": "compute budget lists no other running jobs"
+  },
+  "runtime_only_followup": {
+    "registered_date": "2026-11-19",
+    "purpose": "produce D3 runtime and RSS measures comparable to the uncontended D2 controls",
+    "arms": [
+      {"save": "seed649658380", "myr_per_step": 0.25, "steps": 40},
+      {"save": "seed649658380", "myr_per_step": 1.0, "steps": 10},
+      {"save": "seed997271774", "myr_per_step": 0.25, "steps": 40},
+      {"save": "seed997271774", "myr_per_step": 1.0, "steps": 10}
+    ],
+    "start_when": "compute budget lists no other running jobs",
+    "use_for_science_metrics": false,
+    "reason": "all four primary D3 arms overlapped other simulation jobs; their science outputs remain the registered results, but elapsed runtimes are not comparable"
+  }
+}
