@@ -50,27 +50,37 @@ def main():
     result["ice_age_period_years"] = world.ice_age_period_years
     result["start_myr"] = world.elapsed_years / 1e6
     threshold = hydrology.GLACIER_VISIBLE_DEPTH_M
+    opening_hydro = getattr(world, "hydrology_cache", None)
+    opening_depth = getattr(opening_hydro, "glacier_depth", None)
+    if opening_depth is None:
+        opening_elevation = getattr(opening_hydro, "elevation", None)
+        if opening_elevation is None:
+            opening_elevation = np.concatenate([plate.collect("elevation") for plate in world.plates])
+        opening_glacier = np.zeros_like(opening_elevation, dtype=bool)
+    else:
+        opening_glacier = np.asarray(opening_depth) >= threshold
     for step in range(1, round(args.myr * 1e6 / args.step_years) + 1):
         start = time.perf_counter()
         world_module.step_world(world, args.step_years)
         hydro = world.hydrology_cache
         glacier = hydro.glacier_depth >= threshold
-        opening = hydro.hypsometry.glacier_mask if not hydrology.LAKES_USE_CLOSING_GLACIER_ICE else None
-        covered = glacier if opening is None else glacier & ~opening
+        newly_covered = glacier & ~opening_glacier
         volume = hydro.lake_depth * hydro.hypsometry.area_m2
         lake_m3 = float(volume.sum())
-        covered_m3 = float(volume[covered].sum())
+        covered_m3 = float(volume[glacier].sum())
+        newly_covered_m3 = float(volume[newly_covered].sum())
         margin = ~glacier & np.isin(np.arange(len(glacier)), hydro.neighbor_idx[glacier].ravel())
         margin_m3 = float(volume[margin].sum())
         other_m3 = float(volume[~glacier & ~margin].sum())
-        share = covered_m3 / lake_m3 if lake_m3 else 0.0
         record = {
             "step": step,
             "lake_liquid_m3": lake_m3,
             "covered_liquid_m3": covered_m3,
+            "newly_covered_liquid_m3": newly_covered_m3,
             "glacier_margin_liquid_m3": margin_m3,
             "other_liquid_m3": other_m3,
-            "share": share,
+            "share": newly_covered_m3 / lake_m3 if lake_m3 else 0.0,
+            "closing_ice_share": covered_m3 / lake_m3 if lake_m3 else 0.0,
             "lake_cap_transfer_m3_water": hydro.lake_water_ledger.glacier_transfer_m3,
             "lake_ledger_residual_m3_water": hydro.lake_water_ledger.residual_m3,
             "land_ledger_residual_m3_water": hydro.land_water_ledger.residual_m3,
@@ -80,7 +90,7 @@ def main():
         result["checkpoints"].append(record)
         args.out.write_text(json.dumps(result, indent=2) + "\n")
         print(json.dumps(record), flush=True)
-        if share > 0.01:
+        if record["share"] > 0.01:
             break
 
 
