@@ -174,31 +174,26 @@ private capture directory and are checksummed in its `SHA256SUMS` file.
 
 ### Runtime-only follow-up (2026-11-19)
 
-All four registered runtime-only repeats have now run. Both seed649658380 arms ran after
-`compute_budget.py` reported no other compute jobs active. The 0.25 Myr × 40 arm took 1,530.7 s
-and peaked at 1.03 GB RSS, versus the uncontended D2 control's 331 s (4.62×). Its private
-capture is `d3-postmerge-runtime-only-seed649658380-025-retry.json` (SHA-256
-`04485eb7170eb6882f089c4848fdd851c6a988a27c578f0325e90018cf8d3aa5`). The 1 Myr × 10 arm
-took 1,054.22 s and peaked at 1.11 GB RSS, versus the D2 control's 82 s (12.86×). Its private
-capture is `d3-postmerge-runtime-only-seed649658380-100-repeat.json` (SHA-256
-`adee35d3678efe0aae995ef73c482b4cf3c2f177a620e3da4a2e734a60f93858`).
+All four runtime-only repeats have now been captured with no other compute jobs active. These
+are the valid D3/D2 timing comparisons; the two earlier overlapping seed997271774 attempts
+remain in the private capture manifest but are excluded.
 
-The seed997271774 0.25 Myr × 40 arm took 2,023.48 s and peaked at 1.49 GB RSS. It ran under
-the owner's explicit override while another simulation was active, so this elapsed time is
-not compared with the 624 s D2 control. Its private capture is
-`d3-postmerge-runtime-only-seed997271774-025-repeat.json` (SHA-256
-`839d5a384c3dc5597d19fd1a35b72e6b243085b19a3e8e3e42b4bebb395cdbb6`). The seed997271774
-1 Myr × 10 arm took 1,664.67 s and peaked at 1.47 GB RSS. Although the budget said RUN, it
-listed another active simulation; this timing is also load-affected and is not compared with
-the 259 s D2 control. Its private capture is
-`d3-postmerge-runtime-only-seed997271774-100-repeat.json` (SHA-256
-`2fcbdbc81b29e348820f40e55be69b8c649a25512e64c1af0af24600e692676d`).
+| Save | Schedule | D3 runtime | Peak RSS | D2 runtime | D3 / D2 |
+|---|---:|---:|---:|---:|---:|
+| seed649658380 | 0.25 Myr × 40 | 1,530.7 s | 1.03 GB | 331 s | 4.62× |
+| seed649658380 | 1 Myr × 10 | 1,054.22 s | 1.11 GB | 82 s | 12.86× |
+| seed997271774 | 0.25 Myr × 40 | 2,000.74 s | 1.65 GB | 624 s | 3.21× |
+| seed997271774 | 1 Myr × 10 | 1,643.34 s | 1.53 GB | 259 s | 6.34× |
 
-All repeats are runtime/RSS only; their deterministic science values do not enter the
-preregistered results a second time. Only the two seed649658380 D3 runtimes can be compared
-with the D2 controls. The two seed997271774 timings are descriptive only, so the full runtime
-comparison remains incomplete until those two arms are repeated with no other compute jobs
-active.
+The captures and SHA-256 values are:
+
+- `d3-postmerge-runtime-only-seed649658380-025-retry.json`: `04485eb7170eb6882f089c4848fdd851c6a988a27c578f0325e90018cf8d3aa5`
+- `d3-postmerge-runtime-only-seed649658380-100-repeat.json`: `adee35d3678efe0aae995ef73c482b4cf3c2f177a620e3da4a2e734a60f93858`
+- `d3-postmerge-runtime-only-seed997271774-025-uncontended.json`: `8acaa566c756ecda5e70ec7ada6c5de523b8cea5e6d1697d3c3dc48d7cde95fa`
+- `d3-postmerge-runtime-only-seed997271774-100-uncontended.json`: `9f278422f51a7f74bcfc10f532f1c796174c5c74fb055bd43b1de033a2fd5feb`
+
+These repeats are for runtime/RSS only; their deterministic science values do not enter the
+preregistered abrasion results a second time. The clean runtime matrix is complete.
 
 ### Implementation checks
 

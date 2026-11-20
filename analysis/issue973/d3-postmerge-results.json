@@ -4,7 +4,8 @@
   "replay_commit": "b74d88af",
   "d2_runtime_baseline_commit": "382ddccd3aa01b1469f3083c29df26fe262e5f3f",
   "runtime_comparable": false,
-  "runtime_note": "The four original D3 runtimes overlapped other simulations. The two seed649658380 runtime-only repeats ran with no other compute jobs active and can be compared with D2. Both seed997271774 repeats overlapped another simulation, so their elapsed times are descriptive only and the full D3/D2 runtime comparison remains incomplete.",
+  "runtime_note": "The four original D3 runtimes overlapped other simulations. A clean runtime-only repeat for each seed/schedule combination is now complete with no other compute jobs active; use those four measurements for the D3/D2 runtime comparison. Two earlier seed997271774 attempts overlapped simulations and are retained only as descriptive records.",
+  "runtime_only_matrix_complete": true,
   "runtime_only_followup": [
     {
       "save": "mantle-bloom-seed649658380-6400000y.bloom",
@@ -17,7 +18,7 @@
       "elapsed_s": 1530.7,
       "peak_rss_gb": 1.03,
       "d2_runtime_s": 331,
-      "d3_to_d2_runtime_ratio": 4.62416918429003,
+      "d3_to_d2_runtime_ratio": 4.624471299093655,
       "other_compute_runs_active": false,
       "use_for_science_metrics": false
     },
@@ -64,6 +65,36 @@
       "d2_runtime_s": 259,
       "d3_to_d2_runtime_ratio": null,
       "other_compute_runs_active": true,
+      "use_for_science_metrics": false
+    },
+    {
+      "save": "mantle-bloom-seed997271774-87400000y.bloom",
+      "sha256": "07971ee25cdbc364cd887ea8f4fffc69ceed49b1933d09ea38e3864ea95328b8",
+      "myr_per_step": 0.25,
+      "steps": 40,
+      "capture": "d3-postmerge-runtime-only-seed997271774-025-uncontended.json",
+      "capture_sha256": "8acaa566c756ecda5e70ec7ada6c5de523b8cea5e6d1697d3c3dc48d7cde95fa",
+      "replay_commit": "ed13d9fdb1d11957d7acdabe52111b62aebde77b",
+      "elapsed_s": 2000.74,
+      "peak_rss_gb": 1.65,
+      "d2_runtime_s": 624,
+      "d3_to_d2_runtime_ratio": 3.2063141025641024,
+      "other_compute_runs_active": false,
+      "use_for_science_metrics": false
+    },
+    {
+      "save": "mantle-bloom-seed997271774-87400000y.bloom",
+      "sha256": "07971ee25cdbc364cd887ea8f4fffc69ceed49b1933d09ea38e3864ea95328b8",
+      "myr_per_step": 1.0,
+      "steps": 10,
+      "capture": "d3-postmerge-runtime-only-seed997271774-100-uncontended.json",
+      "capture_sha256": "9f278422f51a7f74bcfc10f532f1c796174c5c74fb055bd43b1de033a2fd5feb",
+      "replay_commit": "ed13d9fdb1d11957d7acdabe52111b62aebde77b",
+      "elapsed_s": 1643.34,
+      "peak_rss_gb": 1.53,
+      "d2_runtime_s": 259,
+      "d3_to_d2_runtime_ratio": 6.344942084942085,
+      "other_compute_runs_active": false,
       "use_for_science_metrics": false
     }
   ],
