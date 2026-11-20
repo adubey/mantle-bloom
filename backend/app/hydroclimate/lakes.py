@@ -79,6 +79,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from .. import trace as sim_trace
+
 _logger = logging.getLogger(__name__)
 
 # Silt settled on a lake's bed per cubic metre of water flowing into it (issue #363): each
@@ -1211,6 +1213,7 @@ def _settle_prognostic_slice(
     refreshed: set[int] = set()
     seen_states: set[tuple] = set()
     for pass_index in range(2 * max(1, len(leaves)) + 3):
+        sim_trace.check_cancelled()
         dt_input = dt if pass_index == 0 else 0.0
         bodies = _active_bodies(forest, elevation, depth, hypsometry)
         body_by_id = {id(body): body for body in bodies}
@@ -1387,6 +1390,7 @@ def solve_lakes_prognostic(
     prev_bodies = {id(body) for body in _active_bodies(forest, elevation, depth, hypsometry)}
     ever_spilling_ids: set[int] = set()
     for slice_index in range(steps):
+        sim_trace.check_cancelled()
         _settle_prognostic_slice(
             forest, depth, prev_lake_depth, dt, rates, climate, evaporation, sublimation,
             hypsometry, is_ocean, accounting, leaves, leaf_of_node, parent_by_id, events, seen_events,
@@ -1725,6 +1729,51 @@ class Lake:
     # floor into a basin that does. Water in the low ground inside the floor cell drains out
     # through that same outlet, so the lake holds none. Set by `_mark_floor_drains`.
     drains_at_floor: bool = False
+
+    def __deepcopy__(self, memo: dict) -> "Lake":
+        """Iterative deepcopy so deep spill cascades never hit Python's recursion limit."""
+        if id(self) in memo:
+            return memo[id(self)]
+        root_copy = Lake(
+            lake_id=self.lake_id,
+            members=self.members.copy(),
+            floor_elevation=self.floor_elevation,
+            min_depth=self.min_depth,
+            max_depth=self.max_depth,
+            children=[],
+            outlet_node_idx=self.outlet_node_idx,
+            current_water_elevation=self.current_water_elevation,
+            is_spilling=self.is_spilling,
+            sink_node_idx=self.sink_node_idx,
+            outlet_target_idx=self.outlet_target_idx,
+            drains_at_floor=self.drains_at_floor,
+        )
+        memo[id(self)] = root_copy
+        stack: list[tuple[Lake, Lake]] = [(self, root_copy)]
+        while stack:
+            src, dst = stack.pop()
+            for child in src.children:
+                if id(child) in memo:
+                    dst.children.append(memo[id(child)])
+                    continue
+                child_copy = Lake(
+                    lake_id=child.lake_id,
+                    members=child.members.copy(),
+                    floor_elevation=child.floor_elevation,
+                    min_depth=child.min_depth,
+                    max_depth=child.max_depth,
+                    children=[],
+                    outlet_node_idx=child.outlet_node_idx,
+                    current_water_elevation=child.current_water_elevation,
+                    is_spilling=child.is_spilling,
+                    sink_node_idx=child.sink_node_idx,
+                    outlet_target_idx=child.outlet_target_idx,
+                    drains_at_floor=child.drains_at_floor,
+                )
+                memo[id(child)] = child_copy
+                dst.children.append(child_copy)
+                stack.append((child, child_copy))
+        return root_copy
 
 
 def _mark_floor_drains(roots: list["Lake"]) -> None:

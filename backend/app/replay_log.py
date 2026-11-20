@@ -53,7 +53,7 @@ from typing import Callable, Iterator
 
 import numpy as np
 
-from . import continental_ledger, cratons, lithosphere, persistence
+from . import continental_ledger, cratons, lithosphere, persistence, trace
 from .elevation_lines import line_spacing_rad
 from .hydroclimate import hydrology
 from .world import World, step_world_progress
@@ -471,6 +471,8 @@ class ReplayLog:
         started = time.monotonic()
         try:
             yield from self._step_progress(world, years)
+        except trace.StepCancelled:
+            raise
         except Exception as exc:
             outcome = StepOutcome(years, before, None, exc, annotations)
             self._after_step(world, snapshot, before_bytes, outcome, time.monotonic() - started)

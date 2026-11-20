@@ -166,7 +166,7 @@ def _mountain_deflection_tendency(u: np.ndarray, v: np.ndarray, geom) -> tuple[n
     return ax, ay
 
 
-@njit(cache=True, fastmath=True)
+@njit(cache=True, fastmath=True, nogil=True)
 def _atmosphere_substep_loop_kernel(  # noqa: C901
     u,
     v,
@@ -527,45 +527,60 @@ def step_atmosphere_cfd(world: "World", state: AtmosphereCFDState, seconds: floa
     f = fluid_dynamics.coriolis_parameter(np.degrees(grid.lat_rad))
     u_target, v_target = _target_wind(grid)
 
-    u, v, eta, temperature_c = _atmosphere_substep_loop_kernel(
-        state.u.copy(),
-        state.v.copy(),
-        state.eta.copy(),
-        state.temperature_c.copy(),
-        state.equilibrium_temperature_c,
-        u_target,
-        v_target,
-        orographic_drag.astype(np.float32),
-        normal_x,
-        normal_y,
-        tangent_x,
-        tangent_y,
-        ramp,
-        f,
-        grid.neighbours,
-        grid.neighbour_valid,
-        grid.neighbour_dx_m,
-        grid.neighbour_dy_m,
-        grid.gradient_inv,
-        grid.world_xyz,
-        grid.east,
-        grid.north,
-        fdh.PLANET_RADIUS_M,
-        grid.nside,
-        grid.order,
-        dt_s,
-        n_substeps,
-        fast_substeps_per_block,
-        REDUCED_GRAVITY_M_S2,
-        EFFECTIVE_TROPOSPHERE_DEPTH_M,
-        ETA_TEMPERATURE_COUPLING_M_PER_C,
-        ETA_THERMAL_RELAXATION_PER_S,
-        VISCOSITY_M2_S,
-        MOUNTAIN_DEFLECTION_RATE_PER_S,
-        WIND_FORCING_RELAXATION_PER_S,
-        TEMPERATURE_DIFFUSIVITY_M2_S,
-        RADIATIVE_RELAXATION_PER_S,
-    )
+    u = state.u.copy()
+    v = state.v.copy()
+    eta = state.eta.copy()
+    temperature_c = state.temperature_c.copy()
+    orographic_drag_f32 = orographic_drag.astype(np.float32)
+
+    # Chunk at fast_substeps_per_block boundaries so cancellation is checked promptly
+    # without altering the fast/slow subcycling sequence.
+    blocks_per_chunk = max(1, 64 // fast_substeps_per_block)
+    chunk_limit = blocks_per_chunk * fast_substeps_per_block
+    remaining = n_substeps
+    while remaining > 0:
+        trace.check_cancelled()
+        batch = min(remaining, chunk_limit)
+        u, v, eta, temperature_c = _atmosphere_substep_loop_kernel(
+            u,
+            v,
+            eta,
+            temperature_c,
+            state.equilibrium_temperature_c,
+            u_target,
+            v_target,
+            orographic_drag_f32,
+            normal_x,
+            normal_y,
+            tangent_x,
+            tangent_y,
+            ramp,
+            f,
+            grid.neighbours,
+            grid.neighbour_valid,
+            grid.neighbour_dx_m,
+            grid.neighbour_dy_m,
+            grid.gradient_inv,
+            grid.world_xyz,
+            grid.east,
+            grid.north,
+            fdh.PLANET_RADIUS_M,
+            grid.nside,
+            grid.order,
+            dt_s,
+            batch,
+            fast_substeps_per_block,
+            REDUCED_GRAVITY_M_S2,
+            EFFECTIVE_TROPOSPHERE_DEPTH_M,
+            ETA_TEMPERATURE_COUPLING_M_PER_C,
+            ETA_THERMAL_RELAXATION_PER_S,
+            VISCOSITY_M2_S,
+            MOUNTAIN_DEFLECTION_RATE_PER_S,
+            WIND_FORCING_RELAXATION_PER_S,
+            TEMPERATURE_DIFFUSIVITY_M2_S,
+            RADIATIVE_RELAXATION_PER_S,
+        )
+        remaining -= batch
     state.u, state.v, state.eta = u, v, eta
     state.temperature_c = temperature_c
     state.elapsed_seconds += dt_s * n_substeps

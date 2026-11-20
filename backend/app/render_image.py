@@ -18,9 +18,11 @@ it, so there's no payload-size reason to keep the grid coarse -- it's a free-sta
 from __future__ import annotations
 
 import base64
+import copy
 import functools
 import io
 import logging
+import threading
 from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -33,7 +35,7 @@ from numba import njit
 from PIL import Image, ImageDraw, ImageFilter
 from scipy.spatial import cKDTree
 
-from . import cratons, flow_arrows, geometry, healpix_grid, lithosphere, mantle, plates, plumes, projections
+from . import cratons, flow_arrows, geometry, healpix_grid, lithosphere, mantle, plates, plumes, projections, trace
 from .hydroclimate import biomes, climate, coastline, geology, hydrology, volcanism
 from .elevation_lines import DEFAULT_NODE_DENSITY, PLANET_RADIUS_KM, effective_is_continental_from_codes, line_spacing_rad
 from .world import PROGRESS_HEARTBEAT_INTERVAL_S, HeartbeatClock, World, step_world
@@ -3286,6 +3288,35 @@ ANIMATION_CRF = "20"
 ANIMATION_HEARTBEAT_INTERVAL_S = PROGRESS_HEARTBEAT_INTERVAL_S
 
 
+def _run_cancellable_step(
+    world: World,
+    step_fn: Callable[[World, float], None],
+    step_years: float,
+    stop_event: threading.Event | None,
+) -> bool:
+    """Run one `step_fn(world, step_years)` under `stop_event` cancellation.
+
+    Stages mutations on an in-memory copy so `world` is never left half-stepped or
+    observed in a torn state by lock-free readers if cancelled. Returns True if the step
+    completed and was committed to `world`, False if `stop_event` cancelled it.
+    """
+    if stop_event is None:
+        step_fn(world, step_years)
+        return True
+    if stop_event.is_set():
+        return False
+    working = copy.deepcopy(world)
+    try:
+        with trace.cancellation_scope(stop_event):
+            step_fn(working, step_years)
+        world.__dict__.update(working.__dict__)
+        return True
+    except trace.StepCancelled:
+        return False
+    finally:
+        working = None
+
+
 def stream_animation_mp4(
     world: World,
     projection: str,
@@ -3315,14 +3346,15 @@ def stream_animation_mp4(
     `/world/animate` -- deliberately not a side-effect-free preview, same "the map really did
     move forward" semantics manually clicking Step that many times would have).
 
-    `stop_event` (a `threading.Event`, checked before every individual `step_fn` call, not
-    just once per frame -- see main.py's `_animation_stop_event` / POST /world/animate/stop)
-    lets a caller end the run early without losing the video: once set, the loop abandons
-    whatever frame's step batch is in progress (without rendering a partially-stepped frame)
-    and breaks, so the encoder still gets flushed and a complete (just shorter) MP4 comes
-    back. This is what backs the frontend's "keep going until Stop is pressed" animation mode
-    -- `num_frames` there is still a real, finite ceiling (so an unattended run can't loop
-    forever), just one the caller isn't expected to reach.
+    `stop_event` (a `threading.Event`, checked before and cooperatively during every
+    `step_fn` call via `trace.cancellation_scope` -- see main.py's `animation_stop_event` /
+    POST /world/animate/stop) lets a caller end the run early without losing the video:
+    once set, any in-progress step is cancelled and rolled back to its pre-step whole-step
+    state (so `world` is never left half-stepped), any already-rendered or currently
+    rendering frame is kept, and the loop breaks so the encoder flushes and returns a
+    complete (just shorter) MP4. This is what backs the frontend's "keep going until Stop
+    is pressed" animation mode -- `num_frames` there is still a real, finite ceiling (so
+    an unattended run can't loop forever), just one the caller isn't expected to reach.
 
     Yields `("progress", frames_done, num_frames, frame_png_bytes, elapsed_years)` as each
     frame finishes encoding -- `elapsed_years` is `world.elapsed_years` *after* that frame's
@@ -3365,10 +3397,9 @@ def stream_animation_mp4(
             for i in range(num_frames):
                 if i > 0:
                     for _ in range(steps_per_frame):
-                        if stop_event is not None and stop_event.is_set():
+                        if not _run_cancellable_step(world, step_fn, step_years, stop_event):
                             stopped_early = True
                             break
-                        step_fn(world, step_years)
                         if clock.due():
                             yield ("heartbeat", i + 1, num_frames, world.elapsed_years)
                     if stopped_early:

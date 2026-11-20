@@ -196,6 +196,31 @@ class Recorder:
 
 
 _active: contextvars.ContextVar[Recorder | None] = contextvars.ContextVar("trace_recorder", default=None)
+_stop_event: contextvars.ContextVar[threading.Event | None] = contextvars.ContextVar("trace_stop_event", default=None)
+
+
+class StepCancelled(Exception):
+    """Raised by `check_cancelled()` when an active cancellation scope's stop event fires."""
+
+
+@contextlib.contextmanager
+def cancellation_scope(stop_event: threading.Event | None) -> Iterator[None]:
+    """Bind `stop_event` as the active cancellation signal for `check_cancelled()`."""
+    if stop_event is None:
+        yield
+        return
+    token = _stop_event.set(stop_event)
+    try:
+        yield
+    finally:
+        _stop_event.reset(token)
+
+
+def check_cancelled() -> None:
+    """Raise `StepCancelled` if an active `cancellation_scope` has been signalled."""
+    event = _stop_event.get()
+    if event is not None and event.is_set():
+        raise StepCancelled()
 
 
 @contextlib.contextmanager
@@ -212,6 +237,7 @@ def recording(recorder: Recorder | None = None) -> Iterator[Recorder]:
 @contextlib.contextmanager
 def span(label: str, group: str | None = None, user: bool = False) -> Iterator[None]:
     """Time the enclosed block under `label`. A no-op unless a recorder is active."""
+    check_cancelled()
     recorder = _active.get()
     if recorder is None:
         yield
@@ -229,6 +255,7 @@ def wrap(fn: Callable, label: str, group: str | None = None, user: bool = False)
 
     @functools.wraps(fn)
     def traced_fn(*args, **kwargs):
+        check_cancelled()
         recorder = _active.get()
         if recorder is None:
             return fn(*args, **kwargs)
