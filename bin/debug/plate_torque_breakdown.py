@@ -85,6 +85,8 @@ def _slab_terms(plate, inputs, subducting: np.ndarray, spacing: float, omega: np
     points = inputs.own_points[subducting]
     velocity = np.cross(omega, points) * lithosphere.PLANET_RADIUS_M / torque.SECONDS_PER_YEAR
     normal = np.einsum("ni,ni->n", velocity, toward)
+    # The speed the drag resists: under B.2 along the same tangent normal the solve uses, else along the chord.
+    drag_normal = np.einsum("ni,ni->n", velocity, torque.trench_normal(inputs, subducting)) if inputs.forms.slab_drag == "trench_normal" else normal
     speed_sq = np.einsum("ni,ni->n", velocity, velocity)
     drag_per_speed = torque.SLAB_MANTLE_VISCOSITY_PA_S / torque.SHEAR_ZONE_THICKNESS_M * torque.SUBDUCTION_LSINK_M * length
     drag_per_speed = drag_per_speed * torque.slab_drag_nodes(plate, inputs, subducting)[subducting]  # B.2: pulled nodes only
@@ -96,14 +98,14 @@ def _slab_terms(plate, inputs, subducting: np.ndarray, spacing: float, omega: np
         "no_pull_km": float(length[pull <= 0.0].sum() / 1e3),  # buoyant columns: dragged but not pulled
         "moving_away_from_trench_km": float(length[normal < 0.0].sum() / 1e3),
         # Trench-normal speed already past pull / drag: there the drag exceeds the pull on the normal motion alone.
-        "past_terminal_speed_km": float(length[normal * drag_per_speed > pull].sum() / 1e3),
+        "past_terminal_speed_km": float(length[drag_normal * drag_per_speed > pull].sum() / 1e3),
         "pull_n": float(pull.sum()),
         "hm_km_length_weighted": float(np.dot(inputs.column_hm[subducting], length) / length.sum() / 1e3),
         "pull_power_toward_trench_w": float(pull_power[normal > 0.0].sum()),
         "pull_power_away_from_trench_w": float(pull_power[normal < 0.0].sum()),
-        "drag_power_trench_normal_w": float(np.dot(drag_per_speed, normal**2)),
+        "drag_power_trench_normal_w": float(np.dot(drag_per_speed, drag_normal**2)),
         "drag_power_trench_parallel_w": 0.0 if inputs.forms.slab_drag == "trench_normal"
-        else float(np.dot(drag_per_speed, np.clip(speed_sq - normal**2, 0.0, None))),
+        else float(np.dot(drag_per_speed, np.clip(speed_sq - drag_normal**2, 0.0, None))),
         "pull_torque_surviving_cancellation": float(np.linalg.norm(moments.sum(axis=0)) / moment_sum) if moment_sum else None,
         "pull_moment_sum_nm": moment_sum,
     }
@@ -283,7 +285,7 @@ def sample(world) -> dict:
                 "boundary_km": {
                     "band_total": float(length[band].sum() / 1e3),
                     "down_going_closing_any_rate": float(length[closing_any].sum() / 1e3),
-                    "down_going_closing_past_gate": float(length[subducting].sum() / 1e3),
+                    "down_going_closing_past_gate": float(length[subducting & closing_any].sum() / 1e3),  # inside the closing set it is divided by (B.4b also admits stationary contacts)
                     # RFC 0021 G1's B.4 measure (#971): closing down-going length that pulls, at B.4a's ramp weight.
                     "down_going_closing_pulled": float(_pulled_km(plate, inputs, subducting & closing_any, length)),
                     "opening_any_rate": float(length[opening_any].sum() / 1e3),

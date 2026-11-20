@@ -1121,6 +1121,9 @@ def test_trench_normal_slab_drag_acts_only_on_nodes_that_pull():
     assert not np.any(forces[~pulls])
     inputs.forms = _forms()
     np.testing.assert_array_equal(torque.slab_drag_nodes(plate, inputs, mask), mask)
+    # Drag follows the actual pull: with no pull fraction nothing pulls, so nothing is dragged (G2 searches f_pull).
+    inputs.forms = _forms(slab_drag="trench_normal", pull_fraction=0.0)
+    assert not torque.slab_drag_nodes(plate, inputs, mask).any()
 
 
 def test_age_force_column_follows_the_cooling_law_and_never_drops_below_the_cells_hm():

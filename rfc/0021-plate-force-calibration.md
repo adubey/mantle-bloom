@@ -215,8 +215,10 @@ setting cannot give the two different values.
 previous step's motion closes it faster than 1 cm/yr (`subducting_boundary_mask`, `TRANSFORM_RATE_THRESHOLD`).
 Only 11% of the closing down-going length passes, and passing depends on speed already gained. G1 compares two
 replacements: (a) the same test against a ramp, pull scaled by `clip(closing / v_gate, 0, 1)` from zero closing;
-(b) a geometric test, down-going crust whose neighbour is not diverging from it and whose collision polarity
-(`collision_polarity`) puts it under. Whichever is adopted, the pull and drag masks stay the same set, as now.
+(b) a geometric test, down-going crust whose neighbour is not diverging from it (`jam_mask`'s contact test), keeping only
+the older side where ocean meets ocean, since denser floor goes under. G0 replaced the first wording, "whose collision
+polarity (`collision_polarity`) puts it under", because polarity is undefined at generation (#958); where a side is
+undated it counts as older, and equal ages keep both sides. Whichever is adopted, the pull and drag masks stay the same set, as now.
 
 ### Mantle flow
 
