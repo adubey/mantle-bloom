@@ -1651,8 +1651,10 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
                     # Wait for the step's worker thread before the lock and gate go (#801): an
                     # error on this side (a bad message, a failed write) must not leave it stepping
                     # the world under whoever takes the lock next. A no-op once it has finished.
-                    progress.close()
-                    _publish_phase(session, None)
+                    try:
+                        progress.close()
+                    finally:
+                        _publish_phase(session, None)
             finally:
                 # Nested so a close() that raises can never leak the lock and gate (see generate()).
                 try:
@@ -2051,14 +2053,14 @@ ANIMATION_KEEPALIVE_INTERVAL_S = 30.0
 ANIMATION_KEEPALIVE_STALL_LIMIT_S = 30 * 60.0
 
 
-def _next_animation_message(session, world, animation, last_frame: int, total: int):
+def _next_animation_message(session, world, animation, last_frame: int, total: int, pool):
     """Advance `animation` one message on a worker thread, yielding a heartbeat line every
     ANIMATION_KEEPALIVE_INTERVAL_S while it runs (#801), and return the message (None once the
-    animation has finished) -- use as `message = yield from ...`. The caller holds the session lock
+    animation has finished) -- use as `message = yield from ...`. `pool` is the run's one
+    single-worker executor, so every step and the native encoder stay on one thread. The caller holds the session lock
     and compute gate throughout, as for its other heartbeats. If the consumer closes the stream
     mid-wait, this waits for the worker first, so the caller never closes or releases the world
     under a step still running (the same guarantee as `trace.run_traced`)."""
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="animate-step")
     future = pool.submit(next, animation, None)
     seen_phase = None
     changed_at = time.monotonic()
@@ -2076,13 +2078,12 @@ def _next_animation_message(session, world, animation, last_frame: int, total: i
                 continue
             yield json.dumps({
                 "type": "heartbeat",
-                "frame": last_frame + 1,
+                "frame": min(last_frame + 1, total),
                 "total": total,
                 "elapsed_years": world.elapsed_years,
             }) + "\n"
     finally:
         concurrent.futures.wait([future])
-        pool.shutdown(wait=False)
 
 
 def _animate_step(session: WorldSession, world: World, years: float) -> None:
@@ -2286,6 +2287,7 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
                 "width": req.width,
                 "height": req.height,
             }
+            pool = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="animate-step")
             try:
                 while True:
                     # Advance one frame while holding the locks, then let them go
@@ -2296,7 +2298,7 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
                     # world replacer can swap session.world underneath; each frame
                     # ends on a whole step, so anything running between frames
                     # sees a consistent world.
-                    message = yield from _next_animation_message(session, world, animation, last_frame, req.num_frames)
+                    message = yield from _next_animation_message(session, world, animation, last_frame, req.num_frames, pool)
                     if message is None:
                         break
                     line, last_frame, completed = _animate_message_line(session, world, message, last_frame, anim_spec)
@@ -2344,6 +2346,8 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
                     req.steps_per_frame,
                 )
                 yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
+            finally:
+                pool.shutdown(wait=False)
         finally:
             try:
                 if acquired:
@@ -3232,6 +3236,9 @@ async def public_world(
         # The world may have gone private during the wait (#711).
         session = _public_session_or_404(world_id)
     _, remaining = _guest_allowance(request, guest_demo)
+    # The cursor first, like `_run_summary`: a change landing after it is read can pair newer
+    # progress with an older cursor (one harmless extra answer), never the reverse (#801).
+    progress_seq = session.progress_seq()
     return {
         "name": session.feed.name(),
         "world": session.feed.summary(),
@@ -3244,7 +3251,7 @@ async def public_world(
         "step_limit": public_view.GUEST_STEP_LIMIT,
         "step_years": public_view.GUEST_STEP_YEARS,
         "step_progress": _public_step_progress(session),
-        "progress_seq": session.progress_seq(),
+        "progress_seq": progress_seq,
     }
 
 

@@ -331,12 +331,16 @@ function WorldView({ worldId }: { worldId: WorldId }) {
   const revision = state?.world?.revision ?? null;
   const snapshotFirst = Boolean(state?.snapshot_first);
   const loaded = state !== null;
+  // The phase cursor of the last answer, sent with each poll (#801).
+  const progressSeqRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
     fetchPublicState(worldId, undefined, undefined, isDemo).then(
       (s) => {
-        if (!cancelled) setState(s);
+        if (cancelled) return;
+        progressSeqRef.current = s.progress_seq;
+        setState(s);
       },
       (err) => {
         if (!cancelled) setError(String(err));
@@ -354,8 +358,6 @@ function WorldView({ worldId }: { worldId: WorldId }) {
   // step progress (same revision) still commits: that is the wait progress
   // bar's live feed (#653). So does a rename or a run starting or stopping (#711).
   const followKeyRef = useRef<string | null>(null);
-  // The phase cursor of the last answer, sent with each poll (#801).
-  const progressSeqRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!loaded) return;
     const seen = revision ?? "";

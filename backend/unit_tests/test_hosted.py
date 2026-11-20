@@ -1,5 +1,6 @@
 """Exercise the snapshot API and idle lifecycle without starting a real simulation."""
 
+import time
 import asyncio
 import base64
 import json
@@ -70,6 +71,20 @@ def test_saved_map_and_state_serve_before_waking(tmp_path, monkeypatch):
         assert client.post(f"{PATH}/warm").status_code == 202
         assert client.post(f"{PATH}/warm").status_code == 202
     warm.assert_awaited_once_with(WORLD_ID)
+
+
+def test_a_poll_with_a_stale_progress_cursor_answers_at_once(tmp_path, monkeypatch):
+    # Gemini review on #993: the hosted long poll honours the viewer's `progress` cursor, so a
+    # finished step's progress bar doesn't wait out the 25 s poll. A sleeping worker has no
+    # cursor, so a viewer holding one is answered once and drops it.
+    _checkpoint(tmp_path, monkeypatch)
+    monkeypatch.setattr(HostedWorker, "warm", AsyncMock())
+    app = hosted.create_app()
+    with TestClient(app) as client:
+        started = time.monotonic()
+        state = client.get(f"{PATH}/world", params={"after": REVISION, "progress": 3}).json()
+        assert time.monotonic() - started < 5.0
+        assert state["world"]["revision"] == REVISION
 
 
 def test_snapshot_refuses_private_and_unmatched_checkpoint(tmp_path, monkeypatch):

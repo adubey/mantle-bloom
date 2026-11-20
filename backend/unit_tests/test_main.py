@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import concurrent.futures
 import gc
 import io
 import json
@@ -1683,7 +1684,8 @@ def test_animate_keeps_the_stream_alive_while_one_step_runs_longer_than_the_watc
         yield ("progress", 1, 2, b"", 0.0)
 
     lines = []
-    gen = main._next_animation_message(session, SimpleNamespace(elapsed_years=7.0), slow(), 0, 2)
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    gen = main._next_animation_message(session, SimpleNamespace(elapsed_years=7.0), slow(), 0, 2, pool)
     try:
         while True:
             lines.append(next(gen))
@@ -1693,6 +1695,28 @@ def test_animate_keeps_the_stream_alive_while_one_step_runs_longer_than_the_watc
     assert len(beats) >= 3
     assert all(b == {"type": "heartbeat", "frame": 1, "total": 2, "elapsed_years": 7.0} for b in beats)
     assert message[0] == "progress"
+
+
+def test_the_final_flush_heartbeat_stays_within_the_frame_total(monkeypatch):
+    # Gemini review on #993: after the last frame, a slow encoder flush must not report frame total + 1.
+    import time
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(main, "ANIMATION_KEEPALIVE_INTERVAL_S", 0.05)
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+    def slow():
+        time.sleep(0.2)
+        yield ("done", b"", False, None)
+
+    gen = main._next_animation_message(SimpleNamespace(runner=None), SimpleNamespace(elapsed_years=0.0), slow(), 2, 2, pool)
+    beats = []
+    try:
+        while True:
+            beats.append(json.loads(next(gen)))
+    except StopIteration:
+        pass
+    assert beats and all(b["frame"] == 2 for b in beats)
 
 
 def test_animate_stops_sending_keepalives_once_the_phase_has_not_moved_for_the_stall_limit(monkeypatch):
@@ -1709,7 +1733,8 @@ def test_animate_stops_sending_keepalives_once_the_phase_has_not_moved_for_the_s
         time.sleep(0.5)
         yield ("done", b"", False, None)
 
-    gen = main._next_animation_message(session, SimpleNamespace(elapsed_years=0.0), slow(), 0, 2)
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    gen = main._next_animation_message(session, SimpleNamespace(elapsed_years=0.0), slow(), 0, 2, pool)
     count = 0
     try:
         while True:
