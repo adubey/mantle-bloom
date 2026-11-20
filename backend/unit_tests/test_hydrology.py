@@ -1286,6 +1286,11 @@ def test_advance_lake_ice_splits_the_solved_column_without_losing_water():
     # A zero-length step changes no phase.
     held, kept, _ = hydrology.advance_lake_ice(prior, prior + 1.0, area, mean, amplitude, cover, 0.0)
     assert np.array_equal(held, prior) and np.allclose(kept, 1.0)
+    swept, liquid, _ = hydrology.advance_lake_ice(
+        prior, prior + 1.0, area, mean, amplitude, cover, 0.0, glacier_covered=True,
+    )
+    assert np.all(swept == 0.0)
+    assert np.allclose(liquid, prior + 1.0)
 
 
 def _cold_pit(prior_ice_m=0.0):

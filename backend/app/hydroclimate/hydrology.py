@@ -1963,8 +1963,8 @@ def advance_lake_ice(
         target_with_snow = ratio * _lake_ice_thickness_m(
             ice / ratio, q, loss_rate, LAKE_ICE_MAX_THICKNESS_M, dt, snowfall_rate
         )
-        base_target = np.where(glacier_covered, 0.0, base_target)
-        target_with_snow = np.where(glacier_covered, 0.0, target_with_snow)
+    base_target = np.where(glacier_covered, 0.0, base_target)
+    target_with_snow = np.where(glacier_covered, 0.0, target_with_snow)
     phase_ice = np.minimum(base_target, water)
     # The lake solve counted snowfall in the whole water column. The ODE integrates it as a
     # rate alongside freezing and ablation; only the resulting cap increment is reported as
