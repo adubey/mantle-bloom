@@ -158,7 +158,8 @@ def run_one(args: argparse.Namespace) -> None:
             handle.write(json.dumps(row) + "\n")
         handle.write(json.dumps({"end_craton_m3": cratons.live_volume_m3(world), "ledger": dict(world.craton_ledger), "wall_s": time.perf_counter() - started}) + "\n")
         handle.close()
-    meta = {"seed": args.seed, "setting": setting, "years": years_myr, "step_myr": args.step_myr, "every": args.every}
+    meta = {"seed": args.seed, "setting": setting, "years": years_myr, "step_myr": args.step_myr, "every": args.every,
+            "contacts": not args.no_contacts}
     (out / "breakdown.json").write_text(json.dumps({**meta, "world_knobs": setting["world_knobs"], "samples": samples, "plate_speeds": speeds}, default=float) + "\n")
     result = {**meta, "split_method": setting["split_method"], "years_myr": years_myr, "step_s": step_s, "wall_s": time.perf_counter() - started,
               "n_splits": len(splits), "splits": splits, "plates_final": len(world.plates), "plate_counts": plate_counts[::10], "kinematics": motion,
@@ -170,11 +171,14 @@ def run_one(args: argparse.Namespace) -> None:
 
 
 def check_cached_run(path: Path, args: argparse.Namespace) -> None:
-    """Refuse to reuse a finished run made for a different experiment: the step length, the sampling cadence or the
-    resolved setting (world and module knobs). Skipping on the directory name alone let a 0.5 Myr request pass on a
+    """Refuse to reuse a finished run made for a different experiment: the step length, the sampling cadence, the
+    run length, whether contacts were captured, or the resolved setting (world and module knobs). Skipping on the directory name alone let a 0.5 Myr request pass on a
     1 Myr result (#979 review)."""
     saved = json.loads(path.read_text())
-    requested = {"step_myr": args.step_myr, "every": args.every, "setting": load_setting(args.settings, args.setting)}
+    # `years_myr` is the length actually stepped, a whole number of steps; old runs always captured contacts.
+    requested = {"step_myr": args.step_myr, "every": args.every, "setting": load_setting(args.settings, args.setting),
+                 "years_myr": round(args.years / args.step_myr) * args.step_myr, "contacts": not args.no_contacts}
+    saved.setdefault("contacts", True)
     different = [key for key, value in requested.items() if saved.get(key) != json.loads(json.dumps(value))]
     if different:
         sys.exit(f"{path.parent} holds a run with a different {', '.join(different)}; use another --out or move it aside")

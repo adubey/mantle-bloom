@@ -42,20 +42,30 @@ def _settings_file(tmp_path, module_knobs=None):
 
 
 def _saved_run(tmp_path, settings, **override):
-    saved = {"seed": 1, "step_myr": 1.0, "every": 10.0, "setting": calibrate.load_setting(settings, "s")}
+    saved = {"seed": 1, "step_myr": 1.0, "every": 10.0, "years_myr": 200.0, "setting": calibrate.load_setting(settings, "s")}
     saved.update(override)
     path = tmp_path / "run.json"
     path.write_text(json.dumps(saved))
     return path
 
 
+def _args(settings, **override):
+    values = {"settings": settings, "setting": "s", "step_myr": 1.0, "every": 10.0, "years": 200.0, "no_contacts": False}
+    return SimpleNamespace(**{**values, **override})
+
+
 def test_resume_refuses_a_finished_run_made_for_another_experiment(tmp_path):
     settings = _settings_file(tmp_path)
-    args = SimpleNamespace(settings=settings, setting="s", step_myr=1.0, every=10.0)
+    args = _args(settings)
     path = _saved_run(tmp_path, settings)
     calibrate.check_cached_run(path, args)  # the same experiment: reused
     with pytest.raises(SystemExit, match="step_myr"):
-        calibrate.check_cached_run(path, SimpleNamespace(settings=settings, setting="s", step_myr=0.5, every=10.0))
+        calibrate.check_cached_run(path, _args(settings, step_myr=0.5))
     other = _settings_file(tmp_path, module_knobs={"torque.SUBDUCTION_LSINK_M": 150e3})
     with pytest.raises(SystemExit, match="setting"):
-        calibrate.check_cached_run(path, SimpleNamespace(settings=other, setting="s", step_myr=1.0, every=10.0))
+        calibrate.check_cached_run(path, _args(other))
+    with pytest.raises(SystemExit, match="years_myr"):
+        calibrate.check_cached_run(path, _args(settings, years=100.0))
+    with pytest.raises(SystemExit, match="contacts"):
+        calibrate.check_cached_run(path, _args(settings, no_contacts=True))
+    calibrate.check_cached_run(_saved_run(tmp_path, settings, contacts=False), _args(settings, no_contacts=True))

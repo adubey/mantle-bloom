@@ -130,13 +130,30 @@ Brake on:
 Brake off, the combined corrections reach T1 (4.25 cm/yr), T3 (60%) and T5 (1.90×10¹²) at the default constants, but T2
 is 1.59 (the baseline's is 1.76; target at least 2.5) and T4 is 1.52 MPa (limit 1), and three collision-time drops occur
 while jammed (the baseline has none). Brake on, T1 is 1.02 and T2 2.62 (the brake slows the plates without slabs, so T2
-there says little about the slab forces). Solver closure is at most 2.0×10⁻¹⁴ of the driving torque in every run.
+there says little about the slab forces). Solver closure is at most 2.0×10⁻¹⁴ of the driving torque in every run, read from the read-only solves at the 10 Myr samples.
+
+## Second review round (2026-11-20)
+
+Fixed in the harness and #974 after Codex's and Muse's second reviews; none of them moves a G1 result, so nothing was
+re-run:
+
+- The resume check also compares the run length and whether contacts were captured (a finished 10 Myr run, or one
+  made with `--no-contacts`, is no longer reused for a 200 Myr run with contacts).
+- B.2's drag set is read from the actual pull (`pulling_nodes`: buoyant, nonzero `f_pull`, nonzero B.4a ramp weight), so
+  G2's `f_pull` and `v_gate` ranges keep drag and pull on the same nodes. At G1's defaults it is the same set as before.
+- The breakdown measures B.2's drag work on the same trench normal the solve uses (the earlier figure used the chord
+  and understated it slightly), and `down_going_closing_past_gate` is now taken inside the closing set. The checked-in
+  scores predate both: B.2's net slab work (+24.0%) is a touch higher than it would read, and brake-on `b4b`'s
+  `closing_down_going_length_past_gate` reads 139.7% for the stated reason. The B.4 verdicts use
+  `closing_down_going_length_pulled`, which was already inside the closing set.
+- RFC B.4b's wording now matches the code (older side where ocean meets ocean, not collision polarity).
 
 ## Not done here
 
 - RFC 0021's G1 asks for what alternative D would change in bathymetry and land fraction, and for the ledgers to close.
   These plates-only probes score neither (`run.json`'s `ledger_relative_gap_max` is a placeholder). Both are deferred
-  to the close-out issue (#980).
+  to the close-out issue (#980), which should close the ledgers before any correction becomes a default; G2's
+  preregistration should say so.
 
 ## Still to run
 
