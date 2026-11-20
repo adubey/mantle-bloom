@@ -1060,11 +1060,26 @@ def _advance_prognostic_body(
         route_source = receiver
         target = receiver.outlet_target_idx
     accounting.overflow_out_total += overflow
+    target = _overflow_outlet_target(target, route_source, body_leaf_ids, body_for_leaf, node_count)
     _trace_transfer(accounting, route_source, None, target, overflow, internal=False, depth=depth)
     if 0 <= target < node_count:
         accounting.overflow_by_outlet[target] += overflow
         if is_ocean is not None and bool(is_ocean[target]):
             accounting.ocean_overflow_total += overflow
+
+
+def _overflow_outlet_target(target, source, body_leaf_ids, body_for_leaf, node_count):
+    """Use a named sink when a closed glacier body has no topographic outlet (#990)."""
+    if 0 <= target < node_count:
+        return target
+    target = int(source.sink_node_idx)
+    if 0 <= target < node_count:
+        return target
+    for leaf_id in body_leaf_ids[id(source)]:
+        candidate = int(body_for_leaf[leaf_id].sink_node_idx)
+        if 0 <= candidate < node_count:
+            return candidate
+    return target
 
 
 def _release_broken_cycles(accounting, active_bodies):
@@ -1623,11 +1638,12 @@ class CellHypsometry:
 
     def level_from_depth(self, depth: np.ndarray, idx: np.ndarray) -> np.ndarray:
         """The level that gives each cell its mean water depth (inverse of `mean_depth`, for
-        depth > 0)."""
+        depth > 0). Glacier-covered cells have no lake column, so return their surface level."""
         z = self.elevation[idx]
         r = self.relief_m[idx]
         depth = np.clip(np.asarray(depth, dtype=float), 0.0, None)
-        return np.where(depth >= r, z + depth, z - r + np.sqrt(4.0 * r * depth))
+        level = np.where(depth >= r, z + depth, z - r + np.sqrt(4.0 * r * depth))
+        return level if self.glacier_mask is None else np.where(self.glacier_mask[idx], z, level)
 
     def level_for_volume(self, target_m3: float, idx: np.ndarray, low: float, high: float) -> float:
         """The level in `[low, high]` holding `target_m3` of water. Volume is increasing and

@@ -658,6 +658,21 @@ def test_d1_snow_fraction_bounds_continuity_and_still_air_fallback():
     assert ice_sheet.snow_fraction(grid, np.zeros_like(grid)) == pytest.approx(ramp)
 
 
+def test_partitioned_dry_snow_is_not_reclassified_at_the_glacier_surface():
+    climate = ice_sheet.SurfaceClimate(
+        precipitation_mm=np.array([500.0]),
+        temperature_c=np.array([0.0]),
+        seasonal_amplitude_c=np.array([10.0]),
+        is_frozen=np.array([True]),
+        dry_snow_mm=np.array([500.0]),
+    )
+
+    accumulation, _, _ = climate.rates(np.array([0.0]))
+
+    expected_ice_m_per_myr = 0.5 * ice_sheet.RHO_WATER / ice_sheet.RHO_ICE * 1.0e6
+    assert accumulation[0] == pytest.approx(expected_ice_m_per_myr)
+
+
 def test_d1_basal_melt_continuous_at_the_thaw_boundary_and_bounded_as_h_to_zero():
     # At a fixed cold surface the bed thaws past a threshold thickness: conducted heat
     # G = k (-p H - T_s) / H solves to H* = -k T_s / (G + k p). The melt is zero exactly

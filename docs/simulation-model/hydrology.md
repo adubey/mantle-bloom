@@ -277,9 +277,10 @@ discharge, channel-width growth, deposition, geology or lake silt.
 - **Prognostic lake storage** (`lakes.solve_lakes_prognostic`, issue #588): lakes use real
   water-balance units and integrate water volume, liquid and lake ice together, through the
   timestep over the hierarchy.
-  Inflow is the full wet share of precipitation on the lagged wet area (rain plus snow;
-  wet snow has no glacier to join and no D4 cap hand-off yet, so it enters as liquid
-  and is booked as in-step snowmelt in the ice ledger). Dry
+  Inflow is the full wet share of precipitation on the lagged wet area (rain plus snow).
+  Frozen-season wet snow can join the lake-ice cap; a visibly glaciated cell instead hands
+  its cap to grounded glacier ice, with the same water-equivalent mass recorded in both
+  systems' ledgers (#990). Dry
   runoff transit losses use a fixed per-node
   fraction at a 100 kyr reference step (`hydrology.river_transit_loss_fraction`), scaled by each
   cell's dry fraction. Glacier melt keeps the existing full per-node transit loss. The breach
@@ -497,8 +498,9 @@ al.'s fill-spill-merge family), adapted from a regular grid to this codebase's k
   -- both are "reaching the top of the basin," one spilling to another basin, the other to the
   sea.
 
-Each step, `compute_hydrology` builds this hierarchy fresh from current terrain
-(`lakes.build_lake_hierarchy`, bare `elevation`) and reuses the same tree for initial routing,
+Each step, `compute_hydrology` builds this hierarchy fresh from current hydraulic terrain
+(`lakes.build_lake_hierarchy`, using closing glacier surfaces when enabled and rock-bed
+sub-cell relief) and reuses the same tree for initial routing,
 lake integration and final spill metadata. External sources route to leaf sinks with those sinks
 held terminal. `lakes.solve_lakes_prognostic` advances stored volume through the timestep using
 an implicit update for evaporation and sublimation. It promotes siblings when the integrated

@@ -10,6 +10,9 @@ across the cap handoff, and excludes visibly glaciated cells from lake storage.
 
 ## Closing-ice decision
 
+The measurements in this section are the original D4 diagnosis, before the PR review fixes.
+The controlled reruns and updated decision measure are recorded in the review follow-up below.
+
 [G1](../issue766/README.md) counted liquid under all closing glacier ice. For seed
 997271774 its median was 20%, an upper bound on the one-step lag. To isolate the lag,
 the probe runs D4 with opening glacier geometry and measures the ratio of liquid
@@ -43,10 +46,28 @@ At the measured commit, opening geometry was the default and the flag was absent
 The confirmation at `e1a1f4ba51f681db7b91bc258120d3dae8fbdb45` used the same save and
 one 250 kyr step with the production closing geometry. It found zero liquid lake
 water under any visible glacier. Total liquid storage rose by 818,996.26 km³
-between the two geometry arms. This is one step on one diagnostic world. The two
-replay wall times are from a shared machine with other active simulations.
+between the two geometry arms. This is the whole-system response to changing
+hydraulic geometry, not the volume intercepted under newly covered cells. The
+original report did not attribute this change to the altered spill hierarchy,
+ice-dammed basins, or glacier-inflated margin relief, so it is not evidence that
+any one mechanism caused the increase. This is one step on one diagnostic world.
+The two replay wall times are from a shared machine with other active simulations.
 
 On the closing step the lake and land residuals were +204 and −2,690 m³ of water
 and the glacier residual was −718 m³ of ice. No cap transfer occurred on that
 step. The focused tests exercise both handoffs with nonzero transfers and compare
 their lake, land, glacier ice, and glacier water ledgers.
+
+## Review follow-up preregistration
+
+Before rerunning the diagnostic after PR review, compare three one-step arms from
+the same 87.4 Myr save, seed 997271774 and 250 kyr schedule: opening glacier
+geometry with rock-bed relief, closing geometry with the old glacier-surface
+relief, and closing geometry with rock-bed relief. Report liquid volume under
+closing visible ice, on one-cell glacier margins, and elsewhere, plus total
+storage and ledger residuals. The primary acceptance measure stays the
+preregistered maximum share of liquid under newly covered ice, with a 1%
+threshold. The relief counterfactual tests whether bed-based sub-cell relief
+removes margin inflation; the three-arm totals will show whether that mechanism
+explains the earlier +818,996 km³ whole-world change. These are one-step
+diagnostic comparisons, not validation across seeds or step sizes.

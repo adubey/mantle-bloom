@@ -615,6 +615,29 @@ def test_prognostic_solver_exports_prior_storage_outside_the_lake_hierarchy():
     assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e3)
 
 
+def test_ice_only_closed_root_routes_unstorable_opening_water_to_its_sink():
+    elevation = np.array([0.0])
+    area = np.array([1.0e10])
+    body = lakes.Lake(
+        lake_id=0, members=np.array([0]), floor_elevation=0.0, min_depth=0.0,
+        max_depth=None, outlet_node_idx=0, sink_node_idx=0, outlet_target_idx=-1,
+    )
+    hypsometry = lakes.CellHypsometry(
+        elevation, area, np.zeros(1), float(area[0]), glacier_mask=np.ones(1, dtype=bool),
+    )
+    previous = np.array([1.0])
+    climate = lakes.LakeClimate(np.zeros(1), np.zeros(1), np.zeros(1))
+
+    result = lakes.solve_lakes_prognostic([body], elevation, previous, 1.0, climate, hypsometry)
+
+    expected = area[0] * previous[0]
+    assert result.lake_depth[0] == 0.0
+    assert result.overflow_m3[0] == pytest.approx(expected)
+    assert result.ledger.overflow_out_m3 == pytest.approx(expected)
+    assert result.ledger.storage_change_m3 == pytest.approx(-expected)
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0)
+
+
 def test_prognostic_solver_exports_prior_storage_when_hierarchy_is_empty():
     hyps = lakes.CellHypsometry.whole_cells(_SINK_ELEVATION)
     previous = np.zeros(3)

@@ -310,8 +310,14 @@ class SurfaceClimate:
         thickness = np.clip(np.asarray(thickness_m, dtype=float), 0.0, None)
         surface_c = self.temperature_c - LAPSE_RATE_C_PER_KM * thickness / 1000.0
         to_ice = RHO_WATER / RHO_ICE
-        snows = snow_fraction(surface_c, self.seasonal_amplitude_c)
-        snow_we = snows * np.asarray(self.precipitation_mm, dtype=float) * 1.0e-3
+        if self.dry_snow_mm is None:
+            snows = snow_fraction(surface_c, self.seasonal_amplitude_c)
+            snow_we = snows * np.asarray(self.precipitation_mm, dtype=float) * 1.0e-3
+        else:
+            # Hydrology has already partitioned this dry-share snow on the opening
+            # surface. Reapplying the lapse-corrected snow fraction drops part of a
+            # bed-frozen lake's transferred snowfall from both ledgers (#990 review).
+            snow_we = np.maximum(np.asarray(self.dry_snow_mm, dtype=float), 0.0) * 1.0e-3
         pdd = 365.25 * hydrology.seasonal_positive_degrees(surface_c, self.seasonal_amplitude_c, 0.0)
         snow_capacity = DDF_SNOW_MM_WATER_PER_DAY_K * 1.0e-3 * pdd
         snow_melt = np.minimum(snow_we, snow_capacity)
