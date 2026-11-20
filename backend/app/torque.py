@@ -646,15 +646,17 @@ def boundary_node_length_m(inputs: BoundaryForceInputs, spacing_rad: float) -> n
 
 
 def pulling_nodes(plate, inputs: BoundaryForceInputs, mask: np.ndarray) -> np.ndarray:
-    """The nodes of `mask` whose column is negatively buoyant, so that they pull (`slab_pull_force_n` is positive).
-    A buoyant continental node behind a slab, or a craton, pulls nothing, and under RFC 0021's B.2 it has no sunk
-    slab to drag either (#979 review)."""
+    """The nodes of `mask` that actually pull: the same conditions `slab_pull_force_n` turns into a positive force, a
+    negatively buoyant column, a nonzero `f_pull` and a nonzero B.4a ramp weight. A buoyant continental node behind a
+    slab, or a craton, pulls nothing, and under RFC 0021's B.2 it has no sunk slab to drag either (#979 review). Read
+    from the pull itself, so G2's `f_pull` and `v_gate` ranges keep drag and pull on the same nodes."""
     pulling = np.zeros_like(mask)
-    if mask.any():
+    if mask.any() and inputs.forms.pull_fraction > 0.0:
         buoyancy = column_buoyancy_pa(
             continental_crust_m(plate, inputs)[mask], inputs.column_hm[mask], inputs.own_craton_m[mask]
         )
-        pulling[mask] = buoyancy > 0.0
+        weight = subduction_pull_weight(plate, inputs, mask)
+        pulling[mask] = (buoyancy > 0.0) & (True if weight is None else weight > 0.0)
     return pulling
 
 
