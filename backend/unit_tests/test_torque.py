@@ -1,3 +1,5 @@
+import copy
+import functools
 from types import SimpleNamespace
 
 import numpy as np
@@ -1000,3 +1002,237 @@ def test_both_sides_of_a_jammed_contact_feel_the_lower_sides_jam():
     lower.fields["crust_type_code"][2] = CRUST_TYPE_OCEANIC
     inputs.neighbor_is_oceanic[2] = True
     np.testing.assert_allclose(torque.contact_jam_factor(upper, None, [lower], inputs, reach), [1.0, 0.5, 0.0])
+
+
+# --- RFC 0021's force-form switches (#971) ---------------------------------------------------------
+
+
+def _forms(**kwargs) -> torque.ForceForms:
+    return torque.ForceForms(**kwargs)
+
+
+def _one_node(direction=(0.0, 1.0, 0.0), hm: float = 60_000.0) -> torque.BoundaryForceInputs:
+    """One oceanic node at (1, 0, 0) on the equator, its neighbour toward `direction`."""
+    return torque.BoundaryForceInputs(
+        own_points=np.array([[1.0, 0.0, 0.0]]), own_hc=np.array([7000.0]), own_hm=np.array([hm]),
+        own_crust_type_codes=np.zeros(1, dtype=np.int8), dist_to_neighbor=np.array([0.001]),
+        direction_to_neighbor=np.array([direction], dtype=float), neighbor_is_oceanic=np.ones(1, dtype=bool),
+        neighbor_omega=np.zeros((1, 3)),
+    )
+
+
+def _column_integral_by_quadrature(hc, hm, rho_c, elevation, depth, n=20_000):
+    """∫ p dz for one column, stepped down through its layers, the reference B.1's closed form is checked against.
+    Layer boundaries are grid points, so density is constant on each interval and the trapezoid rule is exact."""
+    top = -elevation
+    z = np.unique(np.concatenate([np.linspace(min(0.0, top), depth, n), [0.0, top, top + hc, top + hc + hm]]))
+    z = z[z <= depth]
+    mid = 0.5 * (z[1:] + z[:-1])
+    rho = np.select([mid < 0.0, mid < top, mid < top + hc, mid < top + hc + hm],
+                    [0.0, lithosphere.RHO_WATER, rho_c, lithosphere.RHO_LITHOSPHERE_MANTLE], lithosphere.RHO_ASTHENOSPHERE)
+    dz = np.diff(z)
+    pressure = np.concatenate([[0.0], np.cumsum(rho * dz)]) * lithosphere.GRAVITY_M_S2
+    return float(np.sum(0.5 * (pressure[1:] + pressure[:-1]) * dz))
+
+
+def test_default_force_forms_are_todays_and_reject_unknown_forms():
+    world = SimpleNamespace(ridge_push_form="water_load", slab_drag_form="isotropic", age_force_column=False, subduction_test="gate",
+                            slab_pull_fraction=1.0, subduction_gate_cm_per_yr=1.0, rift_line_params={}, elapsed_years=5e6)
+    assert torque.force_forms(world) == torque.ForceForms(elapsed_years=5e6)
+    assert not torque.DEFAULT_FORCE_FORMS.needs_ages
+    for bad in ({"ridge_push": "gpe"}, {"slab_drag": "normal"}, {"subduction_test": "any"}, {"pull_fraction": 1.5}, {"gate_cm_per_yr": 0.0}):
+        with pytest.raises(ValueError):
+            _forms(**bad)
+
+
+def test_potential_energy_ridge_push_is_the_column_pressure_difference():
+    # B.1 (RFC 0021): the closed form against quadrature of the same two columns, and the RFC's hand calculation:
+    # an 8 km ridge against the 40 km reference gives 5.3e11 N/m, 94 times today's water-load term.
+    rho = lithosphere.RHO_OCEANIC_CRUST
+    ridge = torque.ridge_push_potential_energy_n_per_m(np.array([11_000.0]), np.array([8_000.0]), rho, 40_000.0)[0]
+    z_ridge, z_ref = (float(lithosphere.isostatic_elevation(np.array([11_000.0]), np.array([h]), rho)[0]) for h in (8_000.0, 40_000.0))
+    depth = 80_000.0
+    expected = (_column_integral_by_quadrature(11_000.0, 8_000.0, rho, z_ridge, depth)
+                - _column_integral_by_quadrature(11_000.0, 40_000.0, rho, z_ref, depth))
+    np.testing.assert_allclose(ridge, expected, rtol=1e-9)
+    np.testing.assert_allclose(ridge, 5.3e11, rtol=0.01)
+    assert torque.ridge_push_potential_energy_n_per_m(np.array([11_000.0]), np.array([40_000.0]), rho, 40_000.0)[0] == pytest.approx(0.0, abs=1e3)
+
+
+def test_potential_energy_ridge_push_does_not_depend_on_the_compensation_depth():
+    # Isostatic columns weigh the same below both, so integrating deeper adds nothing.
+    rho = lithosphere.RHO_OCEANIC_CRUST
+    hc, hm = np.array([11_000.0]), np.array([8_000.0])
+    z = lithosphere.isostatic_elevation(hc, hm, rho)
+    ref = lithosphere.isostatic_elevation(hc, np.array([40_000.0]), rho)
+    shallow, deep = (torque._column_pressure_integral(hc, hm, rho, z, d) - torque._column_pressure_integral(hc, np.array([40_000.0]), rho, ref, d)
+                     for d in (60_000.0, 300_000.0))
+    np.testing.assert_allclose(shallow, deep, rtol=1e-9)
+
+
+def test_trench_normal_slab_drag_resists_only_motion_toward_the_trench():
+    # B.2 (RFC 0021): zero torque for trench-parallel motion, the isotropic torque for trench-normal motion, and the
+    # same with a neighbour direction that isn't tangent to the sphere.
+    spacing = line_spacing_rad(1.0)
+    mask = np.ones(1, dtype=bool)
+    for direction in ((0.0, 1.0, 0.0), (0.3, 1.0, 0.0)):
+        inputs = _one_node(direction)
+        inputs.forms = _forms(slab_drag="trench_normal")
+        k = torque.slab_drag_coefficient_matrix(inputs, mask, spacing)
+        np.testing.assert_allclose(k, k.T)
+        assert np.linalg.eigvalsh(k).min() >= -1e-9 * np.abs(k).max()
+        parallel = np.array([0.0, -1.0, 0.0])  # moves (1, 0, 0) north, along the trench
+        normal = np.array([0.0, 0.0, 1.0])  # moves (1, 0, 0) toward +y, the trench
+        np.testing.assert_allclose(k @ parallel, 0.0, atol=1e-12 * np.abs(k).max())
+        isotropic = torque.slab_drag_coefficient_matrix(_one_node(direction), mask, spacing)
+        np.testing.assert_allclose(k @ normal, isotropic @ normal, rtol=1e-12)
+
+
+def test_trench_normal_slab_drag_forces_add_up_to_its_matrix():
+    spacing = line_spacing_rad(1.0)
+    plate, inputs, mask = _contact_band(spacing, 4)
+    inputs.forms = _forms(slab_drag="trench_normal")
+    omega = np.array([1e-9, -2e-9, 3e-9])
+    forces = torque.slab_drag_force_vectors_n(inputs, mask, spacing, omega)
+    torque_nm = np.cross(inputs.own_points * lithosphere.PLANET_RADIUS_M, forces).sum(axis=0)
+    expected = -torque.slab_drag_coefficient_matrix(inputs, mask, spacing) @ omega
+    np.testing.assert_allclose(torque_nm, expected, rtol=0.0, atol=1e-10 * np.linalg.norm(expected))
+
+
+def test_trench_normal_slab_drag_acts_only_on_nodes_that_pull():
+    # #979 review: RFC 0021's K_slab sums "over nodes with positive pull". A buoyant continental node behind the slab
+    # has no sunk slab to shear, so under B.2 it gets no drag, and today's isotropic form is left as it was.
+    spacing = line_spacing_rad(1.0)
+    plate, inputs, mask = _contact_band(spacing, 4, hc=0.0, hm=40_000.0)
+    half = len(mask) // 2
+    inputs.own_hc[half:] = 35_000.0  # the second half of the band is a continental terrane: buoyant
+    inputs.own_hm[half:] = 10_000.0
+    force = torque.slab_pull_force_n(plate, inputs, mask, spacing)
+    pulls = force > 0.0
+    assert pulls[:half].all() and not pulls[half:].any()
+    np.testing.assert_array_equal(torque.pulling_nodes(plate, inputs, mask), pulls)
+    omega = np.array([1e-9, -2e-9, 3e-9])
+    inputs.forms = _forms(slab_drag="trench_normal")
+    drag_nodes = torque.slab_drag_nodes(plate, inputs, mask)
+    np.testing.assert_array_equal(drag_nodes, pulls)
+    only_pulled = torque.slab_drag_coefficient_matrix(inputs, pulls, spacing)
+    np.testing.assert_allclose(torque.slab_drag_torque(plate, inputs, mask, spacing), -only_pulled @ plate.omega)
+    forces = torque.slab_drag_force_vectors_n(inputs, drag_nodes, spacing, omega)
+    assert not np.any(forces[~pulls])
+    inputs.forms = _forms()
+    np.testing.assert_array_equal(torque.slab_drag_nodes(plate, inputs, mask), mask)
+    # Drag follows the actual pull: with no pull fraction nothing pulls, so nothing is dragged (G2 searches f_pull).
+    inputs.forms = _forms(slab_drag="trench_normal", pull_fraction=0.0)
+    assert not torque.slab_drag_nodes(plate, inputs, mask).any()
+
+
+def test_age_force_column_follows_the_cooling_law_and_never_drops_below_the_cells_hm():
+    # B.3 (RFC 0021): 54, 81 and 84 km at 25, 50 and 100 Myr with 11 km of crust; the cell's own Hm near the ridge
+    # and where undated; a continental cell keeps its Hm.
+    n = 5
+    inputs = torque.BoundaryForceInputs(
+        own_points=np.tile([1.0, 0.0, 0.0], (n, 1)), own_hc=np.full(n, 11_000.0), own_hm=np.full(n, 8_000.0),
+        own_crust_type_codes=np.zeros(n, dtype=np.int8), dist_to_neighbor=np.full(n, np.inf), direction_to_neighbor=np.zeros((n, 3)),
+        neighbor_is_oceanic=np.zeros(n, dtype=bool), neighbor_omega=np.zeros((n, 3)),
+    )
+    inputs.own_age_yr = np.array([25e6, 50e6, 100e6, 0.1e6, np.nan])
+    hm = torque.force_column_hm(_OceanicPlate(), inputs, _forms(age_column=True))
+    np.testing.assert_allclose(hm[:3], [54_000.0, 13_000.0 * np.sqrt(50.0) - 11_000.0, 84_000.0])
+    np.testing.assert_array_equal(hm[3:], 8_000.0)
+
+    class Continental:
+        crust_type = "continental"
+
+    np.testing.assert_array_equal(torque.force_column_hm(Continental(), inputs, _forms(age_column=True)), 8_000.0)
+
+
+def test_age_force_column_makes_old_floor_pull_harder():
+    spacing = line_spacing_rad(1.0)
+    plate, inputs, mask = _contact_band(spacing, 2, hc=11_000.0, hm=40_000.0)
+    plate.crust_type = "oceanic"
+    before = torque.slab_pull_force_n(plate, inputs, mask, spacing)
+    inputs.own_age_yr = np.full(len(mask), 100e6)
+    inputs.forms = _forms(age_column=True)
+    inputs.force_hm = torque.force_column_hm(plate, inputs, inputs.forms)
+    np.testing.assert_allclose(torque.slab_pull_force_n(plate, inputs, mask, spacing), before * 84.0 / 40.0, rtol=1e-12)
+
+
+def test_pull_fraction_scales_the_pull():
+    spacing = line_spacing_rad(1.0)
+    plate, inputs, mask = _contact_band(spacing, 2, hc=11_000.0, hm=40_000.0)
+    plate.crust_type = "oceanic"
+    full = torque.slab_pull_force_n(plate, inputs, mask, spacing)
+    inputs.forms = _forms(pull_fraction=0.25)
+    np.testing.assert_allclose(torque.slab_pull_force_n(plate, inputs, mask, spacing), 0.25 * full, rtol=1e-12)
+
+
+def test_ramp_subduction_pulls_slow_closing_in_proportion_where_the_gate_pulled_nothing():
+    # B.4a (RFC 0021): at 0.5 cm/yr the 1 cm/yr gate drops the node; the ramp keeps it at half pull.
+    plate = SimpleNamespace(crust_type="oceanic", omega=np.array([0.0, 0.0, mantle.cm_per_yr_to_rad_per_yr(0.5)]))
+    inputs, reach, spacing = _one_node(hm=40_000.0), 0.01, line_spacing_rad(1.0)
+    assert not torque.subducting_boundary_mask(plate, inputs, reach).any()
+    inputs.forms = _forms(subduction_test="ramp")
+    mask = torque.subducting_boundary_mask(plate, inputs, reach)
+    assert mask.all()
+    full = torque.slab_pull_force_n(plate, _one_node(hm=40_000.0), mask, spacing)
+    np.testing.assert_allclose(torque.slab_pull_force_n(plate, inputs, mask, spacing), 0.5 * full, rtol=1e-9)
+
+
+def test_geometric_subduction_pulls_a_stalled_contact_but_not_a_diverging_one_or_the_younger_ocean():
+    # B.4b (RFC 0021): down-going crust at any contact that isn't diverging; where ocean meets ocean, the older side.
+    reach = 0.01
+    stalled = SimpleNamespace(crust_type="oceanic", omega=np.zeros(3))
+    opening = SimpleNamespace(crust_type="oceanic", omega=np.array([0.0, 0.0, -mantle.cm_per_yr_to_rad_per_yr(3.0)]))
+    inputs = _one_node()
+    inputs.forms = _forms(subduction_test="geometric")
+    assert torque.subducting_boundary_mask(stalled, inputs, reach).all()
+    assert not torque.subducting_boundary_mask(opening, inputs, reach).any()
+    inputs.own_age_yr, inputs.neighbor_age_yr = np.array([20e6]), np.array([60e6])
+    assert not torque.subducting_boundary_mask(stalled, inputs, reach).any()
+    inputs.own_age_yr = np.array([90e6])
+    assert torque.subducting_boundary_mask(stalled, inputs, reach).all()
+
+
+@functools.cache
+def _small_world():
+    from app.world import generate_world
+
+    return generate_world(seed=744, num_plates=6, node_density=0.5, cratons_first=False)
+
+
+def test_default_forms_leave_the_motion_solve_bit_identical(monkeypatch):
+    # With every switch off, attaching the forms changes nothing the solve reads.
+    world = copy.deepcopy(_small_world())
+    with_forms = torque.solve_plates_quasistatic(world)
+    monkeypatch.setattr(torque, "apply_force_forms", lambda world, plate, neighbours, inputs, forms: inputs)
+    without = torque.solve_plates_quasistatic(world)
+    for plate_id, omega in without.items():
+        np.testing.assert_array_equal(with_forms[plate_id], omega)
+
+
+@pytest.mark.parametrize("knobs", [
+    {"ridge_push_form": "potential_energy"}, {"slab_drag_form": "trench_normal"}, {"age_force_column": True},
+    {"subduction_test": "ramp"}, {"subduction_test": "geometric"},
+    {"ridge_push_form": "potential_energy", "slab_drag_form": "trench_normal", "age_force_column": True, "subduction_test": "geometric",
+     "slab_pull_fraction": 0.5},
+])
+def test_each_force_form_keeps_the_solve_converged_and_closed(knobs):
+    world = copy.deepcopy(_small_world())
+    for name, value in knobs.items():
+        setattr(world, name, value)
+    diagnostics: dict = {}
+    torque.solve_plates_quasistatic(world, diagnostics=diagnostics)
+    assert diagnostics["solver_converged"]
+    assert diagnostics["residual_torque_norm_nm"] <= 1e-9 * diagnostics["driving_torque_norm_nm"]
+
+
+def test_world_without_the_force_form_fields_loads_with_todays_forms():
+    from app import persistence
+
+    world = copy.deepcopy(_small_world())
+    world.ridge_push_form = "potential_energy"
+    assert persistence.load_world_bytes(persistence.save_world_bytes(world)).ridge_push_form == "potential_energy"
+    for name in ("ridge_push_form", "slab_drag_form", "age_force_column", "subduction_test", "slab_pull_fraction", "subduction_gate_cm_per_yr"):
+        world.__dict__.pop(name, None)
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert torque.force_forms(loaded) == torque.ForceForms(elapsed_years=loaded.elapsed_years)

@@ -1,0 +1,386 @@
+{
+ "setting": {
+  "name": "b123-b4b",
+  "split_method": "rift_lines",
+  "params": {
+   "eps_dot0": 4.595934101500222e-08,
+   "s_warm": 0.15853359860913005,
+   "k_cap": 0.14,
+   "n_plume": 618452193851.9977,
+   "lam_grow": 0.543797610780998,
+   "l_tip_m": 143394.7340879273,
+   "oceanic_age_strength": true,
+   "mark_power": 2.8
+  },
+  "world_knobs": {
+   "ridge_push_form": "potential_energy",
+   "slab_drag_form": "trench_normal",
+   "age_force_column": true,
+   "subduction_test": "geometric"
+  },
+  "module_knobs": {}
+ },
+ "seeds": [
+  106533960,
+  1097624328,
+  1397817354,
+  1629738962,
+  591453549
+ ],
+ "t2_share": 0.1,
+ "production_rate_per_world_100myr": null,
+ "T2_slab_attached_ratio": 1.6527499183255165,
+ "T2_lead_myr": 10.0,
+ "T1_speed_cm_per_yr": 1.4277749775082915,
+ "T1_speed_nnr_cm_per_yr": 1.2812719841915983,
+ "T2_same_time_ratio": 1.7270675018784698,
+ "T2_slab_attached_area_share": 0.32176086293031747,
+ "T3_slab_pull_driving_share": 0.6374822662788943,
+ "T4_slabless_basal_traction_mpa": 0.37148285522158614,
+ "T5_old_ridge_push_n_per_m": 1502303849377.361,
+ "breakdown": {
+  "plate_samples": 4140,
+  "plate_area_share": 1.0,
+  "speed_cm_per_yr": {
+   "continental": 1.099743455931919,
+   "oceanic": 1.7598986113965975
+  },
+  "speed_alone_cm_per_yr": {
+   "mantle_flow_only:all": 2.8692857186865015,
+   "mantle_flow_only:continental": 2.77687967626586,
+   "mantle_flow_only:oceanic": 2.962844503691349,
+   "mantle_flow_under_plate:all": 3.524857709826412,
+   "own_loads_no_contact:all": 4.519652148965587,
+   "own_loads_no_contact:continental": 3.7082582249074116,
+   "own_loads_no_contact:oceanic": 5.341168012069466
+  },
+  "slab": {
+   "subducting_km_per_sample_sum": 30989008.699852273,
+   "pull_n_per_m": 4769445816287.988,
+   "hm_km": 76.35623159593733,
+   "length_share_no_pull": 0.4654161843903491,
+   "length_share_moving_away_from_trench": 0.40624603975374574,
+   "length_share_past_terminal_speed": 0.001668957284594438,
+   "pull_torque_surviving_cancellation": 0.3460461794038827,
+   "power_over_pull_toward_trench": {
+    "pull_away_from_trench": -0.24420849386805496,
+    "drag_trench_normal": -0.23845089775429998,
+    "drag_trench_parallel": -0.0,
+    "net": 0.5173406083776451
+   }
+  },
+  "driving_share": {
+   "slab_pull": 0.6374822662788943,
+   "mantle_flow": 0.21317140089072548,
+   "ridge_push": 0.1047675461205917,
+   "contact_brake": 0.0375860543719957,
+   "blocked_edges_residual": 0.006992732337792764
+  },
+  "resisting_share": {
+   "contact_brake": 0.5811480713781915,
+   "basal_drag": 0.1739508342860569,
+   "slab_drag": 0.17106283777877146,
+   "slab_pull": 0.028161025463033958,
+   "mantle_flow": 0.027392648102844704,
+   "blocked_edges_residual": 0.01249638518598808,
+   "ridge_push": 0.005788197805113461
+  },
+  "largest_resisting_term_area_share": {
+   "contact_brake": 0.6906579132503583,
+   "basal_drag": 0.12440235571177785,
+   "slab_pull": 0.07395751440672078,
+   "mantle_flow": 0.0594190124182847,
+   "slab_drag": 0.03363371408450039,
+   "blocked_edges_residual": 0.01374665921261558,
+   "ridge_push": 0.004182830915742427
+  },
+  "closing_down_going_length_past_gate": 1.0875711927734022,
+  "opening_length_past_gate": 0.3898955769422837,
+  "closing_down_going_share_of_band": 0.5491677539123794,
+  "closing_down_going_length_pulled": 0.41809406388687226,
+  "slab_pull_ungated_over_applied": 1.4672654906081943
+ },
+ "per_world_cm_per_yr": {
+  "106533960": 1.712232497736789,
+  "1097624328": 1.3484678793587244,
+  "1397817354": 1.319154455173989,
+  "1629738962": 1.2675225765004479,
+  "591453549": 1.4908352102416635
+ },
+ "T7_fastest_over_slowest": 1.35084970436121,
+ "closure": {
+  "residual_over_driving_max": 1.9726328532320117e-14,
+  "solver_converged_all": true
+ },
+ "T8_contacts": {
+  "worlds": 5,
+  "collision_time_drops_jammed": 1,
+  "craton_overlap_at_fusion_km3": 70769262.5,
+  "largest_plate_share_mean": 0.12056,
+  "plate_count_mean": 39.988,
+  "fusions": 20,
+  "per_world": [
+   {
+    "seed": 106533960,
+    "myr": 200.0,
+    "start_craton_km3": 3594799667.1933866,
+    "end_craton_km3": 3098912724.43237,
+    "destroyed_km3": 681031814.7934755,
+    "ledger_sinks_km3": 681031814.7934757,
+    "share_near_contact": 0.132,
+    "share_near_jammed_contact": 0.0548,
+    "J": 0.0541,
+    "jammed_pair_steps": 2490,
+    "collision_time_drops": 13,
+    "collision_time_drops_jammed": 1,
+    "collision_time_dropped_jammed_myr": 23.0,
+    "buoyant_pull_share": 0.0057,
+    "cratonic_pull_share": 0.0001,
+    "plate_steps_buoyant_pull_over_10pct": 0.0082,
+    "closing_cm_per_yr": {
+     "cc_craton": 1.16,
+     "cc_clear": null,
+     "all_craton": 1.655,
+     "all_clear": 2.455
+    },
+    "jammed_share_of_collision_length": 0.0,
+    "brake_n_per_m_at_jams": {
+     "p10": 37022767400.3579,
+     "p50": 193522857720.03333,
+     "p90": 449720925656.91895
+    },
+    "proposed_n_per_m_at_jams": {
+     "p10": 52050152158.77685,
+     "p50": 220320107468.4789,
+     "p90": 620464584121.3376
+    },
+    "plates": {
+     "count_mean": 44.48,
+     "speed_cm_per_yr_mean": 1.729,
+     "largest_share_mean": 0.1002,
+     "largest_share_max": 0.1702
+    },
+    "fusions": {
+     "roll": 1,
+     "forced": 5,
+     "craton_overlap_km3": 18158661.9,
+     "craton_lost_km3": 0.0
+    }
+   },
+   {
+    "seed": 1097624328,
+    "myr": 200.0,
+    "start_craton_km3": 3804022880.834938,
+    "end_craton_km3": 3540928195.3071866,
+    "destroyed_km3": 785085986.8402934,
+    "ledger_sinks_km3": 785085986.8402927,
+    "share_near_contact": 0.0935,
+    "share_near_jammed_contact": 0.0379,
+    "J": 0.0368,
+    "jammed_pair_steps": 1904,
+    "collision_time_drops": 7,
+    "collision_time_drops_jammed": 0,
+    "collision_time_dropped_jammed_myr": 0.0,
+    "buoyant_pull_share": 0.0027,
+    "cratonic_pull_share": 0.0004,
+    "plate_steps_buoyant_pull_over_10pct": 0.0075,
+    "closing_cm_per_yr": {
+     "cc_craton": 1.262,
+     "cc_clear": 1.447,
+     "all_craton": 1.681,
+     "all_clear": 2.034
+    },
+    "jammed_share_of_collision_length": 0.005,
+    "brake_n_per_m_at_jams": {
+     "p10": 47648088083.78385,
+     "p50": 139398840972.63068,
+     "p90": 375416804847.87134
+    },
+    "proposed_n_per_m_at_jams": {
+     "p10": 27621523422.685688,
+     "p50": 151276796930.10345,
+     "p90": 566902610307.085
+    },
+    "plates": {
+     "count_mean": 31.56,
+     "speed_cm_per_yr_mean": 1.388,
+     "largest_share_mean": 0.1682,
+     "largest_share_max": 0.2047
+    },
+    "fusions": {
+     "roll": 0,
+     "forced": 4,
+     "craton_overlap_km3": 12818851.8,
+     "craton_lost_km3": 0.0
+    }
+   },
+   {
+    "seed": 1397817354,
+    "myr": 200.0,
+    "start_craton_km3": 3553444228.282318,
+    "end_craton_km3": 3388940366.979352,
+    "destroyed_km3": 539942080.8341545,
+    "ledger_sinks_km3": 539942080.8341538,
+    "share_near_contact": 0.1209,
+    "share_near_jammed_contact": 0.0505,
+    "J": 0.0417,
+    "jammed_pair_steps": 1209,
+    "collision_time_drops": 6,
+    "collision_time_drops_jammed": 0,
+    "collision_time_dropped_jammed_myr": 0.0,
+    "buoyant_pull_share": 0.0029,
+    "cratonic_pull_share": 0.0003,
+    "plate_steps_buoyant_pull_over_10pct": 0.0002,
+    "closing_cm_per_yr": {
+     "cc_craton": 1.272,
+     "cc_clear": null,
+     "all_craton": 1.759,
+     "all_clear": 2.318
+    },
+    "jammed_share_of_collision_length": 0.0311,
+    "brake_n_per_m_at_jams": {
+     "p10": 42416209007.2382,
+     "p50": 194915606540.7233,
+     "p90": 428233534448.95776
+    },
+    "proposed_n_per_m_at_jams": {
+     "p10": 33437601618.660942,
+     "p50": 216238220941.48978,
+     "p90": 676601848247.1536
+    },
+    "plates": {
+     "count_mean": 32.38,
+     "speed_cm_per_yr_mean": 1.348,
+     "largest_share_mean": 0.1606,
+     "largest_share_max": 0.2352
+    },
+    "fusions": {
+     "roll": 2,
+     "forced": 1,
+     "craton_overlap_km3": 4239347.7,
+     "craton_lost_km3": 0.0
+    }
+   },
+   {
+    "seed": 1629738962,
+    "myr": 200.0,
+    "start_craton_km3": 3840281485.506109,
+    "end_craton_km3": 2966372183.623549,
+    "destroyed_km3": 1108120440.8535786,
+    "ledger_sinks_km3": 1108120440.8535771,
+    "share_near_contact": 0.0881,
+    "share_near_jammed_contact": 0.0344,
+    "J": 0.0318,
+    "jammed_pair_steps": 2371,
+    "collision_time_drops": 16,
+    "collision_time_drops_jammed": 0,
+    "collision_time_dropped_jammed_myr": 0.0,
+    "buoyant_pull_share": 0.0064,
+    "cratonic_pull_share": 0.0011,
+    "plate_steps_buoyant_pull_over_10pct": 0.0058,
+    "closing_cm_per_yr": {
+     "cc_craton": 1.301,
+     "cc_clear": 1.267,
+     "all_craton": 1.354,
+     "all_clear": 1.884
+    },
+    "jammed_share_of_collision_length": 0.0121,
+    "brake_n_per_m_at_jams": {
+     "p10": 42313345232.77499,
+     "p50": 166809285239.86725,
+     "p90": 502082842703.04987
+    },
+    "proposed_n_per_m_at_jams": {
+     "p10": 27277306121.512356,
+     "p50": 155790895076.57172,
+     "p90": 747875171762.6763
+    },
+    "plates": {
+     "count_mean": 42.49,
+     "speed_cm_per_yr_mean": 1.284,
+     "largest_share_mean": 0.0927,
+     "largest_share_max": 0.1028
+    },
+    "fusions": {
+     "roll": 1,
+     "forced": 1,
+     "craton_overlap_km3": 13965877.2,
+     "craton_lost_km3": 0.0
+    }
+   },
+   {
+    "seed": 591453549,
+    "myr": 200.0,
+    "start_craton_km3": 3666945171.641679,
+    "end_craton_km3": 3087436407.5229154,
+    "destroyed_km3": 850046103.8129222,
+    "ledger_sinks_km3": 850072319.692855,
+    "share_near_contact": 0.0879,
+    "share_near_jammed_contact": 0.0351,
+    "J": 0.0286,
+    "jammed_pair_steps": 2132,
+    "collision_time_drops": 7,
+    "collision_time_drops_jammed": 0,
+    "collision_time_dropped_jammed_myr": 0.0,
+    "buoyant_pull_share": 0.0055,
+    "cratonic_pull_share": 0.001,
+    "plate_steps_buoyant_pull_over_10pct": 0.0221,
+    "closing_cm_per_yr": {
+     "cc_craton": 1.11,
+     "cc_clear": 1.11,
+     "all_craton": 1.663,
+     "all_clear": 2.687
+    },
+    "jammed_share_of_collision_length": 0.0137,
+    "brake_n_per_m_at_jams": {
+     "p10": 37872641737.267624,
+     "p50": 180913738517.5429,
+     "p90": 361005131327.50134
+    },
+    "proposed_n_per_m_at_jams": {
+     "p10": 34370593312.59462,
+     "p50": 182295632097.6134,
+     "p90": 454064425381.14825
+    },
+    "plates": {
+     "count_mean": 49.03,
+     "speed_cm_per_yr_mean": 1.523,
+     "largest_share_mean": 0.0811,
+     "largest_share_max": 0.0887
+    },
+    "fusions": {
+     "roll": 0,
+     "forced": 5,
+     "craton_overlap_km3": 21586523.9,
+     "craton_lost_km3": 0.0
+    }
+   }
+  ]
+ },
+ "T9_rifting": {
+  "arm": "b123-b4b",
+  "targets_passed": 5,
+  "violation_total": 3.32261888002803,
+  "splits": 253,
+  "splits_per_world_100myr": 25.3,
+  "continent_majority_splits": 96,
+  "splits_mostly_weak": 0.391304347826087,
+  "weak_share_lines": 0.4305581462707337,
+  "weak_share_random": 0.34165023622860496,
+  "completed_median_myr": 14.5,
+  "failed_share": 0.8214285714285714,
+  "transition_ratio": 0.3784166518413763,
+  "localization_violations": 58,
+  "onset_width_km": 128.87111578093496,
+  "ledger_gap": 5.486640941260658e-16,
+  "errors": [],
+  "met": [
+   "onset_width_km",
+   "width_growth",
+   "duration_myr",
+   "no_microplates",
+   "line_shape"
+  ],
+  "not_evaluable": []
+ }
+}
