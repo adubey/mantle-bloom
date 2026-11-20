@@ -32,7 +32,7 @@ import Legend from "./Legend";
 import MeasureOverlay from "./MeasureOverlay";
 import ProgressBar from "./ProgressBar";
 import RunOverlay from "./RunOverlay";
-import { PLAYING_FALLBACK_PHASE, playingPhaseView } from "./phaseInfo";
+import { groupName, PLAYING_FALLBACK_PHASE, playingPhaseView } from "./phaseInfo";
 import ModalShell from "./ModalShell";
 import AdminSession from "./AdminSession";
 import { isDebugUiEnabled, useSession } from "./session";
@@ -677,6 +677,8 @@ export default function App() {
   // The phase's "<bar>/<group>" from the backend's spans (#801), shown above the phase text.
   // Cleared with the phase, whichever of the many places clears that.
   const [runGroup, setRunGroup] = useState<string | null>(null);
+  // The step phase a recording is in between its frame lines (#801), polled like Play's.
+  const [animationPhase, setAnimationPhase] = useState<{ label: string; group: string | null } | null>(null);
   // The overlay's X collapses to just the pulsing progress line; its pop-out icon
   // re-opens the overlay. Generate and Record start expanded; Play (stepping) starts
   // collapsed on the progress line (#653).
@@ -1637,6 +1639,29 @@ export default function App() {
     };
   }, [playing, worldId]);
 
+  // The same short poll while a recording runs, so the overlay names the step's phase between
+  // frames (#801). /run answers without the world lock the recording holds.
+  const recordingWorldId = animation !== null ? worldId : null;
+  useEffect(() => {
+    if (!recordingWorldId) return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      fetchRunState(recordingWorldId)
+        .then((run) => {
+          if (cancelled || worldIdRef.current !== recordingWorldId) return;
+          setAnimationPhase(run.phase ? { label: run.phase.label, group: run.phase.group } : null);
+        })
+        .catch(() => {
+          // best-effort, like Play's poll above
+        });
+    }, RUN_PHASE_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      setAnimationPhase(null);
+    };
+  }, [recordingWorldId]);
+
   // Polls the run state until the server is idle (stopped, with no step under way), showing
   // each new revision. `shownRevisionRef` carries the revision on screen from one run to the
   // next, so a world that moved in between is shown when the next run starts.
@@ -1720,6 +1745,12 @@ export default function App() {
   // it gets the generic phase and no fraction.
   const runActive = busy || playing || animation !== null;
   const overlayHeadline = animation ? "Recording animation" : busy ? (busyKind === "load" ? "Loading, rebuilding render cache & resolving climate" : "Generating world") : "Run in progress";
+  // While recording, the frame counter is the headline's context and the step's own phase (and
+  // its learn links) is the text, once the server has reported one.
+  const recordingPhase = animation && animationPhase ? animationPhase : null;
+  const shownPhase = recordingPhase ? recordingPhase.label : runPhase;
+  const shownGroup = recordingPhase ? recordingPhase.group : runGroup;
+  const shownContext = recordingPhase ? runPhase : null;
   const overlayFraction =
     animation && !animation.unbounded && animation.total > 0
       ? animation.frame / animation.total
@@ -1750,7 +1781,7 @@ export default function App() {
           {(busy || (runActive && overlayCollapsed)) && (
             <ProgressBar
               label={overlayHeadline}
-              text={runPhase ? `${overlayHeadline}: ${runPhase}` : overlayHeadline}
+              text={shownPhase ? `${overlayHeadline}: ${shownContext ? `${shownContext} · ` : shownGroup ? `${groupName(shownGroup)} · ` : ""}${shownPhase}` : overlayHeadline}
               fraction={overlayFraction}
               onExpand={overlayCollapsed ? () => setOverlayCollapsed(false) : undefined}
             />
@@ -1764,8 +1795,9 @@ export default function App() {
           {runActive && !overlayCollapsed && (
             <RunOverlay
               headline={overlayHeadline}
-              phase={runPhase}
-              group={runGroup}
+              phase={shownPhase}
+              group={shownGroup}
+              context={shownContext}
               fraction={overlayFraction}
               onCollapse={() => setOverlayCollapsed(true)}
             />

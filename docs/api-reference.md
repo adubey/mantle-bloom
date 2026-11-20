@@ -75,14 +75,18 @@ Open to anyone, for the logged-out `/view` page (#373). See
   default world (#755), which `/view` opens on before any other heuristic.
 - `GET /public/worlds/{world_id}/world`: `{"name", "world": {"revision", "seed", "elapsed_years"},
   "running": bool, "is_default": bool, "view", "rotation": [9 floats], "steps_remaining": int | null, "step_limit": 30, "step_years": 100000,
-  "step_progress": {"fraction", "phase"} | null}`. `view` and `rotation` are
+  "step_progress": {"fraction", "phase", "group"} | null, "progress_seq": int}`. `view` and `rotation` are
   the shared presentation every viewer of the world sees (#755). Hosted responses may
   include `snapshot_first: true` to indicate that the viewer can try the saved PNG route.
   `name` is the planet's name, which changes with a rename or once a regenerate's new world
   is published. `steps_remaining` is null (unlimited) for the admin. `revision` is an
   opaque string that changes whenever the world does (#374). `step_progress` is a guest
-  step's live position, whoever triggered it -- the wait progress bar's feed -- or null
-  when no step is computing (#653). `404` for a private,
+  step's live position, whoever triggered it (a guest, Play, a manual Step or an animation frame) -- the
+  wait progress bar's feed -- or null when no step is computing (#653). `phase` and `group`
+  name the running trace span (#801); `group` is null for a progress line from a step that
+  runs no spans. `progress_seq` is a cursor that moves on every phase change; send it back
+  as `progress=<seq>` with the next long poll so a change landing between two polls
+  answers at once. `404` for a private,
   unknown, or still-empty world -- the listing never advertises the other cases.
 - `GET /public/worlds/{world_id}/world?after=<revision>`: the same response, but held open until the world's
   revision differs from `after`, or for at most 25 s (then answered with the unchanged

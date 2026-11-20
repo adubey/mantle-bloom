@@ -33,6 +33,7 @@ const BACKEND_PHASES = [
   "Solving mantle flow and plate motion",
   "Detecting collisions",
   "Updating faults",
+  "Finding rifts",
   "Solving wind and ocean currents",
   "Resolving climate",
   "Resolving rivers and lakes",

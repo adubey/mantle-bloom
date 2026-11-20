@@ -175,7 +175,9 @@ class WorldRunner:
             finally:
                 with self._cond:
                     self._stepping = False
-                    self._phase = None
+                    # The phase is cleared by the step that published it, under the session lock
+                    # (`_publishing_phases`): clearing it here could erase the next step's first
+                    # label, which a guest or recording may publish once the lock is free (#801).
                     stopped = not self._status.running
                     if stopped:
                         self._bump()

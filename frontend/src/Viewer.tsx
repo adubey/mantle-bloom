@@ -4,6 +4,7 @@ import FullVersionPreview, { BillingActionButton } from "./FullVersionPreview";
 import Legend from "./Legend";
 import MapCanvas from "./MapCanvas";
 import ProgressBar from "./ProgressBar";
+import { groupName, phaseLinks } from "./phaseInfo";
 import {
   fetchPublicState,
   fetchPublicWorlds,
@@ -72,6 +73,23 @@ function refusalMessage(err: unknown): string {
     return "The world is busy with another run right now. Try again in a moment.";
   }
   return `Advance failed: ${err instanceof Error ? err.message : String(err)}`;
+}
+
+// The learn-more links for the phase a step is in (#801), as on the full app's run overlay.
+function PhaseLinks({ phase }: { phase: string }) {
+  const links = phaseLinks(phase);
+  if (links.length === 0) return null;
+  return (
+    <div style={{ fontSize: 12, marginTop: 4 }}>
+      <span style={{ opacity: 0.7 }}>Learn more: </span>
+      {links.map((link, i) => (
+        <span key={link.url}>
+          {i > 0 && " · "}
+          <a href={link.url} target="_blank" rel="noreferrer">{link.label}</a>
+        </span>
+      ))}
+    </div>
+  );
 }
 
 function AllowanceNote({ state, demo = false }: { state: PublicState; demo?: boolean }) {
@@ -313,12 +331,16 @@ function WorldView({ worldId }: { worldId: WorldId }) {
   const revision = state?.world?.revision ?? null;
   const snapshotFirst = Boolean(state?.snapshot_first);
   const loaded = state !== null;
+  // The phase cursor of the last answer, sent with each poll (#801).
+  const progressSeqRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
     fetchPublicState(worldId, undefined, undefined, isDemo).then(
       (s) => {
-        if (!cancelled) setState(s);
+        if (cancelled) return;
+        progressSeqRef.current = s.progress_seq;
+        setState(s);
       },
       (err) => {
         if (!cancelled) setError(String(err));
@@ -342,8 +364,9 @@ function WorldView({ worldId }: { worldId: WorldId }) {
     const controller = new AbortController();
     let timer: number | undefined;
     const poll = () => {
-      fetchPublicState(worldId, seen, controller.signal, isDemo).then(
+      fetchPublicState(worldId, seen, controller.signal, isDemo, progressSeqRef.current).then(
         (next) => {
+          progressSeqRef.current = next.progress_seq;
           const followKey = JSON.stringify([next.name, next.running, next.view, next.rotation, next.step_progress ?? null]);
           const sameRevision = (next.world?.revision ?? "") === seen;
           if (sameRevision && followKey === followKeyRef.current) {
@@ -466,9 +489,10 @@ function WorldView({ worldId }: { worldId: WorldId }) {
         <div style={{ marginBottom: 12 }}>
           <ProgressBar
             label="Advance in progress"
-            text={`Advance in progress: ${state.step_progress.phase}`}
+            text={`Advance in progress: ${state.step_progress.group ? `${groupName(state.step_progress.group)} · ` : ""}${state.step_progress.phase}`}
             fraction={state.step_progress.fraction}
           />
+          <PhaseLinks phase={state.step_progress.phase} />
         </div>
       )}
       <div ref={mapWrapperRef}>

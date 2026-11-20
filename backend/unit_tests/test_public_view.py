@@ -37,7 +37,7 @@ def _session():
 def steps(monkeypatch):
     """A stand-in world and step: each step advances elapsed time, and the list counts how many
     really ran. The routes only need seed/elapsed_years, so no real world is generated."""
-    world = SimpleNamespace(seed=7, elapsed_years=0.0)
+    world = SimpleNamespace(seed=7, elapsed_years=0.0, wind_model="diagnostic", simulate_plate_movement=True, simulate_climate_biomes=True)
     ran = []
 
     def fake_step(w, years):
@@ -241,9 +241,46 @@ def test_public_world_reports_guest_step_progress(guest, steps):
     assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["step_progress"] == {
         "fraction": 0.5,
         "phase": "Shifting plates",
+        "group": None,
     }
     _S.set_guest_step_progress(None)
     assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["step_progress"] is None
+
+
+def test_public_world_reports_the_span_phase_of_any_step(guest, steps):
+    # #801: /view names the running span (label, group, fraction) whoever started the step --
+    # Play, an animation frame or another viewer -- and a span's phase wins over a guest
+    # step's own progress line, whose label arrives after the work it names.
+    _S.runner.set_phase("Updating faults", "Stepping/Moving plates", 0.4)
+    try:
+        _S.set_guest_step_progress((0.9, "Balancing sea level"))
+        assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["step_progress"] == {
+            "fraction": 0.4,
+            "phase": "Updating faults",
+            "group": "Stepping/Moving plates",
+        }
+    finally:
+        _S.runner.set_phase(None)
+        _S.set_guest_step_progress(None)
+    assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["step_progress"] is None
+
+
+def test_a_phase_change_between_polls_still_answers_the_next_poll(guest, steps):
+    # #801 review: the long poll compares against the cursor the viewer last saw, not a snapshot
+    # taken when its next request arrives, so a phase that began (or cleared) in between is
+    # answered at once instead of becoming the baseline of a wait.
+    url = f"/public/worlds/{_S.world_id}/world"
+    seen = guest.get(url).json()
+    revision = seen["world"]["revision"]
+    main._publish_phase(_S, "Updating faults", "Stepping/Moving plates", 0.2)
+    try:
+        started = time.monotonic()
+        answer = guest.get(url, params={"after": revision, "progress": seen["progress_seq"]}).json()
+        assert time.monotonic() - started < 5.0
+        assert answer["step_progress"]["phase"] == "Updating faults"
+        assert answer["progress_seq"] != seen["progress_seq"]
+    finally:
+        main._publish_phase(_S, None)
 
 
 def test_animation_frame_publishes_for_viewers():

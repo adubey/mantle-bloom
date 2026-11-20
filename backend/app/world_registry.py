@@ -148,6 +148,21 @@ class WorldSession:
     _guest_step_progress: tuple[float, str] | None = field(default=None, repr=False)
     _guest_step_progress_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
+    # A counter bumped on every change to what /view shows while a step computes (a span's
+    # label, a guest step's line, either clearing). Viewers send back the one they last saw, so a
+    # change that lands between two long polls is still answered instead of becoming the new
+    # baseline (#801).
+    _progress_seq: int = field(default=0, repr=False)
+
+    def bump_progress(self) -> int:
+        with self._guest_step_progress_lock:
+            self._progress_seq += 1
+            return self._progress_seq
+
+    def progress_seq(self) -> int:
+        with self._guest_step_progress_lock:
+            return self._progress_seq
+
     def set_guest_step_progress(self, progress: tuple[float, str] | None) -> None:
         """Publish a guest step's current position (or clear it when done). A new
         position wakes the world's viewers so a long poll answers for progress, not
@@ -157,6 +172,7 @@ class WorldSession:
         captures its pre-render audience (#658)."""
         with self._guest_step_progress_lock:
             self._guest_step_progress = progress
+            self._progress_seq += 1
         if progress is not None:
             self.feed.wake()
 

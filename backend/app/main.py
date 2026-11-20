@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import concurrent.futures
+import contextlib
 import json
 import logging
 import os
@@ -1611,6 +1613,7 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
                         # fail loudly rather than serializing it as a progress fraction.
                         raise ValueError(f"unexpected step progress message: {message!r}")
                     if message[0] == "phase":
+                        _publish_phase(session, message[2], message[3], message[1])
                         yield _phase_line(message)
                         continue
                     if message[0] == "heartbeat":
@@ -1648,7 +1651,10 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
                     # Wait for the step's worker thread before the lock and gate go (#801): an
                     # error on this side (a bad message, a failed write) must not leave it stepping
                     # the world under whoever takes the lock next. A no-op once it has finished.
-                    progress.close()
+                    try:
+                        progress.close()
+                    finally:
+                        _publish_phase(session, None)
             finally:
                 # Nested so a close() that raises can never leak the lock and gate (see generate()).
                 try:
@@ -2037,6 +2043,56 @@ def _clear_animation_progress(session) -> None:
         _logger.exception("checkpoint: couldn't clear animation progress")
 
 
+# While one animation step (and its frame's render) runs, the stream sends a heartbeat this often so
+# the client's idle watchdog (3 minutes) doesn't mistake a slow step on a mature world for a dead
+# server. The generator can only yield between steps, so a step longer than the watchdog
+# went silent (#801).
+ANIMATION_KEEPALIVE_INTERVAL_S = 30.0
+# ...but only while the run is visibly moving. A step whose phase hasn't changed for this long is
+# treated as hung: the keepalives stop and the watchdog reports it, rather than hiding it forever.
+ANIMATION_KEEPALIVE_STALL_LIMIT_S = 30 * 60.0
+
+
+def _next_animation_message(session, world, animation, last_frame: int, total: int, pool):
+    """Advance `animation` one message on a worker thread, yielding a heartbeat line every
+    ANIMATION_KEEPALIVE_INTERVAL_S while it runs (#801), and return the message (None once the
+    animation has finished) -- use as `message = yield from ...`. `pool` is the run's one
+    single-worker executor, so every step and the native encoder stay on one thread. The caller holds the session lock
+    and compute gate throughout, as for its other heartbeats. If the consumer closes the stream
+    mid-wait, this waits for the worker first, so the caller never closes or releases the world
+    under a step still running (the same guarantee as `trace.run_traced`)."""
+    future = pool.submit(next, animation, None)
+    seen_phase = None
+    changed_at = time.monotonic()
+    try:
+        while True:
+            try:
+                return future.result(timeout=ANIMATION_KEEPALIVE_INTERVAL_S)
+            except concurrent.futures.TimeoutError:
+                pass
+            phase = session.runner.phase() if session.runner is not None else None
+            now = time.monotonic()
+            if phase != seen_phase:
+                seen_phase, changed_at = phase, now
+            if now - changed_at >= ANIMATION_KEEPALIVE_STALL_LIMIT_S:
+                continue
+            yield json.dumps({
+                "type": "heartbeat",
+                "frame": min(last_frame + 1, total),
+                "total": total,
+                "elapsed_years": world.elapsed_years,
+            }) + "\n"
+    finally:
+        concurrent.futures.wait([future])
+
+
+def _animate_step(session: WorldSession, world: World, years: float) -> None:
+    """One animation step, publishing its phase labels for the recording tab's overlay and for
+    /view's viewers (#801); `_publishing_phases` is defined with the run loop below."""
+    with _publishing_phases(session, world):
+        _step_world(session, world, years)
+
+
 def _animate_message_line(session, world, message, last_frame, anim_spec: dict):
     """Folds one stream_animation_mp4 message into its NDJSON line plus stream state.
 
@@ -2218,7 +2274,7 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
             animation = render_image.stream_animation_mp4(
                 world, req.projection, req.view, req.width, req.height, view_rotation,
                 req.step_years, req.steps_per_frame, req.num_frames,
-                step_fn=lambda w, y: _step_world(session, w, y), stop_event=session.animation_stop_event,
+                step_fn=lambda w, y: _animate_step(session, w, y), stop_event=session.animation_stop_event,
             )
             # Static run parameters for the recovery sidecar: a resume replays the
             # same run shape from the checkpointed world (#638).
@@ -2231,6 +2287,7 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
                 "width": req.width,
                 "height": req.height,
             }
+            pool = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="animate-step")
             try:
                 while True:
                     # Advance one frame while holding the locks, then let them go
@@ -2241,9 +2298,8 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
                     # world replacer can swap session.world underneath; each frame
                     # ends on a whole step, so anything running between frames
                     # sees a consistent world.
-                    try:
-                        message = next(animation)
-                    except StopIteration:
+                    message = yield from _next_animation_message(session, world, animation, last_frame, req.num_frames, pool)
+                    if message is None:
                         break
                     line, last_frame, completed = _animate_message_line(session, world, message, last_frame, anim_spec)
                     if message[0] == "heartbeat":
@@ -2290,6 +2346,8 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
                     req.steps_per_frame,
                 )
                 yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
+            finally:
+                pool.shutdown(wait=False)
         finally:
             try:
                 if acquired:
@@ -3151,6 +3209,7 @@ def public_worlds() -> dict:
 @app.get("/public/worlds/{world_id}/world")
 async def public_world(
     world_id: str, request: Request, after: str | None = None, guest_demo: bool = False, following: bool = False,
+    progress: int | None = None,
 ) -> dict:
     """What the viewer shows for one public world: its revision and age, this
     browser's remaining step allowance, and a guest step's live progress, if one
@@ -3167,15 +3226,19 @@ async def public_world(
     if _hosted_worker and following:
         session.feed.note_follower()
     if after is not None:
-        progress_before = session.guest_step_progress()
+        # `progress` is the cursor of the last answer this viewer saw: a phase change that landed
+        # since then answers at once, instead of becoming the baseline of a fresh wait (#801).
+        seen_seq = session.progress_seq() if progress is None else progress
         await session.feed.wait_past(
             after, public_view.GUEST_POLL_WAIT_S,
-            changed=lambda: session.guest_step_progress() != progress_before,
+            changed=lambda: session.progress_seq() != seen_seq,
         )
         # The world may have gone private during the wait (#711).
         session = _public_session_or_404(world_id)
     _, remaining = _guest_allowance(request, guest_demo)
-    progress = session.guest_step_progress()
+    # The cursor first, like `_run_summary`: a change landing after it is read can pair newer
+    # progress with an older cursor (one harmless extra answer), never the reverse (#801).
+    progress_seq = session.progress_seq()
     return {
         "name": session.feed.name(),
         "world": session.feed.summary(),
@@ -3187,7 +3250,8 @@ async def public_world(
         "steps_remaining": remaining,
         "step_limit": public_view.GUEST_STEP_LIMIT,
         "step_years": public_view.GUEST_STEP_YEARS,
-        "step_progress": None if progress is None else {"fraction": progress[0], "phase": progress[1]},
+        "step_progress": _public_step_progress(session),
+        "progress_seq": progress_seq,
     }
 
 
@@ -3300,9 +3364,13 @@ def _run_guest_step(session: WorldSession) -> None:
     world = _require_world(_public_session_or_404(session.world_id))
     completed = False
     try:
-        for message in _step_progress(session, world, public_view.GUEST_STEP_YEARS):
-            if isinstance(message, tuple) and message[0] == "progress" and len(message) == 3:
-                session.set_guest_step_progress((message[1], message[2]))
+        # The span labels (published by `_publishing_phases`) take over from the generator's
+        # progress lines once the first one speaks; those lines are the fallback for a step that
+        # runs no spans, and their labels arrive after the work they name (#801).
+        with _publishing_phases(session, world):
+            for message in _step_progress(session, world, public_view.GUEST_STEP_YEARS):
+                if isinstance(message, tuple) and message[0] == "progress" and len(message) == 3:
+                    session.set_guest_step_progress((message[1], message[2]))
         completed = True
     finally:
         session.set_guest_step_progress(None)
@@ -3439,6 +3507,47 @@ def _save_run_status(session: WorldSession, status: checkpoint.RunStatus) -> Non
         session.checkpoint_store.save_status(status)
 
 
+def _publish_phase(session: WorldSession, label: str | None, group: str | None = None, fraction: float = 0.0) -> None:
+    """Set (or, with `label=None`, clear) the phase /run and /view report for `session`. A new label
+    wakes /view's long poll; a clear only bumps the cursor, because waking would pop the waiter list
+    just before `_world_changed` captures its pre-render audience (#658). The cursor still makes the
+    clear visible on the viewer's next poll, and the step's own publish wakes right after."""
+    if session.runner is not None:
+        session.runner.set_phase(label, group, fraction)
+    session.bump_progress()
+    if label is not None:
+        session.feed.wake()
+
+
+@contextlib.contextmanager
+def _publishing_phases(session: WorldSession, world: World):
+    """Publish the step's user-visible trace spans (trace.py) as the session's phase for the
+    duration of the block, whoever started the step: Play, a guest's Advance on /view, or an
+    animation frame (#801). `/run` returns it to the owner's tab and `/public/worlds/{id}/world`
+    to /view's viewers. The phase is cleared on exit."""
+    tracker = trace.PhaseTracker(_step_weights(world))
+    recorder = trace.Recorder(
+        sink=lambda label, group: _publish_phase(session, label, group, tracker.fraction),
+        on_finish=tracker.finish,
+    )
+    try:
+        with trace.recording(recorder):
+            yield
+    finally:
+        _publish_phase(session, None)
+
+
+def _public_step_progress(session: WorldSession) -> dict | None:
+    """What /view shows while a step computes, whoever started it (#801): the running span's
+    label, group and fraction, else a guest step's own progress line (before its first span).
+    Every step that publishes spans qualifies: Play, a recording, a manual Step and a guest's."""
+    phase = session.runner.phase() if session.runner is not None else None
+    if phase is not None:
+        return {"fraction": phase["fraction"], "phase": phase["label"], "group": phase["group"]}
+    guest = session.guest_step_progress()
+    return None if guest is None else {"fraction": guest[0], "phase": guest[1], "group": None}
+
+
 def _run_step_once(session: WorldSession, step_years: float, should_step) -> bool:
     """One step of `session`'s run loop. Waits at the compute gate rather than
     refusing like POST /worlds/{id}/step: the owner's own step or animation on
@@ -3453,21 +3562,14 @@ def _run_step_once(session: WorldSession, step_years: float, should_step) -> boo
         if world is None:
             return False
         completed = False
-        runner = session.runner
-        tracker = trace.PhaseTracker(_step_weights(world))
-        recorder = trace.Recorder(
-            sink=lambda label, group: runner.set_phase(label, group, tracker.fraction),
-            on_finish=tracker.finish,
-        )
         try:
             # The overlay's phase text for a run comes from the step's own spans (trace.py),
             # published on the runner for the UI's short poll of /run.
-            with trace.recording(recorder):
+            with _publishing_phases(session, world):
                 for _ in _step_progress(session, world, step_years):
                     pass
             completed = True
         finally:
-            runner.set_phase(None)
             _world_changed(session, completed)
     return True
 

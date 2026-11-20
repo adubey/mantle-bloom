@@ -251,6 +251,7 @@ async def _public_records(request: Request) -> Response:
 
 async def _world_state(
     world_id: str, request: Request, after: str | None = None, guest_demo: bool = False,
+    progress: int | None = None,
 ) -> Response:
     # Hold the long poll here, with only short worker reads. A read-only viewer
     # can stay open past the idle timeout without pinning the simulation.
@@ -275,7 +276,11 @@ async def _world_state(
         # A repeated poll with the same revision and progress should still
         # yield time to the step, even if the client immediately polls again.
         now = clock()
+        # `progress` is the cursor of the viewer's last answer (#801): a phase change since then
+        # answers at once, as in main.public_world. A sleeping worker has no cursor, so it answers
+        # once and the viewer drops its own, which ends the exchange rather than spinning.
         if (state["world"]["revision"] != after or state != first or now >= deadline
+                or (progress is not None and state.get("progress_seq") != progress)
                 or (state["step_progress"] is not None and now - started >= _STATE_POLL_INTERVAL)):
             return JSONResponse(state, headers=_NO_STORE)
         if await request.is_disconnected():
