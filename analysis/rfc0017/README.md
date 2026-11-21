@@ -554,3 +554,56 @@ was ineligible. No candidate was frozen or tested on new held-outs. The owner au
 continuation to G4 and implementation planning with this mismatch recorded as a modeling
 simplification. **G3 is formally failed; the exception is not a pass.** The complete
 preregistered outcomes and source fingerprint are in the [three-round tuning record](g3-three-round-plan.md#three-round-disposition-g3-failed-by-owner-exception).
+
+## G4 downstream coupling result
+
+The preregistered 2×2 screen completed on all three RFC 0016 windows (ranks 4, 5, and 16), with four arms per window at both 100 kyr (primary) and 10 kyr (timestep sensitivity): 24 arms and 528 replay steps. Inputs, treatment settings, and checkpoint hashes are in the [G4 preregistration](g4-coupling-preregistration.md). All arms were produced at source commit `c128cffbcb160dfb63b91315a10eb53a856f7bd4`; each output records the input save, source fingerprints, anchor hash, and treatment.
+
+### Validity
+
+All arms pass the preregistered accounting checks:
+
+- Maximum normalized land, lake, or river residual: `1.82e-14` (limit `1e-3`).
+- Maximum conservative-atmosphere global, summed-cell, or rain-placement residual: `1.34e-14` (limit `1e-8`); atmospheric water and rain remained finite and nonnegative.
+- Stranded overflow: zero in every step.
+- Maximum normalized `land_sink_settlement`: `3.71e-4`. This is the preregistered named, accounted-for destination and is not stranded water.
+- Maximum captured peak RSS: 1.39 GB.
+
+The measured climate timings are not a clean runtime comparison: other simulation jobs overlapped these runs. No G4 runtime conclusion is drawn from them.
+
+### Paired atmosphere effect
+
+The table gives the median paired change for the conservative diagnostic versus legacy climate, pairing within each window and land-store treatment, then summarizing across the three same-seed windows. These are descriptive comparisons, not independent-world replications.
+
+| Readout | 100 kyr primary | 10 kyr sensitivity |
+|---|---:|---:|
+| Land precipitation | −37.7% | −44.6% |
+| Global precipitation | −35.2% | −37.1% |
+| Total lake volume | −42.6% | −56.6% |
+| River storage | −56.1% | −58.4% |
+| Ocean export | −54.6% | −55.1% |
+| Frozen precipitation share | +0.99 percentage points | +0.74 percentage points |
+| Dry and semi-arid biome area share (Köppen B) | +7.16 percentage points | +8.66 percentage points |
+| 95th-percentile column humidity | −49.2% | −49.7% |
+| Glacier volume | no change | no change |
+| Erosion removed volume | approximately no change | approximately no change |
+
+The direction of the main water and biome changes persists at the shorter step, while their size is schedule-sensitive. The central land-store treatment has a smaller but interacting effect: its median change versus control was +12.6% land rain and +3.6% global rain at 100 kyr, and +21.6% land rain and +5.9% global rain at 10 kyr. Lake and river responses to that coupling varied among windows.
+
+### Target-basin wetness
+
+The fraction of steps in which each registered target anchor remained wet was 100% under every legacy-coupled arm. Under conservative-coupled arms it fell as follows:
+
+| Window rank | 100 kyr | 10 kyr |
+|---:|---:|---:|
+| 4 | 50% | 5% |
+| 5 | 75% | 7.5% |
+| 16 | 0% | 0% |
+
+This is a substantial downstream cost, especially for the rank-16 target. It is not hidden by the globally closed ledgers.
+
+### Disposition and evidence
+
+G4 accounting validity passes and the downstream impact screen is complete. The screen does not establish that these changes are acceptable for production, and it does not select the conservative diagnostic as the implementation. Keep G3 formally failed under the owner-approved exception; do not describe the exception as a G3 pass. Before production integration, the owner must decide whether the measured lake and biome shifts are acceptable for the visual goals or whether the implementation choice should be reopened.
+
+The 24 full arm outputs and the density-4 probe remain private at `~/mantle-bloom-captures/rfc0019/g4/`. Their checksums are recorded in the adjacent `SHA256SUMS`. The replay wrapper is `bin/debug/rfc0019_g4_coupling.py` (SHA-256 `09bc7b43eeba05c440734e2ba74fb7b5cd2b6fb14458bbf73e230089e6496527`). The G4 preregistration records the seed, schedule, treatment and checkpoint identities.
