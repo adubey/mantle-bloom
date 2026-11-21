@@ -48,33 +48,45 @@ variability across seeds or intervals.
   5 m³. The old probe reported 3 and 8 m³ from the cached state and 5 and
   10 m³ from the compact state. Both save paths now give 3 and 5 m³.
 
-## Opening-geometry comparison
+## Replay results
 
-The opening-geometry arm on `353a37470fb7f821687687b6107c9cf3ab3f18f8`
-reproduced the prior diagnosis with the corrected probe. The comparison uses
-the probe at `32701054` and the baseline worktree's Python environment. The fix
-branch used `83e590166acfe4eb52efcd7426a93733572f2a3f` with its own environment.
+The four runs used the same save and step settings. The detached baseline used
+`353a37470fb7f821687687b6107c9cf3ab3f18f8` for both arms.
+The fix branch used `83e59016` for opening and `185a04ee` for closing.
+Those commits differ only in the analysis report. Each run used the Python
+environment of the backend it measured. The replay backends were pinned before
+the later craton-budget merge on main.
 
 ```bash
-<baseline-python> bin/debug/measure_d4_lake_lag.py <save> \
-    --backend <baseline-backend> --opening-ice --myr 0.25 --step-years 250000 \
-    --out <capture>
+<backend-python> bin/debug/measure_d4_lake_lag.py <save> \
+    --backend <backend> --myr 0.25 --step-years 250000 --out <capture>
 ```
+
+Add `--opening-ice` for opening geometry.
 
 | Backend and geometry | Total liquid (km³) | Under closing ice (km³) | Glacier margin (km³) | Elsewhere (km³) | Newly covered share |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Main, opening geometry | 768,728.96 | 10,312.99 | 26,742.40 | 731,673.57 | 1.3416% |
-| Fix branch, opening geometry | 768,803.15 | 13,552.62 | 20,614.75 | 734,635.77 | 1.7628% |
+| Main, opening | 768,728.96 | 10,312.99 | 26,742.40 | 731,673.57 | 1.3416% |
+| Fix branch, opening | 768,803.15 | 13,552.62 | 20,614.75 | 734,635.77 | 1.7628% |
+| Main, closing | 1,525,681.34 | 0.00 | 124,819.53 | 1,400,861.80 | 0.0000% |
+| Fix branch, closing | 1,589,063.87 | 0.00 | 38,278.12 | 1,550,785.75 | 0.0000% |
 
-All liquid under closing ice in both arms was on newly covered cells. The fix
-increased the overlap by 3,239.63 km³, or 0.4213 percentage points of global
-liquid storage. Total liquid storage changed by 74.18 km³ (0.0096%).
-Both opening arms exceeded the 1% threshold.
+The opening-geometry overlap rose from 1.3416% to 1.7628%, an increase of
+0.4213 percentage points (3,239.63 km³). Both runs exceeded D4's 1% threshold.
+Closing geometry removed the overlap in both backends. With closing geometry,
+the fix branch held 63,382.53 km³ more liquid than main (+4.15%). The total
+responds to the whole lake solve as the glacier surface changes spill passes
+and routing. The four runs measure the combined patch on one step of one
+seed.
 
-| Backend | Lake residual (m³ water) | Land residual (m³ water) | Glacier residual (m³ ice) | Step time (s) | Peak RSS (GiB) |
+| Backend and geometry | Lake residual (m³ water) | Land residual (m³ water) | Glacier residual (m³ ice) | Step time (s) | Peak RSS (GiB) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Main | −511 | −738 | +1,516 | 50.73 | 0.84 |
-| Fix branch | −190 | −993 | +390 | 48.89 | 0.77 |
+| Main, opening | -511 | -738 | +1,516 | 50.73 | 0.84 |
+| Fix branch, opening | -190 | -993 | +390 | 48.89 | 0.77 |
+| Main, closing | -480 | +1,731 | +1,516 | 49.73 | 0.82 |
+| Fix branch, closing | -477 | +1,795 | +390 | 48.35 | 0.79 |
 
-Neither arm transferred a lake cap. The timings are from runs with other
-simulations active and do not establish a runtime change.
+Cap transfer was zero in all four replays. The nonzero transfers are exercised
+by the regression tests. Other simulations were active during these replays,
+so the timings do not establish a runtime change. The unrounded values are in
+[comparison.json](comparison.json).
