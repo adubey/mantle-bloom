@@ -132,7 +132,7 @@ function PhaseLinks({ phase }: { phase: string }) {
   const links = phaseLinks(phase);
   if (links.length === 0) return null;
   return (
-    <div style={{ fontSize: 12, marginTop: 4 }}>
+    <div style={{ fontSize: 12 }}>
       <span style={{ opacity: 0.7 }}>Learn more: </span>
       {links.map((link, i) => (
         <span key={link.url}>
@@ -177,14 +177,16 @@ function StepProgressPanel({
   if (!stepProgress && !learnMorePhase) return null;
   return (
     <div style={{ marginBottom: 12 }}>
-      {stepProgress && (
-        <ProgressBar
-          label="Advance in progress"
-          text={`Advance in progress: ${stepProgress.group ? `${groupName(stepProgress.group)} · ` : ""}${stepProgress.phase}`}
-          fraction={stepProgress.fraction}
-        />
-      )}
       {learnMorePhase && <PhaseLinks phase={learnMorePhase} />}
+      {stepProgress && (
+        <div style={{ marginTop: learnMorePhase ? 4 : 0 }}>
+          <ProgressBar
+            label="Advance in progress"
+            text={`Advance in progress: ${stepProgress.group ? `${groupName(stepProgress.group)} · ` : ""}${stepProgress.phase}`}
+            fraction={stepProgress.fraction}
+          />
+        </div>
+      )}
     </div>
   );
 }

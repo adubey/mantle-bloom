@@ -136,4 +136,43 @@ describe("createPhaseDwellQueue", () => {
       { phase: null, at: 200 },
     ]);
   });
+
+  it("prunes expired entries before deduplicating so a delayed timer advances straight to C", () => {
+    let currentMs = 0;
+    let pendingTimer: (() => void) | null = null;
+    const history: Array<{ phase: string | null; at: number }> = [];
+
+    const controller = createPhaseDwellQueue({
+      onPhaseChange: (phase) => history.push({ phase, at: currentMs }),
+      hasLinks: () => true,
+      dwellMs: 1000,
+      maxLagMs: 2000,
+      now: () => currentMs,
+      setTimer: (fn) => {
+        pendingTimer = fn;
+        return 1 as unknown as ReturnType<typeof setTimeout>;
+      },
+      clearTimer: () => {
+        pendingTimer = null;
+      },
+    });
+
+    controller.update("A");
+    currentMs = 100;
+    controller.update("B");
+    // Simulate a delayed timer callback: B expires before A and C arrive.
+    currentMs = 2500;
+    controller.update("A");
+    currentMs = 2510;
+    controller.update("C");
+
+    const fire = pendingTimer!;
+    pendingTimer = null;
+    fire();
+
+    assert.deepEqual(history, [
+      { phase: "A", at: 0 },
+      { phase: "C", at: 2510 },
+    ]);
+  });
 });

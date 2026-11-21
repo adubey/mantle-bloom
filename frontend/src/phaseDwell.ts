@@ -67,6 +67,9 @@ export function createPhaseDwellQueue({
     if (disposed) return;
     const t = now();
     expungeStale(t);
+    while (queue.length > 0 && queue[0].phase === displayed) {
+      queue.shift();
+    }
     if (queue.length > 0) {
       const next = queue.shift()!;
       show(next.phase);
@@ -101,10 +104,10 @@ export function createPhaseDwellQueue({
       return;
     }
 
+    expungeStale(t);
     const tailPhase = queue.length > 0 ? queue[queue.length - 1].phase : displayed;
     if (nextPhase === tailPhase) return;
 
-    expungeStale(t);
     queue.push({ phase: nextPhase, enqueuedAt: t });
   };
 
