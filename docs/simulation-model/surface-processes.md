@@ -574,7 +574,7 @@ more strongly or weakly. These are calibration controls, not new physical laws.
 
 The long-run land budget is a tug-of-war between a handful of erosion, deposition, uplift and
 volcanism processes whose individual hard-coded rates can't be recalibrated for one seed
-without regressing another. Twelve **dimensionless multipliers** on `World` let the user
+without regressing another. Eighteen **dimensionless multipliers** on `World` let the user
 retune a *live* world and watch the result, via the "Controls" window / `POST /worlds/{world_id}/controls`
 (same immediate-`climate_cache`-recompute path as `sea_level_m`/`solar_multiplier`). Every one
 defaults to `1.0`, and `1.0` is **byte-identical** to the code before the knobs existed (plain
@@ -596,13 +596,19 @@ rejected with a `400`.
 | `collision_uplift_reach_multiplier` | how far the shortening cascade carries a collision into the plate (`shortening.py`'s `reach_scale`); `<1` also weakens the contested-band thickening in proportion | `lithosphere_plate.boundary_context`, `shortening.py` |
 | `contact_drag_multiplier` | the whole RFC 0008 contact brake (relief, craton and jam factors); `0` disables that brake | `torque.contact_drag_pa_s_per_m`'s `contact_gain`, via `world` (#760) |
 | `craton_drag_multiplier` | only the brake's craton component, against the relief term | `torque.contact_drag_pa_s_per_m`'s `craton_gain`, via `world` (#760) |
+| `volcanism_multiplier` | per-step eruption probability **and** metres added per eruption | `volcanism.apply_volcanic_activity` |
+| `craton_formation_multiplier` | the craton formation budget (`cratons.CRATON_FORMATION_RATE_PER_GYR`); `0` forms no new craton | `cratons._formation_picks` (#1001) |
+| `craton_decratonization_multiplier` | the craton area each arriving plume head strips (`cratons.CRATON_PLUME_DECRATONIZATION_RADIUS_KM`, area-wise); `0` strips none | `cratons._decratonize_under_plume_heads` (#1001) |
 
-Neither knob touches the separate blocked-contact resistance in the same solve (RFC 0011's
+Neither braking knob touches the separate blocked-contact resistance in the same solve (RFC 0011's
 capacity from craton strength): `contact_drag_multiplier = 0` disables the RFC 0008 drag, not
-every form of collision resistance. The craton knob is bounded by the brake's own design --
+every form of collision resistance. The craton braking knob is bounded by the brake's own design --
 the craton term is `max`ed against relief and clipped to [0, 1], so values above 1 do nothing
 where relief already dominates or craton strength is saturated.
-| `volcanism_multiplier` | per-step eruption probability **and** metres added per eruption | `volcanism.apply_volcanic_activity` |
+
+The two craton knobs are the exception to "byte-identical to the code before the knobs": they
+arrived with the Earth-like craton budget, so `1.0` is that budget, not the earlier rule that
+formed every qualifying host.
 
 **Mass-conservation caveats.** The erosion terms are scaled where they are computed, so the
 neighbour-drop cap, the transport split and the isostatic bookkeeping downstream all see a
