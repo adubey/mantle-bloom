@@ -47,3 +47,26 @@ variability across seeds or intervals.
 - In the two-step lag fixture the correct newly covered volumes are 3 and
   5 m³. The old probe reported 3 and 8 m³ from the cached state and 5 and
   10 m³ from the compact state. Both save paths now give 3 and 5 m³.
+
+## Baseline result
+
+The opening-geometry arm on `353a37470fb7f821687687b6107c9cf3ab3f18f8`
+reproduced the prior diagnosis with the corrected probe. The comparison uses
+the probe at `32701054` and the baseline worktree's Python environment.
+
+```bash
+<baseline-python> bin/debug/measure_d4_lake_lag.py <save> \
+    --backend <baseline-backend> --opening-ice --myr 0.25 --step-years 250000 \
+    --out <capture>
+```
+
+| Backend and geometry | Total liquid (km³) | Under closing ice (km³) | Glacier margin (km³) | Elsewhere (km³) | Newly covered share |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Main, opening geometry | 768,728.96 | 10,312.99 | 26,742.40 | 731,673.57 | 1.3416% |
+
+All liquid under closing ice in this arm was on newly covered cells. The lake and
+land residuals were −511 and −738 m³ of water, and the glacier residual was
++1,516 m³ of ice. Cap transfer was zero. The step took 50.73 s and peak resident
+memory was 0.84 GiB with other simulations running. This arm verifies the
+baseline above the 1% threshold. The remaining arms will measure the change
+from restoring snowfall feedback.
