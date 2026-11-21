@@ -615,6 +615,58 @@ def test_prognostic_solver_exports_prior_storage_outside_the_lake_hierarchy():
     assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e3)
 
 
+def test_ice_only_closed_root_routes_unstorable_opening_water_to_its_sink():
+    elevation = np.array([0.0])
+    area = np.array([1.0e10])
+    body = lakes.Lake(
+        lake_id=0, members=np.array([0]), floor_elevation=0.0, min_depth=0.0,
+        max_depth=None, outlet_node_idx=0, sink_node_idx=0, outlet_target_idx=-1,
+    )
+    hypsometry = lakes.CellHypsometry(
+        elevation, area, np.zeros(1), float(area[0]), glacier_mask=np.ones(1, dtype=bool),
+    )
+    previous = np.array([1.0])
+    climate = lakes.LakeClimate(np.zeros(1), np.zeros(1), np.zeros(1))
+
+    result = lakes.solve_lakes_prognostic([body], elevation, previous, 1.0, climate, hypsometry)
+
+    expected = area[0] * previous[0]
+    assert result.lake_depth[0] == 0.0
+    assert result.overflow_m3[0] == pytest.approx(expected)
+    assert result.ledger.overflow_out_m3 == pytest.approx(expected)
+    assert result.ledger.storage_change_m3 == pytest.approx(-expected)
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0)
+
+
+def test_uncovered_single_cell_keeps_scalar_depth_update_with_glacier_mask(monkeypatch):
+    elevation = np.array([100.0])
+    area = np.array([1.0e10])
+    body = lakes.Lake(
+        lake_id=0, members=np.array([0]), floor_elevation=80.0, min_depth=80.0,
+        max_depth=1000.0, sink_node_idx=0, outlet_node_idx=0,
+    )
+    hypsometry = lakes.CellHypsometry(
+        elevation, area, np.array([20.0]), float(area[0]), glacier_mask=np.array([False]),
+    )
+    supply = np.array([1.0e9])
+    climate = lakes.LakeClimate(supply, np.array([0.3]), external_supply_m3_per_yr=supply)
+    original_mean_depth = lakes.CellHypsometry.mean_depth
+    mean_depth_calls = []
+
+    def record_mean_depth(self, level, idx):
+        if self is hypsometry:
+            mean_depth_calls.append(np.asarray(idx).copy())
+        return original_mean_depth(self, level, idx)
+
+    monkeypatch.setattr(lakes.CellHypsometry, "mean_depth", record_mean_depth)
+    result = lakes.solve_lakes_prognostic(
+        [body], elevation, np.zeros(1), 10_000.0, climate, hypsometry,
+    )
+
+    assert result.lake_depth[0] > 0.0
+    assert mean_depth_calls == []
+
+
 def test_prognostic_solver_exports_prior_storage_when_hierarchy_is_empty():
     hyps = lakes.CellHypsometry.whole_cells(_SINK_ELEVATION)
     previous = np.zeros(3)
@@ -653,6 +705,49 @@ def test_prognostic_spill_status_unions_substeps():
     assert result.lake_depth[0] < lake.max_depth - _SINK_ELEVATION[0]
     assert result.should_spill[lake.sink_node_idx]
     assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e3)
+
+
+def test_glacier_displacement_uses_the_receiving_lake_on_its_flow_path():
+    surface = np.array([6.0, 2.0, 0.0])
+    lake = lakes.Lake(0, np.array([2]), 0.0, 0.0, None, sink_node_idx=2)
+    area = np.array([2.0, 1.0, 4.0])
+    hyps = lakes.CellHypsometry(surface, area, np.zeros(3), 1.0, np.array([True, False, False]))
+    opening = np.array([3.0, 0.0, 1.0])
+    climate = lakes.LakeClimate(np.zeros(3), np.zeros(3))
+
+    result = lakes.solve_lakes_prognostic(
+        [lake], surface, opening, 1.0, climate, hyps, displaced_water_targets=np.array([1, 2, -1]),
+    )
+    np.testing.assert_allclose(result.lake_depth, [0.0, 0.0, 2.5])
+    assert result.ledger.external_supply_m3 == 0.0
+    assert result.ledger.overflow_out_m3 == 0.0
+    assert result.ledger.residual_m3 == pytest.approx(0.0)
+
+
+def test_glacier_covered_leaf_spills_into_a_wet_sibling_without_storing_water():
+    surface = np.array([2.0, 0.0, 5.0])
+    ice = lakes.Lake(
+        lake_id=0, members=np.array([0]), floor_elevation=2.0, min_depth=2.0,
+        max_depth=5.0, sink_node_idx=0, outlet_node_idx=0, outlet_target_idx=1,
+    )
+    exposed = lakes.Lake(
+        lake_id=1, members=np.array([1, 2]), floor_elevation=0.0, min_depth=0.0,
+        max_depth=5.0, sink_node_idx=1, outlet_node_idx=1, outlet_target_idx=0,
+    )
+    parent = lakes.Lake(
+        lake_id=2, members=np.arange(3), floor_elevation=0.0, min_depth=5.0,
+        max_depth=None, children=[ice, exposed],
+    )
+    hyps = lakes.CellHypsometry(surface, np.ones(3), np.zeros(3), 1.0, np.array([True, False, False]))
+    opening = np.array([2.0, 4.0, 0.0])
+    climate = lakes.LakeClimate(np.zeros(3), np.zeros(3))
+
+    result = lakes.solve_lakes_prognostic([parent], surface, opening, 1.0, climate, hyps)
+    assert result.lake_depth[0] == 0.0
+    assert result.lake_depth[1] >= 5.0
+    assert result.lake_depth.sum() == pytest.approx(opening.sum())
+    assert result.ledger.overflow_out_m3 == 0.0
+    assert result.ledger.residual_m3 == pytest.approx(0.0)
 
 
 def test_prognostic_depth_capped_siblings_break_a_closed_spill_cycle():

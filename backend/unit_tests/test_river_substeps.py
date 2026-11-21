@@ -132,6 +132,34 @@ def test_uplift_bound_relief_is_the_rise_since_the_last_erosion_pass():
     np.testing.assert_allclose(lowered.extra_cut_m, np.clip(base - 7.0, 0.0, None))
 
 
+def test_march_reroute_uses_glacier_aware_lake_terrain(monkeypatch):
+    world = _small_world()
+    step_world(world, 100_000)
+    hydro = world.hydrology_cache
+    glacier_depth = np.zeros_like(hydro.elevation)
+    land = np.flatnonzero(~hydro.is_ocean)
+    glacier_depth[land[0]] = hydrology.GLACIER_VISIBLE_DEPTH_M
+    hydro.glacier_depth = glacier_depth
+    seen = {}
+    original = hydrology._lake_terrain
+
+    def capture(bed, glacier, areas, neighbor_idx):
+        seen["glacier_depth"] = glacier.copy()
+        hypsometry = original(bed, glacier, areas, neighbor_idx)
+        seen["glacier_mask"] = hypsometry.glacier_mask.copy()
+        return hypsometry
+
+    monkeypatch.setattr(hydrology, "_lake_terrain", capture)
+    river_substeps._reroute(
+        world, hydro, hydro.elevation, np.zeros_like(hydro.elevation), np.zeros_like(hydro.elevation),
+        np.zeros_like(hydro.elevation), 100_000.0, hydro.lake_depth + hydro.lake_ice_m,
+        hydro.hypsometry.area_m2,
+    )
+
+    np.testing.assert_array_equal(seen["glacier_depth"], glacier_depth)
+    assert seen["glacier_mask"][land[0]]
+
+
 def test_a_one_slice_march_is_the_baseline_bit_for_bit():
     baseline = surface_parity.state_hash(_run("off"))
     assert surface_parity.state_hash(_run("march:1")) == baseline

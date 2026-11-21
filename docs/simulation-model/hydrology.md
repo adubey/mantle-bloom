@@ -277,9 +277,10 @@ discharge, channel-width growth, deposition, geology or lake silt.
 - **Prognostic lake storage** (`lakes.solve_lakes_prognostic`, issue #588): lakes use real
   water-balance units and integrate water volume, liquid and lake ice together, through the
   timestep over the hierarchy.
-  Inflow is the full wet share of precipitation on the lagged wet area (rain plus snow;
-  wet snow has no glacier to join and no D4 cap hand-off yet, so it enters as liquid
-  and is booked as in-step snowmelt in the ice ledger). Dry
+  Inflow is the full wet share of precipitation on the lagged wet area (rain plus snow).
+  Frozen-season wet snow can join the lake-ice cap; a visibly glaciated cell instead hands
+  its cap to grounded glacier ice, with the same water-equivalent mass recorded in both
+  systems' ledgers (#990). Dry
   runoff transit losses use a fixed per-node
   fraction at a 100 kyr reference step (`hydrology.river_transit_loss_fraction`), scaled by each
   cell's dry fraction. Glacier melt keeps the existing full per-node transit loss. The breach
@@ -497,8 +498,9 @@ al.'s fill-spill-merge family), adapted from a regular grid to this codebase's k
   -- both are "reaching the top of the basin," one spilling to another basin, the other to the
   sea.
 
-Each step, `compute_hydrology` builds this hierarchy fresh from current terrain
-(`lakes.build_lake_hierarchy`, bare `elevation`) and reuses the same tree for initial routing,
+Each step, `compute_hydrology` builds this hierarchy fresh from current hydraulic terrain
+(`lakes.build_lake_hierarchy`, using closing glacier surfaces when enabled and rock-bed
+sub-cell relief) and reuses the same tree for initial routing,
 lake integration and final spill metadata. External sources route to leaf sinks with those sinks
 held terminal. `lakes.solve_lakes_prognostic` advances stored volume through the timestep using
 an implicit update for evaporation and sublimation. It promotes siblings when the integrated
@@ -509,6 +511,10 @@ persisted per-node `lake_depth` and `lake_ice_m`, not matching freshly rebuilt t
 member overlap.
 
 **Lake ice is a separate water-equivalent reservoir (RFC 0014 D2(c), #632, #757).** `lake_ice_m` is a persistent extensive surface field, stored apart from liquid `lake_depth`. Floating ice displaces its own mass of water, so the lake solve opens each step with liquid and ice together as one water column, and charges open-water evaporation and ice-season sublimation against that column. The readers of last step's lake before the solve (wet area for rain, water-surface temperature, spill routing, river reaches, the breach surge's lake size) read the same column, so a lake frozen to its bed still counts as a lake. `advance_lake_ice` then splits the solved column between ice and liquid. The ice layer's thickness follows Stefan freezing-degree growth against positive-degree melt and sublimation thinning, `dh/dt = q/h − loss`, from its prior thickness. Physical thickness is capped at 2 m (the 0.917 ice-to-water density ratio converts this to 1.834 m water equivalent) and by the column itself, so a cell the solve leaves dry keeps no ice. At production rates the layer settles within about a century, so a step of millennia ends it at equilibrium whatever its prior thickness. Only the net exchange between ice and liquid is booked per cell, as freezing or melting, so `freezing_m3` and `melting_m3` are far smaller than the gross seasonal throughput booked before #757; compare them only across builds on the same side of that change. Sublimation is booked once, by the solve, which keeps it in one water balance with evaporation and supply (#754). `lake_water_ledger` reports liquid and ice storage changes, evaporation and sublimation, and closes the liquid and ice sub-budgets separately as well as combined. Sublimation sits in the liquid budget, because ice lost at the surface is replaced by liquid freezing beneath. The 2 m cap is an owner-selected empirical assumption for non-permafrost lakes, not a ground-heat or permafrost calculation. Existing saves default the field to zero through the surface-field registry.
+
+**Lake caps hand off to glaciers by mass ([RFC 0015 D4](../../rfc/0015-frozen-water-in-physical-units.md#d4-lakes-that-freeze-and-lakes-under-ice-with-rfc-0014)).** Snow over the wet fraction during freezing conditions adds to the cap within its thickness and water-depth bounds. The remaining wet precipitation supplies the lake. Snow on a cap frozen to bed can feed the glacier. A visible glacier takes the cap it covers, and a bare cap frozen to bed joins the glacier when the glacier's accumulation at that thickness covers its melt. The transfer clears the cap and converts its water-equivalent depth to physical ice depth using the ice-to-water density ratio. The lake ledger reports the water-equivalent volume leaving, and the glacier ice ledger reports the matching volume of ice received.
+
+Visible glacier ice raises the terrain used for the lake hierarchy, hypsometry, and flow directions. Its surface can form a spill pass, while its footprint contributes no lake volume or wet area. Precipitation uses the opening geometry, and the lake hierarchy and liquid routing use the closing glacier surface. The #990 diagnosis found that opening geometry left 1.76% of global liquid lake volume under newly advanced ice in a single step, above D4's 1% rebuild threshold. The closing geometry makes the lake solve move that displaced water through storage or spill in the same step.
 
 **Lakes accumulate silt.** `silt_depth` (a persistent per-node field, carried exactly like `lake_depth`) is a
 small volume fraction (`SILT_ACCUMULATION_COEFFICIENT`, m^3 of silt per m^3 of water) of each
@@ -795,8 +801,8 @@ every day of the year.
 `A` covers the threshold, clipped to all-snow/all-rain outside it, with a continuous ramp
 around the threshold where the amplitude vanishes (a zero-tilt world). Each cell's
 precipitation splits once, into parts that sum to it (`hydrology.glacier_rain_partition_mm`):
-the lake takes the wet share (rain plus snow, booked as in-step snowmelt), and on the
-dry share the ice-covered part's snow is glacier
+the lake takes the wet share of rain and snow, with frozen-season snowfall able to add
+cap mass. On the dry share the ice-covered part's snow is glacier
 accumulation (by mass) while its rain runs off the ice, and the bare part's snow melts where
 it falls within the step while its rain runs off. The split reads the opening ice cover (a
 one-step lag on the cover only). It doesn't freeze liquid water: rivers, lakes and the water

@@ -281,16 +281,29 @@ def _reroute(world, hydro, elevation, channel, cover, notch, remaining_years, so
         water=getattr(hydro, "breach_water_balance", None), prior_notch_m=notch, mobile_cover_m=cover,
     )
     interface = breaching.interface_pass_elevation(breach.passage_m, neighbor_idx)
-    forest = lakes.build_lake_hierarchy(elevation, is_ocean, neighbor_idx, interface_pass_elevation=interface)
-    hypsometry = lakes.CellHypsometry.from_terrain(elevation, areas, neighbor_idx)
-    filled, spill_target, _ = lakes.compute_spill_routing(forest, elevation, solved_water_m, hypsometry)
+    glacier_depth = np.asarray(hydro.glacier_depth, dtype=float)
+    if glacier_depth.shape != np.asarray(elevation).shape:
+        glacier_depth = np.zeros_like(elevation, dtype=float)
+    hypsometry = hydrology._lake_terrain(elevation, glacier_depth, areas, neighbor_idx)
+    lake_elevation = hypsometry.elevation
+    lake_interface = hydrology._lake_interface_pass(hypsometry, neighbor_idx, interface)
+    forest = lakes.build_lake_hierarchy(
+        lake_elevation, is_ocean, neighbor_idx, interface_pass_elevation=lake_interface
+    )
+    filled, spill_target, _ = lakes.compute_spill_routing(forest, lake_elevation, solved_water_m, hypsometry)
     offset = np.zeros(len(elevation))
-    wet = np.flatnonzero(solved_water_m > 0.0)
+    exposed_water = solved_water_m > 0.0
+    if hypsometry.glacier_mask is not None:
+        exposed_water &= ~hypsometry.glacier_mask
+    wet = np.flatnonzero(exposed_water)
     if len(wet):
-        offset[wet] = hypsometry.level_from_depth(solved_water_m[wet], wet) - elevation[wet]
-    flow_target, _ = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, offset, filled, spill_target, channel)
+        offset[wet] = hypsometry.level_from_depth(solved_water_m[wet], wet) - lake_elevation[wet]
+    flow_target, _ = hydrology._compute_flow_direction(
+        lake_elevation, is_ocean, neighbor_idx, offset, filled, spill_target, channel
+    )
     routed = hydrology.route_downstream(
-        elevation, is_ocean, flow_target, hydro.river_source_m3_per_yr, loss_fraction=getattr(hydro, "river_transit_loss", None)
+        lake_elevation, is_ocean, flow_target, hydro.river_source_m3_per_yr,
+        loss_fraction=getattr(hydro, "river_transit_loss", None),
     )
     discharge = np.where(is_ocean, routed.deposited, routed.through_flux) / hydrology.SECONDS_PER_YEAR
     return flow_target, discharge, breach

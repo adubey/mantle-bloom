@@ -310,8 +310,14 @@ class SurfaceClimate:
         thickness = np.clip(np.asarray(thickness_m, dtype=float), 0.0, None)
         surface_c = self.temperature_c - LAPSE_RATE_C_PER_KM * thickness / 1000.0
         to_ice = RHO_WATER / RHO_ICE
-        snows = snow_fraction(surface_c, self.seasonal_amplitude_c)
-        snow_we = snows * np.asarray(self.precipitation_mm, dtype=float) * 1.0e-3
+        if self.dry_snow_mm is None:
+            snows = snow_fraction(surface_c, self.seasonal_amplitude_c)
+            snow_we = snows * np.asarray(self.precipitation_mm, dtype=float) * 1.0e-3
+        else:
+            # Hydrology has already partitioned this dry-share snow on the opening
+            # surface. Reapplying the lapse-corrected snow fraction drops part of a
+            # bed-frozen lake's transferred snowfall from both ledgers (#990 review).
+            snow_we = np.maximum(np.asarray(self.dry_snow_mm, dtype=float), 0.0) * 1.0e-3
         pdd = 365.25 * hydrology.seasonal_positive_degrees(surface_c, self.seasonal_amplitude_c, 0.0)
         snow_capacity = DDF_SNOW_MM_WATER_PER_DAY_K * 1.0e-3 * pdd
         snow_melt = np.minimum(snow_we, snow_capacity)
@@ -618,7 +624,7 @@ class IceLedger:
     """The world's glacier-ice budget for one step (m^3 of ice). `opening_m3` is last step's
     glacier_depth and `closing_m3` the ice after the solve, which is next step's opening.
     `snow_melted_m3` is snowfall on ice-free ground that melts within the step and never joins
-    the ice.
+    the ice. `lake_cap_transfer_m3` is physical ice added from a lake cap after the march (#990).
 
     `frozen_lake_m3`, `frozen_river_ice_m3` and `frozen_river_capped_m3` are always 0: liquid
     water no longer freezes into the ice (RFC 0014 D2(b), #539). They stay so older code and
@@ -643,6 +649,7 @@ class IceLedger:
     capped_m3: float = 0.0
     capped_nodes: int = 0
     frozen_river_capped_m3: float = 0.0
+    lake_cap_transfer_m3: float = 0.0
 
     @property
     def meltwater_m3(self) -> float:
@@ -655,7 +662,8 @@ class IceLedger:
     @property
     def residual_m3(self) -> float:
         return (
-            self.opening_m3 + self.frozen_lake_m3 + self.accumulation_m3 - self.surface_melt_m3 - self.basal_melt_m3
+            self.opening_m3 + self.frozen_lake_m3 + self.lake_cap_transfer_m3 + self.accumulation_m3
+            - self.surface_melt_m3 - self.basal_melt_m3
             - self.calved_m3 - self.overflow_m3 - self.capped_m3 - self.closing_m3
         )
 
@@ -690,6 +698,7 @@ class GlacierWaterLedger:
     closing_m3: float
     # The opening came from the model ice this step, so it is initial state, not a prior closing.
     initialized_from_ice: bool
+    lake_cap_transfer_m3: float = 0.0
 
     @property
     def release_m3(self) -> float:
@@ -707,7 +716,7 @@ class GlacierWaterLedger:
 
     @property
     def residual_m3(self) -> float:
-        return self.closing_m3 - self.opening_m3 - self.frozen.retained_m3 + self.release_m3
+        return self.closing_m3 - self.opening_m3 - self.frozen.retained_m3 - self.lake_cap_transfer_m3 + self.release_m3
 
 
 def update_glacier_water_account(
@@ -727,6 +736,7 @@ def update_glacier_water_account(
     lost = melt + ledger.calved_m3 + ledger.overflow_m3 + ledger.capped_m3
     fraction = min(lost / ledger.opening_m3, 1.0) if ledger.opening_m3 > 0.0 else 0.0
     balance = opening + frozen.retained_m3
+    lake_cap_transfer_m3 = ledger.lake_cap_transfer_m3 * RHO_ICE / RHO_WATER
     per_ice_m3 = fraction * balance / lost if lost > 0.0 else 0.0
     released = {
         "melt_release_m3": per_ice_m3 * melt,
@@ -737,8 +747,9 @@ def update_glacier_water_account(
     return GlacierWaterLedger(
         opening_m3=float(opening),
         frozen=frozen,
-        closing_m3=float(max(balance - sum(released.values()), 0.0)),
+        closing_m3=float(max(balance - sum(released.values()), 0.0) + lake_cap_transfer_m3),
         initialized_from_ice=initialized,
+        lake_cap_transfer_m3=lake_cap_transfer_m3,
         **{key: float(value) for key, value in released.items()},
     )
 

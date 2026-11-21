@@ -259,7 +259,8 @@ class LakeStepLedger:
 
     `evaporation_m3` is open-water loss and `sublimation_m3` is ice-season loss; the lake solve
     charges both against the water column (#757). `freezing_m3` and `melting_m3` are the net
-    exchange between the ice layer and liquid."""
+    phase exchange, `cap_snowfall_m3` is new snow still in the cap, and
+    `glacier_transfer_m3` leaves the lake ice reservoir for glacier ice (#990)."""
 
     external_supply_m3: float
     evaporation_m3: float
@@ -276,6 +277,8 @@ class LakeStepLedger:
     freezing_m3: float = 0.0
     melting_m3: float = 0.0
     river_storage_m3: float = 0.0
+    glacier_transfer_m3: float = 0.0
+    cap_snowfall_m3: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -406,6 +409,24 @@ def _record_body_transitions(previous_bodies, current_bodies, events, seen_event
             if key not in seen_events:
                 events.append(LakeEvent("split", len(body.members), body.min_depth, len(body.children)))
                 seen_events.add(key)
+
+
+def _receive_displaced_opening_water(depth, hypsometry, leaf_of_node, targets):
+    """Send water from a glaciated cell that left a basin into the next lake on its path."""
+    if targets is None or hypsometry.glacier_mask is None:
+        return
+    area = hypsometry.area_m2
+    displaced = np.flatnonzero(hypsometry.glacier_mask & (leaf_of_node < 0) & (depth > 0.0))
+    for origin in displaced:
+        seen = {int(origin)}
+        node = int(targets[origin])
+        while 0 <= node < len(targets) and node not in seen:
+            if leaf_of_node[node] >= 0 and area[node] > 0.0:
+                depth[node] += depth[origin] * area[origin] / area[node]
+                depth[origin] = 0.0
+                break
+            seen.add(node)
+            node = int(targets[node])
 
 
 def _export_orphaned_storage(depth, area_m2, leaf_of_node, is_ocean, accounting):
@@ -636,8 +657,14 @@ def _record_tier_cap_overflow(accounting, body, is_sea, overflow, tier_cap_limit
         accounting.lake_cap_overflow_m3 += overflow
 
 
+def _ice_only(body, hypsometry):
+    return hypsometry.glacier_mask is not None and np.all(hypsometry.glacier_mask[body.members])
+
+
 def _cap_is_artificial(body, prev_lake_depth, node_area_km2, hypsometry):
-    """Whether a body's active cap is a numerical limit, not the real rim it could spill over."""
+    """Whether a body's active cap prevents it from storing water up to its rim."""
+    if _ice_only(body, hypsometry):
+        return True
     rim = body.max_depth if body.max_depth is not None else np.inf
     _, tier_depth = _classify_tier(body.members, prev_lake_depth, node_area_km2)
     cap = min(rim, body.floor_elevation + tier_depth)
@@ -747,6 +774,10 @@ def _book_body_losses(accounting, lost, members, level, dt_step, evaporation, su
 
 def _integrate_body_volume(available, members, cap_level, dry_level, dt_step, evaporation, sublimation, hypsometry):
     """Implicitly integrate storage against level-dependent lake losses for one slice."""
+    if hypsometry.glacier_mask is not None:
+        members = members[~hypsometry.glacier_mask[members]]
+        if not len(members):
+            return 0.0, 0.0, available, dry_level
     if len(members) == 1:
         node = int(members[0])
         area = float(hypsometry.area_m2[node])
@@ -955,7 +986,12 @@ def _advance_prognostic_body(
         accounting, lost_volume, members, new_level, accounting.slice_years, evaporation, sublimation, hypsometry
     )
     _record_tier_cap_overflow(accounting, body, is_sea, overflow, tier_cap_limits_body)
-    if len(members) == 1:
+    # Keep the original scalar inverse for uncovered one-cell lakes; changing its rounding
+    # can flip the saddle merge test back and forth over a long run (#990).
+    single_cell_uncovered = len(members) == 1 and (
+        hypsometry.glacier_mask is None or not hypsometry.glacier_mask[members[0]]
+    )
+    if single_cell_uncovered:
         node = int(members[0])
         z = float(hypsometry.elevation[node])
         relief = float(hypsometry.relief_m[node])
@@ -984,9 +1020,15 @@ def _advance_prognostic_body(
     while body.is_spilling:
         leaf_id = int(leaf_of_node[target]) if 0 <= target < node_count else -1
         receiver = body_for_leaf.get(leaf_id)
-        if receiver is None or receiver is body:
+        if receiver is None or (receiver is body and route_source is body):
             break
         if id(receiver) in traversed:
+            if _ice_only(route_source, hypsometry) or _ice_only(receiver, hypsometry):
+                # Revisit the surplus after checking whether the exposed sibling has
+                # now reached the saddle. The merged body may still hold it (#990).
+                held = accounting.cycle_surplus.setdefault(leaf_id, _CycleSurplus(0.0, route_source, receiver))
+                held.volume += overflow
+                return
             # Depth caps can bind below a sibling saddle. In that case two capped siblings
             # cannot merge, and their outlet edges form a closed hierarchy cycle. Export this
             # cap surplus once instead of circulating it through zero-duration flush passes.
@@ -1023,11 +1065,26 @@ def _advance_prognostic_body(
         route_source = receiver
         target = receiver.outlet_target_idx
     accounting.overflow_out_total += overflow
+    target = _overflow_outlet_target(target, route_source, body_leaf_ids, body_for_leaf, node_count)
     _trace_transfer(accounting, route_source, None, target, overflow, internal=False, depth=depth)
     if 0 <= target < node_count:
         accounting.overflow_by_outlet[target] += overflow
         if is_ocean is not None and bool(is_ocean[target]):
             accounting.ocean_overflow_total += overflow
+
+
+def _overflow_outlet_target(target, source, body_leaf_ids, body_for_leaf, node_count):
+    """Use a named sink when a closed glacier body has no topographic outlet (#990)."""
+    if 0 <= target < node_count:
+        return target
+    target = int(source.sink_node_idx)
+    if 0 <= target < node_count:
+        return target
+    for leaf_id in body_leaf_ids[id(source)]:
+        candidate = int(body_for_leaf[leaf_id].sink_node_idx)
+        if 0 <= candidate < node_count:
+            return candidate
+    return target
 
 
 def _release_broken_cycles(accounting, active_bodies):
@@ -1325,6 +1382,7 @@ def solve_lakes_prognostic(
     stop_on_settle: bool = True,
     is_ocean: np.ndarray | None = None,
     diagnostic_trace: bool = False,
+    displaced_water_targets: np.ndarray | None = None,
 ) -> LakeSolveResult:
     """Integrate lake storage over this timestep, promoting and splitting bodies as water
     crosses hierarchy saddles (#588).
@@ -1372,6 +1430,7 @@ def solve_lakes_prognostic(
 
     total_initial = float((depth * hypsometry.area_m2).sum())
     accounting = _new_prognostic_accounting(len(leaves), n, diagnostic_trace)
+    _receive_displaced_opening_water(depth, hypsometry, leaf_of_node, displaced_water_targets)
     _export_orphaned_storage(depth, hypsometry.area_m2, leaf_of_node, is_ocean, accounting)
     events: list[LakeEvent] = []
     seen_events: set[tuple[int, str]] = set()
@@ -1538,6 +1597,7 @@ class CellHypsometry:
     area_m2: np.ndarray
     relief_m: np.ndarray
     reference_area_m2: float
+    glacier_mask: np.ndarray | None = None
 
     @classmethod
     def whole_cells(cls, elevation: np.ndarray) -> "CellHypsometry":
@@ -1554,6 +1614,10 @@ class CellHypsometry:
 
     def dry_level(self, idx: np.ndarray) -> float:
         """The lowest ground among `idx`: the level at which they hold no water at all."""
+        if self.glacier_mask is not None:
+            exposed = idx[~self.glacier_mask[idx]]
+            if len(exposed):
+                idx = exposed
         return float((self.elevation[idx] - self.relief_m[idx]).min())
 
     def mean_depth(self, level: float, idx: np.ndarray) -> np.ndarray:
@@ -1561,13 +1625,15 @@ class CellHypsometry:
         r = self.relief_m[idx]
         above_low = np.clip(level - (z - r), 0.0, None)
         partial = np.divide(above_low * above_low, 4.0 * r, out=np.zeros_like(z), where=r > 0.0)
-        return np.where(level >= z + r, np.clip(level - z, 0.0, None), partial)
+        depth = np.where(level >= z + r, np.clip(level - z, 0.0, None), partial)
+        return depth if self.glacier_mask is None else np.where(self.glacier_mask[idx], 0.0, depth)
 
     def wet_fraction(self, level: float | np.ndarray, idx: np.ndarray) -> np.ndarray:
         z = self.elevation[idx]
         r = self.relief_m[idx]
         partial = np.divide(level - (z - r), 2.0 * r, out=np.zeros_like(z), where=r > 0.0)
-        return np.where(level >= z + r, (level > z - r).astype(float), np.clip(partial, 0.0, 1.0))
+        wet = np.where(level >= z + r, (level > z - r).astype(float), np.clip(partial, 0.0, 1.0))
+        return wet if self.glacier_mask is None else np.where(self.glacier_mask[idx], 0.0, wet)
 
     def volume(self, level: float, idx: np.ndarray) -> float:
         return float((self.mean_depth(level, idx) * self.area_m2[idx]).sum())
@@ -1577,11 +1643,12 @@ class CellHypsometry:
 
     def level_from_depth(self, depth: np.ndarray, idx: np.ndarray) -> np.ndarray:
         """The level that gives each cell its mean water depth (inverse of `mean_depth`, for
-        depth > 0)."""
+        depth > 0). Glacier-covered cells have no lake column, so return their surface level."""
         z = self.elevation[idx]
         r = self.relief_m[idx]
         depth = np.clip(np.asarray(depth, dtype=float), 0.0, None)
-        return np.where(depth >= r, z + depth, z - r + np.sqrt(4.0 * r * depth))
+        level = np.where(depth >= r, z + depth, z - r + np.sqrt(4.0 * r * depth))
+        return level if self.glacier_mask is None else np.where(self.glacier_mask[idx], z, level)
 
     def level_for_volume(self, target_m3: float, idx: np.ndarray, low: float, high: float) -> float:
         """The level in `[low, high]` holding `target_m3` of water. Volume is increasing and
@@ -2113,6 +2180,13 @@ def _already_merged(
         floor_idx = child.sink_node_idx
         if floor_idx < 0:
             floor_idx = int(child.members[np.argmin(elevation[child.members])])
+        # An ice-only branch does not store water up to its saddle. For a mixed branch,
+        # recover the lake level from the lowest exposed cell (#990).
+        if hyps.glacier_mask is not None and hyps.glacier_mask[floor_idx]:
+            exposed = child.members[~hyps.glacier_mask[child.members]]
+            if not len(exposed):
+                continue
+            floor_idx = int(exposed[np.argmin(elevation[exposed])])
         # One cell's `dry_level` / `level_from_depth`, on scalars: the lake march asks this
         # of every hierarchy node several times a slice (#147).
         z = hyps.elevation[floor_idx]
