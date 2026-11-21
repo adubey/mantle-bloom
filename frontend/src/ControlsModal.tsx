@@ -8,7 +8,6 @@ interface Props {
   iceAgePeriodYears: number;
   simulatePlateMovement: boolean;
   simulateClimateBiomes: boolean;
-  formNewCratons: boolean;
   windModel: string;
   faultDeformationMode: string;
   splitMethod: SplitMethod;
@@ -19,7 +18,6 @@ interface Props {
   onIceAgePeriodChange: (v: number) => void;
   onSimulatePlateMovementChange: (v: boolean) => void;
   onSimulateClimateBiomesChange: (v: boolean) => void;
-  onFormNewCratonsChange: (v: boolean) => void;
   onWindModelChange: (v: string) => void;
   onFaultDeformationModeChange: (v: string) => void;
   onSplitMethodChange: (v: SplitMethod) => void;
@@ -72,6 +70,8 @@ const TUNING_GROUPS: { heading: string; tab: TabKey; knobs: { key: TuningKey; la
       { key: "contact_drag_multiplier", label: "Collision braking — all contacts" },
       { key: "craton_drag_multiplier", label: "Collision braking — craton only" },
       { key: "volcanism_multiplier", label: "Volcanism" },
+      { key: "craton_formation_multiplier", label: "Craton formation rate" },
+      { key: "craton_decratonization_multiplier", label: "Craton loss to plume heads" },
     ],
   },
 ];
@@ -118,7 +118,6 @@ export default function ControlsModal({
   iceAgePeriodYears,
   simulatePlateMovement,
   simulateClimateBiomes,
-  formNewCratons,
   windModel,
   faultDeformationMode,
   splitMethod,
@@ -129,7 +128,6 @@ export default function ControlsModal({
   onIceAgePeriodChange,
   onSimulatePlateMovementChange,
   onSimulateClimateBiomesChange,
-  onFormNewCratonsChange,
   onWindModelChange,
   onFaultDeformationModeChange,
   onSplitMethodChange,
@@ -425,22 +423,6 @@ export default function ControlsModal({
                 Books every step phase's crust and mantle-lithosphere change into the world's
                 phase budget (see python -m app.phase_budget_diagnostics). Debug-only; slows
                 stepping a little.
-              </div>
-            </div>
-
-            <div style={{ borderTop: "1px solid #333", paddingTop: 14, marginTop: 14 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={formNewCratons}
-                  onChange={(e) => onFormNewCratonsChange(e.target.checked)}
-                />
-                Form new cratons
-              </label>
-              <div style={{ fontSize: 11, color: "#999", marginTop: 8 }}>
-                {formNewCratons
-                  ? "On: continental interiors that stay quiet for 200 Myr become craton, so the cratonic share grows, by about 30% of the craton volume per Gyr."
-                  : "Off (Earth today): no new cratons form, so existing ones only thin, by roughly 13% of their volume per Gyr; their area stays about the same."}
               </div>
             </div>
 

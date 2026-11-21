@@ -5,27 +5,24 @@ Generates `--seed` at node density 1, steps it `--steps` times by `--step-myr`, 
 `--snapshot-every` steps appends one JSON line to `--out` with:
 
 - the live craton inventory (volume, area, share of genuine continental area, core count);
-- the cumulative craton ledger: formed, each sink account, and the balance error;
+- the cumulative craton ledger: formed, each sink account, the formed and decratonized area
+  counters, and the balance error;
 - area-weighted plate speed |omega x r| over continental and oceanic nodes and overall, in
   cm/yr (the measure #942 uses), plus the plate count.
 
-`--form-new-cratons on|off` sets `World.form_new_cratons` after generation (or after
-`--resume`); `default` leaves the model default, which is also the only choice that works on
-a checkout from before the flag existed. The glacier march is off unless `--glacier-march`,
-as on a world the UI creates: marched steps cost minutes each.
+`--formation-multiplier` and `--decratonization-multiplier` set
+`World.craton_formation_multiplier` and `World.craton_decratonization_multiplier` after
+generation (or after `--resume`); left out, the model defaults (1.0) stand. The glacier march
+is off unless `--glacier-march`, as on a world the UI creates: marched steps cost minutes each.
 
-Formation-on and formation-off arms step identically until some host first qualifies to
-form, so one seed's two arms can share a prefix: run the on arm with `--save-at-myr` just
-before formation can start, then `--resume` the off arm from that save. The shared prefix is
-valid only if `formed_m3` is still 0 in the save, which the resumed run checks. Run each arm
-in its own process, one after another, for example:
+`--save-at-myr` saves the world partway, and `--resume` continues a save, refusing one whose
+seed differs. With `--require-no-formation`, it also refuses a save that has formed craton
+(`formed_m3 > 0`): arms that differ only in formation step identically until a host first
+forms, so they can share a prefix up to such a save. Run each arm in its own process, one
+after another, for example:
 
     PYTHONPATH=backend:bin/debug backend/.venv/bin/python bin/debug/craton_budget_trajectory.py \\
-      --seed 326494039 --form-new-cratons on --steps 500 --save-at-myr 190 \\
-      --save-path <scratch>/seed326494039-190myr.mbworld --out <scratch>/seed326494039-on.jsonl
-    PYTHONPATH=backend:bin/debug backend/.venv/bin/python bin/debug/craton_budget_trajectory.py \\
-      --seed 326494039 --form-new-cratons off --resume <scratch>/seed326494039-190myr.mbworld \\
-      --steps 310 --out <scratch>/seed326494039-off.jsonl
+      --seed 326494039 --steps 500 --out <scratch>/seed326494039-default.jsonl
 
 A `.summary.json` beside `--out` holds the final ledger and the runtime.
 """
@@ -65,16 +62,19 @@ def plate_speeds_cm_per_yr(world) -> dict[str, float | None]:
 def snapshot(world, step: int) -> dict:
     diag = cratons.diagnostics(world)
     ledger = {key: diag[f"craton_{key}"] / 1e15 for key in cratons.CRATON_SOURCE_ACCOUNTS + cratons.CRATON_SINK_ACCOUNTS}
+    area_counters = {key: diag.get(f"craton_{key}", 0.0) / 1e12 for key in getattr(cratons, "CRATON_AREA_COUNTERS", ())}
     return {
         "step": step,
         "elapsed_myr": world.elapsed_years / 1e6,
-        "form_new_cratons": getattr(world, "form_new_cratons", None),
+        "craton_formation_multiplier": getattr(world, "craton_formation_multiplier", None),
+        "craton_decratonization_multiplier": getattr(world, "craton_decratonization_multiplier", None),
         "plate_count": len(world.plates),
         "craton_volume_mkm3": diag["craton_volume_m3"] / 1e15,
         "craton_area_mkm2": diag["craton_area_m2"] / 1e12,
         "craton_share_of_genuine_continental": diag["craton_area_fraction_of_continental"],
         "craton_core_count": diag["craton_core_count"],
         "ledger_mkm3": ledger,
+        "area_counters_mkm2": area_counters,
         "destroyed_mkm3": sum(ledger[key] for key in cratons.CRATON_SINK_ACCOUNTS),
         "balance_error_mkm3": diag["craton_balance_error_m3"] / 1e15,
         "peak_rss_gb": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e9,
@@ -85,7 +85,9 @@ def snapshot(world, step: int) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--seed", type=int, required=True)
-    parser.add_argument("--form-new-cratons", choices=("default", "on", "off"), default="default")
+    parser.add_argument("--formation-multiplier", type=float, help="World.craton_formation_multiplier (default: model's)")
+    parser.add_argument("--decratonization-multiplier", type=float, help="World.craton_decratonization_multiplier (default: model's)")
+    parser.add_argument("--require-no-formation", action="store_true", help="refuse a --resume save that has formed craton")
     parser.add_argument("--glacier-march", action="store_true", help="march glaciers each step (model default; slow)")
     parser.add_argument("--save-at-myr", type=float, help="save the world once elapsed time reaches this")
     parser.add_argument("--save-path", type=Path, help="where --save-at-myr writes the .mbworld")
@@ -102,13 +104,15 @@ def main() -> None:
         world = persistence.load_world_bytes(args.resume.read_bytes())
         if world.seed != args.seed:
             parser.error(f"--resume holds seed {world.seed}, not {args.seed}")
-        if world.craton_ledger.get("formed_m3", 0.0) != 0.0:
+        if args.require_no_formation and world.craton_ledger.get("formed_m3", 0.0) != 0.0:
             parser.error("--resume save already formed craton: the arms diverged before it, so it can't be shared")
     else:
         world = generate_world(seed=args.seed, node_density=1.0)
     world.simulate_glacier_march = args.glacier_march
-    if args.form_new_cratons != "default":
-        world.form_new_cratons = args.form_new_cratons == "on"
+    if args.formation_multiplier is not None:
+        world.craton_formation_multiplier = args.formation_multiplier
+    if args.decratonization_multiplier is not None:
+        world.craton_decratonization_multiplier = args.decratonization_multiplier
     cratons.ensure_initialized(world)
     start_step = round(world.elapsed_years / (args.step_myr * 1e6))
     rows = [snapshot(world, start_step)]
@@ -134,7 +138,9 @@ def main() -> None:
             )
     write_replay_summary(
         args.out, seed=args.seed, steps=args.steps, step_myr=args.step_myr, rows=rows, started=started,
-        ledger=world.craton_ledger, form_new_cratons=getattr(world, "form_new_cratons", None),
+        ledger=world.craton_ledger,
+        craton_formation_multiplier=getattr(world, "craton_formation_multiplier", None),
+        craton_decratonization_multiplier=getattr(world, "craton_decratonization_multiplier", None),
         peak_rss_gb=rows[-1]["peak_rss_gb"],
     )
 

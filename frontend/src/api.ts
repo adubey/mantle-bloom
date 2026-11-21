@@ -760,6 +760,8 @@ export const TUNING_MULTIPLIER_KEYS = [
   "craton_drag_multiplier",
   "volcanism_multiplier",
   "fault_relief_multiplier",
+  "craton_formation_multiplier",
+  "craton_decratonization_multiplier",
 ] as const;
 export type TuningKey = (typeof TUNING_MULTIPLIER_KEYS)[number];
 export type TuningMultipliers = Record<TuningKey, number>;
@@ -786,9 +788,6 @@ export type ControlsState = {
   lake_stop_mode: StopMode;
   glacier_step_years: number;
   glacier_stop_mode: StopMode;
-  // Whether quiet continental interiors still form new craton (backend World.form_new_cratons,
-  // off by default as on present-day Earth, #1001).
-  form_new_cratons: boolean;
   wind_model: string;
   fault_deformation_mode: string;
   split_method: SplitMethod;
@@ -812,7 +811,6 @@ export function updateControls(worldId: WorldId, controls: {
   lakeStopMode?: StopMode;
   glacierStepYears?: number;
   glacierStopMode?: StopMode;
-  formNewCratons?: boolean;
   windModel?: string;
   faultDeformationMode?: string;
   splitMethod?: SplitMethod;
@@ -833,7 +831,6 @@ export function updateControls(worldId: WorldId, controls: {
       lake_stop_mode: controls.lakeStopMode,
       glacier_step_years: controls.glacierStepYears,
       glacier_stop_mode: controls.glacierStopMode,
-      form_new_cratons: controls.formNewCratons,
       wind_model: controls.windModel,
       fault_deformation_mode: controls.faultDeformationMode,
       split_method: controls.splitMethod,

@@ -2440,20 +2440,6 @@ def test_earthquakes_endpoint(client):
         assert q["trigger"] in ("tectonic", "ice_unloading")
 
 
-def test_controls_form_new_cratons_defaults_off_and_round_trips(client):
-    # #1001: formation is off by default, and Controls turns it on and off again.
-    _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
-    world = _default_session.world
-
-    assert client.post("/world/controls", json={}).json()["form_new_cratons"] is False
-    resp = client.post("/world/controls", json={"form_new_cratons": True})
-    assert resp.status_code == 200
-    assert resp.json()["form_new_cratons"] is True
-    assert world.form_new_cratons is True
-    assert client.post("/world/controls", json={"sea_level_m": 0.0}).json()["form_new_cratons"] is True  # untouched
-    assert client.post("/world/controls", json={"form_new_cratons": False}).json()["form_new_cratons"] is False
-
-
 def test_controls_tuning_multipliers_round_trip_and_validate(client):
     from app.world import TUNING_MULTIPLIER_FIELDS
 

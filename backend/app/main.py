@@ -314,9 +314,6 @@ class ControlsRequest(BaseModel):
     lake_stop_mode: str | None = None
     glacier_step_years: float | None = None
     glacier_stop_mode: str | None = None
-    # Whether quiet continental interiors still form new craton (World.form_new_cratons,
-    # off by default as on present-day Earth, #1001).
-    form_new_cratons: bool | None = None
     wind_model: str | None = None
     fault_deformation_mode: str | None = None
     split_method: str | None = None
@@ -342,6 +339,8 @@ class ControlsRequest(BaseModel):
     volcanism_multiplier: float | None = None
     fault_relief_multiplier: float | None = None
     plume_multiplier: float | None = None
+    craton_formation_multiplier: float | None = None
+    craton_decratonization_multiplier: float | None = None
     # Gate for the debug-only diagnostics (see World.debug_diagnostics) -- on by default for a
     # "Debugging Worlds" tab world, off/toggleable here for any other loaded save.
     debug_diagnostics: bool | None = None
@@ -2448,12 +2447,13 @@ def _apply_time_controls(world: World, req: ControlsRequest) -> None:
 @app.post("/worlds/{world_id}/controls")
 def set_controls(world_id: str, req: ControlsRequest) -> dict:
     """Live-adjusts sea level, solar heat, ice-age frequency, the plate-movement/climate-biomes
-    step toggles, whether new cratons form (#1001), the wind model, fault deformation mode, plate split method, and/or the
+    step toggles, the wind model, fault deformation mode, plate split method, and/or the
     geomorphic-budget tuning multipliers
     (world.TUNING_MULTIPLIER_FIELDS -- rain/river/wind/ocean/glacier/seismic erosion,
     coastal leveling, river/ocean deposition, collision uplift rate & reach, contact
     braking (whole brake and craton-only), volcanism,
-    fault relief strength, plume production; all dimensionless, 1.0 == untuned) on the current world (the "Controls" window -- see
+    fault relief strength, plume production, craton formation and plume decratonization
+    (#1001); all dimensionless, 1.0 == untuned) on the current world (the "Controls" window -- see
     World.sea_level_m/World.solar_multiplier/World.simulate_plate_movement/
     World.simulate_climate_biomes/World.wind_model and World's tuning-knob field group) and
     immediately recomputes world.climate_cache so the very next /worlds/{world_id}/render or
@@ -2483,8 +2483,6 @@ def set_controls(world_id: str, req: ControlsRequest) -> dict:
         if req.simulate_climate_biomes is not None:
             world.simulate_climate_biomes = req.simulate_climate_biomes
         _apply_time_controls(world, req)
-        if req.form_new_cratons is not None:
-            world.form_new_cratons = req.form_new_cratons
         if req.wind_model is not None:
             world.wind_model = req.wind_model
         if req.fault_deformation_mode is not None:
@@ -2527,7 +2525,6 @@ def _controls_state(world: World) -> dict:
         "lake_stop_mode": world.lake_stop_mode,
         "glacier_step_years": world.glacier_step_years,
         "glacier_stop_mode": world.glacier_stop_mode,
-        "form_new_cratons": world.form_new_cratons,
         "wind_model": world.wind_model,
         "fault_deformation_mode": world.fault_deformation_mode,
         "split_method": world.split_method,

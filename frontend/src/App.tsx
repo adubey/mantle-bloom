@@ -182,9 +182,6 @@ const DEFAULT_SIMULATE_CLIMATE_BIOMES = true;
 // stepping stays fast unless the user opts into the march in Controls. The model
 // default (backend World.simulate_glacier_march) stays on for API/replay worlds.
 const DEFAULT_SIMULATE_GLACIER_MARCH = false;
-// Matching backend app/world.py's World.form_new_cratons default: off, as on present-day Earth,
-// whose cratons are destroyed faster than any form (#1001).
-const DEFAULT_FORM_NEW_CRATONS = false;
 // Matching backend app/world.py's World.wind_model default -- the fast closed-form diagnostic
 // (ABL) wind: it approximates the CFD climate for a fraction of the per-step cost (how closely:
 // docs/simulation-model/climate.md#wind-model, #529), so it's the better starting point; switch
@@ -643,7 +640,6 @@ export default function App() {
   const [lakeStopMode, setLakeStopMode] = useState<StopMode>(DEFAULT_LAKE_STOP_MODE);
   const [glacierStepYears, setGlacierStepYears] = useState(DEFAULT_GLACIER_STEP_YEARS);
   const [glacierStopMode, setGlacierStopMode] = useState<StopMode>(DEFAULT_GLACIER_STOP_MODE);
-  const [formNewCratons, setFormNewCratons] = useState(DEFAULT_FORM_NEW_CRATONS);
   // "cfd" (shallow-water solve) or "diagnostic" (fast closed-form ABL wind) -- see backend
   // app/world.py's World.wind_model. Live-adjustable via Controls like the toggles above.
   const [windModel, setWindModel] = useState(DEFAULT_WIND_MODEL);
@@ -898,7 +894,6 @@ export default function App() {
     lakeStopMode?: StopMode;
     glacierStepYears?: number;
     glacierStopMode?: StopMode;
-    formNewCratons?: boolean;
     windModel?: string;
     faultDeformationMode?: string;
     splitMethod?: SplitMethod;
@@ -972,11 +967,6 @@ export default function App() {
   const handleGlacierStopModeChange = useCallback((v: StopMode) => {
     setGlacierStopMode(v);
     pushControls({ glacierStopMode: v });
-  }, [pushControls]);
-
-  const handleFormNewCratonsChange = useCallback((v: boolean) => {
-    setFormNewCratons(v);
-    pushControls({ formNewCratons: v });
   }, [pushControls]);
 
   const handleSolarMultiplierChange = useCallback((v: number) => {
@@ -1058,7 +1048,6 @@ export default function App() {
       setLakeStopMode(controls.lake_stop_mode);
       setGlacierStepYears(controls.glacier_step_years);
       setGlacierStopMode(controls.glacier_stop_mode);
-      setFormNewCratons(controls.form_new_cratons);
       setWindModel(controls.wind_model);
       setFaultDeformationMode(controls.fault_deformation_mode);
       setSplitMethod(controls.split_method);
@@ -1566,7 +1555,6 @@ export default function App() {
       setLakeStopMode(DEFAULT_LAKE_STOP_MODE);
       setGlacierStepYears(DEFAULT_GLACIER_STEP_YEARS);
       setGlacierStopMode(DEFAULT_GLACIER_STOP_MODE);
-      setFormNewCratons(DEFAULT_FORM_NEW_CRATONS);
       setWindModel(DEFAULT_WIND_MODEL);
       setFaultDeformationMode(DEFAULT_FAULT_DEFORMATION_MODE);
       setSplitMethod(DEFAULT_SPLIT_METHOD);
@@ -2973,7 +2961,6 @@ export default function App() {
           iceAgePeriodYears={iceAgePeriodYears}
           simulatePlateMovement={simulatePlateMovement}
           simulateClimateBiomes={simulateClimateBiomes}
-          formNewCratons={formNewCratons}
           windModel={windModel}
           faultDeformationMode={faultDeformationMode}
           splitMethod={splitMethod}
@@ -2984,7 +2971,6 @@ export default function App() {
           onIceAgePeriodChange={handleIceAgePeriodChange}
           onSimulatePlateMovementChange={handleSimulatePlateMovementChange}
           onSimulateClimateBiomesChange={handleSimulateClimateBiomesChange}
-          onFormNewCratonsChange={handleFormNewCratonsChange}
           onWindModelChange={handleWindModelChange}
           onFaultDeformationModeChange={handleFaultDeformationModeChange}
           onSplitMethodChange={handleSplitMethodChange}

@@ -136,10 +136,15 @@ def test_thin_or_thick_crust_is_never_seeded():
     assert world.craton_ledger["initial_m3"] == 0.0
 
 
+def _unlimited_formation(monkeypatch) -> None:
+    """Every qualifying host forms, as before the #1001 budget."""
+    monkeypatch.setattr(cratons, "CRATON_FORMATION_RATE_PER_GYR", 1.0e6)
+
+
 def test_a_quiet_interior_cratonises_after_the_formation_time(monkeypatch):
     plate = _cap(1)
     world = _unseeded(monkeypatch, plate)
-    world.form_new_cratons = True
+    _unlimited_formation(monkeypatch)
     world.elapsed_years = 400e6
 
     cratons.update(world, 0.5 * cratons.CRATON_FORMATION_MYR * 1e6)
@@ -153,48 +158,165 @@ def test_a_quiet_interior_cratonises_after_the_formation_time(monkeypatch):
     assert world.craton_ledger["formed_m3"] == pytest.approx(_volume(plate, "craton_crust_m"))
 
 
-def test_no_craton_forms_by_default_however_long_a_host_stays_quiet(monkeypatch):
-    """#1001: Earth has formed essentially no craton since the Proterozoic, so a world forms
-    none unless `form_new_cratons` is on -- but the quiet clock still runs."""
+def _continental_area(world, plate) -> float:
+    return float(cratons._areas(world, plate)[cratons._genuine_continental(plate)].sum())
+
+
+def test_formation_spends_an_earth_like_budget_longest_quiet_hosts_first(monkeypatch):
+    """#1001: the step earns CRATON_FORMATION_RATE_PER_GYR of the genuine continental area per
+    Gyr and spends it on whole qualifying cells, so the formed area tracks the budget, never
+    exceeds it, and carries the unspent remainder."""
+    monkeypatch.setattr(cratons, "CRATON_FORMATION_CREDIT_MAX_MYR", 1.0e6)
     plate = _cap(1)
     world = _unseeded(monkeypatch, plate)
-    assert world.form_new_cratons is False
+    area = _continental_area(world, plate)
+    largest_cell = float(cratons._areas(world, plate).max())
+    cratons.update(world, cratons.CRATON_FORMATION_MYR * 1e6)
+    world.craton_formation_credit_m2 = 0.0  # count only what is earned once hosts qualify
+
+    total_myr = 0.0
+    for _ in range(20):
+        cratons.update(world, 50e6)
+        total_myr += 50.0
+    earned = cratons.CRATON_FORMATION_RATE_PER_GYR * area * total_myr / 1e3
+    formed_area = world.craton_ledger["formed_area_m2"]
+
+    assert 0.0 < formed_area <= earned
+    assert formed_area + world.craton_formation_credit_m2 == pytest.approx(earned)
+    assert world.craton_formation_credit_m2 < largest_cell
+    assert world.craton_ledger["formed_m3"] == pytest.approx(_volume(plate, "craton_crust_m"))
+    assert cratons.balance_error_m3(world) == pytest.approx(0.0, abs=1e-6 * world.craton_ledger["formed_m3"])
+
+
+def test_formation_grows_onto_existing_craton_among_equally_quiet_hosts(monkeypatch):
+    monkeypatch.setattr(cratons, "CRATON_FORMATION_CREDIT_MAX_MYR", 1.0e6)
+    plate = _cap(1)
+    world = _unseeded(monkeypatch, plate)
+    cratons.update(world, cratons.CRATON_FORMATION_MYR * 1e6)
+    qualifying = np.flatnonzero(plate.collect("stable_continental_myr") >= cratons.CRATON_FORMATION_MYR)
+    seed = qualifying[0]
+    craton = np.zeros(plate.node_count())
+    craton[seed] = plate.collect("crustal_thickness_m")[seed]
+    plate.set_fields_on_plate(craton_crust_m=craton)
+    world.craton_ledger["initial_m3"] = _volume(plate, "craton_crust_m")
+    world.craton_formation_credit_m2 = 0.0
+    one_cell = float(cratons._areas(world, plate)[qualifying].max())
+    monkeypatch.setattr(cratons, "CRATON_FORMATION_RATE_PER_GYR", 1.5 * one_cell / _continental_area(world, plate))
+
+    cratons.update(world, 1e9)
+
+    new = np.flatnonzero((plate.collect("craton_crust_m") > 0.0) & (np.arange(plate.node_count()) != seed))
+    assert len(new) == 1
+    distance = quad_tectonics.hop_distance(plate, np.arange(plate.node_count()) == seed, 3)
+    assert distance[new[0]] == 1
+
+
+def test_a_zero_formation_multiplier_forms_nothing_but_the_clock_runs(monkeypatch):
+    plate = _cap(1)
+    world = _unseeded(monkeypatch, plate)
+    world.craton_formation_multiplier = 0.0
 
     for _ in range(10):
         cratons.update(world, 0.5 * cratons.CRATON_FORMATION_MYR * 1e6)
 
     assert _volume(plate, "craton_crust_m") == 0.0
     assert world.craton_ledger["formed_m3"] == 0.0
+    assert world.craton_formation_credit_m2 == 0.0
     assert np.max(plate.collect("stable_continental_myr")) == pytest.approx(5.0 * cratons.CRATON_FORMATION_MYR)
 
 
-def test_turning_formation_on_cratonises_hosts_already_quiet_long_enough(monkeypatch):
-    """The clock ran while formation was off, so the first update after turning it on forms
-    the hosts that have been quiet past CRATON_FORMATION_MYR, dated from when they went quiet."""
+def test_formation_credit_is_capped_while_no_host_qualifies(monkeypatch):
     plate = _cap(1)
     world = _unseeded(monkeypatch, plate)
-    world.elapsed_years = 500e6
-    cratons.update(world, 1.5 * cratons.CRATON_FORMATION_MYR * 1e6)
-    assert _volume(plate, "craton_crust_m") == 0.0
+    area = _continental_area(world, plate)
 
-    world.form_new_cratons = True
+    cratons.update(world, 0.9 * cratons.CRATON_FORMATION_MYR * 1e6)
+
+    cap = cratons.CRATON_FORMATION_RATE_PER_GYR * area * cratons.CRATON_FORMATION_CREDIT_MAX_MYR / 1e3
+    assert world.craton_formation_credit_m2 == pytest.approx(min(cap, cratons.CRATON_FORMATION_RATE_PER_GYR * area * 0.9 * cratons.CRATON_FORMATION_MYR / 1e3))
+    assert world.craton_ledger["formed_m3"] == 0.0
+
+
+def test_formation_credit_round_trips_and_old_saves_read_zero():
+    world = World(seed=0)
+    world.craton_formation_credit_m2 = 123.0
+    assert persistence.load_world_bytes(persistence.save_world_bytes(world)).craton_formation_credit_m2 == 123.0
+
+    world.__dict__.pop("craton_formation_credit_m2")
+    assert persistence.load_world_bytes(persistence.save_world_bytes(world)).craton_formation_credit_m2 == 0.0
+
+
+def _head(position, born_years, head_volume_m3=1.0e15):
+    from app.plumes import MantlePlume
+
+    return MantlePlume(plume_id=7, position=tuple(position), born_years=born_years, head_volume_m3=head_volume_m3)
+
+
+def _cratonic_world(monkeypatch):
+    plate = _cap(1)
+    world = _unseeded(monkeypatch, plate)
+    _set_craton(plate, np.ones(plate.node_count(), dtype=bool))
+    world.craton_ledger["initial_m3"] = _volume(plate, "craton_crust_m")
+    world.craton_formation_multiplier = 0.0
+    world.elapsed_years = 100e6
+    return plate, world
+
+
+def test_a_plume_head_strips_the_craton_within_its_radius_and_keeps_the_crust(monkeypatch):
+    """#1001: a head arriving this step decratonizes the columns within
+    CRATON_PLUME_DECRATONIZATION_RADIUS_KM -- craton label, clock and stamp go, Hc stays."""
+    plate, world = _cratonic_world(monkeypatch)
+    centre = np.array([1.0, 0.0, 0.0])
+    world.mantle_plumes = [_head(centre, born_years=99.5e6)]
+    hc_before = plate.collect("crustal_thickness_m").copy()
+    volume_before = _volume(plate, "craton_crust_m")
+
     cratons.update(world, 1e6)
 
-    formed = plate.collect("craton_crust_m") > 0.0
-    assert np.any(formed)
-    expected = 500e6 - (1.5 * cratons.CRATON_FORMATION_MYR + 1.0) * 1e6
-    assert np.all(plate.collect("craton_formed_years")[formed] == pytest.approx(expected))
-    assert world.craton_ledger["formed_m3"] == pytest.approx(_volume(plate, "craton_crust_m"))
-    assert cratons.balance_error_m3(world) == pytest.approx(0.0, abs=1e-6 * world.craton_ledger["formed_m3"])
+    points = plate.all_points_and_elevation()[0]
+    distance_km = np.arccos(np.clip(points / np.linalg.norm(points, axis=1, keepdims=True) @ centre, -1, 1)) * 6371.0
+    inside = distance_km <= cratons.CRATON_PLUME_DECRATONIZATION_RADIUS_KM
+    craton = plate.collect("craton_crust_m")
+    assert np.any(inside) and not np.all(inside)
+    assert np.all(craton[inside] == 0.0) and np.all(craton[~inside] > 0.0)
+    assert np.all(plate.collect("stable_continental_myr")[inside] == 0.0)
+    assert np.all(plate.collect("craton_formed_years")[inside] == CRATON_UNFORMED_YEARS)
+    np.testing.assert_array_equal(plate.collect("crustal_thickness_m"), hc_before)
+    assert world.craton_ledger["decratonized_m3"] == pytest.approx(volume_before - _volume(plate, "craton_crust_m"))
+    assert world.craton_ledger["decratonized_area_m2"] == pytest.approx(float(cratons._areas(world, plate)[inside].sum()))
+    assert cratons.balance_error_m3(world) == pytest.approx(0.0, abs=1e-9 * volume_before)
+    assert any("decratonized" in message for _, message in world.events)
 
 
-def test_form_new_cratons_round_trips_and_old_saves_read_off():
-    world = World(seed=0)
-    world.form_new_cratons = True
-    assert persistence.load_world_bytes(persistence.save_world_bytes(world)).form_new_cratons is True
+@pytest.mark.parametrize(
+    "plume, multiplier",
+    [
+        (_head([1.0, 0.0, 0.0], born_years=98e6), 1.0),  # arrived in an earlier step
+        (_head([1.0, 0.0, 0.0], born_years=99.5e6, head_volume_m3=0.0), 1.0),  # tail-only
+        (_head([1.0, 0.0, 0.0], born_years=99.5e6), 0.0),  # decratonization off
+    ],
+)
+def test_only_a_head_arriving_this_step_decratonizes(monkeypatch, plume, multiplier):
+    plate, world = _cratonic_world(monkeypatch)
+    world.mantle_plumes = [plume]
+    world.craton_decratonization_multiplier = multiplier
+    volume_before = _volume(plate, "craton_crust_m")
 
-    world.__dict__.pop("form_new_cratons")
-    assert persistence.load_world_bytes(persistence.save_world_bytes(world)).form_new_cratons is False
+    cratons.update(world, 1e6)
+
+    assert _volume(plate, "craton_crust_m") == volume_before
+    assert world.craton_ledger["decratonized_m3"] == 0.0
+
+
+def test_the_decratonization_multiplier_scales_the_stripped_area(monkeypatch):
+    stripped = []
+    for multiplier in (1.0, 2.0):
+        plate, world = _cratonic_world(monkeypatch)
+        world.mantle_plumes = [_head([1.0, 0.0, 0.0], born_years=99.5e6)]
+        world.craton_decratonization_multiplier = multiplier
+        cratons.update(world, 1e6)
+        stripped.append(world.craton_ledger["decratonized_area_m2"])
+    assert stripped[1] == pytest.approx(2.0 * stripped[0], rel=0.35)
 
 
 def test_leaving_the_host_window_resets_the_formation_clock(monkeypatch):
@@ -212,7 +334,7 @@ def _quiet_centre_forms(monkeypatch, marked: bool) -> bool:
     craton over 300 Myr of quiet, with or without a belt mark."""
     plate = _cap(1)
     world = _unseeded(monkeypatch, plate)
-    world.form_new_cratons = True
+    _unlimited_formation(monkeypatch)
     centre = np.zeros(plate.node_count(), dtype=bool)
     centre[int(np.argmax(plate.all_points_and_elevation()[0] @ np.array([1.0, 0.0, 0.0])))] = True
     inside_km = cratons._interior_hops(plate, cratons._genuine_continental(plate), 20)[centre][0] * SPACING * 6371.0
