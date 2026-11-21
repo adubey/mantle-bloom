@@ -23,7 +23,6 @@ import EventConsole from "./EventConsole";
 import StatsModal from "./StatsModal";
 import ControlsModal from "./ControlsModal";
 import TimeSettingsModal from "./TimeSettingsModal";
-import { PLATE_STEP_YEARS_MAX, PLATE_STEP_YEARS_MIN } from "./timeSettings";
 import AdvancedSettingsModal from "./AdvancedSettingsModal";
 import FileModal from "./FileModal";
 import ManageWorldsModal from "./ManageWorldsModal";
@@ -1758,7 +1757,7 @@ export default function App() {
       .then((run) => {
         shownRevisionRef.current = run.world?.revision;
         if (!run.running) return;
-        if (run.step_years >= PLATE_STEP_YEARS_MIN && run.step_years <= PLATE_STEP_YEARS_MAX) {
+        if (Number.isFinite(run.step_years) && run.step_years > 0) {
           setStepYears(Math.round(run.step_years));
         }
         setPlaying(true);

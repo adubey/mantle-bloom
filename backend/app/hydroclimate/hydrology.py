@@ -2220,12 +2220,26 @@ class _SettleWatch:
         return False, None
 
 
-def _hold_remainder(recent: list[tuple], remaining: float, ledger_total, n: int, frozen: list[float]):
-    """The held share of a settled glacier march in 'resolve' mode (#999, RFC 0015 D2):
-    scales the recent window's flows over `remaining` years into `ledger_total` and `frozen`
-    in place, clamping losses so the ledger never books more ice loss than exists."""
+# Maximum single-substep bed cut (m) under which Resolve may hold the settled ice state
+# without missing material bed-lowering feedback (RFC 0015 D3, PR #1000 review).
+MARCH_RESOLVE_MAX_BED_CUT_M = 1.0e-2
+
+
+def _hold_remainder(
+    recent: list[tuple],
+    remaining: float,
+    ledger_total,
+    areas: np.ndarray,
+    frozen: list[float],
+):
+    """The held share of a settled glacier march in 'resolve' mode (#999): scales the
+    recent window's flows over `remaining` years while enforcing exact steady-state ice
+    balance for the fixed closing stock (`hold_acc == hold_ice_loss`) and keeping
+    bare-ground snowmelt independent, so both `ledger_total.residual_m3` and routed-vs-
+    ledger meltwater close exactly."""
     span = sum(r[0] for r in recent)
     scale = remaining / span
+    n = len(areas)
     hold_melt = np.zeros(n)
     hold_calved = np.zeros(n)
     hold_flows: dict[str, float] = {}
@@ -2238,16 +2252,31 @@ def _hold_remainder(recent: list[tuple], remaining: float, ledger_total, n: int,
         frozen[1] += sub_frozen.ocean_retained_m3 * scale
         frozen[2] += sub_frozen.retained_m3 * scale
         frozen[3] += sub_frozen.bare_melted_m3 * scale
-    loss_keys = ("surface_melt_m3", "basal_melt_m3", "calved_m3", "overflow_m3", "capped_m3")
-    marched_loss = sum(getattr(ledger_total, key) for key in loss_keys)
-    hold_loss = sum(hold_flows.get(key, 0.0) for key in loss_keys)
-    available = ledger_total.opening_m3 + ledger_total.accumulation_m3 + hold_flows.get("accumulation_m3", 0.0)
-    if hold_loss > 0.0 and marched_loss + hold_loss > available:
-        factor = max(available - marched_loss, 0.0) / hold_loss
-        hold_melt = hold_melt * factor
-        hold_calved = hold_calved * factor
-        for key in loss_keys:
-            hold_flows[key] = hold_flows.get(key, 0.0) * factor
+
+    ice_loss_keys = ("surface_melt_m3", "basal_melt_m3", "calved_m3", "overflow_m3", "capped_m3")
+    ice_melt_keys = ("surface_melt_m3", "basal_melt_m3", "overflow_m3", "capped_m3")
+    hold_acc = hold_flows.get("accumulation_m3", 0.0)
+    hold_snow = hold_flows.get("snow_melted_m3", 0.0)
+    hold_ice_loss = sum(hold_flows.get(key, 0.0) for key in ice_loss_keys)
+    hold_ice_melt = sum(hold_flows.get(key, 0.0) for key in ice_melt_keys)
+
+    if hold_ice_loss > 0.0:
+        loss_factor = hold_acc / hold_ice_loss
+        for key in ice_loss_keys:
+            hold_flows[key] = hold_flows.get(key, 0.0) * loss_factor
+        hold_calved = hold_calved * loss_factor
+        new_hold_ice_melt = hold_ice_melt * loss_factor
+    else:
+        hold_flows["accumulation_m3"] = 0.0
+        new_hold_ice_melt = 0.0
+
+    raw_melt_total = float(np.dot(hold_melt, areas))
+    target_melt_total = new_hold_ice_melt + hold_snow
+    if raw_melt_total > 0.0:
+        hold_melt = hold_melt * (target_melt_total / raw_melt_total)
+    else:
+        hold_melt = np.zeros(n)
+
     for key, value in hold_flows.items():
         setattr(ledger_total, key, getattr(ledger_total, key) + value)
     return hold_melt, hold_calved
@@ -2264,8 +2293,9 @@ def _apply_march_abrasion(
     raw_abrasion_depth: np.ndarray,
     abrasion_depth: np.ndarray,
     working_elevation: np.ndarray,
-) -> None:
-    """Book one interval's glacial abrasion against cover and substrate headroom in place."""
+) -> float:
+    """Book one interval's glacial abrasion against cover and substrate headroom in place.
+    Returns the maximum bed cut (m) across all nodes for this interval."""
     from . import glacier_erosion
 
     raw = glacier_erosion.abrasion_depth_m(sliding_speed_m_per_yr, dt, multiplier)
@@ -2280,6 +2310,7 @@ def _apply_march_abrasion(
     substrate_headroom -= substrate_cut
     abrasion_depth += interval_abrasion
     working_elevation -= interval_abrasion
+    return float(interval_abrasion.max(initial=0.0))
 
 
 def _worst_substep_move(volumes: list[float]) -> float:
@@ -2480,7 +2511,13 @@ def _march_glacier(
     frozen_bare_melted_total = 0.0
     abrasion_depth = np.zeros(n)
     raw_abrasion_depth = np.zeros(n)
-    recent: list[tuple] = []
+    max_hold_window = max(
+        ice_sheet.MARCH_HOLD_WINDOW,
+        cost.trend_window if cost.trend else 0,
+        cost.recurrence_max_period if cost.recurrence else 0,
+        2,
+    )
+    recent: deque[tuple] = deque(maxlen=max_hold_window)
     while elapsed < years - 1e-6:
         trace.check_cancelled()
         dt = min(sub, years - elapsed)
@@ -2492,7 +2529,7 @@ def _march_glacier(
             # tell this one where to look for its opening extent (#147, same answer).
             hints = None if ice is None else ice_sheet.margin_hints(n, ice.bodies)
             new_depth, melt, ice = solve_once(dt, ref_depth, ref_heat, hints)
-        _apply_march_abrasion(
+        max_bed_cut_m = _apply_march_abrasion(
             ice.sliding_speed_m_per_yr, dt, world.glacier_erosion_multiplier,
             ocean_mask, cover_remaining, substrate_headroom, craton_keep,
             raw_abrasion_depth, abrasion_depth, working_elevation,
@@ -2545,14 +2582,14 @@ def _march_glacier(
             last_change = abs(pair_now - pair_before) / max(pair_before, 1.0)
             pair_changes.append(last_change)
             settled = settled + 1 if last_change < ice_sheet.MARCH_SETTLE_TOLERANCE else 0
-            if stop_on_settle and settled >= ice_sheet.MARCH_SETTLE_PATIENCE:
+            if stop_on_settle and settled >= ice_sheet.MARCH_SETTLE_PATIENCE and max_bed_cut_m <= MARCH_RESOLVE_MAX_BED_CUT_M:
                 break
             # Pair boundaries only, so both substeps of a pair share one length (#822).
             if cost.adaptive:
                 sub = _adapt_substep_years(cost, sub, base_sub, last_change)
         # The #822 recurrence and trend tests (no-ops at the D2 default).
         watch_settled, watch_sub = watch.observe(depth, volumes, sub, years - elapsed)
-        if stop_on_settle and watch_settled:
+        if stop_on_settle and watch_settled and max_bed_cut_m <= MARCH_RESOLVE_MAX_BED_CUT_M:
             break
         sub = sub if watch_sub is None else watch_sub
         if not capped and cost.max_substeps is not None and substeps >= cost.max_substeps and elapsed < years - 1e-6:
@@ -2568,7 +2605,7 @@ def _march_glacier(
     remaining = max(years - elapsed, 0.0)
     if stop_on_settle and remaining > 1e-6 and recent:
         frozen = [frozen_land_total, frozen_ocean_retained_total, frozen_retained_total, frozen_bare_melted_total]
-        hold_melt, hold_calved = _hold_remainder(recent[-watch.hold_window:], remaining, ledger_total, n, frozen)
+        hold_melt, hold_calved = _hold_remainder(list(recent)[-watch.hold_window:], remaining, ledger_total, areas, frozen)
         frozen_land_total, frozen_ocean_retained_total, frozen_retained_total, frozen_bare_melted_total = frozen
         melt_total += hold_melt
         calved_total += hold_calved

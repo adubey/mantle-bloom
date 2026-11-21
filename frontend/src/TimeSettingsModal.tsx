@@ -5,10 +5,8 @@ import {
   GLACIER_STEP_YEARS_MIN,
   LAKE_STEP_YEARS_MAX,
   LAKE_STEP_YEARS_MIN,
-  logToPlateYears,
-  PLATE_LOG_MAX,
-  PLATE_LOG_MIN,
-  plateYearsToLog,
+  PLATE_STEP_YEARS_TICKS,
+  plateYearsToTickIndex,
 } from "./timeSettings";
 
 interface Props {
@@ -155,11 +153,11 @@ export default function TimeSettingsModal({
             </span>
             <input
               type="range"
-              min={PLATE_LOG_MIN}
-              max={PLATE_LOG_MAX}
-              step={0.01}
-              value={plateYearsToLog(stepYears)}
-              onChange={(e) => onStepYearsChange(logToPlateYears(Number(e.target.value)))}
+              min={0}
+              max={PLATE_STEP_YEARS_TICKS.length - 1}
+              step={1}
+              value={plateYearsToTickIndex(stepYears)}
+              onChange={(e) => onStepYearsChange(PLATE_STEP_YEARS_TICKS[Number(e.target.value)])}
               style={{ width: "100%" }}
             />
           </label>

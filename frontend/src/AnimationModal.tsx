@@ -3,10 +3,10 @@ import type { MapView } from "./api";
 import ModalShell from "./ModalShell";
 
 // How many simulation steps each animation frame advances the world -- the real years each
-// frame covers is this times the app's current "Years per step" (see App.tsx's
-// STEP_YEARS_OPTIONS), so the animation and Play move the world in the same unit. A few sane
-// presets, not a free-form input, same reasoning App.tsx's own STEP_YEARS_OPTIONS uses. 10
-// steps per frame is the default, giving a useful amount of visible progress per frame.
+// frame covers is this times the app's current plate step size (see App.tsx's
+// DEFAULT_STEP_YEARS and timeSettings.ts), so the animation and Play move the world in the
+// same unit. A few sane presets, not a free-form input. 10 steps per frame is the default,
+// giving a useful amount of visible progress per frame.
 const STEPS_PER_FRAME_OPTIONS = [1, 10, 100];
 const DEFAULT_STEPS_PER_FRAME = 10;
 // Defaults to the max (see MAX_NUM_FRAMES) -- a bounded recording is almost always "record a
@@ -20,8 +20,8 @@ const NON_RENDERED_VIEWS: MapView[] = ["crossSection", "plateInspector", "riverI
 
 interface Props {
   hasWorld: boolean;
-  // The app's current "Years per step" (see App.tsx's STEP_YEARS_OPTIONS) -- one animation
-  // frame advances the world by `stepsPerFrame * stepYears` real years.
+  // The app's current plate step size (see App.tsx's DEFAULT_STEP_YEARS / timeSettings.ts) --
+  // one animation frame advances the world by `stepsPerFrame * stepYears` real years.
   stepYears: number;
   mapView: MapView;
   onClose: () => void;
