@@ -44,6 +44,11 @@ import { centerOfRotation, IDENTITY_ROTATION, rotationForCenter } from "./rotati
 import type { Mat3 } from "./rotation";
 import { getCookie, setCookie } from "./cookies";
 import { saveRecordedVideo } from "./download";
+import {
+  DEFAULT_GLACIER_STEP_YEARS, DEFAULT_GLACIER_STOP_MODE, DEFAULT_KEEP_LAND_OFF_POLES,
+  DEFAULT_LAKE_STEP_YEARS, DEFAULT_LAKE_STOP_MODE, DEFAULT_SIMULATE_GLACIER_MARCH,
+  DEFAULT_SPLIT_METHOD, DEFAULT_STEP_YEARS, DEFAULT_TUNING, freshWorldControls,
+} from "./uiDefaults";
 
 // The map is displayed at DISPLAY_WIDTH x DISPLAY_HEIGHT (CSS pixels, unchanged from
 // before), but the image requested from the server is RENDER_SCALE times bigger -- a
@@ -83,11 +88,7 @@ const DISPLAY_HEIGHT = 611;
 const RENDER_SCALE = 2;
 const RENDER_WIDTH = DISPLAY_WIDTH * RENDER_SCALE;
 const RENDER_HEIGHT = DISPLAY_HEIGHT * RENDER_SCALE;
-const DEFAULT_STEP_YEARS = 100_000;
-const DEFAULT_LAKE_STEP_YEARS = 1_000;
-const DEFAULT_LAKE_STOP_MODE: StopMode = "resolve";
-const DEFAULT_GLACIER_STEP_YEARS = 250;
-const DEFAULT_GLACIER_STOP_MODE: StopMode = "exhaust";
+// Plate/lake/glacier step & stop defaults live in uiDefaults.ts (#1007).
 // After a failed long poll of the run status, wait this long before asking again.
 const RUN_POLL_RETRY_MS = 2000;
 // Percent, matching backend app/plates.py's DEFAULT_CONTINENTAL_FRACTION/DEFAULT_LAND_FRACTION.
@@ -168,20 +169,12 @@ const DEFAULT_SEA_LEVEL_M = 0;
 const DEFAULT_SOLAR_MULTIPLIER = 1;
 // Matching backend app/world.py's World.ice_age_period_years default -- 0 == no ice-age cycle.
 const DEFAULT_ICE_AGE_PERIOD_YEARS = 0;
-// Every geomorphic-budget tuning knob defaults to 1.0 (untuned) -- matches every
-// *_multiplier default on backend app/world.py's World.
-const DEFAULT_TUNING: TuningMultipliers = Object.fromEntries(
-  TUNING_MULTIPLIER_KEYS.map((k) => [k, 1]),
-) as TuningMultipliers;
+// Tuning, glacier-march and split-method UI defaults live in uiDefaults.ts
+// (#1007); they diverge from the backend model defaults on purpose, UI only.
 // Matching backend app/world.py's World.simulate_plate_movement/World.simulate_climate_biomes
 // defaults -- both on, i.e. a normal full simulation.
 const DEFAULT_SIMULATE_PLATE_MOVEMENT = true;
 const DEFAULT_SIMULATE_CLIMATE_BIOMES = true;
-// Unlike the two above, the glacier march is OFF for a fresh UI world: at ~30ms a
-// 250 yr substep (backend #822) a marched Myr-step costs minutes, so interactive
-// stepping stays fast unless the user opts into the march in Controls. The model
-// default (backend World.simulate_glacier_march) stays on for API/replay worlds.
-const DEFAULT_SIMULATE_GLACIER_MARCH = false;
 // Matching backend app/world.py's World.wind_model default -- the fast closed-form diagnostic
 // (ABL) wind: it approximates the CFD climate for a fraction of the per-step cost (how closely:
 // docs/simulation-model/climate.md#wind-model, #529), so it's the better starting point; switch
@@ -194,9 +187,6 @@ const DEFAULT_WIND_MODEL = "diagnostic";
 // edge); "both" runs the boundary bands plus the scaled-up fault relief. See faults.py /
 // lithosphere_plate.deform_columns.
 const DEFAULT_FAULT_DEFORMATION_MODE = "fault";
-// Matching backend app/world.py's World.split_method default ("great_circle"). Off by default
-// until RFC 0018's rift-line splitter is promoted.
-const DEFAULT_SPLIT_METHOD: SplitMethod = "great_circle";
 // Off by default for an ordinarily-generated/loaded world -- see World.debug_diagnostics.
 const DEFAULT_DEBUG_DIAGNOSTICS = false;
 
@@ -334,7 +324,7 @@ export default function App() {
   const [seed, setSeed] = useState(randomSeed());
   const [cratonsFirst, setCratonsFirst] = useState(true);
   const [syntheticRelief, setSyntheticRelief] = useState(true);
-  const [keepLandOffPoles, setKeepLandOffPoles] = useState(false);
+  const [keepLandOffPoles, setKeepLandOffPoles] = useState(DEFAULT_KEEP_LAND_OFF_POLES);
   // The Generate World dialog's name field (blank: keep the record's name) and
   // Public checkbox: admin worlds default to public (#597); paid users opt in (#953).
   const [generateName, setGenerateName] = useState("");
@@ -646,7 +636,7 @@ export default function App() {
   // "boundary" / "fault" / "both" -- see backend app/world.py's World.fault_deformation_mode.
   // Live-adjustable via Controls like windModel.
   const [faultDeformationMode, setFaultDeformationMode] = useState(DEFAULT_FAULT_DEFORMATION_MODE);
-  // "great_circle" (default) or "rift_lines" (RFC 0018) -- see backend World.split_method.
+  // "rift_lines" (UI default, RFC 0018) or "great_circle" -- see backend World.split_method.
   const [splitMethod, setSplitMethod] = useState<SplitMethod>(DEFAULT_SPLIT_METHOD);
   // Gate for the debug-only diagnostics -- see backend World.debug_diagnostics. Live-adjustable
   // via Controls like windModel.
@@ -1502,8 +1492,8 @@ export default function App() {
       // The "Debugging Worlds" tab's generateDebugWorld has no progress stream to report --
       // its scripted scenarios are tiny and generate near-instantly (see debug_worlds.py) --
       // so genProgress just stays undefined (indeterminate) for that path.
-      // Fresh worlds always start with the UI march default (off), matching the
-      // reset below -- not the previous world's toggle, which stays behind.
+      // Fresh worlds always start with the UI march default (on, #1007), matching
+      // the reset below -- not the previous world's toggle, which stays behind.
       const generateIdentity = { name: generateName.trim() || null, isPublic: generatePublic, simulateGlacierMarch: DEFAULT_SIMULATE_GLACIER_MARCH };
       const s =
         generateMode === "debug"
@@ -1537,6 +1527,12 @@ export default function App() {
                 }
               },
             });
+      if (worldIdRef.current !== id) return;
+      // Push the UI defaults that diverge from the backend world defaults
+      // (lake/glacier substeps & stops, RFC 0018 splitting, braking off --
+      // #1007) so the new world itself, not just the controls below, starts
+      // from them. Loading a world never does this: it adopts stored values.
+      await updateControls(id, freshWorldControls());
       if (worldIdRef.current !== id) return;
       setSummary(s);
       setCrossSectionWorldRevision((revision) => revision + 1);
