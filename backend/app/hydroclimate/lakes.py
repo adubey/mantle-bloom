@@ -1065,7 +1065,7 @@ def _advance_prognostic_body(
         route_source = receiver
         target = receiver.outlet_target_idx
     accounting.overflow_out_total += overflow
-    target = _overflow_outlet_target(target, route_source, body_leaf_ids, body_for_leaf, node_count)
+    target = _overflow_outlet_target(target, route_source, body_leaf_ids, leaves, node_count)
     _trace_transfer(accounting, route_source, None, target, overflow, internal=False, depth=depth)
     if 0 <= target < node_count:
         accounting.overflow_by_outlet[target] += overflow
@@ -1073,7 +1073,7 @@ def _advance_prognostic_body(
             accounting.ocean_overflow_total += overflow
 
 
-def _overflow_outlet_target(target, source, body_leaf_ids, body_for_leaf, node_count):
+def _overflow_outlet_target(target, source, body_leaf_ids, leaves, node_count):
     """Use a named sink when a closed glacier body has no topographic outlet (#990)."""
     if 0 <= target < node_count:
         return target
@@ -1081,7 +1081,7 @@ def _overflow_outlet_target(target, source, body_leaf_ids, body_for_leaf, node_c
     if 0 <= target < node_count:
         return target
     for leaf_id in body_leaf_ids[id(source)]:
-        candidate = int(body_for_leaf[leaf_id].sink_node_idx)
+        candidate = int(leaves[leaf_id].sink_node_idx)
         if 0 <= candidate < node_count:
             return candidate
     return target

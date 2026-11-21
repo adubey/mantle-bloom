@@ -56,12 +56,8 @@ def main():
     opening_depth = getattr(opening_hydro, "glacier_depth", None)
     opening_points, _ = plates.gather_node_positions(world.plates)
     if opening_depth is None:
-        opening_elevation = getattr(opening_hydro, "elevation", None)
-        if opening_elevation is None:
-            opening_elevation = np.concatenate([plate.collect("elevation") for plate in world.plates])
-        opening_glacier = np.zeros_like(opening_elevation, dtype=bool)
-    else:
-        opening_glacier = np.asarray(opening_depth) >= threshold
+        opening_depth = plates.collect_all_glacier_depth(world.plates)
+    opening_glacier = np.asarray(opening_depth) >= threshold
     for step in range(1, round(args.myr * 1e6 / args.step_years) + 1):
         start = time.perf_counter()
         world_module.step_world(world, args.step_years)
@@ -99,6 +95,7 @@ def main():
         print(json.dumps(record), flush=True)
         if record["share"] > 0.01:
             break
+        opening_glacier, opening_points = glacier, closing_points
 
 
 if __name__ == "__main__":

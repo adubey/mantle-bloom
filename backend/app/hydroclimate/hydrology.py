@@ -283,7 +283,7 @@ GLACIER_MELT_RATE_M_PER_MYR = 400.0
 GLACIER_MELT_REFERENCE_DEGREES_C = 20.0
 GLACIER_MELT_MAX_FACTOR = 3.0
 GLACIER_VISIBLE_DEPTH_M = 10.0
-# The #990 diagnosis measured 1.76% of liquid lake volume under newly visible ice.
+# The #990 diagnosis crossed D4's 1% threshold for liquid under newly visible ice.
 LAKES_USE_CLOSING_GLACIER_ICE = True
 
 # A hard ceiling on per-node ice depth, kept as a guard (issue #353). Ice is shaped by
@@ -1867,15 +1867,14 @@ def _lake_ice_thickness_m(
     on it. A cap below equilibrium is reached in finite time; otherwise equilibrium is an
     asymptote and bisection stays strictly between the endpoints (#990)."""
     h = h0.copy()
-    net_linear = np.broadcast_to(np.asarray(accumulation_rate, dtype=float), h.shape) - loss_rate
-    linear = net_linear
+    linear = np.broadcast_to(np.asarray(accumulation_rate, dtype=float), h.shape) - loss_rate
     no_growth = q <= 0.0
     h[no_growth] = np.clip(h0[no_growth] + linear[no_growth] * years, 0.0, cap_m)
-    near_zero = (np.abs(linear) <= 1e-14) & ~no_growth
-    h[near_zero] = np.minimum(np.sqrt(h0[near_zero] ** 2 + 2.0 * q[near_zero] * years), cap_m)
+    stefan_only = (linear == 0.0) & ~no_growth
+    h[stefan_only] = np.minimum(np.sqrt(h0[stefan_only] ** 2 + 2.0 * q[stefan_only] * years), cap_m)
     equilibrium = np.divide(q, -linear, out=np.full_like(q, np.inf), where=linear < 0.0)
     at_equilibrium = (linear < 0.0) & np.isclose(h0, equilibrium, rtol=1e-14, atol=1e-14)
-    active = (q > 0.0) & ~near_zero & ~at_equilibrium
+    active = (q > 0.0) & ~stefan_only & ~at_equilibrium
     for growing in (True, False):
         is_growing = (linear >= 0.0) | (h0 < equilibrium)
         indices = np.flatnonzero(active & (is_growing if growing else ~is_growing))
@@ -1887,12 +1886,25 @@ def _lake_ice_thickness_m(
         limit_h = np.minimum(eq, cap_m) if growing else eq
         limit_h = np.where(slope >= 0.0, cap_m, limit_h)
 
+        conduction = q[indices]
+        denom0 = conduction + slope * start_h
+
         def elapsed(candidate):
             delta = candidate - start_h
-            denom0 = q[indices] + slope * start_h
-            change = slope * delta
-            log_argument = np.maximum(change / denom0, -1.0 + 1e-15)
-            return delta / slope - q[indices] / (slope * slope) * np.log1p(log_argument)
+            x = np.maximum(slope * delta / denom0, -1.0 + 1e-15)
+            small = np.abs(x) < 1e-3
+            regular = ~small
+            time = np.empty_like(delta)
+            time[regular] = (
+                delta[regular] - conduction[regular] / slope[regular] * np.log1p(x[regular])
+            ) / slope[regular]
+            # Expand the integral of (start_h + delta*u)/(1 + x*u) over u in [0, 1].
+            # The closed form subtracts nearly equal terms as x approaches zero (#1005).
+            t = x[small]
+            constant = 1.0 + t * (-0.5 + t * (1.0 / 3.0 + t * (-0.25 + t / 5.0)))
+            ramp = 0.5 + t * (-1.0 / 3.0 + t * (0.25 + t * (-0.2 + t / 6.0)))
+            time[small] = delta[small] / denom0[small] * (start_h[small] * constant + delta[small] * ramp)
+            return time
 
         low = np.minimum(start_h, limit_h)
         high = np.maximum(start_h, limit_h)
@@ -1971,8 +1983,9 @@ def advance_lake_ice(
     # retained snow, with the rest remaining liquid (#990).
     cap_limit = np.minimum(water, ratio * LAKE_ICE_MAX_THICKNESS_M)
     phase_ice = np.minimum(phase_ice, cap_limit)
-    new_ice = np.minimum(target_with_snow, cap_limit)
-    snow_ice = np.maximum(new_ice - phase_ice, 0.0)
+    # Added snowfall can only increase the cap. Preserve that ordering at round-off.
+    new_ice = np.maximum(phase_ice, np.minimum(target_with_snow, cap_limit))
+    snow_ice = new_ice - phase_ice
     change = phase_ice - ice
     budget = {
         "snowfall_m3": float(np.dot(snow_ice, area)),
@@ -2066,16 +2079,15 @@ def _opening_frictional_heat(
 def _snow_can_start_ice(
     depth: np.ndarray,
     dry_precip_mm: np.ndarray,
-    dry_snow_mm: np.ndarray,
+    bed_frozen_snow_mm: np.ndarray,
     temperature_at_nodes: np.ndarray,
     seasonal_amplitude: np.ndarray,
 ) -> bool:
     """Whether any snowfall could start ice from the opening state: the march fast
-    path's guard (review of #806). True with ice on the ground, with a snowfall share
-    on bare ground, or with dry precipitation where the opening snowfall rate is
-    positive. The opening rate is the conservative side: the solve runs at the lapse
-    target, which with no ice load can only be warmer than the opening deflection, so
-    zero opening snowfall stays zero all step."""
+    path's guard (review of #806). True with ice on the ground, snowfall on a bed-frozen
+    lake, or dry precipitation where the opening snowfall rate is positive. The solve runs
+    at the lapse target, which with no ice load can only be warmer than the opening deflection,
+    so zero opening snowfall stays zero all step."""
     from . import ice_sheet
 
     if depth.any():
@@ -2085,7 +2097,7 @@ def _snow_can_start_ice(
     )
     return bool(
         np.any((np.asarray(dry_precip_mm, dtype=float) > 0.0) & (snow_open > 0.0))
-        or np.any(np.asarray(dry_snow_mm, dtype=float) > 0.0)
+        or np.any(np.asarray(bed_frozen_snow_mm, dtype=float) > 0.0)
     )
 
 
@@ -2370,6 +2382,7 @@ def _march_glacier(
     prev_glacier_depth: np.ndarray,
     dry_precip_mm: np.ndarray,
     dry_snow_mm: np.ndarray,
+    bed_frozen_snow_mm: np.ndarray,
     temperature_at_nodes: np.ndarray,
     seasonal_amplitude: np.ndarray,
     opening_heat_w_m2: np.ndarray,
@@ -2486,7 +2499,7 @@ def _march_glacier(
         climate = ice_sheet.SurfaceClimate(
             np.asarray(dry_precip_mm, dtype=float), temperature, np.asarray(seasonal_amplitude, dtype=float),
             frozen, np.asarray(ref_heat, dtype=float),
-            np.asarray(dry_snow_mm, dtype=float),
+            dry_snow_mm=dry_snow_mm, bed_frozen_snow_mm=bed_frozen_snow_mm,
         )
         return ice_sheet.step_ice(
             points, neighbor_idx, areas, working_elevation, deflection_m, sea_level, depth,
@@ -2511,7 +2524,7 @@ def _march_glacier(
     # exactly-unchanged volume. One endpoint solve over the whole step is the same
     # answer (what main ran): at fixed zero ice every melt/ledger term is linear in
     # dt. Most suite fixtures are iceless, which is most of the suite slowdown.
-    if not _snow_can_start_ice(depth, dry_precip_mm, dry_snow_mm, temperature_at_nodes, seasonal_amplitude):
+    if not _snow_can_start_ice(depth, dry_precip_mm, bed_frozen_snow_mm, temperature_at_nodes, seasonal_amplitude):
         new_depth, melt, ice = solve_once(float(years), depth, heat)
         ice.abrasion_depth_m = np.zeros(n)
         ice.raw_abrasion_depth_m = np.zeros(n)
@@ -2724,17 +2737,20 @@ def _bed_frozen_cap(lake_depth: np.ndarray, lake_ice_m: np.ndarray) -> np.ndarra
 
 
 def _lake_cap_handoff_mask(
-    glacier_depth, lake_depth, lake_ice_m, is_ocean, precipitation_mm, temperature_c, seasonal_amplitude, *, allow_bare,
+    glacier_depth, lake_depth, lake_ice_m, is_ocean, dry_precip_mm, bed_frozen_snow_mm,
+    temperature_c, seasonal_amplitude, *, allow_bare,
 ):
     from . import ice_sheet
 
     # Once the column is frozen to bed, snowfall can sustain glacier ice across the cell.
-    # Test the actual thickness and the D1 balance, including basal melt (#990).
+    # Test the actual thickness and the D1 balance, using the march's opening water
+    # partition so the lake's share of precipitation cannot sustain the glacier (#1005).
     visible = (glacier_depth >= GLACIER_VISIBLE_DEPTH_M) & ~is_ocean
     bare = _bed_frozen_cap(lake_depth, lake_ice_m) & ~is_ocean & ~visible & allow_bare
     idx = np.flatnonzero(bare)
     climate = ice_sheet.SurfaceClimate(
-        precipitation_mm[idx], temperature_c[idx], seasonal_amplitude[idx], np.ones(len(idx), dtype=bool),
+        dry_precip_mm[idx], temperature_c[idx], seasonal_amplitude[idx], np.ones(len(idx), dtype=bool),
+        bed_frozen_snow_mm=bed_frozen_snow_mm[idx],
     )
     thickness = glacier_depth[idx] + lake_ice_m[idx] * ice_sheet.RHO_WATER / ice_sheet.RHO_ICE
     accumulation, surface_melt, basal_melt = climate.rates(thickness)
@@ -2742,7 +2758,7 @@ def _lake_cap_handoff_mask(
     return visible & (lake_ice_m > 0.0)
 
 
-def _transfer_lake_cap(lake_ice_m, handoff, glacier_depth, ice, areas, melt):
+def _transfer_lake_cap(lake_ice_m, handoff, glacier_depth, ice, areas, melt=None):
     from . import ice_sheet
 
     cap = lake_ice_m[handoff]
@@ -2750,12 +2766,17 @@ def _transfer_lake_cap(lake_ice_m, handoff, glacier_depth, ice, areas, melt):
     transferred_m3 = float(np.dot(added_ice, areas[handoff]))
     new_depth = glacier_depth[handoff] + added_ice
     excess = np.maximum(new_depth - GLACIER_MAX_DEPTH_M, 0.0)
+    if melt is None:
+        # After lake routing only sub-visible ice can receive a cap, far below the glacier limit.
+        if np.any(excess > 0.0):
+            raise RuntimeError("Post-routing lake cap handoff would shed unrouted meltwater")
+    else:
+        melt[handoff] += excess
     glacier_depth[handoff] = new_depth - excess
     ice.thickness[handoff] = np.minimum(
         np.maximum(ice.thickness[handoff] + added_ice, glacier_depth[handoff]), GLACIER_MAX_DEPTH_M,
     )
     ice.covered[handoff] = glacier_depth[handoff] / ice.thickness[handoff]
-    melt[handoff] += excess
     capped_m3 = float(np.dot(excess, areas[handoff]))
     ice.ledger.capped_m3 += capped_m3
     ice.ledger.capped_nodes += int(np.count_nonzero(excess))
@@ -2936,7 +2957,7 @@ def compute_hydrology(
     frozen_wet_snow_mm = frozen_wet_snow_mm - bed_frozen_snow_mm
     dry_share = np.clip(1.0 - np.asarray(wet_fraction, dtype=float), 0.0, 1.0)
     dry_rain_intensity_mm = np.where(dry_share > 0.0, dry_rain_mm / np.maximum(dry_share, 1e-12), 0.0)
-    dry_precip_mm = dry_fraction * precipitation_at_nodes + bed_frozen_snow_mm
+    dry_precip_mm = dry_fraction * precipitation_at_nodes
     open_season_temperature_c = seasonal_open_mean_c(lake_temperature_c, seasonal_amplitude, FREEZE_POINT_C)
     lake_open_evaporation_m_per_yr = (
         breaching.open_water_evaporation_mm(open_season_temperature_c) / 1000.0 * ice_free_fraction
@@ -2990,7 +3011,7 @@ def compute_hydrology(
     _opening_heat = _opening_frictional_heat(world, points, _mobile_cover)
     new_glacier_depth, melt, ice = _march_glacier(
         world, points, neighbor_idx, areas, elevation, collect_all_ice_load_deflection(plates_in_order),
-        prev_glacier_depth, dry_precip_mm, ice_snow_mm + bare_snow_mm + bed_frozen_snow_mm,
+        prev_glacier_depth, dry_precip_mm, ice_snow_mm + bare_snow_mm, bed_frozen_snow_mm,
         temperature_at_nodes, seasonal_amplitude, _opening_heat,
         _mobile_cover, is_ocean, plates_in_order,
         # The test knob forces the march off for ice-independent tests; the world flag lets
@@ -3002,8 +3023,8 @@ def compute_hydrology(
     # retreated or calved during the march cannot receive a lake cap after the guard ran.
     prior_cap = prior_lake_ice_m.copy()
     handoff = _lake_cap_handoff_mask(
-        new_glacier_depth, prev_lake_depth, prior_cap,
-        is_ocean, precipitation_at_nodes, temperature_at_nodes, seasonal_amplitude, allow_bare=march_active,
+        new_glacier_depth, prev_lake_depth, prior_cap, is_ocean, dry_precip_mm, bed_frozen_snow_mm,
+        temperature_at_nodes, seasonal_amplitude, allow_bare=march_active,
     ) & (years > 0.0)
     lake_to_glacier_m3 = _transfer_lake_cap(prior_cap, handoff, new_glacier_depth, ice, areas, melt)
     lake_opening_column = prev_lake_depth + prior_cap
@@ -3126,10 +3147,10 @@ def compute_hydrology(
         glacier_covered=handoff | ((new_glacier_depth >= GLACIER_VISIBLE_DEPTH_M) & (years > 0.0)),
     )
     handoff = _lake_cap_handoff_mask(
-        new_glacier_depth, lake_depth_after_phase, lake_ice_m, is_ocean,
-        precipitation_at_nodes, temperature_at_nodes, seasonal_amplitude, allow_bare=march_active,
+        new_glacier_depth, lake_depth_after_phase, lake_ice_m, is_ocean, dry_precip_mm, bed_frozen_snow_mm,
+        temperature_at_nodes, seasonal_amplitude, allow_bare=march_active,
     ) & (years > 0.0)
-    lake_to_glacier_m3 += _transfer_lake_cap(lake_ice_m, handoff, new_glacier_depth, ice, areas, melt)
+    lake_to_glacier_m3 += _transfer_lake_cap(lake_ice_m, handoff, new_glacier_depth, ice, areas)
     ice_flow_target = _ice_surface_flow_target(
         elevation + new_glacier_depth, neighbor_idx, new_glacier_depth, ice_flow_target,
     )

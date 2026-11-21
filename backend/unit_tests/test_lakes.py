@@ -638,6 +638,36 @@ def test_ice_only_closed_root_routes_unstorable_opening_water_to_its_sink():
     assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0)
 
 
+def test_merged_ice_only_closed_root_exports_all_water_through_a_leaf_sink():
+    elevation = np.array([1.0, 2.0])
+    area = np.array([1e10, 2e10])
+    children = [
+        lakes.Lake(
+            lake_id=i, members=np.array([i]), floor_elevation=elevation[i], min_depth=elevation[i],
+            max_depth=3.0, outlet_node_idx=i, sink_node_idx=i, outlet_target_idx=1 - i,
+        )
+        for i in range(2)
+    ]
+    root = lakes.Lake(
+        lake_id=2, members=np.arange(2), floor_elevation=1.0, min_depth=3.0, max_depth=None,
+        outlet_node_idx=-1, sink_node_idx=-1, outlet_target_idx=-1, children=children,
+    )
+    hypsometry = lakes.CellHypsometry(elevation, area, np.zeros(2), float(area.sum()), glacier_mask=np.ones(2, bool))
+    previous = np.array([0.5, 0.25])
+    inflow = np.array([3e9, 5e9])
+    climate = lakes.LakeClimate(inflow, np.zeros(2))
+
+    result = lakes.solve_lakes_prognostic([root], elevation, previous, 2.0, climate, hypsometry)
+
+    expected = np.dot(previous, area) + 2.0 * inflow.sum()
+    np.testing.assert_array_equal(result.lake_depth, np.zeros(2))
+    assert np.count_nonzero(result.overflow_m3) == 1
+    assert result.overflow_m3.sum() == pytest.approx(expected)
+    assert result.ledger.external_supply_m3 == pytest.approx(2.0 * inflow.sum())
+    assert result.ledger.overflow_out_m3 == pytest.approx(expected)
+    assert result.ledger.residual_m3 == pytest.approx(0.0)
+
+
 def test_uncovered_single_cell_keeps_scalar_depth_update_with_glacier_mask(monkeypatch):
     elevation = np.array([100.0])
     area = np.array([1.0e10])

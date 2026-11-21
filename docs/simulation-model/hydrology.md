@@ -514,7 +514,7 @@ member overlap.
 
 **Lake caps hand off to glaciers by mass ([RFC 0015 D4](../../rfc/0015-frozen-water-in-physical-units.md#d4-lakes-that-freeze-and-lakes-under-ice-with-rfc-0014)).** Snow over the wet fraction during freezing conditions adds to the cap within its thickness and water-depth bounds. The remaining wet precipitation supplies the lake. Snow on a cap frozen to bed can feed the glacier. A visible glacier takes the cap it covers, and a bare cap frozen to bed joins the glacier when the glacier's accumulation at that thickness covers its melt. The transfer clears the cap and converts its water-equivalent depth to physical ice depth using the ice-to-water density ratio. The lake ledger reports the water-equivalent volume leaving, and the glacier ice ledger reports the matching volume of ice received.
 
-Visible glacier ice raises the terrain used for the lake hierarchy, hypsometry, and flow directions. Its surface can form a spill pass, while its footprint contributes no lake volume or wet area. Precipitation uses the opening geometry, and the lake hierarchy and liquid routing use the closing glacier surface. The #990 diagnosis found that opening geometry left 1.76% of global liquid lake volume under newly advanced ice in a single step, above D4's 1% rebuild threshold. The closing geometry makes the lake solve move that displaced water through storage or spill in the same step.
+Visible glacier ice raises the terrain used for the lake hierarchy, hypsometry, and flow directions. Its surface can form a spill pass, while its footprint contributes no lake volume or wet area. Precipitation uses the opening geometry, and the lake hierarchy and liquid routing use the closing glacier surface. The [D4 diagnosis](../../analysis/issue990/README.md) found that opening geometry left more than 1% of global liquid lake volume under newly advanced ice in a single step. The closing geometry makes the lake solve move that displaced water through storage or spill in the same step.
 
 **Lakes accumulate silt.** `silt_depth` (a persistent per-node field, carried exactly like `lake_depth`) is a
 small volume fraction (`SILT_ACCUMULATION_COEFFICIENT`, m^3 of silt per m^3 of water) of each
@@ -804,10 +804,12 @@ precipitation splits once, into parts that sum to it (`hydrology.glacier_rain_pa
 the lake takes the wet share of rain and snow, with frozen-season snowfall able to add
 cap mass. On the dry share the ice-covered part's snow is glacier
 accumulation (by mass) while its rain runs off the ice, and the bare part's snow melts where
-it falls within the step while its rain runs off. The split reads the opening ice cover (a
-one-step lag on the cover only). It doesn't freeze liquid water: rivers, lakes and the water
-settling at a sink stay liquid at any temperature (see *Liquid water doesn't freeze on the
-annual mean* below).
+it falls within the step while its rain runs off. Runoff and the precipitation ledger use the
+opening ice cover and surface temperature. The glacier mass balance recalculates the dry
+share's snow fraction at each trial ice thickness, including lapse cooling. Frozen-season
+snowfall on a cap that opens frozen to bed goes straight to glacier accumulation as snow.
+The bed-frozen cap handoff tests whether those same precipitation inputs can sustain ice
+at the cap's thickness (#1005).
 
 A step spans thousands of years or more, so seasons are never stepped through, but their
 effect on glacier melt is imputed (issue #275 phase 2). Each node gets a seasonal
