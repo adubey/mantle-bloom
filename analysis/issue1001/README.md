@@ -152,3 +152,64 @@ Decratonization changes the run from step 1, so there is no shared prefix. The c
 **Controls.** Balance error stays near 0. Formed area plus credit equals the budget earned. Peak RSS and runtime are recorded.
 
 *Amendment (PR #1002 review), written after seed 326494039's first round 2 summary had been seen. It concerns only an accounting control, not a result:* the credit-accounting control as written above ignores the cap. No host qualifies for the first 200 Myr, but the cap holds the bank at 100 Myr of earnings, so some early earnings are discarded. The control is therefore **earned = formed + banked + discarded**. It is checked from the `formation_credit_earned_m2` and `formation_credit_discarded_m2` counters and the banked credit. The two arms already running began before those counters existed and can't check it, so the final replay reruns both seeds with them.
+
+## Round 2 results
+
+The final replay ran on 2026-11-21 at branch commit `43dd4962`, rebased onto `main`. Two seeds, 500 Myr at 1 Myr steps, model defaults. The numbers are in [`round2.json`](round2.json), produced by [`analyse_round2.py`](analyse_round2.py).
+
+There is one difference from the pre-registered setup. The rebase brought in #999's lake substep change, but round 1's baseline arms ran on the base before #999. So the round 2 arms differ from the baseline by #999 as well as by this change. That matters mainly for speed (reading 4).
+
+**Calibration.** The pooled decratonized area came to 6.98% per Gyr, inside 5–10%, so the radius stays at 350 km and nothing was rerun.
+
+**Controls.**
+- The worst |balance error| was 1.0e-12 M km³.
+- Earned = formed + banked + discarded held at every snapshot, to 4e-16 M km².
+- Formed area never exceeded what was earned.
+- Seed 326494039 earned 1.128 M km², formed 0.878, banked 0.005 and discarded 0.244.
+- Seed 111065103 earned 1.008 M km², formed 0.786, banked 0.012 and discarded 0.211.
+- The discards all come from the first 200 Myr, when no host qualifies yet and the bank sits at its cap. The first formation shows at the 200 Myr snapshot on both seeds.
+- Peak RSS was 0.57 GB, and each seed took 41–43 min.
+
+### Pre-registered metrics
+
+Rates are % of the starting craton area or volume per Gyr, over 0→500 Myr.
+
+| Metric | Seed 326494039 | Seed 111065103 | Expected | Met? |
+|---|---:|---:|---|---|
+| 1. Formed area | 1.74 | 1.55 | 1.5–2.5, never above earned | yes |
+| 2. Decratonized area | 9.94 | 4.05 | 3–13 per seed; 5–10 pooled (6.98) | yes |
+| 3. Net craton area | −6.10 | −2.39 | negative, −2 to −10 | yes |
+| 4. Net craton volume | −21.4 | −16.2 | −12 to −25 | yes |
+| 5. Share of genuine continental area, 200 → 500 Myr | 0.436 → 0.472 | 0.505 → 0.509 | falls on both seeds | **no** |
+| 6. Speed, all nodes, 210–500 Myr, mean ± SE (cm/yr) | 0.973 ± 0.028 | 0.800 ± 0.018 | | |
+| Round 1 on arm, same window | 0.923 ± 0.030 | 0.676 ± 0.017 | | |
+| Round 2 − on | +5.4% (z 1.2) | +18.5% (z 5.1) | ≥ on, by 0–10% | 326494039 inconclusive; 111065103 above range |
+
+For reference, by 500 Myr the round 2 arms carry 23% and 18% less craton area than the on arms (97.8 against 127.7, and 100.4 against 122.0 M km²). The share at 500 Myr is 0.472 and 0.509, against 0.601 and 0.622 for the on arm and 0.477 and 0.517 for round 1's off arm.
+
+### Reading
+
+1. **The budget behaves as designed.** Craton still forms, at about 1.6% per Gyr, while plume heads strip about 7% per Gyr pooled. Craton area now falls on both seeds, and volume falls 16–21% per Gyr. Round 1 had no area loss, and the on arm (`main`) had +40–53% area growth per Gyr. The split between seeds (9.9% against 4.1% stripped) is the Poisson noise the pre-registration expected from about ten craton-hitting heads per seed.
+
+2. **The share still rises (metric 5 missed).** The reason is the same one round 1 found for its off arm: genuine continental area shrinks faster than craton area.
+   - From 200 to 500 Myr, craton area falls 1.3% on seed 326494039 (99.1 → 97.8 M km²), while continental area falls 9.0% (227.6 → 207.1 M km²).
+   - On seed 111065103, craton area falls 1.2% (101.6 → 100.4) and continental area 2.0% (201.2 → 197.2).
+
+   Over 200–500 Myr, plume heads strip 2.80 and 1.82 M km², and formation adds 0.66 and 0.59 M km². That is a net 2.1% and 1.2% of the craton area in 300 Myr, which is less than the continental loss on either seed. A falling share needs either a stronger area sink or a halt to non-cratonic continental loss. Continental loss is outside this change, and the plan was not to retune for metric 5.
+
+3. **Non-cratonic continental area is shrinking**, by 17% and 11% over 500 Myr on both arms of both rounds. The cause isn't known yet, and it belongs in its own issue.
+
+4. **Speed: no reliable conclusion.** The z scores use only the scatter of snapshots within each run. They miss trajectory-to-trajectory scatter, because round 2 differs from the baseline from step 1 (and by #999), and the runs diverge chaotically. The preliminary round 2 run (below) shows how big that scatter is. It differed from the final run only in formation order, tie-break and #999, yet gave −2.2% (z −0.4) and +11.6% (z 3.9) against the on arm, where the final run gave +5.4% and +18.5%. A 7 percentage-point swing between near-identical configurations means seed 111065103's z of 5.1 can't be read as an effect of decratonization. Answering the speed question would take an ensemble of perturbed replicas per arm. Round 1's exploratory no-craton arm is still the cleanest evidence that existing craton costs speed, because it forked from a shared save.
+
+### Preliminary round 2 run
+
+The first round 2 run used the code from before the Antigravity review fixes, on the base before #999. It had no credit counters, so the credit control can't be checked on it. It is reported as the pre-registration requires, but it is superseded by the final replay above.
+
+| Metric | Seed 326494039 | Seed 111065103 |
+|---|---:|---:|
+| Formed area, % per Gyr | 1.75 | 1.56 |
+| Decratonized area, % per Gyr | 10.50 | 4.05 (pooled 7.26) |
+| Net craton area, % per Gyr | −6.43 | −2.37 |
+| Net craton volume, % per Gyr | −21.6 | −15.7 |
+| Share, 200 → 500 Myr | 0.436 → 0.460 | 0.505 → 0.511 |
+| Speed against the on arm | −2.2% (z −0.4) | +11.6% (z 3.9) |
