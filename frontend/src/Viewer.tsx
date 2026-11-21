@@ -5,6 +5,7 @@ import Legend from "./Legend";
 import MapCanvas from "./MapCanvas";
 import ProgressBar from "./ProgressBar";
 import { groupName, phaseLinks } from "./phaseInfo";
+import { createPhaseDwellQueue } from "./phaseDwell";
 import {
   fetchPublicState,
   fetchPublicWorlds,
@@ -139,6 +140,51 @@ function PhaseLinks({ phase }: { phase: string }) {
           <a href={link.url} target="_blank" rel="noreferrer">{link.label}</a>
         </span>
       ))}
+    </div>
+  );
+}
+
+// Keep "Learn more" links visible for ~1s per phase so fast steps on small maps stay clickable.
+function useLearnMorePhase(phase: string | null | undefined, worldId: WorldId): string | null {
+  const [displayed, setDisplayed] = useState<string | null>(null);
+  const controllerRef = useRef<ReturnType<typeof createPhaseDwellQueue> | null>(null);
+
+  useEffect(() => {
+    const controller = createPhaseDwellQueue({ onPhaseChange: setDisplayed });
+    controllerRef.current = controller;
+    return () => {
+      controller.reset();
+      controller.dispose();
+      controllerRef.current = null;
+    };
+  }, [worldId]);
+
+  useEffect(() => {
+    controllerRef.current?.update(phase);
+  }, [phase, worldId]);
+
+  return displayed;
+}
+
+function StepProgressPanel({
+  stepProgress,
+  worldId,
+}: {
+  stepProgress: PublicState["step_progress"];
+  worldId: WorldId;
+}) {
+  const learnMorePhase = useLearnMorePhase(stepProgress?.phase, worldId);
+  if (!stepProgress && !learnMorePhase) return null;
+  return (
+    <div style={{ marginBottom: 12 }}>
+      {stepProgress && (
+        <ProgressBar
+          label="Advance in progress"
+          text={`Advance in progress: ${stepProgress.group ? `${groupName(stepProgress.group)} · ` : ""}${stepProgress.phase}`}
+          fraction={stepProgress.fraction}
+        />
+      )}
+      {learnMorePhase && <PhaseLinks phase={learnMorePhase} />}
     </div>
   );
 }
@@ -540,16 +586,7 @@ function WorldView({ worldId }: { worldId: WorldId }) {
         </div>
       </div>
       {notice && <p style={{ opacity: 0.8 }}>{notice}</p>}
-      {state.step_progress && (
-        <div style={{ marginBottom: 12 }}>
-          <ProgressBar
-            label="Advance in progress"
-            text={`Advance in progress: ${state.step_progress.group ? `${groupName(state.step_progress.group)} · ` : ""}${state.step_progress.phase}`}
-            fraction={state.step_progress.fraction}
-          />
-          <PhaseLinks phase={state.step_progress.phase} />
-        </div>
-      )}
+      <StepProgressPanel stepProgress={state.step_progress} worldId={worldId} />
       <div ref={mapWrapperRef}>
         <MapCanvas
           imageUrl={image}
