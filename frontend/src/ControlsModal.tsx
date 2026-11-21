@@ -8,6 +8,7 @@ interface Props {
   iceAgePeriodYears: number;
   simulatePlateMovement: boolean;
   simulateClimateBiomes: boolean;
+  formNewCratons: boolean;
   windModel: string;
   faultDeformationMode: string;
   splitMethod: SplitMethod;
@@ -18,6 +19,7 @@ interface Props {
   onIceAgePeriodChange: (v: number) => void;
   onSimulatePlateMovementChange: (v: boolean) => void;
   onSimulateClimateBiomesChange: (v: boolean) => void;
+  onFormNewCratonsChange: (v: boolean) => void;
   onWindModelChange: (v: string) => void;
   onFaultDeformationModeChange: (v: string) => void;
   onSplitMethodChange: (v: SplitMethod) => void;
@@ -116,6 +118,7 @@ export default function ControlsModal({
   iceAgePeriodYears,
   simulatePlateMovement,
   simulateClimateBiomes,
+  formNewCratons,
   windModel,
   faultDeformationMode,
   splitMethod,
@@ -126,6 +129,7 @@ export default function ControlsModal({
   onIceAgePeriodChange,
   onSimulatePlateMovementChange,
   onSimulateClimateBiomesChange,
+  onFormNewCratonsChange,
   onWindModelChange,
   onFaultDeformationModeChange,
   onSplitMethodChange,
@@ -421,6 +425,22 @@ export default function ControlsModal({
                 Books every step phase's crust and mantle-lithosphere change into the world's
                 phase budget (see python -m app.phase_budget_diagnostics). Debug-only; slows
                 stepping a little.
+              </div>
+            </div>
+
+            <div style={{ borderTop: "1px solid #333", paddingTop: 14, marginTop: 14 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={formNewCratons}
+                  onChange={(e) => onFormNewCratonsChange(e.target.checked)}
+                />
+                Form new cratons
+              </label>
+              <div style={{ fontSize: 11, color: "#999", marginTop: 8 }}>
+                {formNewCratons
+                  ? "On: continental interiors that stay quiet for 200 Myr become craton, so the cratonic share grows and plates slow as cratons jam their fronts."
+                  : "Off (Earth today): no new cratons form, so existing ones slowly wear away at their margins — about 10–20% per Gyr."}
               </div>
             </div>
 

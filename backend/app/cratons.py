@@ -19,7 +19,12 @@ State. Four per-node surface fields carry everything (see surface_fields.py):
 Formation rule. A column is quiet when it is genuine continental crust (Hc within
 [CRATON_HOST_MIN_HC_M, CRATON_HOST_MAX_HC_M] -- neither a drowned shelf nor an active orogen)
 at least CRATON_FORMATION_MARGIN_KM from its plate's edge or any non-genuine cell. Once the
-clock reaches CRATON_FORMATION_MYR its whole Hc becomes cratonic. A cratons-first world
+clock reaches CRATON_FORMATION_MYR its whole Hc becomes cratonic -- but only on a world with
+``World.form_new_cratons`` on, which is off by default (#1001): Earth has made essentially no
+new craton since the Proterozoic, while its cratons are destroyed at roughly 7-25% of their
+area per Gyr, so a present-day planet's cratonic share should fall, not grow. The clock runs
+either way, so turning formation on mid-run picks up columns that have already been quiet.
+A cratons-first world
 (RFC 0009, continent_layout.py) starts with its generated cratonic cores; every other world
 (and the first load of an older save) seeds the deep interiors -- CRATON_SEED_MARGIN_KM in.
 Either way the starting cratons already exist, dated CRATON_SEED_AGE_YEARS before the start.
@@ -82,9 +87,22 @@ CRATON_HOST_MIN_HC_M = 0.8 * lithosphere.REFERENCE_HC_CONTINENTAL_M
 CRATON_HOST_MAX_HC_M = 50_000.0
 # How far inside its margin a column must be to keep its formation clock running.
 CRATON_FORMATION_MARGIN_KM = 500.0
-# How long a column must stay quiet to cratonise. Real cratonic roots stabilise over a few
+# How long a column must stay quiet to cratonise, on a world that forms new cratons at all
+# (`World.form_new_cratons`, off by default, #1001). Real cratonic roots stabilise over a few
 # hundred Myr; long enough here that an ordinary collision belt has to stop deforming and
 # relax back into the host Hc window before it joins the craton.
+#
+# Why formation is off by default (#1001). Cratonic lithosphere formed in the Archean and
+# Proterozoic, and cratonisation petered out by ~1 Ga: Phanerozoic lithosphere doesn't
+# become craton, and a keel destroyed since then (eastern North China, ~130-110 Ma) regrows
+# thin and fertile, not cratonic (Liu et al. 2025, Natl Sci Rev nwaf027; Celli et al. 2020,
+# Nat Commun 11:92). Cratons are meanwhile destroyed: Liu et al. (2018, JGR 123) put modern
+# keel destruction at ~14% of the original craton area per 2 Gyr, and the Phanerozoic record
+# (eastern North China, western Wyoming, southern Kaapvaal, the Angolan Shield, western
+# Man-Leo, Tanzania) is nearer ~25% per Gyr. With this rule on, the RFC 0012 G2 baselines
+# formed 26-50% of their starting craton volume per Gyr against 12-20% destroyed, so the
+# cratonic share grew and its jammed fronts slowed the plates. With it off the existing
+# sinks alone give a net loss at an Earth-like rate.
 CRATON_FORMATION_MYR = 200.0
 # Generation seeding without generated cores (plates-first, sketch and premade worlds): the
 # deep interiors of the starting continents. 875 km (seven default cells) covers ~40-50% of
@@ -520,8 +538,9 @@ def clear_oceanic_belts(plate: "Plate") -> None:
 
 def update(world: "World", years: float) -> None:
     """End-of-step craton pass: advance every quiet column's formation clock, cratonise the
-    ones that reach CRATON_FORMATION_MYR, and drop the provenance stamp of any cell whose
-    craton is gone. A belt column is never quiet (RFC 0009), and a cell retyped oceanic stops
+    ones that reach CRATON_FORMATION_MYR if the world forms new cratons
+    (`World.form_new_cratons`, off by default, #1001), and drop the provenance stamp of any
+    cell whose craton is gone. A belt column is never quiet (RFC 0009), and a cell retyped oceanic stops
     being a belt: belts are continental crust (`clear_oceanic_belts`)."""
     ensure_initialized(world)
     years_myr = years / 1e6
@@ -539,7 +558,7 @@ def update(world: "World", years: float) -> None:
         craton = plate.collect("craton_crust_m")
         formed = plate.collect("craton_formed_years")
         forming = quiet & (stable >= CRATON_FORMATION_MYR) & (craton <= 0.0)
-        if np.any(forming):
+        if world.form_new_cratons and np.any(forming):
             craton[forming] = hc[forming]
             formed[forming] = world.elapsed_years - stable[forming] * 1e6
             record(world, "formed_m3", float(np.dot(hc[forming], _areas(world, plate)[forming])))

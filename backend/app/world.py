@@ -585,6 +585,12 @@ class World:
     lake_stop_mode: str = "resolve"
     glacier_step_years: float = 250.0
     glacier_stop_mode: str = "exhaust"
+    # Whether quiet continental interiors still turn into craton (cratons.update's formation
+    # rule). Off by default, as on present-day Earth, whose cratons are destroyed faster than
+    # any form (#1001); on restores the 200 Myr rule (cratons.CRATON_FORMATION_MYR).
+    # Live-adjustable via POST /world/controls. A plain class default, so a save written
+    # before the field existed loads with formation off.
+    form_new_cratons: bool = False
     # Which wind field feeds climate.py (live-adjustable via POST /world/controls, the
     # "Controls" window). "cfd": the genuine time-integrated shallow-water solve in
     # atmosphere_cfd.py, advanced once per step by _advance_fluid_dynamics -- the most

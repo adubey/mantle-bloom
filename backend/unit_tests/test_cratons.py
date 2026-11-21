@@ -139,6 +139,7 @@ def test_thin_or_thick_crust_is_never_seeded():
 def test_a_quiet_interior_cratonises_after_the_formation_time(monkeypatch):
     plate = _cap(1)
     world = _unseeded(monkeypatch, plate)
+    world.form_new_cratons = True
     world.elapsed_years = 400e6
 
     cratons.update(world, 0.5 * cratons.CRATON_FORMATION_MYR * 1e6)
@@ -150,6 +151,50 @@ def test_a_quiet_interior_cratonises_after_the_formation_time(monkeypatch):
     assert np.any(formed) and not np.all(formed)
     assert np.all(plate.collect("craton_formed_years")[formed] == pytest.approx(400e6 - cratons.CRATON_FORMATION_MYR * 1e6))
     assert world.craton_ledger["formed_m3"] == pytest.approx(_volume(plate, "craton_crust_m"))
+
+
+def test_no_craton_forms_by_default_however_long_a_host_stays_quiet(monkeypatch):
+    """#1001: Earth has formed essentially no craton since the Proterozoic, so a world forms
+    none unless `form_new_cratons` is on -- but the quiet clock still runs."""
+    plate = _cap(1)
+    world = _unseeded(monkeypatch, plate)
+    assert world.form_new_cratons is False
+
+    for _ in range(10):
+        cratons.update(world, 0.5 * cratons.CRATON_FORMATION_MYR * 1e6)
+
+    assert _volume(plate, "craton_crust_m") == 0.0
+    assert world.craton_ledger["formed_m3"] == 0.0
+    assert np.max(plate.collect("stable_continental_myr")) == pytest.approx(5.0 * cratons.CRATON_FORMATION_MYR)
+
+
+def test_turning_formation_on_cratonises_hosts_already_quiet_long_enough(monkeypatch):
+    """The clock ran while formation was off, so the first update after turning it on forms
+    the hosts that have been quiet past CRATON_FORMATION_MYR, dated from when they went quiet."""
+    plate = _cap(1)
+    world = _unseeded(monkeypatch, plate)
+    world.elapsed_years = 500e6
+    cratons.update(world, 1.5 * cratons.CRATON_FORMATION_MYR * 1e6)
+    assert _volume(plate, "craton_crust_m") == 0.0
+
+    world.form_new_cratons = True
+    cratons.update(world, 1e6)
+
+    formed = plate.collect("craton_crust_m") > 0.0
+    assert np.any(formed)
+    expected = 500e6 - (1.5 * cratons.CRATON_FORMATION_MYR + 1.0) * 1e6
+    assert np.all(plate.collect("craton_formed_years")[formed] == pytest.approx(expected))
+    assert world.craton_ledger["formed_m3"] == pytest.approx(_volume(plate, "craton_crust_m"))
+    assert cratons.balance_error_m3(world) == pytest.approx(0.0, abs=1e-6 * world.craton_ledger["formed_m3"])
+
+
+def test_form_new_cratons_round_trips_and_old_saves_read_off():
+    world = World(seed=0)
+    world.form_new_cratons = True
+    assert persistence.load_world_bytes(persistence.save_world_bytes(world)).form_new_cratons is True
+
+    world.__dict__.pop("form_new_cratons")
+    assert persistence.load_world_bytes(persistence.save_world_bytes(world)).form_new_cratons is False
 
 
 def test_leaving_the_host_window_resets_the_formation_clock(monkeypatch):
@@ -167,6 +212,7 @@ def _quiet_centre_forms(monkeypatch, marked: bool) -> bool:
     craton over 300 Myr of quiet, with or without a belt mark."""
     plate = _cap(1)
     world = _unseeded(monkeypatch, plate)
+    world.form_new_cratons = True
     centre = np.zeros(plate.node_count(), dtype=bool)
     centre[int(np.argmax(plate.all_points_and_elevation()[0] @ np.array([1.0, 0.0, 0.0])))] = True
     inside_km = cratons._interior_hops(plate, cratons._genuine_continental(plate), 20)[centre][0] * SPACING * 6371.0
