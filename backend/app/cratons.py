@@ -181,9 +181,15 @@ CRATON_SINK_ACCOUNTS = (
     "unattributed_m3",
 )
 CRATON_ACCOUNTS = CRATON_SOURCE_ACCOUNTS + CRATON_SINK_ACCOUNTS
-# Craton area formed and decratonized (#1001), m^2: diagnostics outside the volume balance,
-# because Earth's craton budget is reported in area.
-CRATON_AREA_COUNTERS = ("formed_area_m2", "decratonized_area_m2")
+# Craton area formed and decratonized, and the formation budget earned and discarded by its
+# cap (#1001), m^2: diagnostics outside the volume balance, because Earth's craton budget is
+# reported in area.
+CRATON_AREA_COUNTERS = (
+    "formed_area_m2",
+    "decratonized_area_m2",
+    "formation_credit_earned_m2",
+    "formation_credit_discarded_m2",
+)
 # rifted_m3 by path (RFC 0003 phase 1): divergent-boundary thinning
 # (lithosphere_plate.deform_columns), stretch donated to new rift cells
 # (quad_tectonics._allocate_stretch) and failed rifts (merge_split.maybe_split_plate). Booking
@@ -604,21 +610,30 @@ def _formation_picks(world: "World", states: list, continental_area_m2: float, y
     """Per plate in `states`, the qualifying hosts that cratonise this step (#1001).
 
     The step earns CRATON_FORMATION_RATE_PER_GYR x `craton_formation_multiplier` of the genuine
-    continental area, added to `World.craton_formation_credit_m2` and capped at
-    CRATON_FORMATION_CREDIT_MAX_MYR of earnings, so a long wait for hosts can't release one
-    giant burst. The credit is spent on whole cells: the longest-quiet first, and among equally
-    quiet cells the nearest to existing craton, so new craton grows onto old blocks' quiet
-    margins and as coherent blocks rather than speckle. Whatever is left carries to the next
-    step; a cell bigger than the credit waits. A multiplier of 0 drops the credit."""
+    continental area, added to `World.craton_formation_credit_m2`. The credit is spent on whole
+    cells: the longest-quiet first, and among equally quiet cells the nearest to existing
+    craton, so new craton grows onto old blocks' quiet margins and as coherent blocks rather
+    than speckle. A cell bigger than the credit waits. Only then is the unspent credit capped
+    at CRATON_FORMATION_CREDIT_MAX_MYR of earnings (so a long wait for hosts can't release one
+    giant burst), and the excess booked to the `formation_credit_discarded_m2` counter. Capping
+    after spending keeps the budget independent of how an interval is split into steps, while
+    hosts are available. A multiplier of 0 discards the credit. So, per world,
+    `formation_credit_earned_m2` = `formed_area_m2` + credit + `formation_credit_discarded_m2`."""
     picks = [np.zeros(len(state[5]), dtype=bool) for state in states]
     rate = CRATON_FORMATION_RATE_PER_GYR * max(float(world.craton_formation_multiplier), 0.0)
     earned = rate * continental_area_m2 * years / 1e9
-    cap = rate * continental_area_m2 * CRATON_FORMATION_CREDIT_MAX_MYR / 1e3
-    credit = min(float(world.craton_formation_credit_m2) + earned, cap)
-    world.craton_formation_credit_m2 = max(credit, 0.0)
+    world.craton_ledger["formation_credit_earned_m2"] += earned
+    credit = float(world.craton_formation_credit_m2) + earned
     candidates = [(i, np.flatnonzero(state[5])) for i, state in enumerate(states) if np.any(state[5])]
-    if credit <= 0.0 or not candidates:
-        return picks
+    if credit > 0.0 and candidates:
+        credit -= _spend_formation_credit(world, states, candidates, credit, picks)
+    _bank_formation_credit(world, credit, rate * continental_area_m2 * CRATON_FORMATION_CREDIT_MAX_MYR / 1e3)
+    return picks
+
+
+def _spend_formation_credit(world: "World", states: list, candidates: list, credit: float, picks: list[np.ndarray]) -> float:
+    """Mark in `picks` the candidate cells `credit` buys (see `_formation_picks`); returns the
+    area spent."""
     from .quad_tectonics import hop_distance
 
     reach = _hops(CRATON_FORMATION_MARGIN_KM, line_spacing_rad(world.node_density))
@@ -635,12 +650,16 @@ def _formation_picks(world: "World", states: list, continental_area_m2: float, y
     order = np.lexsort((index, owner, near, -stable))
     spent = np.cumsum(area[order])
     count = int(np.searchsorted(spent, credit, side="right"))
-    if count == 0:
-        return picks
     for k in order[:count]:
         picks[owner[k]][index[k]] = True
-    world.craton_formation_credit_m2 = max(credit - float(spent[count - 1]), 0.0)
-    return picks
+    return float(spent[count - 1]) if count else 0.0
+
+
+def _bank_formation_credit(world: "World", credit: float, cap: float) -> None:
+    """Carry `credit` to the next step, held to [0, cap]; book what the cap drops."""
+    kept = min(max(credit, 0.0), max(cap, 0.0))
+    world.craton_ledger["formation_credit_discarded_m2"] += max(credit - kept, 0.0)
+    world.craton_formation_credit_m2 = kept
 
 
 def _decratonize_under_plume_heads(world: "World", years: float) -> None:
@@ -651,7 +670,10 @@ def _decratonize_under_plume_heads(world: "World", years: float) -> None:
     ordinary continental crust, so the cratonic volume is booked to `decratonized_m3` and its
     area to the `decratonized_area_m2` counter, and the column's formation clock restarts,
     as a destroyed keel regrows thin and fertile (eastern North China). Heads arrive in
-    `plumes.apply` earlier in the step, with arrival times in (t - years, t]."""
+    `plumes.apply` earlier in the step, with arrival times in (t - years, t]. Known gap (PR
+    #1002 review): a head is found here only while it is still in `world.mantle_plumes`, so a
+    step longer than a plume's whole life (~80 Myr), or the first step after the plume stream
+    is unpaused, can miss heads; Myr-scale steps are unaffected."""
     multiplier = max(float(world.craton_decratonization_multiplier), 0.0)
     if years <= 0.0 or multiplier <= 0.0:
         return

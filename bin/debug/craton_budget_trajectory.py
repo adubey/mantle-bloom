@@ -5,8 +5,9 @@ Generates `--seed` at node density 1, steps it `--steps` times by `--step-myr`, 
 `--snapshot-every` steps appends one JSON line to `--out` with:
 
 - the live craton inventory (volume, area, share of genuine continental area, core count);
-- the cumulative craton ledger: formed, each sink account, the formed and decratonized area
-  counters, and the balance error;
+- the cumulative craton ledger: formed, each sink account, the area counters (formed,
+  decratonized, formation budget earned and discarded), the banked formation credit, and the
+  balance error;
 - area-weighted plate speed |omega x r| over continental and oceanic nodes and overall, in
   cm/yr (the measure #942 uses), plus the plate count.
 
@@ -75,6 +76,7 @@ def snapshot(world, step: int) -> dict:
         "craton_core_count": diag["craton_core_count"],
         "ledger_mkm3": ledger,
         "area_counters_mkm2": area_counters,
+        "formation_credit_mkm2": getattr(world, "craton_formation_credit_m2", 0.0) / 1e12,
         "destroyed_mkm3": sum(ledger[key] for key in cratons.CRATON_SINK_ACCOUNTS),
         "balance_error_mkm3": diag["craton_balance_error_m3"] / 1e15,
         "peak_rss_gb": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e9,

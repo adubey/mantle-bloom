@@ -184,6 +184,7 @@ def test_formation_spends_an_earth_like_budget_longest_quiet_hosts_first(monkeyp
     assert 0.0 < formed_area <= earned
     assert formed_area + world.craton_formation_credit_m2 == pytest.approx(earned)
     assert world.craton_formation_credit_m2 < largest_cell
+    assert world.craton_ledger["formation_credit_discarded_m2"] == 0.0
     assert world.craton_ledger["formed_m3"] == pytest.approx(_volume(plate, "craton_crust_m"))
     assert cratons.balance_error_m3(world) == pytest.approx(0.0, abs=1e-6 * world.craton_ledger["formed_m3"])
 
@@ -222,7 +223,16 @@ def test_a_zero_formation_multiplier_forms_nothing_but_the_clock_runs(monkeypatc
     assert _volume(plate, "craton_crust_m") == 0.0
     assert world.craton_ledger["formed_m3"] == 0.0
     assert world.craton_formation_credit_m2 == 0.0
+    assert world.craton_ledger["formation_credit_earned_m2"] == 0.0
     assert np.max(plate.collect("stable_continental_myr")) == pytest.approx(5.0 * cratons.CRATON_FORMATION_MYR)
+
+
+def _credit_balance(world) -> float:
+    """Earned - (formed + banked + discarded): zero when every m^2 of budget is accounted for."""
+    ledger = world.craton_ledger
+    return ledger["formation_credit_earned_m2"] - (
+        ledger["formed_area_m2"] + world.craton_formation_credit_m2 + ledger["formation_credit_discarded_m2"]
+    )
 
 
 def test_formation_credit_is_capped_while_no_host_qualifies(monkeypatch):
@@ -232,9 +242,43 @@ def test_formation_credit_is_capped_while_no_host_qualifies(monkeypatch):
 
     cratons.update(world, 0.9 * cratons.CRATON_FORMATION_MYR * 1e6)
 
-    cap = cratons.CRATON_FORMATION_RATE_PER_GYR * area * cratons.CRATON_FORMATION_CREDIT_MAX_MYR / 1e3
-    assert world.craton_formation_credit_m2 == pytest.approx(min(cap, cratons.CRATON_FORMATION_RATE_PER_GYR * area * 0.9 * cratons.CRATON_FORMATION_MYR / 1e3))
+    rate = cratons.CRATON_FORMATION_RATE_PER_GYR
+    earned = rate * area * 0.9 * cratons.CRATON_FORMATION_MYR / 1e3
+    cap = rate * area * cratons.CRATON_FORMATION_CREDIT_MAX_MYR / 1e3
+    assert world.craton_formation_credit_m2 == pytest.approx(min(cap, earned))
+    assert world.craton_ledger["formation_credit_discarded_m2"] == pytest.approx(max(earned - cap, 0.0))
     assert world.craton_ledger["formed_m3"] == 0.0
+    assert _credit_balance(world) == pytest.approx(0.0, abs=1e-9 * earned)
+
+
+def _formed_area_after(monkeypatch, steps_myr) -> tuple[float, object]:
+    """Formed area over `steps_myr` from a full bank, on a cap whose interior already qualifies,
+    with a budget of about two cells per 50 Myr and a 100 Myr cap."""
+    plate = _cap(1)
+    world = _unseeded(monkeypatch, plate)
+    cratons.update(world, cratons.CRATON_FORMATION_MYR * 1e6)
+    cell = float(cratons._areas(world, plate).max())
+    monkeypatch.setattr(cratons, "CRATON_FORMATION_RATE_PER_GYR", 40.0 * cell / _continental_area(world, plate))
+    for key in ("formation_credit_earned_m2", "formation_credit_discarded_m2", "formed_area_m2"):
+        world.craton_ledger[key] = 0.0
+    world.craton_formation_credit_m2 = 4.0 * cell
+    world.craton_ledger["formation_credit_earned_m2"] = 4.0 * cell  # the opening bank counts as earned
+    for myr in steps_myr:
+        cratons.update(world, myr * 1e6)
+    return world.craton_ledger["formed_area_m2"], world
+
+
+def test_formation_budget_does_not_depend_on_how_an_interval_is_split(monkeypatch):
+    """PR #1002 review: capping only the unspent credit, after spending, makes one 100 Myr step
+    and two 50 Myr steps form the same area while hosts are plentiful (to one cell)."""
+    one, world_one = _formed_area_after(monkeypatch, [100.0])
+    two, world_two = _formed_area_after(monkeypatch, [50.0, 50.0])
+    cell = max(float(cratons._areas(w, w.plates[0]).max()) for w in (world_one, world_two))
+
+    assert one > 6.0 * cell
+    assert one == pytest.approx(two, abs=1.01 * cell)
+    for world in (world_one, world_two):
+        assert _credit_balance(world) == pytest.approx(0.0, abs=1e-6 * one)
 
 
 def test_formation_credit_round_trips_and_old_saves_read_zero():
