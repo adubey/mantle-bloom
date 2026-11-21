@@ -569,9 +569,22 @@ class World:
     # off (see hydrology.MARCH_GLACIERS): one opening-state ice solve, ice frozen for the
     # step -- minutes per Myr-step cheaper on generated worlds (issues #822, #811). Model
     # default True (RFC 0015 D2 marches); the UI creates worlds with it off (see App.tsx's
-    # DEFAULT_SIMULATE_GLACIER_MARCH) and Controls toggles it back on, so interactive
+    # DEFAULT_SIMULATE_GLACIER_MARCH) and Time Settings toggles it back on, so interactive
     # stepping stays fast unless the user asks for the march.
     simulate_glacier_march: bool = True
+    # Substep sizes and stopping conditions for lakes and glaciers (#999), live-adjustable
+    # via POST /worlds/{world_id}/controls and the Time Settings dialog.
+    # - lake_step_years: 50-1000 yr slice length (default 1000 yr); honors the chosen slice
+    #   without the LAKE_MAX_SUBSTEPS cap.
+    # - lake_stop_mode: "resolve" (default: lump remaining time into one slice once settled)
+    #   or "exhaust" (run every slice through the full tectonic step).
+    # - glacier_step_years: 100-1000 yr substep length (default 250 yr).
+    # - glacier_stop_mode: "exhaust" (default: march the full step, D3) or "resolve" (hold
+    #   the settled state for the remainder of the step, D2).
+    lake_step_years: float = 1000.0
+    lake_stop_mode: str = "resolve"
+    glacier_step_years: float = 250.0
+    glacier_stop_mode: str = "exhaust"
     # Which wind field feeds climate.py (live-adjustable via POST /world/controls, the
     # "Controls" window). "cfd": the genuine time-integrated shallow-water solve in
     # atmosphere_cfd.py, advanced once per step by _advance_fluid_dynamics -- the most

@@ -2296,6 +2296,44 @@ def test_controls_glacier_march_round_trip(client):
     assert _default_session.world.simulate_glacier_march is False
 
 
+def test_controls_time_step_and_stop_mode_round_trip_and_validation(client):
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    world = _default_session.world
+    defaults = client.get("/world/controls").json()
+    assert defaults["lake_step_years"] == 1000.0
+    assert defaults["lake_stop_mode"] == "resolve"
+    assert defaults["glacier_step_years"] == 250.0
+    assert defaults["glacier_stop_mode"] == "exhaust"
+
+    resp = client.post("/world/controls", json={
+        "lake_step_years": 150,
+        "lake_stop_mode": "exhaust",
+        "glacier_step_years": 500,
+        "glacier_stop_mode": "resolve",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["lake_step_years"] == 150.0
+    assert body["lake_stop_mode"] == "exhaust"
+    assert body["glacier_step_years"] == 500.0
+    assert body["glacier_stop_mode"] == "resolve"
+    assert world.lake_step_years == 150.0
+    assert world.lake_stop_mode == "exhaust"
+    assert world.glacier_step_years == 500.0
+    assert world.glacier_stop_mode == "resolve"
+
+    for bad_payload in (
+        {"lake_step_years": 25},
+        {"lake_step_years": 2000},
+        {"glacier_step_years": 50},
+        {"glacier_step_years": 1500},
+        {"lake_stop_mode": "invalid"},
+        {"glacier_stop_mode": "invalid"},
+    ):
+        bad = client.post("/world/controls", json=bad_payload)
+        assert bad.status_code == 400
+
+
 def test_controls_debug_diagnostics_round_trip(client):
 
     _post_generate(client, json={"seed": 12, "num_plates": 6})

@@ -8,7 +8,6 @@ interface Props {
   iceAgePeriodYears: number;
   simulatePlateMovement: boolean;
   simulateClimateBiomes: boolean;
-  simulateGlacierMarch: boolean;
   windModel: string;
   faultDeformationMode: string;
   splitMethod: SplitMethod;
@@ -19,7 +18,6 @@ interface Props {
   onIceAgePeriodChange: (v: number) => void;
   onSimulatePlateMovementChange: (v: boolean) => void;
   onSimulateClimateBiomesChange: (v: boolean) => void;
-  onSimulateGlacierMarchChange: (v: boolean) => void;
   onWindModelChange: (v: string) => void;
   onFaultDeformationModeChange: (v: string) => void;
   onSplitMethodChange: (v: SplitMethod) => void;
@@ -118,7 +116,6 @@ export default function ControlsModal({
   iceAgePeriodYears,
   simulatePlateMovement,
   simulateClimateBiomes,
-  simulateGlacierMarch,
   windModel,
   faultDeformationMode,
   splitMethod,
@@ -129,7 +126,6 @@ export default function ControlsModal({
   onIceAgePeriodChange,
   onSimulatePlateMovementChange,
   onSimulateClimateBiomesChange,
-  onSimulateGlacierMarchChange,
   onWindModelChange,
   onFaultDeformationModeChange,
   onSplitMethodChange,
@@ -328,26 +324,6 @@ export default function ControlsModal({
                   years, nothing else changes.
                 </div>
               )}
-            </div>
-
-            <div style={{ borderTop: "1px solid #333", paddingTop: 14, marginTop: 14, opacity: simulateClimateBiomes ? 1 : 0.5 }}>
-              {/* Disabled without climate & biomes: the march runs inside that step
-                  block, so the flag only takes effect while it is on. The flag itself
-                  is still stored, and re-enabling climate restores the march. */}
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={simulateGlacierMarch}
-                  disabled={!simulateClimateBiomes}
-                  onChange={(e) => onSimulateGlacierMarchChange(e.target.checked)}
-                />
-                March glaciers to end-of-step
-              </label>
-              <div style={{ fontSize: 11, color: "#999", marginTop: 8 }}>
-                {simulateGlacierMarch
-                  ? "Each step marches the ice sheets to equilibrium in 250-year substeps — minutes per long step on big worlds, but ice, meltwater and sea level fully respond."
-                  : "Off: ice is solved once per step and frozen there — much faster steps. Turn on for the full ice-sheet response (meltwater, sea-level, glacier erosion)."}
-              </div>
             </div>
 
             <div style={{ borderTop: "1px solid #333", paddingTop: 14, marginTop: 14 }}>

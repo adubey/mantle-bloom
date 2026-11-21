@@ -269,6 +269,43 @@ def test_lake_substeps_caps_the_slice_at_every_step_length():
     # Count capped at LAKE_MAX_SUBSTEPS: above 100 kyr slices grow instead.
     assert hydrology.lake_substeps(1_000_000.0) == 100
     assert hydrology.lake_substeps(10_000_000.0) == 100
+    # Explicit step_years (#999) honors the chosen slice without the 100-substep cap.
+    assert hydrology.lake_substeps(100_000.0, 50.0) == 2_000
+    assert hydrology.lake_substeps(100_000.0, 1_000.0) == 100
+    assert hydrology.lake_substeps(10_000.0, 1_000.0) == 10
+
+
+def test_lake_stop_mode_exhaust_runs_every_slice_without_settle_stop(monkeypatch):
+    # #999: stop_on_settle=False ("exhaust") runs all substeps instead of lumping the remainder.
+    forest = lakes.build_lake_hierarchy(_SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS)
+    area = np.full(3, 1.7e14)
+    hyps = lakes.CellHypsometry(
+        _SINK_ELEVATION, area, np.array([50.0, 50.0, 0.0]), float(area[0])
+    )
+    real_slice = lakes._settle_prognostic_slice
+    calls = []
+
+    def spy(*args, **kwargs):
+        calls.append(args[3])
+        return real_slice(*args, **kwargs)
+
+    monkeypatch.setattr(lakes, "_settle_prognostic_slice", spy)
+    # Already-settled constant state: resolve stops early, exhaust runs all 10 slices.
+    initial = np.array([0.0, 0.0, 0.0])
+    lakes.solve_lakes_prognostic(
+        forest, _SINK_ELEVATION, initial, 10_000.0,
+        lakes.LakeClimate(np.zeros(3), np.full(3, 1.0), np.zeros(3)),
+        hyps, substeps=10, stop_on_settle=True,
+    )
+    resolve_calls = len(calls)
+    calls.clear()
+    lakes.solve_lakes_prognostic(
+        forest, _SINK_ELEVATION, initial, 10_000.0,
+        lakes.LakeClimate(np.zeros(3), np.full(3, 1.0), np.zeros(3)),
+        hyps, substeps=10, stop_on_settle=False,
+    )
+    assert resolve_calls < 10
+    assert len(calls) == 10
 
 
 def test_prognostic_lake_volume_converges_as_substeps_grow_below_cap():

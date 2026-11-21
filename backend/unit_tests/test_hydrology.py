@@ -2683,6 +2683,78 @@ def test_world_flag_off_takes_the_same_path_as_the_test_knob_off(monkeypatch):
 
 
 @pytest.mark.usefixtures("march_glaciers")
+def test_glacier_step_years_and_stop_mode_resolve_vs_exhaust():
+    # #999: glacier_step_years sets the march substep length, and glacier_stop_mode="resolve"
+    # stops early once settled and holds the remainder with a closed ice ledger, whereas
+    # "exhaust" marches through the full tectonic step.
+    precip, years = np.full(12, 800.0), 10_000.0
+    temp_cold = np.full(12, -3.0)
+
+    exhaust_world = _flow_line_march_world()
+    exhaust_world.glacier_step_years = 500.0
+    exhaust_world.glacier_stop_mode = "exhaust"
+    ice_sheet.MARCH_LOG.clear()
+    exhaust_fields = hydrology.compute_hydrology(exhaust_world, precip, temp_cold, years=years)
+    exhaust_log = ice_sheet.MARCH_LOG[-1]
+    assert exhaust_log["substeps"] == 20
+    assert exhaust_log["held_years"] == pytest.approx(0.0)
+    assert exhaust_fields.ice.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e6)
+
+    # Start with thin ice under a warm climate so it melts and settles well before 10 kyr.
+    temp_warm = np.full(12, 10.0)
+    resolve_world = _flow_line_march_world()
+    resolve_world.glacier_step_years = 500.0
+    resolve_world.glacier_stop_mode = "resolve"
+    resolve_world.plates[0].set_fields_on_plate(glacier_depth=np.full(12, 50.0))
+    ice_sheet.MARCH_LOG.clear()
+    resolve_fields = hydrology.compute_hydrology(resolve_world, precip, temp_warm, years=years)
+    resolve_log = ice_sheet.MARCH_LOG[-1]
+    assert resolve_log["settled"] is True
+    assert resolve_log["substeps"] < 20
+    assert resolve_log["held_years"] > 0.0
+    assert resolve_log["marched_years"] + resolve_log["held_years"] == pytest.approx(years)
+    assert resolve_fields.ice.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e6)
+
+
+def test_hold_remainder_closes_ice_stock_and_preserves_bare_snowmelt():
+    # PR #1000 review: holding a fixed closing ice stock must keep residual_m3 == 0,
+    # keep bare-ground snowmelt independent, and match routed melt to ledger.meltwater_m3.
+    areas = np.array([1.0])
+    opening_ledger = ice_sheet.IceLedger(
+        opening_m3=10.0,
+        accumulation_m3=1.0,
+        surface_melt_m3=2.0,
+        snow_melted_m3=5.0,
+        closing_m3=9.0,
+    )
+    sub_ledger = ice_sheet.IceLedger(
+        opening_m3=10.0,
+        accumulation_m3=1.0,
+        surface_melt_m3=2.0,
+        snow_melted_m3=5.0,
+        closing_m3=9.0,
+    )
+    sub_melt = np.array([7.0])  # 2.0 ice melt + 5.0 bare snowmelt
+    sub_calved = np.array([0.0])
+    sub_frozen = ice_sheet.FrozenPrecipitation(land_m3=6.0, ocean_retained_m3=0.0, retained_m3=1.0, bare_melted_m3=5.0)
+    frozen = [6.0, 0.0, 1.0, 5.0]
+    hold_melt, hold_calved = hydrology._hold_remainder(
+        [(250.0, sub_melt, sub_calved, sub_ledger, sub_frozen)],
+        2_500.0,
+        opening_ledger,
+        areas,
+        frozen,
+    )
+    assert opening_ledger.residual_m3 == pytest.approx(0.0, abs=1e-9)
+    # Bare-ground snowmelt scales by 10x (50.0), ice melt balances accumulation (10.0).
+    assert opening_ledger.snow_melted_m3 == pytest.approx(55.0)
+    assert opening_ledger.surface_melt_m3 == pytest.approx(12.0)
+    assert float(np.dot(hold_melt, areas)) == pytest.approx(60.0)
+    assert float(hold_calved.sum()) == pytest.approx(0.0)
+    assert frozen[3] == pytest.approx(55.0)
+
+
+@pytest.mark.usefixtures("march_glaciers")
 def test_march_takes_the_fast_path_with_no_ice_and_no_snow():
     # Review of #806: with no ice and nothing that could start any, the march would run
     # its minimum 8 substeps to settle on an unchanged volume; one endpoint solve is
