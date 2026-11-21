@@ -144,3 +144,28 @@ per node, which differs from Earth's 3.0 node-weighted by about 0.1 cm/yr):
 The ratio is 1.55 to 2.1 in all five slab-pull-driven settings across a 4-fold range of plate speed. The
 mantle-flow-driven baseline has 0.66, near Earth's 0.8. So slab-pull driving in the model puts both sides of a contact
 into fast motion regardless of the force scale, and rescaling the force constants cannot reach Earth's ratio.
+
+## 7. Are neighbouring plates coherent? (`contact_asymmetry.py` -> `contact-asymmetry.json`)
+
+Hypothesis from the contact-to-plate speed ratio (section 6): at the model's converging contacts both plates are
+fast, where Earth has a fast slab-pulled plate against a nearly still overriding plate. **Not supported.** The
+plate-mean speed asymmetry min/max is alike on Earth and in the model (converging contacts: median 0.66 on Earth,
+0.56 in `b123-brake-off` at 100 Myr; one-sided, under 0.25, in 10% of contact length in both).
+
+What differs is direction. `opposition` = the contact's relative speed over the sum of the two plates' speeds:
+about 1 when the plates move in opposite directions across the contact, near 0 when they move alike. Length-weighted
+over contacts of 500 km or more, converging class (diverging and sliding give the same within 0.03):
+
+| | Opposition, median | Contact length with opposition over 0.8 |
+|---|---|---|
+| Earth (PB2002, 75 contacts) | 0.41 | 22% |
+| `rifting-baseline` at 50 Myr (flow-driven, slow) | 0.42 | 22% |
+| `b123` brake on, 100 Myr | 0.56 | 31% |
+| `b123-brake-off` at 10 Myr | 0.82 | 56% |
+| `b123-brake-off` at 100 Myr | 0.84 | 64% |
+
+Neighbouring plates in the slab-pull-driven, brake-off model move nearly against each other; on Earth, and in the
+flow-driven baseline, they move mostly alike. The contact brake pulls the model part of the way back. This is a
+plate-mean-speed approximation (it ignores the variation of speed along a plate and uses each plate's area-mean
+no-net-rotation speed), and the opposition is nearly the same for converging, diverging and sliding contacts in both
+Earth and the model, so it measures how coherent the plates' motions are, not how they relate to the boundary type.
