@@ -5,7 +5,7 @@ import {
   RunStateRefused, TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
-  AnimateResponse, AnimationRecovery, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, SplitMethod, TuningKey, TuningMultipliers, ViewerView, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
+  AnimateResponse, AnimationRecovery, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, SplitMethod, StopMode, TuningKey, TuningMultipliers, ViewerView, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
 } from "./api";
 import { withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
 import MapCanvas from "./MapCanvas";
@@ -22,6 +22,8 @@ import type { PlatesLayers } from "./PlatesAndFaults";
 import EventConsole from "./EventConsole";
 import StatsModal from "./StatsModal";
 import ControlsModal from "./ControlsModal";
+import TimeSettingsModal from "./TimeSettingsModal";
+import { PLATE_STEP_YEARS_MAX, PLATE_STEP_YEARS_MIN } from "./timeSettings";
 import AdvancedSettingsModal from "./AdvancedSettingsModal";
 import FileModal from "./FileModal";
 import ManageWorldsModal from "./ManageWorldsModal";
@@ -82,7 +84,11 @@ const DISPLAY_HEIGHT = 611;
 const RENDER_SCALE = 2;
 const RENDER_WIDTH = DISPLAY_WIDTH * RENDER_SCALE;
 const RENDER_HEIGHT = DISPLAY_HEIGHT * RENDER_SCALE;
-const STEP_YEARS_OPTIONS = [10_000, 100_000, 1_000_000, 10_000_000];
+const DEFAULT_STEP_YEARS = 100_000;
+const DEFAULT_LAKE_STEP_YEARS = 1_000;
+const DEFAULT_LAKE_STOP_MODE: StopMode = "resolve";
+const DEFAULT_GLACIER_STEP_YEARS = 250;
+const DEFAULT_GLACIER_STOP_MODE: StopMode = "exhaust";
 // After a failed long poll of the run status, wait this long before asking again.
 const RUN_POLL_RETRY_MS = 2000;
 // Percent, matching backend app/plates.py's DEFAULT_CONTINENTAL_FRACTION/DEFAULT_LAND_FRACTION.
@@ -356,7 +362,7 @@ export default function App() {
   const [numPlates, setNumPlates] = useState(DEFAULT_PLATES);
   const [voronoiPoints, setVoronoiPoints] = useState(DEFAULT_VORONOI_POINTS_RANDOM);
 
-  const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
+  const [stepYears, setStepYears] = useState(DEFAULT_STEP_YEARS);
   const [projection, setProjection] = useState<Projection>(initialView?.projection ?? "eckert4");
   // Never start on a debug view before `session` resolves: a paid user visiting `/?deb`
   // with a debug view in their saved cookie must not fire a debug render on initial load.
@@ -631,6 +637,10 @@ export default function App() {
   const [simulatePlateMovement, setSimulatePlateMovement] = useState(DEFAULT_SIMULATE_PLATE_MOVEMENT);
   const [simulateClimateBiomes, setSimulateClimateBiomes] = useState(DEFAULT_SIMULATE_CLIMATE_BIOMES);
   const [simulateGlacierMarch, setSimulateGlacierMarch] = useState(DEFAULT_SIMULATE_GLACIER_MARCH);
+  const [lakeStepYears, setLakeStepYears] = useState(DEFAULT_LAKE_STEP_YEARS);
+  const [lakeStopMode, setLakeStopMode] = useState<StopMode>(DEFAULT_LAKE_STOP_MODE);
+  const [glacierStepYears, setGlacierStepYears] = useState(DEFAULT_GLACIER_STEP_YEARS);
+  const [glacierStopMode, setGlacierStopMode] = useState<StopMode>(DEFAULT_GLACIER_STOP_MODE);
   // "cfd" (shallow-water solve) or "diagnostic" (fast closed-form ABL wind) -- see backend
   // app/world.py's World.wind_model. Live-adjustable via Controls like the toggles above.
   const [windModel, setWindModel] = useState(DEFAULT_WIND_MODEL);
@@ -647,6 +657,7 @@ export default function App() {
   // to all-1.0 on a fresh Generate and synced from the loaded world on Load.
   const [tuning, setTuning] = useState<TuningMultipliers>(DEFAULT_TUNING);
   const [showControlsModal, setShowControlsModal] = useState(false);
+  const [showTimeModal, setShowTimeModal] = useState(false);
   const [showFileModal, setShowFileModal] = useState(false);
   const [showManageWorlds, setShowManageWorlds] = useState(false);
   // The Record toolbar button's dialog (see AnimationModal.tsx) -- separate from showFileModal
@@ -880,6 +891,10 @@ export default function App() {
     simulatePlateMovement?: boolean;
     simulateClimateBiomes?: boolean;
     simulateGlacierMarch?: boolean;
+    lakeStepYears?: number;
+    lakeStopMode?: StopMode;
+    glacierStepYears?: number;
+    glacierStopMode?: StopMode;
     windModel?: string;
     faultDeformationMode?: string;
     splitMethod?: SplitMethod;
@@ -933,6 +948,26 @@ export default function App() {
   const handleSimulateGlacierMarchChange = useCallback((v: boolean) => {
     setSimulateGlacierMarch(v);
     pushControls({ simulateGlacierMarch: v });
+  }, [pushControls]);
+
+  const handleLakeStepYearsChange = useCallback((v: number) => {
+    setLakeStepYears(v);
+    pushControls({ lakeStepYears: v });
+  }, [pushControls]);
+
+  const handleLakeStopModeChange = useCallback((v: StopMode) => {
+    setLakeStopMode(v);
+    pushControls({ lakeStopMode: v });
+  }, [pushControls]);
+
+  const handleGlacierStepYearsChange = useCallback((v: number) => {
+    setGlacierStepYears(v);
+    pushControls({ glacierStepYears: v });
+  }, [pushControls]);
+
+  const handleGlacierStopModeChange = useCallback((v: StopMode) => {
+    setGlacierStopMode(v);
+    pushControls({ glacierStopMode: v });
   }, [pushControls]);
 
   const handleSolarMultiplierChange = useCallback((v: number) => {
@@ -1010,6 +1045,10 @@ export default function App() {
       setSimulatePlateMovement(controls.simulate_plate_movement);
       setSimulateClimateBiomes(controls.simulate_climate_biomes);
       setSimulateGlacierMarch(controls.simulate_glacier_march);
+      setLakeStepYears(controls.lake_step_years);
+      setLakeStopMode(controls.lake_stop_mode);
+      setGlacierStepYears(controls.glacier_step_years);
+      setGlacierStopMode(controls.glacier_stop_mode);
       setWindModel(controls.wind_model);
       setFaultDeformationMode(controls.fault_deformation_mode);
       setSplitMethod(controls.split_method);
@@ -1513,6 +1552,10 @@ export default function App() {
       setSimulatePlateMovement(DEFAULT_SIMULATE_PLATE_MOVEMENT);
       setSimulateClimateBiomes(DEFAULT_SIMULATE_CLIMATE_BIOMES);
       setSimulateGlacierMarch(DEFAULT_SIMULATE_GLACIER_MARCH);
+      setLakeStepYears(DEFAULT_LAKE_STEP_YEARS);
+      setLakeStopMode(DEFAULT_LAKE_STOP_MODE);
+      setGlacierStepYears(DEFAULT_GLACIER_STEP_YEARS);
+      setGlacierStopMode(DEFAULT_GLACIER_STOP_MODE);
       setWindModel(DEFAULT_WIND_MODEL);
       setFaultDeformationMode(DEFAULT_FAULT_DEFORMATION_MODE);
       setSplitMethod(DEFAULT_SPLIT_METHOD);
@@ -1715,7 +1758,9 @@ export default function App() {
       .then((run) => {
         shownRevisionRef.current = run.world?.revision;
         if (!run.running) return;
-        if (STEP_YEARS_OPTIONS.includes(run.step_years)) setStepYears(run.step_years);
+        if (run.step_years >= PLATE_STEP_YEARS_MIN && run.step_years <= PLATE_STEP_YEARS_MAX) {
+          setStepYears(Math.round(run.step_years));
+        }
         setPlaying(true);
         // Same collapsed default as a fresh Play press above (#653).
         setOverlayCollapsed(true);
@@ -1860,20 +1905,14 @@ export default function App() {
 
           <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
             <legend style={{ fontSize: 11 }}>Time</legend>
-            <label style={{ display: "block", marginBottom: 6 }}>
-              Years per step
-              <select
-                value={stepYears}
-                onChange={(e) => handleStepYearsChange(Number(e.target.value))}
-                style={{ width: "100%", fontSize: 12 }}
-              >
-                {STEP_YEARS_OPTIONS.map((y) => (
-                  <option key={y} value={y}>
-                    {y.toLocaleString()}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <button
+              type="button"
+              onClick={() => setShowTimeModal(true)}
+              disabled={!summary || animating}
+              style={{ width: "100%", fontSize: 12, marginBottom: 6 }}
+            >
+              {stepYears.toLocaleString()} years/step
+            </button>
             {/* Play / Stop / Record -- the classic tape-deck order. Play has the server advance
                 the world continuously (a step of "Years per step" at a time, see handlePlay)
                 until Stop is pressed; Record opens AnimationModal to configure and
@@ -2291,7 +2330,7 @@ export default function App() {
             <div style={{ fontSize: 11, opacity: 0.8 }}>
               <div>seed: {summary.seed}</div>
               <div>plates: {summary.num_plates}</div>
-              <div>elapsed: {(summary.elapsed_years / 1e6).toFixed(stepYears === 10_000 ? 2 : 1)} Myr</div>
+              <div>elapsed: {(summary.elapsed_years / 1e6).toFixed(stepYears < 10_000 ? 3 : stepYears < 100_000 ? 2 : 1)} Myr</div>
               {animation && <div>{animation.frame} frames recorded</div>}
             </div>
           )}
@@ -2923,7 +2962,6 @@ export default function App() {
           iceAgePeriodYears={iceAgePeriodYears}
           simulatePlateMovement={simulatePlateMovement}
           simulateClimateBiomes={simulateClimateBiomes}
-          simulateGlacierMarch={simulateGlacierMarch}
           windModel={windModel}
           faultDeformationMode={faultDeformationMode}
           splitMethod={splitMethod}
@@ -2934,7 +2972,6 @@ export default function App() {
           onIceAgePeriodChange={handleIceAgePeriodChange}
           onSimulatePlateMovementChange={handleSimulatePlateMovementChange}
           onSimulateClimateBiomesChange={handleSimulateClimateBiomesChange}
-          onSimulateGlacierMarchChange={handleSimulateGlacierMarchChange}
           onWindModelChange={handleWindModelChange}
           onFaultDeformationModeChange={handleFaultDeformationModeChange}
           onSplitMethodChange={handleSplitMethodChange}
@@ -2946,6 +2983,25 @@ export default function App() {
           onWorldNameChange={handleWorldNameChange}
           onWorldPublicChange={handleWorldPublicChange}
           onClose={() => setShowControlsModal(false)}
+        />
+      )}
+
+      {showTimeModal && (
+        <TimeSettingsModal
+          stepYears={stepYears}
+          lakeStepYears={lakeStepYears}
+          lakeStopMode={lakeStopMode}
+          glacierStepYears={glacierStepYears}
+          glacierStopMode={glacierStopMode}
+          simulateClimateBiomes={simulateClimateBiomes}
+          simulateGlacierMarch={simulateGlacierMarch}
+          onStepYearsChange={handleStepYearsChange}
+          onLakeStepYearsChange={handleLakeStepYearsChange}
+          onLakeStopModeChange={handleLakeStopModeChange}
+          onGlacierStepYearsChange={handleGlacierStepYearsChange}
+          onGlacierStopModeChange={handleGlacierStopModeChange}
+          onSimulateGlacierMarchChange={handleSimulateGlacierMarchChange}
+          onClose={() => setShowTimeModal(false)}
         />
       )}
 

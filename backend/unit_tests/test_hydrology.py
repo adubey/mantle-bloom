@@ -2683,6 +2683,38 @@ def test_world_flag_off_takes_the_same_path_as_the_test_knob_off(monkeypatch):
 
 
 @pytest.mark.usefixtures("march_glaciers")
+def test_glacier_step_years_and_stop_mode_resolve_vs_exhaust():
+    # #999: glacier_step_years sets the march substep length, and glacier_stop_mode="resolve"
+    # stops early once settled and holds the remainder with a closed ice ledger, whereas
+    # "exhaust" marches through the full tectonic step.
+    precip, temp, years = np.full(12, 800.0), np.full(12, -3.0), 10_000.0
+
+    exhaust_world = _flow_line_march_world()
+    exhaust_world.glacier_step_years = 500.0
+    exhaust_world.glacier_stop_mode = "exhaust"
+    ice_sheet.MARCH_LOG.clear()
+    exhaust_fields = hydrology.compute_hydrology(exhaust_world, precip, temp, years=years)
+    exhaust_log = ice_sheet.MARCH_LOG[-1]
+    assert exhaust_log["substeps"] == 20
+    assert exhaust_log["held_years"] == pytest.approx(0.0)
+    assert exhaust_fields.ice.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e6)
+
+    resolve_world = _flow_line_march_world()
+    resolve_world.glacier_step_years = 500.0
+    resolve_world.glacier_stop_mode = "resolve"
+    # Seed near equilibrium so the pair settle test fires well before 10 kyr.
+    resolve_world.plates[0].set_fields_on_plate(glacier_depth=exhaust_fields.glacier_depth.copy())
+    ice_sheet.MARCH_LOG.clear()
+    resolve_fields = hydrology.compute_hydrology(resolve_world, precip, temp, years=years)
+    resolve_log = ice_sheet.MARCH_LOG[-1]
+    assert resolve_log["settled"] is True
+    assert resolve_log["substeps"] < 20
+    assert resolve_log["held_years"] > 0.0
+    assert resolve_log["marched_years"] + resolve_log["held_years"] == pytest.approx(years)
+    assert abs(resolve_fields.ice.ledger.residual_m3) <= 1e-2 * max(resolve_fields.ice.ledger.closing_m3, 1.0)
+
+
+@pytest.mark.usefixtures("march_glaciers")
 def test_march_takes_the_fast_path_with_no_ice_and_no_snow():
     # Review of #806: with no ice and nothing that could start any, the march would run
     # its minimum 8 substeps to settle on an unchanged volume; one endpoint solve is

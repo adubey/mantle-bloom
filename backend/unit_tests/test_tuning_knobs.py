@@ -51,6 +51,20 @@ def test_old_pickle_without_glacier_march_flag_marches():
     assert loaded.simulate_glacier_march is True
 
 
+def test_old_pickle_without_time_step_controls_uses_defaults():
+    # #999: older saves lacking lake/glacier substep and stop-mode fields load with defaults.
+    from app import persistence
+
+    world = generate_world(seed=5, num_plates=8)
+    for field in ("lake_step_years", "lake_stop_mode", "glacier_step_years", "glacier_stop_mode"):
+        world.__dict__.pop(field, None)
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert loaded.lake_step_years == 1000.0
+    assert loaded.lake_stop_mode == "resolve"
+    assert loaded.glacier_step_years == 250.0
+    assert loaded.glacier_stop_mode == "exhaust"
+
+
 def test_brake_multipliers_reach_the_quasistatic_solve(monkeypatch):
     # #760 review: solve_plates_quasistatic passes the world's own multipliers
     # into every assembled pair drag, so a live Controls change reaches the

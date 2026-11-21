@@ -310,6 +310,10 @@ class ControlsRequest(BaseModel):
     simulate_plate_movement: bool | None = None
     simulate_climate_biomes: bool | None = None
     simulate_glacier_march: bool | None = None
+    lake_step_years: float | None = None
+    lake_stop_mode: str | None = None
+    glacier_step_years: float | None = None
+    glacier_stop_mode: str | None = None
     wind_model: str | None = None
     fault_deformation_mode: str | None = None
     split_method: str | None = None
@@ -344,6 +348,9 @@ WIND_MODEL_CHOICES = ("cfd", "diagnostic")
 FAULT_DEFORMATION_MODE_CHOICES = faults.FAULT_DEFORMATION_MODES
 SPLIT_METHOD_CHOICES = rift_damage.SPLIT_METHODS
 NODE_CLOUD_RESAMPLE_MODE_CHOICES = healpix_grid.NODE_CLOUD_RESAMPLE_MODE_CHOICES
+STOP_MODE_CHOICES = ("exhaust", "resolve")
+LAKE_STEP_YEARS_RANGE = (50.0, 1000.0)
+GLACIER_STEP_YEARS_RANGE = (100.0, 1000.0)
 
 
 def _parse_view_rotation(rotation: str | None) -> np.ndarray:
@@ -2396,21 +2403,43 @@ def animation_recovery(world_id: str) -> dict:
 
 
 def _validate_controls_request(req: ControlsRequest) -> dict[str, float]:
-    """Validate choice fields and tuning multipliers on a ControlsRequest."""
+    """Validate choice fields, time-step bounds, and tuning multipliers on a ControlsRequest."""
     choice_fields = (
         ("wind_model", req.wind_model, WIND_MODEL_CHOICES),
         ("fault_deformation_mode", req.fault_deformation_mode, FAULT_DEFORMATION_MODE_CHOICES),
         ("split_method", req.split_method, SPLIT_METHOD_CHOICES),
         ("node_cloud_resample_mode", req.node_cloud_resample_mode, NODE_CLOUD_RESAMPLE_MODE_CHOICES),
+        ("lake_stop_mode", req.lake_stop_mode, STOP_MODE_CHOICES),
+        ("glacier_stop_mode", req.glacier_stop_mode, STOP_MODE_CHOICES),
     )
     for name, value, choices in choice_fields:
         if value is not None and value not in choices:
             raise HTTPException(status_code=400, detail=f"unknown {name} {value!r}; choices are {choices}")
+    for name, value, (lo, hi) in (
+        ("lake_step_years", req.lake_step_years, LAKE_STEP_YEARS_RANGE),
+        ("glacier_step_years", req.glacier_step_years, GLACIER_STEP_YEARS_RANGE),
+    ):
+        if value is not None and (not np.isfinite(value) or value < lo or value > hi):
+            raise HTTPException(status_code=400, detail=f"{name} must be in [{lo:g}, {hi:g}] (got {value})")
     tuning_updates = {name: getattr(req, name) for name in TUNING_MULTIPLIER_FIELDS if getattr(req, name) is not None}
     for name, value in tuning_updates.items():
         if not np.isfinite(value) or value < 0.0:
             raise HTTPException(status_code=400, detail=f"{name} must be finite and >= 0 (got {value})")
     return tuning_updates
+
+
+def _apply_time_controls(world: World, req: ControlsRequest) -> None:
+    """Apply optional lake/glacier substep and stop-mode updates (#999)."""
+    if req.simulate_glacier_march is not None:
+        world.simulate_glacier_march = req.simulate_glacier_march
+    if req.lake_step_years is not None:
+        world.lake_step_years = float(req.lake_step_years)
+    if req.lake_stop_mode is not None:
+        world.lake_stop_mode = req.lake_stop_mode
+    if req.glacier_step_years is not None:
+        world.glacier_step_years = float(req.glacier_step_years)
+    if req.glacier_stop_mode is not None:
+        world.glacier_stop_mode = req.glacier_stop_mode
 
 
 @app.post("/worlds/{world_id}/controls")
@@ -2450,8 +2479,7 @@ def set_controls(world_id: str, req: ControlsRequest) -> dict:
             world.simulate_plate_movement = req.simulate_plate_movement
         if req.simulate_climate_biomes is not None:
             world.simulate_climate_biomes = req.simulate_climate_biomes
-        if req.simulate_glacier_march is not None:
-            world.simulate_glacier_march = req.simulate_glacier_march
+        _apply_time_controls(world, req)
         if req.wind_model is not None:
             world.wind_model = req.wind_model
         if req.fault_deformation_mode is not None:
@@ -2490,6 +2518,10 @@ def _controls_state(world: World) -> dict:
         "simulate_plate_movement": world.simulate_plate_movement,
         "simulate_climate_biomes": world.simulate_climate_biomes,
         "simulate_glacier_march": world.simulate_glacier_march,
+        "lake_step_years": world.lake_step_years,
+        "lake_stop_mode": world.lake_stop_mode,
+        "glacier_step_years": world.glacier_step_years,
+        "glacier_stop_mode": world.glacier_stop_mode,
         "wind_model": world.wind_model,
         "fault_deformation_mode": world.fault_deformation_mode,
         "split_method": world.split_method,

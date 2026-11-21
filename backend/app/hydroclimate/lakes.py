@@ -1322,6 +1322,7 @@ def solve_lakes_prognostic(
     hypsometry: CellHypsometry,
     *,
     substeps: int = 1,
+    stop_on_settle: bool = True,
     is_ocean: np.ndarray | None = None,
     diagnostic_trace: bool = False,
 ) -> LakeSolveResult:
@@ -1407,7 +1408,7 @@ def solve_lakes_prognostic(
         prev_depth = depth.copy()
         prev_bodies = bodies
         remaining = steps - slice_index - 1
-        if settled_slices >= 2 and remaining > 0:
+        if stop_on_settle and settled_slices >= 2 and remaining > 0:
             _settle_prognostic_slice(
                 forest, depth, prev_lake_depth, dt * remaining, rates, climate, evaporation, sublimation,
                 hypsometry, is_ocean, accounting, leaves, leaf_of_node, parent_by_id, events, seen_events,
