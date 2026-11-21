@@ -27,7 +27,7 @@ obliquity rule as Earth's.
 
 - **Score** `L` = sum_i w_i [ ln pi_(k_i) + ln f_(k_i)(v_i) ] / sum_i w_i: the length-weighted mean joint
   log-likelihood of class and speed under Earth. `pi_k` is Earth's share of boundary length in class `k`;
-  `f_k` is the lognormal density of `ln max(v, 0.05)` with Earth's class (mu, sigma) from section 1. (The 0.05 cm/yr
+  `f_k` is the lognormal density in `v` (cm/yr) of `max(v, 0.05)`, Earth's class (mu, sigma) from section 1. (The 0.05 cm/yr
   floor is the one PB2002 uses, whose speeds are quoted to 0.1.)
 - **Threshold** `L*`: the 5th percentile of `L` over 2,000 random subsets of 50 of Earth's 141 plate pairs (all their
   steps; 50 is about the contact count of a 20-plate model world, so a sample's size noise is matched). A sample is
