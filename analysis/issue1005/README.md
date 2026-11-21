@@ -27,3 +27,23 @@ point or more. The closing arm should hold zero liquid under visible ice in
 either backend. Compare total and regional volumes and the lake, land and ice
 budget residuals. These four controlled one-step replays do not estimate
 variability across seeds or intervals.
+
+## Regression evidence
+
+- A seasonal bed-frozen lake with a fully wet opening cell, a 0 °C annual mean,
+  and 1 °C amplitude receives 650 mm/yr of precipitation. Only 325 mm/yr
+  falls as snow on the lake. The previous handoff transferred the cap even
+  though that snowfall could not sustain glacier ice. The corrected handoff
+  keeps the cap in the lake budget at 650 mm/yr and transfers it at
+  1,000 mm/yr, where the frozen share can sustain it. Lake precipitation plus
+  glacier input accounts for all precipitation in both cases.
+- A merged, ice-only closed root previously booked overflow but exported
+  none of it. The two-leaf regression now routes all 26 × 10⁹ m³ of opening
+  storage and external supply through one leaf sink and closes the lake budget.
+- For `q = 6 m²/yr`, `loss = 10⁻¹³ m/yr` and a tenth of a year, adding
+  `10⁻¹⁴ m/yr` of snow previously made the ice about 4.2 mm thinner. The
+  corrected result stays within `10⁻¹³ m` of the Stefan trajectory and the
+  freezing, melting and retained snowfall terms sum to the ice storage change.
+- In the two-step lag fixture the correct newly covered volumes are 3 and
+  5 m³. The old probe reported 3 and 8 m³ from the cached state and 5 and
+  10 m³ from the compact state. Both save paths now give 3 and 5 m³.
