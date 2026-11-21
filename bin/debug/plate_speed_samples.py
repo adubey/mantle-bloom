@@ -12,6 +12,7 @@ or diverging by the sign of the closing rate; scoring is in `score_speed_samples
     run    one seed (about 1 GB, plates-only; compute-budget first):
            backend/.venv/bin/python bin/debug/plate_speed_samples.py run --settings analysis/issue975/settings.json \\
                --setting rifting-baseline --seed 591453549 --at 0 1 2 5 10 --step-myr 1 --out <captures>/591453549.json
+           add `--flow-scale 2` to multiply the static mantle-flow amplitude (the #998 flow test).
     queue  seeds in series, one process each, skipping finished ones:
            backend/.venv/bin/python bin/debug/plate_speed_samples.py queue --settings ... --setting ... \\
                --seeds-file analysis/issue958/development-seeds.json --at 0 1 2 5 10 --out <captures>/<setting>
@@ -77,6 +78,10 @@ def run_one(args: argparse.Namespace) -> None:
     world = d1.make_world(SimpleNamespace(seed=args.seed, node_density=1.0, world_knobs=setting["world_knobs"],
                                           split_method=setting["split_method"], params=setting["params"]))
     cal.apply_module_knobs(setting["module_knobs"])
+    # The static mantle-flow field is drawn at generation with a fixed reference rate; scale it after generation so
+    # every seed starts from the same world and only the stepped flow torque changes (exploration of #998 only).
+    for center in world.mantle_centers:
+        center.strength *= args.flow_scale
     started = time.perf_counter()
     samples = []
 
@@ -100,7 +105,7 @@ def run_one(args: argparse.Namespace) -> None:
         recorder = rec.Recorder(rift_damage.runtime(world).params.eps_cand)
     if final > 0:
         d1.step_all(world, stepping, scratch, recorder, lambda w, myr: take(myr) if round(myr, 6) in wanted else None)
-    args.out.write_text(json.dumps({"seed": args.seed, "setting": args.setting, "step_myr": args.step_myr, "samples": samples,
+    args.out.write_text(json.dumps({"seed": args.seed, "setting": args.setting, "step_myr": args.step_myr, "flow_scale": args.flow_scale, "samples": samples,
                                     "wall_s": time.perf_counter() - started}, default=float) + "\n")
 
 
@@ -113,7 +118,7 @@ def queue(args: argparse.Namespace) -> None:
         if target.exists():
             continue
         command = [sys.executable, __file__, "run", "--settings", str(args.settings), "--setting", args.setting, "--seed", str(seed),
-                   "--step-myr", str(args.step_myr), "--out", str(target), "--at", *map(str, args.at)]
+                   "--step-myr", str(args.step_myr), "--flow-scale", str(args.flow_scale), "--out", str(target), "--at", *map(str, args.at)]
         with open(args.out / f"{seed}.log", "w") as log:
             code = subprocess.call(command, stdout=log, stderr=subprocess.STDOUT)
         print(seed, "exit", code, time.strftime("%H:%M"), flush=True)
@@ -131,6 +136,7 @@ def main() -> None:
         p.add_argument("--setting", required=True)
         p.add_argument("--at", type=float, nargs="+", default=[0, 1, 2, 5, 10])
         p.add_argument("--step-myr", type=float, default=1.0)
+        p.add_argument("--flow-scale", type=float, default=1.0, help="multiply every mantle convection centre's strength (default 1)")
         p.add_argument("--out", type=Path, required=True)
         if name == "run":
             p.add_argument("--seed", type=int, required=True)
