@@ -165,7 +165,8 @@ CRATON_SOURCE_ACCOUNTS = ("initial_m3", "formed_m3")
 # "collision_reworked", the crust stays on the surface as ordinary continental crust (Hc is
 # untouched), but the column loses the strength, rift resistance and jamming the craton label
 # carries. That is #340's "it is the mantle keel that goes" in the interior; the model has no
-# separate keel, so the label is what goes.
+# separate keel, so the label is what goes, and with it the crust's cratonic provenance
+# (#1003 separates keel state from crust).
 # "unattributed" is signed and should stay ~0 -- anything there escaped every instrumented
 # site.
 CRATON_SINK_ACCOUNTS = (
