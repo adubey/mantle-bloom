@@ -51,6 +51,57 @@ function GitHubIcon() {
   );
 }
 
+function StepIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" width="20" height="20" fill="currentColor">
+      <polygon points="2,2 11,8 2,14" />
+      <rect x="12" y="2" width="2.5" height="12" rx="0.5" />
+    </svg>
+  );
+}
+
+function StepButton({
+  onClick,
+  stepping,
+  exhausted,
+  hasProgress,
+  stepYears,
+}: {
+  onClick: () => void;
+  stepping: boolean;
+  exhausted: boolean;
+  hasProgress: boolean;
+  stepYears: number;
+}) {
+  const disabled = stepping || exhausted;
+  const label = stepping ? (hasProgress ? "Stepping..." : "Preparing...") : "Step";
+  const yearsLabel = `Advance ${stepYears.toLocaleString("en-US")} years`;
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={yearsLabel}
+      aria-label={`Step — ${yearsLabel}`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "8px 16px",
+        fontSize: 16,
+        fontWeight: 600,
+        lineHeight: 1,
+        borderRadius: 6,
+        background: disabled ? "#1f2538" : "#22863a",
+        border: disabled ? "1px solid #333" : "1px solid #2ea043",
+        color: disabled ? "#8b8fa3" : "#ffffff",
+      }}
+    >
+      <StepIcon />
+      <span>{label}</span>
+    </button>
+  );
+}
+
 function useDisplayWidth(): number {
   const measure = () => Math.min(MAX_DISPLAY_WIDTH, window.innerWidth - 2 * PAGE_GUTTER);
   const [width, setWidth] = useState(measure);
@@ -477,9 +528,13 @@ function WorldView({ worldId }: { worldId: WorldId }) {
         {state.running && <span style={{ color: "#7dffa8" }}>● Live</span>}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, marginLeft: "auto", textAlign: "right" }}>
           {!isDemo && (
-            <button onClick={step} disabled={stepping || exhausted}>
-              {stepping ? (state.step_progress ? "Advancing..." : "Preparing advance...") : `Advance ${state.step_years.toLocaleString("en-US")} years`}
-            </button>
+            <StepButton
+              onClick={step}
+              stepping={stepping}
+              exhausted={exhausted}
+              hasProgress={Boolean(state.step_progress)}
+              stepYears={state.step_years}
+            />
           )}
           <AllowanceNote state={state} demo={isDemo} />
         </div>
