@@ -93,3 +93,7 @@ does not separate the remaining effects of spill hierarchy, ice-dammed basins,
 and closing-surface routing. The opening-geometry result also confirms that
 liquid under newly covered cells is above the preregistered 1% threshold on this
 diagnostic step; the production closing-geometry result removes it.
+
+[The #1005 follow-up](../issue1005/README.md) repeated both rock-bed geometry
+arms after restoring lapse-driven snowfall. The opening overlap reached
+1.7628%, and closing geometry kept liquid out from under visible ice.

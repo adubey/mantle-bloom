@@ -658,19 +658,26 @@ def test_d1_snow_fraction_bounds_continuity_and_still_air_fallback():
     assert ice_sheet.snow_fraction(grid, np.zeros_like(grid)) == pytest.approx(ramp)
 
 
-def test_partitioned_dry_snow_is_not_reclassified_at_the_glacier_surface():
+def test_trial_surface_repartitions_dry_precipitation_but_keeps_bed_frozen_snow():
     climate = ice_sheet.SurfaceClimate(
-        precipitation_mm=np.array([500.0]),
-        temperature_c=np.array([0.0]),
+        precipitation_mm=np.array([800.0]),
+        temperature_c=np.array([6.0]),
         seasonal_amplitude_c=np.array([10.0]),
         is_frozen=np.array([True]),
-        dry_snow_mm=np.array([500.0]),
+        dry_snow_mm=np.array([800.0 / 3.0]),
     )
+    without_lake_snow = climate.rates(np.array([5000.0]))[0][0]
+    assert without_lake_snow > climate.rates(np.array([0.0]))[0][0]
 
-    accumulation, _, _ = climate.rates(np.array([0.0]))
+    climate.bed_frozen_snow_mm = np.array([200.0])
+    climate = climate.subset(np.array([0]))
+    to_snow_mm = ice_sheet.RHO_ICE / ice_sheet.RHO_WATER / 1000.0
 
-    expected_ice_m_per_myr = 0.5 * ice_sheet.RHO_WATER / ice_sheet.RHO_ICE * 1.0e6
-    assert accumulation[0] == pytest.approx(expected_ice_m_per_myr)
+    bare_snow_mm = climate.rates(np.array([0.0]))[0][0] * to_snow_mm
+    thick_snow_mm = climate.rates(np.array([5000.0]))[0][0] * to_snow_mm
+
+    assert bare_snow_mm == pytest.approx(200.0 + 800.0 / 3.0)
+    assert thick_snow_mm == pytest.approx(1000.0)
 
 
 def test_d1_basal_melt_continuous_at_the_thaw_boundary_and_bounded_as_h_to_zero():

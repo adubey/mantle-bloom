@@ -290,12 +290,15 @@ class SurfaceClimate:
     # (#806 review). None where the caller predates the partition (direct unit fixtures):
     # the account then falls back to the ground-phase snow share.
     dry_snow_mm: np.ndarray | None = None
+    # The wet share that fell as snow on a bed-frozen lake already has a phase (#1005).
+    bed_frozen_snow_mm: np.ndarray | None = None
 
     def subset(self, idx: np.ndarray) -> "SurfaceClimate":
         return SurfaceClimate(
             self.precipitation_mm[idx], self.temperature_c[idx], self.seasonal_amplitude_c[idx], self.is_frozen[idx],
             None if self.frictional_heat_w_m2 is None else self.frictional_heat_w_m2[idx],
             None if self.dry_snow_mm is None else self.dry_snow_mm[idx],
+            None if self.bed_frozen_snow_mm is None else self.bed_frozen_snow_mm[idx],
         )
 
     def rates(self, thickness_m: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -310,14 +313,10 @@ class SurfaceClimate:
         thickness = np.clip(np.asarray(thickness_m, dtype=float), 0.0, None)
         surface_c = self.temperature_c - LAPSE_RATE_C_PER_KM * thickness / 1000.0
         to_ice = RHO_WATER / RHO_ICE
-        if self.dry_snow_mm is None:
-            snows = snow_fraction(surface_c, self.seasonal_amplitude_c)
-            snow_we = snows * np.asarray(self.precipitation_mm, dtype=float) * 1.0e-3
-        else:
-            # Hydrology has already partitioned this dry-share snow on the opening
-            # surface. Reapplying the lapse-corrected snow fraction drops part of a
-            # bed-frozen lake's transferred snowfall from both ledgers (#990 review).
-            snow_we = np.maximum(np.asarray(self.dry_snow_mm, dtype=float), 0.0) * 1.0e-3
+        snow_mm = snow_fraction(surface_c, self.seasonal_amplitude_c) * np.asarray(self.precipitation_mm, dtype=float)
+        if self.bed_frozen_snow_mm is not None:
+            snow_mm += self.bed_frozen_snow_mm
+        snow_we = snow_mm * 1.0e-3
         pdd = 365.25 * hydrology.seasonal_positive_degrees(surface_c, self.seasonal_amplitude_c, 0.0)
         snow_capacity = DDF_SNOW_MM_WATER_PER_DAY_K * 1.0e-3 * pdd
         snow_melt = np.minimum(snow_we, snow_capacity)
@@ -1390,9 +1389,9 @@ def _frozen_precipitation(climate: SurfaceClimate, area, years: float, retained_
     """Split the step's physical frozen precipitation by the share of each cell's snow the ice
     kept (see `_Output.retained_snow`), so it follows the same fate as the scaled accumulation.
     Scalars, not per-node arrays: the account is whole-world and adds nothing else to a save.
-    Frozen input is the partition's dry-share snow (`dry_snow_mm`), so rain plus frozen land
-    sums to the dry precipitation exactly; without it (direct unit fixtures) the ground-phase
-    seasonal share stands in. The binary freeze mask is never used (#806 review)."""
+    Frozen input is opening dry-share snow plus snowfall on bed-frozen lake area, so dry rain,
+    frozen input and lake input sum to total precipitation. Without the opening partition,
+    ground-phase snowfall stands in (#806 review)."""
     if climate.dry_snow_mm is not None:
         snow_mm = np.asarray(climate.dry_snow_mm, dtype=float)
     else:
@@ -1400,6 +1399,8 @@ def _frozen_precipitation(climate: SurfaceClimate, area, years: float, retained_
             np.asarray(climate.temperature_c, dtype=float),
             np.asarray(climate.seasonal_amplitude_c, dtype=float),
         ) * np.asarray(climate.precipitation_mm, dtype=float)
+    if climate.bed_frozen_snow_mm is not None:
+        snow_mm = snow_mm + climate.bed_frozen_snow_mm
     frozen_m3 = np.clip(snow_mm, 0.0, None) / 1000.0 * np.asarray(area, dtype=float) * years
     retained_m3 = frozen_m3 * retained_snow
     return FrozenPrecipitation(
