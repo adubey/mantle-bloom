@@ -339,6 +339,8 @@ class ControlsRequest(BaseModel):
     volcanism_multiplier: float | None = None
     fault_relief_multiplier: float | None = None
     plume_multiplier: float | None = None
+    craton_formation_multiplier: float | None = None
+    craton_decratonization_multiplier: float | None = None
     # Gate for the debug-only diagnostics (see World.debug_diagnostics) -- on by default for a
     # "Debugging Worlds" tab world, off/toggleable here for any other loaded save.
     debug_diagnostics: bool | None = None
@@ -2450,7 +2452,8 @@ def set_controls(world_id: str, req: ControlsRequest) -> dict:
     (world.TUNING_MULTIPLIER_FIELDS -- rain/river/wind/ocean/glacier/seismic erosion,
     coastal leveling, river/ocean deposition, collision uplift rate & reach, contact
     braking (whole brake and craton-only), volcanism,
-    fault relief strength, plume production; all dimensionless, 1.0 == untuned) on the current world (the "Controls" window -- see
+    fault relief strength, plume production, craton formation and plume decratonization
+    (#1001); all dimensionless, 1.0 == untuned) on the current world (the "Controls" window -- see
     World.sea_level_m/World.solar_multiplier/World.simulate_plate_movement/
     World.simulate_climate_biomes/World.wind_model and World's tuning-knob field group) and
     immediately recomputes world.climate_cache so the very next /worlds/{world_id}/render or

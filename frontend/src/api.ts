@@ -760,6 +760,8 @@ export const TUNING_MULTIPLIER_KEYS = [
   "craton_drag_multiplier",
   "volcanism_multiplier",
   "fault_relief_multiplier",
+  "craton_formation_multiplier",
+  "craton_decratonization_multiplier",
 ] as const;
 export type TuningKey = (typeof TUNING_MULTIPLIER_KEYS)[number];
 export type TuningMultipliers = Record<TuningKey, number>;
