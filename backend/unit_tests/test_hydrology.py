@@ -1202,8 +1202,13 @@ def test_compute_hydrology_keeps_a_lake_where_its_water_is_cold(cold, monkeypatc
     fields = hydrology.compute_hydrology(world, np.full(40, 800.0), temperature, years=1_000_000)
     assert not fields.is_ocean[28:31].any()
     assert fields.lake_depth[28:31].max() > 0.0
-    ledger = fields.ice.ledger
-    assert ledger.closing_m3 <= ledger.opening_m3 + ledger.accumulation_m3  # no water became ice
+    lake, land, ice = fields.lake_water_ledger, fields.land_water_ledger, fields.ice.ledger
+    assert fields.lake_external_dry_runoff_m3_per_yr[28:31].sum() > 0.0
+    assert lake.dry_runoff_m3 > 0.0
+    assert lake.glacier_transfer_m3 == 0.0
+    assert ice.closing_m3 <= ice.opening_m3 + ice.accumulation_m3
+    assert abs(lake.residual_m3) <= 1e-9 * lake.external_supply_m3
+    assert abs(land.residual_m3) <= 1e-9 * (land.rain_m3 + land.meltwater_m3)
 
 def test_compute_hydrology_sublimates_covered_lake_ice_and_closes_its_ledger(monkeypatch):
     theta = 0.05 * np.arange(40)
@@ -2240,7 +2245,7 @@ def test_a_lake_under_ice_on_warm_ground_stays_water():
     world = World(seed=0, plates=[_flow_line_plate_with_lake(0, theta, elevation, lake_depth, glacier_depth=np.full(16, 200.0))])
     fields = hydrology.compute_hydrology(world, np.full(16, 500.0), np.full(16, 2.0), years=1_000_000)
     ledger = fields.ice.ledger
-    assert ledger.frozen_lake_m3 == 0.0
+    assert ledger.lake_cap_transfer_m3 == 0.0
     assert ledger.closing_m3 <= ledger.opening_m3 + ledger.accumulation_m3  # the lake didn't become ice
 
 
@@ -2480,13 +2485,13 @@ def test_precipitation_partition_clips_negative_precipitation_like_the_liquid_so
     assert np.all(frozen == 0.0) and np.all(liquid == 0.0)
 
 
-def _glacier_ledger_run(precipitation, temperature, amplitude, steps=3, glacier_depth=None):
+def _glacier_ledger_run(precipitation, temperature, amplitude, steps=3, glacier_depth=None, *, sea_level_m=0.0):
     theta = 0.002 * np.arange(12)
     elevation = 500.0 - 60.0 * np.arange(12)
     plate = _flow_line_plate(0, theta, elevation)
     if glacier_depth is not None:
         plate.set_fields_on_plate(glacier_depth=glacier_depth)
-    world = World(seed=0, plates=[plate])
+    world = World(seed=0, plates=[plate], sea_level_m=sea_level_m)
     runs = []
     for _ in range(steps):
         fields = hydrology.compute_hydrology(
@@ -2548,6 +2553,27 @@ def test_glacier_account_chains_steps_and_closes_the_full_precipitation_ledger()
         assert snow_water >= snow_land * (1.0 - 1e-9)
         assert snow_water <= snow_all * (1.0 + 1e-9)
         opening = fields.glacier_depth
+
+
+@pytest.mark.usefixtures("march_glaciers")
+def test_all_land_rain_and_snow_are_accounted_for_by_mass():
+    # Keep the ocean boundary and precipitation phase fixed while glacier thickness changes.
+    # Even at the 5 km depth guard, lapse cooling leaves the warm region above freezing.
+    cold = np.arange(12) < 4
+    precipitation = np.full(12, 800.0)
+    temperature = np.where(cold, -40.0, 50.0)
+    world, (fields,) = _glacier_ledger_run(precipitation, temperature, np.zeros(12), steps=1, sea_level_m=-1000.0)
+
+    assert not fields.is_ocean.any()
+    inputs_m3 = precipitation * _node_areas(world) / 1000.0 * 100_000
+    land, glacier, ice = fields.land_water_ledger, fields.glacier_water_ledger, fields.ice.ledger
+    snow_m3 = inputs_m3[cold].sum()
+    assert land.rain_m3 == pytest.approx(inputs_m3[~cold].sum(), rel=1e-12)
+    assert glacier.frozen.land_m3 == pytest.approx(snow_m3, rel=1e-12)
+    assert (ice.accumulation_m3 + ice.snow_melted_m3) * ice_sheet.RHO_ICE / ice_sheet.RHO_WATER == pytest.approx(
+        snow_m3, rel=1e-9,
+    )
+    assert abs(hydrology.full_land_water_residual_m3(land, glacier)) <= 1e-9 * inputs_m3.sum()
 
 
 @pytest.mark.usefixtures("march_glaciers")

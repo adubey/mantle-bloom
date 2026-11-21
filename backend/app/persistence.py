@@ -423,12 +423,14 @@ def _drop_incompatible_collision_polarity_frame(world: World) -> None:
 
 
 def _drop_retired_state(world: World) -> None:
-    """Drop `World` attributes the line surface (retired in #251) kept, so a loaded world --
-    and anything it is saved as -- carries no line state. `corner_notch_log` recorded the line
-    engine's corner-notch filler; every save before #251, quad ones included, pickled it.
-    `gap_fill_algorithm` chose the line engine's gap filler, in saves older still."""
+    """Clear state from the retired line engine and the old cached ice ledger (#251, #991)."""
     world.__dict__.pop("corner_notch_log", None)
     world.__dict__.pop("gap_fill_algorithm", None)
+    ice = getattr(getattr(world, "hydrology_cache", None), "ice", None)
+    ledger = getattr(ice, "ledger", None)
+    if ledger is not None:
+        for name in npz_save._RETIRED_ICE_LEDGER_FIELDS:
+            vars(ledger).pop(name, None)
 
 
 def _backfill_water_budget(world: World) -> None:

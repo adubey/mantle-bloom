@@ -131,10 +131,8 @@ def main() -> None:
 
     ice_sheet = import_ice_sheet(args, hydrology, erosion, result)
 
-    # Taps: the glacier depth erosion sees (the old law's input), the erosion result, and the
-    # time spent in the ice solve. `lake_frozen_km3` replays the pre-#539 rule (a lake on a
-    # frozen node froze) for backends whose ledger has no `frozen_lake_m3`; from #539 on the
-    # ledger's value, 0, is reported instead.
+    # Pre-ledger backends estimate the lake volume their old freezing rule saw.
+    # Current backends have a distinct lake cap and no liquid-to-glacier conversion (#991).
     tap = {"prior_glacier": None, "ice_seconds": 0.0, "lake_frozen_km3": 0.0}
     original_hydrology = hydrology.compute_hydrology
 
@@ -143,10 +141,11 @@ def main() -> None:
         # just snowfall: post-D1 snowfall has no separate rate constant).
         precipitation = np.asarray(precipitation, dtype=float) * args.accumulation_scale
         tap["prior_glacier"] = plates_mod.collect_all_glacier_depth(world_.plates)
-        lake = plates_mod.collect_all_lake_depth(world_.plates)
-        frozen = (temperature < hydrology.FREEZE_POINT_C) | (tap["prior_glacier"] >= hydrology.GLACIER_VISIBLE_DEPTH_M)
-        areas = plates_mod.collect_all_accounting_areas_m2(world_.plates, line_spacing_rad(world_.node_density))
-        tap["lake_frozen_km3"] += float(np.dot(np.where(frozen, lake, 0.0), areas)) / 1e9
+        if ice_sheet is None:
+            lake = plates_mod.collect_all_lake_depth(world_.plates)
+            frozen = (temperature < hydrology.FREEZE_POINT_C) | (tap["prior_glacier"] >= hydrology.GLACIER_VISIBLE_DEPTH_M)
+            areas = plates_mod.collect_all_accounting_areas_m2(world_.plates, line_spacing_rad(world_.node_density))
+            tap["lake_frozen_km3"] += float(np.dot(np.where(frozen, lake, 0.0), areas)) / 1e9
         return original_hydrology(world_, precipitation, temperature, *a, **k)
 
     hydrology.compute_hydrology = tapped_hydrology
@@ -201,7 +200,7 @@ def main() -> None:
                 window["ledger"][key] = window["ledger"].get(key, 0.0) + value / 1e9
         window["meltwater_km3"] += ledger.meltwater_m3 / 1e9
         window["worst_residual_m3"] = max(window["worst_residual_m3"], abs(ledger.residual_m3))
-        if ledger.capped_nodes or ledger.capped_m3 or ledger.frozen_river_capped_m3:
+        if ledger.capped_nodes or ledger.capped_m3 or getattr(ledger, "frozen_river_capped_m3", 0.0):
             window["cap_steps"] += 1
         window["cap_nodes_max"] = max(window["cap_nodes_max"], ledger.capped_nodes)
 

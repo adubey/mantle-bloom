@@ -278,7 +278,6 @@ LAKE_BREACH_EROSION_COEFFICIENT = 4000.0
 FREEZE_POINT_C = 0.0
 LAKE_ICE_SUBLIMATION_M_PER_YR = 0.6
 GLACIER_MELT_THRESHOLD_C = 0.0
-GLACIER_ACCUMULATION_RATE = 0.02
 GLACIER_MELT_RATE_M_PER_MYR = 400.0
 GLACIER_MELT_REFERENCE_DEGREES_C = 20.0
 GLACIER_MELT_MAX_FACTOR = 3.0
@@ -304,8 +303,7 @@ GLACIER_MAX_DEPTH_M = 5000.0
 # produces the precipitation/temperature this module consumes), so this step's real
 # evaporation loss can't feed back into this same step's climate. climate.py's own term is a
 # same-step stand-in sized from the *persisted* channel_depth instead (see that module's own
-# docstring for why that isn't circular). Flat per-Myr rate, the same "linear in dt_myr, no
-# exponential blow-up at a large step" character GLACIER_ACCUMULATION_RATE above already has.
+# docstring for why that isn't circular). The per-Myr loss rate scales linearly with step length.
 RIVER_EVAPORATION_REFERENCE_TEMP_C = 25.0
 RIVER_EVAPORATION_RATE_PER_MYR = 0.2
 RIVER_EVAPORATION_MAX_FRACTION = 0.6
@@ -1081,15 +1079,10 @@ def river_transit_loss_fraction(temperature_c: np.ndarray, excluded: np.ndarray)
 #   keeps the existing per-node transit loss. The source split is exposed on `HydrologyFields` for the
 #   D1 lake resolver. Routed through-flow is river discharge, reported in m^3/s
 #   (`HydrologyFields.discharge_m3_s`).
-# - Glacier meltwater is the #353 ice ledger's per-step volume (`IceLedger.meltwater_m3`),
-#   spread over the step. It covers surface and basal melt, overflow, ice shed at the depth
-#   guard, and snow that melts on bare ground. Ice and water volumes are booked 1:1. Calved ice
-#   goes straight to the ocean, and accumulation stays ice, so neither is discharge. The ledger
-#   is still in #353's model units, so
-#   meltwater is small next to runoff. Rescaling glacier mass balance changes discharge only
-#   through the ledger.
-# - No liquid water becomes ice. Water settling at a cold sink feeds a lake there like any
-#   other (RFC 0014 D2(b), #539); it used to become river ice at `WATER_TO_ICE`.
+# - Glacier meltwater comes from the step's ice ledger. Surface melt, basal melt, overflow,
+#   guard shedding and bare-ground snowmelt convert from ice volume to water with the
+#   density ratio. Calving goes to the ocean and accumulation stays in the glacier.
+# - Liquid water reaching a cold sink enters the lake balance (#539, #991).
 # - The breach surge (`HydrologyFields.breach_surge`) is a spilling lake's erosive forcing.
 #   It's sized by node count (LAKE_BREACH_EROSION_COEFFICIENT) and is in model units. It is
 #   never physical discharge.
@@ -1203,16 +1196,6 @@ def _partition_precipitation_sources(
     return direct_wet, runoff, dry_et
 
 
-# Metres of glacier ice per metre of liquid water, at the glacier model's own model-unit rate
-# (GLACIER_ACCUMULATION_RATE turns mm/yr over Myr into metres): 1/50,000 of real. Rivers settling
-# at frozen nodes (#355) and freezing lakes (#503) used to convert at this rate, deleting nearly
-# all of their water. RFC 0014 D2(b) (#539) removed both: liquid water now pools as lakes at any
-# temperature. No water converts at this rate any more: only RFC 0016's interim glacier-water
-# account reads it, for its opening balance (#732), and `bin/debug/measure_ice_sheet.py` still
-# scales it. RFC 0015 D5 removes it with both.
-WATER_TO_ICE = GLACIER_ACCUMULATION_RATE / 1000.0
-
-
 def _compute_flow_direction(
     elevation: np.ndarray,
     is_ocean: np.ndarray,
@@ -1245,11 +1228,8 @@ def _compute_flow_direction(
     know which lakes just found a real outlet, for the breach-erosion term (see its own
     docstring in `compute_hydrology`).
 
-    Liquid water and glacial ice both follow this target off the ice (`compute_hydrology`), so
-    it isn't stopped at a frozen node. Water used to be: rivers stopped dead below 0 C on the
-    annual mean and their water froze where it settled, at `WATER_TO_ICE`, so it was nearly all
-    deleted (RFC 0014 D2(b), #539). A sub-zero annual mean doesn't mean no summer flow
-    (design principle 3)."""
+    The target routes liquid on the ground even at sub-zero annual mean. At an ice margin
+    it also receives material routed off the glacier surface (#539, #991)."""
     n = len(elevation)
     neighbor_elev = elevation[neighbor_idx]  # (n, k)
     own_elev = elevation[:, None]
@@ -2887,16 +2867,8 @@ def compute_hydrology(
     if world.premade_world_id == "earth":
         is_ocean = force_earth_strait_connections(points, is_ocean, elevation, world.sea_level_m, neighbor_idx)
 
-    # Liquid water -- a river crossing a node, the water settling at a sink, a standing lake --
-    # doesn't freeze on the annual mean (RFC 0014 D2(b), #539). Rivers reaching a sub-zero sink
-    # used to become river ice at WATER_TO_ICE (1/50,000 of their volume), and a lake on a
-    # sub-zero node was emptied into the ice at the same rate: 2.5-48% of land-to-ocean
-    # discharge per step was deleted on #519's evidence save. A sub-zero annual mean doesn't mean
-    # no summer flow (design principle 3), and ice cover doesn't stop a lake's inflow, storage
-    # or spill (Lake Untersee). Before that, the warm-ice clause above had already been dropped
-    # for liquid water (#503): a river reaching a warm ice node rebuilt a 600 m ice plug there
-    # every step.
-
+    # Runoff passes through cold reaches and supplies lakes at sinks. The lake solver
+    # splits a closing water column into liquid and a bounded ice cap (#539, #991).
     # Opening geometry determines precipitation's wet and dry shares. Glacier physics
     # and breach carving use the rock bed (#990).
     hypsometry = _lake_terrain(elevation, prev_glacier_depth, areas, neighbor_idx)
