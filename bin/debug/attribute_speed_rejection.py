@@ -120,7 +120,7 @@ def main() -> None:
         result["by_time"][str(t)] = {n: {"mean": float(np.mean([feats[(s, t)][n] for s in seeds])), "min": float(np.min([feats[(s, t)][n] for s in seeds])),
                                          "max": float(np.max([feats[(s, t)][n] for s in seeds]))} for n in names}
         result["per_plate"][str(t)] = per_plate_correlations(by_time_samples[t], t)
-    for t in times[1:]:
+    for t in times[1:] if 0.0 in times else []:  # runs that start later than t=0 have no t=0 sample to pair with
         result["paired_change_from_t0"][str(t)] = {}
         for n in names:
             d = np.array([feats[(s, t)][n] - feats[(s, 0.0)][n] for s in seeds])
