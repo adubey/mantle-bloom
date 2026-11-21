@@ -227,7 +227,10 @@ describe("Viewer (/view)", () => {
 
     render(<Viewer />);
 
-    const advanceBtn = (await screen.findByRole("button", { name: "Advance 50,000 years" })) as HTMLButtonElement;
+    const advanceBtn = (await screen.findByRole("button", { name: "Step — Advance 50,000 years" })) as HTMLButtonElement;
+    assert.ok(advanceBtn.textContent?.includes("Step"));
+    assert.ok(advanceBtn.querySelector("svg"));
+    assert.equal(advanceBtn.style.background, "#22863a");
     fireEvent.click(advanceBtn);
 
     await screen.findByText("The world had already changed, so you're caught up to it for free.");
@@ -240,6 +243,7 @@ describe("Viewer (/view)", () => {
     stepMode = "429";
     fireEvent.click(advanceBtn);
     await waitFor(() => assert.equal(advanceBtn.disabled, true));
+    assert.notEqual(advanceBtn.style.background, "#22863a");
     assert.ok(screen.getByText(/You've used all 3 of this browser's advances\./));
   });
 
