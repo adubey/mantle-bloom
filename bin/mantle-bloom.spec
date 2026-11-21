@@ -8,6 +8,7 @@
 # ffmpeg libs PyAV carries make onefile slow to start and awkward to sign). On macOS you also
 # get dist/mantle-bloom.app. Build on the OS you're targeting -- PyInstaller does not
 # cross-compile.
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules
@@ -15,6 +16,7 @@ from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules
 REPO = Path(SPECPATH).parent
 BACKEND = REPO / "backend"
 FRONTEND_DIST = REPO / "frontend" / "dist"
+ICONS = REPO / "bin" / "assets"
 
 if not (FRONTEND_DIST / "index.html").is_file():
     raise SystemExit("build the frontend first: cd frontend && npm run build")
@@ -55,6 +57,7 @@ exe = EXE(
     name="mantle-bloom",
     console=True,
     disable_windowed_traceback=False,
+    icon=str(ICONS / "mantle-bloom.ico") if sys.platform == "win32" else None,
 )
 coll = COLLECT(
     exe,
@@ -65,7 +68,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name="mantle-bloom.app",
-    icon=None,
+    icon=str(ICONS / "mantle-bloom.icns"),
     bundle_identifier="com.mantlebloom.app",
     info_plist={"LSBackgroundOnly": False, "NSHighResolutionCapable": True},
 )
