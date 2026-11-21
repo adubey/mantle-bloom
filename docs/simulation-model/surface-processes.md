@@ -597,6 +597,8 @@ rejected with a `400`.
 | `contact_drag_multiplier` | the whole RFC 0008 contact brake (relief, craton and jam factors); `0` disables that brake | `torque.contact_drag_pa_s_per_m`'s `contact_gain`, via `world` (#760) |
 | `craton_drag_multiplier` | only the brake's craton component, against the relief term | `torque.contact_drag_pa_s_per_m`'s `craton_gain`, via `world` (#760) |
 | `volcanism_multiplier` | per-step eruption probability **and** metres added per eruption | `volcanism.apply_volcanic_activity` |
+| `fault_relief_multiplier` | the relief fault slip builds along fault traces (a no-op in `boundary` deformation mode) | `faults.py` |
+| `plume_multiplier` | mantle plume production rate; `0` thins every scheduled event away (a matched plume-off twin, RFC 0007) | `plumes.apply` |
 | `craton_formation_multiplier` | the craton formation budget (`cratons.CRATON_FORMATION_RATE_PER_GYR`); `0` forms no new craton | `cratons._formation_picks` (#1001) |
 | `craton_decratonization_multiplier` | the craton area each arriving plume head strips (`cratons.CRATON_PLUME_DECRATONIZATION_RADIUS_KM`, area-wise); `0` strips none | `cratons._decratonize_under_plume_heads` (#1001) |
 

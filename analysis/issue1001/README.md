@@ -150,3 +150,5 @@ Decratonization changes the run from step 1, so there is no shared prefix. The c
    - The 2-SE rule from round 1 applies, and the most likely outcome is inconclusive.
 
 **Controls.** Balance error stays near 0. Formed area plus credit equals the budget earned. Peak RSS and runtime are recorded.
+
+*Amendment (PR #1002 review), written after seed 326494039's first round 2 summary had been seen. It concerns only an accounting control, not a result:* the credit-accounting control as written above ignores the cap. No host qualifies for the first 200 Myr, but the cap holds the bank at 100 Myr of earnings, so some early earnings are discarded. The control is therefore **earned = formed + banked + discarded**. It is checked from the `formation_credit_earned_m2` and `formation_credit_discarded_m2` counters and the banked credit. The two arms already running began before those counters existed and can't check it, so the final replay reruns both seeds with them.

@@ -1349,19 +1349,29 @@ ground down to small remnants over a few hundred Myr.
 **Formation.** A column counts as quiet when it is genuine continental crust (Hc within
 `CRATON_HOST_MIN_HC_M`..`CRATON_HOST_MAX_HC_M`, so neither a drowned shelf nor an active orogen)
 and at least `CRATON_FORMATION_MARGIN_KM` from its plate's edge or any non-genuine cell, and is
-not a belt. Its clock runs only while it stays quiet. After `CRATON_FORMATION_MYR` (200 Myr) its whole
+not a belt. Its clock runs only while it stays quiet. After `CRATON_FORMATION_MYR` (200 Myr)
 the column *qualifies*, and it cratonises (its whole Hc becomes cratonic, dated from when it went
 quiet) when the formation budget reaches it (#1001). Each step earns
 `CRATON_FORMATION_RATE_PER_GYR` (1% of the genuine continental area per Gyr, about 2% of the craton
 area at a 45% share), scaled by `World.craton_formation_multiplier`. The credit goes to whole
 qualifying cells: the longest-quiet first, and among equally quiet cells the nearest to existing
-craton, so new craton accretes onto old blocks instead of speckling. Unspent credit carries over,
-capped at `CRATON_FORMATION_CREDIT_MAX_MYR` (100 Myr) of earnings.
+craton, so new craton accretes onto old blocks instead of speckling. Remaining ties go by a seeded
+hash of plate and cell, so a plate's place in `world.plates` doesn't decide where craton forms.
+Unspent credit carries over. Only that leftover is capped, at `CRATON_FORMATION_CREDIT_MAX_MYR`
+(100 Myr) of earnings but never below one host cell, and the excess is counted in
+`formation_credit_discarded_m2`. So the budget doesn't depend on how an interval is split into steps,
+and earned = formed + banked + discarded.
 
 **Decratonization.** Every plume head that arrives strips the craton within
 `CRATON_PLUME_DECRATONIZATION_RADIUS_KM` (350 km) of its centre, an area scaled by
 `World.craton_decratonization_multiplier`. The column keeps its Hc and becomes ordinary continental
-crust: the keel is lost, not the crust (principle 7). Its formation clock restarts.
+crust: the keel is lost, not the crust (principle 7). Its formation clock restarts, so it can
+cratonise again only after `CRATON_FORMATION_MYR` and behind every longer-quiet host. Two
+approximations:
+- **Lumped sink.** Plume heads carry Earth's whole decratonization rate, including the subduction and
+  flat-slab losses (eastern North China, western Wyoming) that have no mechanism here.
+- **The label goes with the keel.** Clearing `craton_crust_m` also clears the crust's cratonic
+  provenance, because the model has no separate keel state (#1003).
 
 Why both: Earth has formed little or no craton since about 1 Ga, and plumes (southern Kaapvaal, the
 Angolan Shield, Tanzania) and subduction (eastern North China, western Wyoming) have destroyed
