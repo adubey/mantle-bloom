@@ -986,7 +986,12 @@ def _advance_prognostic_body(
         accounting, lost_volume, members, new_level, accounting.slice_years, evaporation, sublimation, hypsometry
     )
     _record_tier_cap_overflow(accounting, body, is_sea, overflow, tier_cap_limits_body)
-    if len(members) == 1 and hypsometry.glacier_mask is None:
+    # Keep the original scalar inverse for uncovered one-cell lakes; changing its rounding
+    # can flip the saddle merge test back and forth over a long run (#990).
+    single_cell_uncovered = len(members) == 1 and (
+        hypsometry.glacier_mask is None or not hypsometry.glacier_mask[members[0]]
+    )
+    if single_cell_uncovered:
         node = int(members[0])
         z = float(hypsometry.elevation[node])
         relief = float(hypsometry.relief_m[node])

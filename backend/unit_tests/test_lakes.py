@@ -638,6 +638,35 @@ def test_ice_only_closed_root_routes_unstorable_opening_water_to_its_sink():
     assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0)
 
 
+def test_uncovered_single_cell_keeps_scalar_depth_update_with_glacier_mask(monkeypatch):
+    elevation = np.array([100.0])
+    area = np.array([1.0e10])
+    body = lakes.Lake(
+        lake_id=0, members=np.array([0]), floor_elevation=80.0, min_depth=80.0,
+        max_depth=1000.0, sink_node_idx=0, outlet_node_idx=0,
+    )
+    hypsometry = lakes.CellHypsometry(
+        elevation, area, np.array([20.0]), float(area[0]), glacier_mask=np.array([False]),
+    )
+    supply = np.array([1.0e9])
+    climate = lakes.LakeClimate(supply, np.array([0.3]), external_supply_m3_per_yr=supply)
+    original_mean_depth = lakes.CellHypsometry.mean_depth
+    mean_depth_calls = []
+
+    def record_mean_depth(self, level, idx):
+        if self is hypsometry:
+            mean_depth_calls.append(np.asarray(idx).copy())
+        return original_mean_depth(self, level, idx)
+
+    monkeypatch.setattr(lakes.CellHypsometry, "mean_depth", record_mean_depth)
+    result = lakes.solve_lakes_prognostic(
+        [body], elevation, np.zeros(1), 10_000.0, climate, hypsometry,
+    )
+
+    assert result.lake_depth[0] > 0.0
+    assert mean_depth_calls == []
+
+
 def test_prognostic_solver_exports_prior_storage_when_hierarchy_is_empty():
     hyps = lakes.CellHypsometry.whole_cells(_SINK_ELEVATION)
     previous = np.zeros(3)
