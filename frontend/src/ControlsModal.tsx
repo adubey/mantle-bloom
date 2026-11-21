@@ -439,8 +439,8 @@ export default function ControlsModal({
               </label>
               <div style={{ fontSize: 11, color: "#999", marginTop: 8 }}>
                 {formNewCratons
-                  ? "On: continental interiors that stay quiet for 200 Myr become craton, so the cratonic share grows and plates slow as cratons jam their fronts."
-                  : "Off (Earth today): no new cratons form, so existing ones slowly wear away at their margins — about 10–20% per Gyr."}
+                  ? "On: continental interiors that stay quiet for 200 Myr become craton, so the cratonic share grows, by about 30% of the craton volume per Gyr."
+                  : "Off (Earth today): no new cratons form, so existing ones only thin, by roughly 13% of their volume per Gyr; their area stays about the same."}
               </div>
             </div>
 

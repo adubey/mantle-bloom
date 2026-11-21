@@ -100,9 +100,11 @@ CRATON_FORMATION_MARGIN_KM = 500.0
 # keel destruction at ~14% of the original craton area per 2 Gyr, and the Phanerozoic record
 # (eastern North China, western Wyoming, southern Kaapvaal, the Angolan Shield, western
 # Man-Leo, Tanzania) is nearer ~25% per Gyr. With this rule on, the RFC 0012 G2 baselines
-# formed 26-50% of their starting craton volume per Gyr against 12-20% destroyed, so the
-# cratonic share grew and its jammed fronts slowed the plates. With it off the existing
-# sinks alone give a net loss at an Earth-like rate.
+# formed 26-50% of their starting craton volume per Gyr against 12-20% destroyed. With it off
+# (analysis/issue1001) the existing sinks lose ~13% of the craton volume per Gyr, but almost
+# all of that is thinning: craton area stays flat, because no sink takes a column's craton
+# all the way to zero. Earth's rates are area lost, so area-wise the model has no analogue of
+# keel destruction yet.
 CRATON_FORMATION_MYR = 200.0
 # Generation seeding without generated cores (plates-first, sketch and premade worlds): the
 # deep interiors of the starting continents. 875 km (seven default cells) covers ~40-50% of

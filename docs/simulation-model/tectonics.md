@@ -1356,7 +1356,10 @@ about 1 Ga. Its cratons are destroyed at roughly 7–25% of their area per Gyr b
 under subduction (eastern North China, western Wyoming) and plume erosion (southern Kaapvaal, the
 Angolan Shield, Tanzania). So a present-day planet's cratonic share should fall over time. With the
 rule on, the RFC 0012 G2 baselines formed 26–50% of their starting craton volume per Gyr and
-destroyed 12–20%. The share grew, and plates slowed as more craton fronts jammed. The clock runs
+destroyed 12–20%. With it off, two 500 Myr seeds lost about 13% of their craton volume per Gyr,
+but that loss is thinning, booked to erosion, collision rework and rifting. Craton *area* stayed
+flat, since no sink takes a column's craton to zero, so the model has no area-wise analogue of
+Earth's keel destruction yet. Plate speed was the same either way over 500 Myr. The clock runs
 whether the flag is on or off, so turning formation on mid-run forms any host already quiet for
 longer than `CRATON_FORMATION_MYR`, dated from when it went quiet.
 [`analysis/issue1001/README.md`](../../analysis/issue1001/README.md) compares the two settings. A [cratons-first](foundations.md#cratons-first-layout-continent_layoutpy-plate_partitionpy) world starts with its
