@@ -57,12 +57,24 @@ def score_nodes(node_loglik, km: np.ndarray, speed: np.ndarray, closing: np.ndar
     return {"L": float((km * ll).sum() / total), "ll_node": ll, "cls": cls}
 
 
+def wecdf_distance(x: np.ndarray, w: np.ndarray, ref_x: np.ndarray, ref_w: np.ndarray) -> float:
+    """Kolmogorov-Smirnov distance between two length-weighted speed distributions (amendment 1, 2026-11-21)."""
+    grid = np.sort(np.concatenate([x, ref_x]))
+    def cdf(vals, wts):
+        o = np.argsort(vals)
+        c = np.cumsum(wts[o]) / wts.sum()
+        return np.concatenate([[0.0], c])[np.searchsorted(vals[o], grid, side="right")]
+    return float(np.abs(cdf(x, w) - cdf(ref_x, ref_w)).max())
+
+
 def earth_threshold(rows: list[dict], node_loglik, rng: np.random.Generator) -> dict:
     by_pair = defaultdict(list)
     for r in rows:
         by_pair[r["pair"]].append(r)
     pairs = list(by_pair)
-    scores = []
+    ref_km = np.array([r["km"] for r in rows])
+    ref_speed = np.array([r["speed"] for r in rows])
+    scores, ks = [], []
     for _ in range(SUBSETS):
         pick = [pairs[i] for i in rng.choice(len(pairs), SUBSET_PAIRS, replace=False)]
         flat = [r for p in pick for r in by_pair[p]]
@@ -70,8 +82,10 @@ def earth_threshold(rows: list[dict], node_loglik, rng: np.random.Generator) -> 
         speed = np.array([r["speed"] for r in flat])
         closing = np.array([r["closing"] for r in flat])
         scores.append(score_nodes(node_loglik, km, speed, closing)["L"])
+        ks.append(wecdf_distance(speed, km, ref_speed, ref_km))
     scores = np.array(scores)
-    return {"L_star": float(np.quantile(scores, REJECT_QUANTILE)), "earth_L_median": float(np.median(scores)),
+    return {"L_star": float(np.quantile(scores, REJECT_QUANTILE)), "L_upper": float(np.quantile(scores, 1 - REJECT_QUANTILE)),
+            "ks_star": float(np.quantile(ks, 1 - REJECT_QUANTILE)), "ref_speed": ref_speed, "ref_km": ref_km, "earth_L_median": float(np.median(scores)),
             "earth_L_quantiles": {str(q): float(np.quantile(scores, q)) for q in (0.05, 0.25, 0.5, 0.75, 0.95)}}
 
 
@@ -88,7 +102,7 @@ def class_stats(km, speed, cls) -> dict:
     return out
 
 
-def score_sample(sample: dict, node_loglik, seed: int, threshold: float) -> tuple[dict, list[dict]]:
+def score_sample(sample: dict, node_loglik, seed: int, threshold: dict) -> tuple[dict, list[dict]]:
     km, speed, closing, owner = [], [], [], []
     for ci, contact in enumerate(sample["contacts"]):
         for w, v, c in contact["nodes"]:
@@ -105,7 +119,9 @@ def score_sample(sample: dict, node_loglik, seed: int, threshold: float) -> tupl
         a, b = areas[str(contact["a"])] / total_area, areas[str(contact["b"])] / total_area
         contacts.append({"seed": seed, "myr": sample["myr"], "km": float(km[m].sum()), "speed": float((km[m] * speed[m]).sum() / km[m].sum()),
                          "L": float((km[m] * scored["ll_node"][m]).sum() / km[m].sum()), "larger": max(a, b), "smaller": min(a, b)})
-    row = {"seed": seed, "myr": sample["myr"], "L": scored["L"], "rejected": scored["L"] < threshold, "plates": len(areas), "contacts": len(contacts),
+    row = {"seed": seed, "myr": sample["myr"], "L": scored["L"], "rejected_v1": scored["L"] < threshold["L_star"],
+           "ks": wecdf_distance(speed, km, threshold["ref_speed"], threshold["ref_km"]),
+           "rejected": bool(scored["L"] < threshold["L_star"] or scored["L"] > threshold["L_upper"] or wecdf_distance(speed, km, threshold["ref_speed"], threshold["ref_km"]) > threshold["ks_star"]), "plates": len(areas), "contacts": len(contacts),
            "boundary_km": float(km.sum()), "classes": class_stats(km, speed, scored["cls"]),
            "median_contact_speed": float(np.median([c["speed"] for c in contacts])) if contacts else None}
     return row, contacts
@@ -143,21 +159,23 @@ def main() -> None:
     for path in sorted(args.runs.glob("*.json")):
         run = json.loads(path.read_text())
         for sample in run["samples"]:
-            row, cs = score_sample(sample, node_loglik, run["seed"], threshold["L_star"])
+            row, cs = score_sample(sample, node_loglik, run["seed"], threshold)
             rows.append(row)
             contacts += cs
     times = sorted({r["myr"] for r in rows})
     by_time = [{"myr": t, "samples": sum(r["myr"] == t for r in rows), "accepted": sum(r["myr"] == t and not r["rejected"] for r in rows),
                 "acceptance_rate": float(np.mean([not r["rejected"] for r in rows if r["myr"] == t])),
+                "accepted_v1_one_sided": sum(r["myr"] == t and not r["rejected_v1"] for r in rows),
                 "L_median": float(np.median([r["L"] for r in rows if r["myr"] == t])),
                 "median_contact_speed": float(np.median([r["median_contact_speed"] for r in rows if r["myr"] == t]))} for t in times]
+    threshold = {k: v for k, v in threshold.items() if k not in ("ref_speed", "ref_km")}
     result = {"runs": str(args.runs.name), "threshold": threshold, "subset_pairs": SUBSET_PAIRS, "subsets": SUBSETS,
               "n_seeds": len({r["seed"] for r in rows}), "by_time": by_time, "samples": rows,
               "area_terciles": {str(t): terciles([c for c in contacts if c["myr"] == t]) for t in times if any(c["myr"] == t for c in contacts)}}
     args.out.write_text(json.dumps(result, indent=1) + "\n")
-    print("L* =", round(threshold["L_star"], 3), "Earth median", round(threshold["earth_L_median"], 3))
+    print("L* =", round(threshold["L_star"], 3), "L upper", round(threshold["L_upper"], 3), "KS*", round(threshold["ks_star"], 3), "Earth median", round(threshold["earth_L_median"], 3))
     for b in by_time:
-        print(f"{b['myr']:5.0f} Myr  accepted {b['accepted']:2d}/{b['samples']}  L median {b['L_median']:.2f}  median contact speed {b['median_contact_speed']:.2f}")
+        print(f"{b['myr']:5.0f} Myr  accepted {b['accepted']:2d}/{b['samples']} (one-sided v1 {b['accepted_v1_one_sided']:2d})  L median {b['L_median']:.2f}  median contact speed {b['median_contact_speed']:.2f}")
 
 
 if __name__ == "__main__":

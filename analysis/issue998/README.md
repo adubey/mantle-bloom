@@ -96,17 +96,51 @@ torque along the plates' motion axes over the driving torque along them.
    3.76 cm/yr mean plate speed, no net rotation). Rescaling every speed to bring contacts to Earth's 3 cm/yr would
    put plates near 1.9 cm/yr, half of T1's target, so no single force scale meets both.
 
-## 5. Answer (provisional)
+## 5. Amendment 1 (2026-11-21, made after scoring `rifting-baseline`; the one-sided result above stands)
 
-- **Which feature predicts rejection?** The forces that appear at the first step, slab pull (52 to 58% of driving
-  torque) and ridge push (10 to 20%), with plate speed tracking slab pull per area. Across worlds the pulled share of
-  boundary and the opening share separate the two outcomes at 1 Myr; size and layout (plate count, largest plate)
-  rank next. No driving-torque share separates worlds once all are rejected.
-- **Tunable in RFC 0021 or a different driver?** The evidence points to a driver or structure problem more than a
-  scale problem, by item 4: a global force or viscosity scale moves plate speeds and contact speeds together, and
-  the two Earth targets sit at a different ratio (0.8) from the model's (1.6 to 1.9). That ratio would fall if
-  neighbours moved more alike, as slab-pulled plates and their overriding neighbours do on Earth, which the model's
-  both-plates-fast contacts do not. This is an inference from the ratio, **not tested**. The direct test is cheap:
-  score the RFC 0021 corner settings and `rifting-baseline` with the same pipeline (about 35 minutes per setting). If
-  no corner reaches L* at any time, tuning cannot fix it and a driver change is indicated (prescribed slab pull).
-  Pending, with the `rifting-baseline` reference.
+`rifting-baseline` (brake on, old force forms, median contact speed 0.5 cm/yr, 39% of Earth's contacts are under
+2 cm/yr and nearly all of its are) passed the section 2 test 20/20 with a median L of -2.85, better than Earth's
+own -3.50. A mean log-likelihood rewards sitting at the density's mode, so it cannot say that a world is too
+slow. The criterion as fixed above is therefore one-sided and incomplete; it is kept and reported as
+"one-sided v1". Amended rule, both parts again from Earth's 2,000 random 50-pair subsets:
+
+- reject if L is outside Earth's central 90% (below L* = -3.756 or above L_upper = -3.247), or
+- reject if the length-weighted Kolmogorov-Smirnov distance of the sample's contact speeds from Earth's pooled
+  contact speeds exceeds the 95th percentile of the same distance for the subsets (KS* = 0.199; the subsets are
+  part of the pooled reference, so this threshold is a little low and the test a little strict).
+
+By construction a true Earth subset is rejected up to about 15% of the time (three 5% tails, which overlap).
+
+## 6. Other settings (same 20 seeds and 7 times)
+
+Accepted worlds out of 20, amended rule (one-sided v1 in brackets), median contact speed in cm/yr at 10 Myr:
+
+| Setting | 0 Myr | 1 Myr | 2-50 Myr | Median contact speed at 10 Myr | Plate speed (area-weighted) at 10 Myr |
+|---|---|---|---|---|---|
+| `rifting-baseline` (main) | 0 (20) | 0 (20) | 0 (20) | 0.5 | 0.75 |
+| `b123-brake-off` | 2 (20) | 2 (2) | 0 (0) | 8.2 | 5.2 |
+| 1e21 slab mantle, 150 km | 2 (20) | 0 (0) | 0 (0) | 11.2 | 6.9 |
+| 1e21, 660 km | 2 (20) | 0 (0) | 0 (0) | 14.1 | 8.7 |
+| 1e20, 150 km | 2 (20) | 0 (0) | 0 (0) | 19.9 | 11.2 |
+| 1e20, 660 km | 2 (20) | 0 (0) | 0 (0) | 35.1 | 20.5 |
+
+No setting is accepted at any time after t=0 under the amended rule (the 2 at t=0 are worlds whose flow-only
+state falls inside the band by chance). Corner viscosity and sink length move plate speeds 4-fold and contact speeds
+4-fold, never to Earth's.
+
+Ratio of the median contact speed to the area-weighted plate speed (median contact speeds here are per contact, not
+per node, which differs from Earth's 3.0 node-weighted by about 0.1 cm/yr):
+
+| Setting | 5 Myr | 10 | 20 | 50 |
+|---|---|---|---|---|
+| `rifting-baseline` | 0.66 | 0.67 | 0.68 | 0.68 |
+| `b123-brake-off` | 1.55 | 1.58 | 1.63 | 1.86 |
+| 1e21, 150 km | 1.56 | 1.63 | 1.68 | 1.92 |
+| 1e21, 660 km | 1.58 | 1.62 | 1.68 | 1.71 |
+| 1e20, 150 km | 1.79 | 1.79 | 1.92 | 2.14 |
+| 1e20, 660 km | 1.69 | 1.71 | 1.75 | 1.63 |
+| Earth (PB2002, no net rotation) | 0.8 | | | |
+
+The ratio is 1.55 to 2.1 in all five slab-pull-driven settings across a 4-fold range of plate speed. The
+mantle-flow-driven baseline has 0.66, near Earth's 0.8. So slab-pull driving in the model puts both sides of a contact
+into fast motion regardless of the force scale, and rescaling the force constants cannot reach Earth's ratio.
