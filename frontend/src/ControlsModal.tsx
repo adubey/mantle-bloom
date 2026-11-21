@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { SplitMethod, TuningKey, TuningMultipliers } from "./api";
 import ModalShell from "./ModalShell";
+import { DEFAULT_TUNING } from "./uiDefaults";
 
 interface Props {
   seaLevelM: number;
@@ -139,7 +140,9 @@ export default function ControlsModal({
   onClose,
 }: Props) {
   const [tab, setTab] = useState<TabKey>("climate");
-  const anyTuned = Object.values(tuning).some((v) => v !== 1);
+  // "Tuned" means away from the UI defaults (#1007), not away from 1x: a fresh
+  // world has collision braking at 0x by default and is not already tuned.
+  const anyTuned = (Object.keys(DEFAULT_TUNING) as TuningKey[]).some((k) => tuning[k] !== DEFAULT_TUNING[k]);
   const bothSimsOff = !simulatePlateMovement && !simulateClimateBiomes;
 
   const tuningGroup = (heading: string, knobs: { key: TuningKey; label: string }[], disabled = false) => (
@@ -151,7 +154,7 @@ export default function ControlsModal({
         <label key={key} style={{ display: "block", marginBottom: 10, fontSize: 12 }}>
           <span style={{ display: "flex", justifyContent: "space-between" }}>
             <span>{label}</span>
-            <span style={{ color: tuning[key] === 1 ? "#8b8fa3" : "#e6e8ef" }}>
+            <span style={{ color: tuning[key] === DEFAULT_TUNING[key] ? "#8b8fa3" : "#e6e8ef" }}>
               {disabled ? "—" : `${tuning[key].toFixed(1)}×`}
             </span>
           </span>
@@ -173,7 +176,7 @@ export default function ControlsModal({
   const tuningResetRow = (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
       <span style={{ fontSize: 11, color: "#999" }}>
-        Dimensionless multipliers on individual processes — 1× is the model's default; changes apply immediately.
+        Dimensionless multipliers on individual processes — 1× is the model's untuned value (collision braking is 0× in the UI default); changes apply immediately.
       </span>
       {anyTuned && (
         <button
@@ -191,7 +194,7 @@ export default function ControlsModal({
             flexShrink: 0,
           }}
         >
-          Reset to 1×
+          Reset to UI defaults
         </button>
       )}
     </div>
