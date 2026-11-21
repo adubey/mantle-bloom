@@ -71,6 +71,8 @@ const TUNING_GROUPS: { heading: string; tab: TabKey; knobs: { key: TuningKey; la
       { key: "contact_drag_multiplier", label: "Collision braking — all contacts" },
       { key: "craton_drag_multiplier", label: "Collision braking — craton only" },
       { key: "volcanism_multiplier", label: "Volcanism" },
+      { key: "craton_formation_multiplier", label: "Craton formation rate" },
+      { key: "craton_decratonization_multiplier", label: "Craton loss to plume heads" },
     ],
   },
 ];

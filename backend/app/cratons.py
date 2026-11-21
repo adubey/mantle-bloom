@@ -19,7 +19,14 @@ State. Four per-node surface fields carry everything (see surface_fields.py):
 Formation rule. A column is quiet when it is genuine continental crust (Hc within
 [CRATON_HOST_MIN_HC_M, CRATON_HOST_MAX_HC_M] -- neither a drowned shelf nor an active orogen)
 at least CRATON_FORMATION_MARGIN_KM from its plate's edge or any non-genuine cell. Once the
-clock reaches CRATON_FORMATION_MYR its whole Hc becomes cratonic. A cratons-first world
+clock reaches CRATON_FORMATION_MYR the column qualifies, and its whole Hc becomes cratonic
+when the step's formation budget reaches it (#1001): CRATON_FORMATION_RATE_PER_GYR of the
+genuine continental area per Gyr, longest-quiet hosts first. Earth still forms a little
+craton but loses more -- ~5-10% of the craton area per Gyr -- so cratons also lose area to
+plume heads, which strip the keel under them and leave ordinary continental crust
+(CRATON_PLUME_DECRATONIZATION_RADIUS_KM). A present-day planet's cratonic area should fall
+slowly, not grow.
+A cratons-first world
 (RFC 0009, continent_layout.py) starts with its generated cratonic cores; every other world
 (and the first load of an older save) seeds the deep interiors -- CRATON_SEED_MARGIN_KM in.
 Either way the starting cratons already exist, dated CRATON_SEED_AGE_YEARS before the start.
@@ -82,10 +89,36 @@ CRATON_HOST_MIN_HC_M = 0.8 * lithosphere.REFERENCE_HC_CONTINENTAL_M
 CRATON_HOST_MAX_HC_M = 50_000.0
 # How far inside its margin a column must be to keep its formation clock running.
 CRATON_FORMATION_MARGIN_KM = 500.0
-# How long a column must stay quiet to cratonise. Real cratonic roots stabilise over a few
-# hundred Myr; long enough here that an ordinary collision belt has to stop deforming and
-# relax back into the host Hc window before it joins the craton.
+# How long a column must stay quiet to qualify to cratonise. Real cratonic roots stabilise
+# over a few hundred Myr; long enough here that an ordinary collision belt has to stop
+# deforming and relax back into the host Hc window before it joins the craton. Qualifying
+# isn't forming: the formation budget below decides how much of the qualifying area does.
 CRATON_FORMATION_MYR = 200.0
+# Earth-like craton budget (#1001). Cratonisation peaked in the Archean and petered out by
+# ~1 Ga, as the mantle cooled below the melting that made thick depleted keels; a keel
+# destroyed since then (eastern North China, ~130-110 Ma) regrew thin and fertile, not
+# cratonic (Liu et al. 2025, Natl Sci Rev nwaf027; Celli et al. 2020, Nat Commun 11:92).
+# Meanwhile cratons lose keel area at ~5-10% per Gyr: Liu et al. (2018, JGR 123) put it at
+# ~14% of the original craton area over 2 Gyr. So a present-day planet still forms a little
+# craton but loses it faster. Before #1001 every host that qualified formed: 26-50% of the
+# starting craton volume per Gyr on the RFC 0012 G2 seeds, against 12-20% destroyed, nearly
+# all by thinning that never removed craton area (analysis/issue1001).
+#
+# Formation: each step earns this fraction of the genuine continental area per Gyr
+# (World.craton_formation_multiplier scales it), spent on qualifying hosts. 1% of a ~45%
+# cratonic share is ~2% of the craton area per Gyr.
+CRATON_FORMATION_RATE_PER_GYR = 0.01
+# The most credit that can bank while no host qualifies, in Myr of earnings.
+CRATON_FORMATION_CREDIT_MAX_MYR = 100.0
+# Destruction: a plume head strips the craton within this radius of its centre, leaving
+# ordinary continental crust (southern Kaapvaal, the Angolan Shield, Tanzania: Celli et al.
+# 2020). It is a lumped sink: Earth also loses keels to subduction and flat slabs (eastern
+# North China, western Wyoming), which have no mechanism here, so plume heads carry the whole
+# Earth rate. A stripped column's clock restarts, so it can cratonise again only by waiting
+# out CRATON_FORMATION_MYR and then winning the budget behind every longer-quiet host. Heads arrive at ~0.1 per Myr and cratons cover ~20% of the sphere, so ~20 heads per
+# Gyr hit craton; calibrated (analysis/issue1001) so they strip ~5-10% of the craton area
+# per Gyr. World.craton_decratonization_multiplier scales the stripped area.
+CRATON_PLUME_DECRATONIZATION_RADIUS_KM = 350.0
 # Generation seeding without generated cores (plates-first, sketch and premade worlds): the
 # deep interiors of the starting continents. 875 km (seven default cells) covers ~40-50% of
 # genuine continental area on default worlds -- the order of Earth's shields plus platforms.
@@ -131,6 +164,12 @@ CRATON_SOURCE_ACCOUNTS = ("initial_m3", "formed_m3")
 # placement couldn't place (RFC 0001, #441). Merges booked it to "delaminated" before then,
 # which read as root foundering (forbidden for cratons, #340); nothing books "delaminated"
 # now, and it is kept so older saves' historical merge losses still balance.
+# "decratonized" is craton under a plume head that lost its keel (#1001): like
+# "collision_reworked", the crust stays on the surface as ordinary continental crust (Hc is
+# untouched), but the column loses the strength, rift resistance and jamming the craton label
+# carries. That is #340's "it is the mantle keel that goes" in the interior; the model has no
+# separate keel, so the label is what goes, and with it the crust's cratonic provenance
+# (#1003 separates keel state from crust).
 # "unattributed" is signed and should stay ~0 -- anything there escaped every instrumented
 # site.
 CRATON_SINK_ACCOUNTS = (
@@ -140,11 +179,21 @@ CRATON_SINK_ACCOUNTS = (
     "merge_capped_m3",
     "collision_reworked_m3",
     "eroded_m3",
+    "decratonized_m3",
     "topology_removed_m3",
     "audit_clipped_m3",
     "unattributed_m3",
 )
 CRATON_ACCOUNTS = CRATON_SOURCE_ACCOUNTS + CRATON_SINK_ACCOUNTS
+# Craton area formed and decratonized, and the formation budget earned and discarded by its
+# cap (#1001), m^2: diagnostics outside the volume balance, because Earth's craton budget is
+# reported in area.
+CRATON_AREA_COUNTERS = (
+    "formed_area_m2",
+    "decratonized_area_m2",
+    "formation_credit_earned_m2",
+    "formation_credit_discarded_m2",
+)
 # rifted_m3 by path (RFC 0003 phase 1): divergent-boundary thinning
 # (lithosphere_plate.deform_columns), stretch donated to new rift cells
 # (quad_tectonics._allocate_stretch) and failed rifts (merge_split.maybe_split_plate). Booking
@@ -253,7 +302,7 @@ def ensure_ledger(world: "World") -> None:
     """Backfill the ledger's accounts without touching any plate -- safe on load."""
     if not isinstance(getattr(world, "craton_ledger", None), dict):
         world.craton_ledger = {}
-    for key in CRATON_ACCOUNTS + CRATON_RIFT_PATH_ACCOUNTS + CRATON_RIFT_CUT_COUNTERS:
+    for key in CRATON_ACCOUNTS + CRATON_RIFT_PATH_ACCOUNTS + CRATON_RIFT_CUT_COUNTERS + CRATON_AREA_COUNTERS:
         if key != "initial_m3":
             world.craton_ledger.setdefault(key, 0.0)
 
@@ -519,35 +568,174 @@ def clear_oceanic_belts(plate: "Plate") -> None:
 
 
 def update(world: "World", years: float) -> None:
-    """End-of-step craton pass: advance every quiet column's formation clock, cratonise the
-    ones that reach CRATON_FORMATION_MYR, and drop the provenance stamp of any cell whose
-    craton is gone. A belt column is never quiet (RFC 0009), and a cell retyped oceanic stops
-    being a belt: belts are continental crust (`clear_oceanic_belts`)."""
+    """End-of-step craton pass (#1001): strip the craton under every plume head that arrived this
+    step (`_decratonize_under_plume_heads`), advance every quiet column's formation clock, spend
+    the step's formation budget on the qualifying hosts (`_formation_picks`), and drop the
+    provenance stamp of any cell whose craton is gone. A belt column is never quiet (RFC
+    0009), and a cell retyped oceanic stops being a belt: belts are continental crust
+    (`clear_oceanic_belts`)."""
     ensure_initialized(world)
+    # Strip first, so the step's formation budget isn't spent on a column a head strips now.
+    _decratonize_under_plume_heads(world, years)
     years_myr = years / 1e6
     spacing_rad = line_spacing_rad(world.node_density)
     hops = _hops(CRATON_FORMATION_MARGIN_KM, spacing_rad)
+    states = []
+    continental_area = 0.0
+    largest_host_cell = 0.0
     for plate in world.plates:
         clear_oceanic_belts(plate)
         host = _genuine_continental(plate)
         interior = _interior_hops(plate, host, hops)
         if interior is None:
             continue
+        areas = _areas(world, plate)
+        continental_area += float(areas[host].sum())
+        largest_host_cell = max(largest_host_cell, float(areas[host].max(initial=0.0)))
         hc = plate.collect("crustal_thickness_m")
         quiet = host & (hc <= CRATON_HOST_MAX_HC_M) & (interior >= hops) & ~belt_mask(plate, world.elapsed_years)
         stable = np.where(quiet, plate.collect("stable_continental_myr") + years_myr, 0.0)
         craton = plate.collect("craton_crust_m")
-        formed = plate.collect("craton_formed_years")
         forming = quiet & (stable >= CRATON_FORMATION_MYR) & (craton <= 0.0)
-        if np.any(forming):
-            craton[forming] = hc[forming]
-            formed[forming] = world.elapsed_years - stable[forming] * 1e6
-            record(world, "formed_m3", float(np.dot(hc[forming], _areas(world, plate)[forming])))
+        states.append((plate, areas, hc, stable, craton, forming))
+    picks = _formation_picks(world, states, continental_area, years, largest_host_cell)
+    for (plate, areas, hc, stable, craton, _), take in zip(states, picks):
+        formed = plate.collect("craton_formed_years")
+        if np.any(take):
+            craton[take] = hc[take]
+            formed[take] = world.elapsed_years - stable[take] * 1e6
+            record(world, "formed_m3", float(np.dot(hc[take], areas[take])))
+            world.craton_ledger["formed_area_m2"] += float(areas[take].sum())
         plate.set_fields_on_plate(
             stable_continental_myr=stable,
             craton_crust_m=craton,
             craton_formed_years=np.where(craton > 0.0, formed, CRATON_UNFORMED_YEARS),
         )
+
+
+def _formation_picks(
+    world: "World", states: list, continental_area_m2: float, years: float, largest_host_cell_m2: float
+) -> list[np.ndarray]:
+    """Per plate in `states`, the qualifying hosts that cratonise this step (#1001).
+
+    The step earns CRATON_FORMATION_RATE_PER_GYR x `craton_formation_multiplier` of the genuine
+    continental area, added to `World.craton_formation_credit_m2`. The credit is spent on whole
+    cells: the longest-quiet first, and among equally quiet cells the nearest to existing
+    craton, so new craton grows onto old blocks' quiet margins and as coherent blocks rather
+    than speckle; remaining ties go by a seeded hash of plate and cell, so no plate's place in
+    `world.plates` decides where craton forms (PR #1002 review). A cell bigger than the credit
+    waits. Only then is the unspent credit capped at CRATON_FORMATION_CREDIT_MAX_MYR of
+    earnings (so a long wait for hosts can't release one giant burst), floored at the largest
+    host cell so a coarse grid or low multiplier can't stall formation, and the excess booked to the `formation_credit_discarded_m2` counter. Capping
+    after spending keeps the budget independent of how an interval is split into steps, while
+    hosts are available. A multiplier of 0 discards the credit. So, per world,
+    `formation_credit_earned_m2` = `formed_area_m2` + credit + `formation_credit_discarded_m2`."""
+    picks = [np.zeros(len(state[5]), dtype=bool) for state in states]
+    multiplier = float(world.craton_formation_multiplier)
+    rate = CRATON_FORMATION_RATE_PER_GYR * multiplier if multiplier > 0.0 and years > 0.0 else 0.0  # NaN-safe
+    earned = rate * continental_area_m2 * years / 1e9
+    world.craton_ledger["formation_credit_earned_m2"] += earned
+    credit = float(world.craton_formation_credit_m2) + earned
+    candidates = [(i, np.flatnonzero(state[5])) for i, state in enumerate(states) if np.any(state[5])]
+    if credit > 0.0 and candidates:
+        credit -= _spend_formation_credit(world, states, candidates, credit, picks)
+    cap = max(rate * continental_area_m2 * CRATON_FORMATION_CREDIT_MAX_MYR / 1e3, largest_host_cell_m2) if rate > 0.0 else 0.0
+    _bank_formation_credit(world, credit, cap)
+    return picks
+
+
+def _spend_formation_credit(world: "World", states: list, candidates: list, credit: float, picks: list[np.ndarray]) -> float:
+    """Mark in `picks` the candidate cells `credit` buys (see `_formation_picks`); returns the
+    area spent."""
+    from .quad_tectonics import hop_distance
+
+    reach = _hops(CRATON_FORMATION_MARGIN_KM, line_spacing_rad(world.node_density))
+    owner, index, stable, near, area, tie = [], [], [], [], [], []
+    for i, nodes in candidates:
+        plate, areas, _, quiet_myr, craton, _ = states[i]
+        owner.append(np.full(len(nodes), i))
+        index.append(nodes)
+        stable.append(quiet_myr[nodes])
+        near.append(hop_distance(plate, craton > 0.0, reach)[nodes])
+        area.append(areas[nodes])
+        tie.append(_tie_break(world.seed, plate.plate_id, nodes))
+    owner, index, stable, near, area, tie = (np.concatenate(x) for x in (owner, index, stable, near, area, tie))
+    # lexsort: last key first -- longest quiet, then nearest craton, then the seeded hash.
+    order = np.lexsort((index, owner, tie, near, -stable))
+    spent = np.cumsum(area[order])
+    count = int(np.searchsorted(spent, credit, side="right"))
+    for k in order[:count]:
+        picks[owner[k]][index[k]] = True
+    return float(spent[count - 1]) if count else 0.0
+
+
+def _tie_break(seed: int, plate_id: int, nodes: np.ndarray) -> np.ndarray:
+    """A deterministic pseudo-random uint64 per (seed, plate, cell): splitmix64 of the three."""
+    mask = (1 << 64) - 1
+    base = ((int(seed) & mask) * 0x9E3779B97F4A7C15 + (int(plate_id) & mask) * 0xBF58476D1CE4E5B9) & mask
+    with np.errstate(over="ignore"):
+        x = np.uint64(base) + np.asarray(nodes, dtype=np.uint64) * np.uint64(0x94D049BB133111EB)
+        x = (x ^ (x >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
+        x = (x ^ (x >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
+        return x ^ (x >> np.uint64(31))
+
+
+def _bank_formation_credit(world: "World", credit: float, cap: float) -> None:
+    """Carry `credit` to the next step, held to [0, cap]; book what the cap drops."""
+    kept = min(max(credit, 0.0), max(cap, 0.0))
+    world.craton_ledger["formation_credit_discarded_m2"] += max(credit - kept, 0.0)
+    world.craton_formation_credit_m2 = kept
+
+
+def _decratonize_under_plume_heads(world: "World", years: float) -> None:
+    """Strip the craton within CRATON_PLUME_DECRATONIZATION_RADIUS_KM (area-scaled by
+    `craton_decratonization_multiplier`) of every plume head that arrived this step (#1001).
+
+    The keel goes, not the crust (design principle 7): the column keeps its Hc and becomes
+    ordinary continental crust, so the cratonic volume is booked to `decratonized_m3` and its
+    area to the `decratonized_area_m2` counter, and the column's formation clock restarts,
+    as a destroyed keel regrows thin and fertile (eastern North China). Heads arrive in
+    `plumes.apply` earlier in the step, with arrival times in (t - years, t]. Known gap (PR
+    #1002 review): a head is found here only while it is still in `world.mantle_plumes`, so a
+    step longer than a plume's whole life (~80 Myr), or the first step after the plume stream
+    is unpaused, can miss heads; Myr-scale steps are unaffected."""
+    multiplier = float(world.craton_decratonization_multiplier)
+    if not (years > 0.0 and multiplier > 0.0):  # NaN-safe
+        return
+    t1 = world.elapsed_years
+    t0 = t1 - years
+    heads = [plume for plume in world.mantle_plumes if not plume.is_tail_only and t0 < plume.born_years <= t1]
+    if not heads:
+        return
+    centres = np.array([plume.position for plume in heads], dtype=float)
+    centres /= np.linalg.norm(centres, axis=1, keepdims=True)
+    # A spherical cap's area is 2 pi R^2 (1 - cos theta), so scaling the area by the multiplier
+    # scales 1 - cos; clamped at the whole sphere, so a huge multiplier can't wrap past pi.
+    cos_reach = max(-1.0, 1.0 - multiplier * (1.0 - math.cos(CRATON_PLUME_DECRATONIZATION_RADIUS_KM / PLANET_RADIUS_KM)))
+    stripped_area = 0.0
+    for plate in world.plates:
+        if plate.node_count() == 0:
+            continue
+        craton = plate.collect("craton_crust_m")
+        if not np.any(craton > 0.0):
+            continue
+        points = plate.all_points_and_elevation()[0]
+        unit = points / np.linalg.norm(points, axis=1, keepdims=True)
+        hit = (craton > 0.0) & np.any(unit @ centres.T >= cos_reach, axis=1)
+        if not np.any(hit):
+            continue
+        areas = _areas(world, plate)
+        record(world, "decratonized_m3", float(np.dot(craton[hit], areas[hit])))
+        stripped_area += float(areas[hit].sum())
+        craton[hit] = 0.0
+        stable = plate.collect("stable_continental_myr")
+        stable[hit] = 0.0
+        formed = plate.collect("craton_formed_years")
+        formed[hit] = CRATON_UNFORMED_YEARS
+        plate.set_fields_on_plate(craton_crust_m=craton, stable_continental_myr=stable, craton_formed_years=formed)
+    if stripped_area > 0.0:
+        world.craton_ledger["decratonized_area_m2"] += stripped_area
+        world.log_event(f"Plume head decratonized {stripped_area / 1e12:.2f} M km2 of craton (keel lost, crust kept).")
 
 
 def retreat_allowed(plate: "Plate") -> np.ndarray:
@@ -645,7 +833,7 @@ def diagnostics(world: "World") -> dict[str, float]:
         # Only belts on continental crust: a marked cell retyped oceanic mid-step is no belt.
         belt_area += float(areas[belt_mask(plate, world.elapsed_years) & _continental(plate)].sum())
         cores += core_count(plate)
-    keys = CRATON_ACCOUNTS + CRATON_RIFT_PATH_ACCOUNTS + CRATON_RIFT_CUT_COUNTERS
+    keys = CRATON_ACCOUNTS + CRATON_RIFT_PATH_ACCOUNTS + CRATON_RIFT_CUT_COUNTERS + CRATON_AREA_COUNTERS
     result = {f"craton_{key}": float(world.craton_ledger.get(key, 0.0)) for key in keys}
     result["craton_area_m2"] = area
     result["craton_area_fraction_of_continental"] = area / continental_area if continental_area > 0.0 else 0.0

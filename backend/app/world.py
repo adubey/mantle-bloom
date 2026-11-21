@@ -80,6 +80,8 @@ TUNING_MULTIPLIER_FIELDS = (
     "volcanism_multiplier",
     "fault_relief_multiplier",
     "plume_multiplier",
+    "craton_formation_multiplier",
+    "craton_decratonization_multiplier",
 )
 
 
@@ -530,6 +532,12 @@ class World:
     # the stream ceiling. At 0 no plume ever spawns, reproducing a matched plume-off
     # run. Plain-scalar default, so an older pickle falls through to 1.0.
     plume_multiplier: float = 1.0
+    # Craton formation and destruction (#1001). craton_formation_multiplier scales the
+    # Earth-like formation budget (cratons.CRATON_FORMATION_RATE_PER_GYR); 0 forms no new
+    # craton. craton_decratonization_multiplier scales the craton area each plume head strips
+    # (cratons.CRATON_PLUME_DECRATONIZATION_RADIUS_KM, area-wise); 0 strips none.
+    craton_formation_multiplier: float = 1.0
+    craton_decratonization_multiplier: float = 1.0
     # Cox clustering variant of the plume arrival process (sensitivity case only).
     plume_cox_modulation: bool = False
     # Cumulative mantle-plume head arrivals -- LIP events (RFC 0007, #583).
@@ -572,6 +580,12 @@ class World:
     # DEFAULT_SIMULATE_GLACIER_MARCH) and Time Settings toggles it back on, so interactive
     # stepping stays fast unless the user asks for the march.
     simulate_glacier_march: bool = True
+    # Unspent craton-formation budget, m^2 of craton area (cratons.update, #1001): earned each
+    # step at cratons.CRATON_FORMATION_RATE_PER_GYR x craton_formation_multiplier of the
+    # genuine continental area, spent on the longest-quiet qualifying hosts; the leftover is
+    # capped at CRATON_FORMATION_CREDIT_MAX_MYR of earnings (never below one host cell). A plain
+    # class default, so older saves read 0.
+    craton_formation_credit_m2: float = 0.0
     # Substep sizes and stopping conditions for lakes and glaciers (#999), live-adjustable
     # via POST /worlds/{world_id}/controls and the Time Settings dialog.
     # - lake_step_years: 50-1000 yr slice length (default 1000 yr); honors the chosen slice
