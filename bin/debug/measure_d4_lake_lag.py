@@ -11,6 +11,7 @@ import time
 from dataclasses import replace
 
 import numpy as np
+from scipy.spatial import cKDTree
 
 from replay_lib import load_replay, parse_replay_args
 
@@ -28,6 +29,7 @@ def main():
     world, result = load_replay(args, 990)
 
     from app import world as world_module
+    from app import plates
     from app.hydroclimate import hydrology, lakes
 
     if args.surface_relief:
@@ -52,6 +54,7 @@ def main():
     threshold = hydrology.GLACIER_VISIBLE_DEPTH_M
     opening_hydro = getattr(world, "hydrology_cache", None)
     opening_depth = getattr(opening_hydro, "glacier_depth", None)
+    opening_points, _ = plates.gather_node_positions(world.plates)
     if opening_depth is None:
         opening_elevation = getattr(opening_hydro, "elevation", None)
         if opening_elevation is None:
@@ -63,8 +66,12 @@ def main():
         start = time.perf_counter()
         world_module.step_world(world, args.step_years)
         hydro = world.hydrology_cache
+        closing_points, _ = plates.gather_node_positions(world.plates)
         glacier = hydro.glacier_depth >= threshold
-        newly_covered = glacier & ~opening_glacier
+        # Tectonic remeshing changes the node count within a step. Compare coverage
+        # by mapping each closing node to its nearest opening-state node.
+        opening_at_closing = opening_glacier[cKDTree(opening_points).query(closing_points)[1]]
+        newly_covered = glacier & ~opening_at_closing
         volume = hydro.lake_depth * hydro.hypsometry.area_m2
         lake_m3 = float(volume.sum())
         covered_m3 = float(volume[glacier].sum())

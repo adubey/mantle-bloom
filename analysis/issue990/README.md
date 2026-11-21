@@ -71,3 +71,25 @@ threshold. The relief counterfactual tests whether bed-based sub-cell relief
 removes margin inflation; the three-arm totals will show whether that mechanism
 explains the earlier +818,996 km³ whole-world change. These are one-step
 diagnostic comparisons, not validation across seeds or step sizes.
+
+The reruns used the same save and 250 kyr step on the reviewed branch. The
+tectonic mesh changed from 132,407 to 132,248 nodes during the step, so the
+opening glacier mask was mapped to closing nodes by nearest opening-state cell
+centre before measuring newly covered cells. The opening arm crossed the 1%
+threshold on its first step. Values below are km³ of liquid water; residuals
+are in m³ in their respective ledger units.
+
+| Geometry | Total lake water | Under closing ice | On glacier margin | Elsewhere | Newly covered share | Lake residual | Land residual | Ice residual |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Opening ice, rock-bed relief | 768,728.96 | 10,312.99 | 26,742.40 | 731,673.57 | 1.3416% | −445 | −74 | +1,516 |
+| Closing ice, glacier-surface relief | 1,526,613.27 | 0 | 125,708.85 | 1,400,904.42 | 0% | −2 | −1,415 | +194 |
+| Closing ice, rock-bed relief | 1,525,681.34 | 0 | 124,819.54 | 1,400,861.80 | 0% | −953 | −1,470 | +1,516 |
+
+Replacing glacier-surface sub-cell relief with rock-bed relief lowered total
+storage by 931.93 km³ (0.06% of the rock-bed total), far below the 756,952 km³
+difference between the opening- and closing-geometry arms. Thus margin relief
+inflation does not explain the large whole-system response. This comparison
+does not separate the remaining effects of spill hierarchy, ice-dammed basins,
+and closing-surface routing. The opening-geometry result also confirms that
+liquid under newly covered cells is above the preregistered 1% threshold on this
+diagnostic step; the production closing-geometry result removes it.
