@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from app import legacy_conversion, persistence, sparse_quad_patch
 from app.collision_polarity import PlateCollisionMasks, PolarityFrame
-from app.hydroclimate import climate, hydrology, ice_sheet
+from app.hydroclimate import biomes, climate, hydrology, ice_sheet
 from app.elevation_lines import line_spacing_rad
 from app.world import World, generate_world, step_world
 
@@ -106,6 +106,22 @@ def test_round_trip_keeps_step_read_caches():
     assert loaded.atmosphere_cfd_state is not None
     assert loaded.erosion_cache is None
     assert loaded.land_kdtree_cache is None
+
+
+def test_pickled_climate_reclassifies_saved_polar_ocean_without_changing_forcing():
+    world = World(seed=0)
+    fields = climate.compute_climate(world, height=12, width=24)
+    world.climate_cache = fields
+    expected_biomes = fields.biome_ids.copy()
+    fields.biome_ids[fields.biome_ids == biomes.POLAR_SEA_ICE] = biomes.pelagic_index("Polar Ocean")
+    assert np.any(expected_biomes != fields.biome_ids)
+    payload = {"format": persistence.SAVE_FORMAT, "version": 4, "surface": "empty", "world": world}
+
+    loaded = persistence.load_world_bytes(pickle.dumps(payload)).climate_cache
+
+    np.testing.assert_array_equal(loaded.biome_ids, expected_biomes)
+    np.testing.assert_array_equal(loaded.ocean_temperature_c, fields.ocean_temperature_c)
+    np.testing.assert_array_equal(loaded.precipitation_mm, fields.precipitation_mm)
 
 
 @pytest.mark.parametrize("version", [4, 5], ids=["pickle", "npz"])

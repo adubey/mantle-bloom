@@ -256,6 +256,7 @@ def test_compute_stats_biome_ocean_fraction_excludes_land_and_sums_to_one():
     # land class should appear as a key.
     assert result["biome_ocean_fraction"] != {}
     assert np.isclose(sum(result["biome_ocean_fraction"].values()), 1.0)
+    assert 0.0 < result["biome_ocean_fraction"]["Polar Sea Ice"] < 1.0
     from app.hydroclimate import biomes
 
     assert all(name in biomes.PELAGIC_NAMES for name in result["biome_ocean_fraction"])

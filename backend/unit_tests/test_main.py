@@ -996,6 +996,50 @@ def test_sample_at_reads_grounded_glacier_surface_and_bed(client):
     assert after["sea_ice_state"] is None
 
 
+def test_sample_at_uses_the_terrain_surface_type_when_the_coarse_coast_disagrees(client):
+    from app.hydroclimate import biomes
+
+    _post_generate(client, json={"seed": 12, "num_plates": 8})
+    world = _default_session.world
+    points, bed, _owner = main.plates.collect_all_points(world.plates)
+    lat, lon = (np.degrees(angle) for angle in main.geometry.xyz_to_latlon(points))
+    fields = main.climate.compute_climate_cached(world)
+    row, col = main.climate.grid_cell_indices(lat, lon, fields.is_ocean.shape)
+    fine_ocean = bed <= world.sea_level_m
+    coarse_ocean = fields.is_ocean[row, col]
+
+    for is_ocean in (False, True):
+        mismatch = np.flatnonzero((fine_ocean == is_ocean) & (coarse_ocean != is_ocean))
+        index = mismatch[len(mismatch) // 2]
+        response = client.get("/world/sample_at", params={"lat_deg": lat[index], "lon_deg": lon[index]})
+        assert response.status_code == 200
+        sample = response.json()
+        assert sample["is_ocean"] is is_ocean
+        assert (sample["biome_id"] in biomes.OCEAN_IDS) is is_ocean
+        assert (sample["surface_climate"] in biomes.PELAGIC_NAMES) is is_ocean
+
+
+@pytest.mark.parametrize(("latitude", "state"), [(78.0, "perennial"), (62.0, "seasonal"), (40.0, "ice-free")])
+def test_sample_at_reports_sea_ice_and_preserves_the_underlying_climate(client, latitude, state):
+    from app.world import World
+
+    _default_session.world = World(seed=0)
+    response = client.get("/world/sample_at", params={"lat_deg": latitude, "lon_deg": 20.0})
+    assert response.status_code == 200
+    sample = response.json()
+    assert sample["is_ocean"]
+    assert sample["sea_ice_state"] == state
+    assert (sample["biome"] == "Polar Sea Ice") is (state != "ice-free")
+    assert sample["surface_climate"] != "Polar Sea Ice"
+    if state == "perennial":
+        assert sample["sea_ice_fraction"] == 1.0
+        assert sample["temperature_c"] < -1.8
+    elif state == "seasonal":
+        assert 0.5 <= sample["sea_ice_fraction"] < 1.0
+    else:
+        assert sample["sea_ice_fraction"] == 0.0
+
+
 def test_sample_at_rejects_non_finite_query(client):
     _post_generate(client, json={"seed": 12, "num_plates": 8})
     assert client.get("/world/sample_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400

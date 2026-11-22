@@ -92,6 +92,10 @@ index's constants were converted by. The cache isn't dropped, because the next s
 source reads its precipitation. The converted humidity is only drawn until that step
 recomputes it.
 
+**Cached biome classes.** On loading a legacy pickle, RFC 0015 D6 (#1014) classifies the
+saved climate fields again so the first Stats or cross-section readout uses the half-year
+sea-ice coverage rule. The cache still supplies the saved precipitation to the next step.
+
 **Errors.** `load_world_bytes` raises one of two `SaveFormatError`s (a `ValueError`) and never
 loads part of a save:
 

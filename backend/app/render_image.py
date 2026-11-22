@@ -1018,11 +1018,13 @@ def sample_surface_at(world: World, lat_deg: float, lon_deg: float) -> dict:
     temperature = ice.temperature(fields.air_temperature_c[row, col], fields.ocean_temperature_c[row, col], is_ocean)
     precipitation = fields.precipitation_mm[row, col]
     climate_ids = fields.biome_ids[row, col]
-    if ice.glacier_depth_m[0] > 0.0 or ice.lake[0]:
+    coast_mismatch = bool(is_ocean[0] != fields.is_ocean[row[0], col[0]])
+    if ice.glacier_depth_m[0] > 0.0 or ice.lake[0] or (coast_mismatch and not is_ocean[0]):
         continentality = biomes.grid_continentality(fields.is_ocean)[row, col]
         climate_ids = biomes.classify_koppen(temperature, precipitation, lat, continentality, world.axial_tilt_deg)
-    elif ice.sea.perennial[0]:
-        climate_ids = biomes.classify_pelagic(temperature, lat)
+    elif coast_mismatch or ice.sea.perennial[0] or climate_ids[0] == biomes.POLAR_SEA_ICE:
+        coast_distance = biomes.grid_dist_to_land_rad(fields.is_ocean)[row, col]
+        climate_ids = biomes.classify_pelagic(temperature, lat, dist_to_land_rad=coast_distance)
     biome_id = int(ice.display_biome(climate_ids)[0])
     sea_state = "perennial" if ice.sea.perennial[0] else "seasonal" if ice.sea.seasonal[0] else "ice-free"
     return {
@@ -1942,10 +1944,10 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     elif view == "temperature":
         # Keep the wind-model air source over land and the advected SST over open water.
         # D7 replaces those values at grounded glacier and perennial sea-ice surfaces.
-        _, ice, _, _ = _point_surface_ice(
+        _, ice, _, point_is_ocean = _point_surface_ice(
             world, cfields, grid.world_xyz, _to_healpix(cfields.elevation_m), is_ocean_hp,
         )
-        display_temp = ice.temperature(land_air_temp_hp, _to_healpix(cfields.ocean_temperature_c), is_ocean_hp)
+        display_temp = ice.temperature(land_air_temp_hp, _to_healpix(cfields.ocean_temperature_c), point_is_ocean)
         _fill_rects(pixels, centers, half_px, half_px, temperature_colors(display_temp))
     elif view in ("wind", "oceanCurrents"):
         backdrop = np.where(is_ocean_hp[:, None], CLIMATE_OCEAN_BACKDROP_RGB, CLIMATE_LAND_BACKDROP_RGB)

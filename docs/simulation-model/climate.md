@@ -511,13 +511,11 @@ structural zone such as the coastal shelf (`dist_to_land_rad <= SHELF_RANGE_RAD`
 equatorial divergence (`|lat| <= 6` in the tropics), or the open ocean. On the maps,
 `has_sea_ice` selects Polar Sea Ice when at least half the year is ice-covered.
 
-`smooth_biome_field` (the version the map views and `/worlds/{world_id}/stats` use) computes
-`continentality` and coast distance from `is_ocean` via a distance transform and runs a
-neighbour-vote cleanup on land cells. The display passes D6's half-year sea-ice mask. `climate.compute_climate` calls it once per computation
-and stores `ClimateFields.biome_ids` (see [Climate](#climate-climatepy)); `stats.py`'s
-`biome_land_fraction` (which excludes every `OCEAN_IDS` id) reads that stored field, while the
-map-view / hex-export / vegetation-transpiration call sites still classify against their own
-grid.
+`smooth_biome_field` computes `continentality` and coast distance from `is_ocean` via a
+distance transform and runs a neighbour-vote cleanup on land cells. At the end of
+`compute_climate`, it applies the half-year sea-ice mask and stores the result in
+`ClimateFields.biome_ids` for Stats and cross-section colors. Map views and hex export
+sample the same D6 balance and apply it to their own land and ocean masks.
 
 #### Floating sea ice (`sea_ice.py`)
 

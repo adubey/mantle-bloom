@@ -1876,13 +1876,6 @@ def compute_climate(
         moisture_flux_convergence = compute_moisture_flux_convergence(humidity, wind_u, wind_v, lat_deg, mfc_noise)
         precipitation_mm = compute_precipitation(humidity, orographic_dump, moisture_flux_convergence)
 
-    display_temp = np.where(is_ocean, ocean_temperature_c, air_temperature_c)
-    slope = biomes.grid_slope(elevation_m, lat_deg)
-    biome_ids = biomes.smooth_biome_field(
-        display_temp, precipitation_mm, elevation_m, slope, is_ocean, world.sea_level_m,
-        lat_deg=lat_deg, axial_tilt_deg=world.axial_tilt_deg,
-    )
-
     return ClimateFields(
         lat_deg=lat_deg,
         lon_deg=lon_deg,
@@ -1899,10 +1892,29 @@ def compute_climate(
         current_v=current_v,
         humidity_g_kg=humidity,
         precipitation_mm=precipitation_mm,
-        biome_ids=biome_ids,
+        biome_ids=classify_surface_biomes(
+            world, lat_deg, elevation_m, is_ocean, air_temperature_c, ocean_temperature_c, precipitation_mm,
+        ),
         swell_rows=swell_rows,
         swell_cols=swell_cols,
         insolation_w_m2=compute_insolation_w_m2(lat_deg, world.axial_tilt_deg, world.solar_multiplier),
+    )
+
+
+def classify_surface_biomes(
+    world: World, lat_deg: np.ndarray, elevation_m: np.ndarray, is_ocean: np.ndarray,
+    air_temperature_c: np.ndarray, ocean_temperature_c: np.ndarray, precipitation_mm: np.ndarray,
+) -> np.ndarray:
+    """Classify finished climate for display and reporting, including D6 sea ice (#1014)."""
+    from . import sea_ice
+
+    display_temp = np.where(is_ocean, ocean_temperature_c, air_temperature_c)
+    slope = biomes.grid_slope(elevation_m, lat_deg)
+    ice = sea_ice.climate_grid_balance(world, lat_deg, ocean_temperature_c, is_ocean)
+    return biomes.smooth_biome_field(
+        display_temp, precipitation_mm, elevation_m, slope, is_ocean, world.sea_level_m,
+        lat_deg=lat_deg, axial_tilt_deg=world.axial_tilt_deg,
+        has_sea_ice=ice.fraction >= sea_ice.POLAR_SEA_ICE_FRACTION,
     )
 
 

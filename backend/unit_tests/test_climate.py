@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 from app import plates
-from app.hydroclimate import biomes, climate
+from app.hydroclimate import biomes, climate, sea_ice
 
 
 from app.world import World, generate_world, step_world
@@ -765,9 +765,13 @@ def test_compute_climate_biome_ids_matches_a_direct_smooth_biome_field_call():
 
     display_temp = np.where(fields.is_ocean, fields.ocean_temperature_c, fields.air_temperature_c)
     slope = biomes.grid_slope(fields.elevation_m, fields.lat_deg)
+    row, col = np.indices(fields.is_ocean.shape)
+    ice = sea_ice.sample(world, fields, row, col, fields.is_ocean)
+    polar_ice = ice.fraction >= sea_ice.POLAR_SEA_ICE_FRACTION
+    assert polar_ice.any()
     expected = biomes.smooth_biome_field(
         display_temp, fields.precipitation_mm, fields.elevation_m, slope, fields.is_ocean, world.sea_level_m,
-        lat_deg=fields.lat_deg, axial_tilt_deg=world.axial_tilt_deg,
+        lat_deg=fields.lat_deg, axial_tilt_deg=world.axial_tilt_deg, has_sea_ice=polar_ice,
     )
     assert np.array_equal(fields.biome_ids, expected)
 

@@ -44,6 +44,20 @@ def annual_balance(temperature_c: np.ndarray, amplitude_c: np.ndarray, is_ocean:
     return SeaIce(temperature_c, perennial, seasonal, fraction)
 
 
+def climate_grid_balance(
+    world: World, latitude: np.ndarray, ocean_temperature_c: np.ndarray, is_ocean: np.ndarray,
+) -> SeaIce:
+    """Diagnose D6 sea ice from the finished climate fields, for display and reporting."""
+    heating = climate.compute_heating_index(latitude, world.axial_tilt_deg, world.solar_multiplier)
+    ocean_baseline_c = climate.compute_ocean_temperature_baseline(heating, len(latitude), 1)
+    sea_level_air_c = climate.compute_land_temperature(heating, np.zeros((len(latitude), 1)))
+    # Climate cools both baselines equally. Their difference stays fixed, so the sampled
+    # SST supplies both the current anomaly and the cooling of this climate snapshot.
+    temperature_c = ocean_temperature_c + (sea_level_air_c - ocean_baseline_c)
+    amplitude_c = biomes.seasonal_temp_amplitude(latitude, np.zeros_like(latitude), world.axial_tilt_deg)
+    return annual_balance(temperature_c, amplitude_c[:, None], is_ocean)
+
+
 def sample(
     world: World, fields: climate.ClimateFields, row: np.ndarray, col: np.ndarray, is_ocean: np.ndarray,
 ) -> SeaIce:
@@ -52,15 +66,7 @@ def sample(
     Where a finer map resolves ocean within a coarse land cell, the climate grid has zero
     current anomaly there. The sea-level temperature and maritime seasonality still apply.
     """
-    latitude = fields.lat_deg
-    heating = climate.compute_heating_index(latitude, world.axial_tilt_deg, world.solar_multiplier)
-    ocean_baseline_c = climate.compute_ocean_temperature_baseline(heating, len(latitude), 1)
-    sea_level_air_c = climate.compute_land_temperature(heating, np.zeros((len(latitude), 1)))
-    # Climate cools both baselines equally. Their difference stays fixed, so the sampled
-    # SST supplies both the current anomaly and the cooling of this climate snapshot.
-    temperature_c = fields.ocean_temperature_c + (sea_level_air_c - ocean_baseline_c)
-    amplitude_c = biomes.seasonal_temp_amplitude(latitude, np.zeros_like(latitude), world.axial_tilt_deg)
-    balance = annual_balance(temperature_c, amplitude_c[:, None], np.ones_like(fields.is_ocean))
+    balance = climate_grid_balance(world, fields.lat_deg, fields.ocean_temperature_c, np.ones_like(fields.is_ocean))
     return SeaIce(
         balance.temperature_c[row, col],
         is_ocean & balance.perennial[row, col],
