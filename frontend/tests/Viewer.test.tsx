@@ -378,7 +378,7 @@ describe("Viewer (/view)", () => {
       throw new Error(`Unexpected fetch: ${url.pathname}${url.search}`);
     }) as typeof fetch;
 
-    render(<Viewer />);
+    render(<Viewer learnMoreDwellMs={50} />);
 
     await screen.findByText("Plate tectonics — Wikipedia");
     await waitFor(() => assert.ok(pollResolve));
@@ -392,7 +392,7 @@ describe("Viewer (/view)", () => {
     };
 
     await pushPoll({ fraction: 0.6, phase: "Resolving climate" }, 2);
-    // First phase's Learn more links remain visible during its 1s dwell.
+    // First phase's Learn more links remain visible during its dwell.
     assert.ok(screen.getByText("Plate tectonics — Wikipedia"));
     assert.equal(screen.queryByText("Climate — Wikipedia"), null);
 
@@ -401,10 +401,10 @@ describe("Viewer (/view)", () => {
     assert.equal(screen.queryByRole("progressbar", { name: "Advance in progress" }), null);
     assert.ok(screen.getByText("Plate tectonics — Wikipedia"));
 
-    // After ~1s, the queued second phase appears, then clears ~1s later.
-    await screen.findByText("Climate — Wikipedia", {}, { timeout: 2000 });
+    // After the dwell elapses, the queued second phase appears, then clears.
+    await screen.findByText("Climate — Wikipedia");
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1100));
+      await new Promise((resolve) => setTimeout(resolve, 80));
     });
     assert.equal(screen.queryByText("Climate — Wikipedia"), null);
   });

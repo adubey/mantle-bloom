@@ -128,11 +128,12 @@ function refusalMessage(err: unknown): string {
 }
 
 // The learn-more links for the phase a step is in (#801), as on the full app's run overlay.
-function PhaseLinks({ phase }: { phase: string }) {
+// Reserves one line's height while hidden so ProgressBar below doesn't shift vertically.
+function PhaseLinks({ phase }: { phase: string | null }) {
   const links = phaseLinks(phase);
-  if (links.length === 0) return null;
+  if (links.length === 0) return <div style={{ fontSize: 12, minHeight: 18 }} aria-hidden="true" />;
   return (
-    <div style={{ fontSize: 12 }}>
+    <div style={{ fontSize: 12, minHeight: 18 }}>
       <span style={{ opacity: 0.7 }}>Learn more: </span>
       {links.map((link, i) => (
         <span key={link.url}>
@@ -145,41 +146,40 @@ function PhaseLinks({ phase }: { phase: string }) {
 }
 
 // Keep "Learn more" links visible for ~1s per phase so fast steps on small maps stay clickable.
-function useLearnMorePhase(phase: string | null | undefined, worldId: WorldId): string | null {
+function useLearnMorePhase(phase: string | null | undefined, dwellMs?: number): string | null {
   const [displayed, setDisplayed] = useState<string | null>(null);
   const controllerRef = useRef<ReturnType<typeof createPhaseDwellQueue> | null>(null);
 
   useEffect(() => {
-    const controller = createPhaseDwellQueue({ onPhaseChange: setDisplayed });
+    const controller = createPhaseDwellQueue({ onPhaseChange: setDisplayed, dwellMs });
     controllerRef.current = controller;
     return () => {
-      controller.reset();
       controller.dispose();
       controllerRef.current = null;
     };
-  }, [worldId]);
+  }, [dwellMs]);
 
   useEffect(() => {
     controllerRef.current?.update(phase);
-  }, [phase, worldId]);
+  }, [phase]);
 
   return displayed;
 }
 
 function StepProgressPanel({
   stepProgress,
-  worldId,
+  dwellMs,
 }: {
   stepProgress: PublicState["step_progress"];
-  worldId: WorldId;
+  dwellMs?: number;
 }) {
-  const learnMorePhase = useLearnMorePhase(stepProgress?.phase, worldId);
+  const learnMorePhase = useLearnMorePhase(stepProgress?.phase, dwellMs);
   if (!stepProgress && !learnMorePhase) return null;
   return (
     <div style={{ marginBottom: 12 }}>
-      {learnMorePhase && <PhaseLinks phase={learnMorePhase} />}
+      <PhaseLinks phase={learnMorePhase} />
       {stepProgress && (
-        <div style={{ marginTop: learnMorePhase ? 4 : 0 }}>
+        <div style={{ marginTop: 4 }}>
           <ProgressBar
             label="Advance in progress"
             text={`Advance in progress: ${stepProgress.group ? `${groupName(stepProgress.group)} · ` : ""}${stepProgress.phase}`}
@@ -353,7 +353,7 @@ function usePublicWorldId(): { worlds: PublicWorldListing[] | null; worldId: Wor
   return { worlds, worldId, selectWorld };
 }
 
-export default function Viewer() {
+export default function Viewer({ learnMoreDwellMs }: { learnMoreDwellMs?: number } = {}) {
   const { worlds, worldId, selectWorld } = usePublicWorldId();
 
   return (
@@ -396,7 +396,7 @@ export default function Viewer() {
           <span className="run-spinner" role="status" aria-label="Loading" />
         </div>
       )}
-      {worldId && <WorldView key={worldId} worldId={worldId} />}
+      {worldId && <WorldView key={worldId} worldId={worldId} learnMoreDwellMs={learnMoreDwellMs} />}
       <FullVersionTeaser />
     </main>
   );
@@ -412,7 +412,7 @@ function sharedPresentation(state: PublicState | null): { view: PublicView; rota
 }
 
 // One public world's page: its state, stepping, and map (#563).
-function WorldView({ worldId }: { worldId: WorldId }) {
+function WorldView({ worldId, learnMoreDwellMs }: { worldId: WorldId; learnMoreDwellMs?: number }) {
   const [state, setState] = useState<PublicState | null>(null);
   const { view, rotation: sharedRotation } = sharedPresentation(state);
   // A value key for the orientation: every poll response deserializes a fresh
@@ -588,7 +588,7 @@ function WorldView({ worldId }: { worldId: WorldId }) {
         </div>
       </div>
       {notice && <p style={{ opacity: 0.8 }}>{notice}</p>}
-      <StepProgressPanel stepProgress={state.step_progress} worldId={worldId} />
+      <StepProgressPanel stepProgress={state.step_progress} dwellMs={learnMoreDwellMs} />
       <div ref={mapWrapperRef}>
         <MapCanvas
           imageUrl={image}

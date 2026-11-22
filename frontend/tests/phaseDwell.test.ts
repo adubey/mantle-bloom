@@ -54,9 +54,9 @@ describe("createPhaseDwellQueue", () => {
     assert.deepEqual(history, [{ phase: "Moving plates", at: 0 }]);
 
     advanceTo(200);
-    controller.update("Reshaping plates");
+    controller.update("Resolving climate");
     advanceTo(400);
-    controller.update("Reshaping plates"); // duplicate fraction update
+    controller.update("Resolving climate"); // duplicate fraction update
     advanceTo(500);
     controller.update(null); // step finished early
 
@@ -65,13 +65,13 @@ describe("createPhaseDwellQueue", () => {
     advanceTo(1000);
     assert.deepEqual(history, [
       { phase: "Moving plates", at: 0 },
-      { phase: "Reshaping plates", at: 1000 },
+      { phase: "Resolving climate", at: 1000 },
     ]);
 
     advanceTo(2000);
     assert.deepEqual(history, [
       { phase: "Moving plates", at: 0 },
-      { phase: "Reshaping plates", at: 1000 },
+      { phase: "Resolving climate", at: 1000 },
       { phase: null, at: 2000 },
     ]);
   });
@@ -120,7 +120,7 @@ describe("createPhaseDwellQueue", () => {
     ]);
   });
 
-  it("ignores phases without links and resets cleanly on world switch", () => {
+  it("ignores phases without links and deduplicates phases with identical link sets", () => {
     const { controller, history, advanceTo } = createTestHarness();
 
     controller.update("Unknown phase");
@@ -128,12 +128,15 @@ describe("createPhaseDwellQueue", () => {
 
     controller.update("Moving plates");
     advanceTo(200);
-    controller.update("Unknown phase");
-    controller.reset();
+    // "Reshaping plates" has the exact same links as "Moving plates", so it should not add a second dwell.
+    controller.update("Reshaping plates");
+    advanceTo(1000);
+    assert.deepEqual(history, [{ phase: "Moving plates", at: 0 }]);
 
+    controller.update(null);
     assert.deepEqual(history, [
       { phase: "Moving plates", at: 0 },
-      { phase: null, at: 200 },
+      { phase: null, at: 1000 },
     ]);
   });
 

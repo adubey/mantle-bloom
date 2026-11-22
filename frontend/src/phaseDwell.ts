@@ -4,11 +4,14 @@ import { phaseLinks } from "./phaseInfo";
 // Kept pure (no DOM/React imports) so the state machine can be unit-tested directly.
 
 export const LEARN_MORE_DWELL_MS = 1000;
+// Maximum age of a queued update before it is dropped from the front of the queue;
+// displayed links can trail the live phase by up to maxLagMs + dwellMs.
 export const LEARN_MORE_MAX_LAG_MS = 2000;
 
 export interface PhaseDwellOptions {
   onPhaseChange: (phase: string | null) => void;
   hasLinks?: (phase: string) => boolean;
+  phaseKey?: (phase: string) => string;
   dwellMs?: number;
   maxLagMs?: number;
   now?: () => number;
@@ -21,9 +24,15 @@ interface QueuedPhase {
   enqueuedAt: number;
 }
 
+function defaultPhaseKey(phase: string): string {
+  const links = phaseLinks(phase);
+  return links.length > 0 ? links.map((link) => link.url).join("\n") : phase;
+}
+
 export function createPhaseDwellQueue({
   onPhaseChange,
   hasLinks = (phase) => phaseLinks(phase).length > 0,
+  phaseKey = defaultPhaseKey,
   dwellMs = LEARN_MORE_DWELL_MS,
   maxLagMs = LEARN_MORE_MAX_LAG_MS,
   now = () => Date.now(),
@@ -31,6 +40,7 @@ export function createPhaseDwellQueue({
   clearTimer = clearTimeout,
 }: PhaseDwellOptions) {
   let displayed: string | null = null;
+  let displayedKey: string | null = null;
   let actualPhase: string | null = null;
   const queue: QueuedPhase[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -53,6 +63,7 @@ export function createPhaseDwellQueue({
     cancelTimer();
     if (phase !== displayed) {
       displayed = phase;
+      displayedKey = phase !== null ? phaseKey(phase) : null;
       onPhaseChange(phase);
     }
     if (phase !== null) {
@@ -67,7 +78,7 @@ export function createPhaseDwellQueue({
     if (disposed) return;
     const t = now();
     expungeStale(t);
-    while (queue.length > 0 && queue[0].phase === displayed) {
+    while (queue.length > 0 && phaseKey(queue[0].phase) === displayedKey) {
       queue.shift();
     }
     if (queue.length > 0) {
@@ -77,7 +88,7 @@ export function createPhaseDwellQueue({
     }
     if (actualPhase === null) {
       show(null);
-    } else if (actualPhase !== displayed) {
+    } else if (phaseKey(actualPhase) !== displayedKey) {
       show(actualPhase);
     }
   };
@@ -99,26 +110,17 @@ export function createPhaseDwellQueue({
       return;
     }
 
+    const nextKey = phaseKey(nextPhase);
     if (timer === null) {
-      if (nextPhase !== displayed) show(nextPhase);
+      if (nextKey !== displayedKey) show(nextPhase);
       return;
     }
 
     expungeStale(t);
-    const tailPhase = queue.length > 0 ? queue[queue.length - 1].phase : displayed;
-    if (nextPhase === tailPhase) return;
+    const tailKey = queue.length > 0 ? phaseKey(queue[queue.length - 1].phase) : displayedKey;
+    if (nextKey === tailKey) return;
 
     queue.push({ phase: nextPhase, enqueuedAt: t });
-  };
-
-  const reset = () => {
-    cancelTimer();
-    queue.length = 0;
-    actualPhase = null;
-    if (displayed !== null) {
-      displayed = null;
-      onPhaseChange(null);
-    }
   };
 
   const dispose = () => {
@@ -127,5 +129,5 @@ export function createPhaseDwellQueue({
     queue.length = 0;
   };
 
-  return { update, reset, dispose };
+  return { update, dispose };
 }
