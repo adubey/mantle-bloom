@@ -1,11 +1,17 @@
 # RFC 0015: Frozen water in physical units: glacier mass balance, ice flow and meltwater, freezing lakes and rivers, ocean ice and polar snow
 
-- **Status:** Accepted (revised 2026-11-13 and 2026-11-15 for the trend-adaptive march, #842, round 3 passes only under post-hoc amendments; ice ages out of scope since 2026-11-15; revised 2026-10-31 after G0's drifting-noise runs)
+- **Status:** Accepted (revised 2026-11-22 to sequence D8 before G6, #1017; revised 2026-11-13 and 2026-11-15 for the trend-adaptive march, #842, round 3 passes only under post-hoc amendments; ice ages out of scope since 2026-11-15; revised 2026-10-31 after G0's drifting-noise runs)
 - **Date:** 2026-10-23
 - **Related:** #544 (tracking); #822 and #842 (march cost, trend-adaptive default); #368 (evidence), #353 and #359 (ice-sheet model, decision B), #355 (water units), #503 and #504 (lake freezing at `WATER_TO_ICE`), #297 (balanced lakes), RFC [0014](abandoned/0014-lake-water-volume-and-freezing.md) (lake water volume and seasonal lake ice; its D2(b) and D2(c) are prerequisites here), RFC [0012](0012-physics-first-simulation.md) (physics-first simulation); superseded on acceptance: #197, #203, #358 item 4, #313 Stage E (see "Open issues this RFC supersedes"); design principles 3, 5, 6 and 8
 
 ## Revision note
 
+- **2026-11-22 — D8 and G6 sequencing ([#1017](https://github.com/adubey/mantle-bloom/issues/1017)).**
+  The implementation checklist put G6 before D8, but G6 measures the filled hydraulic
+  potential pits and warm-based routing that D8 introduces. The existing ground-routing
+  arm supplies the baseline for discharge and river networks. The revision makes G6 a
+  required report on the D8 branch and keeps the held-out criteria as the decision on
+  the routing. See the [run order and impact](#d8-and-g6-run-order).
 - **2026-11-18 — D3 design direction chosen after G3 (#940).** The gate found that the
   end-of-step abrasion demand saturates the shared terrain cap, with 66–73% step-size
   sensitivity. The owner chose to integrate abrasion through the D2 ice march. The march will
@@ -900,6 +906,32 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
   water is accounted for as discharge to the ocean, lake supply, transit loss, or ice again
   only through RFC 0014's lake cap, and each closes.
 
+#### D8 and G6 run order
+
+1. **Owner decision.** The owner accepts this sequence by merging the revision for #1017.
+   D8 implementation can then start once D4 and D5 have landed, with RFC 0014 D2(b) and
+   D2(c) already in production. Gates that choose an implementation's scope still come
+   before that implementation.
+2. **Implement and test D8.** Work on the D8 branch until warm- and cold-based routing,
+   margin outlets and the two meltwater ledgers are available and covered by targeted tests.
+   Record the pre-D8 `origin/main` commit used as the baseline.
+3. **Run G6 on the D8 branch before merge.** Replay the diagnosis set against the pinned
+   baseline with the same saves, controls and step schedules in both arms. Record the
+   results and both commit SHAs with the D8 PR and cite them in this RFC. G6 has a reporting
+   outcome and supplies the diagnosis for the held-out river-network comparison.
+4. **Evaluate the held-out saves once the routing design is fixed.** Use the disjoint
+   held-out set for the D8 ledger and meltwater-river criteria and report the results
+   with the D8 PR. Apply the existing falsification rule if delivery is below one fifth.
+   If G6 findings lead to a routing change, replay G6 on the revised candidate before
+   using the held-out set. Record ice-age runs separately under the existing scope.
+
+| Work or result | Impact of this revision |
+|---|---|
+| D8 | Starts after owner approval and the landed routing prerequisites. |
+| G6 | Runs on the tested D8 branch and records the already specified routing measurements before the D8 PR merges. |
+| Held-out validation | Uses the existing saves, ledger closure requirement, at-least-half delivery criterion and below-one-fifth falsification threshold. |
+| G0–G5 | Their recorded results and outstanding work still apply. |
+
 ### Diagnosis gates
 
 **Seed sets** (recorded on the tracking issue before G0, disjoint):
@@ -1197,13 +1229,19 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
        50°. The falsification criterion is read as applying without ice ages.
   - Zonal bands, perennial / freezing at `DDF_ice` = 8: 64.4° / 54.9° at 15° tilt, 67.9° /
     51.1° at 23.5°, and 81.9° / 45.9° at 35°.
-- **G6: meltwater rivers.** Against the `origin/main` arm on the diagnosis set, report for
-  each meltwater source the water reaching the ocean, lakes and transit loss; the number of
-  filled φ pits and the water passing through them; the number of visible river networks
-  whose source lies within one cell of an ice margin; their largest discharges; and the
-  surface melt routed by φ on warm-based ice thicker than 1 km, where a thawed bed is least
-  like temperate ice (see Assumptions). *Outcome:* report; the acceptance criteria below set
-  the bar.
+- **G6: meltwater rivers.** Run with D8 routing available on the implementation branch
+  (see the [run order](#d8-and-g6-run-order)). Compare against the pinned pre-D8
+  `origin/main` arm on the diagnosis set. Replay 10 Myr at 0.25 and 1 Myr steps with ice ages
+  off. For the report-only ice-age diagnosis save, use the same two step sizes for the
+  8 Myr period over 18 Myr, and the 0.25 Myr step for the 1 Myr-period arm in the seed plan.
+
+  Report the water reaching the ocean and lakes and the transit loss for each meltwater
+  source. Report the number of filled φ pits and the water passing through them, the number
+  of visible river networks sourced within one cell of an ice margin and their largest
+  discharges, and the surface melt routed by φ on warm-based ice thicker than 1 km (see
+  Assumptions). Mark a routing-specific measurement as unavailable on an arm that
+  lacks the mechanism. *Outcome:* record the measurements. The held-out criteria below
+  set the thresholds for D8.
 
 ### Knobs
 
@@ -1478,7 +1516,8 @@ don't gate any item (see [Scope](#scope-ice-ages-are-out)).
   (surface, basal and rain on ice) reaches the ocean or a lake as discharge, and the number of
   visible river networks sourced at ice margins is reported against `origin/main`
   (G6 informs the report). Bare-ground snowmelt is reported separately.
-  *Open: D8, after G6, D4 and D5.*
+  *Open: implement D8 after D4 and D5 and after the owner accepts the sequence. Run G6 on
+  the D8 branch before evaluating the fixed candidate on the held-out saves.*
 - [x] **Sea level:** unit tests show floating ice, and ice grounded exactly at flotation,
   leave sea level unchanged; G4's difference is recorded. D2's sea-level loop was dropped
   in the #765 revision: sea level is re-solved from the current ice debit between substeps,
