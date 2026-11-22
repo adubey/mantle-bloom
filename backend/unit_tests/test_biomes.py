@@ -92,8 +92,18 @@ def test_classify_pelagic_realm_from_sst():
         "Tropical Open Ocean",
         "Temperate Open Ocean",
         "Cold-Temperate Open Ocean",
-        "Polar Sea Ice",
+        "Polar Ocean",
     ]
+
+
+def test_pelagic_sea_ice_uses_the_same_flag_in_hard_and_soft_classifiers():
+    sst = np.array([5.0, -5.0])
+    latitude = np.array([70.0, 70.0])
+    covered = np.array([True, False])
+    hard = biomes.classify_pelagic(sst, latitude, has_sea_ice=covered)
+    soft = biomes.classify_pelagic_soft(sst, latitude, has_sea_ice=covered)
+    assert hard.tolist() == [biomes.POLAR_SEA_ICE, biomes.pelagic_index("Polar Ocean")]
+    assert soft[biomes.POLAR_SEA_ICE].tolist() == [1.0, 0.0]
 
 
 def test_classify_pelagic_shelf_vs_open_ocean():

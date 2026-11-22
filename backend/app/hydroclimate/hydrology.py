@@ -468,6 +468,8 @@ class HydrologyFields:
     lake_water_ledger: "lakes.LakeStepLedger | None" = None
     # Water-equivalent cap state, appended to preserve prior positional constructor fields.
     lake_ice_m: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    # D7's display-only mask from the same freezing season that drove this lake solve.
+    perennial_lake_ice: np.ndarray | None = None
     # Opt-in event accounting; omitted from saves because it is a transient diagnostic.
     lake_solve_trace: "lakes.LakeSolveTrace | None" = None
     lake_trace_node_ids: np.ndarray | None = None
@@ -998,6 +1000,16 @@ def sample_is_sea(world: "World", query_xyz: np.ndarray, fallback_is_sea: np.nda
         return fallback_is_sea
     idx = _nearest_hydro_node_idx(hydro, query_xyz, getattr(world, "node_cloud_resample_mode", "kdtree"))
     return hydro_is_sea[idx].reshape(fallback_is_sea.shape)
+
+
+def sample_perennial_lake_ice(world: "World", query_xyz: np.ndarray) -> np.ndarray | None:
+    """Read the lake solve's D7 mask, when the cache records it (#1014)."""
+    hydro = world.hydrology_cache
+    mask = getattr(hydro, "perennial_lake_ice", None)
+    if hydro is None or mask is None or mask.shape != (len(hydro.points),) or len(hydro.points) == 0:
+        return None
+    idx = _nearest_hydro_node_idx(hydro, query_xyz, world.node_cloud_resample_mode)
+    return mask[idx].reshape(query_xyz.shape[:-1])
 
 
 def lake_components(is_lake: np.ndarray, neighbor_idx: np.ndarray) -> list[np.ndarray]:
@@ -2428,7 +2440,6 @@ def _march_glacier(
         heat = np.zeros(n)
     sea_level = float(world.sea_level_m)
     ocean_mask = np.asarray(is_ocean, dtype=bool).copy()
-    no_ice_cap = np.zeros(n, dtype=bool)
     # With no connected ocean the debit has no reservoir to re-solve against (an all-land
     # synthetic world); freezing sea level there keeps the march from drowning the land it
     # is relaxing. Eustasy still resolves the budget after the step.
@@ -2474,7 +2485,7 @@ def _march_glacier(
         unloaded_bed = working_elevation - np.asarray(deflection_m, dtype=float)
         load = lithosphere.grounded_ice_load_kg_m2(ref_depth, unloaded_bed, sea_level, ocean_mask)
         target = lithosphere.ice_load_deflection(crust_h_m, mantle_h_m, rho_crust, load)
-        temperature = np.asarray(temperature_at_nodes, dtype=float) - ice_sheet.LAPSE_RATE_C_PER_KM * (target - deflection_m) / 1000.0
+        temperature = ice_sheet.air_temperature_at_elevation(temperature_at_nodes, deflection_m, target)
         frozen = (temperature < FREEZE_POINT_C) | (ref_depth >= GLACIER_VISIBLE_DEPTH_M)
         climate = ice_sheet.SurfaceClimate(
             np.asarray(dry_precip_mm, dtype=float), temperature, np.asarray(seasonal_amplitude, dtype=float),
@@ -2483,7 +2494,7 @@ def _march_glacier(
         )
         return ice_sheet.step_ice(
             points, neighbor_idx, areas, working_elevation, deflection_m, sea_level, depth,
-            climate, np.asarray(mobile_cover_m, dtype=float), ocean_mask, no_ice_cap, sub_years,
+            climate, np.asarray(mobile_cover_m, dtype=float), ocean_mask, sub_years,
             warn=False, graph=march_graph, graph_step_m=march_step_m, margin_hint_m=margin_hint_m,
         )
 
@@ -2907,7 +2918,7 @@ def compute_hydrology(
     from . import ice_sheet
 
     snow_ground = ice_sheet.snow_fraction(temperature_at_nodes, seasonal_amplitude)
-    ice_lapsed = temperature_at_nodes - ice_sheet.LAPSE_RATE_C_PER_KM * np.clip(prev_glacier_depth, 0.0, None) / 1000.0
+    ice_lapsed = ice_sheet.air_temperature_at_elevation(temperature_at_nodes, 0.0, np.clip(prev_glacier_depth, 0.0, None))
     snow_ice = ice_sheet.snow_fraction(ice_lapsed, seasonal_amplitude)
     ice_cover_open = (prev_glacier_depth >= GLACIER_VISIBLE_DEPTH_M).astype(float)
     wet_precip_mm, ice_snow_mm, ice_rain_mm, bare_snow_mm, bare_rain_mm = glacier_rain_partition_mm(
@@ -3264,6 +3275,7 @@ def compute_hydrology(
         points, elevation, is_ocean, neighbor_idx, flow_target, flow_accum, water_deposited, filled_elevation, spill_target,
         np.zeros(n, dtype=bool), prev_lake_depth, new_glacier_depth, plates_in_order, ice_flow_target=ice_flow_target,
         lake_ice_m=lake_ice_m,
+        perennial_lake_ice=(ice_free_fraction == 0.0) & (lake_ice_m > 0.0),
         lake_solve_trace=lake_result.trace,
         lake_trace_node_ids=trace_node_ids,
         channel_width=prev_channel_width,

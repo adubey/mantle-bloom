@@ -852,6 +852,24 @@ non-finite input, `404` if no world has been generated yet.
 `plate_id` is `null` only if every plate is empty (shouldn't happen via the API, but a
 freshly-constructed `World` with no plates at all has no node to be nearest to).
 
+## `GET /worlds/{world_id}/sample_at?lat_deg=0&lon_deg=0`
+
+The point inspector samples a geographic point in the true, unrotated frame. It returns
+the input coordinates, `plate_id`, `is_ocean`, `precipitation_mm` in mm/yr, and these
+surface fields.
+
+| Field | Meaning |
+|---|---|
+| `elevation_m` | Closest terrain node's elevation in metres, including grounded glacier depth where present. |
+| `bed_elevation_m` | Closest node's terrain elevation in metres. |
+| `biome_id`, `biome` | Display class index and name, including the Ice Cap and Polar Sea Ice overrides. |
+| `surface_climate` | Underlying climate class name. |
+| `temperature_c` | Surface temperature in °C, including glacier lapse cooling and the air-temperature proxy over perennial sea ice. |
+| `sea_ice_state` | `ice-free`, `seasonal`, or `perennial` for floating ocean water. Land and grounded glacier ice return `null`. |
+| `sea_ice_fraction` | Fraction of the year ice-covered, from 0 to 1. |
+
+The route returns `400` for non-finite coordinates and `404` before world generation.
+
 ## `GET /worlds/{world_id}/rivers`
 
 The "River Inspector" map mode's data source (see

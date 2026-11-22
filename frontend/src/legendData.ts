@@ -494,14 +494,13 @@ const NODE_REMOVED_GRADIENT: LegendGradient = {
 // channel (see backend app/render_image.py's COMBINED_LAKE_ID_CODE comment): alpha = 255 -
 // code, where code is a class's index in BIOME_RGB_ENTRIES + 1 (that order matches backend
 // biomes.BIOME_NAMES, same hand-sync precedent as BIOME_RGB_ENTRIES itself -- every classified
-// cell carries one, land Köppen and ocean pelagic alike), one of the two lake/glacier overlay
-// codes below (Combined only), or 0 for a gap between cells. MapCanvas.tsx reads this straight
+// cell carries one, land Köppen and ocean pelagic alike), one of the water overlay codes
+// below (Combined only), or 0 for a gap between cells. MapCanvas.tsx reads this straight
 // off each pixel's alpha byte -- exact, no RGB match -- so both views' colors are free to
 // blend across a boundary (and Combined's to additionally span a wide shaded-relief range)
 // with click-to-highlight still picking out a single, never-tied dominant class per pixel (see
 // biomes.MIN_DOMINANT_SHARE).
 const COMBINED_LAKE_ID_CODE = BIOME_RGB_ENTRIES.length + 1;
-const COMBINED_GLACIER_ID_CODE = BIOME_RGB_ENTRIES.length + 2;
 const COMBINED_SEA_ID_CODE = BIOME_RGB_ENTRIES.length + 3;
 
 function biomeIdCode(label: string): number | null {
@@ -535,9 +534,7 @@ export interface HighlightTarget {
 // (see Legend.tsx). A legend row is a 1st/2nd-level group covering several internal classes,
 // so a click highlights every member: Biome and Combined both match on the members'
 // alpha-channel id codes (see biomeIdCode above -- both views carry the same dominant-class
-// coding). The "Sea Ice" group also folds in Combined's glacier overlay code (glaciated ocean
-// paints over Polar-Sea-Ice cells with nearly the same colour); the Biome view has no such
-// overlay.
+// coding), including the Ice Cap and Sea Ice groups.
 export function highlightTargetFor(view: MapView, label: string): HighlightTarget | null {
   if (view === "elevReason") {
     // The "Last elevation change" view draws every cell as exactly one _ELEV_REASON_RGB
@@ -553,9 +550,6 @@ export function highlightTargetFor(view: MapView, label: string): HighlightTarge
   if (view === "combined" && label === "Salt Sea") {
     return { selected: label, palette: [], tolerance: 0, idCodes: [COMBINED_SEA_ID_CODE] };
   }
-  if (view === "combined" && label === "Glacier (ice cover)") {
-    return { selected: label, palette: [], tolerance: 0, idCodes: [COMBINED_GLACIER_ID_CODE] };
-  }
 
   const group = groupFor(label);
   if (!group) return null;
@@ -564,7 +558,6 @@ export function highlightTargetFor(view: MapView, label: string): HighlightTarge
     const idCodes = group.members
       .map((m) => biomeIdCode(m))
       .filter((c): c is number => c !== null);
-    if (view === "combined" && label === "Sea Ice") idCodes.push(COMBINED_GLACIER_ID_CODE);
     if (idCodes.length === 0) return null;
     return { selected: label, palette: [], tolerance: 0, idCodes };
   }
@@ -603,7 +596,7 @@ export function legendFor(view: MapView): LegendSpec | null {
           { kind: "line", color: RIVER_COLOR, label: "River" },
           { kind: "square", color: LAKE_COLOR, label: "Lake" },
           { kind: "square", color: SEA_COLOR, label: "Salt Sea" },
-          { kind: "square", color: GLACIER_COLOR, label: "Glacier (ice cover)" },
+          { kind: "square", color: GLACIER_COLOR, label: "Perennial ice" },
           // Toggle rows, not click-to-highlight swatches -- see Legend.tsx's own special-case
           // handling of these two labels on this view (showMountains/showPlainsPlateaus props,
           // independent checkboxes rather than legendFor's usual single-select highlight).
@@ -684,11 +677,7 @@ export function legendFor(view: MapView): LegendSpec | null {
       // varies visibly with elevation and ocean with depth (see _render_combined_view), so
       // the grouped swatches stay the single click target.
       //
-      // The four overlays sit where their subject matter does rather than all bunched at
-      // the front: "Glacier (ice cover)" between land's "Ice Cap" and ocean's "Sea Ice" with
-      // the other frozen swatches, and "Salt Sea"/"Lake"/"River" right after the ocean block
-      // (a basin large enough to classify sea tier draws over the plain "Lake" swatch -- see
-      // backend app/render_image.py's COMBINED_SEA_ID_CODE comment).
+      // Water overlays follow the ocean biome swatches.
       const groupSymbol = (g: BiomeGroup): LegendSymbol => ({
         kind: "square",
         color: groupSwatchColor(g),
@@ -698,7 +687,6 @@ export function legendFor(view: MapView): LegendSpec | null {
         title: "Elevation & Köppen Climate",
         symbols: [
           ...LAND_GROUPS.map(groupSymbol),
-          { kind: "square", color: GLACIER_COLOR, label: "Glacier (ice cover)" },
           ...OCEAN_GROUPS.map(groupSymbol),
           { kind: "square", color: SEA_COLOR, label: "Salt Sea" },
           { kind: "square", color: LAKE_COLOR, label: "Lake" },

@@ -313,6 +313,16 @@ def _centered_gradient(field: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return gx, gy
 
 
+def grid_cell_indices(
+    lat_deg: np.ndarray, lon_deg: np.ndarray, shape: tuple[int, int],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Nearest cell centers in the unrotated climate grid. Longitude wraps at the seam."""
+    height, width = shape
+    row = np.clip(np.floor((90.0 - lat_deg) / (180.0 / height)).astype(np.intp), 0, height - 1)
+    col = np.floor((lon_deg + 180.0) / (360.0 / width)).astype(np.intp) % width
+    return row, col
+
+
 def _sample_at_offset(field: np.ndarray, dir_u: np.ndarray, dir_v: np.ndarray, dist_deg: float, lat_deg: np.ndarray) -> np.ndarray:
     """Samples `field` at each cell's own position offset by `dist_deg` along (dir_u, dir_v)
     (already unit-length), nearest-cell. Same closed-form lat/lon -> row/col technique used
@@ -510,8 +520,8 @@ def air_temperature_at_elevation(
     air_temperature_c: np.ndarray, base_elevation_m: np.ndarray, target_elevation_m: np.ndarray
 ) -> np.ndarray:
     """Adjust near-surface air temperature from the terrain elevation to a nearby surface
-    elevation with the model's standard lapse rate. Used for lake water surfaces, whose
-    height differs from the bed under them (RFC 0014 D3, #661)."""
+    elevation with the model's standard lapse rate. Lake water surfaces and glacier surfaces
+    use the same adjustment from the bed (RFC 0014 D3 and RFC 0015 D7)."""
     return np.asarray(air_temperature_c, dtype=float) - LAPSE_RATE_C_PER_KM * (
         np.asarray(target_elevation_m, dtype=float) - np.asarray(base_elevation_m, dtype=float)
     ) / 1000.0

@@ -539,7 +539,7 @@ def trapped_water_volume_m3(world: "World") -> float:
     `total_water_volume_m3` -- so it can be subtracted straight from the conserved total
     budget. Contributions are read off the
     persisted per-node fields hydrology.py maintains: every node's `glacier_depth` (ice caps,
-    valley glaciers, mountain-top ice, grounded marine ice and any ice-age sea-ice cap --
+    valley glaciers, mountain-top ice and grounded marine ice,
     converted from a column of ice to its liquid-water equivalent, `ice_water_column_m`), and
     the `lake_depth` of every node holding a real visible lake (`_LAKE_MIN_TRAPPED_DEPTH_M`).
     Both are water that fell as precipitation and would otherwise have run back to the sea;

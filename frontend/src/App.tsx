@@ -2454,8 +2454,8 @@ export default function App() {
               displayY={probe.displayY}
               title={formatLatLon(probe.latDeg, probe.lonDeg)}
               status={probe.status}
-              width={174}
-              maxHeight={150}
+              width={198}
+              maxHeight={206}
               mapWidth={DISPLAY_WIDTH}
               mapHeight={DISPLAY_HEIGHT}
               onClose={() => handleProbe(null)}
@@ -2464,8 +2464,29 @@ export default function App() {
                 <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 8, rowGap: 1 }}>
                   <span style={{ opacity: 0.55 }}>Elevation</span>
                   <span>{Math.round(probe.sample.elevation_m).toLocaleString()} m</span>
+                  {probe.sample.bed_elevation_m !== probe.sample.elevation_m && (
+                      <>
+                        <span style={{ opacity: 0.55 }}>Bed elevation</span>
+                        <span>{Math.round(probe.sample.bed_elevation_m).toLocaleString()} m</span>
+                      </>
+                  )}
                   <span style={{ opacity: 0.55 }}>Biome</span>
                   <span>{probe.sample.biome}</span>
+                  {probe.sample.surface_climate !== probe.sample.biome && (
+                    <>
+                      <span style={{ opacity: 0.55 }}>Surface climate</span>
+                      <span>{probe.sample.surface_climate}</span>
+                    </>
+                  )}
+                  {probe.sample.sea_ice_state && (
+                    <>
+                      <span style={{ opacity: 0.55 }}>Sea ice</span>
+                      <span style={{ textTransform: "capitalize" }}>
+                        {probe.sample.sea_ice_state}
+                        {probe.sample.sea_ice_state !== "ice-free" && ` (${Math.round(100 * probe.sample.sea_ice_fraction)}% of year)`}
+                      </span>
+                    </>
+                  )}
                   <span style={{ opacity: 0.55 }}>Precip.</span>
                   <span>{Math.round(probe.sample.precipitation_mm).toLocaleString()} mm</span>
                   <span style={{ opacity: 0.55 }}>Temp.</span>

@@ -56,7 +56,7 @@ from . import (
 )
 from .frontend_files import mount_frontend
 from .world_registry import FairComputeGate, UnknownWorldError, WorldLimitReached, WorldRegistry, WorldSession
-from .hydroclimate import biomes, climate, coastline, eustasy, hydrology, lakes, stranded_basins
+from .hydroclimate import climate, coastline, eustasy, hydrology, lakes, stranded_basins
 from .elevation_lines import NODE_DENSITY_CHOICES
 from .world import (
     DEFAULT_MANTLE_CENTERS,
@@ -2474,6 +2474,7 @@ def set_controls(world_id: str, req: ControlsRequest) -> dict:
             # ocean water volume to whatever floats the current hypsometry at this level,
             # rather than pinning sea_level_m directly (which the next step would re-solve away).
             eustasy.set_sea_level_via_water_budget(world, req.sea_level_m)
+            world.node_hillshade_cache = None  # The new water level can float grounded ice.
         if req.solar_multiplier is not None:
             world.solar_multiplier = req.solar_multiplier
         if req.ice_age_period_years is not None:
@@ -2942,50 +2943,14 @@ def fault_at(world_id: str, lat_deg: float, lon_deg: float) -> dict:
 
 @app.get("/worlds/{world_id}/sample_at")
 def sample_at(world_id: str, lat_deg: float, lon_deg: float) -> dict:
-    """Everything the "Elevation & Biome" view's click-to-inspect popup shows for one point
-    (also offered on the Elevation and Biome views): elevation, biome, precipitation,
-    temperature, and which plate owns it. Elevation/biome/precipitation/temperature are read
-    from the same climate grid `/worlds/{world_id}/render` and `/worlds/{world_id}/stats` already use
-    (`climate.compute_climate_cached` -- the world's own `climate_density` resolution),
-    picked by nearest grid cell; `temperature_c` is the same land-air / ocean-surface
-    composite the temperature view and biome classification use (see
-    `climate.compute_climate`). `biome` may differ from the rendered pixel right at a
-    coastline -- the Combined/Biome *renders* re-run `biomes.smooth_biome_field` on a finer
-    grid (see `render_image._biome_fields`) -- but this is the canonical per-cell field every
-    other consumer reads, and it carries the same boundary-cleanup pass. `plate_id` is the same nearest-node hit-test as `/worlds/{world_id}/plate_at`. The
-    client unprojects its click through the active view rotation to a true lat/lon first,
-    same as `/worlds/{world_id}/plate_at`, so this endpoint never needs to know about rotation. `400`
-    for non-finite input, `404` if no world has been generated yet."""
+    """Sample terrain and surface climate in the unrotated frame, including D6/D7 ice."""
     session = _session_or_404(world_id)
     world = _require_world(session)
     if not (np.isfinite(lat_deg) and np.isfinite(lon_deg)):
         raise HTTPException(status_code=400, detail="lat_deg/lon_deg must be finite")
     with _compute_gate.hold(), session.lock:
-        fields = climate.compute_climate_cached(world)
-        query_xyz = geometry.latlon_to_xyz(np.radians(lat_deg), np.radians(lon_deg))
-        plate_id = plates.nearest_plate_id(world.plates, query_xyz)
-    height = fields.lat_deg.shape[0]
-    width = fields.lon_deg.shape[0]
-    # Invert climate._build_grid's cell centering: row 0 spans the north pole, column 0 the
-    # antimeridian, columns wrap.
-    row = int(np.clip(round((90.0 - lat_deg) * height / 180.0 - 0.5), 0, height - 1))
-    col = int(round((lon_deg + 180.0) * width / 360.0 - 0.5)) % width
-    biome_id = int(fields.biome_ids[row, col])
-    is_ocean = bool(fields.is_ocean[row, col])
-    temperature_c = float(
-        fields.ocean_temperature_c[row, col] if is_ocean else fields.air_temperature_c[row, col]
-    )
-    return {
-        "lat_deg": lat_deg,
-        "lon_deg": lon_deg,
-        "elevation_m": float(fields.elevation_m[row, col]),
-        "is_ocean": is_ocean,
-        "biome_id": biome_id,
-        "biome": biomes.BIOME_NAMES[biome_id],
-        "temperature_c": temperature_c,
-        "precipitation_mm": float(fields.precipitation_mm[row, col]),
-        "plate_id": plate_id,
-    }
+        surface = render_image.sample_surface_at(world, lat_deg, lon_deg)
+    return {"lat_deg": lat_deg, "lon_deg": lon_deg, **surface}
 
 
 @app.get("/worlds/{world_id}/rivers")

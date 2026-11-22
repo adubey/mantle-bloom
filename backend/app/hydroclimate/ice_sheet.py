@@ -46,7 +46,7 @@ from .. import geometry, trace
 from ..elevation_lines import PLANET_RADIUS_KM
 from ..lithosphere import GRAVITY_M_S2, RHO_ICE, RHO_WATER, floating_water_depth_m
 from . import hydrology
-from .climate import LAPSE_RATE_C_PER_KM
+from .climate import air_temperature_at_elevation
 
 _logger = logging.getLogger(__name__)
 
@@ -274,7 +274,7 @@ MARCH_LOG: deque[dict] = deque(maxlen=64)
 class SurfaceClimate:
     """Per-node climate the mass balance needs. `temperature_c` is the annual mean at the
     node's current (ice-free, already deflected) surface, so the ice surface sits
-    LAPSE_RATE_C_PER_KM colder per km of ice."""
+    the model's standard lapse rate above the bed."""
 
     precipitation_mm: np.ndarray
     temperature_c: np.ndarray
@@ -311,7 +311,7 @@ class SurfaceClimate:
         the trial thickness, so melt is zero exactly at the thaw boundary and continuous
         across it. Every rate is >= 0."""
         thickness = np.clip(np.asarray(thickness_m, dtype=float), 0.0, None)
-        surface_c = self.temperature_c - LAPSE_RATE_C_PER_KM * thickness / 1000.0
+        surface_c = air_temperature_at_elevation(self.temperature_c, 0.0, thickness)
         to_ice = RHO_WATER / RHO_ICE
         snow_mm = snow_fraction(surface_c, self.seasonal_amplitude_c) * np.asarray(self.precipitation_mm, dtype=float)
         if self.bed_frozen_snow_mm is not None:
@@ -1205,7 +1205,6 @@ def step_ice(
     climate: SurfaceClimate,
     mobile_cover_m: np.ndarray,
     is_ocean: np.ndarray,
-    allow_ocean_ice: np.ndarray,
     years: float,
     warn: bool = True,
     *,
@@ -1227,9 +1226,8 @@ def step_ice(
     that function gives it a load. The mass-balance surface is the current (already
     depressed) elevation plus the ice, a one-step lag on the deflection.
 
-    The ice-age polar sea-ice cap (`allow_ocean_ice`) keeps its own per-node rule (accumulate,
-    melt, never flow) and sits outside the bodies. Other ice on the ocean that isn't grounded
-    calves.
+    Floating glacier ice calves. D6's seasonal and perennial sea ice are derived from
+    climate for display, outside the glacier solve.
 
     `cost` selects the march's #822 distance-search restrictions (MarchCost); None, as
     every non-march caller passes, is the full search. `graph_step_m` is the median edge
@@ -1245,28 +1243,10 @@ def step_ice(
     h0 = opening_depth
     out = _Output(n)
 
-    # The sea-ice cap: the old per-node rule, minus flow.
-    cap = allow_ocean_ice & is_ocean
-    if np.any(cap):
-        acc, sm, _ = climate.subset(cap).rates(np.zeros(int(cap.sum())))
-        gained = acc * dt_myr
-        lost = np.minimum(sm * dt_myr, h0[cap] + gained)
-        depth = h0[cap] + gained - lost
-        # The same depth guard as the bodies (review of #359): a sustained cold spell with
-        # little summer melt would otherwise stack the floating cap past it.
-        over = np.clip(depth - hydrology.GLACIER_MAX_DEPTH_M, 0.0, None)
-        out.depth[cap] = depth - over
-        out.retained_snow[cap] = 1.0
-        out.melt_m3[cap] += (lost + over) * area[cap]
-        ledger.accumulation_m3 += float(np.dot(gained, area[cap]))
-        ledger.surface_melt_m3 += float(np.dot(lost, area[cap]))
-        ledger.capped_m3 += float(np.dot(over, area[cap]))
-        ledger.capped_nodes += int(np.count_nonzero(over > 0.0))
-
-    # Nodes a body may occupy: never the sea-ice cap, never ocean too deep to ground the
-    # thickest ice allowed. Ice already afloat anywhere else calves.
-    eligible = ~cap & (flotation_thickness_m(bed, sea_level_m, is_ocean) <= hydrology.GLACIER_MAX_DEPTH_M)
-    stray = ~cap & (h0 > 0.0) & (~eligible | ~is_grounded(h0, bed, sea_level_m, is_ocean))
+    # A glacier may occupy ocean shallow enough for its ice to ground. Opening floating
+    # ice, including any left in an older save, calves through the existing ledger (#1014).
+    eligible = flotation_thickness_m(bed, sea_level_m, is_ocean) <= hydrology.GLACIER_MAX_DEPTH_M
+    stray = (h0 > 0.0) & (~eligible | ~is_grounded(h0, bed, sea_level_m, is_ocean))
     out.calved[stray] = h0[stray] * area[stray]
     h0 = np.where(stray, 0.0, h0)
 
@@ -1306,7 +1286,7 @@ def step_ice(
         # lag: the new thickness isn't known until the profile it shapes is solved), with
         # last step's frictional heat (RFC 0015 D1, #789).
         is_warm0 = warm_based(
-            h0, climate.temperature_c - LAPSE_RATE_C_PER_KM * h0 / 1000.0, climate.frictional_heat_w_m2,
+            h0, air_temperature_at_elevation(climate.temperature_c, 0.0, h0), climate.frictional_heat_w_m2,
         )
         c = yield_stress_pa(mobile_cover_m, is_warm0) / (RHO_ICE * GRAVITY_M_S2)
         step_m = median_edge_m(graph) if graph_step_m is None else graph_step_m
@@ -1334,7 +1314,7 @@ def step_ice(
 
     # Snow on frozen ground no body claims melts in place (it can't be positive balance there,
     # or the node would be a body member).
-    loose = np.flatnonzero(~in_domain & ~cap & ~is_ocean)
+    loose = np.flatnonzero(~in_domain & ~is_ocean)
     ledger.snow_melted_m3 += _melt_bare_snow(out, loose, bare_acc, area, dt_myr)
 
     for body in bodies:
@@ -1346,7 +1326,7 @@ def step_ice(
     ledger.calved_m3 = float(out.calved.sum())
     ledger.closing_m3 = float(np.dot(out.depth, area))
     # Body nodes at the depth guard, whether shed there or flattened by the profile's cap.
-    at_cap = ~cap & (out.depth > 0.0) & (out.thickness >= hydrology.GLACIER_MAX_DEPTH_M * (1.0 - 1e-9))
+    at_cap = (out.depth > 0.0) & (out.thickness >= hydrology.GLACIER_MAX_DEPTH_M * (1.0 - 1e-9))
     ledger.capped_nodes += int(np.count_nonzero(at_cap))
     # The march drives up to thousands of substeps per step and reports the cap once on
     # its summed ledger instead (#806 review); direct calls keep the per-call warning.
@@ -1355,7 +1335,7 @@ def step_ice(
 
     thickness = out.thickness
     is_warm = warm_based(
-        thickness, climate.temperature_c - LAPSE_RATE_C_PER_KM * thickness / 1000.0, climate.frictional_heat_w_m2,
+        thickness, air_temperature_at_elevation(climate.temperature_c, 0.0, thickness), climate.frictional_heat_w_m2,
     )
     flux, _, sliding = _diagnose_flow(
         points, neighbor_idx, area, out.surface, out.depth, opening_depth, thickness, out.covered, climate, is_warm, years,

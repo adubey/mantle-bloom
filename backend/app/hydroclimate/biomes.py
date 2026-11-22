@@ -716,7 +716,8 @@ def classify_pelagic(
     has_sea_ice: np.ndarray | None = None,
 ) -> np.ndarray:
     """Per-cell pelagic id (index into BIOME_NAMES) for ocean cells. Thermal realm from SST x
-    structural zone (coastal shelf / equatorial divergence / open ocean / sea ice). Non-ocean
+    structural zone (coastal shelf / equatorial divergence / open ocean), with D6 sea ice
+    supplied separately. Non-ocean
     cells get an arbitrary id here -- callers mask with `is_ocean` (see classify_biomes)."""
     sst = np.asarray(ocean_temp_c, dtype=float)
     lat = np.abs(np.asarray(lat_deg, dtype=float))
@@ -724,12 +725,7 @@ def classify_pelagic(
         dist_to_land_rad = np.full(sst.shape, np.inf)
     else:
         dist_to_land_rad = np.asarray(dist_to_land_rad, dtype=float)
-    if has_sea_ice is None:
-        has_sea_ice = np.zeros(sst.shape, dtype=bool)
-    else:
-        has_sea_ice = np.asarray(has_sea_ice, dtype=bool)
-
-    is_ice = has_sea_ice | (sst < -1.0)
+    is_ice = np.zeros(sst.shape, dtype=bool) if has_sea_ice is None else np.asarray(has_sea_ice, dtype=bool)
     is_shelf = dist_to_land_rad <= SHELF_RANGE_RAD
     e0, e1, e2, e3 = _PELAGIC_SST_EDGES
     polar = sst < e0
@@ -781,13 +777,8 @@ def classify_pelagic_soft(
         dist_to_land_rad = np.full(sst.shape, np.inf)
     else:
         dist_to_land_rad = np.asarray(dist_to_land_rad, dtype=float)
-    # has_sea_ice is a discrete simulation flag (glacier cover present or not), not a
-    # continuous field -- combined with the soft SST cutoff via a fuzzy-OR (probabilistic sum)
-    # rather than softened itself.
-    ice_flag = np.zeros(sst.shape, dtype=float) if has_sea_ice is None else np.asarray(has_sea_ice, dtype=float)
-
-    sst_ice = _soft_lt(sst, -1.0, _SOFT_TEMP_BLEND_C)
-    is_ice = ice_flag + sst_ice - ice_flag * sst_ice
+    # Sea ice has an explicit coverage threshold (#1014), with no softened SST cutoff.
+    is_ice = np.zeros(sst.shape, dtype=float) if has_sea_ice is None else np.asarray(has_sea_ice, dtype=float)
     is_shelf = _soft_lt(dist_to_land_rad, SHELF_RANGE_RAD, _SOFT_SHELF_DIST_BLEND_RAD)
     e0, e1, e2, e3 = _PELAGIC_SST_EDGES
     TC = _SOFT_TEMP_BLEND_C
@@ -993,7 +984,7 @@ def _smooth_biome_classify(
     sea_level_m: float,
     lat_deg: np.ndarray,
     axial_tilt_deg: float,
-    glacier_depth_m: np.ndarray | None,
+    has_sea_ice: np.ndarray | None,
 ):
     """Shared implementation behind smooth_biome_field and smooth_biome_field_blend: classify,
     then run the neighbour-vote cleanup. Returns (biome_ids, overridden, continentality,
@@ -1014,10 +1005,6 @@ def _smooth_biome_classify(
 
     continentality = grid_continentality(is_ocean)
     dist_to_land_rad = grid_dist_to_land_rad(is_ocean)
-    has_sea_ice = None
-    if glacier_depth_m is not None:
-        has_sea_ice = is_ocean & (np.asarray(glacier_depth_m) > 0.0)
-
     biome_ids = classify_biomes(
         temperature_c, precipitation_mm, elevation_m, slope, is_ocean, sea_level_m,
         lat_deg=lat_grid, axial_tilt_deg=axial_tilt_deg, continentality=continentality,
@@ -1043,16 +1030,16 @@ def smooth_biome_field(
     *,
     lat_deg: np.ndarray,
     axial_tilt_deg: float = DEFAULT_AXIAL_TILT_DEG,
-    glacier_depth_m: np.ndarray | None = None,
+    has_sea_ice: np.ndarray | None = None,
 ) -> np.ndarray:
     """classify_biomes plus the stateless boundary-cleanup pass -- this is the classification
     the Biome/Combined map views and /world/stats use, while `classify_biomes` stays the raw
     per-cell primitive. Inputs must all be the same 2D (H, W) grid; `lat_deg` may be a (H,)
     row vector or a full grid. Computes continentality and coast distance from `is_ocean`
-    itself, and sea-ice cover from `glacier_depth_m` if given."""
+    itself. `has_sea_ice` is D6’s half-year coverage mask when supplied."""
     biome_ids, _overridden, _cont, _dist, _ice, _lat_grid = _smooth_biome_classify(
         temperature_c, precipitation_mm, elevation_m, slope, is_ocean, sea_level_m,
-        lat_deg, axial_tilt_deg, glacier_depth_m,
+        lat_deg, axial_tilt_deg, has_sea_ice,
     )
     return biome_ids
 
@@ -1067,7 +1054,7 @@ def smooth_biome_field_blend(
     *,
     lat_deg: np.ndarray,
     axial_tilt_deg: float = DEFAULT_AXIAL_TILT_DEG,
-    glacier_depth_m: np.ndarray | None = None,
+    has_sea_ice: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Like smooth_biome_field, but also returns what render_image.py's Biome/Combined views
     need to paint a blended boundary instead of a flat one: (winner_ids, winner_share,
@@ -1086,7 +1073,7 @@ def smooth_biome_field_blend(
     undo exactly that cleanup."""
     biome_ids, overridden, continentality, dist_to_land_rad, has_sea_ice, lat_grid = _smooth_biome_classify(
         temperature_c, precipitation_mm, elevation_m, slope, is_ocean, sea_level_m,
-        lat_deg, axial_tilt_deg, glacier_depth_m,
+        lat_deg, axial_tilt_deg, has_sea_ice,
     )
 
     weights = classify_biomes_soft(

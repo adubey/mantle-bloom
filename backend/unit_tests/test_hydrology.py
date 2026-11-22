@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from app import geometry, lithosphere, trace
 from app.elevation_lines import line_spacing_rad
-from app.hydroclimate import breaching, erosion, eustasy, hydrology, ice_sheet, lakes
+from app.hydroclimate import breaching, climate, erosion, eustasy, hydrology, ice_sheet, lakes
 from app.plates import collect_all_accounting_areas_m2
 from app.world import World, generate_world, step_world
 
@@ -1232,6 +1232,9 @@ def test_compute_hydrology_sublimates_covered_lake_ice_and_closes_its_ledger(mon
 
     assert with_sublimation.lake_depth[28:31].max() > 0.0
     assert np.any(with_sublimation.lake_ice_m[28:31] > 0.0)
+    world.hydrology_cache = with_sublimation
+    visible_cap = hydrology.sample_perennial_lake_ice(world, with_sublimation.points)
+    np.testing.assert_array_equal(visible_cap, with_sublimation.lake_ice_m > 0.0)
     assert with_sublimation.lake_water_ledger.sublimation_m3 > 0.0
     assert without_sublimation.lake_water_ledger.sublimation_m3 == 0.0
     assert abs(with_sublimation.lake_water_ledger.residual_m3) <= 1e-9 * (
@@ -2545,7 +2548,7 @@ def test_glacier_account_chains_steps_and_closes_the_full_precipitation_ledger()
         cover = (np.clip(opening, 0.0, None) >= hydrology.GLACIER_VISIBLE_DEPTH_M).astype(float)
         snow_ground = ice_sheet.snow_fraction(temperature, amplitude)
         snow_ice = ice_sheet.snow_fraction(
-            temperature - ice_sheet.LAPSE_RATE_C_PER_KM * np.clip(opening, 0.0, None) / 1000.0, amplitude
+            temperature - climate.LAPSE_RATE_C_PER_KM * np.clip(opening, 0.0, None) / 1000.0, amplitude
         )
         parts = hydrology.glacier_rain_partition_mm(
             np.full(12, 800.0), np.zeros(12), cover, snow_ground, snow_ice

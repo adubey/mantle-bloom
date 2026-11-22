@@ -963,13 +963,37 @@ def test_sample_at_returns_a_full_point_report(client):
     body = resp.json()
     assert set(body) == {
         "lat_deg", "lon_deg", "elevation_m", "is_ocean", "biome_id", "biome",
-        "temperature_c", "precipitation_mm", "plate_id",
+        "temperature_c", "precipitation_mm", "plate_id", "bed_elevation_m", "surface_climate",
+        "sea_ice_state", "sea_ice_fraction",
     }
     assert body["plate_id"] == target["plate_id"]
     assert isinstance(body["biome"], str) and body["biome"]
     assert math.isfinite(body["elevation_m"])
     assert math.isfinite(body["temperature_c"])
     assert body["precipitation_mm"] >= 0
+
+
+def test_sample_at_reads_grounded_glacier_surface_and_bed(client):
+    _post_generate(client, json={"seed": 12, "num_plates": 8})
+    world = _default_session.world
+    plate = world.plates[0]
+    points, elevation = plate.all_points_and_elevation()
+    index = int(np.argmax(elevation))
+    lat, lon = main.geometry.xyz_to_latlon(points[index])
+    params = {"lat_deg": np.degrees(lat), "lon_deg": np.degrees(lon)}
+    before = client.get("/world/sample_at", params=params).json()
+    assert not before["is_ocean"]
+
+    depth = np.zeros(len(elevation))
+    depth[index] = 1000.0
+    plate.set_fields_on_plate(glacier_depth=depth)
+    after = client.get("/world/sample_at", params=params).json()
+    assert after["bed_elevation_m"] == before["elevation_m"]
+    assert after["elevation_m"] == pytest.approx(before["elevation_m"] + 1000.0)
+    assert after["temperature_c"] == pytest.approx(before["temperature_c"] - main.climate.LAPSE_RATE_C_PER_KM)
+    assert after["biome"] == "Ice Cap"
+    assert after["surface_climate"]
+    assert after["sea_ice_state"] is None
 
 
 def test_sample_at_rejects_non_finite_query(client):

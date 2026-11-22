@@ -436,13 +436,9 @@ class World:
     # this call from scope), so this is a real `cKDTree`, built lazily only when the Elevation
     # view's relief toggles are on. Reset alongside the caches above.
     node_kdtree_relief_cache: cKDTree | None = None
-    # Per-node hillshade brightness multiplier (see render_image._hillshade_for_world), a pure
-    # function of node positions/elevation like the caches above -- computed once (a local
-    # plane-fit gradient over each node's own k nearest neighbours, see
-    # render_image._compute_hillshade) and reused by every render this step (Elevation and
-    # Combined views both resample it the same way they already resample channel_depth/
-    # lake_depth). Reset alongside node_kdtree_cache -- same invalidation event (a node moved
-    # or its elevation changed), since it's derived directly from that cache's own tuple.
+    # Per-node display hillshade from the terrain and grounded glacier surface, reused by
+    # Elevation and Combined. Reset on a terrain step or a sea-level control change that
+    # can change grounding (render_image._hillshade_for_world, #1014).
     node_hillshade_cache: np.ndarray | None = None
     # Live-adjustable via POST /world/controls (see main.py) for the UI's "Controls" window
     # -- unlike axial_tilt_deg/node_density (fixed at generation), these are meant to be
@@ -476,11 +472,8 @@ class World:
     # every whole multiple of the period, 1 at the half-period glacial maximum) scales a
     # uniform cooling applied to climate.py's land+ocean temperature baselines, so every
     # downstream consumer (air temperature, biomes, hydrology's freeze/glacier growth,
-    # erosion) feels the ice age through fields it already reads. During a deep enough glacial
-    # phase hydrology also lets ice caps spread out over freezing polar ocean (see
-    # hydrology.compute_hydrology's `polar_ocean_ice` mask), and eustasy.py debits the water
-    # locked into that ice (and into glaciers/large lakes) from the ocean budget, so sea level
-    # falls as the ice sheets grow.
+    # erosion) feels the ice age through fields it already reads. D6 also diagnoses more
+    # sea ice in colder climates. Floating sea ice has no water-budget debit.
     ice_age_period_years: float = 0.0
     # Geomorphic-budget tuning knobs -- live-adjustable via POST /world/controls, same
     # "Controls" window / same immediate-climate-recompute pattern as sea_level_m/

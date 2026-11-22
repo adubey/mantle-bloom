@@ -664,6 +664,8 @@ hydroclimate/        climate, hydrology, and surface-process package: atmospheri
 hydroclimate/climate.py           temperature/wind/currents/humidity/precipitation, computed fresh on
                      their own fixed equirectangular grid -- every render, and now every
                      step too, to drive erosion.py (see simulation-model/climate.md#climate)
+hydroclimate/sea_ice.py           annual floating sea-ice state from the climate grid (RFC 0015 D6)
+                     for map renders and the point inspector, with no stored mass
 hydroclimate/erosion.py           every-step rain/river/weathering/glacier erosion + downstream sediment
                      deposition + glacier flattening + coastal planation/infill feedback
                      (near-sea-level wave-cut planation + sheltered-shelf silting, emergent

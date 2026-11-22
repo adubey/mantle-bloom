@@ -6,8 +6,8 @@ import av
 import numpy as np
 import pytest
 from PIL import Image
-from app import cratons, flow_arrows, geometry, healpix_grid, projections, render_image
-from app.hydroclimate import climate, hydrology
+from app import cratons, flow_arrows, geometry, healpix_grid, plates, projections, render_image
+from app.hydroclimate import biomes, climate, eustasy, hydrology, sea_ice
 from app.world import World, generate_world, step_world
 
 from .quad_fixtures import quad_plate
@@ -618,7 +618,7 @@ def test_combined_view_encodes_biome_ids_in_the_alpha_channel():
     alpha = np.asarray(image.convert("RGBA"))[:, :, 3]
     codes = 255 - alpha.astype(int)
     assert codes.min() >= 0
-    assert codes.max() <= render_image.COMBINED_GLACIER_ID_CODE
+    assert codes.max() <= render_image.COMBINED_SEA_ID_CODE
     # Both land and ocean carry real codes now (ocean is no longer code 0).
     assert np.count_nonzero(codes) > 0.5 * codes.size
 
@@ -660,62 +660,56 @@ def test_glacier_overlay_is_shaded_by_hillshade_not_flat(view):
     assert not_flat.sum() > 2000
 
 
-def test_land_only_glacier_shade_keeps_floating_ice_flat():
-    hillshade = np.array([0.5, 1.5, 0.7, 1.2])
-    is_ocean = np.array([True, False, False, False])
-    is_lake = np.array([False, True, False, False])
-    shade = render_image._land_only_glacier_shade(hillshade, is_ocean, is_lake)
-    # Floating sea ice and frozen-lake ice: flat (1.0) regardless of the seafloor/lakebed
-    # hillshade underneath -- the real values above (0.5, 1.5) would visibly darken/brighten
-    # it if the guard were missing.
-    assert shade[0] == 1.0
-    assert shade[1] == 1.0
-    # Land-based ice: real per-cell hillshade passes through unchanged.
-    assert shade[2] == 0.7
-    assert shade[3] == 1.2
+def test_d7_ice_palette_shades_grounded_ice_and_keeps_floating_ice_flat():
+    depth = np.array([10.0, 400.0, 0.0, 0.0, 0.0, 0.0])
+    lake = np.array([False, False, True, False, False, False])
+    ocean = np.array([False, True, False, True, True, True])
+    sea = sea_ice.annual_balance(
+        np.array([10.0, 10.0, 10.0, -25.0, -1.8, 10.0]),
+        np.full(6, 12.0), ocean & (depth == 0.0),
+    )
+    ice = render_image._SurfaceIce(depth, lake, sea)
+    colors = render_image._surface_ice_colors(np.zeros((6, 3)), ice, np.full(6, 0.5), 1.0)
+    ice_rgb = np.array(render_image.GLACIER_COLOR_RGB)
+    np.testing.assert_array_equal(colors, np.array([ice_rgb / 2, ice_rgb / 2, ice_rgb, ice_rgb, [0, 0, 0], [0, 0, 0]]))
 
 
-def test_combined_view_ocean_ice_stays_flat_not_shaded_by_seafloor_relief():
-    # Companion regression to the one above: a real orbital photo shows floating sea ice as a
-    # flat white surface regardless of the seafloor relief beneath it -- the exact rule the
-    # Combined view's own land_rgb hillshade already carves out for open ocean (see its
-    # "land only" comment). Glaciating ocean nodes only (never land) means any color variation
-    # among the resulting ice pixels could only come from that seafloor bathymetry leaking
-    # through, which the fix explicitly guards against.
+@pytest.mark.parametrize("view", ["combined", "biome"])
+def test_sea_ice_classes_on_normal_maps_leave_the_water_budget_unchanged(view):
     world = _world(seed=11, num_plates=8, continental_fraction=0.5)
-    depth = hydrology.GLACIER_VISIBLE_DEPTH_M + 500.0
-    for plate in world.plates:
-        gd = plate.collect("glacier_depth").copy()
-        gd[plate.collect("elevation") <= world.sea_level_m] = depth
-        plate.set_fields_on_plate(glacier_depth=gd)
+    before = eustasy.trapped_water_volume_m3(world)
+    sea_level = world.sea_level_m
+    png = render_image.render_png(world, "behrmann", view, 320, 180)
+    pixels = np.asarray(Image.open(io.BytesIO(png)).convert("RGBA"))
+    codes = 255 - pixels[:, :, 3].astype(int)
+    assert np.count_nonzero(codes == biomes.POLAR_SEA_ICE + 1) > 100
+    open_ocean_codes = [biome_id + 1 for biome_id in biomes.OCEAN_IDS - {biomes.POLAR_SEA_ICE}]
+    assert np.count_nonzero(np.isin(codes, open_ocean_codes)) > 100
+    assert not np.any(plates.collect_all_glacier_depth(world.plates))
+    assert eustasy.trapped_water_volume_m3(world) == before
+    assert world.sea_level_m == sea_level
 
-    png = render_image.render_png(world, "behrmann", "combined", 320, 180)
-    pixels = np.asarray(Image.open(io.BytesIO(png)).convert("RGB"))
 
-    glacier_rgb = np.array(render_image.GLACIER_COLOR_RGB)
-    near_glacier = np.all(np.abs(pixels.astype(int) - glacier_rgb) < 60, axis=-1)
-    assert near_glacier.sum() > 500  # a real, sizeable sea-ice-covered area to sample from
-
-    not_flat = near_glacier & ~np.all(np.abs(pixels.astype(int) - glacier_rgb) < 3, axis=-1)
-    # Unlike the sibling test above, land here is never glaciated, so ice-covered ocean cells
-    # sit right next to varied-color land at every coastline -- the post-fill blur (see
-    # CELL_BLUR_RADIUS_PX) blends a real, if modest, band of those coastline pixels toward
-    # off-white regardless of this fix (confirmed directly: ~10% on this seed with the fix
-    # applied, entirely from that blur). A real seafloor-hillshade leak would push this far
-    # higher across the *whole* ocean interior, not just coastline blur -- confirmed directly
-    # against the pre-fix code, which put it above 30% on this same seed -- so the bar sits
-    # well clear of both.
-    assert not_flat.sum() < 0.2 * near_glacier.sum()
+def test_marine_glacier_surface_uses_the_unloaded_bed_for_grounding():
+    world = _world(seed=11, num_plates=8)
+    plate = world.plates[0]
+    n = plate.node_count()
+    elevation = np.full(n, -1000.0)
+    depth = np.full(n, 1500.0)
+    deflection = np.full(n, -200.0)
+    depth[0] = 100.0
+    plate.set_fields_on_plate(elevation=elevation, glacier_depth=depth, ice_load_deflection_m=deflection)
+    points, bed, _ = plates.collect_all_points(world.plates)
+    grounded = render_image._grounded_glacier_depth(world, points, bed)
+    np.testing.assert_array_equal(grounded[:n], np.r_[0.0, depth[1:]])
 
 
 def test_biome_view_smoothing_preserves_the_major_biomes_and_barely_moves_the_rest():
     # smooth_biome_field is a cleanup pass, not a reclassification: on the real biome render
     # grid it should change only a small slice of land and never erase a biome that has a
     # genuine regional presence.
-    from app.hydroclimate import biomes
-
     world = _world(seed=7, num_plates=12, continental_fraction=0.6)
-    lat_deg, _lon, _xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake, glacier_depth, _is_sea, _hillshade = render_image._biome_fields(
+    lat_deg, _lon, _xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake, ice, _is_sea, _hillshade = render_image._biome_fields(
         world, *render_image.biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
@@ -728,11 +722,11 @@ def test_biome_view_smoothing_preserves_the_major_biomes_and_barely_moves_the_re
         lat_deg=lat_grid, axial_tilt_deg=world.axial_tilt_deg,
         continentality=biomes.grid_continentality(is_ocean),
         dist_to_land_rad=biomes.grid_dist_to_land_rad(is_ocean),
-        has_sea_ice=is_ocean & (glacier_depth > 0.0),
+        has_sea_ice=ice.sea.fraction >= sea_ice.POLAR_SEA_ICE_FRACTION,
     )
     smoothed = biomes.smooth_biome_field(
         display_temp, precip, elevation_m, slope, is_ocean, world.sea_level_m,
-        lat_deg=lat_deg, axial_tilt_deg=world.axial_tilt_deg, glacier_depth_m=glacier_depth,
+        lat_deg=lat_deg, axial_tilt_deg=world.axial_tilt_deg, has_sea_ice=ice.sea.fraction >= sea_ice.POLAR_SEA_ICE_FRACTION,
     )
 
     land = ~is_ocean
