@@ -45,8 +45,7 @@ from . import auth
 
 GUEST_STEP_LIMIT = 30
 # Fixed server-side, so a guest can't buy a much longer (costlier) step with one allowance unit.
-# The full app's default "Years per step".
-GUEST_STEP_YEARS = 100_000.0
+GUEST_STEP_YEARS = 10_000.0
 GUEST_PROJECTION = "eckert4"
 GUEST_VIEWS = ("elevation", "biome", "combined")
 # The image /view itself asks for (Viewer.tsx's fixed combined view at
