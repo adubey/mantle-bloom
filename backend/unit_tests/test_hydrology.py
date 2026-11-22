@@ -1374,23 +1374,24 @@ def test_marched_hydrology_routes_warm_rain_into_a_cold_lake(monkeypatch):
 
 
 @pytest.mark.usefixtures("march_glaciers")
-@pytest.mark.parametrize("case", ["advancing", "frozen-to-bed", "warm-cap"])
+@pytest.mark.parametrize("case", ["advancing", "capped", "frozen-to-bed", "warm-cap"])
 def test_lake_cap_hands_off_by_mass_only_when_glacier_can_own_it(case, monkeypatch):
     world, plate, precipitation, temperature = _cold_pit(prior_ice_m=1.0)
     precipitation[:] = 0.0
     temperature[:] = -3.0 if case == "frozen-to-bed" else 10.0
+    advance_depth = {"advancing": 20.0, "capped": hydrology.GLACIER_MAX_DEPTH_M}.get(case, 0.0)
     depth = np.zeros(40)
-    if case == "advancing":
+    if advance_depth > 0.0:
         depth[29] = 4.0
     plate.set_fields_on_plate(lake_depth=depth)
     original_march = hydrology._march_glacier
 
     def advance_over_lake(*args):
         closing, melt, step = original_march(*args)
-        if case == "advancing":
-            closing[29] = step.thickness[29] = 20.0
+        if advance_depth > 0.0:
+            closing[29] = step.thickness[29] = advance_depth
             step.covered[29] = 1.0
-            growth = 20.0 * _node_areas(world)[29]
+            growth = advance_depth * _node_areas(world)[29]
             step.ledger.accumulation_m3 += growth
             step.ledger.closing_m3 += growth
         return closing, melt, step
@@ -1407,8 +1408,11 @@ def test_lake_cap_hands_off_by_mass_only_when_glacier_can_own_it(case, monkeypat
     assert ice_ledger.lake_cap_transfer_m3 * ice_sheet.RHO_ICE / ice_sheet.RHO_WATER == pytest.approx(transfer)
     if transfer > 0.0:
         assert fields.lake_ice_m[29] == 0.0
-    expected_depth = (20.0 if case == "advancing" else 0.0) + transfer / area / hydrology.LAKE_ICE_DENSITY_RATIO
+    uncapped_depth = advance_depth + transfer / area / hydrology.LAKE_ICE_DENSITY_RATIO
+    expected_depth = min(uncapped_depth, hydrology.GLACIER_MAX_DEPTH_M)
     assert fields.glacier_depth[29] == pytest.approx(expected_depth)
+    assert fields.ice.ice_release_depth_m[29] == pytest.approx(uncapped_depth - expected_depth)
+    assert fields.ice.bare_snowmelt_depth_m[29] == pytest.approx(0.0)
     for ledger in (lake_ledger, ice_ledger, fields.land_water_ledger, fields.glacier_water_ledger):
         assert abs(ledger.residual_m3) <= 1e-9 * area
 
@@ -2843,7 +2847,11 @@ def test_d2_march_ledger_closes_on_growing_ice():
     assert entry["marched_years"] + entry["held_years"] == pytest.approx(100_000.0)
     assert len(entry["volume_path_km3"]) > 0
     assert "tipping_growth" in entry
-    assert float(np.dot(fields.glacier_depth, _node_areas(world))) == pytest.approx(ledger.closing_m3)
+    areas = _node_areas(world)
+    assert float(np.dot(fields.glacier_depth, areas)) == pytest.approx(ledger.closing_m3)
+    assert ledger.snow_melted_m3 > 0.0
+    assert np.dot(fields.ice.bare_snowmelt_depth_m, areas) == pytest.approx(ledger.snow_melted_m3)
+    assert np.dot(fields.ice.ice_release_depth_m, areas) == pytest.approx(ledger.meltwater_m3 - ledger.snow_melted_m3)
 
 
 def _flow_line_march_world():
@@ -3000,9 +3008,9 @@ def test_glacier_step_years_and_stop_mode_resolve_vs_exhaust():
 
 
 def test_hold_remainder_closes_ice_stock_and_preserves_bare_snowmelt():
-    # PR #1000 review: holding a fixed closing ice stock must keep residual_m3 == 0,
-    # keep bare-ground snowmelt independent, and match routed melt to ledger.meltwater_m3.
-    areas = np.array([1.0])
+    # The held ice loss and bare snowmelt begin at different cells. Only the
+    # ice loss can be adjusted to balance the held glacier stock (#1019).
+    areas = np.array([2.0, 5.0])
     opening_ledger = ice_sheet.IceLedger(
         opening_m3=10.0,
         accumulation_m3=1.0,
@@ -3017,22 +3025,24 @@ def test_hold_remainder_closes_ice_stock_and_preserves_bare_snowmelt():
         snow_melted_m3=5.0,
         closing_m3=9.0,
     )
-    sub_melt = np.array([7.0])  # 2.0 ice melt + 5.0 bare snowmelt
-    sub_calved = np.array([0.0])
+    sub_ice_release = np.array([1.0, 0.0])  # 2 m³ glacial meltwater
+    sub_bare_snowmelt = np.array([0.0, 1.0])
+    sub_calved = np.zeros(2)
     sub_frozen = ice_sheet.FrozenPrecipitation(land_m3=6.0, ocean_retained_m3=0.0, retained_m3=1.0, bare_melted_m3=5.0)
     frozen = [6.0, 0.0, 1.0, 5.0]
-    hold_melt, hold_calved = hydrology._hold_remainder(
-        [(250.0, sub_melt, sub_calved, sub_ledger, sub_frozen)],
+    hold_ice_release, hold_bare_snowmelt, hold_calved = hydrology._hold_remainder(
+        [(250.0, sub_ice_release, sub_bare_snowmelt, sub_calved, sub_ledger, sub_frozen)],
         2_500.0,
         opening_ledger,
-        areas,
         frozen,
     )
     assert opening_ledger.residual_m3 == pytest.approx(0.0, abs=1e-9)
     # Bare-ground snowmelt scales by 10x (50.0), ice melt balances accumulation (10.0).
     assert opening_ledger.snow_melted_m3 == pytest.approx(55.0)
     assert opening_ledger.surface_melt_m3 == pytest.approx(12.0)
-    assert float(np.dot(hold_melt, areas)) == pytest.approx(60.0)
+    np.testing.assert_allclose(hold_bare_snowmelt * areas, [0.0, 50.0])
+    np.testing.assert_allclose(hold_ice_release * areas, [10.0, 0.0])
+    assert float(np.dot(hold_ice_release + hold_bare_snowmelt, areas)) == pytest.approx(60.0)
     assert float(hold_calved.sum()) == pytest.approx(0.0)
     assert frozen[3] == pytest.approx(55.0)
 

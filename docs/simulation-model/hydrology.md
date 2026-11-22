@@ -118,8 +118,12 @@ Three kinds of water/forcing move along `flow_target`:
 - **Glacier meltwater** is the ice ledger's per-step volume (`IceLedger.meltwater_m3`: surface
   and basal melt, overflow, ice shed at the depth guard, and snow melting on bare ground)
   divided by the step length (`hydrology.meltwater_m3_per_yr`). Melted ice converts by mass
-  (`RHO_ICE / RHO_WATER`). Calved ice goes to the ocean unrouted, and accumulation stays ice,
-  so neither is discharge.
+  (`RHO_ICE / RHO_WATER`). `IceStep.ice_release_depth_m` and `bare_snowmelt_depth_m` record
+  each source in metres of ice over its cell. Integrating bare snowmelt over cell area gives
+  `IceLedger.snow_melted_m3`. The glacier march sums this share over its intervals and
+  extrapolates it at the same rate during settle-and-hold. The balance correction for
+  a held glacier changes only glacier release. Calved ice goes directly to the ocean,
+  and accumulation stays in the glacier.
 - **Liquid water at cold sinks.** Runoff and glacier meltwater supply a lake at a cold
   sink. Its water column can hold liquid water and a seasonal cap (RFC 0015 D4 and D5).
   See [Glaciation](#glaciation-hydrologypy).

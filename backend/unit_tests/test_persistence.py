@@ -136,12 +136,15 @@ def test_saved_ice_ledgers_drop_retired_frozen_water_fields(version):
 
     if version == 4:
         vars(ledger).update(retired)
+        del cache.ice.ice_release_depth_m, cache.ice.bare_snowmelt_depth_m
         data = pickle.dumps({"format": persistence.SAVE_FORMAT, "version": 4, "surface": "empty", "world": world})
     else:
         output = io.BytesIO()
         with zipfile.ZipFile(io.BytesIO(persistence.save_world_bytes(world))) as original, zipfile.ZipFile(output, "w") as save:
             manifest = json.loads(original.read("manifest.json"))
-            manifest["world"]["hydrology_cache"]["fields"]["ice"]["fields"]["ledger"]["fields"].update(retired)
+            ice_fields = manifest["world"]["hydrology_cache"]["fields"]["ice"]["fields"]
+            ice_fields["ledger"]["fields"].update(retired)
+            del ice_fields["ice_release_depth_m"], ice_fields["bare_snowmelt_depth_m"]
             save.writestr("manifest.json", json.dumps(manifest))
             for name in original.namelist():
                 if name != "manifest.json":
@@ -153,6 +156,8 @@ def test_saved_ice_ledgers_drop_retired_frozen_water_fields(version):
     assert restored.closing_m3 == 7.0
     assert restored.residual_m3 == 0.0
     assert retired.keys().isdisjoint(vars(restored))
+    assert loaded.hydrology_cache.ice.ice_release_depth_m is None
+    assert loaded.hydrology_cache.ice.bare_snowmelt_depth_m is None
 
 
 def test_loading_a_save_drops_pre_node_key_collision_polarity_frame():

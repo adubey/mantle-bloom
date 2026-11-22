@@ -153,6 +153,12 @@ def test_volume_contract_closes_per_body_and_across_the_world():
         # Every booked sink reaches the water or the ocean: melt (with snow on bare ground) as
         # meltwater at its node, calving unrouted.
         assert float(np.dot(melt, area)) == pytest.approx(ledger.meltwater_m3, rel=1e-9, abs=1.0)
+        bare_snowmelt = ice.bare_snowmelt_depth_m
+        assert np.all((bare_snowmelt >= 0.0) & (bare_snowmelt <= melt))
+        assert np.dot(bare_snowmelt, area) == pytest.approx(ledger.snow_melted_m3)
+        ice_release = ice.ice_release_depth_m
+        np.testing.assert_array_equal(melt, ice_release + bare_snowmelt)
+        assert np.dot(ice_release, area) == pytest.approx(ledger.meltwater_m3 - ledger.snow_melted_m3)
         assert float(ice.calved_m3.sum()) == pytest.approx(ledger.calved_m3)
     assert ledger.closing_m3 > 0.0
 

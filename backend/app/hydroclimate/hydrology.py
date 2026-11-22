@@ -2272,23 +2272,21 @@ def _hold_remainder(
     recent: list[tuple],
     remaining: float,
     ledger_total,
-    areas: np.ndarray,
     frozen: list[float],
-):
-    """The held share of a settled glacier march in 'resolve' mode (#999): scales the
-    recent window's flows over `remaining` years while enforcing exact steady-state ice
-    balance for the fixed closing stock (`hold_acc == hold_ice_loss`) and keeping
-    bare-ground snowmelt independent, so both `ledger_total.residual_m3` and routed-vs-
-    ledger meltwater close exactly."""
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Extrapolate the settled window over the remaining years. Scale glacial losses
+    to balance the fixed closing stock, and extrapolate bare-ground snowmelt at its own
+    rate (#1019). Return glacier release, bare-ground snowmelt, and calving."""
     span = sum(r[0] for r in recent)
     scale = remaining / span
-    n = len(areas)
-    hold_melt = np.zeros(n)
-    hold_calved = np.zeros(n)
+    hold_ice_melt = np.zeros_like(recent[0][1])
+    hold_bare_snowmelt = np.zeros_like(hold_ice_melt)
+    hold_calved = np.zeros_like(hold_ice_melt)
     hold_flows: dict[str, float] = {}
-    for _, sub_melt, sub_calved, sub_ledger, sub_frozen in recent:
-        hold_melt = hold_melt + np.asarray(sub_melt, dtype=float) * scale
-        hold_calved = hold_calved + np.asarray(sub_calved, dtype=float) * scale
+    for _, ice_release, sub_bare_snowmelt, sub_calved, sub_ledger, sub_frozen in recent:
+        hold_ice_melt += ice_release * scale
+        hold_bare_snowmelt += sub_bare_snowmelt * scale
+        hold_calved += sub_calved * scale
         for key in ("accumulation_m3", "surface_melt_m3", "basal_melt_m3", "calved_m3", "overflow_m3", "snow_melted_m3", "capped_m3"):
             hold_flows[key] = hold_flows.get(key, 0.0) + getattr(sub_ledger, key) * scale
         frozen[0] += sub_frozen.land_m3 * scale
@@ -2297,32 +2295,21 @@ def _hold_remainder(
         frozen[3] += sub_frozen.bare_melted_m3 * scale
 
     ice_loss_keys = ("surface_melt_m3", "basal_melt_m3", "calved_m3", "overflow_m3", "capped_m3")
-    ice_melt_keys = ("surface_melt_m3", "basal_melt_m3", "overflow_m3", "capped_m3")
     hold_acc = hold_flows.get("accumulation_m3", 0.0)
-    hold_snow = hold_flows.get("snow_melted_m3", 0.0)
     hold_ice_loss = sum(hold_flows.get(key, 0.0) for key in ice_loss_keys)
-    hold_ice_melt = sum(hold_flows.get(key, 0.0) for key in ice_melt_keys)
 
     if hold_ice_loss > 0.0:
         loss_factor = hold_acc / hold_ice_loss
         for key in ice_loss_keys:
             hold_flows[key] = hold_flows.get(key, 0.0) * loss_factor
-        hold_calved = hold_calved * loss_factor
-        new_hold_ice_melt = hold_ice_melt * loss_factor
+        hold_calved *= loss_factor
+        hold_ice_melt *= loss_factor
     else:
         hold_flows["accumulation_m3"] = 0.0
-        new_hold_ice_melt = 0.0
-
-    raw_melt_total = float(np.dot(hold_melt, areas))
-    target_melt_total = new_hold_ice_melt + hold_snow
-    if raw_melt_total > 0.0:
-        hold_melt = hold_melt * (target_melt_total / raw_melt_total)
-    else:
-        hold_melt = np.zeros(n)
 
     for key, value in hold_flows.items():
         setattr(ledger_total, key, getattr(ledger_total, key) + value)
-    return hold_melt, hold_calved
+    return hold_ice_melt, hold_bare_snowmelt, hold_calved
 
 
 def _apply_march_abrasion(
@@ -2527,7 +2514,8 @@ def _march_glacier(
         })
         return new_depth, melt, ice
 
-    melt_total = np.zeros(n)
+    ice_release_total = np.zeros(n)
+    bare_snowmelt_total = np.zeros(n)
     calved_total = np.zeros(n)
     ledger_total = ice_sheet.IceLedger(opening_m3=float(np.dot(depth, areas)))
     volumes = [ledger_total.opening_m3]
@@ -2571,7 +2559,7 @@ def _march_glacier(
             # Each body's margin barely moves in a substep, so the last solve's margins
             # tell this one where to look for its opening extent (#147, same answer).
             hints = None if ice is None else ice_sheet.margin_hints(n, ice.bodies)
-            new_depth, melt, ice = solve_once(dt, ref_depth, ref_heat, hints)
+            new_depth, _, ice = solve_once(dt, ref_depth, ref_heat, hints)
         max_bed_cut_m = _apply_march_abrasion(
             ice.sliding_speed_m_per_yr, dt, world.glacier_erosion_multiplier,
             ocean_mask, cover_remaining, substrate_headroom, craton_keep,
@@ -2579,7 +2567,8 @@ def _march_glacier(
         )
         substeps += 1
         elapsed += dt
-        melt_total += melt
+        ice_release_total += ice.ice_release_depth_m
+        bare_snowmelt_total += ice.bare_snowmelt_depth_m
         calved_total += ice.calved_m3
         frozen_land_total += ice.frozen_precipitation.land_m3
         frozen_ocean_retained_total += ice.frozen_precipitation.ocean_retained_m3
@@ -2590,7 +2579,10 @@ def _march_glacier(
                 setattr(ledger_total, key, getattr(ledger_total, key) + value)
         ledger_total.capped_nodes = max(ledger_total.capped_nodes, ice.ledger.capped_nodes)
         if stop_on_settle:
-            recent.append((dt, melt, ice.calved_m3, ice.ledger, ice.frozen_precipitation))
+            recent.append((
+                dt, ice.ice_release_depth_m, ice.bare_snowmelt_depth_m,
+                ice.calved_m3, ice.ledger, ice.frozen_precipitation,
+            ))
         prev_depth, depth = depth, new_depth
         prev_heat, heat = heat, ice_sheet.frictional_heat_w_m2(
             ice_sheet.yield_stress_pa(np.asarray(mobile_cover_m, dtype=float), ice.warm_based),
@@ -2648,9 +2640,12 @@ def _march_glacier(
     remaining = max(years - elapsed, 0.0)
     if stop_on_settle and remaining > 1e-6 and recent:
         frozen = [frozen_land_total, frozen_ocean_retained_total, frozen_retained_total, frozen_bare_melted_total]
-        hold_melt, hold_calved = _hold_remainder(list(recent)[-watch.hold_window:], remaining, ledger_total, areas, frozen)
+        hold_ice_release, hold_bare_snowmelt, hold_calved = _hold_remainder(
+            list(recent)[-watch.hold_window:], remaining, ledger_total, frozen,
+        )
         frozen_land_total, frozen_ocean_retained_total, frozen_retained_total, frozen_bare_melted_total = frozen
-        melt_total += hold_melt
+        ice_release_total += hold_ice_release
+        bare_snowmelt_total += hold_bare_snowmelt
         calved_total += hold_calved
         _apply_march_abrasion(
             ice.sliding_speed_m_per_yr, remaining, world.glacier_erosion_multiplier,
@@ -2693,13 +2688,15 @@ def _march_glacier(
         settle_diagnostic_fired, last_change,
     )
     ice.calved_m3 = calved_total
+    ice.ice_release_depth_m = ice_release_total
+    ice.bare_snowmelt_depth_m = bare_snowmelt_total
     ice.ledger = ledger_total
     ice.abrasion_depth_m = abrasion_depth
     ice.raw_abrasion_depth_m = raw_abrasion_depth
     # One cap warning per step on the summed ledger, not one per substep (#806 review).
     ice_sheet.warn_if_capped(ledger_total)
     ice.frozen_precipitation = frozen_precipitation
-    return depth, melt_total, ice
+    return depth, ice_release_total + bare_snowmelt_total, ice
 
 
 def _lake_terrain(
@@ -2763,6 +2760,7 @@ def _transfer_lake_cap(lake_ice_m, handoff, glacier_depth, ice, areas, melt=None
             raise RuntimeError("Post-routing lake cap handoff would shed unrouted meltwater")
     else:
         melt[handoff] += excess
+        ice.ice_release_depth_m[handoff] += excess
     glacier_depth[handoff] = new_depth - excess
     ice.thickness[handoff] = np.minimum(
         np.maximum(ice.thickness[handoff] + added_ice, glacier_depth[handoff]), GLACIER_MAX_DEPTH_M,
