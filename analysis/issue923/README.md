@@ -117,15 +117,21 @@ backend/.venv/bin/python bin/debug/compare_icechunk_era5_transport_proxy.py \
 
 The script streams one day at a time from the `single/spatial` and `pressure/spatial` groups,
 selects 00, 06, 12 and 18 UTC, conservatively remaps monthly reference/proxy fields to 90×180,
-and records the Icechunk snapshot ID. The separate NOAA land mask is conservatively remapped to
-that comparison grid. After each month it atomically saves compressed 2° checkpoint arrays outside
-the repository. A manifest pins the checkpoint set to the Icechunk snapshot, date range, training
-split, grid, variables, sample interval, and land-mask checksum. Restarting with the same arguments
-skips completed months; incompatible checkpoints fail closed and are left untouched. After each
-December it atomically refreshes the compact `*.interim.json` summary. Through 2000 it reports
-training progress but no validation score; from 2001 onward it reports cumulative validation
-metrics using the frozen 1979–2000 fit. The final JSON is written only after all requested months
-are present. The checkpoints hold remapped monthly diagnostic fields, not raw ERA5 source arrays.
+and records the Icechunk snapshot ID. On resume it opens that exact snapshot instead of following a
+possibly advanced `main` tip. It selects the expected 00/06/12/18 UTC timestamps by label and checks
+that pressure and surface data have identical coordinates. The separate NOAA land mask is
+conservatively remapped to that comparison grid and cached beside the checkpoints, so a restart
+does not depend on NOAA being reachable. Remote loads retry up to three times with short backoff.
+
+After each month the script atomically saves compressed 2° checkpoint arrays outside the
+repository and updates `SHA256SUMS`. A manifest pins the checkpoint set to the Icechunk snapshot,
+date range, training split, grid, variables, sample interval, and land-mask checksum. Restarting
+with the same arguments skips complete months; incompatible or corrupted checkpoints fail closed
+and are left untouched. After each December it atomically refreshes the compact `*.interim.json`
+summary. Through 2000 it reports training progress but no validation score; from 2001 onward it
+reports cumulative validation metrics using the frozen 1979–2000 fit. The final JSON is written only
+after all requested months are present. The checkpoints hold remapped monthly diagnostic fields,
+not raw ERA5 source arrays.
 
 Source documentation:
 

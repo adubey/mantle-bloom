@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import time
 
 import icechunk
 import numpy as np
@@ -46,7 +47,7 @@ CHUNK_DAYS = 1
 SAMPLE_HOURS = 6
 
 
-def _open_era5() -> tuple[icechunk.Session, xr.Dataset, xr.Dataset]:
+def _open_era5(snapshot_id: str | None = None) -> tuple[icechunk.Session, xr.Dataset, xr.Dataset]:
     storage = icechunk.s3_storage(
         bucket=BUCKET,
         prefix=PREFIX,
@@ -54,30 +55,88 @@ def _open_era5() -> tuple[icechunk.Session, xr.Dataset, xr.Dataset]:
         anonymous=True,
     )
     repository = icechunk.Repository.open(storage)
-    session = repository.readonly_session(BRANCH)
+    if snapshot_id:
+        session = repository.readonly_session(snapshot_id=snapshot_id)
+    else:
+        session = repository.readonly_session(BRANCH)
     options = {"consolidated": False, "chunks": None, "zarr_format": 3}
     pressure = xr.open_zarr(session.store, group="pressure/spatial", **options)
     single = xr.open_zarr(session.store, group="single/spatial", **options)
     return session, pressure, single
 
 
+def _retry_read(load, label: str, attempts: int = 3):
+    """Retry transient source reads briefly; deterministic selection errors fail immediately."""
+    for attempt in range(attempts):
+        try:
+            return load()
+        except (KeyError, ValueError):
+            raise
+        except Exception as exc:
+            if attempt + 1 == attempts:
+                raise
+            delay_seconds = 2**attempt
+            print(
+                f"{label} failed ({exc}); retrying in {delay_seconds}s "
+                f"({attempt + 2}/{attempts})",
+                flush=True,
+            )
+            time.sleep(delay_seconds)
+    raise RuntimeError(f"unreachable retry state for {label}")
+
+
 def _load_land_fraction(
     target_lat: np.ndarray,
     target_lon: np.ndarray,
+    cache_path: Path,
 ) -> tuple[np.ndarray, str]:
-    """Use NOAA's static regular-grid land mask for the ERA5 archive's missing LSM field."""
-    with xr.open_dataset(
-        NOAA_LAND_MASK_URL,
-        engine="pydap",
-        decode_times=False,
-    ) as source:
-        land = source["land"].isel(time=0).load()
-        source_lat = np.asarray(source.lat.values, dtype=np.float64)
-        source_lon = np.asarray(source.lon.values, dtype=np.float64)
-        land_values = np.asarray(land.values, dtype=np.float64)
+    """Use a cached remap or fetch NOAA's static mask for the archive's missing LSM field."""
+    grid_hash = hashlib.sha256(
+        np.ascontiguousarray(target_lat, dtype=np.float64).tobytes()
+        + np.ascontiguousarray(target_lon, dtype=np.float64).tobytes()
+    ).hexdigest()
+    if cache_path.exists():
+        try:
+            with np.load(cache_path, allow_pickle=False) as cache:
+                if set(cache.files) != {"land_fraction", "source_mask_sha256", "grid_sha256"}:
+                    raise ValueError("unexpected fields")
+                land_fraction = cache["land_fraction"]
+                source_hash = str(cache["source_mask_sha256"].item())
+                cached_grid_hash = str(cache["grid_sha256"].item())
+        except Exception as exc:
+            raise ValueError(f"invalid land-mask cache {cache_path}: {exc}") from exc
+        if land_fraction.shape != (len(target_lat), len(target_lon)):
+            raise ValueError(f"wrong land-mask cache shape in {cache_path}")
+        if cached_grid_hash != grid_hash or not np.isfinite(land_fraction).all():
+            raise ValueError(f"land-mask cache does not match the requested target grid: {cache_path}")
+        _record_checkpoint_checksum(cache_path, cache_path.parent)
+        return land_fraction, source_hash
+
+    def fetch_mask() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        with xr.open_dataset(
+            NOAA_LAND_MASK_URL,
+            engine="pydap",
+            decode_times=False,
+        ) as source:
+            land = source["land"].isel(time=0).load()
+            return (
+                np.asarray(source.lat.values, dtype=np.float64),
+                np.asarray(source.lon.values, dtype=np.float64),
+                np.asarray(land.values, dtype=np.float64),
+            )
+
+    source_lat, source_lon, land_values = _retry_read(fetch_mask, "NOAA land mask")
     mask_sha256 = hashlib.sha256(np.ascontiguousarray(land_values).tobytes()).hexdigest()
     weights = _conservative_weights(source_lat, source_lon, target_lat, target_lon)
-    return conservative_remap(land_values, weights), mask_sha256
+    land_fraction = conservative_remap(land_values, weights)
+    _atomic_npz(
+        cache_path,
+        land_fraction=land_fraction,
+        source_mask_sha256=np.asarray(mask_sha256),
+        grid_sha256=np.asarray(grid_hash),
+    )
+    _record_checkpoint_checksum(cache_path, cache_path.parent)
+    return land_fraction, mask_sha256
 
 
 def _month_starts(first_year: int, last_year: int) -> list[datetime]:
@@ -100,15 +159,36 @@ def _get_chunk(
     start: datetime,
     end: datetime,
 ) -> tuple[xr.Dataset, xr.Dataset]:
-    time_slice = slice(start.isoformat(), (end - timedelta(seconds=1)).isoformat())
-    pressure_chunk = pressure[["q", "u", "v"]].sel(valid_time=time_slice)
-    single_chunk = single[["tcwv", "u10", "v10", "sp"]].sel(valid_time=time_slice)
-    # The archive is hourly; retain 00, 06, 12 and 18 UTC to match the registered 6-hour cadence.
-    pressure_chunk = pressure_chunk.isel(valid_time=slice(0, None, SAMPLE_HOURS)).load()
-    single_chunk = single_chunk.isel(valid_time=slice(0, None, SAMPLE_HOURS)).load()
-    if pressure_chunk.sizes.get("valid_time", 0) != single_chunk.sizes.get("valid_time", 0):
-        raise ValueError(f"surface and pressure sample counts differ for {start:%Y-%m-%d}")
-    return pressure_chunk, single_chunk
+    duration_hours = int((end - start).total_seconds() // 3600)
+    if duration_hours <= 0 or duration_hours % SAMPLE_HOURS:
+        raise ValueError(f"invalid chunk interval: {start} to {end}")
+    expected_times = np.asarray(
+        [
+            np.datetime64(start + timedelta(hours=hour), "ns")
+            for hour in range(0, duration_hours, SAMPLE_HOURS)
+        ],
+        dtype="datetime64[ns]",
+    )
+
+    def load_pair() -> tuple[xr.Dataset, xr.Dataset]:
+        try:
+            pressure_chunk = pressure[["q", "u", "v"]].sel(valid_time=expected_times)
+            single_chunk = single[["tcwv", "u10", "v10", "sp"]].sel(
+                valid_time=expected_times
+            )
+        except KeyError as exc:
+            raise ValueError(
+                f"archive is missing a required 6-hourly timestamp for {start:%Y-%m-%d}"
+            ) from exc
+        pressure_times = np.asarray(pressure_chunk.valid_time.values)
+        single_times = np.asarray(single_chunk.valid_time.values)
+        if not np.array_equal(pressure_times, expected_times) or not np.array_equal(
+            single_times, expected_times
+        ):
+            raise ValueError(f"pressure and surface timestamps do not match for {start:%Y-%m-%d}")
+        return pressure_chunk.load(), single_chunk.load()
+
+    return _retry_read(load_pair, f"ERA5 chunk {start:%Y-%m-%d}")
 
 
 def _array(dataset: xr.Dataset, name: str, dims: tuple[str, ...]) -> np.ndarray:
@@ -197,6 +277,18 @@ def _atomic_json(path: Path, payload: dict) -> None:
     os.replace(temporary_path, path)
 
 
+def _atomic_text(path: Path, value: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
+    ) as temporary:
+        temporary_path = Path(temporary.name)
+        temporary.write(value)
+        temporary.flush()
+        os.fsync(temporary.fileno())
+    os.replace(temporary_path, path)
+
+
 def _atomic_npz(path: Path, **arrays: np.ndarray) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
@@ -209,11 +301,37 @@ def _atomic_npz(path: Path, **arrays: np.ndarray) -> None:
     os.replace(temporary_path, path)
 
 
+def _record_checkpoint_checksum(path: Path, checkpoint_dir: Path) -> None:
+    """Maintain the capture directory's SHA256SUMS without rescanning old checkpoints."""
+    checksum_file = checkpoint_dir / "SHA256SUMS"
+    records: dict[str, str] = {}
+    if checksum_file.exists():
+        for line in checksum_file.read_text(encoding="utf-8").splitlines():
+            try:
+                digest, relative_path = line.split("  ", 1)
+            except ValueError as exc:
+                raise ValueError(f"invalid checksum entry in {checksum_file}: {line!r}") from exc
+            records[relative_path] = digest
+
+    relative_path = path.relative_to(checkpoint_dir).as_posix()
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    previous_digest = records.get(relative_path)
+    if previous_digest is not None and previous_digest != digest:
+        raise ValueError(f"checkpoint checksum changed for {relative_path}")
+    records[relative_path] = digest
+    lines = [f"{records[name]}  {name}" for name in sorted(records)]
+    _atomic_text(checksum_file, "\n".join(lines) + "\n")
+
+
 def _month_checkpoint_path(checkpoint_dir: Path, start: datetime) -> Path:
     return checkpoint_dir / "months" / f"{start:%Y-%m}.npz"
 
 
-def _load_month_checkpoint(path: Path, shape: tuple[int, int]) -> dict[str, np.ndarray]:
+def _load_month_checkpoint(
+    path: Path,
+    shape: tuple[int, int],
+    expected_samples: int,
+) -> dict[str, np.ndarray]:
     required = {"reference", "proxy_monthly", "proxy_submonthly", "sample_count", "extensions"}
     try:
         with np.load(path, allow_pickle=False) as checkpoint:
@@ -225,10 +343,15 @@ def _load_month_checkpoint(path: Path, shape: tuple[int, int]) -> dict[str, np.n
     for name in ("reference", "proxy_monthly", "proxy_submonthly"):
         if values[name].shape != (2, *shape):
             raise ValueError(f"invalid {name} shape in {path}: {values[name].shape}")
+        if not np.isfinite(values[name]).all():
+            raise ValueError(f"non-finite values in {name} checkpoint {path}")
     if values["sample_count"].shape != () or values["extensions"].shape != ():
         raise ValueError(f"invalid count fields in {path}")
-    if int(values["sample_count"]) <= 0:
-        raise ValueError(f"non-positive sample count in {path}")
+    if int(values["sample_count"]) != expected_samples:
+        raise ValueError(
+            f"unexpected sample count in {path}: {int(values['sample_count'])} "
+            f"(expected {expected_samples})"
+        )
     return values
 
 
@@ -400,7 +523,21 @@ def run(
     checkpoint_dir: Path,
     interim_output: Path,
 ) -> None:
-    session, pressure, single = _open_era5()
+    manifest_path = checkpoint_dir / "manifest.json"
+    previous_manifest = None
+    requested_snapshot_id = None
+    if manifest_path.exists():
+        try:
+            previous_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"invalid checkpoint manifest {manifest_path}: {exc}") from exc
+        if not isinstance(previous_manifest, dict):
+            raise ValueError(f"checkpoint manifest is not an object: {manifest_path}")
+        requested_snapshot_id = previous_manifest.get("snapshot_id")
+        if not isinstance(requested_snapshot_id, str) or not requested_snapshot_id:
+            raise ValueError(f"checkpoint manifest has no snapshot ID: {manifest_path}")
+
+    session, pressure, single = _open_era5(requested_snapshot_id)
     try:
         required_pressure = {"q", "u", "v"}
         required_single = {"tcwv", "u10", "v10", "sp"}
@@ -424,11 +561,15 @@ def run(
         target_lon = np.arange(1.0, 360.0, 2.0)
         weights = _conservative_weights(src_lat, src_lon, target_lat, target_lon)
         area = _cell_area(target_lat, target_lon)
-        remapped_land, land_mask_sha256 = _load_land_fraction(target_lat, target_lon)
+        remapped_land, land_mask_sha256 = _load_land_fraction(
+            target_lat,
+            target_lon,
+            checkpoint_dir / "land-mask.npz",
+        )
 
         manifest = {
-            "checkpoint_schema": 1,
-            "algorithm": "icechunk-era5-transport-v1",
+            "checkpoint_schema": 2,
+            "algorithm": "icechunk-era5-transport-v2",
             "snapshot_id": str(session.snapshot_id),
             "source_branch": BRANCH,
             "period": [first_year, last_year],
@@ -437,19 +578,19 @@ def run(
             "pressure_variables": ["q", "u", "v"],
             "single_variables": ["tcwv", "u10", "v10", "sp"],
             "sample_interval_hours": SAMPLE_HOURS,
+            "timestamp_selection": "explicit expected UTC timestamps; pressure and surface coordinates must match",
             "source_chunk_days": CHUNK_DAYS,
             "target_latitudes": target_lat.tolist(),
             "target_longitudes": target_lon.tolist(),
             "land_mask_sha256": land_mask_sha256,
         }
-        manifest_path = checkpoint_dir / "manifest.json"
-        if manifest_path.exists():
-            previous_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if previous_manifest is not None:
             if previous_manifest != manifest:
                 raise ValueError(
                     f"checkpoint configuration differs from {manifest_path}; "
                     "use a new checkpoint directory to start a separate run"
                 )
+            _record_checkpoint_checksum(manifest_path, checkpoint_dir)
         else:
             existing_months = list((checkpoint_dir / "months").glob("*.npz"))
             if existing_months:
@@ -458,6 +599,7 @@ def run(
                     "preserve them and choose a new checkpoint directory"
                 )
             _atomic_json(manifest_path, manifest)
+            _record_checkpoint_checksum(manifest_path, checkpoint_dir)
 
         month_starts = _month_starts(first_year, last_year)
         references: list[np.ndarray] = []
@@ -470,7 +612,15 @@ def run(
         for start in month_starts:
             checkpoint_path = _month_checkpoint_path(checkpoint_dir, start)
             if checkpoint_path.exists():
-                month = _load_month_checkpoint(checkpoint_path, area.shape)
+                expected_samples = (
+                    calendar.monthrange(start.year, start.month)[1] * 24 // SAMPLE_HOURS
+                )
+                month = _load_month_checkpoint(
+                    checkpoint_path,
+                    area.shape,
+                    expected_samples,
+                )
+                _record_checkpoint_checksum(checkpoint_path, checkpoint_dir)
             else:
                 accum = _accumulate_month(start, pressure, single, pressure_levels_hpa)
                 (
@@ -498,6 +648,7 @@ def run(
                     "extensions": np.asarray(extensions, dtype=np.int64),
                 }
                 _atomic_npz(checkpoint_path, **month)
+                _record_checkpoint_checksum(checkpoint_path, checkpoint_dir)
 
             references.append(month["reference"])
             proxy_monthly.append(month["proxy_monthly"])
