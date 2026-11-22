@@ -34,6 +34,216 @@
    "share_opposition_over_0.8": 0.1377504654228982
   }
  },
+ "b123-brake-0.25-100myr@100": {
+  "converging": {
+   "contacts": 897,
+   "length_km": 1209202.7340379707,
+   "asymmetry_median": 0.5599173650948439,
+   "share_one_sided_under_0.25": 0.16381625257067034,
+   "share_two_sided_over_0.5": 0.5621733438907441,
+   "faster_plate_speed_median": 3.45148898532018,
+   "slower_plate_speed_median": 1.5775581276345887,
+   "opposition_median": 0.760637561424343,
+   "share_opposition_over_0.8": 0.502167793595481
+  },
+  "diverging": {
+   "contacts": 925,
+   "length_km": 1132993.2734422185,
+   "asymmetry_median": 0.5290165916433156,
+   "share_one_sided_under_0.25": 0.15066130850278986,
+   "share_two_sided_over_0.5": 0.552398271431346,
+   "faster_plate_speed_median": 3.472355405116838,
+   "slower_plate_speed_median": 1.5944679453686799,
+   "opposition_median": 0.7633321924050767,
+   "share_opposition_over_0.8": 0.5091914866695317
+  },
+  "sliding": {
+   "contacts": 1029,
+   "length_km": 1014053.9925198108,
+   "asymmetry_median": 0.5434688034878492,
+   "share_one_sided_under_0.25": 0.15645339555913973,
+   "share_two_sided_over_0.5": 0.5575811879269079,
+   "faster_plate_speed_median": 3.5353329517083005,
+   "slower_plate_speed_median": 1.6066241827069312,
+   "opposition_median": 0.7572849416474972,
+   "share_opposition_over_0.8": 0.4652787735006196
+  }
+ },
+ "b123-brake-0.35-100myr@100": {
+  "converging": {
+   "contacts": 867,
+   "length_km": 1156974.8355389345,
+   "asymmetry_median": 0.5264597611808631,
+   "share_one_sided_under_0.25": 0.1359689736695508,
+   "share_two_sided_over_0.5": 0.539590189550123,
+   "faster_plate_speed_median": 3.202005716213071,
+   "slower_plate_speed_median": 1.411329879425739,
+   "opposition_median": 0.708517212479914,
+   "share_opposition_over_0.8": 0.4788304839814281
+  },
+  "diverging": {
+   "contacts": 900,
+   "length_km": 1170094.9004467218,
+   "asymmetry_median": 0.5355334895997891,
+   "share_one_sided_under_0.25": 0.1414795086363565,
+   "share_two_sided_over_0.5": 0.5594344341585336,
+   "faster_plate_speed_median": 3.2036582115251133,
+   "slower_plate_speed_median": 1.411329879425739,
+   "opposition_median": 0.706913967721617,
+   "share_opposition_over_0.8": 0.42996165505128164
+  },
+  "sliding": {
+   "contacts": 983,
+   "length_km": 1012742.764014344,
+   "asymmetry_median": 0.5350050282629706,
+   "share_one_sided_under_0.25": 0.13837952978470272,
+   "share_two_sided_over_0.5": 0.5600423629742107,
+   "faster_plate_speed_median": 3.2165168281422,
+   "slower_plate_speed_median": 1.4685816340340736,
+   "opposition_median": 0.7178994022674485,
+   "share_opposition_over_0.8": 0.42871082374298075
+  }
+ },
+ "b123-brake-0.25-100myr@20": {
+  "converging": {
+   "contacts": 643,
+   "length_km": 964181.9077962049,
+   "asymmetry_median": 0.6193741332228949,
+   "share_one_sided_under_0.25": 0.07274117230936349,
+   "share_two_sided_over_0.5": 0.6796816833288706,
+   "faster_plate_speed_median": 4.24813472993041,
+   "slower_plate_speed_median": 2.295653634771445,
+   "opposition_median": 0.7258218165855888,
+   "share_opposition_over_0.8": 0.47002634043778646
+  },
+  "diverging": {
+   "contacts": 677,
+   "length_km": 1089026.3525507431,
+   "asymmetry_median": 0.5520593927379692,
+   "share_one_sided_under_0.25": 0.12082992292488544,
+   "share_two_sided_over_0.5": 0.557616624490368,
+   "faster_plate_speed_median": 4.2338690108080455,
+   "slower_plate_speed_median": 2.2311971209565473,
+   "opposition_median": 0.6862053376610299,
+   "share_opposition_over_0.8": 0.4162727229276658
+  },
+  "sliding": {
+   "contacts": 721,
+   "length_km": 918041.7396530521,
+   "asymmetry_median": 0.5765307663791732,
+   "share_one_sided_under_0.25": 0.1066425449267148,
+   "share_two_sided_over_0.5": 0.589942151636929,
+   "faster_plate_speed_median": 4.24813472993041,
+   "slower_plate_speed_median": 2.295653634771445,
+   "opposition_median": 0.6974530899755578,
+   "share_opposition_over_0.8": 0.3958278639349483
+  }
+ },
+ "b123-brake-off-flow2@50": {
+  "converging": {
+   "contacts": 689,
+   "length_km": 1266292.6816672618,
+   "asymmetry_median": 0.5905243467253316,
+   "share_one_sided_under_0.25": 0.09125042212144703,
+   "share_two_sided_over_0.5": 0.6447989808668738,
+   "faster_plate_speed_median": 8.05127751246418,
+   "slower_plate_speed_median": 4.631435700497828,
+   "opposition_median": 0.7881870082847706,
+   "share_opposition_over_0.8": 0.5198046228606616
+  },
+  "diverging": {
+   "contacts": 751,
+   "length_km": 1323686.915049369,
+   "asymmetry_median": 0.6222468493294715,
+   "share_one_sided_under_0.25": 0.04833912521974029,
+   "share_two_sided_over_0.5": 0.693516033583995,
+   "faster_plate_speed_median": 8.182951711714093,
+   "slower_plate_speed_median": 4.693130443503815,
+   "opposition_median": 0.7789509542971892,
+   "share_opposition_over_0.8": 0.5066898524198988
+  },
+  "sliding": {
+   "contacts": 786,
+   "length_km": 1187145.4032833693,
+   "asymmetry_median": 0.6104655841435145,
+   "share_one_sided_under_0.25": 0.0674638426840986,
+   "share_two_sided_over_0.5": 0.6756208364463051,
+   "faster_plate_speed_median": 8.187691545189162,
+   "slower_plate_speed_median": 4.6981539404248185,
+   "opposition_median": 0.7843464297421161,
+   "share_opposition_over_0.8": 0.49812252881896774
+  }
+ },
+ "b123-brake-off-flow4@50": {
+  "converging": {
+   "contacts": 886,
+   "length_km": 1721451.8895034487,
+   "asymmetry_median": 0.5721611061153057,
+   "share_one_sided_under_0.25": 0.12818609464119055,
+   "share_two_sided_over_0.5": 0.6020198134344614,
+   "faster_plate_speed_median": 10.785322294758338,
+   "slower_plate_speed_median": 6.041564310918391,
+   "opposition_median": 0.7020130625208196,
+   "share_opposition_over_0.8": 0.46851245318536094
+  },
+  "diverging": {
+   "contacts": 962,
+   "length_km": 1739257.2475129582,
+   "asymmetry_median": 0.6321741808615855,
+   "share_one_sided_under_0.25": 0.08742871955317413,
+   "share_two_sided_over_0.5": 0.6636435550762998,
+   "faster_plate_speed_median": 10.901651790903637,
+   "slower_plate_speed_median": 6.383186502316435,
+   "opposition_median": 0.7074122429038278,
+   "share_opposition_over_0.8": 0.4342936319962228
+  },
+  "sliding": {
+   "contacts": 1027,
+   "length_km": 1596853.362983593,
+   "asymmetry_median": 0.5988572962470378,
+   "share_one_sided_under_0.25": 0.10545600175433817,
+   "share_two_sided_over_0.5": 0.6405754062488224,
+   "faster_plate_speed_median": 10.985340202548599,
+   "slower_plate_speed_median": 6.4154505113977445,
+   "opposition_median": 0.6976323888496959,
+   "share_opposition_over_0.8": 0.46076397040006534
+  }
+ },
+ "b123-brake-off-flow4@5": {
+  "converging": {
+   "contacts": 626,
+   "length_km": 1118961.1799046542,
+   "asymmetry_median": 0.6709091015530845,
+   "share_one_sided_under_0.25": 0.05858212220230342,
+   "share_two_sided_over_0.5": 0.7519286148095495,
+   "faster_plate_speed_median": 11.370249958231875,
+   "slower_plate_speed_median": 7.109289760658444,
+   "opposition_median": 0.6620120722380284,
+   "share_opposition_over_0.8": 0.31244247851022244
+  },
+  "diverging": {
+   "contacts": 638,
+   "length_km": 1085689.2583723464,
+   "asymmetry_median": 0.6450637280897248,
+   "share_one_sided_under_0.25": 0.08868036445596093,
+   "share_two_sided_over_0.5": 0.7166665954897578,
+   "faster_plate_speed_median": 11.405127993694018,
+   "slower_plate_speed_median": 7.109289760658444,
+   "opposition_median": 0.6420616242136792,
+   "share_opposition_over_0.8": 0.3642989996404078
+  },
+  "sliding": {
+   "contacts": 699,
+   "length_km": 927912.0617229992,
+   "asymmetry_median": 0.669010184957113,
+   "share_one_sided_under_0.25": 0.07764158186179185,
+   "share_two_sided_over_0.5": 0.7268133190970986,
+   "faster_plate_speed_median": 11.432049348743842,
+   "slower_plate_speed_median": 7.109289760658444,
+   "opposition_median": 0.6585915216052525,
+   "share_opposition_over_0.8": 0.3169663866378196
+  }
+ },
  "b123-brake-off-100myr@100": {
   "converging": {
    "contacts": 663,
@@ -104,74 +314,39 @@
    "share_opposition_over_0.8": 0.2552748549403051
   }
  },
- "b123-brake-off@10": {
+ "rifting-baseline-100myr@100": {
   "converging": {
-   "contacts": 623,
-   "length_km": 969529.4147496596,
-   "asymmetry_median": 0.7529024408578006,
-   "share_one_sided_under_0.25": 0.006707230628323924,
-   "share_two_sided_over_0.5": 0.863985124860602,
-   "faster_plate_speed_median": 6.711316293896563,
-   "slower_plate_speed_median": 4.302906281362737,
-   "opposition_median": 0.824479930670705,
-   "share_opposition_over_0.8": 0.5574051812029535
+   "contacts": 714,
+   "length_km": 1193068.287916128,
+   "asymmetry_median": 0.6435975947765032,
+   "share_one_sided_under_0.25": 0.0915533422611648,
+   "share_two_sided_over_0.5": 0.7347011979475389,
+   "faster_plate_speed_median": 0.6568029211238054,
+   "slower_plate_speed_median": 0.3995742233004087,
+   "opposition_median": 0.3786793648405113,
+   "share_opposition_over_0.8": 0.1924796150148275
   },
   "diverging": {
-   "contacts": 648,
-   "length_km": 1083512.4036295982,
-   "asymmetry_median": 0.6768994690382456,
-   "share_one_sided_under_0.25": 0.030103613010623198,
-   "share_two_sided_over_0.5": 0.7594630613392422,
-   "faster_plate_speed_median": 6.703089615349044,
-   "slower_plate_speed_median": 4.1783234673420555,
-   "opposition_median": 0.8026667199935851,
-   "share_opposition_over_0.8": 0.5135145590942605
+   "contacts": 763,
+   "length_km": 1076609.546621679,
+   "asymmetry_median": 0.6872708814415529,
+   "share_one_sided_under_0.25": 0.03774525353778518,
+   "share_two_sided_over_0.5": 0.7735119629239731,
+   "faster_plate_speed_median": 0.6744787071602034,
+   "slower_plate_speed_median": 0.3995742233004087,
+   "opposition_median": 0.3862882196163253,
+   "share_opposition_over_0.8": 0.14917238234493796
   },
   "sliding": {
-   "contacts": 703,
-   "length_km": 911895.6816207421,
-   "asymmetry_median": 0.7040459673424353,
-   "share_one_sided_under_0.25": 0.014329494904537882,
-   "share_two_sided_over_0.5": 0.7945161657024274,
-   "faster_plate_speed_median": 6.726461875938498,
-   "slower_plate_speed_median": 4.295144791910299,
-   "opposition_median": 0.7944970526803138,
-   "share_opposition_over_0.8": 0.5286308599176227
-  }
- },
- "rifting-baseline@50": {
-  "converging": {
-   "contacts": 635,
-   "length_km": 1067725.7865543468,
-   "asymmetry_median": 0.6705227209769566,
-   "share_one_sided_under_0.25": 0.09424159415645504,
-   "share_two_sided_over_0.5": 0.7087783160714134,
-   "faster_plate_speed_median": 0.7741403657742258,
-   "slower_plate_speed_median": 0.4907154846848169,
-   "opposition_median": 0.4184842152545293,
-   "share_opposition_over_0.8": 0.2249692438333614
-  },
-  "diverging": {
-   "contacts": 682,
-   "length_km": 1048396.7884137922,
-   "asymmetry_median": 0.6303187530294917,
-   "share_one_sided_under_0.25": 0.07877449574152164,
-   "share_two_sided_over_0.5": 0.6991300594346637,
-   "faster_plate_speed_median": 0.7717144861775422,
-   "slower_plate_speed_median": 0.4743588997311566,
-   "opposition_median": 0.4228632361186613,
-   "share_opposition_over_0.8": 0.17785011049985827
-  },
-  "sliding": {
-   "contacts": 736,
-   "length_km": 922189.9250318609,
-   "asymmetry_median": 0.6490046345985919,
-   "share_one_sided_under_0.25": 0.0790660247197096,
-   "share_two_sided_over_0.5": 0.709524023440761,
-   "faster_plate_speed_median": 0.7741403657742258,
-   "slower_plate_speed_median": 0.4743588997311566,
-   "opposition_median": 0.42866955858745986,
-   "share_opposition_over_0.8": 0.1813119812057979
+   "contacts": 817,
+   "length_km": 986634.665462193,
+   "asymmetry_median": 0.6571112448878114,
+   "share_one_sided_under_0.25": 0.08730051093095123,
+   "share_two_sided_over_0.5": 0.7379818096941564,
+   "faster_plate_speed_median": 0.6744787071602034,
+   "slower_plate_speed_median": 0.40749637810802103,
+   "opposition_median": 0.392466018166571,
+   "share_opposition_over_0.8": 0.16869322137514045
   }
  }
 }

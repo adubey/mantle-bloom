@@ -169,3 +169,64 @@ flow-driven baseline, they move mostly alike. The contact brake pulls the model 
 plate-mean-speed approximation (it ignores the variation of speed along a plate and uses each plate's area-mean
 no-net-rotation speed), and the opposition is nearly the same for converging, diverging and sliding contacts in both
 Earth and the model, so it measures how coherent the plates' motions are, not how they relate to the boundary type.
+
+## 8. Partial contact brake (`b123`, overall `contact_drag_multiplier` 0.25 and 0.35, craton 1.0; 20 seeds, 100 Myr)
+
+Chosen from #995's one-seed sweep (section 9 there: 0.25 matched Earth's median contact speed), with 0.35 added
+inside the sharp region between 0.25 and 0.5. Amended rule; one-sided v1 in brackets.
+
+| Setting | Myr | Accepted | Median contact speed, cm/yr | Plate speed (area-weighted), cm/yr | Rejected by L low / L high / KS |
+|---|---|---|---|---|---|
+| brake 0.25 | 20 | 4/20 (8) | 4.7 | | |
+| | 50 | 8/20 (14) | 4.1 | | |
+| | 75 | 8/20 (16) | 3.6 | 2.47 | 4 / 1 / 12 |
+| | 100 | 10/20 (16) | 3.6 | 2.36 | 4 / 1 / 9 |
+| brake 0.35 | 20 | 8/20 (13) | 3.8 | | |
+| | 50 | 9/20 (18) | 3.8 | | |
+| | 75 | 9/20 (19) | 3.4 | 2.23 | 1 / 3 / 10 |
+| | 100 | 12/20 (19) | 3.1 | 2.22 | 1 / 3 / 7 |
+
+(The three counts are not exclusive: a sample can fail more than one.) These are the first settings with substantial
+acceptance, 50% and 60% of worlds at 100 Myr; a world drawn from Earth passes about 85% of the time by construction
+(and 10 or 12 of 20 has a wide interval, roughly 27-73% and 36-81%). The speed distribution is close to Earth's;
+the remaining rejections are mostly the shape of the distribution (KS), not its level. Two costs:
+
+- **Plate speed 2.2-2.4 cm/yr**, below T1's 3-5 cm/yr band (the worlds range 1.2-3.5).
+- **Coherence is only partly restored**: opposition at converging contacts is 0.76 (brake 0.25) and 0.71 (0.35) at
+  100 Myr against Earth's 0.41, brake off 0.84, brake on 0.56. Half the contact length still has the neighbours moving
+  nearly against each other (opposition over 0.8: 0.50 and 0.48, Earth 0.22).
+
+## 9. Static mantle-flow amplitude (`b123-brake-off`, centre strengths x2 and x4 after generation; 20 seeds)
+
+| Flow scale | Myr | Accepted | Median contact speed, cm/yr | Plate speed, cm/yr | Flow share of driving | Opposition (converging) |
+|---|---|---|---|---|---|---|
+| x1 | 50 | 0/20 | 8.4 | 4.5 | 0.29 | 0.86 |
+| x2 | 50 | 0/20 | 9.6 | 5.8 | 0.43 | 0.79 |
+| x4 | 50 | 0/20 | 11.9 | 8.7 | 0.58 | 0.70 |
+
+Stronger flow raises plate and contact speeds and moves the opposition only a little (0.86 to 0.70); it does not
+make the contacts Earth-like. Mantle flow in the model is not the missing ingredient for contact speeds.
+
+## 10. Answer
+
+**Which force or flow feature predicts rejection?** Slab pull and ridge push switching on at the first step
+(sections 3-4). Speeds are mantle-flow-only at t=0 (so t=0 acceptance is vacuous), and from the first step slab
+pull is 52-58% of the driving torque and plate speed follows it per plate (Spearman 0.75-0.80). Across worlds the
+pulled share of boundary and the opening share separate outcomes at 1 Myr; no torque share does later.
+
+**Is it tunable in RFC 0021, or does it need a different driver?** Both parts of the answer matter:
+
+1. *Contact-speed level: tunable, with a cost.* The existing contact brake multiplier at 0.25-0.35 (the multiplier
+   already in RFC 0008/0021's reach) brings the contact-speed distribution to 50-60% acceptance at 100 Myr, where the
+   brake at 0 gives 0% and at 1 gives about 5% (too slow). No force or viscosity corner reaches it (section 6), and
+   neither does a stronger static mantle flow (section 9).
+2. *Plate speed and coherence: not by these knobs.* The same setting leaves plate speed at 2.2-2.4 cm/yr (below
+   T1) and neighbouring plates moving against each other (opposition 0.71-0.76 against Earth's 0.41), which the
+   flow-driven baseline reproduces (0.38-0.42) but only at 0.4-0.8 cm/yr plate speed. Earth-like speed and
+   Earth-like coherence together have not been reached by any setting tested. The structural candidate, not tested
+   here, is that slab pull should act through a field that also drags the neighbouring plates (slab-induced flow),
+   or be prescribed (the issue's alternative); this needs an RFC revision.
+
+Limits: 20 development seeds, one force-form family (`b123`), 1 Myr steps, plates-only; acceptance rates have wide
+intervals at n=20; the Earth reference is one planet's present state (141 plate pairs), and the amended rejection
+rule was fixed after seeing the baseline pass (section 5).
