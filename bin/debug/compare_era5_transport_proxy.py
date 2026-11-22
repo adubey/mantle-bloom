@@ -23,7 +23,8 @@ STORE = (
     "gs://weatherbench2/datasets/era5/"
     "1959-2023_01_10-wb13-6h-1440x721_with_derived_variables.zarr"
 )
-CHUNK_DAYS = 2
+# One-day blocks keep the 0.25° 13-level arrays within the probe's RAM budget. #923
+CHUNK_DAYS = 1
 DATASET_URL = "https://weatherbench2.readthedocs.io/en/latest/data-guide.html"
 G = 9.80665
 EARTH_RADIUS_M = 6_371_000.0
@@ -285,6 +286,56 @@ def _aggregate_metrics(
     return result
 
 
+def _accumulate_surface_transport_sums(
+    tcwv: np.ndarray,
+    u10: np.ndarray,
+    v10: np.ndarray,
+    tcwv_sum: np.ndarray,
+    u10_sum: np.ndarray,
+    v10_sum: np.ndarray,
+    tcwv_u10_sum: np.ndarray,
+    tcwv_v10_sum: np.ndarray,
+) -> None:
+    """Add one time block to the shared column-water and 10 m wind accumulators."""
+    tcwv_sum += np.nansum(tcwv, axis=0)
+    u10_sum += np.nansum(u10, axis=0)
+    v10_sum += np.nansum(v10, axis=0)
+    tcwv_u10_sum += np.nansum(tcwv * u10, axis=0)
+    tcwv_v10_sum += np.nansum(tcwv * v10, axis=0)
+
+
+def _transport_proxy_validity(
+    reference: np.ndarray,
+    proxy_monthly: np.ndarray,
+    proxy_submonthly: np.ndarray,
+    sample_counts: list[int],
+    expected_months: int,
+    land_fraction: np.ndarray,
+) -> dict:
+    return {
+        "all_requested_months_present": len(sample_counts) == expected_months,
+        "minimum_samples_per_month": int(min(sample_counts)) if sample_counts else None,
+        "maximum_samples_per_month": int(max(sample_counts)) if sample_counts else None,
+        "finite_reference": bool(np.isfinite(reference).all()),
+        "finite_monthly_mean_proxy": bool(np.isfinite(proxy_monthly).all()),
+        "finite_submonthly_mean_proxy": bool(np.isfinite(proxy_submonthly).all()),
+        "land_fraction_min": float(np.nanmin(land_fraction)),
+        "land_fraction_max": float(np.nanmax(land_fraction)),
+    }
+
+
+def add_comparison_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--first-year", type=int, default=1979)
+    parser.add_argument("--last-year", type=int, default=2022)
+    parser.add_argument("--train-end-year", type=int, default=2000)
+    parser.add_argument("--out", type=Path, required=True, help="compact JSON output path")
+
+
+def validate_comparison_years(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    if args.first_year >= args.last_year or not args.first_year <= args.train_end_year < args.last_year:
+        parser.error("years must satisfy first-year <= train-end-year < last-year")
+
+
 def run(first_year: int, last_year: int, train_end_year: int, output: Path) -> None:
     fs = __import__("gcsfs").GCSFileSystem(token="anon")
     mapper = fs.get_mapper(STORE)
@@ -387,11 +438,16 @@ def run(first_year: int, last_year: int, train_end_year: int, output: Path) -> N
                 chunk_ds["10m_v_component_of_wind"].transpose("time", "latitude", "longitude").values,
                 dtype=np.float32,
             )
-            tcwv_sum += np.nansum(tcwv, axis=0)
-            u10_sum += np.nansum(u10, axis=0)
-            v10_sum += np.nansum(v10, axis=0)
-            tcwv_u10_sum += np.nansum(tcwv * u10, axis=0)
-            tcwv_v10_sum += np.nansum(tcwv * v10, axis=0)
+            _accumulate_surface_transport_sums(
+                tcwv,
+                u10,
+                v10,
+                tcwv_sum,
+                u10_sum,
+                v10_sum,
+                tcwv_u10_sum,
+                tcwv_v10_sum,
+            )
             ntime += chunk_count
             del chunk_ds, q, u, v, ps, ivt_e, ivt_n, tcwv, u10, v10
 
@@ -471,6 +527,7 @@ def run(first_year: int, last_year: int, train_end_year: int, output: Path) -> N
         "method": {
             "target_grid": "90x180, 2 degree regular latitude-longitude cell centers",
             "remapping": "separable first-order conservative area-overlap weights",
+            "source_chunk_days": CHUNK_DAYS,
             "vertical_integration": "trapezoid in pressure; exclude levels below surface pressure; linearly extend lowest two valid levels to surface pressure; zero integrand at 0 hPa above 50 hPa top",
             "train_years": f"{first_year}-{train_end_year}",
             "validation_years": f"{train_end_year + 1}-{last_year}",
@@ -491,16 +548,16 @@ def run(first_year: int, last_year: int, train_end_year: int, output: Path) -> N
             "divergence_source_limit": "No independent mass-consistent divergence or water-vapour tendency in this selected store.",
         },
         "validity": {
-            "all_requested_months_present": len(sample_counts) == (last_year - first_year + 1) * 12,
-            "minimum_samples_per_month": int(min(sample_counts)),
-            "maximum_samples_per_month": int(max(sample_counts)),
+            **_transport_proxy_validity(
+                ref,
+                proxy_a,
+                proxy_b,
+                sample_counts,
+                (last_year - first_year + 1) * 12,
+                remapped_land,
+            ),
             "global_divergence_closure_reference_abs_kg_s": float(abs(integrated_div_ref)),
             "global_divergence_closure_proxy_abs_kg_s": float(abs(integrated_div_proxy)),
-            "finite_reference": bool(np.isfinite(ref).all()),
-            "finite_monthly_mean_proxy": bool(np.isfinite(proxy_a).all()),
-            "finite_submonthly_mean_proxy": bool(np.isfinite(proxy_b).all()),
-            "land_fraction_min": float(np.nanmin(remapped_land)),
-            "land_fraction_max": float(np.nanmax(remapped_land)),
             "global_divergence_closure_note": "Finite-volume periodic closed-sphere divergence should integrate to roundoff; this is an implementation check, not an independent atmospheric moisture-budget validation.",
         },
         "decision_thresholds": {
@@ -515,13 +572,9 @@ def run(first_year: int, last_year: int, train_end_year: int, output: Path) -> N
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--first-year", type=int, default=1979)
-    parser.add_argument("--last-year", type=int, default=2022)
-    parser.add_argument("--train-end-year", type=int, default=2000)
-    parser.add_argument("--out", type=Path, required=True, help="compact JSON output path")
+    add_comparison_arguments(parser)
     args = parser.parse_args()
-    if args.first_year >= args.last_year or not args.first_year <= args.train_end_year < args.last_year:
-        parser.error("years must satisfy first-year <= train-end-year < last-year")
+    validate_comparison_years(args, parser)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     run(args.first_year, args.last_year, args.train_end_year, args.out)
 
