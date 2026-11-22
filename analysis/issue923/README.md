@@ -51,16 +51,20 @@ backend/.venv/bin/python bin/debug/compare_era5_transport_proxy.py \
 ```
 
 The script records the source store, relevant variable names, time coverage, pressure levels,
-consolidated metadata checksum, method, metrics and validity checks. It streams at most one
-two-day block into memory and writes no downloaded arrays to the repository. Raw reanalysis
-chunks are not checked in.
+consolidated metadata checksum, method, metrics and validity checks. It streams one day of
+six-hourly data at a time to bound the high-resolution pressure-level arrays' memory use; this
+does not change the analysis period or any scientific calculation. It writes no downloaded
+arrays to the repository. Raw reanalysis chunks are not checked in.
 
 ## Outcome
 
 The first full pass accidentally used the coarser 1.5° WeatherBench 2 store (`240×121`) instead
 of the preregistered 0.25° store (`1440×721`). Its output is preserved as an exploratory result
 only; do not apply the preregistered decision thresholds to it. The intended 0.25° source metadata
-has now been verified, and the correct run is pending.
+was verified, but the full-resolution fetch was interrupted while xarray/dask was waiting on data
+loads. The captured traceback ends in `KeyboardInterrupt`; it does not show a storage permission
+exception, so the suspected access-control cause is not confirmed. No 0.25° result file was
+written.
 
 For transparency, the 1.5° exploratory pass gave an overall validation NRMSE of 0.580 and 12.7%
 opposing-vector area for the monthly-mean proxy; its covariance control gave 0.569 and 11.8%.
@@ -71,3 +75,61 @@ registered comparison.
 The exploratory JSON and provenance are in
 [`era5_transport_comparison_1p5_exploratory.json`](era5_transport_comparison_1p5_exploratory.json).
 No model saves, G3 tuning candidates or held-out worlds were used.
+
+## Open-source access probes
+
+The NOAA/PSL NCEP/NCAR Reanalysis 1 one-day access probe succeeded over public THREDDS/OPeNDAP
+for pressure humidity and winds, surface pressure, precipitable water, 10 m winds and land mask.
+It is 4-times daily. The pressure-level humidity file has only eight levels (300–1000 hPa),
+compared with 17 levels for wind, and the 10 m winds use a separate Gaussian grid. Using it would
+therefore yield only a partial-column transport reference at a much coarser resolution than the
+registered ERA5 comparison; the probe is not a scientific result, and no full NOAA comparison has
+been started.
+
+The next source probe succeeded against Earthmover's public Icechunk ERA5 archive on AWS S3 using
+anonymous access. The pressure group exposes `q`, `u`, and `v` on 13 levels from 50 to 1000 hPa;
+the single-level group exposes `tcwv`, `u10`, `v10`, and `sp`. A selected 2022-01-01 00 UTC sample
+loaded for all seven variables at 0.25° resolution. The archive omits land-sea mask, so the new
+diagnostic uses NOAA's static 2.5° NCEP/NCAR land-sea mask for the land/ocean strata. An initial
+full pass reached 1991, then its execution session disappeared without writing a result file. It
+had no intermediate checkpoints, so the completed years could not be recovered or summarized.
+
+This source substitution happened after the issue's registered source amendment. Results from it
+will be marked exploratory, and the original ERA5-specific decision thresholds will not be used as
+a preregistered acceptance decision. The comparison still tests the vector proxy against standard
+ERA5 pressure-level IVT; it does not test mass-consistent IVT or atmospheric budget closure.
+
+## Icechunk ERA5 comparison
+
+Install the updated analysis-only reader stack:
+
+```bash
+backend/.venv/bin/pip install -r analysis/issue923/requirements.txt
+```
+
+Run the source-substituted, 6-hourly comparison:
+
+```bash
+backend/.venv/bin/python bin/debug/compare_icechunk_era5_transport_proxy.py \
+  --out analysis/issue923/era5_transport_comparison_icechunk_exploratory.json \
+  --checkpoint-dir ~/mantle-bloom-captures/issue923/icechunk-era5-checkpoints
+```
+
+The script streams one day at a time from the `single/spatial` and `pressure/spatial` groups,
+selects 00, 06, 12 and 18 UTC, conservatively remaps monthly reference/proxy fields to 90×180,
+and records the Icechunk snapshot ID. The separate NOAA land mask is conservatively remapped to
+that comparison grid. After each month it atomically saves compressed 2° checkpoint arrays outside
+the repository. A manifest pins the checkpoint set to the Icechunk snapshot, date range, training
+split, grid, variables, sample interval, and land-mask checksum. Restarting with the same arguments
+skips completed months; incompatible checkpoints fail closed and are left untouched. After each
+December it atomically refreshes the compact `*.interim.json` summary. Through 2000 it reports
+training progress but no validation score; from 2001 onward it reports cumulative validation
+metrics using the frozen 1979–2000 fit. The final JSON is written only after all requested months
+are present. The checkpoints hold remapped monthly diagnostic fields, not raw ERA5 source arrays.
+
+Source documentation:
+
+- [NOAA/PSL NCEP/NCAR Reanalysis 1 overview](https://www.psl.noaa.gov/data/gridded/data.ncep.reanalysis.html)
+- [NOAA/PSL pressure-level data catalog](https://psl.noaa.gov/thredds/catalog/Datasets/ncep.reanalysis/pressure/catalog.html)
+- [NOAA/PSL surface data catalog](https://psl.noaa.gov/thredds/catalog/Datasets/ncep.reanalysis/surface/catalog.html)
+- [Earthmover ERA5 on AWS Open Data Registry](https://registry.opendata.aws/earthmover-era5/)

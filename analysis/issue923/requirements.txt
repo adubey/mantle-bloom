@@ -1,4 +1,7 @@
 dask[array]==2026.8.0
 gcsfs==2026.10.1
-xarray==2025.3.1
-zarr==2.18.7
+icechunk==2.3.1
+numcodecs[pcodec]==0.17.1
+pydap==3.5.11
+xarray==2026.9.0
+zarr==3.4.2
