@@ -1,7 +1,7 @@
 import { resetDom } from "./domSetup";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it, type TestContext } from "node:test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import Viewer from "../src/Viewer";
 import type { PublicState, PublicWorldListing } from "../src/publicApi";
 
@@ -346,5 +346,66 @@ describe("Viewer (/view)", () => {
     render(<Viewer />);
     const manageButtons = await screen.findAllByRole("button", { name: "Manage subscription" });
     assert.ok(manageButtons.length >= 1);
+  });
+
+  it("keeps Learn more links visible for ~1s per phase when updates arrive quickly", async () => {
+    const w1 = makeListing({ world_id: "w1", name: "Kepler-186 f", running: true });
+    let pollResolve: ((res: Response) => void) | null = null;
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const rawUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const url = new URL(rawUrl, "http://localhost");
+      if (url.pathname === "/auth/session") {
+        return jsonResponse({ admin: false, local: false, login: null, login_available: false, billing_available: false, user: null });
+      }
+      if (url.pathname === "/public/worlds") {
+        return jsonResponse({ worlds: [w1] });
+      }
+      if (url.pathname === "/public/worlds/w1/world") {
+        if (url.searchParams.has("after")) {
+          return new Promise<Response>((resolve, reject) => {
+            pollResolve = resolve;
+            init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+          });
+        }
+        return jsonResponse(makeState(w1, {
+          step_progress: { fraction: 0.1, phase: "Moving plates" },
+          progress_seq: 1,
+        }));
+      }
+      if (url.pathname === "/public/worlds/w1/render") {
+        return jsonResponse({ revision: w1.revision, seed: w1.seed, elapsed_years: w1.elapsed_years, image_base64: TINY_PNG_BASE64 });
+      }
+      throw new Error(`Unexpected fetch: ${url.pathname}${url.search}`);
+    }) as typeof fetch;
+
+    render(<Viewer learnMoreDwellMs={50} />);
+
+    await screen.findByText("Plate tectonics — Wikipedia");
+    await waitFor(() => assert.ok(pollResolve));
+
+    // Rapidly push a second phase and then clear step_progress.
+    const pushPoll = async (stepProgress: PublicState["step_progress"], seq: number) => {
+      const resolve = pollResolve!;
+      pollResolve = null;
+      resolve(jsonResponse(makeState(w1, { step_progress: stepProgress, progress_seq: seq })));
+      await waitFor(() => assert.ok(pollResolve));
+    };
+
+    await pushPoll({ fraction: 0.6, phase: "Resolving climate" }, 2);
+    // First phase's Learn more links remain visible during its dwell.
+    assert.ok(screen.getByText("Plate tectonics — Wikipedia"));
+    assert.equal(screen.queryByText("Climate — Wikipedia"), null);
+
+    await pushPoll(null, 3);
+    // Progress bar disappears when step_progress is null, while Learn more still dwells.
+    assert.equal(screen.queryByRole("progressbar", { name: "Advance in progress" }), null);
+    assert.ok(screen.getByText("Plate tectonics — Wikipedia"));
+
+    // After the dwell elapses, the queued second phase appears, then clears.
+    await screen.findByText("Climate — Wikipedia");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    });
+    assert.equal(screen.queryByText("Climate — Wikipedia"), null);
   });
 });
