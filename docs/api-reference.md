@@ -74,7 +74,7 @@ Open to anyone, for the logged-out `/view` page (#373). See
   out of the list when its run stops. `is_default` marks the owner's one
   default world (#755), which `/view` opens on before any other heuristic.
 - `GET /public/worlds/{world_id}/world`: `{"name", "world": {"revision", "seed", "elapsed_years"},
-  "running": bool, "is_default": bool, "view", "rotation": [9 floats], "steps_remaining": int | null, "step_limit": 30, "step_years": 100000,
+  "running": bool, "is_default": bool, "view", "rotation": [9 floats], "steps_remaining": int | null, "step_limit": 30, "step_years": 10000,
   "step_progress": {"fraction", "phase", "group"} | null, "progress_seq": int}`. `view` and `rotation` are
   the shared presentation every viewer of the world sees (#755). Hosted responses may
   include `snapshot_first: true` to indicate that the viewer can try the saved PNG route.
