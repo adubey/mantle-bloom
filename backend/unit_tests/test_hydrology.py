@@ -1353,6 +1353,24 @@ def _step_cold_pit(world, plate, precipitation, temperature, years, amplitude_c=
 
 
 @pytest.mark.usefixtures("march_glaciers")
+def test_marched_hydrology_routes_warm_rain_into_a_cold_lake(monkeypatch):
+    world, _, precipitation, temperature = _cold_pit()
+    monkeypatch.setattr(hydrology, "LAKE_ICE_SUBLIMATION_M_PER_YR", 0.0)
+
+    fields = hydrology.compute_hydrology(world, precipitation, temperature, years=250)
+
+    assert fields.lake_depth[29] > 0.0
+    assert fields.lake_external_dry_runoff_m3_per_yr[29] > 0.0
+    assert fields.lake_water_ledger.dry_runoff_m3 > 0.0
+    assert fields.lake_water_ledger.glacier_transfer_m3 == 0.0
+    assert fields.ice.ledger.closing_m3 == 0.0
+    assert abs(fields.lake_water_ledger.residual_m3) <= 1e-9 * fields.hypsometry.area_m2[29]
+    assert abs(fields.land_water_ledger.residual_m3) <= 1e-9 * (
+        fields.land_water_ledger.rain_m3 + fields.land_water_ledger.meltwater_m3
+    )
+
+
+@pytest.mark.usefixtures("march_glaciers")
 @pytest.mark.parametrize("case", ["advancing", "frozen-to-bed", "warm-cap"])
 def test_lake_cap_hands_off_by_mass_only_when_glacier_can_own_it(case, monkeypatch):
     world, plate, precipitation, temperature = _cold_pit(prior_ice_m=1.0)

@@ -150,7 +150,9 @@ copy with ages read from the ridges and cratons at the save's time.
 cache, from its saved fields, so a field this build no longer declares would fail the load.
 `npz_save._RETIRED_FIELDS` lists such fields by class, and the loader drops them before
 rebuilding the class. It holds `HydrologyFields.lake_ice_trace`, a transient per-node lake-ice
-trace removed in #757. Any other field the class lacks still makes the save a `CorruptSaveError`.
+trace removed in #757, plus the retired `IceLedger` cache fields `frozen_lake_m3`,
+`frozen_river_ice_m3` and `frozen_river_capped_m3` (#991). Any other field the class lacks still
+makes the save a `CorruptSaveError`.
 
 **Fields from a newer build.** A save from a newer build has a newer envelope version and is
 refused. Conversion separately refuses line state it doesn't recognise (§3) instead of

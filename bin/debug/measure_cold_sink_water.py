@@ -145,6 +145,8 @@ def deleted_m3_s(f, years):
     ice_m3 = getattr(ledger, "frozen_river_ice_m3", 0.0) + getattr(ledger, "frozen_lake_m3", 0.0)
     if ice_m3 == 0.0:
         return 0.0
+    # Resolve the conversion from the selected backend so historical revisions retain their
+    # own scaling when this diagnostic compares them with the current implementation.
     return ice_m3 / hydrology.WATER_TO_ICE / years / SECONDS_PER_YEAR
 
 
