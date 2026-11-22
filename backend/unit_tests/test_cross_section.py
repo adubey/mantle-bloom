@@ -8,6 +8,7 @@ from PIL import Image
 
 from app import cross_section
 from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC
+from app.world import World
 from .quad_fixtures import node_points, row_plate
 
 
@@ -100,6 +101,12 @@ def test_biome_colors_interpolate_display_colors_between_cells(monkeypatch):
     colors = cross_section._biome_colors(None, np.array([[1.0, 0.0, 0.0]]), np.zeros(1))
     palette = cross_section.biomes.BIOME_COLORS.astype(float)
     assert colors[0] == pytest.approx((palette[0] + palette[1]) / 2.0)
+
+
+def test_biome_colors_show_d6_polar_sea_ice():
+    pole = np.array([[0.0, 0.0, 1.0]])
+    colors = cross_section._biome_colors(World(seed=0), pole, np.array([-4000.0]))
+    np.testing.assert_array_equal(colors[0], cross_section.biomes.BIOME_COLORS[cross_section.biomes.POLAR_SEA_ICE])
 
 
 def test_vent_samples_give_each_volcano_node_one_middle_sample():

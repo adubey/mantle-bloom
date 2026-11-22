@@ -214,6 +214,16 @@ def _finish_loaded_world(world: World, *, is_v5: bool) -> World:
     _drop_derived_caches(world)
     _migrate_climate_humidity_units(world)
     _backfill_water_budget(world)
+    if not is_v5 and world.climate_cache is not None:
+        # Legacy pickles keep the prior step's climate for transpiration. Refresh only the
+        # display classes so their saved SST cutoff is replaced by the D6 diagnosis (#1014).
+        from .hydroclimate import climate
+
+        fields = world.climate_cache
+        fields.biome_ids = climate.classify_surface_biomes(
+            world, fields.lat_deg, fields.elevation_m, fields.is_ocean,
+            fields.air_temperature_c, fields.ocean_temperature_c, fields.precipitation_mm,
+        )
     if is_v5:
         # v5 freeze writes every field the build knows (dropped caches are set to
         # None by the loader, new fields backfilled above), so an unresolvable one

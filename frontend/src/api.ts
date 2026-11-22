@@ -936,11 +936,15 @@ export interface PointSample {
   lat_deg: number;
   lon_deg: number;
   elevation_m: number;
+  bed_elevation_m: number;
   is_ocean: boolean;
   biome_id: number;
   biome: string;
+  surface_climate: string;
   temperature_c: number;
   precipitation_mm: number;
+  sea_ice_state: "ice-free" | "seasonal" | "perennial" | null;
+  sea_ice_fraction: number;
   plate_id: number | null;
 }
 

@@ -118,13 +118,13 @@ def _continent(spacing_km=125.0, land_radius_km=900.0, half_km=1300.0, ocean_flo
     return points, r, elevation, np.full(len(points), cell)
 
 
-def _step(points, area, elevation, depth, climate, years, sea_level=0.0, allow_ocean_ice=None, is_ocean=None):
+def _step(points, area, elevation, depth, climate, years, sea_level=0.0, is_ocean=None):
     n = len(points)
     if is_ocean is None:
         is_ocean = elevation <= sea_level
     return ice_sheet.step_ice(
         points, _neighbors(points), area, elevation, np.zeros(n), sea_level, depth, climate, np.zeros(n), is_ocean,
-        np.zeros(n, dtype=bool) if allow_ocean_ice is None else allow_ocean_ice, years,
+        years,
     )
 
 
@@ -390,51 +390,16 @@ def test_seasonal_melt_prevents_permanent_ice_from_annual_mean_alone():
     assert run(0.0) > 0.0
 
 
-def test_sea_ice_cap_keeps_its_own_rule_and_other_floating_ice_calves():
-    # The cap is untouched by D1-D2 (D6 removes it; compute_hydrology already passes no cap):
-    # step_ice still accumulates on it, now at the physical rate, while other floating ice
-    # calves.
-    points, r, elevation, area = _continent(land_radius_km=300.0, half_km=600.0)
-    n = len(points)
+def test_cold_deep_ocean_calves_legacy_floating_ice_and_accumulates_no_cap():
+    points, _, elevation, area = _continent(land_radius_km=300.0, half_km=600.0, ocean_floor=-6000.0)
     ocean = elevation < 0.0
-    start = np.where(ocean, 20.0, 0.0)
-    cap = ocean & (np.arange(n) % 2 == 0)
-    climate = _cold(n, 100.0)
-    years = 1e3
-    depth, _, ice = _step(points, area, elevation, start, climate, years, allow_ocean_ice=cap)
-    gained = climate.rates(np.zeros(n))[0][cap] * (years / 1e6)
-    assert depth[cap] == pytest.approx(20.0 + gained)
-    assert np.all(depth[cap] < hydrology.GLACIER_MAX_DEPTH_M)
-    assert np.all(depth[ocean & ~cap] == 0.0)
-    assert ice.ledger.calved_m3 == pytest.approx(float(np.dot(start[ocean & ~cap], area[ocean & ~cap])))
+    opening = np.where(ocean, 20.0, 0.0)
+    depth, _, ice = _step(points, area, elevation, opening, _cold(len(points), 100.0), 1e3)
 
-
-def test_sea_ice_cap_is_held_to_the_depth_guard_booked_and_logged(caplog):
-    # Physical accumulation (RFC 0015 D1, #789) stacks a kilometre of ice per kyr at
-    # 1000 mm/yr, so the floating cap reaches the guard in one step. The guard keeps it at
-    # GLACIER_MAX_DEPTH_M, sheds the excess as meltwater, books it, and warns.
-    points, r, elevation, area = _continent(land_radius_km=300.0, half_km=600.0)
-    n = len(points)
-    cap = elevation < 0.0
-    start = np.where(cap, hydrology.GLACIER_MAX_DEPTH_M - 10.0, 0.0)
-    climate = _cold(n, 1000.0)
-    years = 1e3
-    with caplog.at_level("WARNING", logger="app.hydroclimate.ice_sheet"):
-        depth, melt, ice = _step(points, area, elevation, start, climate, years, allow_ocean_ice=cap)
-    ledger = ice.ledger
-    gained = climate.rates(np.zeros(n))[0][cap] * (years / 1e6)
-    assert np.all(depth[cap] == hydrology.GLACIER_MAX_DEPTH_M)
-    assert ledger.capped_m3 == pytest.approx(float(np.dot(gained - 10.0, area[cap])))
-    assert ledger.capped_nodes >= int(cap.sum())
-    assert abs(ledger.residual_m3) < 1e-9 * ledger.closing_m3
-    assert float(np.dot(melt[cap], area[cap])) == pytest.approx(ledger.capped_m3)
-    assert "GLACIER_MAX_DEPTH_M" in caplog.text
-
-    caplog.clear()
-    with caplog.at_level("WARNING", logger="app.hydroclimate.ice_sheet"):
-        _, _, ice = _step(points, area, elevation, np.where(cap, 100.0, 0.0), _cold(n, 1000.0), 10.0, allow_ocean_ice=cap)
-    assert ice.ledger.capped_m3 == 0.0 and ice.ledger.capped_nodes == 0
-    assert caplog.text == ""
+    assert np.all(depth[ocean] == 0.0)
+    assert ice.ledger.calved_m3 == pytest.approx(float(np.dot(opening, area)))
+    assert ice.frozen_precipitation.ocean_retained_m3 == 0.0
+    assert abs(ice.ledger.residual_m3) < 1e-9 * ice.ledger.closing_m3
 
 
 def _ice_ledger(opening=0.0, surface=0.0, basal=0.0, calved=0.0, overflow=0.0, capped=0.0):
@@ -575,18 +540,6 @@ def test_uniform_body_keeps_its_snow_and_the_ocean_around_it_keeps_nothing():
     _, _, ice = _step(points, area, elevation, np.zeros(n), _cold(n, 500.0), 100_000.0)
     _assert_retained_snow_is_the_scaled_accumulation(ice)
     assert ice.frozen_precipitation.ocean_retained_m3 == 0.0
-
-
-def test_sea_ice_cap_keeps_its_snow_as_ocean_input_to_the_account():
-    points, r, elevation, area = _continent(land_radius_km=300.0, half_km=600.0)
-    n = len(points)
-    ocean = elevation < 0.0
-    _, _, ice = _step(points, area, elevation, np.zeros(n), _cold(n, 100.0), 100_000.0, allow_ocean_ice=ocean)
-    frozen = ice.frozen_precipitation
-    _assert_retained_snow_is_the_scaled_accumulation(ice)
-    expected = float(np.dot(np.full(n, 0.1), area * ocean)) * 100_000.0
-    assert frozen.ocean_retained_m3 == pytest.approx(expected)
-    assert frozen.land_m3 + frozen.ocean_retained_m3 == pytest.approx(frozen.retained_m3 + frozen.bare_melted_m3)
 
 
 def _still(n, precipitation=0.0, temperature=-30.0, amplitude=0.0, frictional=0.0):
@@ -883,7 +836,7 @@ def test_margin_hints_leave_a_marched_ice_step_bit_identical(monkeypatch):
         for _ in range(6):
             hints = ice_sheet.margin_hints(n, bodies) if hinted and bodies is not None else None
             depth, melt, ice = ice_sheet.step_ice(
-                points, neighbors, area, np.zeros(n), np.zeros(n), -1e4, depth, climate, np.zeros(n), no, no, 2_000.0,
+                points, neighbors, area, np.zeros(n), np.zeros(n), -1e4, depth, climate, np.zeros(n), no, 2_000.0,
                 margin_hint_m=hints,
             )
             bodies = ice.bodies

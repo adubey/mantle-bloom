@@ -842,11 +842,7 @@ def climate_grid_indices(world_xyz: np.ndarray, height: int, width: int) -> tupl
     exactly: row 0 = north pole, row increases southward; column increases eastward,
     wrapping at the antimeridian."""
     lat, lon = geometry.xyz_to_latlon(world_xyz)
-    lat_deg = np.degrees(lat)
-    lon_deg = np.degrees(lon)
-    row = np.clip(np.floor((90.0 - lat_deg) / (180.0 / height)).astype(int), 0, height - 1)
-    col = np.floor((lon_deg + 180.0) / (360.0 / width)).astype(int) % width
-    return row, col
+    return climate.grid_cell_indices(np.degrees(lat), np.degrees(lon), (height, width))
 
 
 def _flatten(
@@ -1915,8 +1911,8 @@ def apply_erosion(
     # fallback before the first hydrology solve. Use that same mask here so an enclosed
     # below-sea-level lake keeps air temperature rather than reading as open ocean (#661).
     is_ocean_node = fields.is_ocean[row, col]
-    # The same real temperature a node actually experiences that render_image.py's own
-    # temperature view displays -- ocean surface over water, moderated air over land.
+    # Use the bed climate for erosion and hydrology. The glacier solver lapses its own
+    # trial surface, and the maps apply their separate surface readout (#1014).
     temperature = np.where(is_ocean_node, fields.ocean_temperature_c[row, col], fields.air_temperature_c[row, col])
 
     slope, drop_to_lowest_neighbor_m = compute_slope(points, elevation, world=world)

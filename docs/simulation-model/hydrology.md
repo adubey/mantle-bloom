@@ -986,10 +986,10 @@ since climate.py runs *before* this module each step).
   excess calves if it has a marine margin (booked as `calved_m3`, never routed: it goes
   straight to the ocean), or leaves its margin as meltwater otherwise. Calving from a partly
   marine margin that isn't saturated is not modelled (a body keeps growing inland until it
-  balances), so this under-states calving from Greenland-like sheets. Ice afloat on the
-  ocean outside the ice-age sea-ice cap calves; ice in an enclosed basin the ocean doesn't
-  reach does not (#552), and eustasy still counts it. Eustasy reads only `glacier_depth` and lake
-  depth, so every sink returns its water to the ocean's budget.
+  balances), so this under-states calving from Greenland-like sheets. Floating glacier ice
+  calves. Ice in an enclosed basin outside the connected ocean grounds (#552), and eustasy
+  counts it as stored water. The [floating sea-ice diagnostic](climate.md#floating-sea-ice-sea_icepy)
+  has no glacier storage or eustatic debit.
 - **Cold rivers and lake sinks (RFC 0015 D5, #991).** Rivers route liquid water through
   sub-zero reaches. Water settling at a cold sink feeds the lake's liquid-plus-ice budget.
   The lake cap follows D4's freezing, melt and handoff rules. Seasonal river ice cover and
@@ -999,11 +999,9 @@ since climate.py runs *before* this module each step).
 - **Thickness guard.** `GLACIER_MAX_DEPTH_M` (5 km) caps the plastic profile itself, so a
   sheet too big for it gets a flat top and its volume spreads outward through the root find
   instead of being shed. A plastic divide is `sqrt(2 c L)` thick for a margin L from the
-  divide: 3.3 km at 500 km and 4.7 km at 1000 km under 100 kPa. The floating sea-ice cap
-  is gone (D6 removes it; physical accumulation would stack it to the guard in one step),
-  so the step passes no ocean-ice cover. Ice shed there is booked (`capped_m3`), and the cap is never treated as
-  physics: real ice spreads and melts at its base long before 5 km, so any step where ice
-  reaches it logs a warning (`ice_sheet.warn_if_capped`).
+  divide: 3.3 km at 500 km and 4.7 km at 1000 km under 100 kPa. Ice shed at the guard is
+  booked as `capped_m3`. The guard protects the numerical solve. A step that reaches it
+  logs a warning (`ice_sheet.warn_if_capped`).
 - **Small bodies.** A plastic profile on one or two cells is meaningless, so a body with room
   for fewer than `ICE_BODY_MIN_NODES` (3) cells -- counting the ground it could advance onto,
   not just the nodes it covers -- spreads its volume evenly over its own nodes, under the same
@@ -1064,28 +1062,13 @@ population size and total ice depth fluctuate across steps as plates rotate glac
 in and out of genuinely cold regions, rather than growing monotonically or vanishing
 outright.
 
-**Ice ages** (`World.ice_age_period_years`, the Controls → Climate "Ice Age Frequency" slider; 0
-disables). A raised-cosine glacial intensity in `[0, 1]` (`climate.ice_age_glacial_intensity`)
-driven purely by `elapsed_years` -- 0 at generation and at every whole multiple of the period, 1
-at the half-period glacial maximum -- scales a uniform cooling of up to
-`climate.ICE_AGE_MAX_COOLING_C` applied to *both* temperature baselines in `compute_climate`, so
-air temperature, biomes, hydrology's freeze / glacier growth and erosion all feel it through
-fields they already read -- the cooling spreads the existing per-node snowfall rule
-(precipitation falls as snow) across a much wider area, and `hydrology.compute_hydrology`'s
-`is_frozen` mask also picks up *any* node already carrying a real ice cap
-(`GLACIER_VISIBLE_DEPTH_M` of ice), so snowfall stays snow on top of an ice sheet even on a step
-whose temperature briefly ticks above 0. Liquid water doesn't freeze (see *Liquid water doesn't
-freeze on the annual mean* above). Two further effects switch on in a deep glacial phase:
-hydrology lets ice pile up over freezing polar *ocean* nodes instead of calving at the coast
-(`hydrology.SEA_ICE_FORMATION_TEMP_C`, gated at intensity ≥
-`hydrology.ICE_AGE_SEA_ICE_MIN_INTENSITY`, with a little hysteresis for a cap that already
-exists) -- a floating polar ice cap that retreats when the age passes; and **glacial eustasy**
-returns -- `eustasy.trapped_water_volume_m3` debits the liquid-water equivalent of all
-`glacier_depth` plus every visible lake's `lake_depth` from the conserved total surface-water
-budget, so the ocean's share (and the shoreline) falls as the ice sheets grow and rises again as
-they melt. Ice on connected ocean lowers sea level only by its water above flotation (RFC 0015
-D6, #917), so the floating sea-ice cap leaves sea level unchanged; see
-[Eustatic sea level](surface-processes.md#eustatic-sea-level-eustasypy).
+**Ice ages.** `World.ice_age_period_years` sets the period of the climate's raised-cosine
+cooling. The cooling is zero at generation and every whole period and peaks at
+`ICE_AGE_MAX_COOLING_C` halfway through each cycle. The cooled climate drives snowfall
+and glacier mass balance, and increases diagnosed floating sea ice through the
+[D6 balance](climate.md#floating-sea-ice-sea_icepy). Eustasy counts grounded marine
+glaciers only by their ice above flotation. The derived floating sea ice carries no
+stored thickness or sea-level debit. [Eustatic sea level](surface-processes.md#eustatic-sea-level-eustasypy)
 
 ## River Inspector
 

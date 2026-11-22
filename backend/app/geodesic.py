@@ -29,7 +29,7 @@ import numpy as np
 from scipy.spatial import ConvexHull, cKDTree
 
 from . import geometry, plates
-from .hydroclimate import biomes, climate
+from .hydroclimate import biomes, climate, sea_ice
 from .world import World
 
 PLANET_RADIUS_KM = plates.PLANET_RADIUS_KM
@@ -223,12 +223,15 @@ def export_hexgrid(world: World, frequency: int) -> dict:
     ocean_temp_c = climate_fields.ocean_temperature_c.reshape(-1)[climate_idx]
     precip_mm = climate_fields.precipitation_mm.reshape(-1)[climate_idx]
     display_temp_c = np.where(is_ocean, ocean_temp_c, air_temp_c)
+    row, col = np.unravel_index(climate_idx, climate_fields.is_ocean.shape)
+    ice = sea_ice.sample(world, climate_fields, row, col, is_ocean)
 
     slope = _hex_slope(centers_xyz, elevation_m, tiles)
     biome_ids = biomes.classify_biomes(
         display_temp_c, precip_mm, elevation_m, slope, is_ocean, world.sea_level_m,
         lat_deg=np.degrees(center_lat), axial_tilt_deg=world.axial_tilt_deg,
         dist_to_land_rad=world.distance_from_land_approx(centers_xyz),
+        has_sea_ice=ice.fraction >= sea_ice.POLAR_SEA_ICE_FRACTION,
     )
 
     return {

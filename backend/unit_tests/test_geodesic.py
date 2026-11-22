@@ -119,3 +119,5 @@ def test_export_hexgrid_on_an_empty_world_still_returns_every_tile():
     result = geodesic.export_hexgrid(empty, frequency=8)
     assert result["num_tiles"] == geodesic.tile_count(8)
     assert all(t["is_ocean"] for t in result["tiles"])
+    assert any(t["biome"] == "Polar Sea Ice" and abs(t["center_lat_deg"]) > 65 for t in result["tiles"])
+    assert all(t["biome"] != "Polar Sea Ice" for t in result["tiles"] if abs(t["center_lat_deg"]) < 30)

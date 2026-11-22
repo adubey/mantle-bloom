@@ -164,6 +164,24 @@ couldn't update while a rotation drag was in progress (see "Rotating the view" b
 the live preview only redraws the *previous* rendered frame underneath a wireframe graticule,
 never the legend baked into it.
 
+### Ice on the maps
+
+Elevation, Combined, and Biome draw land and grounded marine glaciers at or above the
+10 m visibility threshold, perennial lake caps, and perennial sea ice. Elevation uses
+bed plus stored glacier depth for the ice surface. Elevation and Combined shade glaciers
+using the slope of that surface. Floating lake and sea ice stay flat. Combined and Biome
+assign the Ice Cap class to visible glaciers and perennial lake ice, and Polar Sea Ice
+to ocean cells ice-covered at least half the year. Seasonal sea ice appears through its
+class where it reaches that threshold.
+
+The Temperature view and the point inspector apply the glacier solver's lapse rate to
+grounded glacier depth. They use the D6 surface-temperature proxy over perennial sea ice.
+The inspector also reports the bed elevation, underlying surface climate class, and
+floating sea-ice state and fraction. The perennial lake-ice mask reads the hydrology
+solve's zero ice-free fraction and positive lake cap. A save with lake ice and an older
+cache can estimate that mask from the stored water column and current climate until
+hydrology runs again. [Point-sample API](../api-reference.md#get-worldsworld_idsample_atlat_deg0lon_deg0)
+
 ## Rotating the view
 
 Rotating the view changes which part of the planet faces the viewer. It changes the map's

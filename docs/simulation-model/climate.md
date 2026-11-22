@@ -507,18 +507,37 @@ boost) also drives glacier melt -- see [Glaciation](hydrology.md#glaciation-hydr
 **Pelagic classes** are PPOW's abiotic hierarchy rather than its Earth-geographic province
 names (which can't transfer to a different planet): a thermal realm from sea-surface
 temperature (polar / cold-temperate / temperate / subtropical / tropical) crossed with a
-structural zone -- sea ice (`has_sea_ice` or SST `< -1`), coastal shelf
-(`dist_to_land_rad <= SHELF_RANGE_RAD`, matching `geology.SHELF_RANGE_RAD`), equatorial
-divergence (`|lat| <= 6` in the tropics), or open ocean / subtropical gyre.
+structural zone such as the coastal shelf (`dist_to_land_rad <= SHELF_RANGE_RAD`),
+equatorial divergence (`|lat| <= 6` in the tropics), or the open ocean. On the maps,
+`has_sea_ice` selects Polar Sea Ice when at least half the year is ice-covered.
 
-`smooth_biome_field` (the version the map views and `/worlds/{world_id}/stats` use) computes
-`continentality` and coast distance from `is_ocean` itself via a distance transform, plus
-sea-ice cover from a passed glacier-depth grid, then runs the same stateless neighbour-vote
-cleanup as before on land cells only. `climate.compute_climate` calls it once per computation
-and stores `ClimateFields.biome_ids` (see [Climate](#climate-climatepy)); `stats.py`'s
-`biome_land_fraction` (which excludes every `OCEAN_IDS` id) reads that stored field, while the
-map-view / hex-export / vegetation-transpiration call sites still classify against their own
-grid.
+`smooth_biome_field` computes `continentality` and coast distance from `is_ocean` via a
+distance transform and runs a neighbour-vote cleanup on land cells. At the end of
+`compute_climate`, it applies the half-year sea-ice mask and stores the result in
+`ClimateFields.biome_ids` for Stats and cross-section colors. Map views and hex export
+sample the same D6 balance and apply it to their own land and ocean masks.
+
+#### Floating sea ice (`sea_ice.py`)
+
+RFC 0015 D6 derives floating sea ice from annual climate. The surface-temperature proxy
+`T_si` is sea-level air temperature from the land heating curve, with the climate's ice-age
+cooling and the current anomaly `ocean_temperature_c − ocean_baseline_c`. Its seasonal
+half-amplitude is the maritime value at the same latitude and axial tilt. The annual sinusoid
+gives freezing degree-days below −1.8 °C and thawing degree-days above 0 °C.
+
+Stefan growth is `sqrt(2 k FDD × 86,400 / (ρ_ice L_f))` metres. Annual loss combines surface
+melt at the glacier ice degree-day factor (8 mm water equivalent per degree-day, converted to
+ice thickness) with bottom melt from 2 W/m² of ocean heat. Ice is perennial where freezing
+occurs and growth exceeds loss. Other cells that freeze are seasonal. Their ice-covered
+fraction is the share of the year below −1.8 °C. The fraction is 1 for perennial ice and 0
+for ice-free water.
+
+Display samples this balance on the climate grid and applies it to floating-ocean cells.
+It leaves ocean temperature, albedo, glacier storage, and sea level unchanged. At the
+starting parameters G5's northern perennial edge was 8.4–8.5° equatorward of the observed
+edge. The half-year Polar Sea Ice class covered 15–34 million km² per hemisphere compared
+with 9–15 million km² observed. The gate applies with ice ages off. The full-cooling
+results are report-only. [G5 report](../../analysis/issue548/README.md)
 
 **Wetland and Carboniferous Forest** are no longer displayed climate classes (Köppen has no
 such category), but `classify_wetland` and its constants stay: `geology.py`'s per-node coal

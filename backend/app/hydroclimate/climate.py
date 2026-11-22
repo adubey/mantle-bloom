@@ -313,6 +313,16 @@ def _centered_gradient(field: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return gx, gy
 
 
+def grid_cell_indices(
+    lat_deg: np.ndarray, lon_deg: np.ndarray, shape: tuple[int, int],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Nearest cell centers in the unrotated climate grid. Longitude wraps at the seam."""
+    height, width = shape
+    row = np.clip(np.floor((90.0 - lat_deg) / (180.0 / height)).astype(np.intp), 0, height - 1)
+    col = np.floor((lon_deg + 180.0) / (360.0 / width)).astype(np.intp) % width
+    return row, col
+
+
 def _sample_at_offset(field: np.ndarray, dir_u: np.ndarray, dir_v: np.ndarray, dist_deg: float, lat_deg: np.ndarray) -> np.ndarray:
     """Samples `field` at each cell's own position offset by `dist_deg` along (dir_u, dir_v)
     (already unit-length), nearest-cell. Same closed-form lat/lon -> row/col technique used
@@ -510,8 +520,8 @@ def air_temperature_at_elevation(
     air_temperature_c: np.ndarray, base_elevation_m: np.ndarray, target_elevation_m: np.ndarray
 ) -> np.ndarray:
     """Adjust near-surface air temperature from the terrain elevation to a nearby surface
-    elevation with the model's standard lapse rate. Used for lake water surfaces, whose
-    height differs from the bed under them (RFC 0014 D3, #661)."""
+    elevation with the model's standard lapse rate. Lake water surfaces and glacier surfaces
+    use the same adjustment from the bed (RFC 0014 D3 and RFC 0015 D7)."""
     return np.asarray(air_temperature_c, dtype=float) - LAPSE_RATE_C_PER_KM * (
         np.asarray(target_elevation_m, dtype=float) - np.asarray(base_elevation_m, dtype=float)
     ) / 1000.0
@@ -1866,13 +1876,6 @@ def compute_climate(
         moisture_flux_convergence = compute_moisture_flux_convergence(humidity, wind_u, wind_v, lat_deg, mfc_noise)
         precipitation_mm = compute_precipitation(humidity, orographic_dump, moisture_flux_convergence)
 
-    display_temp = np.where(is_ocean, ocean_temperature_c, air_temperature_c)
-    slope = biomes.grid_slope(elevation_m, lat_deg)
-    biome_ids = biomes.smooth_biome_field(
-        display_temp, precipitation_mm, elevation_m, slope, is_ocean, world.sea_level_m,
-        lat_deg=lat_deg, axial_tilt_deg=world.axial_tilt_deg,
-    )
-
     return ClimateFields(
         lat_deg=lat_deg,
         lon_deg=lon_deg,
@@ -1889,10 +1892,29 @@ def compute_climate(
         current_v=current_v,
         humidity_g_kg=humidity,
         precipitation_mm=precipitation_mm,
-        biome_ids=biome_ids,
+        biome_ids=classify_surface_biomes(
+            world, lat_deg, elevation_m, is_ocean, air_temperature_c, ocean_temperature_c, precipitation_mm,
+        ),
         swell_rows=swell_rows,
         swell_cols=swell_cols,
         insolation_w_m2=compute_insolation_w_m2(lat_deg, world.axial_tilt_deg, world.solar_multiplier),
+    )
+
+
+def classify_surface_biomes(
+    world: World, lat_deg: np.ndarray, elevation_m: np.ndarray, is_ocean: np.ndarray,
+    air_temperature_c: np.ndarray, ocean_temperature_c: np.ndarray, precipitation_mm: np.ndarray,
+) -> np.ndarray:
+    """Classify finished climate for display and reporting, including D6 sea ice (#1014)."""
+    from . import sea_ice
+
+    display_temp = np.where(is_ocean, ocean_temperature_c, air_temperature_c)
+    slope = biomes.grid_slope(elevation_m, lat_deg)
+    ice = sea_ice.climate_grid_balance(world, lat_deg, ocean_temperature_c, is_ocean)
+    return biomes.smooth_biome_field(
+        display_temp, precipitation_mm, elevation_m, slope, is_ocean, world.sea_level_m,
+        lat_deg=lat_deg, axial_tilt_deg=world.axial_tilt_deg,
+        has_sea_ice=ice.fraction >= sea_ice.POLAR_SEA_ICE_FRACTION,
     )
 
 
