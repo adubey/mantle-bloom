@@ -62,13 +62,16 @@ assumes 10 kyr per step (`legacy_conversion.FALLBACK_YEARS_PER_STEP`, the UI's s
 step). Either way an age is capped at `elapsed_years`. A negative or fractional step count
 is a `CorruptSaveError`.
 
-**Glacier water.** RFC 0016 (#732) added the whole-world scalar
-`World.glacier_water_account_m3`, physical m³. It defaults to `None`, so an old save loads
-without a backfill and its first hydrology interval opens the balance from existing model ice
-divided by `hydrology.WATER_TO_ICE`, marking the step `initialized_from_ice` so replays record it
-as initial state. New saves round-trip it. It stays outside `eustasy.trapped_water_volume_m3`.
-RFC 0015's physical accounts replace it: migrate or discard this scalar then, without counting
-the same precipitation or ice inventory twice.
+**Glacier water.** `World.glacier_water_account_m3` is a whole-world scalar in m³ of water
+(RFC 0016, #732). A save without the scalar loads with value `None`. Its first hydrology
+interval converts opening glacier ice to water-equivalent volume using `RHO_ICE / RHO_WATER`
+(RFC 0015 D1, #789), marked as `initialized_from_ice` in the step ledger. A save with a balance
+round-trips it. The account stays outside `eustasy.trapped_water_volume_m3`.
+
+**Cached glacier ledger.** RFC 0015 D5 (#991) retires three diagnostics from the old
+conversion of liquid water into glacier ice. The loader drops those fields from cached
+ledgers in earlier v5 manifests and trusted legacy pickles. The remaining ledger fields
+and the persistent glacier and lake state still load with their saved values.
 
 **River water.** RFC 0016 (#725) added the persistent surface field `river_water_m`. A save
 from before it loads with the field's zero default, and the next step with an interval sets each
@@ -147,7 +150,9 @@ copy with ages read from the ridges and cratons at the save's time.
 cache, from its saved fields, so a field this build no longer declares would fail the load.
 `npz_save._RETIRED_FIELDS` lists such fields by class, and the loader drops them before
 rebuilding the class. It holds `HydrologyFields.lake_ice_trace`, a transient per-node lake-ice
-trace removed in #757. Any other field the class lacks still makes the save a `CorruptSaveError`.
+trace removed in #757, plus the retired `IceLedger` cache fields `frozen_lake_m3`,
+`frozen_river_ice_m3` and `frozen_river_capped_m3` (#991). Any other field the class lacks still
+makes the save a `CorruptSaveError`.
 
 **Fields from a newer build.** A save from a newer build has a newer envelope version and is
 refused. Conversion separately refuses line state it doesn't recognise (§3) instead of

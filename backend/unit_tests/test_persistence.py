@@ -7,9 +7,9 @@ import numpy as np
 import pytest
 from app import legacy_conversion, persistence, sparse_quad_patch
 from app.collision_polarity import PlateCollisionMasks, PolarityFrame
-from app.hydroclimate import climate
+from app.hydroclimate import climate, hydrology, ice_sheet
 from app.elevation_lines import line_spacing_rad
-from app.world import generate_world, step_world
+from app.world import World, generate_world, step_world
 
 
 from .legacy_lines import LegacyRowLookup, line_world_like, retired_class_names
@@ -106,6 +106,37 @@ def test_round_trip_keeps_step_read_caches():
     assert loaded.atmosphere_cfd_state is not None
     assert loaded.erosion_cache is None
     assert loaded.land_kdtree_cache is None
+
+
+@pytest.mark.parametrize("version", [4, 5], ids=["pickle", "npz"])
+def test_saved_ice_ledgers_drop_retired_frozen_water_fields(version):
+    world = World(seed=0, plates=[])
+    empty = np.zeros(0)
+    cache = hydrology.compute_hydrology(world, empty, empty, years=0.0)
+    ledger = ice_sheet.IceLedger(opening_m3=5.0, accumulation_m3=2.0, closing_m3=7.0)
+    cache.ice = ice_sheet.IceStep(empty, empty, empty.astype(bool), empty, empty, empty, ledger)
+    world.hydrology_cache = cache
+    retired = {"frozen_lake_m3": 0.0, "frozen_river_ice_m3": 0.0, "frozen_river_capped_m3": 0.0}
+
+    if version == 4:
+        vars(ledger).update(retired)
+        data = pickle.dumps({"format": persistence.SAVE_FORMAT, "version": 4, "surface": "empty", "world": world})
+    else:
+        output = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(persistence.save_world_bytes(world))) as original, zipfile.ZipFile(output, "w") as save:
+            manifest = json.loads(original.read("manifest.json"))
+            manifest["world"]["hydrology_cache"]["fields"]["ice"]["fields"]["ledger"]["fields"].update(retired)
+            save.writestr("manifest.json", json.dumps(manifest))
+            for name in original.namelist():
+                if name != "manifest.json":
+                    save.writestr(name, original.read(name))
+        data = output.getvalue()
+
+    loaded = persistence.load_world_bytes(data)
+    restored = loaded.hydrology_cache.ice.ledger
+    assert restored.closing_m3 == 7.0
+    assert restored.residual_m3 == 0.0
+    assert retired.keys().isdisjoint(vars(restored))
 
 
 def test_loading_a_save_drops_pre_node_key_collision_polarity_frame():

@@ -106,34 +106,23 @@ Three kinds of water/forcing move along `flow_target`:
   Routed external supply that ends at a land sink with no active lake body is reported separately
   as `land_sink_settlement_m3`, using the active lake membership map before the solve. Missing
   supply at an owned lake cell therefore remains a residual.
-  It is RFC 0016 G0's rain-only interim budget: frozen precipitation and ice storage are outside
-  it and melt is still in scaled glacier units.
-- **Interim glacier water** (`World.glacier_water_account_m3`, `glacier_water_ledger`) closes
-  RFC 0016 G0's full precipitation ledger until RFC 0015's physical accounts replace it (#732).
-  `partition_precipitation_m3` splits diagnostic precipitation into liquid and frozen m³ on the
-  existing `is_frozen` mask, before any scaled conversion. Frozen water the ice keeps enters one
-  whole-world balance; snow melting on bare ground within the step is booked directly as
-  outward. The split is by node: all snow on a sea-ice cap or uniform body counts as kept even
-  if part of it melts that step, and that melt then counts as ice loss, so the per-step split is
-  approximate where the balance isn't. A save without a balance opens from model ice divided by `WATER_TO_ICE`, recorded as
-  initial state. Each step releases the fraction of opening model ice lost to melt, calving,
-  overflow and the depth guard, capped at 1, and books it by destination. With no opening ice
-  it releases nothing. Physical and scaled volumes are never subtracted from each other, so the
-  account only follows the ice history. It is bookkeeping: nothing reads it, its release is not
-  routed, and it stays out of `eustasy.trapped_water_volume_m3`, so glacier flow, melt, erosion,
-  lakes and sea level are unaffected. `full_land_water_residual_m3` adds it to the rain-only
-  budget, with the scaled meltwater kept as a separate input. Its frozen terms cancel by
-  construction, so closing it is bookkeeping, not evidence of where glacier water physically
-  goes. The account has no term for ice changed outside the solver, such as tectonic remapping,
-  so it can drift from model ice, and a balance left when model ice reaches zero can't release.
+  The land ledger balances the liquid inflows, outflows and storage terms in water equivalent.
+- **Interim glacier water** (`World.glacier_water_account_m3`, `glacier_water_ledger`) tracks
+  frozen precipitation and releases in physical m³ of water (RFC 0016 G0, #732). It uses
+  opening dry-share snowfall and snowfall on bed-frozen lake cells. The retained share enters
+  the balance, and bare-ground snowmelt is booked as outward. A save without a balance
+  initializes it from opening glacier ice volume times `RHO_ICE / RHO_WATER`. The account
+  releases the fraction of opening ice lost to melt, calving, overflow and the depth guard,
+  capped at one. `full_land_water_residual_m3` combines it with the liquid ledger. The
+  glacier account supplies diagnostics. Physical routing uses the glacier solver's meltwater.
 - **Glacier meltwater** is the ice ledger's per-step volume (`IceLedger.meltwater_m3`: surface
   and basal melt, overflow, ice shed at the depth guard, and snow melting on bare ground)
   divided by the step length (`hydrology.meltwater_m3_per_yr`). Melted ice converts by mass
   (`RHO_ICE / RHO_WATER`). Calved ice goes to the ocean unrouted, and accumulation stays ice,
   so neither is discharge.
-- **No liquid water becomes ice.** Water reaching a sink below 0 C on the annual mean pools as
-  a lake there like any other, and a cold lake keeps its water (RFC 0014 D2(b), #539). See
-  [Glaciation](#glaciation-hydrologypy), *Liquid water doesn't freeze on the annual mean*.
+- **Liquid water at cold sinks.** Runoff and glacier meltwater supply a lake at a cold
+  sink. Its water column can hold liquid water and a seasonal cap (RFC 0015 D4 and D5).
+  See [Glaciation](#glaciation-hydrologypy).
 - **The breach surge** (`HydrologyFields.breach_surge`) is a spilling lake's erosive forcing,
   sized by the solved lake component's node count (`LAKE_BREACH_EROSION_COEFFICIENT`). It is never
   part of the discharge. Its separately-routed accumulation (`breach_surge_accum`) contributes to
@@ -313,7 +302,7 @@ discharge, channel-width growth, deposition, geology or lake silt.
   separately (#757). Only open-water evaporation receives the up-to-30% shallow-margin
   boost (`SHALLOW_EVAPORATION_BOOST`). Dry-land Budyko runoff keeps its existing annual-mean
   potential evaporation. A lake with no ice-free season retains liquid water and balances
-  supply against sublimation and overflow; water is not converted to ice at `WATER_TO_ICE`.
+  supply against sublimation and overflow. Its cap growth is bounded by the lake-ice model.
   The prognostic solver integrates storage through each timestep, limits losses to available
   water, and books overflow above the rim or tier depth ceiling. Production substeps the
   solve (`hydrology.lake_substeps`, #875): the slice is the step's hundredth clamped to
@@ -1001,20 +990,12 @@ since climate.py runs *before* this module each step).
   ocean outside the ice-age sea-ice cap calves; ice in an enclosed basin the ocean doesn't
   reach does not (#552), and eustasy still counts it. Eustasy reads only `glacier_depth` and lake
   depth, so every sink returns its water to the ocean's budget.
-- **Liquid water doesn't freeze on the annual mean.** Rivers flow on through nodes below
-  `FREEZE_POINT_C`, water reaching a cold sink pools there as a lake, and a cold lake balances
-  like any other (RFC 0014 D2(b), #539). Snowfall follows the seasonal snow share on the
-  ground and on the opening ice surface (see above), and rain on the ice drains as runoff
-  until D8 routes it on the ice.
-  Liquid water used to freeze where the annual mean was below 0 C: a river reaching a cold
-  sink became river ice at `WATER_TO_ICE` (`GLACIER_ACCUMULATION_RATE / 1000`, 1/50,000 of its
-  volume, a step late), and a lake on a cold node was emptied into the ice at the same rate. So
-  nearly all of that water was deleted: 2.5-48% of land-to-ocean discharge per step on #519's
-  evidence save. A sub-zero annual mean doesn't mean no summer flow (design principle 3), and
-  ice cover doesn't stop a lake's inflow, storage or spill. Earlier still, rivers froze on warm
-  ice too, and a 36,000 m^3/s river rebuilt a single-node, 600 m ice plug every step at +0.4C
-  (#503). `IceLedger.frozen_lake_m3`, `frozen_river_ice_m3` and `frozen_river_capped_m3` are
-  now always 0; RFC 0015 D5 removes them and `WATER_TO_ICE`.
+- **Cold rivers and lake sinks (RFC 0015 D5, #991).** Rivers route liquid water through
+  sub-zero reaches. Water settling at a cold sink feeds the lake's liquid-plus-ice budget.
+  The lake cap follows D4's freezing, melt and handoff rules. Seasonal river ice cover and
+  aufeis are omitted from the annual budget. Where water persists in a cold sink, D4's lake
+  storage accounts for it. Land precipitation is booked as rain or snowfall, with snow stored
+  as glacier ice or returned as meltwater, and with the lake's wet share in the lake budget.
 - **Thickness guard.** `GLACIER_MAX_DEPTH_M` (5 km) caps the plastic profile itself, so a
   sheet too big for it gets a flat top and its volume spreads outward through the root find
   instead of being shed. A plastic divide is `sqrt(2 c L)` thick for a margin L from the

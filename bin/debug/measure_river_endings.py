@@ -99,7 +99,7 @@ def main() -> None:
             "visible_networks_lake": sum(r.mouth_type == "lake" for r in visible),
             "visible_networks_other": sum(r.mouth_type == "other" for r in visible),
             "warm_ice_plugs": int((isolated & (temperature >= 0.0)).sum()),
-            "frozen_river_ice_km3": ledger.frozen_river_ice_m3 / 1e9,
+            "frozen_river_ice_km3": getattr(ledger, "frozen_river_ice_m3", 0.0) / 1e9,
             "snow_accumulation_km3": ledger.accumulation_m3 / 1e9,
             "visible_lake_nodes": int(lake.sum()),
             **{f"ice_{key}_km3": value / 1e9 for key, value in vars(ledger).items() if key.endswith("_m3")},

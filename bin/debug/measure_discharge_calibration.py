@@ -162,9 +162,9 @@ def replay(args, world, plate_arrays, line_spacing_rad, erosion_mod, hydrology, 
             if hydro.ice is not None:
                 ledger = hydro.ice.ledger
                 totals["ice_accumulation_km3"] += ledger.accumulation_m3 / 1e9
-                totals["ice_frozen_lake_km3"] += ledger.frozen_lake_m3 / 1e9
+                totals["ice_frozen_lake_km3"] += getattr(ledger, "frozen_lake_m3", 0.0) / 1e9
                 totals["ice_meltwater_km3"] += ledger.meltwater_m3 / 1e9
-                totals["ice_frozen_river_km3"] += ledger.frozen_river_ice_m3 / 1e9
+                totals["ice_frozen_river_km3"] += getattr(ledger, "frozen_river_ice_m3", 0.0) / 1e9
                 totals["ice_calving_km3"] += ledger.calved_m3 / 1e9
                 worst_ice_residual_m3 = max(worst_ice_residual_m3, abs(ledger.residual_m3))
         if step % every == 0 or step == steps:

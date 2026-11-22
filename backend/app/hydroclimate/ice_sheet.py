@@ -625,10 +625,6 @@ class IceLedger:
     `snow_melted_m3` is snowfall on ice-free ground that melts within the step and never joins
     the ice. `lake_cap_transfer_m3` is physical ice added from a lake cap after the march (#990).
 
-    `frozen_lake_m3`, `frozen_river_ice_m3` and `frozen_river_capped_m3` are always 0: liquid
-    water no longer freezes into the ice (RFC 0014 D2(b), #539). They stay so older code and
-    caches reading them still work, and RFC 0015 D5 deletes them.
-
     `capped_m3` is ice shed as meltwater at the GLACIER_MAX_DEPTH_M guard, and
     `capped_nodes` how many nodes reached it (including sheets whose plastic profile was
     flattened there, which sheds nothing). Real ice spreads and melts at its base long before
@@ -636,18 +632,15 @@ class IceLedger:
     logged as a warning (`warn_if_capped`)."""
 
     opening_m3: float = 0.0
-    frozen_lake_m3: float = 0.0
     accumulation_m3: float = 0.0
     surface_melt_m3: float = 0.0
     basal_melt_m3: float = 0.0
     calved_m3: float = 0.0
     overflow_m3: float = 0.0
     closing_m3: float = 0.0
-    frozen_river_ice_m3: float = 0.0
     snow_melted_m3: float = 0.0
     capped_m3: float = 0.0
     capped_nodes: int = 0
-    frozen_river_capped_m3: float = 0.0
     lake_cap_transfer_m3: float = 0.0
 
     @property
@@ -661,7 +654,7 @@ class IceLedger:
     @property
     def residual_m3(self) -> float:
         return (
-            self.opening_m3 + self.frozen_lake_m3 + self.lake_cap_transfer_m3 + self.accumulation_m3
+            self.opening_m3 + self.lake_cap_transfer_m3 + self.accumulation_m3
             - self.surface_melt_m3 - self.basal_melt_m3
             - self.calved_m3 - self.overflow_m3 - self.capped_m3 - self.closing_m3
         )
@@ -723,10 +716,8 @@ def update_glacier_water_account(
 ) -> GlacierWaterLedger:
     """One step of the account. The account releases the fraction of opening ice lost this
     step and so follows the ice history (RFC 0016). A save without a balance opens from its
-    opening ice converted by mass (`RHO_ICE / RHO_WATER`), now that the ledger is physical
-    (RFC 0015 D1, #789): opening at `WATER_TO_ICE` would book ~50,000x too much water
-    (#806 review). With no opening ice there is nothing to take a fraction of, so nothing
-    is released."""
+    opening ice converted by mass (`RHO_ICE / RHO_WATER`, RFC 0015 D1, #789).
+    With no opening ice the released fraction is zero."""
     initialized = prior_balance_m3 is None
     opening = (
         ledger.opening_m3 * RHO_ICE / RHO_WATER if initialized else prior_balance_m3

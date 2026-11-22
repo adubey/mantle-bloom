@@ -104,7 +104,10 @@ _DERIVED_SCRATCH = frozenset(
 # still carry. `thaw` drops them before rebuilding the class, so those saves load; any other
 # field the class lacks still fails the load as a changed shape. A retired name stays reserved:
 # remove its entry before reusing it, or saves would silently drop the new field.
+_RETIRED_ICE_LEDGER_FIELDS = frozenset({"frozen_lake_m3", "frozen_river_ice_m3", "frozen_river_capped_m3"})
 _RETIRED_FIELDS = {
+    # D5 retires the cached river and lake conversion diagnostics (#991).
+    "app.hydroclimate.ice_sheet.IceLedger": _RETIRED_ICE_LEDGER_FIELDS,
     # A transient per-node lake-ice trace, saved empty unless lineage tracing was on (#757).
     "app.hydroclimate.hydrology.HydrologyFields": frozenset({"lake_ice_trace"}),
 }

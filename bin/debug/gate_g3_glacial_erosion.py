@@ -49,7 +49,8 @@ from app.hydroclimate import erosion, glacier_erosion, hydrology, ice_sheet  # n
 from sweep_lib import _land_volume_above_sea_km3  # noqa: E402
 
 ARMS: dict[str, tuple[float, float]] = {
-    "legacy-law": (430.0 * hydrology.GLACIER_ACCUMULATION_RATE / (1000.0 / 917.0 * 1.0e-3 * 1.0e6) / 1.0e6, 1.0),
+    # The historical accumulation rate was 0.02 m/Myr per mm/yr of precipitation.
+    "legacy-law": (430.0 * 0.02 / (1000.0 / 917.0 * 1.0e-3 * 1.0e6) / 1.0e6, 1.0),
     "cook2020": (1.0e-4, 0.65),
     "humphrey1994": (1.0e-4, 1.0),
 }
