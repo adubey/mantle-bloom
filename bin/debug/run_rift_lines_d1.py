@@ -108,23 +108,43 @@ def make_world(args):
     return world
 
 
+MERGES: list[dict] = []  # #995: every merge applied during `step_all` (the splits list has the splits); cleared per call
+
+
 def step_all(world, args, out: Path, recorder, on_step=None):
     """Step the world, recording every split the splitter applies. Returns (splits, plate counts, kinematics).
     `on_step(world, myr)`, if given, runs after each step's own recording (RFC 0021's runner, #958)."""
     splits, plate_counts, motion = [], [], []
     original = merge_split.maybe_split_plate
+    original_merge = merge_split.merge_plates
+    MERGES.clear()
+
+    def counting_merge(world, id_keep, id_absorb):
+        total = sum(float(p.node_areas_m2().sum()) for p in world.plates)
+        areas = {p.plate_id: float(p.node_areas_m2().sum()) for p in world.plates if p.plate_id in (id_keep, id_absorb)}
+        original_merge(world, id_keep, id_absorb)
+        MERGES.append({"myr": world.elapsed_years / 1e6, "keep": int(id_keep), "absorb": int(id_absorb),
+                       "keep_share": areas.get(id_keep, 0.0) / total, "absorb_share": areas.get(id_absorb, 0.0) / total})
 
     def counting(world, plate, step_years=0.0):
         result = original(world, plate, step_years)
         if result is not None:
             areas = [float(d.node_areas_m2().sum()) for d in result]
-            splits.append({"myr": world.elapsed_years / 1e6, "plate": int(plate.plate_id), "small_share": min(areas) / sum(areas)})
+            daughters = {id(d) for d in result}
+            others = [float(o.node_areas_m2().sum()) for o in world.plates if id(o) not in daughters and o is not plate]
+            parent = sum(areas)
+            splits.append({"myr": world.elapsed_years / 1e6, "plate": int(plate.plate_id), "small_share": min(areas) / sum(areas),
+                           # #995: the splitting plate's size against the rest, to ask whether the big plates rift
+                           "parent_area_m2": parent, "parent_rank": 1 + sum(a > parent for a in others), "n_plates_before": len(others) + 1,
+                           "largest_other_m2": max(others, default=0.0), "total_area_m2": parent + sum(others),
+                           "daughters": [int(d.plate_id) for d in result]})
         return result
 
     steps = round(args.years / args.step_myr)
     if args.max_steps:
         steps = min(steps, args.max_steps)
     merge_split.maybe_split_plate = counting
+    merge_split.merge_plates = counting_merge
     started = time.perf_counter()
     try:
         for k in range(1, steps + 1):
@@ -143,6 +163,7 @@ def step_all(world, args, out: Path, recorder, on_step=None):
                 print(json.dumps({"myr": myr, "plates": len(world.plates), "splits": len(splits), "wall_s": round(time.perf_counter() - started, 1)}), flush=True)
     finally:
         merge_split.maybe_split_plate = original
+        merge_split.merge_plates = original_merge
     return splits, plate_counts, motion, steps * args.step_myr, time.perf_counter() - started
 
 

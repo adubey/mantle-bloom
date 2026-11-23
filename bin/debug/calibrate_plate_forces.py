@@ -62,7 +62,7 @@ def load_setting(path: Path, name: str) -> dict:
 # Module constants a setting may override (RFC 0021's G1 best-case check and G2, #975): the force constants are module
 # constants, not World fields. Each run is its own process, so an override never leaks into another world.
 # `mantle.MANTLE_FLOW_REFERENCE_RATE` is bound as a default argument, so it can't be overridden this way.
-MODULE_KNOBS = {"torque": ("ASTHENOSPHERE_VISCOSITY_PA_S", "SLAB_MANTLE_VISCOSITY_PA_S", "SUBDUCTION_LSINK_M")}
+MODULE_KNOBS = {"torque": ("ASTHENOSPHERE_VISCOSITY_PA_S", "SLAB_MANTLE_VISCOSITY_PA_S", "SUBDUCTION_LSINK_M", "FORCE_COLUMN_OWN_HM_CAP_M", "SLAB_HISTORY_GATE_SPACINGS")}
 
 
 def apply_module_knobs(knobs: dict) -> None:

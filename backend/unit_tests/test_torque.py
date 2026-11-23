@@ -1146,6 +1146,47 @@ def test_age_force_column_follows_the_cooling_law_and_never_drops_below_the_cell
     np.testing.assert_array_equal(torque.force_column_hm(Continental(), inputs, _forms(age_column=True)), 8_000.0)
 
 
+def test_force_column_own_hm_cap_leaves_young_floor_to_the_cooling_law(monkeypatch):
+    # #995: a young cell with 40 km of its own Hm pulled with 40 km; capped at the ridge's 8 km it follows the law.
+    n = 3
+    inputs = torque.BoundaryForceInputs(
+        own_points=np.tile([1.0, 0.0, 0.0], (n, 1)), own_hc=np.full(n, 11_000.0), own_hm=np.full(n, 40_000.0),
+        own_crust_type_codes=np.zeros(n, dtype=np.int8), dist_to_neighbor=np.full(n, np.inf), direction_to_neighbor=np.zeros((n, 3)),
+        neighbor_is_oceanic=np.zeros(n, dtype=bool), neighbor_omega=np.zeros((n, 3)),
+    )
+    inputs.own_age_yr = np.array([5e6, 100e6, np.nan])
+    forms = _forms(age_column=True)
+    np.testing.assert_allclose(torque.force_column_hm(_OceanicPlate(), inputs, forms), [40_000.0, 84_000.0, 40_000.0])
+    monkeypatch.setattr(torque, "FORCE_COLUMN_OWN_HM_CAP_M", 8_000.0)
+    np.testing.assert_allclose(torque.force_column_hm(_OceanicPlate(), inputs, forms), [13_000.0 * np.sqrt(5.0) - 11_000.0, 84_000.0, 40_000.0])
+
+
+def test_slab_history_gate_keeps_only_nodes_near_recently_consumed_floor(monkeypatch):
+    # #995: with the gate on, a node pulls only within the lookup distance of this plate's recent consumed floor.
+    from types import SimpleNamespace
+
+    from app import collision_polarity as polarity
+
+    spacing = line_spacing_rad(1.0)
+    angles = np.array([0.0, 2.0, 10.0]) * spacing
+    points = np.stack([np.cos(angles), np.sin(angles), np.zeros(3)], axis=1)
+    inputs = torque.BoundaryForceInputs(
+        own_points=points, own_hc=np.full(3, 11_000.0), own_hm=np.full(3, 40_000.0), own_crust_type_codes=np.zeros(3, dtype=np.int8),
+        dist_to_neighbor=np.zeros(3), direction_to_neighbor=np.tile([0.0, 0.0, 1.0], (3, 1)),
+        neighbor_is_oceanic=np.zeros(3, dtype=bool), neighbor_omega=np.zeros((3, 3)),
+    )
+    store = polarity.EvidenceStore(bin_rad=2.0 * spacing)
+    store.keys = np.array([polarity._bin_keys(np.array([[1.0, 0.0, 0.0]]), store.bin_rad)[0]], dtype=np.int64)
+    store.source, store.role = np.array([polarity.SOURCE_CONSUMPTION], dtype=np.int8), np.array([polarity.ROLE_LOWER], dtype=np.int8)
+    store.last_seen = np.array([95e6])
+    world = SimpleNamespace(collision_evidence={7: store}, elapsed_years=100e6, node_density=1.0)
+    plate = SimpleNamespace(plate_id=7, frame=np.eye(3))
+    monkeypatch.setattr(torque, "SLAB_HISTORY_GATE_SPACINGS", 4.0)
+    np.testing.assert_array_equal(torque.slab_history_mask(world, plate, inputs), [True, True, False])
+    world.elapsed_years = 120e6  # older than the 10 Myr lookback: forgotten
+    assert not torque.slab_history_mask(world, plate, inputs).any()
+
+
 def test_age_force_column_makes_old_floor_pull_harder():
     spacing = line_spacing_rad(1.0)
     plate, inputs, mask = _contact_band(spacing, 2, hc=11_000.0, hm=40_000.0)
