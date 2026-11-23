@@ -4,18 +4,17 @@ Logistic regression of "splits within the window" on area share and craton share
 pooled across seeds of the given arms, with a seed-level bootstrap for the coefficients. Craton share is correlated with
 size, so the pooled craton effect in `breakup-stat.json` cannot be read as causal on its own.
 
-    python3 -I bin/debug/big_plate_craton_regression.py --dir analysis/issue995 --out analysis/issue995/craton-regression.json \\
+    python3 bin/debug/big_plate_craton_regression.py --dir ~/mantle-bloom-captures/issue995/runs --out analysis/issue995/craton-regression.json \\
         brake-o0.25-c1 brake-o0.25-c1-heal250 brake-o0.25-c1-kcap07
 """
 
-import argparse
 import json
 from pathlib import Path
 
 import numpy as np
 from scipy.optimize import minimize
 
-from big_plate_breakup_stat import arm_runs
+from big_plate_breakup_stat import arm_runs, parse_arm_args
 
 
 def records(directory: Path, setting: str, big: float, window: float) -> list[tuple]:
@@ -68,13 +67,7 @@ def analyse(rows: list[tuple], rng: np.random.Generator) -> dict:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--dir", type=Path, required=True)
-    ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--big", type=float, default=0.10)
-    ap.add_argument("--window", type=float, default=20.0)
-    ap.add_argument("settings", nargs="+")
-    args = ap.parse_args()
+    args = parse_arm_args()
     rng = np.random.default_rng(995)
     out = {s: analyse(records(args.dir, s, args.big, args.window), rng) for s in args.settings}
     args.out.write_text(json.dumps(out, indent=1) + "\n")

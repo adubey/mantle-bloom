@@ -18,44 +18,29 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE), str(HERE.parents[1] / "backend")]
 
+import plate_probe_common as common  # noqa: E402
+
 AGE_BINS = (0.0, 10.0, 30.0, 60.0, 100.0, 1e9)
 
 
 def measure(world) -> dict:
-    from app import lithosphere, torque
-    from app.elevation_lines import line_spacing_rad
+    from app import torque
     from app.surface_fields import SURFACE_FIELDS
 
-    omegas = torque.solve_plates_quasistatic(world, diagnostics={})
-    spacing = line_spacing_rad(world.node_density)
-    reach = torque.boundary_force_reach_rad(spacing)
-    plates = sorted((p for p in world.plates if p.node_count() > 0), key=lambda p: p.plate_id)
-    forms = torque.force_forms(world)
-    cache = world.boundary_search_cache
-    scale = lithosphere.PLANET_RADIUS_M * 100.0  # rad/yr x unit vector -> cm/yr
+    geom, motions = common.boundary_motion(world, require_neighbour=False)
     rows, per_plate = [], []
-    for plate in plates:
-        neighbours = cache.neighbours(plate, plates, reach)
-        inputs = torque.gather_boundary_force_inputs(plate, neighbours, spacing, reach, cache)
-        torque.apply_force_forms(world, plate, neighbours, inputs, forms)
-        band = inputs.dist_to_neighbor <= reach
-        if not band.any():
+    for m in motions:
+        if m.length is None:
             continue
-        length = torque.boundary_node_length_m(inputs, spacing)
-        neighbour_omega = np.zeros_like(inputs.neighbor_omega)
-        for other in plates:
-            neighbour_omega[inputs.neighbor_plate_id == other.plate_id] = omegas[other.plate_id]
-        v_rel = (np.cross(omegas[plate.plate_id], inputs.own_points) - np.cross(neighbour_omega, inputs.own_points)) * scale
-        normal = np.sum(v_rel * inputs.direction_to_neighbor, axis=-1)
-        tangential = np.linalg.norm(v_rel - normal[:, None] * inputs.direction_to_neighbor, axis=-1)
-        sub = torque.subducting_boundary_mask(plate, inputs, reach)
+        plate, inputs, band, length, normal = m.plate, m.inputs, m.band, m.length, m.normal
+        tangential = np.linalg.norm(m.v_rel - normal[:, None] * inputs.direction_to_neighbor, axis=-1)
+        sub = torque.subducting_boundary_mask(plate, inputs, geom.reach)
         created = plate.collect("node_created_years")
         undated = created == SURFACE_FIELDS["node_created_years"].sentinel
         age = np.where(undated, np.nan, (world.elapsed_years - created) / 1e6)
@@ -106,9 +91,6 @@ def measure(world) -> dict:
 
 
 def main() -> None:
-    import calibrate_plate_forces as cal
-    import run_rift_lines_d1 as d1
-
     p = argparse.ArgumentParser()
     p.add_argument("--settings", type=Path, required=True)
     p.add_argument("--setting", required=True)
@@ -119,26 +101,8 @@ def main() -> None:
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--scratch", default="/tmp/unused", help="directory step_all may write to")
     args = p.parse_args()
-    if args.seed in cal.refused_seeds():
-        sys.exit("held-out seed")
-    setting = cal.load_setting(args.settings, args.setting)
-    world = d1.make_world(SimpleNamespace(seed=args.seed, node_density=1.0, world_knobs=setting["world_knobs"],
-                                          split_method=setting["split_method"], params=setting["params"]))
-    cal.apply_module_knobs(setting["module_knobs"])
-    import rift_line_recorder as rec
-    from app import rift_damage
-
-    recorder = rec.Recorder(rift_damage.runtime(world).params.eps_cand) if setting["split_method"] == "rift_lines" else None
-    scratch = Path(args.scratch)
-    scratch.mkdir(parents=True, exist_ok=True)
-    samples = []
-
-    def on_step(world, myr: float) -> None:
-        if round(myr / args.every) * args.every == myr:
-            samples.append({"myr": myr, **measure(world)})
-            print(json.dumps(samples[-1]), flush=True)
-
-    d1.step_all(world, SimpleNamespace(years=args.years, step_myr=args.step_myr, max_steps=None, snapshot_every=0.0), scratch, recorder, on_step)
+    setting, world = common.open_world(args.settings, args.setting, args.seed)
+    _, samples = common.step_and_sample(world, setting, args, measure, lambda sample: print(json.dumps(sample), flush=True))
     args.out.write_text(json.dumps({"seed": args.seed, "setting": args.setting, "samples": samples}, indent=1) + "\n")
 
 

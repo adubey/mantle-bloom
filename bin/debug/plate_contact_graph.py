@@ -21,7 +21,6 @@ import json
 import sys
 from collections import defaultdict
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 
@@ -30,34 +29,18 @@ MIN_CONTACT_KM = 500.0
 
 
 def record_graph(world) -> dict:
-    from app import lithosphere, torque
-    from app.elevation_lines import line_spacing_rad
+    import plate_probe_common as common
 
-    omegas = torque.solve_plates_quasistatic(world, diagnostics={})
-    spacing = line_spacing_rad(world.node_density)
-    reach = torque.boundary_force_reach_rad(spacing)
-    plates = sorted((p for p in world.plates if p.node_count() > 0), key=lambda p: p.plate_id)
-    forms = torque.force_forms(world)
-    cache = world.boundary_search_cache
-    scale = lithosphere.PLANET_RADIUS_M * 100.0
+    geom, motions = common.boundary_motion(world, require_neighbour=True)
     side = defaultdict(lambda: [0.0, 0.0, 0.0])  # (plate, neighbour) -> length m, length x speed, length x normal
     local: dict[int, dict] = {}  # per plate: nodes, areas, omega, for the area-weighted speeds (T1, #995)
-    for plate in plates:
-        neighbours = cache.neighbours(plate, plates, reach)
-        inputs = torque.gather_boundary_force_inputs(plate, neighbours, spacing, reach, cache)
-        torque.apply_force_forms(world, plate, neighbours, inputs, forms)
-        local[plate.plate_id] = {"points": inputs.own_points, "areas": np.asarray(plate.accounting_areas_m2(spacing), dtype=float),
-                                 "omega": omegas[plate.plate_id]}
-        band = (inputs.dist_to_neighbor <= reach) & (inputs.neighbor_plate_id >= 0)
-        if not band.any():
+    for m in motions:
+        plate, inputs, band, length, normal = m.plate, m.inputs, m.band, m.length, m.normal
+        local[plate.plate_id] = {"points": inputs.own_points, "areas": np.asarray(plate.accounting_areas_m2(geom.spacing), dtype=float),
+                                 "omega": geom.omegas[plate.plate_id]}
+        if length is None:
             continue
-        length = torque.boundary_node_length_m(inputs, spacing)
-        neighbour_omega = np.zeros_like(inputs.neighbor_omega)
-        for other in plates:
-            neighbour_omega[inputs.neighbor_plate_id == other.plate_id] = omegas[other.plate_id]
-        v_rel = (np.cross(omegas[plate.plate_id], inputs.own_points) - np.cross(neighbour_omega, inputs.own_points)) * scale
-        normal = np.sum(v_rel * inputs.direction_to_neighbor, axis=-1)
-        speed = np.linalg.norm(v_rel, axis=-1)
+        speed = np.linalg.norm(m.v_rel, axis=-1)
         for q in np.unique(inputs.neighbor_plate_id[band]):
             m = band & (inputs.neighbor_plate_id == q)
             acc = side[(plate.plate_id, int(q))]
@@ -70,11 +53,11 @@ def record_graph(world) -> dict:
         total = sum(s[0] for s in both)
         pairs.append({"a": a, "b": b, "contact_km": float(np.mean([s[0] for s in both]) / 1e3),
                       "speed_cm_per_yr": float(sum(s[1] for s in both) / total), "normal_cm_per_yr": float(sum(s[2] for s in both) / total)})
-    areas = {p.plate_id: float(p.node_areas_m2().sum() / 1e6) for p in plates}
+    areas = {p.plate_id: float(p.node_areas_m2().sum() / 1e6) for p in geom.plates}
     from plate_torque_breakdown import _net_rotation
 
     net = _net_rotation(local)
-    speeds = {k: float(np.dot(np.linalg.norm(np.cross(v["omega"] - net, v["points"]), axis=1) * scale, v["areas"]) / v["areas"].sum())
+    speeds = {k: float(np.dot(np.linalg.norm(np.cross(v["omega"] - net, v["points"]), axis=1) * geom.scale, v["areas"]) / v["areas"].sum())
               for k, v in local.items()}
     total = sum(v["areas"].sum() for v in local.values())
     mean_nnr = sum(speeds[k] * v["areas"].sum() for k, v in local.items()) / total
@@ -84,28 +67,12 @@ def record_graph(world) -> dict:
 
 def run_record(args: argparse.Namespace) -> None:
     sys.path[:0] = [str(HERE), str(HERE.parents[1] / "backend")]
-    import calibrate_plate_forces as cal
-    import rift_line_recorder as rec
-    import run_rift_lines_d1 as d1
-    from app import rift_damage
+    import plate_probe_common as common
 
-    setting = cal.load_setting(args.settings, args.setting)
-    if args.seed in cal.refused_seeds():
-        sys.exit("held-out seed")
-    world = d1.make_world(SimpleNamespace(seed=args.seed, node_density=1.0, world_knobs=setting["world_knobs"],
-                                          split_method=setting["split_method"], params=setting["params"]))
-    cal.apply_module_knobs(setting["module_knobs"])
-    recorder = rec.Recorder(rift_damage.runtime(world).params.eps_cand) if setting["split_method"] == "rift_lines" else None
-    scratch = Path(args.scratch)
-    scratch.mkdir(parents=True, exist_ok=True)
-    samples = []
-
-    def on_step(world, myr: float) -> None:
-        if round(myr / args.every) * args.every == myr:
-            samples.append({"myr": myr, **record_graph(world)})
-            print(myr, len(samples[-1]["plates"]), "plates", len(samples[-1]["pairs"]), "pairs", flush=True)
-
-    splits, *_ = d1.step_all(world, SimpleNamespace(years=args.years, step_myr=args.step_myr, max_steps=None, snapshot_every=0.0), scratch, recorder, on_step)
+    setting, world = common.open_world(args.settings, args.setting, args.seed)
+    splits, samples = common.step_and_sample(
+        world, setting, args, record_graph,
+        lambda sample: print(sample["myr"], len(sample["plates"]), "plates", len(sample["pairs"]), "pairs", flush=True))
     args.out.write_text(json.dumps({"label": f"model seed {args.seed}", "seed": args.seed, "setting": args.setting, "splits": splits, "samples": samples}) + "\n")
 
 

@@ -8,7 +8,7 @@ the run records a split of that plate id within the next `--window` Myr. Reports
 - how many distinct big plates there were and how many ever split while big;
 - splits per run per 100 Myr, and the mean parent share of the planet.
 
-    python3 -I bin/debug/big_plate_breakup_stat.py --dir analysis/issue995 --out analysis/issue995/breakup-stat.json \\
+    python3 -I bin/debug/big_plate_breakup_stat.py --dir ~/mantle-bloom-captures/issue995/runs --out analysis/issue995/breakup-stat.json \\
         brake-o0.25-c1 brake-o0.25-c1-heal250 brake-o0.25-c1-kcap07
 """
 
@@ -97,14 +97,19 @@ def stratify(rows: list[dict], key: str, edges: list[float], rng: np.random.Gene
     return out
 
 
-def main() -> None:
+def parse_arm_args() -> argparse.Namespace:
+    """The arguments of the arm scripts: `--dir` of probe outputs, `--out`, the big-plate share, the window and the arms."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--big", type=float, default=0.10)
     ap.add_argument("--window", type=float, default=20.0)
     ap.add_argument("settings", nargs="+")
-    args = ap.parse_args()
+    return ap.parse_args()
+
+
+def main() -> None:
+    args = parse_arm_args()
     rng = np.random.default_rng(995)
     out = {}
     for setting in args.settings:

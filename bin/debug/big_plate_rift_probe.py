@@ -108,17 +108,12 @@ def main() -> None:
     ap.add_argument("--scratch", required=True)
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()
-    import calibrate_plate_forces as cal
+    import plate_probe_common as common
     import rift_line_recorder as rec
     import run_rift_lines_d1 as d1
     from app import rift_damage
 
-    setting = cal.load_setting(args.settings, args.setting)
-    if args.seed in cal.refused_seeds():
-        sys.exit("held-out seed")
-    world = d1.make_world(SimpleNamespace(seed=args.seed, node_density=1.0, world_knobs=setting["world_knobs"],
-                                          split_method=setting["split_method"], params=setting["params"]))
-    cal.apply_module_knobs(setting["module_knobs"])
+    setting, world = common.open_world(args.settings, args.setting, args.seed)
     recorder = rec.Recorder(rift_damage.runtime(world).params.eps_cand)
     samples = []
 
