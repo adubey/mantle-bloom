@@ -533,7 +533,7 @@ def create_app(dist: str | None = None) -> FastAPI:
     app.add_api_route("/worlds", _admin_list)
     app.add_api_route("/_worker/{path:path}", _private_route, include_in_schema=False)
     app.routes.append(Route("/worlds/{world_id}/run", _admin_run, methods=["GET"]))
-    app.routes.append(Route("/worlds/{world_id}/save", _save_world, methods=["GET"]))
+    app.routes.append(Route("/worlds/{world_id}/save", _save_world, methods=["GET", "HEAD"]))
     for path in ("/worlds", "/worlds/{path:path}", "/debug/{path:path}"):
         app.routes.append(Route(path, _proxy, methods=["GET", "POST", "PATCH", "DELETE", "PUT", "OPTIONS"]))
     if dist:

@@ -294,7 +294,9 @@ function PreservedWorldsPanel() {
       ({ worlds: list }) => {
         if (!cancelled) setWorlds(list);
       },
-      () => {},
+      (err) => {
+        if (!cancelled) console.warn("Failed to load saved worlds:", err);
+      },
     );
     return () => {
       cancelled = true;
