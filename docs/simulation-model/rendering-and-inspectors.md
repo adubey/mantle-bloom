@@ -171,16 +171,29 @@ Elevation, Combined, and Biome draw land and grounded marine glaciers at or abov
 bed plus stored glacier depth for the ice surface. Elevation and Combined shade glaciers
 using the slope of that surface. Floating lake and sea ice stay flat. Combined and Biome
 assign the Ice Cap class to visible glaciers and perennial lake ice, and Polar Sea Ice
-to ocean cells ice-covered at least half the year. Seasonal sea ice appears through its
-class where it reaches that threshold.
+to ocean cells ice-covered at least half the year (`sea_ice.POLAR_SEA_ICE_FRACTION = 0.5`).
+Seasonal sea ice appears through its class where it reaches that threshold.
+
+By default, floating sea ice is evaluated at display resolution (`smooth_sea_ice=true`):
+Biome and Combined pass `_biome_fields`'s bilinearly upsampled `ocean_temp` into
+`sea_ice.climate_grid_balance`, while Elevation, Temperature, and the point inspector use
+`sea_ice.sample_smooth` to bilinearly interpolate SST to each point's latitude and longitude.
+Setting `smooth_sea_ice=false` on `/render` falls back to coarse climate-grid nearest-cell
+lookup (`sea_ice.sample`). With `soft_sea_ice_edge=true` (default), Elevation and Combined
+blend flat sea-ice color into open ocean across the perennial growth-to-loss ratio ramp
+(`SeaIce.perennial_cover`, smoothstep over `0.65..1.25`), while Biome softens Polar Sea Ice
+into Polar Ocean around `POLAR_SEA_ICE_FRACTION` (`biomes.soft_sea_ice_weight`) without
+altering the crisp alpha-channel biome IDs. Both options are exposed in the sidebar **Sea ice**
+panel on the affected views.
 
 The Temperature view and the point inspector apply the glacier solver's lapse rate to
 grounded glacier depth. They use the D6 surface-temperature proxy over perennial sea ice.
-The inspector also reports the bed elevation, underlying surface climate class, and
-floating sea-ice state and fraction. The perennial lake-ice mask reads the hydrology
-solve's zero ice-free fraction and positive lake cap. A save with lake ice and an older
-cache can estimate that mask from the stored water column and current climate until
-hydrology runs again. [Point-sample API](../api-reference.md#get-worldsworld_idsample_atlat_deg0lon_deg0)
+The inspector always samples sea ice at the requested coordinates (`sea_ice.sample_smooth`)
+and also reports the bed elevation, underlying surface climate class, and floating sea-ice
+state and fraction. The perennial lake-ice mask reads the hydrology solve's zero ice-free
+fraction and positive lake cap. A save with lake ice and an older cache can estimate that
+mask from the stored water column and current climate until hydrology runs again.
+[Point-sample API](../api-reference.md#get-worldsworld_idsample_atlat_deg0lon_deg0)
 
 ## Rotating the view
 

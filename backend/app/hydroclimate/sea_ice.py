@@ -67,7 +67,10 @@ def climate_grid_balance(
 
 
 def _bilinear_sample_points(field: np.ndarray, lat_deg: np.ndarray, lon_deg: np.ndarray) -> np.ndarray:
-    """Bilinearly sample an equirectangular (H, W) climate grid at arbitrary (lat_deg, lon_deg)."""
+    """Bilinearly sample an equirectangular (H, W) climate grid at arbitrary (lat_deg, lon_deg).
+
+    Keep the cell-center (-0.5), pole-clamp, and periodic longitude-wrap index convention
+    in sync with `render_image._bilinear_resample`."""
     src_h, src_w = field.shape
     row_step = 180.0 / src_h
     row_f = np.clip((90.0 - lat_deg) / row_step - 0.5, 0.0, src_h - 1)

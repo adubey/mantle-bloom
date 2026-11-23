@@ -1290,7 +1290,8 @@ def _bilinear_resample(
     spaced (true of climate.py's `_build_grid`, the only source this is ever called with).
     Latitude is clamped at the poles (not periodic); longitude wraps (periodic, matching the
     sphere's own topology) -- handled with explicit row/column index math rather than a
-    generic scipy.interpolate call specifically so the two axes can differ that way."""
+    generic scipy.interpolate call specifically so the two axes can differ that way. Keep
+    this index convention in sync with `sea_ice._bilinear_sample_points`."""
     src_h, src_w = field.shape
     row_step = 180.0 / src_h
     row_f = np.clip((90.0 - dst_lat_deg) / row_step - 0.5, 0, src_h - 1)

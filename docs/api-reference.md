@@ -651,6 +651,14 @@ hemisphere facing the viewer as an orthographic disc (see
   retina-style render at the same on-screen footprint; line widths, dot/pole radii, and
   padding all scale with the requested width (see `render_image.py`'s `pixel_scale`) so a
   higher-resolution request doesn't also make those features look thinner.
+- `smooth_sea_ice` (default `true`): evaluates D6 floating sea ice at display resolution by
+  bilinearly interpolating `fields.ocean_temperature_c` to the rendered points (reusing
+  `_biome_fields`'s upsampled SST on Biome/Combined). Passing `false` falls back to coarse
+  climate-grid nearest-cell indexing (`sea_ice.sample`).
+- `soft_sea_ice_edge` (default `true`): blends the sea-ice / ocean boundary smoothly — via
+  `SeaIce.perennial_cover` on Elevation and Combined, and `biomes.soft_sea_ice_weight` on
+  Biome (keeping alpha-channel biome IDs crisp). Passing `false` restores the hard binary
+  edge. Ignored on views without sea-ice color blending.
 - `image_base64` decodes to a PNG. The frontend builds `data:image/png;base64,<this>` as an
   `<img>` source and draws it onto the canvas with `drawImage` -- see `MapCanvas.tsx`.
 
@@ -871,7 +879,7 @@ surface fields.
 | `biome_id`, `biome` | Display class index and name, including the Ice Cap and Polar Sea Ice overrides. |
 | `surface_climate` | Underlying climate class name. |
 | `temperature_c` | Surface temperature in °C, including glacier lapse cooling and the air-temperature proxy over perennial sea ice. |
-| `sea_ice_state` | `ice-free`, `seasonal`, or `perennial` for floating ocean water. Land and grounded glacier ice return `null`. |
+| `sea_ice_state` | `ice-free`, `seasonal`, or `perennial` for floating ocean water (evaluated at the query coordinates using bilinearly interpolated SST via `sea_ice.sample_smooth`). Land and grounded glacier ice return `null`. |
 | `sea_ice_fraction` | Fraction of the year ice-covered, from 0 to 1. |
 
 The route returns `400` for non-finite coordinates and `404` before world generation.
