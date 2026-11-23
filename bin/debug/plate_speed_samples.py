@@ -21,38 +21,26 @@ or diverging by the sign of the closing rate; scoring is in `score_speed_samples
 
 import argparse
 import json
-import subprocess
 import sys
 import time
 from collections import defaultdict
-from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
-
-HERE = Path(__file__).resolve().parent
-sys.path[:0] = [str(HERE), str(HERE.parents[1] / "backend")]
+from sampler_common import boundary_context, build_parser, build_world, plate_boundary, scale_flow, step_and_sample
 
 
 def record_contacts(world, omegas) -> dict:
     from app import lithosphere, torque
-    from app.elevation_lines import line_spacing_rad
 
-    spacing = line_spacing_rad(world.node_density)
-    reach = torque.boundary_force_reach_rad(spacing)
-    plates = sorted((p for p in world.plates if p.node_count() > 0), key=lambda p: p.plate_id)
-    forms = torque.force_forms(world)
-    cache = world.boundary_search_cache
+    ctx = boundary_context(world)
+    plates = ctx.plates
     scale = lithosphere.PLANET_RADIUS_M * 100.0
     nodes = defaultdict(list)  # (a, b) -> [(km, speed, closing), ...] from either side, half weight each
     for plate in plates:
-        neighbours = cache.neighbours(plate, plates, reach)
-        inputs = torque.gather_boundary_force_inputs(plate, neighbours, spacing, reach, cache)
-        torque.apply_force_forms(world, plate, neighbours, inputs, forms)
-        band = (inputs.dist_to_neighbor <= reach) & (inputs.neighbor_plate_id >= 0)
+        _neighbours, inputs, band = plate_boundary(world, ctx, plate)
         if not band.any():
             continue
-        length = torque.boundary_node_length_m(inputs, spacing)
+        length = torque.boundary_node_length_m(inputs, ctx.spacing)
         neighbour_omega = np.zeros_like(inputs.neighbor_omega)
         for other in plates:
             neighbour_omega[inputs.neighbor_plate_id == other.plate_id] = omegas[other.plate_id]
@@ -110,21 +98,13 @@ def patch_ocean_brake(gain: float) -> None:
 
 
 def run_one(args: argparse.Namespace) -> None:
-    import calibrate_plate_forces as cal
     import plate_torque_breakdown as breakdown
-    import run_rift_lines_d1 as d1
     from app import torque
 
-    if args.seed in cal.refused_seeds():
-        sys.exit(f"seed {args.seed} is held out")
-    setting = cal.load_setting(args.settings, args.setting)
-    world = d1.make_world(SimpleNamespace(seed=args.seed, node_density=1.0, world_knobs=setting["world_knobs"],
-                                          split_method=setting["split_method"], params=setting["params"]))
-    cal.apply_module_knobs(setting["module_knobs"])
+    setting, world = build_world(args)
     # The static mantle-flow field is drawn at generation with a fixed reference rate; scale it after generation so
     # every seed starts from the same world and only the stepped flow torque changes (exploration of #998 only).
-    for center in world.mantle_centers:
-        center.strength *= args.flow_scale
+    scale_flow(world, args.flow_scale)
     patch_ocean_brake(args.ocean_brake)
     started = time.perf_counter()
     samples = []
@@ -134,62 +114,16 @@ def run_one(args: argparse.Namespace) -> None:
         samples.append({"myr": myr, **record_contacts(world, omegas), "breakdown": breakdown.sample(world)})
         print(json.dumps({"myr": myr, "plates": len(world.plates), "wall_s": round(time.perf_counter() - started, 1)}), flush=True)
 
-    wanted = sorted(set(args.at))
-    if wanted and wanted[0] == 0:
-        take(0.0)
-    final = max(wanted)
-    scratch = args.out.parent / f"{args.out.stem}-scratch"
-    scratch.mkdir(parents=True, exist_ok=True)
-    stepping = SimpleNamespace(years=final, step_myr=args.step_myr, max_steps=None, snapshot_every=0.0)
-    recorder = None
-    if setting["split_method"] == "rift_lines":
-        import rift_line_recorder as rec
-        from app import rift_damage
-
-        recorder = rec.Recorder(rift_damage.runtime(world).params.eps_cand)
-    if final > 0:
-        d1.step_all(world, stepping, scratch, recorder, lambda w, myr: take(myr) if round(myr, 6) in wanted else None)
-    args.out.write_text(json.dumps({"seed": args.seed, "setting": args.setting, "step_myr": args.step_myr, "flow_scale": args.flow_scale, "ocean_brake": args.ocean_brake, "samples": samples,
-                                    "wall_s": time.perf_counter() - started}, default=float) + "\n")
-
-
-def queue(args: argparse.Namespace) -> None:
-    seeds = args.seeds or json.loads(args.seeds_file.read_text())["seeds"]
-    args.out.mkdir(parents=True, exist_ok=True)
-    failed = []
-    for seed in seeds:
-        target = args.out / f"{seed}.json"
-        if target.exists():
-            continue
-        command = [sys.executable, __file__, "run", "--settings", str(args.settings), "--setting", args.setting, "--seed", str(seed),
-                   "--step-myr", str(args.step_myr), "--flow-scale", str(args.flow_scale), "--ocean-brake", str(args.ocean_brake), "--out", str(target), "--at", *map(str, args.at)]
-        with open(args.out / f"{seed}.log", "w") as log:
-            code = subprocess.call(command, stdout=log, stderr=subprocess.STDOUT)
-        print(seed, "exit", code, time.strftime("%H:%M"), flush=True)
-        if code:
-            failed.append(seed)
-    sys.exit(1 if failed else 0)
+    step_and_sample(world, setting, args, take)
+    args.out.write_text(json.dumps({"seed": args.seed, "setting": args.setting, "step_myr": args.step_myr, "flow_scale": args.flow_scale, "ocean_brake": args.ocean_brake,
+                                    "samples": samples, "wall_s": time.perf_counter() - started}, default=float) + "\n")
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = ap.add_subparsers(dest="cmd", required=True)
-    for name, fn in (("run", run_one), ("queue", queue)):
-        p = sub.add_parser(name)
-        p.add_argument("--settings", type=Path, required=True)
-        p.add_argument("--setting", required=True)
-        p.add_argument("--at", type=float, nargs="+", default=[0, 1, 2, 5, 10])
-        p.add_argument("--step-myr", type=float, default=1.0)
-        p.add_argument("--flow-scale", type=float, default=1.0, help="multiply every mantle convection centre's strength (default 1)")
+    def extra(p: argparse.ArgumentParser) -> None:
         p.add_argument("--ocean-brake", type=float, default=0.0, help="gain (x 5e12 N/m) of a contact brake extended to non-divergent oceanic contacts (default 0, off)")
-        p.add_argument("--out", type=Path, required=True)
-        if name == "run":
-            p.add_argument("--seed", type=int, required=True)
-        else:
-            p.add_argument("--seeds", type=int, nargs="*")
-            p.add_argument("--seeds-file", type=Path, default=Path("analysis/issue958/development-seeds.json"))
-        p.set_defaults(fn=fn)
-    args = ap.parse_args()
+
+    args = build_parser(__doc__, __file__, run_one, forward=("flow_scale", "ocean_brake"), extra=extra, default_at=(0, 1, 2, 5, 10)).parse_args()
     args.fn(args)
 
 

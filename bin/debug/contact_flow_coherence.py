@@ -20,52 +20,34 @@ Exploration only; no `backend/app` change. About 1 GB per seed (compute-budget f
 """
 
 import argparse
-import copy
 import json
-import subprocess
-import sys
-import time
 from collections import defaultdict
-from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
-
-HERE = Path(__file__).resolve().parent
-sys.path[:0] = [str(HERE), str(HERE.parents[1] / "backend")]
+from sampler_common import boundary_context, build_parser, build_world, plate_boundary, reference_centers, scale_flow, step_and_sample
 
 MIN_CONTACT_KM = 500.0
 
 
 def contact_rows(world, centers) -> list[dict]:
     from app import lithosphere, torque
-    from app.elevation_lines import line_spacing_rad
     from downwelling_check import downwelling_potential
 
-    spacing = line_spacing_rad(world.node_density)
-    reach = torque.boundary_force_reach_rad(spacing)
-    plates = sorted((p for p in world.plates if p.node_count() > 0), key=lambda p: p.plate_id)
-    cache = world.boundary_search_cache
-    if cache is None:
-        cache = torque.BoundarySearchCache()
-        world.boundary_search_cache = cache
-    forms = torque.force_forms(world)
+    ctx = boundary_context(world)
+    plates = ctx.plates
     solved = torque.solve_plates_quasistatic(world, diagnostics={})
     flow_only = {}
     for plate in plates:
-        b, k = torque.basal_drag_coefficients(plate, world, spacing)
+        b, k = torque.basal_drag_coefficients(plate, world, ctx.spacing)
         flow_only[plate.plate_id] = np.linalg.lstsq(k, b, rcond=None)[0]
     scale = lithosphere.PLANET_RADIUS_M * 100.0
     acc = defaultdict(lambda: defaultdict(float))
     for plate in plates:
-        neighbours = cache.neighbours(plate, plates, reach)
-        inputs = torque.gather_boundary_force_inputs(plate, neighbours, spacing, reach, cache)
-        torque.apply_force_forms(world, plate, neighbours, inputs, forms)
-        band = (inputs.dist_to_neighbor <= reach) & (inputs.neighbor_plate_id >= 0)
+        _neighbours, inputs, band = plate_boundary(world, ctx, plate)
         if not band.any():
             continue
-        subducting = torque.subducting_boundary_mask(plate, inputs, reach)
-        km = torque.boundary_node_length_m(inputs, spacing) / 2e3
+        subducting = torque.subducting_boundary_mask(plate, inputs, ctx.reach)
+        km = torque.boundary_node_length_m(inputs, ctx.spacing) / 2e3
         depth = downwelling_potential(inputs.own_points, centers)
         for q in np.unique(inputs.neighbor_plate_id[band]):
             m = band & (inputs.neighbor_plate_id == q)
@@ -96,55 +78,22 @@ def contact_rows(world, centers) -> list[dict]:
 
 
 def run_one(args: argparse.Namespace) -> None:
-    import calibrate_plate_forces as cal
-    import run_rift_lines_d1 as d1
     from app import mantle
 
-    setting = cal.load_setting(args.settings, args.setting)
-    world = d1.make_world(SimpleNamespace(seed=args.seed, node_density=1.0, world_knobs=setting["world_knobs"],
-                                          split_method=setting["split_method"], params=setting["params"]))
-    cal.apply_module_knobs(setting["module_knobs"])
-    centers = copy.deepcopy(world.mantle_centers)
+    setting, world = build_world(args)
     reference = mantle.MANTLE_FLOW_REFERENCE_RATE * args.reference_scale
+    centers = reference_centers(world, args.reference_scale)
     for c in centers:
-        c.strength *= args.reference_scale / reference
-    for c in world.mantle_centers:
-        c.strength *= args.flow_scale
+        c.strength /= reference  # D in units of the reference flow rate, as `downwelling_check.py`
+    scale_flow(world, args.flow_scale)
     samples = []
 
     def take(myr: float) -> None:
         samples.append({"myr": myr, "contacts": contact_rows(world, centers)})
         print(json.dumps({"myr": myr, "contacts": len(samples[-1]["contacts"])}), flush=True)
 
-    wanted = sorted(set(args.at))
-    if wanted[0] == 0:
-        take(0.0)
-    scratch = args.out.parent / f"{args.out.stem}-scratch"
-    scratch.mkdir(parents=True, exist_ok=True)
-    stepping = SimpleNamespace(years=max(wanted), step_myr=args.step_myr, max_steps=None, snapshot_every=0.0)
-    recorder = None
-    if setting["split_method"] == "rift_lines":
-        import rift_line_recorder as rec
-        from app import rift_damage
-
-        recorder = rec.Recorder(rift_damage.runtime(world).params.eps_cand)
-    if max(wanted) > 0:
-        d1.step_all(world, stepping, scratch, recorder, lambda w, myr: take(myr) if round(myr, 6) in wanted else None)
+    step_and_sample(world, setting, args, take)
     args.out.write_text(json.dumps({"seed": args.seed, "setting": args.setting, "flow_scale": args.flow_scale, "samples": samples}) + "\n")
-
-
-def queue(args: argparse.Namespace) -> None:
-    seeds = json.loads(args.seeds_file.read_text())["seeds"]
-    args.out.mkdir(parents=True, exist_ok=True)
-    for seed in seeds:
-        target = args.out / f"{seed}.json"
-        if target.exists():
-            continue
-        command = [sys.executable, __file__, "run", "--settings", str(args.settings), "--setting", args.setting, "--seed", str(seed), "--step-myr", str(args.step_myr),
-                   "--flow-scale", str(args.flow_scale), "--reference-scale", str(args.reference_scale), "--out", str(target), "--at", *map(str, args.at)]
-        with open(args.out / f"{seed}.log", "w") as log:
-            code = subprocess.call(command, stdout=log, stderr=subprocess.STDOUT)
-        print(seed, "exit", code, time.strftime("%H:%M"), flush=True)
 
 
 def weighted(rows: list[dict], key) -> float | None:
@@ -179,27 +128,7 @@ def aggregate(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = ap.add_subparsers(dest="cmd", required=True)
-    for name, fn in (("run", run_one), ("queue", queue)):
-        p = sub.add_parser(name)
-        p.add_argument("--settings", type=Path, required=True)
-        p.add_argument("--setting", required=True)
-        p.add_argument("--at", type=float, nargs="+", default=[0, 5, 20, 50])
-        p.add_argument("--step-myr", type=float, default=1.0)
-        p.add_argument("--flow-scale", type=float, default=1.0)
-        p.add_argument("--reference-scale", type=float, default=4.0)
-        p.add_argument("--out", type=Path, required=True)
-        if name == "run":
-            p.add_argument("--seed", type=int, required=True)
-        else:
-            p.add_argument("--seeds-file", type=Path, default=Path("analysis/issue958/development-seeds.json"))
-        p.set_defaults(fn=fn)
-    a = sub.add_parser("aggregate")
-    a.add_argument("--runs", type=Path, required=True)
-    a.add_argument("--out", type=Path, required=True)
-    a.set_defaults(fn=aggregate)
-    args = ap.parse_args()
+    args = build_parser(__doc__, __file__, run_one, forward=("flow_scale", "reference_scale"), aggregate=aggregate, reference_scale=True).parse_args()
     args.fn(args)
 
 
