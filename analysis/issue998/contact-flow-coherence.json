@@ -1,0 +1,197 @@
+{
+ "seeds": 20,
+ "by_time": {
+  "0.0": {
+   "contacts": 703,
+   "length_km": 2821375.0,
+   "flow_opposition_all": 0.5686015676924273,
+   "actual_opposition_all": 0.49042674959620186,
+   "bins": {
+    "flow_converging": {
+     "contacts": 332,
+     "length_share": 0.46748039519737716,
+     "subducting_share": 0.0,
+     "actual_opposition": 0.4894601109880648,
+     "actual_rel_speed_cm_per_yr": 3.914573771303372,
+     "mean_D": 0.5379240461292688
+    },
+    "flow_opening": {
+     "contacts": 340,
+     "length_share": 0.4856896017012981,
+     "subducting_share": 0.0,
+     "actual_opposition": 0.5134102555040873,
+     "actual_rel_speed_cm_per_yr": 3.7925027300355247,
+     "mean_D": -0.22402932915143056
+    },
+    "flow_neither": {
+     "contacts": 31,
+     "length_share": 0.04683000310132471,
+     "subducting_share": 0.0,
+     "actual_opposition": 0.2617066017802734,
+     "actual_rel_speed_cm_per_yr": 1.6850035119184577,
+     "mean_D": 0.14864182415720462
+    },
+    "flow_alike_opposition_lt_0.3": {
+     "contacts": 143,
+     "length_share": 0.19782021177617296,
+     "subducting_share": 0.0,
+     "actual_opposition": 0.22172299867961032,
+     "actual_rel_speed_cm_per_yr": 2.348175610090888,
+     "mean_D": 0.22902754174172182
+    },
+    "flow_opposed_opposition_gt_0.7": {
+     "contacts": 267,
+     "length_share": 0.36066191130211334,
+     "subducting_share": 0.0,
+     "actual_opposition": 0.7591618567898172,
+     "actual_rel_speed_cm_per_yr": 5.060830752724493,
+     "mean_D": 0.029460517679513357
+    }
+   }
+  },
+  "5.0": {
+   "contacts": 697,
+   "length_km": 2925000.0,
+   "flow_opposition_all": 0.5716073721264945,
+   "actual_opposition_all": 0.5776601076400573,
+   "bins": {
+    "flow_converging": {
+     "contacts": 335,
+     "length_share": 0.4811965811965812,
+     "subducting_share": 0.6458875979312716,
+     "actual_opposition": 0.584684901610298,
+     "actual_rel_speed_cm_per_yr": 5.50803028465959,
+     "mean_D": 0.5482597534683207
+    },
+    "flow_opening": {
+     "contacts": 329,
+     "length_share": 0.4638247863247863,
+     "subducting_share": 0.14548345840803004,
+     "actual_opposition": 0.5911752024072116,
+     "actual_rel_speed_cm_per_yr": 6.174644480702275,
+     "mean_D": -0.20803852140606735
+    },
+    "flow_neither": {
+     "contacts": 33,
+     "length_share": 0.05497863247863248,
+     "subducting_share": 0.2748945768572663,
+     "actual_opposition": 0.40215660110277174,
+     "actual_rel_speed_cm_per_yr": 3.3138585055130587,
+     "mean_D": 0.15661624645867622
+    },
+    "flow_alike_opposition_lt_0.3": {
+     "contacts": 133,
+     "length_share": 0.18581196581196582,
+     "subducting_share": 0.36202222308765547,
+     "actual_opposition": 0.3370806611522222,
+     "actual_rel_speed_cm_per_yr": 4.060512592752584,
+     "mean_D": 0.2680405346431399
+    },
+    "flow_opposed_opposition_gt_0.7": {
+     "contacts": 258,
+     "length_share": 0.35170940170940174,
+     "subducting_share": 0.39021822786644816,
+     "actual_opposition": 0.8077113773880307,
+     "actual_rel_speed_cm_per_yr": 7.276705157814015,
+     "mean_D": 0.06389112311201954
+    }
+   }
+  },
+  "20.0": {
+   "contacts": 788,
+   "length_km": 3180312.5,
+   "flow_opposition_all": 0.5729336756174002,
+   "actual_opposition_all": 0.5678105839484272,
+   "bins": {
+    "flow_converging": {
+     "contacts": 395,
+     "length_share": 0.5150437260489339,
+     "subducting_share": 0.5781504396431136,
+     "actual_opposition": 0.561208696495846,
+     "actual_rel_speed_cm_per_yr": 4.410091474952899,
+     "mean_D": 0.5482743148751161
+    },
+    "flow_opening": {
+     "contacts": 346,
+     "length_share": 0.4195342438832662,
+     "subducting_share": 0.1478675968364698,
+     "actual_opposition": 0.5840540991598872,
+     "actual_rel_speed_cm_per_yr": 5.445862620406518,
+     "mean_D": -0.18642896617346244
+    },
+    "flow_neither": {
+     "contacts": 47,
+     "length_share": 0.06542203006779994,
+     "subducting_share": 0.40118003721187856,
+     "actual_opposition": 0.5156194465567167,
+     "actual_rel_speed_cm_per_yr": 3.843012362759633,
+     "mean_D": 0.1869644356054648
+    },
+    "flow_alike_opposition_lt_0.3": {
+     "contacts": 156,
+     "length_share": 0.18891618355114473,
+     "subducting_share": 0.3747814137305084,
+     "actual_opposition": 0.3693078535973706,
+     "actual_rel_speed_cm_per_yr": 3.857826867483989,
+     "mean_D": 0.23390936756310773
+    },
+    "flow_opposed_opposition_gt_0.7": {
+     "contacts": 273,
+     "length_share": 0.3451311781468016,
+     "subducting_share": 0.37001018926097806,
+     "actual_opposition": 0.7742627068671115,
+     "actual_rel_speed_cm_per_yr": 5.9951336833372055,
+     "mean_D": 0.11077548666481156
+    }
+   }
+  },
+  "50.0": {
+   "contacts": 1016,
+   "length_km": 3723625.0,
+   "flow_opposition_all": 0.5509227940483301,
+   "actual_opposition_all": 0.5578163413207758,
+   "bins": {
+    "flow_converging": {
+     "contacts": 486,
+     "length_share": 0.5137131155795763,
+     "subducting_share": 0.5198661291884263,
+     "actual_opposition": 0.5497067958805993,
+     "actual_rel_speed_cm_per_yr": 3.4629546746573627,
+     "mean_D": 0.5115155255748026
+    },
+    "flow_opening": {
+     "contacts": 459,
+     "length_share": 0.4160092651649938,
+     "subducting_share": 0.19124402921941164,
+     "actual_opposition": 0.5771326103186735,
+     "actual_rel_speed_cm_per_yr": 4.85217051828954,
+     "mean_D": -0.20174143527014982
+    },
+    "flow_neither": {
+     "contacts": 71,
+     "length_share": 0.07027761925542986,
+     "subducting_share": 0.4056409930991971,
+     "actual_opposition": 0.502752338605024,
+     "actual_rel_speed_cm_per_yr": 3.3562072460820067,
+     "mean_D": 0.2512603895937091
+    },
+    "flow_alike_opposition_lt_0.3": {
+     "contacts": 254,
+     "length_share": 0.2302024237134513,
+     "subducting_share": 0.37066090874330027,
+     "actual_opposition": 0.39921950349916313,
+     "actual_rel_speed_cm_per_yr": 3.421400279886354,
+     "mean_D": 0.2113498070999401
+    },
+    "flow_opposed_opposition_gt_0.7": {
+     "contacts": 311,
+     "length_share": 0.325992816140186,
+     "subducting_share": 0.3689005455277318,
+     "actual_opposition": 0.7142126661616783,
+     "actual_rel_speed_cm_per_yr": 4.688062870306559,
+     "mean_D": 0.12560840917291904
+    }
+   }
+  }
+ }
+}

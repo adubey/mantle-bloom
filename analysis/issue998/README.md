@@ -230,3 +230,124 @@ pulled share of boundary and the opening share separate outcomes at 1 Myr; no to
 Limits: 20 development seeds, one force-form family (`b123`), 1 Myr steps, plates-only; acceptance rates have wide
 intervals at n=20; the Earth reference is one planet's present state (141 plate pairs), and the amended rejection
 rule was fixed after seeing the baseline pass (section 5).
+
+## 11. Exploration: a contact brake extended to oceanic contacts (in-process patch, not a model change)
+
+`plate_speed_samples.py --ocean-brake G` adds, in the sampling process only, the same linear contact drag (G x 5e12 N/m)
+at non-divergent oceanic band nodes (convergent, transform, contested); ridges stay free. Base: `b123-brake-off`, 20
+development seeds, 50 Myr. Scores and attribution are in `scores-/attribution-b123-oceanbrake-<G>.json`, coherence in
+`contact-asymmetry-oceanbrake.json`.
+
+| G | plate speed at 50 Myr (cm/yr) | median contact speed (cm/yr) | opposition (Earth 0.41) | accepted at 50 Myr |
+|---|---|---|---|---|
+| 0 (brake off) | 4.25 (100 Myr) | 8.9 (100 Myr) | 0.83 | 0/20 |
+| 0.1 | 4.0 | 6.8 | 0.79 | 0/20 |
+| 0.25 | 3.4 | 5.8 | 0.75 | 0/20 |
+| 0.5 | 2.9 | 4.2 | 0.70 | 2/20 |
+
+Reading: the oceanic brake lowers contact speed and opposition together, as the continental brake did. It keeps a little
+more plate speed at equal opposition (about 3.0 cm/yr at 0.70, against 2.3 at 0.73 for the overall 0.25 brake), but does
+not reach Earth's coherence. Plate speeds are a single seed-set, and the torque-breakdown `contact_brake` row ignores the
+patch (it builds its own mask), so speeds are the evidence. A real change would need an RFC revision.
+
+## 12. Strong driving with an intermediate brake (slab-mantle viscosity 1e20 and 1e21, SUBDUCTION_LSINK 660 km)
+
+Settings `corner-<1e20|1e21>-lsink660-brake-<0.25|0.5>` in `settings.json` (overall `contact_drag_multiplier` 0.25 or 0.5),
+20 development seeds, 50 Myr. Scores, attribution and `contact-asymmetry-corner-brakes.json` are in this directory.
+
+| Setting | peak plate speed (cm/yr) | plate speed at 50 Myr | median contact speed at 50 Myr | opposition (Earth 0.41) | accepted at 50 Myr |
+|---|---|---|---|---|---|
+| 1e20, brake 0.25 | 12.7 (5 Myr) | 8.1 | 9.7 | 0.72 | 0/20 |
+| 1e20, brake 0.5 | 6.9 (5 Myr) | 4.9 | 7.1 | 0.69 | 0/20 |
+| 1e21, brake 0.25 | 6.0 (10 Myr) | 4.2 | 6.6 | 0.80 | 0/20 |
+| 1e21, brake 0.5 | 3.7 (10 Myr) | 2.8 | 4.7 | 0.74 | 0/20 |
+
+Reading: no combination of driving strength and overall brake reaches Earth's opposition (0.41) with contact speed near 3
+cm/yr. Plates overshoot early, then slow as the plate count rises from 14 to 19-21. Together with sections 9-11 this
+supports the answer in section 10: the force-form family tested here cannot produce Earth's neighbour coherence by
+retuning; a driver that couples adjacent plates' motion is needed (not tested).
+
+## 13. Flow x4 with an intermediate brake (`--flow-scale 4`, settings `b123-brake-<0.25|0.5>-for-flow4`)
+
+Static mantle-flow amplitude x4, slab pull and ridge push unchanged, overall `contact_drag_multiplier` 0.25 or 0.5.
+20 development seeds, 50 Myr. Scores, attribution and `contact-asymmetry-flow4-brake.json` are in this directory.
+
+| Brake | flow share of driving (5 / 50 Myr) | plate speed 5 / 50 Myr (cm/yr) | median contact speed at 50 Myr | opposition 5 / 50 Myr (Earth 0.41) | accepted at 50 Myr |
+|---|---|---|---|---|---|
+| 0.25 | 0.63 / 0.60 | 6.5 / 4.8 | 4.8 | 0.54 / 0.54 | 2/20 |
+| 0.5 | 0.64 / 0.60 | 5.2 / 3.9 | 3.6 | 0.52 / 0.51 | 10/20 |
+
+Reading: with flow carrying about 60% of the driving, the brake no longer trades coherence for speed. At brake 0.5 plate speed
+is inside the 3-5 cm/yr band, the contact median is near Earth's, opposition is 0.51 (flow-only t=0 is 0.53, the unbraked
+baseline 0.83) and 10/20 worlds are accepted. This is the first setting tested that approaches Earth's speed and coherence
+together. Caveats: the amplitude x4 is a diagnostic (flow-only plate speed 18 cm/yr), the field is static and its centres are
+unrelated to where slabs form, the amended criterion was set after seeing results, and n = 20.
+
+## 14. Does subduction land on the model's downwelling centres? (`bin/debug/downwelling_check.py`)
+
+Setting `b123-brake-0.5-for-flow4`, flow x4, 20 development seeds. At each time, the mean downwelling potential D (positive
+over a downwelling centre) at subducting boundary nodes is compared with the same mean for 200 random redrawings of the
+centres. Output: `downwelling-check.json`.
+
+| Myr | mean D at subducting nodes | mean D, all band nodes | median percentile among random centres (0.5 = chance) | seeds above the 90th percentile (chance 10%) |
+|---|---|---|---|---|
+| 5 | 0.52 | 0.17 | 0.78 | 20% |
+| 20 | 0.46 | 0.19 | 0.76 | 20% |
+| 50 | 0.38 | 0.17 | 0.74 | 20% |
+
+Reading: subducting nodes sit in more downwelling than chance, modestly. Nothing in the model ties trench position to the
+centres, so the tendency is dynamical: the flow moves plates toward downwellings and they subduct there. It is weak and
+fades from 5 to 50 Myr as plates move on and the static centres stay put. Ridges show a similar weak upwelling tendency
+(median percentile 0.65-0.68).
+
+## 15. Intervention on the flow (same 20 seeds, `b123-brake-0.5-for-flow4`)
+
+Trench placement is always scored against the ORIGINAL centres (flow x4). Files `downwelling-check-flip.json` and `-off.json`.
+
+| Arm | subducting nodes per seed (5 / 50 Myr) | median percentile vs random centres, at 5 / 20 / 50 Myr (0.5 = chance) | mean D at subducting nodes at 5 Myr |
+|---|---|---|---|
+| flow x4 (section 14) | 3,966 on seed 106533960 | 0.78 / 0.76 / 0.74 | +0.52 |
+| every centre's sign flipped (-4) | 3,360 / 3,804 | 0.37 / 0.36 / 0.39 | -0.21 |
+| flow off | 0 / 0 (20 of 20 seeds, to 50 Myr) | - | - |
+
+Reading: with the flow flipped, subduction moves away from the original downwellings (onto the original upwellings), and
+ridges move the other way (median ridge percentile 0.18-0.25). So in the model the flow places the trenches; the section 14
+association is causal through plate motion. With the flow off nothing moves and nothing subducts in 50 Myr: the static
+flow is the only starter of plate motion, because slab pull and ridge push need a slab to exist. Not a mirror image (0.37,
+not 0.23): the world's geometry also sets trench positions.
+
+## 16. Per-contact flow coherence (`bin/debug/contact_flow_coherence.py`; `contact-flow-coherence.json`)
+
+`b123-brake-0.5-for-flow4`, 20 seeds, 5 / 20 / 50 Myr. Each contact is binned by what the flow alone does to its two plates.
+Opposition here uses node velocities, not plate-mean speeds, so it is not comparable with sections 6-13.
+
+| Bin (flow alone) | length share | subducting share (5 / 20 / 50 Myr) | actual opposition (5 / 20 / 50 Myr) |
+|---|---|---|---|
+| converging (closing > 0.5 cm/yr) | 0.48 / 0.52 / 0.51 | 0.65 / 0.58 / 0.52 | 0.58 / 0.56 / 0.55 |
+| opening (closing < -0.5) | 0.46 / 0.42 / 0.42 | 0.15 / 0.15 / 0.19 | 0.59 / 0.58 / 0.58 |
+| plates carried alike (flow opposition < 0.3) | 0.19 / 0.19 / 0.23 | 0.36 / 0.37 / 0.37 | 0.34 / 0.37 / 0.40 |
+| plates carried oppositely (> 0.7) | 0.35 / 0.35 / 0.33 | 0.39 / 0.37 / 0.37 | 0.81 / 0.77 / 0.71 |
+
+Reading: (1) where the flow converges, contacts subduct about 3-4 times as often as where it opens. (2) Actual coherence is
+inherited from the flow's: contacts the flow carries alike end at opposition 0.34-0.40, contacts it carries oppositely at
+0.71-0.81, and convergence alone makes no difference to opposition (0.55 against 0.58). (3) Only 19-23% of contact length is
+carried alike by the model's random flow, and 33-36% oppositely; flow-only opposition overall is 0.57. (4) Subduction is not
+rare at flow-alike contacts (37%), so it has other causes there. Earth's equivalent split is not yet computed.
+
+## 17. Earth's contact coherence on the same measure (`bin/debug/earth_contact_coherence.py`; `earth-contact-coherence.json`)
+
+PB2002 plate velocities at each boundary segment (Bird's Euler poles, no-net-rotation frame), per-contact opposition
+sum(km |v_a - v_b|) / sum(km (|v_a| + |v_b|)), contacts of at least 500 km. Earth has 106 contacts; the interval is a
+bootstrap over contacts. Model: `b123-brake-0.5-for-flow4`, 20 seeds (its net rotation is 0.3 cm/yr, so its frame is near NNR).
+
+| | mean opposition | share alike (< 0.3) | share opposed (> 0.7) |
+|---|---|---|---|
+| Earth (PB2002) | 0.52 [0.44, 0.60] | 0.27 [0.17, 0.39] | 0.35 [0.21, 0.49] |
+| model, flow x4 + brake 0.5, 5 / 20 / 50 Myr | 0.58 / 0.57 / 0.56 | 0.19 / 0.20 / 0.20 | 0.36 / 0.35 / 0.33 |
+| model, flow alone (5 Myr geometry) | 0.57 | 0.19 | 0.35 |
+
+Reading: on this measure Earth's neighbours are not much more alike than the model's flow x4 worlds: the model's mean and
+shares sit inside or at the edge of Earth's sampling interval (alike share 0.20 against 0.27, interval 0.17-0.39).
+Earth's plate-mean opposition (0.41, `contact-asymmetry.json`) and this local-velocity 0.52 differ, so a target must name
+its measure. The unbraked baselines (plate-mean 0.83) are far outside either. The flow-alone and actual columns agree:
+the model's coherence is inherited from its flow geometry.

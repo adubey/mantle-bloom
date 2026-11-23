@@ -12,7 +12,8 @@ or diverging by the sign of the closing rate; scoring is in `score_speed_samples
     run    one seed (about 1 GB, plates-only; compute-budget first):
            backend/.venv/bin/python bin/debug/plate_speed_samples.py run --settings analysis/issue975/settings.json \\
                --setting rifting-baseline --seed 591453549 --at 0 1 2 5 10 --step-myr 1 --out <captures>/591453549.json
-           add `--flow-scale 2` to multiply the static mantle-flow amplitude (the #998 flow test).
+           add `--flow-scale 2` to multiply the static mantle-flow amplitude (the #998 flow test), or
+           `--ocean-brake 0.25` to extend the contact brake to non-divergent oceanic contacts (in-process patch, #998).
     queue  seeds in series, one process each, skipping finished ones:
            backend/.venv/bin/python bin/debug/plate_speed_samples.py queue --settings ... --setting ... \\
                --seeds-file analysis/issue958/development-seeds.json --at 0 1 2 5 10 --out <captures>/<setting>
@@ -66,6 +67,48 @@ def record_contacts(world, omegas) -> dict:
     return {"areas_km2": areas, "contacts": [{"a": a, "b": b, "nodes": v} for (a, b), v in sorted(nodes.items())]}
 
 
+def patch_ocean_brake(gain: float) -> None:
+    """Exploration of #998 only, no `backend/app` change: extend the contact brake to oceanic contacts in this process.
+
+    The brake brakes continent-continent contested nodes only (`torque.continental_contact_mask`). With this patch
+    the quasi-static solve (the only caller inside `torque.py`) also brakes every non-divergent band node
+    (convergent, transform or contested, as `classify_boundary_nodes` partitions them) that is not already a
+    continent-continent node, with factor 1 and `gain` x CONTACT_RESISTANCE_N_PER_M, the same linear drag on the
+    relative velocity. Ridges (divergent nodes) are left free. `rift_damage`'s own use of the mask is untouched."""
+    from app import torque
+
+    if gain <= 0:
+        return
+    original_classify = torque.classify_boundary_nodes
+    original_mask = torque.continental_contact_mask
+    original_drag = torque.contact_drag_pa_s_per_m
+    stash: dict[int, tuple] = {}
+
+    def classify(plate, neighbours, inputs, reach_rad, cache=None):
+        result = original_classify(plate, neighbours, inputs, reach_rad, cache)
+        stash[id(inputs)] = result
+        return result
+
+    def mask(plate, inputs, contested):
+        base = original_mask(plate, inputs, contested)
+        if sys._getframe(1).f_globals.get("__name__") != "app.torque" or id(inputs) not in stash:
+            return base
+        convergent, _divergent, transform, contested_ = stash[id(inputs)]
+        return base | convergent | transform | contested_
+
+    def drag(plate, inputs, collision_mask, spacing_rad, craton_m=None, jam=None, *, contact_gain=1.0, craton_gain=1.0):
+        coefficient = original_drag(plate, inputs, collision_mask, spacing_rad, craton_m, jam, contact_gain=contact_gain, craton_gain=craton_gain)
+        ocean = collision_mask & ~(torque.own_is_continental(plate, inputs) & ~inputs.neighbor_is_oceanic)
+        if not ocean.any():
+            return coefficient
+        extra = original_drag(plate, inputs, np.zeros_like(collision_mask), spacing_rad, None, ocean.astype(float), contact_gain=gain)
+        return np.maximum(coefficient, extra)
+
+    torque.classify_boundary_nodes = classify
+    torque.continental_contact_mask = mask
+    torque.contact_drag_pa_s_per_m = drag
+
+
 def run_one(args: argparse.Namespace) -> None:
     import calibrate_plate_forces as cal
     import plate_torque_breakdown as breakdown
@@ -82,6 +125,7 @@ def run_one(args: argparse.Namespace) -> None:
     # every seed starts from the same world and only the stepped flow torque changes (exploration of #998 only).
     for center in world.mantle_centers:
         center.strength *= args.flow_scale
+    patch_ocean_brake(args.ocean_brake)
     started = time.perf_counter()
     samples = []
 
@@ -105,7 +149,7 @@ def run_one(args: argparse.Namespace) -> None:
         recorder = rec.Recorder(rift_damage.runtime(world).params.eps_cand)
     if final > 0:
         d1.step_all(world, stepping, scratch, recorder, lambda w, myr: take(myr) if round(myr, 6) in wanted else None)
-    args.out.write_text(json.dumps({"seed": args.seed, "setting": args.setting, "step_myr": args.step_myr, "flow_scale": args.flow_scale, "samples": samples,
+    args.out.write_text(json.dumps({"seed": args.seed, "setting": args.setting, "step_myr": args.step_myr, "flow_scale": args.flow_scale, "ocean_brake": args.ocean_brake, "samples": samples,
                                     "wall_s": time.perf_counter() - started}, default=float) + "\n")
 
 
@@ -118,7 +162,7 @@ def queue(args: argparse.Namespace) -> None:
         if target.exists():
             continue
         command = [sys.executable, __file__, "run", "--settings", str(args.settings), "--setting", args.setting, "--seed", str(seed),
-                   "--step-myr", str(args.step_myr), "--flow-scale", str(args.flow_scale), "--out", str(target), "--at", *map(str, args.at)]
+                   "--step-myr", str(args.step_myr), "--flow-scale", str(args.flow_scale), "--ocean-brake", str(args.ocean_brake), "--out", str(target), "--at", *map(str, args.at)]
         with open(args.out / f"{seed}.log", "w") as log:
             code = subprocess.call(command, stdout=log, stderr=subprocess.STDOUT)
         print(seed, "exit", code, time.strftime("%H:%M"), flush=True)
@@ -137,6 +181,7 @@ def main() -> None:
         p.add_argument("--at", type=float, nargs="+", default=[0, 1, 2, 5, 10])
         p.add_argument("--step-myr", type=float, default=1.0)
         p.add_argument("--flow-scale", type=float, default=1.0, help="multiply every mantle convection centre's strength (default 1)")
+        p.add_argument("--ocean-brake", type=float, default=0.0, help="gain (x 5e12 N/m) of a contact brake extended to non-divergent oceanic contacts (default 0, off)")
         p.add_argument("--out", type=Path, required=True)
         if name == "run":
             p.add_argument("--seed", type=int, required=True)

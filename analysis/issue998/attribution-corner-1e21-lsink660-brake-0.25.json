@@ -1,0 +1,1975 @@
+{
+ "seeds": 20,
+ "by_time": {
+  "0.0": {
+   "driving_share_slab_pull": {
+    "mean": 0.0,
+    "min": 0.0,
+    "max": 0.0
+   },
+   "driving_share_ridge_push": {
+    "mean": 0.0,
+    "min": 0.0,
+    "max": 0.0
+   },
+   "driving_share_mantle_flow": {
+    "mean": 1.0,
+    "min": 1.0,
+    "max": 1.0
+   },
+   "resisting_over_driving_basal_drag": {
+    "mean": 0.38908447945632657,
+    "min": 0.24913313884146734,
+    "max": 0.5052294136071535
+   },
+   "resisting_over_driving_slab_drag": {
+    "mean": 0.0,
+    "min": -0.0,
+    "max": -0.0
+   },
+   "resisting_over_driving_contact_brake": {
+    "mean": 0.6109155205436734,
+    "min": 0.49477058639284677,
+    "max": 0.7508668611585321
+   },
+   "slab_pull_cancellation_kept": {
+    "mean": 0.0,
+    "min": 0.0,
+    "max": 0.0
+   },
+   "slab_bearing_area_share": {
+    "mean": 0.0,
+    "min": 0.0,
+    "max": 0.0
+   },
+   "slab_attached_area_share_10pct": {
+    "mean": 0.0,
+    "min": 0.0,
+    "max": 0.0
+   },
+   "pulled_boundary_share": {
+    "mean": 0.0,
+    "min": 0.0,
+    "max": 0.0
+   },
+   "opening_past_gate_share": {
+    "mean": 0.0,
+    "min": 0.0,
+    "max": 0.0
+   },
+   "plates": {
+    "mean": 14.1,
+    "min": 8.0,
+    "max": 20.0
+   },
+   "mean_plate_area_share": {
+    "mean": 0.07778741360978203,
+    "min": 0.05,
+    "max": 0.125
+   },
+   "largest_plate_area_share": {
+    "mean": 0.1395792896909836,
+    "min": 0.08128278010933808,
+    "max": 0.19991785708575577
+   },
+   "speed_area_weighted_cm_per_yr": {
+    "mean": 0.9332535971149296,
+    "min": 0.37169981034859395,
+    "max": 2.1540927306566693
+   },
+   "flow_only_speed_cm_per_yr": {
+    "mean": 2.438479009544344,
+    "min": 1.1915889461570977,
+    "max": 4.550215577545058
+   },
+   "speed_over_flow_only": {
+    "mean": 0.36807539538365586,
+    "min": 0.24471197737329142,
+    "max": 0.49747760114411943
+   }
+  },
+  "1.0": {
+   "driving_share_slab_pull": {
+    "mean": 0.60488323004105,
+    "min": 0.0,
+    "max": 0.8094241844700599
+   },
+   "driving_share_ridge_push": {
+    "mean": 0.05667593976376291,
+    "min": 0.0,
+    "max": 0.21151692022626933
+   },
+   "driving_share_mantle_flow": {
+    "mean": 0.3384408301951871,
+    "min": 0.12190139304635539,
+    "max": 1.0
+   },
+   "resisting_over_driving_basal_drag": {
+    "mean": 0.2612631296093958,
+    "min": 0.19076170318306374,
+    "max": 0.3449178584965088
+   },
+   "resisting_over_driving_slab_drag": {
+    "mean": 0.32687474664992716,
+    "min": -0.0,
+    "max": 0.543469488596581
+   },
+   "resisting_over_driving_contact_brake": {
+    "mean": 0.41177106610659725,
+    "min": 0.15952314899474787,
+    "max": 0.7417875217808496
+   },
+   "slab_pull_cancellation_kept": {
+    "mean": 0.8437604220115056,
+    "min": 0.0,
+    "max": 0.9847404102053454
+   },
+   "slab_bearing_area_share": {
+    "mean": 0.5773142464555642,
+    "min": 0.0,
+    "max": 1.0
+   },
+   "slab_attached_area_share_10pct": {
+    "mean": 0.003895184249264342,
+    "min": 0.0,
+    "max": 0.03060850088462239
+   },
+   "pulled_boundary_share": {
+    "mean": 0.06087083382565347,
+    "min": 0.0,
+    "max": 0.14843488161669982
+   },
+   "opening_past_gate_share": {
+    "mean": 0.08190983784885035,
+    "min": 0.0,
+    "max": 0.2315204660659206
+   },
+   "plates": {
+    "mean": 14.1,
+    "min": 8.0,
+    "max": 20.0
+   },
+   "mean_plate_area_share": {
+    "mean": 0.07778741360978203,
+    "min": 0.05,
+    "max": 0.125
+   },
+   "largest_plate_area_share": {
+    "mean": 0.13967812649434297,
+    "min": 0.08146830722416781,
+    "max": 0.20003554051854924
+   },
+   "speed_area_weighted_cm_per_yr": {
+    "mean": 2.600265440847479,
+    "min": 0.37263613850031124,
+    "max": 5.481928833548928
+   },
+   "flow_only_speed_cm_per_yr": {
+    "mean": 2.4388713483589157,
+    "min": 1.1918520897663363,
+    "max": 4.554542019720708
+   },
+   "speed_over_flow_only": {
+    "mean": 1.00283757428772,
+    "min": 0.24161774286759752,
+    "max": 1.9863664562681052
+   }
+  },
+  "2.0": {
+   "driving_share_slab_pull": {
+    "mean": 0.7214840308264543,
+    "min": 0.0,
+    "max": 0.8646872346556235
+   },
+   "driving_share_ridge_push": {
+    "mean": 0.06931909295626386,
+    "min": 0.0,
+    "max": 0.11429700609252551
+   },
+   "driving_share_mantle_flow": {
+    "mean": 0.20919687621728172,
+    "min": 0.0701383425709859,
+    "max": 1.0
+   },
+   "resisting_over_driving_basal_drag": {
+    "mean": 0.2137775849259728,
+    "min": 0.1567319055700856,
+    "max": 0.3534654625057723
+   },
+   "resisting_over_driving_slab_drag": {
+    "mean": 0.45322717587328165,
+    "min": -0.0,
+    "max": 0.6576154233354983
+   },
+   "resisting_over_driving_contact_brake": {
+    "mean": 0.33268778454887,
+    "min": 0.12755907962808163,
+    "max": 0.7438675516597606
+   },
+   "slab_pull_cancellation_kept": {
+    "mean": 0.8284130288202922,
+    "min": 0.0,
+    "max": 0.9787366806365043
+   },
+   "slab_bearing_area_share": {
+    "mean": 0.7724093789168385,
+    "min": 0.0,
+    "max": 1.0000000000000002
+   },
+   "slab_attached_area_share_10pct": {
+    "mean": 0.03177181183017581,
+    "min": 0.0,
+    "max": 0.15937855665301398
+   },
+   "pulled_boundary_share": {
+    "mean": 0.13573283969521202,
+    "min": 0.0,
+    "max": 0.25842143651933
+   },
+   "opening_past_gate_share": {
+    "mean": 0.2604183811646678,
+    "min": 0.0,
+    "max": 0.5202270922232692
+   },
+   "plates": {
+    "mean": 14.1,
+    "min": 8.0,
+    "max": 20.0
+   },
+   "mean_plate_area_share": {
+    "mean": 0.07778741360978203,
+    "min": 0.05,
+    "max": 0.125
+   },
+   "largest_plate_area_share": {
+    "mean": 0.13983770847293914,
+    "min": 0.08163011965847684,
+    "max": 0.20029731000155535
+   },
+   "speed_area_weighted_cm_per_yr": {
+    "mean": 3.765845163195034,
+    "min": 0.3700851952220281,
+    "max": 7.341210618077223
+   },
+   "flow_only_speed_cm_per_yr": {
+    "mean": 2.4392730278427743,
+    "min": 1.1920183788094276,
+    "max": 4.557845901061762
+   },
+   "speed_over_flow_only": {
+    "mean": 1.50864423704793,
+    "min": 0.2398549248842802,
+    "max": 2.7898315078285827
+   }
+  },
+  "5.0": {
+   "driving_share_slab_pull": {
+    "mean": 0.8088859686433659,
+    "min": 0.0,
+    "max": 0.9075973338023834
+   },
+   "driving_share_ridge_push": {
+    "mean": 0.0750579566985479,
+    "min": 0.0,
+    "max": 0.09864729948099803
+   },
+   "driving_share_mantle_flow": {
+    "mean": 0.11605607465808616,
+    "min": 0.032468476849619246,
+    "max": 1.0
+   },
+   "resisting_over_driving_basal_drag": {
+    "mean": 0.17572046587772033,
+    "min": 0.13248865441594804,
+    "max": 0.25191020642771234
+   },
+   "resisting_over_driving_slab_drag": {
+    "mean": 0.552441095919429,
+    "min": -0.0,
+    "max": 0.6609762763172259
+   },
+   "resisting_over_driving_contact_brake": {
+    "mean": 0.2711320718529326,
+    "min": 0.13463770789092927,
+    "max": 0.7481104511549607
+   },
+   "slab_pull_cancellation_kept": {
+    "mean": 0.8907234404974069,
+    "min": 0.0,
+    "max": 0.9782699664011161
+   },
+   "slab_bearing_area_share": {
+    "mean": 0.9077404610484037,
+    "min": 0.0,
+    "max": 1.0000000000000002
+   },
+   "slab_attached_area_share_10pct": {
+    "mean": 0.28956667096939614,
+    "min": 0.0,
+    "max": 0.5780470845638727
+   },
+   "pulled_boundary_share": {
+    "mean": 0.24980315569774358,
+    "min": 0.0,
+    "max": 0.3536142589714018
+   },
+   "opening_past_gate_share": {
+    "mean": 0.42096807919723406,
+    "min": 0.0,
+    "max": 0.5281008633111437
+   },
+   "plates": {
+    "mean": 14.1,
+    "min": 8.0,
+    "max": 20.0
+   },
+   "mean_plate_area_share": {
+    "mean": 0.07778741360978203,
+    "min": 0.05,
+    "max": 0.125
+   },
+   "largest_plate_area_share": {
+    "mean": 0.14089331770584101,
+    "min": 0.0810939826368813,
+    "max": 0.2027981766862153
+   },
+   "speed_area_weighted_cm_per_yr": {
+    "mean": 5.647591351414816,
+    "min": 0.3635618651340193,
+    "max": 7.5776563621787
+   },
+   "flow_only_speed_cm_per_yr": {
+    "mean": 2.436590011201236,
+    "min": 1.1957407450307247,
+    "max": 4.55750079666048
+   },
+   "speed_over_flow_only": {
+    "mean": 2.442533878024946,
+    "min": 0.23572102371708606,
+    "max": 4.817049247740668
+   }
+  },
+  "10.0": {
+   "driving_share_slab_pull": {
+    "mean": 0.8102302692312439,
+    "min": 0.0,
+    "max": 0.9013418901152164
+   },
+   "driving_share_ridge_push": {
+    "mean": 0.08404066200356028,
+    "min": 0.0,
+    "max": 0.10095700950494098
+   },
+   "driving_share_mantle_flow": {
+    "mean": 0.10572906876519592,
+    "min": 0.02643128125551387,
+    "max": 1.0
+   },
+   "resisting_over_driving_basal_drag": {
+    "mean": 0.15927870318894027,
+    "min": 0.12181590008078713,
+    "max": 0.25178296415700574
+   },
+   "resisting_over_driving_slab_drag": {
+    "mean": 0.5504332253412698,
+    "min": -0.0,
+    "max": 0.6690162176095068
+   },
+   "resisting_over_driving_contact_brake": {
+    "mean": 0.28609776622839744,
+    "min": 0.17678721540097958,
+    "max": 0.7438589986529319
+   },
+   "slab_pull_cancellation_kept": {
+    "mean": 0.8892933281288586,
+    "min": 0.0,
+    "max": 0.9578581457319867
+   },
+   "slab_bearing_area_share": {
+    "mean": 0.95,
+    "min": 0.0,
+    "max": 1.0000000000000002
+   },
+   "slab_attached_area_share_10pct": {
+    "mean": 0.6268918804156793,
+    "min": 0.0,
+    "max": 0.8520014241659447
+   },
+   "pulled_boundary_share": {
+    "mean": 0.2869695324656173,
+    "min": 0.0,
+    "max": 0.3503605868653639
+   },
+   "opening_past_gate_share": {
+    "mean": 0.4610027910561098,
+    "min": 0.0,
+    "max": 0.5127215793792028
+   },
+   "plates": {
+    "mean": 14.25,
+    "min": 8.0,
+    "max": 20.0
+   },
+   "mean_plate_area_share": {
+    "mean": 0.076588632815413,
+    "min": 0.05,
+    "max": 0.125
+   },
+   "largest_plate_area_share": {
+    "mean": 0.1417866491854476,
+    "min": 0.08122406322405934,
+    "max": 0.19742676355075037
+   },
+   "speed_area_weighted_cm_per_yr": {
+    "mean": 5.982439397552212,
+    "min": 0.36323336275262263,
+    "max": 6.9562640229994885
+   },
+   "flow_only_speed_cm_per_yr": {
+    "mean": 2.433354903361276,
+    "min": 1.1816649310508038,
+    "max": 4.577527551416538
+   },
+   "speed_over_flow_only": {
+    "mean": 2.7095109992030197,
+    "min": 0.2352764133871375,
+    "max": 5.861886312417561
+   }
+  },
+  "20.0": {
+   "driving_share_slab_pull": {
+    "mean": 0.7978841874566223,
+    "min": 0.0,
+    "max": 0.8754046596278815
+   },
+   "driving_share_ridge_push": {
+    "mean": 0.0954352312909377,
+    "min": 0.0,
+    "max": 0.12100651991825036
+   },
+   "driving_share_mantle_flow": {
+    "mean": 0.1066805812524401,
+    "min": 0.028485528407317297,
+    "max": 1.0
+   },
+   "resisting_over_driving_basal_drag": {
+    "mean": 0.1400593209288771,
+    "min": 0.11038323783697636,
+    "max": 0.24645798136088515
+   },
+   "resisting_over_driving_slab_drag": {
+    "mean": 0.5039460304486614,
+    "min": -0.0,
+    "max": 0.6153906142987339
+   },
+   "resisting_over_driving_contact_brake": {
+    "mean": 0.3474348716429411,
+    "min": 0.24110699063795826,
+    "max": 0.7420195723563607
+   },
+   "slab_pull_cancellation_kept": {
+    "mean": 0.8857276753943821,
+    "min": 0.0,
+    "max": 0.9680263296946139
+   },
+   "slab_bearing_area_share": {
+    "mean": 0.95,
+    "min": 0.0,
+    "max": 1.0000000000000002
+   },
+   "slab_attached_area_share_10pct": {
+    "mean": 0.6547321477260494,
+    "min": 0.0,
+    "max": 0.9084531609360329
+   },
+   "pulled_boundary_share": {
+    "mean": 0.26950053704759036,
+    "min": 0.0,
+    "max": 0.3499527175475043
+   },
+   "opening_past_gate_share": {
+    "mean": 0.4363224075075428,
+    "min": 0.0,
+    "max": 0.4933892975824242
+   },
+   "plates": {
+    "mean": 15.85,
+    "min": 8.0,
+    "max": 23.0
+   },
+   "mean_plate_area_share": {
+    "mean": 0.07076334841890435,
+    "min": 0.043478260869565216,
+    "max": 0.125
+   },
+   "largest_plate_area_share": {
+    "mean": 0.15329883606887335,
+    "min": 0.08733401501481595,
+    "max": 0.24063375938778628
+   },
+   "speed_area_weighted_cm_per_yr": {
+    "mean": 5.034876632440833,
+    "min": 0.35502670839332745,
+    "max": 6.543687661887564
+   },
+   "flow_only_speed_cm_per_yr": {
+    "mean": 2.4326020870558454,
+    "min": 1.1351947200240315,
+    "max": 4.64596500258704
+   },
+   "speed_over_flow_only": {
+    "mean": 2.2942074104793804,
+    "min": 0.2298083904704681,
+    "max": 4.9705970299654645
+   }
+  },
+  "50.0": {
+   "driving_share_slab_pull": {
+    "mean": 0.8226798167676816,
+    "min": 0.7365232488728962,
+    "max": 0.8721853737864111
+   },
+   "driving_share_ridge_push": {
+    "mean": 0.11649149594770228,
+    "min": 0.08617049164971095,
+    "max": 0.1698090614420472
+   },
+   "driving_share_mantle_flow": {
+    "mean": 0.060828687284616066,
+    "min": 0.024319391364585777,
+    "max": 0.10420483911263016
+   },
+   "resisting_over_driving_basal_drag": {
+    "mean": 0.11307860024626808,
+    "min": 0.08288380771669794,
+    "max": 0.20638233616608292
+   },
+   "resisting_over_driving_slab_drag": {
+    "mean": 0.47854591752885545,
+    "min": 0.3851490777580565,
+    "max": 0.5951605079094193
+   },
+   "resisting_over_driving_contact_brake": {
+    "mean": 0.39719009410838935,
+    "min": 0.19734810898690572,
+    "max": 0.49297578390665625
+   },
+   "slab_pull_cancellation_kept": {
+    "mean": 0.9194775971341835,
+    "min": 0.8758132098482706,
+    "max": 0.9790936175684739
+   },
+   "slab_bearing_area_share": {
+    "mean": 0.9998990881607283,
+    "min": 0.9979817632145638,
+    "max": 1.0000000000000002
+   },
+   "slab_attached_area_share_10pct": {
+    "mean": 0.6471383133107651,
+    "min": 0.456229395526051,
+    "max": 0.9366516313218043
+   },
+   "pulled_boundary_share": {
+    "mean": 0.269089367363898,
+    "min": 0.19983952817219025,
+    "max": 0.3104397756492322
+   },
+   "opening_past_gate_share": {
+    "mean": 0.4301924308478247,
+    "min": 0.385333099806163,
+    "max": 0.52334580027356
+   },
+   "plates": {
+    "mean": 21.4,
+    "min": 8.0,
+    "max": 32.0
+   },
+   "mean_plate_area_share": {
+    "mean": 0.053605600189931865,
+    "min": 0.03125,
+    "max": 0.125
+   },
+   "largest_plate_area_share": {
+    "mean": 0.17158621406099017,
+    "min": 0.1016966105404502,
+    "max": 0.23383644864173042
+   },
+   "speed_area_weighted_cm_per_yr": {
+    "mean": 4.203653943387808,
+    "min": 3.247485874080705,
+    "max": 7.232154940751193
+   },
+   "flow_only_speed_cm_per_yr": {
+    "mean": 2.417666977682946,
+    "min": 1.0598012300769049,
+    "max": 4.3885022046792646
+   },
+   "speed_over_flow_only": {
+    "mean": 1.9739798310986612,
+    "min": 0.9986372464529418,
+    "max": 4.689251710224378
+   }
+  }
+ },
+ "paired_change_from_t0": {
+  "1.0": {
+   "driving_share_slab_pull": {
+    "mean": 0.60488323004105,
+    "ci95": [
+     0.48335689539396653,
+     0.7057116493213287
+    ],
+    "seeds_increasing": 18
+   },
+   "driving_share_ridge_push": {
+    "mean": 0.05667593976376291,
+    "ci95": [
+     0.03994876095173278,
+     0.0790972760096476
+    ],
+    "seeds_increasing": 19
+   },
+   "driving_share_mantle_flow": {
+    "mean": -0.6615591698048129,
+    "ci95": [
+     -0.7580957169858057,
+     -0.5397254611426483
+    ],
+    "seeds_increasing": 0
+   },
+   "resisting_over_driving_basal_drag": {
+    "mean": -0.12782134984693086,
+    "ci95": [
+     -0.1643229947587293,
+     -0.0911039807176019
+    ],
+    "seeds_increasing": 2
+   },
+   "resisting_over_driving_slab_drag": {
+    "mean": 0.32687474664992716,
+    "ci95": [
+     0.2465519489780188,
+     0.4043312685214549
+    ],
+    "seeds_increasing": 18
+   },
+   "resisting_over_driving_contact_brake": {
+    "mean": -0.1991444544370761,
+    "ci95": [
+     -0.25013719046316546,
+     -0.1489765622754967
+    ],
+    "seeds_increasing": 1
+   },
+   "slab_pull_cancellation_kept": {
+    "mean": 0.8437604220115056,
+    "ci95": [
+     0.7040356412439985,
+     0.9431975157409168
+    ],
+    "seeds_increasing": 18
+   },
+   "slab_bearing_area_share": {
+    "mean": 0.5773142464555642,
+    "ci95": [
+     0.44935917503993406,
+     0.698814471971726
+    ],
+    "seeds_increasing": 18
+   },
+   "slab_attached_area_share_10pct": {
+    "mean": 0.003895184249264342,
+    "ci95": [
+     0.0,
+     0.00879775774998669
+    ],
+    "seeds_increasing": 3
+   },
+   "pulled_boundary_share": {
+    "mean": 0.06087083382565347,
+    "ci95": [
+     0.041941629617620796,
+     0.08049903122181569
+    ],
+    "seeds_increasing": 18
+   },
+   "opening_past_gate_share": {
+    "mean": 0.08190983784885035,
+    "ci95": [
+     0.0547014015228235,
+     0.11129318166472607
+    ],
+    "seeds_increasing": 19
+   },
+   "plates": {
+    "mean": 0.0,
+    "ci95": [
+     0.0,
+     0.0
+    ],
+    "seeds_increasing": 0
+   },
+   "mean_plate_area_share": {
+    "mean": 0.0,
+    "ci95": [
+     0.0,
+     0.0
+    ],
+    "seeds_increasing": 0
+   },
+   "largest_plate_area_share": {
+    "mean": 9.88368033593999e-05,
+    "ci95": [
+     -6.696079649903637e-05,
+     0.00024472579892137876
+    ],
+    "seeds_increasing": 15
+   },
+   "speed_area_weighted_cm_per_yr": {
+    "mean": 1.6670118437325492,
+    "ci95": [
+     1.1400388060655262,
+     2.1692659457338603
+    ],
+    "seeds_increasing": 19
+   },
+   "flow_only_speed_cm_per_yr": {
+    "mean": 0.00039233881457132467,
+    "ci95": [
+     -0.0006804546663744407,
+     0.0015082775640796332
+    ],
+    "seeds_increasing": 11
+   },
+   "speed_over_flow_only": {
+    "mean": 0.6347621789040641,
+    "ci95": [
+     0.46166489084574347,
+     0.8192515731441108
+    ],
+    "seeds_increasing": 19
+   }
+  },
+  "2.0": {
+   "driving_share_slab_pull": {
+    "mean": 0.7214840308264543,
+    "ci95": [
+     0.5991731346594346,
+     0.8082377232359479
+    ],
+    "seeds_increasing": 18
+   },
+   "driving_share_ridge_push": {
+    "mean": 0.06931909295626386,
+    "ci95": [
+     0.056727180565757956,
+     0.08029527697673756
+    ],
+    "seeds_increasing": 19
+   },
+   "driving_share_mantle_flow": {
+    "mean": -0.7908031237827182,
+    "ci95": [
+     -0.8834974727263567,
+     -0.6687073072530177
+    ],
+    "seeds_increasing": 0
+   },
+   "resisting_over_driving_basal_drag": {
+    "mean": -0.17530689453035384,
+    "ci95": [
+     -0.21440761993210133,
+     -0.13397451030551646
+    ],
+    "seeds_increasing": 1
+   },
+   "resisting_over_driving_slab_drag": {
+    "mean": 0.45322717587328165,
+    "ci95": [
+     0.3700335941418377,
+     0.5253003519018663
+    ],
+    "seeds_increasing": 18
+   },
+   "resisting_over_driving_contact_brake": {
+    "mean": -0.2782277359948034,
+    "ci95": [
+     -0.3238901556811259,
+     -0.2280793150785341
+    ],
+    "seeds_increasing": 1
+   },
+   "slab_pull_cancellation_kept": {
+    "mean": 0.8284130288202922,
+    "ci95": [
+     0.6904417092969031,
+     0.9297001309638016
+    ],
+    "seeds_increasing": 18
+   },
+   "slab_bearing_area_share": {
+    "mean": 0.7724093789168385,
+    "ci95": [
+     0.6203187172333309,
+     0.8998843390822275
+    ],
+    "seeds_increasing": 18
+   },
+   "slab_attached_area_share_10pct": {
+    "mean": 0.03177181183017581,
+    "ci95": [
+     0.01379373260268926,
+     0.05163452336628276
+    ],
+    "seeds_increasing": 10
+   },
+   "pulled_boundary_share": {
+    "mean": 0.13573283969521202,
+    "ci95": [
+     0.10436690123387285,
+     0.16605520627649933
+    ],
+    "seeds_increasing": 18
+   },
+   "opening_past_gate_share": {
+    "mean": 0.2604183811646678,
+    "ci95": [
+     0.19208015667453668,
+     0.32721665596319693
+    ],
+    "seeds_increasing": 19
+   },
+   "plates": {
+    "mean": 0.0,
+    "ci95": [
+     0.0,
+     0.0
+    ],
+    "seeds_increasing": 0
+   },
+   "mean_plate_area_share": {
+    "mean": 0.0,
+    "ci95": [
+     0.0,
+     0.0
+    ],
+    "seeds_increasing": 0
+   },
+   "largest_plate_area_share": {
+    "mean": 0.0002584187819555647,
+    "ci95": [
+     -6.895307934277896e-05,
+     0.0005493984295555415
+    ],
+    "seeds_increasing": 13
+   },
+   "speed_area_weighted_cm_per_yr": {
+    "mean": 2.8325915660801044,
+    "ci95": [
+     2.1586229182500225,
+     3.467840699233428
+    ],
+    "seeds_increasing": 19
+   },
+   "flow_only_speed_cm_per_yr": {
+    "mean": 0.0007940182984297439,
+    "ci95": [
+     -0.0009583925041586958,
+     0.002546928618422001
+    ],
+    "seeds_increasing": 11
+   },
+   "speed_over_flow_only": {
+    "mean": 1.1405688416642739,
+    "ci95": [
+     0.8780480629248244,
+     1.395049115869567
+    ],
+    "seeds_increasing": 19
+   }
+  },
+  "5.0": {
+   "driving_share_slab_pull": {
+    "mean": 0.8088859686433659,
+    "ci95": [
+     0.7173409137677871,
+     0.8611652323648387
+    ],
+    "seeds_increasing": 19
+   },
+   "driving_share_ridge_push": {
+    "mean": 0.0750579566985479,
+    "ci95": [
+     0.06530451515745683,
+     0.08335206122544238
+    ],
+    "seeds_increasing": 19
+   },
+   "driving_share_mantle_flow": {
+    "mean": -0.8839439253419139,
+    "ci95": [
+     -0.9378404937585564,
+     -0.78508037680077
+    ],
+    "seeds_increasing": 0
+   },
+   "resisting_over_driving_basal_drag": {
+    "mean": -0.2133640135786063,
+    "ci95": [
+     -0.253642709043171,
+     -0.17023625021778718
+    ],
+    "seeds_increasing": 0
+   },
+   "resisting_over_driving_slab_drag": {
+    "mean": 0.552441095919429,
+    "ci95": [
+     0.47867303615078344,
+     0.6039853541146506
+    ],
+    "seeds_increasing": 19
+   },
+   "resisting_over_driving_contact_brake": {
+    "mean": -0.3397834486907408,
+    "ci95": [
+     -0.383521186433548,
+     -0.286048043673616
+    ],
+    "seeds_increasing": 1
+   },
+   "slab_pull_cancellation_kept": {
+    "mean": 0.8907234404974069,
+    "ci95": [
+     0.7915799688317123,
+     0.9448730907400575
+    ],
+    "seeds_increasing": 19
+   },
+   "slab_bearing_area_share": {
+    "mean": 0.9077404610484037,
+    "ci95": [
+     0.795594240971527,
+     0.982079835108723
+    ],
+    "seeds_increasing": 19
+   },
+   "slab_attached_area_share_10pct": {
+    "mean": 0.28956667096939614,
+    "ci95": [
+     0.21758045668593753,
+     0.35941618281757776
+    ],
+    "seeds_increasing": 17
+   },
+   "pulled_boundary_share": {
+    "mean": 0.24980315569774358,
+    "ci95": [
+     0.21032786098081424,
+     0.2871192621759498
+    ],
+    "seeds_increasing": 19
+   },
+   "opening_past_gate_share": {
+    "mean": 0.42096807919723406,
+    "ci95": [
+     0.3570375481527894,
+     0.47345363553951797
+    ],
+    "seeds_increasing": 19
+   },
+   "plates": {
+    "mean": 0.0,
+    "ci95": [
+     0.0,
+     0.0
+    ],
+    "seeds_increasing": 0
+   },
+   "mean_plate_area_share": {
+    "mean": 0.0,
+    "ci95": [
+     0.0,
+     0.0
+    ],
+    "seeds_increasing": 0
+   },
+   "largest_plate_area_share": {
+    "mean": 0.0013140280148574318,
+    "ci95": [
+     0.00039918796266639653,
+     0.0021096123647947754
+    ],
+    "seeds_increasing": 15
+   },
+   "speed_area_weighted_cm_per_yr": {
+    "mean": 4.714337754299885,
+    "ci95": [
+     3.9725637555052704,
+     5.366803552059635
+    ],
+    "seeds_increasing": 19
+   },
+   "flow_only_speed_cm_per_yr": {
+    "mean": -0.0018889983431082836,
+    "ci95": [
+     -0.0057348822879097405,
+     0.0017608220085986318
+    ],
+    "seeds_increasing": 9
+   },
+   "speed_over_flow_only": {
+    "mean": 2.0744584826412904,
+    "ci95": [
+     1.665479396051542,
+     2.494209518254446
+    ],
+    "seeds_increasing": 19
+   }
+  },
+  "10.0": {
+   "driving_share_slab_pull": {
+    "mean": 0.8102302692312439,
+    "ci95": [
+     0.7193405148875595,
+     0.861928853653183
+    ],
+    "seeds_increasing": 19
+   },
+   "driving_share_ridge_push": {
+    "mean": 0.08404066200356028,
+    "ci95": [
+     0.07383815015633384,
+     0.09119014041307795
+    ],
+    "seeds_increasing": 19
+   },
+   "driving_share_mantle_flow": {
+    "mean": -0.894270931234804,
+    "ci95": [
+     -0.9474691200265426,
+     -0.7972460307366295
+    ],
+    "seeds_increasing": 0
+   },
+   "resisting_over_driving_basal_drag": {
+    "mean": -0.22980577626738632,
+    "ci95": [
+     -0.2697733806353153,
+     -0.1880839380846702
+    ],
+    "seeds_increasing": 0
+   },
+   "resisting_over_driving_slab_drag": {
+    "mean": 0.5504332253412698,
+    "ci95": [
+     0.48456980399216115,
+     0.5951500527278584
+    ],
+    "seeds_increasing": 19
+   },
+   "resisting_over_driving_contact_brake": {
+    "mean": -0.324817754315276,
+    "ci95": [
+     -0.3719648000794623,
+     -0.27535620764598606
+    ],
+    "seeds_increasing": 1
+   },
+   "slab_pull_cancellation_kept": {
+    "mean": 0.8892933281288586,
+    "ci95": [
+     0.7933111347036687,
+     0.9407987319723387
+    ],
+    "seeds_increasing": 19
+   },
+   "slab_bearing_area_share": {
+    "mean": 0.95,
+    "ci95": [
+     0.85,
+     1.0
+    ],
+    "seeds_increasing": 19
+   },
+   "slab_attached_area_share_10pct": {
+    "mean": 0.6268918804156793,
+    "ci95": [
+     0.5356643547004782,
+     0.7051357151229187
+    ],
+    "seeds_increasing": 19
+   },
+   "pulled_boundary_share": {
+    "mean": 0.2869695324656173,
+    "ci95": [
+     0.25034218987371687,
+     0.31069913307943275
+    ],
+    "seeds_increasing": 19
+   },
+   "opening_past_gate_share": {
+    "mean": 0.4610027910561098,
+    "ci95": [
+     0.40982543823512524,
+     0.4913652069793944
+    ],
+    "seeds_increasing": 19
+   },
+   "plates": {
+    "mean": 0.15,
+    "ci95": [
+     0.0,
+     0.3
+    ],
+    "seeds_increasing": 3
+   },
+   "mean_plate_area_share": {
+    "mean": -0.0011987807943690295,
+    "ci95": [
+     -0.0029553167420814487,
+     0.0
+    ],
+    "seeds_increasing": 0
+   },
+   "largest_plate_area_share": {
+    "mean": 0.0022073594944640234,
+    "ci95": [
+     0.00033613729481914113,
+     0.004171086443935518
+    ],
+    "seeds_increasing": 13
+   },
+   "speed_area_weighted_cm_per_yr": {
+    "mean": 5.049185800437282,
+    "ci95": [
+     4.419110435233854,
+     5.541128933274953
+    ],
+    "seeds_increasing": 19
+   },
+   "flow_only_speed_cm_per_yr": {
+    "mean": -0.005124106183068256,
+    "ci95": [
+     -0.015129857181933564,
+     0.004430302579876589
+    ],
+    "seeds_increasing": 8
+   },
+   "speed_over_flow_only": {
+    "mean": 2.3414356038193636,
+    "ci95": [
+     1.8350716706798142,
+     2.914249770591021
+    ],
+    "seeds_increasing": 19
+   }
+  },
+  "20.0": {
+   "driving_share_slab_pull": {
+    "mean": 0.7978841874566223,
+    "ci95": [
+     0.710956271497509,
+     0.8468337117221892
+    ],
+    "seeds_increasing": 19
+   },
+   "driving_share_ridge_push": {
+    "mean": 0.0954352312909377,
+    "ci95": [
+     0.0838072452701546,
+     0.10395893130074761
+    ],
+    "seeds_increasing": 19
+   },
+   "driving_share_mantle_flow": {
+    "mean": -0.8933194187475602,
+    "ci95": [
+     -0.9468213052516716,
+     -0.7941133808848667
+    ],
+    "seeds_increasing": 0
+   },
+   "resisting_over_driving_basal_drag": {
+    "mean": -0.2490251585274495,
+    "ci95": [
+     -0.29055785499644804,
+     -0.20573921375137696
+    ],
+    "seeds_increasing": 0
+   },
+   "resisting_over_driving_slab_drag": {
+    "mean": 0.5039460304486614,
+    "ci95": [
+     0.4404175960137878,
+     0.5474719096751404
+    ],
+    "seeds_increasing": 19
+   },
+   "resisting_over_driving_contact_brake": {
+    "mean": -0.26348064890073214,
+    "ci95": [
+     -0.3081966993669975,
+     -0.21581805436750315
+    ],
+    "seeds_increasing": 1
+   },
+   "slab_pull_cancellation_kept": {
+    "mean": 0.8857276753943821,
+    "ci95": [
+     0.7860688754495355,
+     0.9392102650742868
+    ],
+    "seeds_increasing": 19
+   },
+   "slab_bearing_area_share": {
+    "mean": 0.95,
+    "ci95": [
+     0.85,
+     1.0
+    ],
+    "seeds_increasing": 19
+   },
+   "slab_attached_area_share_10pct": {
+    "mean": 0.6547321477260494,
+    "ci95": [
+     0.56891789650951,
+     0.7240984076160283
+    ],
+    "seeds_increasing": 19
+   },
+   "pulled_boundary_share": {
+    "mean": 0.26950053704759036,
+    "ci95": [
+     0.23818424257002438,
+     0.2931939822400939
+    ],
+    "seeds_increasing": 19
+   },
+   "opening_past_gate_share": {
+    "mean": 0.4363224075075428,
+    "ci95": [
+     0.3874571249752418,
+     0.46681955533415115
+    ],
+    "seeds_increasing": 19
+   },
+   "plates": {
+    "mean": 1.75,
+    "ci95": [
+     1.05,
+     2.55
+    ],
+    "seeds_increasing": 15
+   },
+   "mean_plate_area_share": {
+    "mean": -0.007024065190877682,
+    "ci95": [
+     -0.009654057761114982,
+     -0.004532967373118723
+    ],
+    "seeds_increasing": 0
+   },
+   "largest_plate_area_share": {
+    "mean": 0.013719546377889793,
+    "ci95": [
+     0.005583401047257624,
+     0.023213381828031236
+    ],
+    "seeds_increasing": 15
+   },
+   "speed_area_weighted_cm_per_yr": {
+    "mean": 4.101623035325903,
+    "ci95": [
+     3.5413254061138812,
+     4.564114582959629
+    ],
+    "seeds_increasing": 19
+   },
+   "flow_only_speed_cm_per_yr": {
+    "mean": -0.005876922488498526,
+    "ci95": [
+     -0.04139285114201127,
+     0.02570591033816828
+    ],
+    "seeds_increasing": 10
+   },
+   "speed_over_flow_only": {
+    "mean": 1.9261320150957246,
+    "ci95": [
+     1.4711083249650287,
+     2.416601180680292
+    ],
+    "seeds_increasing": 19
+   }
+  },
+  "50.0": {
+   "driving_share_slab_pull": {
+    "mean": 0.8226798167676816,
+    "ci95": [
+     0.8098272348620049,
+     0.8346649688443479
+    ],
+    "seeds_increasing": 20
+   },
+   "driving_share_ridge_push": {
+    "mean": 0.11649149594770228,
+    "ci95": [
+     0.1095969497624233,
+     0.12402044993651294
+    ],
+    "seeds_increasing": 20
+   },
+   "driving_share_mantle_flow": {
+    "mean": -0.939171312715384,
+    "ci95": [
+     -0.9479890166861846,
+     -0.930249231133497
+    ],
+    "seeds_increasing": 0
+   },
+   "resisting_over_driving_basal_drag": {
+    "mean": -0.27600587921005854,
+    "ci95": [
+     -0.3145203761592565,
+     -0.23001827703253014
+    ],
+    "seeds_increasing": 0
+   },
+   "resisting_over_driving_slab_drag": {
+    "mean": 0.47854591752885545,
+    "ci95": [
+     0.4522180787583746,
+     0.5071931916689624
+    ],
+    "seeds_increasing": 20
+   },
+   "resisting_over_driving_contact_brake": {
+    "mean": -0.213725426435284,
+    "ci95": [
+     -0.2637299415304782,
+     -0.16638056625279685
+    ],
+    "seeds_increasing": 0
+   },
+   "slab_pull_cancellation_kept": {
+    "mean": 0.9194775971341835,
+    "ci95": [
+     0.9102235662778091,
+     0.9294921923265506
+    ],
+    "seeds_increasing": 20
+   },
+   "slab_bearing_area_share": {
+    "mean": 0.9998990881607283,
+    "ci95": [
+     0.9996972644821845,
+     1.0
+    ],
+    "seeds_increasing": 20
+   },
+   "slab_attached_area_share_10pct": {
+    "mean": 0.6471383133107651,
+    "ci95": [
+     0.5901312886476832,
+     0.7153789783220644
+    ],
+    "seeds_increasing": 20
+   },
+   "pulled_boundary_share": {
+    "mean": 0.269089367363898,
+    "ci95": [
+     0.256515753539095,
+     0.28066873295510053
+    ],
+    "seeds_increasing": 20
+   },
+   "opening_past_gate_share": {
+    "mean": 0.4301924308478247,
+    "ci95": [
+     0.41770224154656904,
+     0.4437145949987746
+    ],
+    "seeds_increasing": 20
+   },
+   "plates": {
+    "mean": 7.3,
+    "ci95": [
+     5.7,
+     8.85
+    ],
+    "seeds_increasing": 19
+   },
+   "mean_plate_area_share": {
+    "mean": -0.02418181341985017,
+    "ci95": [
+     -0.030062478361963487,
+     -0.018510775768447358
+    ],
+    "seeds_increasing": 0
+   },
+   "largest_plate_area_share": {
+    "mean": 0.03200692437000663,
+    "ci95": [
+     0.016927376388113997,
+     0.04846389068426985
+    ],
+    "seeds_increasing": 16
+   },
+   "speed_area_weighted_cm_per_yr": {
+    "mean": 3.2704003462728783,
+    "ci95": [
+     2.908735121923242,
+     3.731818659040347
+    ],
+    "seeds_increasing": 20
+   },
+   "flow_only_speed_cm_per_yr": {
+    "mean": -0.02081203186139836,
+    "ci95": [
+     -0.067831811131753,
+     0.02249023858074779
+    ],
+    "seeds_increasing": 10
+   },
+   "speed_over_flow_only": {
+    "mean": 1.605904435715005,
+    "ci95": [
+     1.2035790542177032,
+     2.057134921803006
+    ],
+    "seeds_increasing": 20
+   }
+  }
+ },
+ "across_seeds": {
+  "0.0": {
+   "accepted": 0,
+   "rejected": 20,
+   "features": {
+    "driving_share_slab_pull": {
+     "rho_with_L": null
+    },
+    "driving_share_ridge_push": {
+     "rho_with_L": null
+    },
+    "driving_share_mantle_flow": {
+     "rho_with_L": null
+    },
+    "resisting_over_driving_basal_drag": {
+     "rho_with_L": 0.23909774436090225
+    },
+    "resisting_over_driving_slab_drag": {
+     "rho_with_L": null
+    },
+    "resisting_over_driving_contact_brake": {
+     "rho_with_L": -0.23909774436090225
+    },
+    "slab_pull_cancellation_kept": {
+     "rho_with_L": null
+    },
+    "slab_bearing_area_share": {
+     "rho_with_L": null
+    },
+    "slab_attached_area_share_10pct": {
+     "rho_with_L": null
+    },
+    "pulled_boundary_share": {
+     "rho_with_L": null
+    },
+    "opening_past_gate_share": {
+     "rho_with_L": null
+    },
+    "plates": {
+     "rho_with_L": -0.03723614968330003
+    },
+    "mean_plate_area_share": {
+     "rho_with_L": 0.03723614968330003
+    },
+    "largest_plate_area_share": {
+     "rho_with_L": 0.18345864661654135
+    },
+    "speed_area_weighted_cm_per_yr": {
+     "rho_with_L": 0.5187969924812029
+    },
+    "flow_only_speed_cm_per_yr": {
+     "rho_with_L": 0.5428571428571428
+    },
+    "speed_over_flow_only": {
+     "rho_with_L": 0.25864661654135335
+    }
+   }
+  },
+  "1.0": {
+   "accepted": 6,
+   "rejected": 14,
+   "features": {
+    "driving_share_slab_pull": {
+     "rho_with_L": -0.625799216876899,
+     "cohens_d_rejected_minus_accepted": -0.7063247513550913
+    },
+    "driving_share_ridge_push": {
+     "rho_with_L": -0.47518796992481205,
+     "cohens_d_rejected_minus_accepted": -0.28053480290744387
+    },
+    "driving_share_mantle_flow": {
+     "rho_with_L": 0.7984962406015037,
+     "cohens_d_rejected_minus_accepted": 0.773722574060621
+    },
+    "resisting_over_driving_basal_drag": {
+     "rho_with_L": -0.021052631578947364,
+     "cohens_d_rejected_minus_accepted": 0.13642015893500561
+    },
+    "resisting_over_driving_slab_drag": {
+     "rho_with_L": -0.7040241189865115,
+     "cohens_d_rejected_minus_accepted": -0.9471620430602864
+    },
+    "resisting_over_driving_contact_brake": {
+     "rho_with_L": 0.6872180451127818,
+     "cohens_d_rejected_minus_accepted": 0.9506187917884981
+    },
+    "slab_pull_cancellation_kept": {
+     "rho_with_L": 0.23617903136940666,
+     "cohens_d_rejected_minus_accepted": -0.3791709621699988
+    },
+    "slab_bearing_area_share": {
+     "rho_with_L": -0.6543813926477189,
+     "cohens_d_rejected_minus_accepted": -1.083609773419932
+    },
+    "slab_attached_area_share_10pct": {
+     "rho_with_L": 0.01451355710593298,
+     "cohens_d_rejected_minus_accepted": -0.09059504195984563
+    },
+    "pulled_boundary_share": {
+     "rho_with_L": -0.7807446960555543,
+     "cohens_d_rejected_minus_accepted": -1.0365955532917235
+    },
+    "opening_past_gate_share": {
+     "rho_with_L": -0.7669172932330827,
+     "cohens_d_rejected_minus_accepted": -1.2465376085367674
+    },
+    "plates": {
+     "rho_with_L": -0.06003379234654495,
+     "cohens_d_rejected_minus_accepted": -0.3695493421837345
+    },
+    "mean_plate_area_share": {
+     "rho_with_L": 0.06003379234654495,
+     "cohens_d_rejected_minus_accepted": 0.4658846939420999
+    },
+    "largest_plate_area_share": {
+     "rho_with_L": 0.003007518796992481,
+     "cohens_d_rejected_minus_accepted": 0.32891036385002187
+    },
+    "speed_area_weighted_cm_per_yr": {
+     "rho_with_L": -0.8511278195488721,
+     "cohens_d_rejected_minus_accepted": -1.216037161229358
+    },
+    "flow_only_speed_cm_per_yr": {
+     "rho_with_L": -0.5894736842105263,
+     "cohens_d_rejected_minus_accepted": -1.5801386544814233
+    },
+    "speed_over_flow_only": {
+     "rho_with_L": -0.8616541353383457,
+     "cohens_d_rejected_minus_accepted": -0.6532432903444566
+    }
+   }
+  },
+  "2.0": {
+   "accepted": 4,
+   "rejected": 16,
+   "features": {
+    "driving_share_slab_pull": {
+     "rho_with_L": -0.625799216876899,
+     "cohens_d_rejected_minus_accepted": -0.3475986300544379
+    },
+    "driving_share_ridge_push": {
+     "rho_with_L": 0.022556390977443608,
+     "cohens_d_rejected_minus_accepted": -0.5392292095491329
+    },
+    "driving_share_mantle_flow": {
+     "rho_with_L": 0.6601503759398496,
+     "cohens_d_rejected_minus_accepted": 0.3930085171868454
+    },
+    "resisting_over_driving_basal_drag": {
+     "rho_with_L": 0.10977443609022557,
+     "cohens_d_rejected_minus_accepted": 0.6047541852932781
+    },
+    "resisting_over_driving_slab_drag": {
+     "rho_with_L": -0.6694246430534136,
+     "cohens_d_rejected_minus_accepted": -0.2840623469487458
+    },
+    "resisting_over_driving_contact_brake": {
+     "rho_with_L": 0.7172932330827068,
+     "cohens_d_rejected_minus_accepted": 0.1651164087508492
+    },
+    "slab_pull_cancellation_kept": {
+     "rho_with_L": 0.1308762785295438,
+     "cohens_d_rejected_minus_accepted": -0.2508784873788674
+    },
+    "slab_bearing_area_share": {
+     "rho_with_L": -0.7907780683122644,
+     "cohens_d_rejected_minus_accepted": -0.4188714682025711
+    },
+    "slab_attached_area_share_10pct": {
+     "rho_with_L": -0.1662959078132586,
+     "cohens_d_rejected_minus_accepted": -0.11550367427514761
+    },
+    "pulled_boundary_share": {
+     "rho_with_L": -0.9432118004370571,
+     "cohens_d_rejected_minus_accepted": 0.1472145740798277
+    },
+    "opening_past_gate_share": {
+     "rho_with_L": -0.8796992481203006,
+     "cohens_d_rejected_minus_accepted": 0.08511716750786139
+    },
+    "plates": {
+     "rho_with_L": 0.1740220056627695,
+     "cohens_d_rejected_minus_accepted": -1.0239128435334977
+    },
+    "mean_plate_area_share": {
+     "rho_with_L": -0.1740220056627695,
+     "cohens_d_rejected_minus_accepted": 0.9874940157930193
+    },
+    "largest_plate_area_share": {
+     "rho_with_L": -0.24812030075187969,
+     "cohens_d_rejected_minus_accepted": 1.0554905633807055
+    },
+    "speed_area_weighted_cm_per_yr": {
+     "rho_with_L": -0.9624060150375938,
+     "cohens_d_rejected_minus_accepted": 0.026822384433238002
+    },
+    "flow_only_speed_cm_per_yr": {
+     "rho_with_L": -0.6511278195488721,
+     "cohens_d_rejected_minus_accepted": -0.5743235362945452
+    },
+    "speed_over_flow_only": {
+     "rho_with_L": -0.7548872180451127,
+     "cohens_d_rejected_minus_accepted": 0.05277579552274241
+    }
+   }
+  },
+  "5.0": {
+   "accepted": 3,
+   "rejected": 17,
+   "features": {
+    "driving_share_slab_pull": {
+     "rho_with_L": -0.3203007518796992,
+     "cohens_d_rejected_minus_accepted": -0.17608154614210472
+    },
+    "driving_share_ridge_push": {
+     "rho_with_L": -0.03909774436090225,
+     "cohens_d_rejected_minus_accepted": -0.11272978113717456
+    },
+    "driving_share_mantle_flow": {
+     "rho_with_L": 0.43909774436090226,
+     "cohens_d_rejected_minus_accepted": 0.1738428496078024
+    },
+    "resisting_over_driving_basal_drag": {
+     "rho_with_L": -0.05864661654135337,
+     "cohens_d_rejected_minus_accepted": -0.5740065436738373
+    },
+    "resisting_over_driving_slab_drag": {
+     "rho_with_L": -0.20751879699248119,
+     "cohens_d_rejected_minus_accepted": 0.15946656876753104
+    },
+    "resisting_over_driving_contact_brake": {
+     "rho_with_L": 0.3699248120300751,
+     "cohens_d_rejected_minus_accepted": -0.04714222560022925
+    },
+    "slab_pull_cancellation_kept": {
+     "rho_with_L": -0.42255639097744363,
+     "cohens_d_rejected_minus_accepted": -0.2994516786819184
+    },
+    "slab_bearing_area_share": {
+     "rho_with_L": -0.5167518169996641,
+     "cohens_d_rejected_minus_accepted": 0.7102315859995415
+    },
+    "slab_attached_area_share_10pct": {
+     "rho_with_L": -0.6069283991335181,
+     "cohens_d_rejected_minus_accepted": 1.898868049093558
+    },
+    "pulled_boundary_share": {
+     "rho_with_L": -0.793984962406015,
+     "cohens_d_rejected_minus_accepted": 1.9276428226616786
+    },
+    "opening_past_gate_share": {
+     "rho_with_L": -0.5669172932330826,
+     "cohens_d_rejected_minus_accepted": 1.7740039944191413
+    },
+    "plates": {
+     "rho_with_L": 0.29864911888850837,
+     "cohens_d_rejected_minus_accepted": -0.44619806325279304
+    },
+    "mean_plate_area_share": {
+     "rho_with_L": -0.29864911888850837,
+     "cohens_d_rejected_minus_accepted": 0.45309469351118914
+    },
+    "largest_plate_area_share": {
+     "rho_with_L": -0.30075187969924805,
+     "cohens_d_rejected_minus_accepted": 0.49733590770942715
+    },
+    "speed_area_weighted_cm_per_yr": {
+     "rho_with_L": -0.9233082706766916,
+     "cohens_d_rejected_minus_accepted": 1.7747487599549627
+    },
+    "flow_only_speed_cm_per_yr": {
+     "rho_with_L": -0.31127819548872177,
+     "cohens_d_rejected_minus_accepted": 1.4449607916478473
+    },
+    "speed_over_flow_only": {
+     "rho_with_L": -0.5263157894736841,
+     "cohens_d_rejected_minus_accepted": 0.14921983789278534
+    }
+   }
+  },
+  "10.0": {
+   "accepted": 0,
+   "rejected": 20,
+   "features": {
+    "driving_share_slab_pull": {
+     "rho_with_L": -0.29774436090225564
+    },
+    "driving_share_ridge_push": {
+     "rho_with_L": -0.14736842105263157
+    },
+    "driving_share_mantle_flow": {
+     "rho_with_L": 0.34736842105263155
+    },
+    "resisting_over_driving_basal_drag": {
+     "rho_with_L": -0.06616541353383458
+    },
+    "resisting_over_driving_slab_drag": {
+     "rho_with_L": -0.20300751879699244
+    },
+    "resisting_over_driving_contact_brake": {
+     "rho_with_L": 0.3684210526315789
+    },
+    "slab_pull_cancellation_kept": {
+     "rho_with_L": -0.625563909774436
+    },
+    "slab_bearing_area_share": {
+     "rho_with_L": 0.1668136457684515
+    },
+    "slab_attached_area_share_10pct": {
+     "rho_with_L": -0.35187969924812035
+    },
+    "pulled_boundary_share": {
+     "rho_with_L": -0.5428571428571428
+    },
+    "opening_past_gate_share": {
+     "rho_with_L": -0.5052631578947367
+    },
+    "plates": {
+     "rho_with_L": 0.26440152678261397
+    },
+    "mean_plate_area_share": {
+     "rho_with_L": -0.26440152678261397
+    },
+    "largest_plate_area_share": {
+     "rho_with_L": -0.20751879699248119
+    },
+    "speed_area_weighted_cm_per_yr": {
+     "rho_with_L": -0.7443609022556391
+    },
+    "flow_only_speed_cm_per_yr": {
+     "rho_with_L": 0.08571428571428572
+    },
+    "speed_over_flow_only": {
+     "rho_with_L": -0.4451127819548871
+    }
+   }
+  },
+  "20.0": {
+   "accepted": 0,
+   "rejected": 20,
+   "features": {
+    "driving_share_slab_pull": {
+     "rho_with_L": -0.6195488721804511
+    },
+    "driving_share_ridge_push": {
+     "rho_with_L": 0.4060150375939849
+    },
+    "driving_share_mantle_flow": {
+     "rho_with_L": 0.3609022556390977
+    },
+    "resisting_over_driving_basal_drag": {
+     "rho_with_L": -0.18496240601503755
+    },
+    "resisting_over_driving_slab_drag": {
+     "rho_with_L": -0.5924812030075187
+    },
+    "resisting_over_driving_contact_brake": {
+     "rho_with_L": 0.6616541353383457
+    },
+    "slab_pull_cancellation_kept": {
+     "rho_with_L": -0.5293233082706766
+    },
+    "slab_bearing_area_share": {
+     "rho_with_L": -0.011364737082334871
+    },
+    "slab_attached_area_share_10pct": {
+     "rho_with_L": -0.10977443609022557
+    },
+    "pulled_boundary_share": {
+     "rho_with_L": -0.7187969924812029
+    },
+    "opening_past_gate_share": {
+     "rho_with_L": -0.5533834586466165
+    },
+    "plates": {
+     "rho_with_L": 0.013615983046961865
+    },
+    "mean_plate_area_share": {
+     "rho_with_L": -0.013615983046961865
+    },
+    "largest_plate_area_share": {
+     "rho_with_L": -0.3443609022556391
+    },
+    "speed_area_weighted_cm_per_yr": {
+     "rho_with_L": -0.8766917293233082
+    },
+    "flow_only_speed_cm_per_yr": {
+     "rho_with_L": 0.04661654135338346
+    },
+    "speed_over_flow_only": {
+     "rho_with_L": -0.49022556390977434
+    }
+   }
+  },
+  "50.0": {
+   "accepted": 0,
+   "rejected": 20,
+   "features": {
+    "driving_share_slab_pull": {
+     "rho_with_L": -0.3669172932330827
+    },
+    "driving_share_ridge_push": {
+     "rho_with_L": 0.5067669172932331
+    },
+    "driving_share_mantle_flow": {
+     "rho_with_L": 0.193984962406015
+    },
+    "resisting_over_driving_basal_drag": {
+     "rho_with_L": -0.29624060150375936
+    },
+    "resisting_over_driving_slab_drag": {
+     "rho_with_L": -0.7112781954887217
+    },
+    "resisting_over_driving_contact_brake": {
+     "rho_with_L": 0.7699248120300751
+    },
+    "slab_pull_cancellation_kept": {
+     "rho_with_L": -0.4541353383458646
+    },
+    "slab_bearing_area_share": {
+     "rho_with_L": 0.07062836705166962
+    },
+    "slab_attached_area_share_10pct": {
+     "rho_with_L": -0.045112781954887216
+    },
+    "pulled_boundary_share": {
+     "rho_with_L": -0.8436090225563909
+    },
+    "opening_past_gate_share": {
+     "rho_with_L": -0.37293233082706767
+    },
+    "plates": {
+     "rho_with_L": 0.053646283550044686
+    },
+    "mean_plate_area_share": {
+     "rho_with_L": -0.053646283550044686
+    },
+    "largest_plate_area_share": {
+     "rho_with_L": -0.23759398496240602
+    },
+    "speed_area_weighted_cm_per_yr": {
+     "rho_with_L": -0.8691729323308269
+    },
+    "flow_only_speed_cm_per_yr": {
+     "rho_with_L": 0.09172932330827067
+    },
+    "speed_over_flow_only": {
+     "rho_with_L": -0.34736842105263155
+    }
+   }
+  }
+ },
+ "per_plate": {
+  "0.0": {
+   "plates": 282,
+   "rho_speed_vs_slab_pull_per_area": null,
+   "rho_speed_vs_ridge_push_per_area": null,
+   "rho_speed_vs_mantle_flow_per_area": 0.8061141684956127,
+   "rho_speed_vs_basal_drag_per_area": -0.9981768956980467,
+   "rho_speed_vs_slab_drag_per_area": null,
+   "rho_speed_vs_contact_brake_per_area": -0.5155840100856678,
+   "rho_speed_vs_area": -0.16325505721481356,
+   "rho_speed_vs_slab_bearing": null
+  },
+  "1.0": {
+   "plates": 282,
+   "rho_speed_vs_slab_pull_per_area": 0.7482610914110591,
+   "rho_speed_vs_ridge_push_per_area": 0.45548060139387936,
+   "rho_speed_vs_mantle_flow_per_area": 0.6208777816454012,
+   "rho_speed_vs_basal_drag_per_area": -0.99261019359848,
+   "rho_speed_vs_slab_drag_per_area": -0.7634113085415316,
+   "rho_speed_vs_contact_brake_per_area": -0.5914860440482762,
+   "rho_speed_vs_area": -0.11830780389776169,
+   "rho_speed_vs_slab_bearing": 0.6296077348020356
+  },
+  "2.0": {
+   "plates": 282,
+   "rho_speed_vs_slab_pull_per_area": 0.8875558395880965,
+   "rho_speed_vs_ridge_push_per_area": 0.6091493797248861,
+   "rho_speed_vs_mantle_flow_per_area": 0.5016536096475234,
+   "rho_speed_vs_basal_drag_per_area": -0.9926562126680334,
+   "rho_speed_vs_slab_drag_per_area": -0.9093995517560474,
+   "rho_speed_vs_contact_brake_per_area": -0.7151301871451082,
+   "rho_speed_vs_area": -0.13982225401937778,
+   "rho_speed_vs_slab_bearing": 0.6218270913916469
+  },
+  "5.0": {
+   "plates": 282,
+   "rho_speed_vs_slab_pull_per_area": 0.9008853059333707,
+   "rho_speed_vs_ridge_push_per_area": 0.6228946355634923,
+   "rho_speed_vs_mantle_flow_per_area": 0.19643587657364486,
+   "rho_speed_vs_basal_drag_per_area": -0.9818626004359506,
+   "rho_speed_vs_slab_drag_per_area": -0.933609109893843,
+   "rho_speed_vs_contact_brake_per_area": -0.5967252616063705,
+   "rho_speed_vs_area": -0.20099283467033896,
+   "rho_speed_vs_slab_bearing": 0.4688761440594336
+  },
+  "10.0": {
+   "plates": 285,
+   "rho_speed_vs_slab_pull_per_area": 0.8425472863034102,
+   "rho_speed_vs_ridge_push_per_area": 0.578947968696584,
+   "rho_speed_vs_mantle_flow_per_area": 0.03311595743026432,
+   "rho_speed_vs_basal_drag_per_area": -0.9801261747888879,
+   "rho_speed_vs_slab_drag_per_area": -0.8933884002439123,
+   "rho_speed_vs_contact_brake_per_area": -0.4735084781786042,
+   "rho_speed_vs_area": -0.288208826014608,
+   "rho_speed_vs_slab_bearing": 0.28557401360117696
+  },
+  "20.0": {
+   "plates": 317,
+   "rho_speed_vs_slab_pull_per_area": 0.8269085879448922,
+   "rho_speed_vs_ridge_push_per_area": 0.5588341771263388,
+   "rho_speed_vs_mantle_flow_per_area": 0.12938801864566526,
+   "rho_speed_vs_basal_drag_per_area": -0.982048988946559,
+   "rho_speed_vs_slab_drag_per_area": -0.8871780595836231,
+   "rho_speed_vs_contact_brake_per_area": -0.5913587120718401,
+   "rho_speed_vs_area": -0.4010144061647928,
+   "rho_speed_vs_slab_bearing": 0.27034254626729176
+  },
+  "50.0": {
+   "plates": 428,
+   "rho_speed_vs_slab_pull_per_area": 0.6403927006041301,
+   "rho_speed_vs_ridge_push_per_area": 0.4580476976677375,
+   "rho_speed_vs_mantle_flow_per_area": 0.10020912135206606,
+   "rho_speed_vs_basal_drag_per_area": -0.9710765716587687,
+   "rho_speed_vs_slab_drag_per_area": -0.7675583188069783,
+   "rho_speed_vs_contact_brake_per_area": -0.4863888983699004,
+   "rho_speed_vs_area": -0.2395574396493655,
+   "rho_speed_vs_slab_bearing": 0.053072970658529645
+  }
+ }
+}
