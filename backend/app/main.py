@@ -1939,6 +1939,8 @@ def render(
     rotation: str | None = None,
     show_mountains: bool = False,
     show_plains_plateaus: bool = False,
+    smooth_sea_ice: bool = True,
+    soft_sea_ice_edge: bool = True,
 ) -> dict:
     """Renders `view` of the current world, in `projection`, as a `width`x`height` PNG,
     returned base64-encoded in `image_base64` -- see render_image.py for the actual
@@ -1976,11 +1978,12 @@ def render(
 
     with _compute_gate.hold(), session.lock:
         world = _require_world(session)
-        cached = _admin_preview(session, projection, view, width, height, view_rotation,
-                                show_mountains or show_plains_plateaus)
+        custom_options = show_mountains or show_plains_plateaus or not smooth_sea_ice or not soft_sea_ice_edge
+        cached = _admin_preview(session, projection, view, width, height, view_rotation, custom_options)
         if cached is None:
             cached = render_image.render_png_base64(
-                world, projection, view, width, height, view_rotation, show_mountains, show_plains_plateaus
+                world, projection, view, width, height, view_rotation, show_mountains, show_plains_plateaus,
+                smooth_sea_ice, soft_sea_ice_edge,
             )
         return {"projection": projection, "elapsed_years": world.elapsed_years, "image_base64": cached}
 
