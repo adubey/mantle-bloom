@@ -1,6 +1,9 @@
 # RFC 0021: Plates are driven by their slabs: correct and calibrate the plate forces and the rifting knobs together
 
-- **Status:** Accepted (owner merged PR #949 and confirmed acceptance on 2026-11-17)
+- **Status:** Accepted (owner merged PR #949 and confirmed acceptance on 2026-11-17). **Paused, requires revision**
+  (owner, 2026-11-22): G1's best-case check failed T2 and #995's investigation found T2 cannot separate slab-attached from
+  other plates in this model ([`analysis/issue995/`](../analysis/issue995/README.md)); #998 has a model that
+  the revision should take into account. G2 and implementation do not start until the revision merges.
 - **Tracking issue:** [#957](https://github.com/adubey/mantle-bloom/issues/957)
 - **Date:** 2026-11-17
 - **Related:** #942 (diagnosis, [`analysis/issue942/`](../analysis/issue942/README.md)), #888 (RFC 0018 D1,

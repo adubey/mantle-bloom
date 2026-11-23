@@ -30,7 +30,7 @@ Withdrawn RFCs are archived in [abandoned/](abandoned/).
 | [0018](0018-plates-split-along-weak-open-paths.md) | Plates split along weak paths that are pulling apart | Accepted (revised 2026-11-14: rift lines placed by whole-plate pull replace cell-by-cell damage bands after #894; revised 2026-11-14: damage bands replace the eigensolve candidate search after #848 and #876; gates are D0–D3. Earlier revision 2026-11-09) |
 | [0019](0019-conservative-atmospheric-moisture.md) | Conserve atmospheric moisture in diagnostic rain and transport | Accepted (2026-11-18: G3 formally failed after three tuning rounds; owner exception allows RFC continuation with the inland-rain mismatch recorded as a modeling simplification; prior held-out failures and diagnosis in [#898](https://github.com/adubey/mantle-bloom/issues/898)) |
 | [0020](0020-ux-telemetry-and-experiments.md) | Logging & Experimentation | Draft |
-| [0021](0021-plate-force-calibration.md) | Plates are driven by their slabs: correct and calibrate the plate forces and the rifting knobs together | Accepted (owner confirmation 2026-11-17; diagnosis in [#942](https://github.com/adubey/mantle-bloom/issues/942)) |
+| [0021](0021-plate-force-calibration.md) | Plates are driven by their slabs: correct and calibrate the plate forces and the rifting knobs together | Accepted, paused: requires revision (owner, 2026-11-22; see [#995](https://github.com/adubey/mantle-bloom/issues/995) and [#998](https://github.com/adubey/mantle-bloom/issues/998)) |
 
 RFCs 0001–0007 come from one investigation: a 19.2 Gyr run (seed 456862899) that lost
 almost all of its continental crust and all of its cratons. The run is used as a stress

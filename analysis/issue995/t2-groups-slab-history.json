@@ -1,0 +1,74 @@
+{
+ "baseline": {
+  "attached": {
+   "plate_samples": 1215,
+   "area_share": 0.5669751717290598,
+   "mean_area_Mkm2": 21.789572169320124,
+   "speed_later_cm_per_yr": 5.163553959564894,
+   "speed_now_cm_per_yr": 5.196700581957685,
+   "mantle_flow_only_cm_per_yr": 2.499577944719203,
+   "has_subducting_node": 0.9989478410506881,
+   "continental_share": 0.40797615331729087,
+   "slab_km_per_Mkm2": 305.4348686453646,
+   "torque_slab_pull_1e25Nm": 17.280925390117126,
+   "torque_ridge_push_1e25Nm": 5.66856260118636,
+   "torque_mantle_flow_1e25Nm": 5.448605611999198,
+   "torque_basal_drag_1e25Nm": -18.449222358159375,
+   "torque_slab_drag_1e25Nm": -9.305112961831137,
+   "torque_blocked_edges_residual_1e25Nm": -0.6437582833121744
+  },
+  "other": {
+   "plate_samples": 337,
+   "area_share": 0.4330248282709403,
+   "mean_area_Mkm2": 59.99897582324735,
+   "speed_later_cm_per_yr": 3.239394808057622,
+   "speed_now_cm_per_yr": 3.182795774037537,
+   "mantle_flow_only_cm_per_yr": 1.6231671811962163,
+   "has_subducting_node": 0.9981031385056967,
+   "continental_share": 0.4672506008969992,
+   "slab_km_per_Mkm2": 163.55122752838776,
+   "torque_slab_pull_1e25Nm": 22.211563759751517,
+   "torque_ridge_push_1e25Nm": 7.722443794985448,
+   "torque_mantle_flow_1e25Nm": 9.232820874361957,
+   "torque_basal_drag_1e25Nm": -30.43315519846494,
+   "torque_slab_drag_1e25Nm": -7.589709321056902,
+   "torque_blocked_edges_residual_1e25Nm": -1.143963909577073
+  }
+ },
+ "slab-history": {
+  "attached": {
+   "plate_samples": 1310,
+   "area_share": 0.6375941595996955,
+   "mean_area_Mkm2": 22.857824542556095,
+   "speed_later_cm_per_yr": 5.147958383760258,
+   "speed_now_cm_per_yr": 5.223297428319521,
+   "mantle_flow_only_cm_per_yr": 2.539532094125055,
+   "has_subducting_node": 0.9980623132240461,
+   "continental_share": 0.4097368147965191,
+   "slab_km_per_Mkm2": 299.2739069272225,
+   "torque_slab_pull_1e25Nm": 18.167378838532777,
+   "torque_ridge_push_1e25Nm": 5.908416515744432,
+   "torque_mantle_flow_1e25Nm": 4.798245095838097,
+   "torque_basal_drag_1e25Nm": -18.656079548207796,
+   "torque_slab_drag_1e25Nm": -9.696165827934282,
+   "torque_blocked_edges_residual_1e25Nm": -0.5217950739732281
+  },
+  "other": {
+   "plate_samples": 325,
+   "area_share": 0.36240584040030466,
+   "mean_area_Mkm2": 52.368928390879184,
+   "speed_later_cm_per_yr": 3.3554162459700483,
+   "speed_now_cm_per_yr": 3.2100457705317385,
+   "mantle_flow_only_cm_per_yr": 1.7929802198174813,
+   "has_subducting_node": 0.9971649118507541,
+   "continental_share": 0.4749111955385047,
+   "slab_km_per_Mkm2": 184.6377000340811,
+   "torque_slab_pull_1e25Nm": 16.637617434955438,
+   "torque_ridge_push_1e25Nm": 6.523115405673567,
+   "torque_mantle_flow_1e25Nm": 9.804915138639627,
+   "torque_basal_drag_1e25Nm": -25.029815836133146,
+   "torque_slab_drag_1e25Nm": -6.150484965291471,
+   "torque_blocked_edges_residual_1e25Nm": -1.7853471778440169
+  }
+ }
+}

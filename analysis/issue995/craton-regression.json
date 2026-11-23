@@ -1,0 +1,59 @@
+{
+ "brake-o0.25-c1": {
+  "samples": 966,
+  "corr_area_craton": 0.11,
+  "craton_alone_coef": -0.59,
+  "coef_per_sd": {
+   "area": -0.13,
+   "craton": -0.57
+  },
+  "bootstrap_95": {
+   "area": [
+    -0.33,
+    0.25
+   ],
+   "craton": [
+    -1.11,
+    -0.15
+   ]
+  }
+ },
+ "brake-o0.25-c1-heal250": {
+  "samples": 940,
+  "corr_area_craton": 0.11,
+  "craton_alone_coef": -0.58,
+  "coef_per_sd": {
+   "area": -0.31,
+   "craton": -0.54
+  },
+  "bootstrap_95": {
+   "area": [
+    -0.66,
+    0.07
+   ],
+   "craton": [
+    -0.86,
+    -0.34
+   ]
+  }
+ },
+ "brake-o0.25-c1-kcap07": {
+  "samples": 741,
+  "corr_area_craton": 0.11,
+  "craton_alone_coef": -0.39,
+  "coef_per_sd": {
+   "area": -0.08,
+   "craton": -0.38
+  },
+  "bootstrap_95": {
+   "area": [
+    -0.55,
+    0.38
+   ],
+   "craton": [
+    -0.84,
+    -0.16
+   ]
+  }
+ }
+}

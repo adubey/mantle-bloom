@@ -1,0 +1,22 @@
+{
+ "b123-brake-off": {
+  "splits": 273,
+  "parent_is_largest": 0.07,
+  "uniform_expect": 0.051,
+  "top3": 0.245,
+  "top3_uniform": 0.152,
+  "mean_rank_percentile": 0.249,
+  "median_parent_share": 0.054,
+  "parents_over_10pct": 0.271
+ },
+ "brake-o0.25-c1": {
+  "splits": 321,
+  "parent_is_largest": 0.056,
+  "uniform_expect": 0.041,
+  "top3": 0.209,
+  "top3_uniform": 0.123,
+  "mean_rank_percentile": 0.244,
+  "median_parent_share": 0.05,
+  "parents_over_10pct": 0.184
+ }
+}
