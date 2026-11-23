@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { API_BASE } from "./api";
+import { API_BASE, fetchWorlds, saveWorld, type WorldRecord } from "./api";
+import { downloadBlob } from "./download";
 import FullVersionPreview, { BillingActionButton } from "./FullVersionPreview";
 import Legend from "./Legend";
 import MapCanvas from "./MapCanvas";
@@ -274,6 +275,108 @@ function AccountLink() {
   return <a href={`${API_BASE}/login`}>Sign in</a>;
 }
 
+// Preserved worlds for a signed-in free (downgraded/past-due) user (#1022):
+// list owned worlds with a .bloom export action alongside the billing re-subscribe entry.
+function PreservedWorldsPanel() {
+  const session = useSession();
+  const [worlds, setWorlds] = useState<WorldRecord[]>([]);
+  const [exportingId, setExportingId] = useState<WorldId | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const isSignedInFree = Boolean(!isDemo && session?.user && session.user.tier !== "paid");
+  useEffect(() => {
+    if (!isSignedInFree) {
+      setWorlds([]);
+      return;
+    }
+    let cancelled = false;
+    fetchWorlds().then(
+      ({ worlds: list }) => {
+        if (!cancelled) setWorlds(list);
+      },
+      (err) => {
+        if (!cancelled) console.warn("Failed to load saved worlds:", err);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [isSignedInFree]);
+
+  if (!isSignedInFree || worlds.length === 0) return null;
+
+  const canManage = Boolean(session?.user?.manage_subscription);
+  async function handleExport(world: WorldRecord) {
+    if (!world.summary) return;
+    setExportingId(world.world_id);
+    setExportError(null);
+    try {
+      const blob = await saveWorld(world.world_id);
+      downloadBlob(blob, `mantle-bloom-seed${world.summary.seed}-${Math.round(world.summary.elapsed_years)}y.bloom`);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setExportingId(null);
+    }
+  }
+
+  return (
+    <section
+      aria-label="Your saved worlds"
+      style={{
+        border: "1px solid #2e3446",
+        background: "#161a24",
+        borderRadius: 8,
+        padding: "12px 16px",
+        marginBottom: 16,
+      }}
+    >
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <strong>Your saved worlds</strong>
+        <span style={{ opacity: 0.75, fontSize: 14 }}>
+          Read/export only while your subscription is inactive.
+        </span>
+        {session?.billing_available && (
+          <span style={{ marginLeft: "auto" }}>
+            <BillingActionButton
+              apiBase={API_BASE}
+              manage={canManage}
+              label={canManage ? "Manage subscription" : "Re-subscribe"}
+            />
+          </span>
+        )}
+      </div>
+      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 }}>
+        {worlds.map((w) => (
+          <li key={w.world_id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span>
+              <strong>{w.name}</strong>
+              <span style={{ opacity: 0.75 }}>
+                {w.summary ? ` · ${formatMillionYears(w.summary.elapsed_years)} elapsed` : " (empty)"}
+              </span>
+            </span>
+            {w.summary && (
+              <button
+                type="button"
+                disabled={exportingId === w.world_id}
+                onClick={() => void handleExport(w)}
+                style={{ marginLeft: "auto" }}
+              >
+                {exportingId === w.world_id ? "Exporting…" : "Export .bloom"}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {exportError && (
+        <p role="alert" style={{ color: "#ff9b9b", margin: "8px 0 0", fontSize: 13 }}>
+          {exportError}
+        </p>
+      )}
+    </section>
+  );
+}
+
 // Which public world to show (#563, #597): `?world=<id>`, the only live world
 // when one is running, or else the first listed one, with a picker when there
 // are several.
@@ -377,6 +480,7 @@ export default function Viewer({ learnMoreDwellMs }: { learnMoreDwellMs?: number
           <AccountLink />
         </div>
       </header>
+      <PreservedWorldsPanel />
       {worlds && worlds.length > 1 && (
         <label style={{ display: "block", marginBottom: 12 }}>
           World{" "}

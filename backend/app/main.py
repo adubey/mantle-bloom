@@ -1074,7 +1074,7 @@ class PatchWorldRequest(BaseModel):
 
 
 def _visible_sessions() -> list[WorldSession]:
-    """All worlds for admin, or only the signed-in paid user's own worlds (#953)."""
+    """All worlds for admin, or only the signed-in user's own worlds (#953, #1022)."""
     sessions = _registry.list()
     actor = auth.current_actor()
     if actor.is_admin:

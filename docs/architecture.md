@@ -162,11 +162,15 @@ and checks every request before routing:
 - `GET /` from someone who isn't the admin or a `paid` user redirects to `/view`, the
   logged-out/free page (the frontend's `main.tsx` renders `Viewer.tsx` there and `App.tsx`
   everywhere else).
-- Every `/worlds/{world_id}/*` route answers `401` to free/signed-out callers, including direct
-  API calls. Paid users see and manage only their own worlds (`404` on others' worlds) and may
-  mark them `is_public`, while the global `/view` default (`is_default`) and debug routes
-  (`/debug/*`, `/worlds/{world_id}/generate_debug`, `/worlds/{world_id}/replay-logs`) remain
-  admin-only (`403` for paid users, and `&deb` / `Debug...` are hidden in the UI) (#953).
+- Every `/worlds/{world_id}/*` route answers `401` to signed-out callers, including direct
+  API calls. Signed-in `free` users (including downgraded or past-due accounts) may only list
+  their own worlds (`GET /worlds`) and export their own `.bloom` saves
+  (`GET /worlds/{world_id}/save`, `404` on others' or admin's worlds), while all other
+  `/worlds/*` routes return `403` (#1022). Paid users see and manage only their own worlds
+  (`404` on others' worlds) and may mark them `is_public`, while the global `/view` default
+  (`is_default`) and debug routes (`/debug/*`, `/worlds/{world_id}/generate_debug`,
+  `/worlds/{world_id}/replay-logs`) remain admin-only (`403` for paid and free users, and
+  `&deb` / `Debug...` are hidden in the UI) (#953).
 - Any non-GET request whose `Origin` is another site (or `Sec-Fetch-Site: cross-site` when
   there's no `Origin`) is refused with `403`. This is the CSRF guard. Same-site means the
   request's own `Host` or the origin of `MANTLE_BLOOM_PUBLIC_URL`, so a proxy that rewrites
@@ -189,8 +193,9 @@ Google sign-in makes signed-in free users (#929, the first provider of #560). It
 Google account, keyed by Google's `sub`, and sets the same `mb_session` cookie with a
 different payload: `{user, via, exp}`, where `user` is the store's user ID. Admin is read
 only from `uid`, which only the GitHub callback writes, so a Google session is never the
-admin: it gets `401` from every `/worlds/*` route and the same guest step allowance as a
-signed-out visitor. `auth.signed_in_user` looks the user up in the store on each call, so
+admin: as a `free` user, it gets `403` from mutating or non-export `/worlds/*` routes (while
+able to list and export its own preserved worlds if downgraded, #1022) and the same guest step
+allowance as a signed-out visitor. `auth.signed_in_user` looks the user up in the store on each call, so
 a session ends when its user is gone. The account's email is stored only when Google
 reports it verified. Nothing links accounts across providers yet. Sign-in and the simulator
 share one store per process (`users.shared_store`); on Railway the front process and its

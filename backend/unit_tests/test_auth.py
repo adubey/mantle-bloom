@@ -482,10 +482,10 @@ def test_google_account_signs_in_as_a_free_user_not_admin(monkeypatch, remote):
         "billing_available": False,
         "user": {"name": "Ada Lovelace", "provider": "google", "tier": "free", "manage_subscription": False},
     }
-    # Signed in, and still only a viewer: every owner route refuses it.
-    assert remote.get("/worlds").status_code == 401
-    assert remote.get("/worlds/test-world/summary").status_code == 401
-    assert remote.post("/worlds/test-world/step", headers={"Origin": "https://testserver"}).status_code == 401
+    # Signed in free user can list their own worlds (empty) but cannot open / or mutate/inspect worlds.
+    assert remote.get("/worlds").json() == {"worlds": []}
+    assert remote.get("/worlds/test-world/summary").status_code == 403
+    assert remote.post("/worlds/test-world/step", headers={"Origin": "https://testserver"}).status_code == 403
     assert remote.get("/").headers["location"] == "/view"
     assert remote.get("/public/worlds").status_code == 200
 
@@ -519,7 +519,7 @@ def test_google_owner_id_collision_is_not_admin(monkeypatch, remote):
     assert remote.get("/auth/session").json()["admin"] is False
     remote.cookies.set(auth.SESSION_COOKIE, auth.sign_token({"user": OWNER_ID}, SECRET.encode(), "session", 60))
     assert remote.get("/auth/session").json()["admin"] is False
-    assert remote.get("/worlds/test-world/summary").status_code == 401
+    assert remote.get("/worlds/test-world/summary").status_code == 403
 
 
 @pytest.mark.usefixtures("google")
@@ -650,10 +650,11 @@ def _subscribe_user(sub: str, status: str = "active") -> users.User:
 
 @pytest.mark.usefixtures("google")
 def test_paid_user_can_open_root_and_isolate_worlds(monkeypatch, remote):
-    # Free user stays redirected from / and refused on /worlds.
+    # Free user stays redirected from / and cannot create worlds, but can list their own (empty).
     _google_sign_in(remote, monkeypatch, {**GOOGLE_USER, "sub": "sub-ada"})
     assert remote.get("/").status_code == 302
-    assert remote.get("/worlds").status_code == 401
+    assert remote.get("/worlds").json() == {"worlds": []}
+    assert remote.post("/worlds", json={"name": "Nope"}).status_code == 403
 
     # Activating a subscription unlocks / and their own worlds, but never admin debug routes.
     _subscribe_user("sub-ada")
@@ -702,3 +703,67 @@ def test_paid_user_can_open_root_and_isolate_worlds(monkeypatch, remote):
         assert remote.post("/worlds", json={"name": f"Ada {i}", "is_public": False}).status_code == 201
     assert remote.post("/worlds", json={"name": "Ada Over", "is_public": False}).status_code == 409
     assert bob.post("/worlds", json={"name": "Bob Own", "is_public": False}).status_code == 201
+
+
+@pytest.mark.usefixtures("google")
+def test_downgraded_free_user_can_list_and_export_own_worlds_only(monkeypatch, remote):
+    from app import npz_save, persistence
+    from app.world import generate_world
+
+    # Ada and Bob sign in and subscribe; each creates and populates a world.
+    _google_sign_in(remote, monkeypatch, {**GOOGLE_USER, "sub": "sub-ada"})
+    ada = _subscribe_user("sub-ada", "active")
+    ada_id = remote.post("/worlds", json={"name": "Ada Preserved", "is_public": False}).json()["world_id"]
+    save_bytes = persistence.save_world_bytes(generate_world(seed=5, num_plates=2, node_density=0.5))
+    assert remote.post(f"/worlds/{ada_id}/load", content=save_bytes).status_code == 200
+
+    bob_client = TestClient(app, base_url="https://testserver", follow_redirects=False)
+    _google_sign_in(bob_client, monkeypatch, {**GOOGLE_USER, "sub": "sub-bob", "name": "Bob"})
+    _subscribe_user("sub-bob", "active")
+    bob_id = bob_client.post("/worlds", json={"name": "Bob Active", "is_public": False}).json()["world_id"]
+    assert bob_client.post(f"/worlds/{bob_id}/load", content=save_bytes).status_code == 200
+
+    # Ada's subscription is revoked / past_due -> tier drops to free, worlds remain owned by Ada.
+    for status in ("past_due", "canceled"):
+        users.shared_store().set_subscription(
+            ada.id,
+            status=status,
+            provider_customer_id="cus_sub-ada",
+            provider_subscription_id="sub_sub-ada",
+        )
+        assert users.shared_store().tier(ada.id) == "free"
+
+        # Redirected from /, but can list and export her own preserved world.
+        assert remote.get("/").status_code == 302
+        listed = remote.get("/worlds")
+        assert listed.status_code == 200
+        assert [w["world_id"] for w in listed.json()["worlds"]] == [ada_id]
+
+        exported = remote.get(f"/worlds/{ada_id}/save")
+        assert exported.status_code == 200
+        assert npz_save.is_v5(exported.content)
+        assert ".bloom" in exported.headers.get("content-disposition", "")
+
+        # Strict ownership: cannot export Bob's or admin's worlds.
+        assert remote.get(f"/worlds/{bob_id}/save").status_code == 404
+        assert remote.get("/worlds/test-world/save").status_code == 404
+
+        # Non-export reads and all mutations are refused with 403.
+        assert remote.get(f"/worlds/{ada_id}").status_code == 403
+        assert remote.get(f"/worlds/{ada_id}/summary").status_code == 403
+        assert remote.post("/worlds", json={"name": "New"}).status_code == 403
+        assert remote.post("/worlds/import", content=save_bytes).status_code == 403
+        assert remote.post(f"/worlds/{ada_id}/generate", json={"seed": 1}).status_code == 403
+        assert remote.post(f"/worlds/{ada_id}/step", json={"years": 1000}).status_code == 403
+        assert remote.post(f"/worlds/{ada_id}/load", content=save_bytes).status_code == 403
+        assert remote.patch(f"/worlds/{ada_id}", json={"name": "Renamed"}).status_code == 403
+        assert remote.patch(f"/worlds/{ada_id}", json={"is_public": True}).status_code == 403
+        assert remote.delete(f"/worlds/{ada_id}").status_code == 403
+
+    # Bob (paid) and admin still have normal access.
+    assert bob_client.get("/").status_code != 302
+    assert [w["world_id"] for w in bob_client.get("/worlds").json()["worlds"]] == [bob_id]
+    assert bob_client.get(f"/worlds/{bob_id}/save").status_code == 200
+    admin_client = TestClient(app, base_url="https://testserver", follow_redirects=False)
+    _sign_in(admin_client, monkeypatch)
+    assert admin_client.get(f"/worlds/{ada_id}/save").status_code == 200
