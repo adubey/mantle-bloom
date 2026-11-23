@@ -230,10 +230,11 @@ def is_admin(request: Request, config: AuthConfig) -> bool:
 
 @dataclass(frozen=True)
 class Actor:
-    """Who is making the current request: admin (local or owner) or a paid user ID (#953)."""
+    """Who is making the current request: admin, paid user, or free user (#953, #1022)."""
 
     is_admin: bool
     user_id: int | None = None
+    is_paid: bool = False
 
 
 # Set per HTTP request by AuthMiddleware so /worlds/* handlers can check ownership without
@@ -247,22 +248,15 @@ def current_actor() -> Actor:
     return _CURRENT_ACTOR.get() or Actor(is_admin=False)
 
 
-def paid_user(request: Request, config: AuthConfig) -> users.User | None:
-    """The store user behind an active paid session, or None (#953)."""
-    signed_in = signed_in_user(request, config)
-    if signed_in is None:
-        return None
-    user = signed_in[0]
-    return user if users.shared_store().tier(user.id) == "paid" else None
-
-
 def request_actor(request: Request, config: AuthConfig) -> Actor | None:
-    """Authenticated caller allowed into the full app (`admin` or `paid`), or None."""
+    """Authenticated caller (`admin`, `paid`, or `free`), or None when signed out."""
     if is_admin(request, config):
         return Actor(is_admin=True)
-    paid = paid_user(request, config)
-    if paid is not None:
-        return Actor(is_admin=False, user_id=paid.id)
+    signed_in = signed_in_user(request, config)
+    if signed_in is not None:
+        user = signed_in[0]
+        is_paid = users.shared_store().tier(user.id) == "paid"
+        return Actor(is_admin=False, user_id=user.id, is_paid=is_paid)
     return None
 
 
@@ -311,6 +305,16 @@ def _is_world_route(path: str) -> bool:
     return path == "/worlds" or path.startswith("/worlds/") or _is_admin_only_route(path)
 
 
+def _is_free_world_read_route(method: str, path: str) -> bool:
+    """Signed-in free users may only list their owned worlds and export `.bloom` saves (#1022)."""
+    if method not in ("GET", "HEAD"):
+        return False
+    if path == "/worlds":
+        return True
+    parts = path.split("/")
+    return len(parts) == 4 and parts[0] == "" and parts[1] == "worlds" and bool(parts[2]) and parts[3] == "save"
+
+
 def gate_resolved(
     request: Request,
     config: AuthConfig,
@@ -321,14 +325,18 @@ def gate_resolved(
     if is_cross_site_write(request, config, extra_origins):
         return JSONResponse({"detail": "Cross-site request refused"}, status_code=403)
     root, path = _route_path(request.scope)
-    if path == "/" and request.method in ("GET", "HEAD") and actor is None:
+    can_open_app = actor is not None and (actor.is_admin or actor.is_paid)
+    if path == "/" and request.method in ("GET", "HEAD") and not can_open_app:
         return RedirectResponse(f"{root}/view", status_code=302)
     if _is_admin_only_route(path) and (actor is None or not actor.is_admin):
         if actor is not None:
             return JSONResponse({"detail": "Admin required"}, status_code=403)
         return JSONResponse({"detail": "Login required"}, status_code=401)
-    if _is_world_route(path) and actor is None:
-        return JSONResponse({"detail": "Login required"}, status_code=401)
+    if _is_world_route(path):
+        if actor is None:
+            return JSONResponse({"detail": "Login required"}, status_code=401)
+        if not can_open_app and not _is_free_world_read_route(request.method, path):
+            return JSONResponse({"detail": "Paid subscription required"}, status_code=403)
     return None
 
 

@@ -8,12 +8,16 @@ the world is always addressed explicitly (#563). Registry routes (`GET /worlds`,
 records themselves.
 
 Every `/worlds/*` route requires either the admin (a GitHub session for the configured owner,
-or a request made on the server's own machine) or a signed-in `paid` user (#953). Paid users
-see and manage only the worlds they own (other users' and admin worlds return `404`), may
-mark their own worlds `is_public`, and cannot set the global `/view` `is_default` or call
-debug routes (`/debug/*`, `POST /worlds/{world_id}/generate_debug`,
-`GET /worlds/{world_id}/replay-logs`, which return `403`). Free and signed-out callers get
-`401`. Cross-site writes get `403`. See [architecture.md#access-control](architecture.md#access-control).
+or a request made on the server's own machine) or a signed-in `paid` user (#953), except that
+signed-in `free` users (including downgraded or past-due subscribers) may list their own
+worlds (`GET /worlds`) and export their own `.bloom` saves (`GET /worlds/{world_id}/save`,
+returning `404` on others' or admin's worlds) (#1022). Paid users see and manage only the
+worlds they own (other users' and admin worlds return `404`), may mark their own worlds
+`is_public`, and cannot set the global `/view` `is_default` or call debug routes (`/debug/*`,
+`POST /worlds/{world_id}/generate_debug`, `GET /worlds/{world_id}/replay-logs`, which return
+`403`). Free users get `403` on all other `/worlds/*` routes, and signed-out callers get `401`
+on all `/worlds/*` routes. Cross-site writes get `403`. See
+[architecture.md#access-control](architecture.md#access-control).
 
 ## `GET /healthz`
 

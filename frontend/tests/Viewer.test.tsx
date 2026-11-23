@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it, type TestContext } from "node:test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import Viewer from "../src/Viewer";
+import type { WorldRecord } from "../src/api";
 import type { PublicState, PublicWorldListing } from "../src/publicApi";
 
 const TINY_PNG_BASE64 =
@@ -58,14 +59,43 @@ function abortablePending(signal?: AbortSignal | null): Promise<Response> {
 
 interface FetchMockOptions {
   worlds: () => PublicWorldListing[];
+  ownedWorlds?: () => WorldRecord[];
   states?: Record<string, Partial<PublicState>>;
   onStep?: (worldId: string) => Response | Promise<Response>;
+  onSaveWorld?: (worldId: string) => Response | Promise<Response>;
   admin?: boolean;
   billingAvailable?: boolean;
   user?: { name: string | null; provider: string; tier?: "free" | "paid"; manage_subscription?: boolean } | null;
 }
 
-function installFetchMock({ worlds, states = {}, onStep, admin = false, billingAvailable = false, user = null }: FetchMockOptions): { worldsCalls: () => number } {
+function handlePublicWorldFetch(
+  url: URL,
+  init: RequestInit | undefined,
+  { worlds, states = {}, onStep }: Pick<FetchMockOptions, "worlds" | "states" | "onStep">,
+): Promise<Response> | Response | null {
+  const match = /^\/public\/worlds\/([^/]+)\/(world|render|step)$/.exec(url.pathname);
+  if (!match) return null;
+  const worldId = decodeURIComponent(match[1]);
+  const endpoint = match[2];
+  const listing = worlds().find((w) => w.world_id === worldId);
+  if (endpoint === "world") {
+    if (url.searchParams.has("after")) return abortablePending(init?.signal);
+    if (!listing) return jsonResponse({ detail: "Not found" }, 404);
+    return jsonResponse(makeState(listing, states[worldId]));
+  }
+  if (endpoint === "render") {
+    return jsonResponse({
+      revision: listing?.revision ?? "rev-1",
+      seed: listing?.seed ?? 42,
+      elapsed_years: listing?.elapsed_years ?? 100_000,
+      image_base64: TINY_PNG_BASE64,
+    });
+  }
+  if (endpoint === "step" && onStep) return onStep(worldId);
+  return null;
+}
+
+function installFetchMock({ worlds, ownedWorlds = () => [], states = {}, onStep, onSaveWorld, admin = false, billingAvailable = false, user = null }: FetchMockOptions): { worldsCalls: () => number } {
   let publicWorldsCalls = 0;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const rawUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -74,34 +104,20 @@ function installFetchMock({ worlds, states = {}, onStep, admin = false, billingA
     if (url.pathname === "/auth/session") {
       return jsonResponse({ admin, local: false, login: admin ? "owner" : null, login_available: false, billing_available: billingAvailable, user });
     }
+    if (url.pathname === "/worlds") {
+      return jsonResponse({ worlds: ownedWorlds() });
+    }
+    const saveMatch = /^\/worlds\/([^/]+)\/save$/.exec(url.pathname);
+    if (saveMatch && onSaveWorld) {
+      return onSaveWorld(decodeURIComponent(saveMatch[1]));
+    }
     if (url.pathname === "/public/worlds") {
       publicWorldsCalls += 1;
       return jsonResponse({ worlds: worlds() });
     }
 
-    const match = /^\/public\/worlds\/([^/]+)\/(world|render|step)$/.exec(url.pathname);
-    if (match) {
-      const worldId = decodeURIComponent(match[1]);
-      const endpoint = match[2];
-      const listing = worlds().find((w) => w.world_id === worldId);
-      if (endpoint === "world") {
-        // Long-poll requests carry ?after=<revision>; keep them pending until aborted.
-        if (url.searchParams.has("after")) return abortablePending(init?.signal);
-        if (!listing) return jsonResponse({ detail: "Not found" }, 404);
-        return jsonResponse(makeState(listing, states[worldId]));
-      }
-      if (endpoint === "render") {
-        return jsonResponse({
-          revision: listing?.revision ?? "rev-1",
-          seed: listing?.seed ?? 42,
-          elapsed_years: listing?.elapsed_years ?? 100_000,
-          image_base64: TINY_PNG_BASE64,
-        });
-      }
-      if (endpoint === "step" && onStep) {
-        return onStep(worldId);
-      }
-    }
+    const publicResp = handlePublicWorldFetch(url, init, { worlds, states, onStep });
+    if (publicResp) return publicResp;
 
     throw new Error(`Unexpected fetch: ${url.pathname}${url.search}`);
   }) as typeof fetch;
@@ -407,5 +423,82 @@ describe("Viewer (/view)", () => {
       await new Promise((resolve) => setTimeout(resolve, 80));
     });
     assert.equal(screen.queryByText("Climate — Wikipedia"), null);
+  });
+
+  it("displays preserved worlds with .bloom export for a signed-in free user (#1022)", async () => {
+    const savedIds: string[] = [];
+    const origCreateObjectURL = URL.createObjectURL;
+    const origRevokeObjectURL = URL.revokeObjectURL;
+    URL.createObjectURL = () => "blob:test-bloom";
+    URL.revokeObjectURL = () => {};
+    try {
+      const owned: WorldRecord[] = [
+        {
+          world_id: "owned-1",
+          name: "Ada Preserved",
+          is_public: false,
+          is_default: false,
+          viewer_view: "combined",
+          viewer_rotation: null,
+          created_at: 1,
+          updated_at: 2,
+          load_error: null,
+          run: null,
+          summary: {
+            world_id: "owned-1",
+            revision: "1",
+            seed: 77,
+            elapsed_years: 250_000,
+            num_plates: 4,
+            surface: "quad",
+            events: [],
+            replay_logs: [],
+          },
+        },
+        {
+          world_id: "owned-empty",
+          name: "Ada Empty",
+          is_public: false,
+          is_default: false,
+          viewer_view: "combined",
+          viewer_rotation: null,
+          created_at: 1,
+          updated_at: 1,
+          load_error: null,
+          run: null,
+          summary: null,
+        },
+      ];
+      installFetchMock({
+        worlds: () => [makeListing({ world_id: "w1", name: "Kepler-186 f" })],
+        ownedWorlds: () => owned,
+        onSaveWorld: (worldId) => {
+          savedIds.push(worldId);
+          return new Response(new Uint8Array([1, 2, 3]), {
+            status: 200,
+            headers: { "Content-Type": "application/octet-stream" },
+          });
+        },
+        billingAvailable: true,
+        user: { name: "Ada Lovelace", provider: "google", tier: "free", manage_subscription: false },
+      });
+
+      render(<Viewer />);
+
+      const panel = await screen.findByRole("region", { name: "Your saved worlds" });
+      assert.ok(panel.textContent?.includes("Ada Preserved"));
+      assert.ok(panel.textContent?.includes("Ada Empty"));
+      assert.ok(panel.textContent?.includes("(empty)"));
+      assert.ok(screen.getByRole("button", { name: "Re-subscribe" }));
+
+      const exportButtons = screen.getAllByRole("button", { name: "Export .bloom" });
+      assert.equal(exportButtons.length, 1);
+      fireEvent.click(exportButtons[0]);
+
+      await waitFor(() => assert.deepEqual(savedIds, ["owned-1"]));
+    } finally {
+      URL.createObjectURL = origCreateObjectURL;
+      URL.revokeObjectURL = origRevokeObjectURL;
+    }
   });
 });

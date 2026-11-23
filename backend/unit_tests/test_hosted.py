@@ -590,3 +590,71 @@ def test_hosted_paid_users_only_see_their_own_worlds(tmp_path, monkeypatch):
         bob_resp = client.get("/worlds", cookies={auth.SESSION_COOKIE: bob_cookie})
         assert bob_resp.status_code == 200
         assert [w["world_id"] for w in bob_resp.json()["worlds"]] == [world_b]
+
+
+def test_hosted_downgraded_free_user_can_list_and_export_own_worlds_only(tmp_path, monkeypatch):
+    from fastapi import Response
+
+    from app import auth, users
+
+    _checkpoint(tmp_path, monkeypatch)
+    world_b = "b" * 32
+    root = checkpoint.CheckpointStore(tmp_path)
+    root.save_index([
+        {"world_id": WORLD_ID, "name": "Ada World", "is_public": False, "is_default": False, "created_at": 1.0, "updated_at": 1.0},
+        {"world_id": world_b, "name": "Bob World", "is_public": False, "is_default": False, "created_at": 2.0, "updated_at": 2.0},
+    ])
+    summary_a = root.for_world(WORLD_ID).load_hosted_summary()
+    assert summary_a is not None
+    store_b = root.for_world(world_b)
+    store_b.directory.mkdir(parents=True)
+    store_b.world_path.write_bytes(b"checkpoint")
+    store_b.save_hosted_summary(summary_a)
+    store_b.save_status(checkpoint.RunStatus(running=False, step_years=50_000))
+
+    proxy_paths: list[str] = []
+
+    async def fake_proxy(request):
+        proxy_paths.append(request.url.path)
+        return Response(b"bloom-bytes", media_type="application/octet-stream")
+
+    monkeypatch.setattr(hosted, "_proxy", fake_proxy)
+
+    secret = "s" * 40
+    monkeypatch.setenv("MANTLE_BLOOM_SESSION_SECRET", secret)
+    monkeypatch.setenv("MANTLE_BLOOM_GOOGLE_CLIENT_ID", "g-id")
+    monkeypatch.setenv("MANTLE_BLOOM_GOOGLE_CLIENT_SECRET", "g-secret")
+    store = users.MemoryUserStore()
+    monkeypatch.setattr(users, "_shared", store)
+    ada = store.create_user("Ada")
+    bob = store.create_user("Bob")
+    store.set_subscription(ada.id, status="canceled", provider_customer_id="c1", provider_subscription_id="s1")
+    store.set_subscription(bob.id, status="active", provider_customer_id="c2", provider_subscription_id="s2")
+    store.add_world(WORLD_ID, ada.id)
+    store.add_world(world_b, bob.id)
+
+    ada_cookie = auth.sign_token({"user": ada.id, "via": "google"}, secret.encode(), "session", 60)
+
+    app = hosted.create_app()
+    with TestClient(app, base_url="https://testserver", follow_redirects=False) as client:
+        assert client.get("/", cookies={auth.SESSION_COOKIE: ada_cookie}).status_code == 302
+        listed = client.get("/worlds", cookies={auth.SESSION_COOKIE: ada_cookie})
+        assert listed.status_code == 200
+        assert [w["world_id"] for w in listed.json()["worlds"]] == [WORLD_ID]
+
+        # Exporting another user's world is refused with 404 without waking the worker.
+        assert client.get(f"/worlds/{world_b}/save", cookies={auth.SESSION_COOKIE: ada_cookie}).status_code == 404
+        assert proxy_paths == []
+
+        # Mutations and non-export reads are refused with 403 without waking the worker.
+        assert client.post("/worlds", json={"name": "Nope"}, cookies={auth.SESSION_COOKIE: ada_cookie}).status_code == 403
+        assert client.patch(f"/worlds/{WORLD_ID}", json={"name": "Nope"}, cookies={auth.SESSION_COOKIE: ada_cookie}).status_code == 403
+        assert client.delete(f"/worlds/{WORLD_ID}", cookies={auth.SESSION_COOKIE: ada_cookie}).status_code == 403
+        assert client.get(f"/worlds/{WORLD_ID}/run", cookies={auth.SESSION_COOKIE: ada_cookie}).status_code == 403
+        assert proxy_paths == []
+
+        # Exporting Ada's own world proxies to the worker.
+        exported = client.get(f"/worlds/{WORLD_ID}/save", cookies={auth.SESSION_COOKIE: ada_cookie})
+        assert exported.status_code == 200
+        assert exported.content == b"bloom-bytes"
+        assert proxy_paths == [f"/worlds/{WORLD_ID}/save"]

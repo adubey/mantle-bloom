@@ -449,13 +449,18 @@ async def _admin_list(request: Request) -> Response:
     return JSONResponse(payload, headers=_NO_STORE)
 
 
-async def _admin_run(request: Request) -> Response:
+def _require_owned_world_id(request: Request) -> str:
     world_id = request.path_params["world_id"]
     if _WORLD_ID.fullmatch(world_id) is None:
         raise HTTPException(404, "unknown world")
     actor = auth.current_actor()
     if not actor.is_admin and users.shared_store().world_owner(world_id) != actor.user_id:
         raise HTTPException(404, "unknown world")
+    return world_id
+
+
+async def _admin_run(request: Request) -> Response:
+    world_id = _require_owned_world_id(request)
     # An active run already vetoes sleep. Preserve its existing event-driven
     # poll and use a disk response once the worker is gone.
     active = await _active(request)
@@ -474,6 +479,11 @@ async def _admin_run(request: Request) -> Response:
         **status, "run_version": 0, "phase": None,
         "world": None if saved is None else _viewer_summary(saved),
     }, headers=_NO_STORE)
+
+
+async def _save_world(request: Request) -> Response:
+    _require_owned_world_id(request)
+    return await _proxy(request)
 
 
 def _health() -> dict:
@@ -523,6 +533,7 @@ def create_app(dist: str | None = None) -> FastAPI:
     app.add_api_route("/worlds", _admin_list)
     app.add_api_route("/_worker/{path:path}", _private_route, include_in_schema=False)
     app.routes.append(Route("/worlds/{world_id}/run", _admin_run, methods=["GET"]))
+    app.routes.append(Route("/worlds/{world_id}/save", _save_world, methods=["GET"]))
     for path in ("/worlds", "/worlds/{path:path}", "/debug/{path:path}"):
         app.routes.append(Route(path, _proxy, methods=["GET", "POST", "PATCH", "DELETE", "PUT", "OPTIONS"]))
     if dist:
