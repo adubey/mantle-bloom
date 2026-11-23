@@ -52,17 +52,6 @@ SHEAR_ZONE_THICKNESS_M = 100_000.0  # d_s, Eq. 10
 # speed self-regulate (the faster a plate converges, the harder the mantle resists its slab)
 # rather than everything sitting on the clamp. Within the spec's own 1e19-1e21 Pa*s bracket.
 SLAB_MANTLE_VISCOSITY_PA_S = 1e21
-# B.3's force column floors a dated oceanic cell at its own Hm. Where that Hm sits well above the cooling law (the
-# model's oceanic Hm is about 33 km at any age), young floor pulls with an old floor's column: 40-55% of pulled trench
-# length is under 30 Myr and about half of it is on the floor (#995). The cell's own Hm counts only up to this cap, so a
-# cap near `YOUNG_RIDGE_HM_M` leaves the column to the cooling law. A G1-style probe knob, not a World field: infinite
-# is the form before #995, and a harness setting overrides it per process.
-FORCE_COLUMN_OWN_HM_CAP_M = float("inf")
-# A slab-history gate on pull (#995): when finite, a node pulls only if its plate lost oceanic floor under a neighbour
-# (`collision_polarity`'s consumption evidence, role lower, the last `EVIDENCE_LOOKBACK_YEARS`) within this many line
-# spacings of it, so a plate has slab pull where it has consumed floor, not at every closing trench node. Infinite is
-# today's form. A probe knob like the cap above; the harness overrides it per process.
-SLAB_HISTORY_GATE_SPACINGS = float("inf")
 # Typical old-ocean-floor depth ridge relief is measured against -- the isostatic elevation
 # of oceanic crust already at its own reference thickness (lithosphere.REFERENCE_HC/HM_
 # OCEANIC_M), so this tracks ISOSTATIC_REFERENCE_OFFSET_M automatically rather than
@@ -225,7 +214,6 @@ class BoundaryForceInputs:
     # RFC 0021's force forms and the per-node values they read, set by `apply_force_forms`; left at
     # their defaults, every force takes its form from before RFC 0021.
     forms: ForceForms = DEFAULT_FORCE_FORMS
-    slab_history: np.ndarray | None = None  # (N,) bool, node is near this plate's recent consumed floor (#995); None = no gate
     own_age_yr: np.ndarray | None = None  # (N,) node age, NaN where undated
     neighbor_age_yr: np.ndarray | None = None  # (N,) the nearest neighbour node's age, NaN where undated or none
     force_hm: np.ndarray | None = None  # (N,) the mantle lithosphere slab pull and ridge push read (B.3)
@@ -454,37 +442,14 @@ def node_age_yr(world, plate) -> np.ndarray:
 
 def force_column_hm(plate, inputs: BoundaryForceInputs, forms: ForceForms) -> np.ndarray:
     """B.3's force column (RFC 0021): an oceanic cell's mantle lithosphere from a cooling plate of its age less its
-    crust, `max(Hm, min(h1 sqrt(age), H_max) - Hc)` (`Hm` counted only up to `FORCE_COLUMN_OWN_HM_CAP_M`), by `rift_strength.oceanic_strength_hm`'s law without its
+    crust, `max(Hm, min(h1 sqrt(age), H_max) - Hc)`, by `rift_strength.oceanic_strength_hm`'s law without its
     rift-strain thinning. The floor at the cell's own Hm keeps a young ridge at `YOUNG_RIDGE_HM_M` and leaves an
     undated cell as it is; continental cells keep their Hm. Only slab pull and ridge push read it: the plate's own
     column and its elevation don't change (that is RFC 0021's alternative D)."""
     law = replace(_RIFT_DEFAULTS, ocean_cooling_m_per_sqrt_myr=forms.ocean_cooling_m_per_sqrt_myr,
                   ocean_plate_thickness_m=forms.ocean_plate_thickness_m)
-    floor_hm = np.where(np.isnan(inputs.own_age_yr), inputs.own_hm, np.minimum(inputs.own_hm, FORCE_COLUMN_OWN_HM_CAP_M))
-    aged = rift_strength.oceanic_strength_hm(inputs.own_hc, floor_hm, inputs.own_age_yr, 0.0, law)
+    aged = rift_strength.oceanic_strength_hm(inputs.own_hc, inputs.own_hm, inputs.own_age_yr, 0.0, law)
     return np.where(own_is_continental(plate, inputs), inputs.own_hm, aged)
-
-
-def slab_history_mask(world, plate, inputs: BoundaryForceInputs) -> np.ndarray:
-    """Per own node, whether it lies within `SLAB_HISTORY_GATE_SPACINGS` line spacings of oceanic floor this plate lost
-    under a neighbour in the last `EVIDENCE_LOOKBACK_YEARS` (a plate's own slab, as RFC 0021's T2 defines one)."""
-    from scipy.spatial import cKDTree
-
-    from . import collision_polarity as polarity
-
-    store = (getattr(world, "collision_evidence", None) or {}).get(plate.plate_id)
-    none = np.zeros(len(inputs.own_points), dtype=bool)
-    if store is None or not len(store):
-        return none
-    recent = (store.source == polarity.SOURCE_CONSUMPTION) & (store.role == polarity.ROLE_LOWER)
-    recent &= store.last_seen >= world.elapsed_years - polarity.EVIDENCE_LOOKBACK_YEARS
-    if not recent.any():
-        return none
-    centres = store.local_points()[recent]
-    local = geometry.to_local(plate.frame, inputs.own_points)
-    chord = 2.0 * np.sin(0.5 * SLAB_HISTORY_GATE_SPACINGS * line_spacing_rad(world.node_density))
-    distance, _ = cKDTree(centres).query(local, distance_upper_bound=chord * (1.0 + 1e-9))
-    return np.isfinite(distance)
 
 
 def apply_force_forms(world, plate, neighbours: list, inputs: BoundaryForceInputs, forms: ForceForms) -> BoundaryForceInputs:
@@ -492,8 +457,6 @@ def apply_force_forms(world, plate, neighbours: list, inputs: BoundaryForceInput
     they read. The motion solve and the rift-line load (`rift_damage.force_inputs`) call it, so both see the same
     forces. With the default forms it changes nothing."""
     inputs.forms = forms
-    if np.isfinite(SLAB_HISTORY_GATE_SPACINGS) and len(inputs.own_points):
-        inputs.slab_history = slab_history_mask(world, plate, inputs)
     if not forms.needs_ages or len(inputs.own_points) == 0:
         return inputs
     inputs.own_age_yr = node_age_yr(world, plate)
@@ -532,8 +495,7 @@ def subducting_boundary_mask(plate, inputs: BoundaryForceInputs, reach_rad: floa
         return contact & ~younger
     band = inputs.dist_to_neighbor <= reach_rad
     threshold = 0.0 if test == "ramp" else TRANSFORM_RATE_THRESHOLD
-    mask = band & (closing_rad_per_yr(plate, inputs) > threshold) & down_going_crust(plate, inputs, reach_rad)
-    return mask if inputs.slab_history is None else mask & inputs.slab_history
+    return band & (closing_rad_per_yr(plate, inputs) > threshold) & down_going_crust(plate, inputs, reach_rad)
 
 
 def subduction_pull_weight(plate, inputs: BoundaryForceInputs, subducting_mask: np.ndarray) -> np.ndarray | None:

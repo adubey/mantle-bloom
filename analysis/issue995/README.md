@@ -34,9 +34,11 @@ repo. They are in `~/mantle-bloom-captures/issue995/runs/` with a `SHA256SUMS`; 
 `ramp-breakup-stat.json`, `craton-regression.json`, `rift-state-analysis.json`, `splits-analysis.json`,
 `slowdown-analysis.json`) are checked in.
 
-**Probe-only code.** `torque.FORCE_COLUMN_OWN_HM_CAP_M` and `torque.SLAB_HISTORY_GATE_SPACINGS` are default-off, with unit
-tests, and are not wanted in the model unless the revision adopts them. The debug scripts in `bin/debug/` are the
-diagnostics for these sections.
+**Probe-only code (removed from this PR).** Sections 5 and 6 used two default-off knobs, `torque.FORCE_COLUMN_OWN_HM_CAP_M`
+(a cap on the own-Hm floor of B.3's force column) and `torque.SLAB_HISTORY_GATE_SPACINGS` (pull only near floor the plate
+consumed in the last 10 Myr), with unit tests. The owner dropped them from PR #1021, so the settings `b123-age-pull` and
+`b123-slab-history` in `settings.json` no longer run on this tree; the code is in commit `8024d64a` of the PR's branch
+history. The debug scripts in `bin/debug/` are the diagnostics for these sections.
 
 Rescoring of the #980 captures (`~/mantle-bloom-captures/issue980/`, checksums verified), no new runs.
 Script: `bin/debug/g1_t2_groups.py`; output `t2-groups.json`. T2 pairing is `calibrate_plate_forces.t2_ratio`'s
