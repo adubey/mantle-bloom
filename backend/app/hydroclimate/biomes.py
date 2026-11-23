@@ -1044,6 +1044,14 @@ def smooth_biome_field(
     return biome_ids
 
 
+_SOFT_SEA_ICE_FRACTION_BLEND = 0.05
+
+
+def soft_sea_ice_weight(fraction: np.ndarray, threshold: float) -> np.ndarray:
+    """Fuzzy `fraction >= threshold` in [0, 1] for softening Polar Sea Ice biome edges."""
+    return _soft_ge(fraction, threshold, _SOFT_SEA_ICE_FRACTION_BLEND)
+
+
 def smooth_biome_field_blend(
     temperature_c: np.ndarray,
     precipitation_mm: np.ndarray,
@@ -1055,6 +1063,7 @@ def smooth_biome_field_blend(
     lat_deg: np.ndarray,
     axial_tilt_deg: float = DEFAULT_AXIAL_TILT_DEG,
     has_sea_ice: np.ndarray | None = None,
+    sea_ice_weight: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Like smooth_biome_field, but also returns what render_image.py's Biome/Combined views
     need to paint a blended boundary instead of a flat one: (winner_ids, winner_share,
@@ -1076,9 +1085,10 @@ def smooth_biome_field_blend(
         lat_deg, axial_tilt_deg, has_sea_ice,
     )
 
+    soft_ice = has_sea_ice if sea_ice_weight is None else sea_ice_weight
     weights = classify_biomes_soft(
         temperature_c, precipitation_mm, is_ocean, lat_deg=lat_grid, axial_tilt_deg=axial_tilt_deg,
-        continentality=continentality, dist_to_land_rad=dist_to_land_rad, has_sea_ice=has_sea_ice,
+        continentality=continentality, dist_to_land_rad=dist_to_land_rad, has_sea_ice=soft_ice,
     )
     winner_w = np.take_along_axis(weights, biome_ids[None, ...], axis=0)[0]
     runner_up_pool = weights.copy()

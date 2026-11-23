@@ -978,23 +978,36 @@ def _perennial_lake_on_surface(
 def _surface_ice(
     world: World, fields: climate.ClimateFields, xyz: np.ndarray,
     elevation: np.ndarray, glacier_depth: np.ndarray, lake_depth: np.ndarray, lake_cap: np.ndarray, is_ocean: np.ndarray,
+    *, smooth_sea_ice: bool = True,
+    lat_deg: np.ndarray | None = None,
+    ocean_temperature_c: np.ndarray | None = None,
 ) -> _SurfaceIce:
     lat, lon = geometry.xyz_to_latlon(xyz)
-    row, col = climate.grid_cell_indices(np.degrees(lat), np.degrees(lon), fields.is_ocean.shape)
+    lat_d = np.degrees(lat)
+    lon_d = np.degrees(lon)
+    row, col = climate.grid_cell_indices(lat_d, lon_d, fields.is_ocean.shape)
     lake = _perennial_lake_on_surface(world, fields, xyz, row, col, elevation, lake_depth, lake_cap)
     ocean_water = is_ocean & (glacier_depth == 0.0)
-    return _SurfaceIce(glacier_depth, lake & ~is_ocean, sea_ice.sample(world, fields, row, col, ocean_water))
+    if smooth_sea_ice:
+        if lat_deg is not None and ocean_temperature_c is not None:
+            sea = sea_ice.climate_grid_balance(world, lat_deg, ocean_temperature_c, ocean_water)
+        else:
+            sea = sea_ice.sample_smooth(world, fields, lat_d, lon_d, ocean_water)
+    else:
+        sea = sea_ice.sample(world, fields, row, col, ocean_water)
+    return _SurfaceIce(glacier_depth, lake & ~is_ocean, sea)
 
 
 def _point_surface_ice(
     world: World, fields: climate.ClimateFields, xyz: np.ndarray,
     bed: np.ndarray, is_ocean: np.ndarray,
+    *, smooth_sea_ice: bool = True,
 ) -> tuple[np.ndarray, _SurfaceIce, np.ndarray | None, np.ndarray]:
     """Sample bed and ice at true points using the same nearest-node data as the maps."""
     cloud = _node_cloud_and_tree(world)
     if cloud is None:
         zero = np.zeros_like(bed)
-        return bed, _surface_ice(world, fields, xyz, bed, zero, zero, zero, is_ocean), None, is_ocean
+        return bed, _surface_ice(world, fields, xyz, bed, zero, zero, zero, is_ocean, smooth_sea_ice=smooth_sea_ice), None, is_ocean
     points, elevation, owner, tree = cloud
     _, idx = tree.query(xyz, workers=plates.query_workers(len(xyz)))
     bed = elevation[idx]
@@ -1002,7 +1015,7 @@ def _point_surface_ice(
     lake = plates.collect_all_lake_depth(world.plates)[idx]
     cap = plates.collect_all_lake_ice(world.plates)[idx]
     is_ocean = hydrology.sample_is_ocean(world, xyz, bed <= world.sea_level_m)
-    return bed, _surface_ice(world, fields, xyz, bed, glacier, lake, cap, is_ocean), owner[idx], is_ocean
+    return bed, _surface_ice(world, fields, xyz, bed, glacier, lake, cap, is_ocean, smooth_sea_ice=smooth_sea_ice), owner[idx], is_ocean
 
 
 def sample_surface_at(world: World, lat_deg: float, lon_deg: float) -> dict:
@@ -1091,17 +1104,32 @@ def _shaded_glacier_rgb(shade: np.ndarray) -> np.ndarray:
 
 def _surface_ice_colors(
     colors: np.ndarray, ice: _SurfaceIce, hillshade: np.ndarray, glacier_tone: np.ndarray | float,
+    *, soft_sea_ice_edge: bool = True,
 ) -> np.ndarray:
     """Floating ice reads flat. Grounded ice takes the slope of its own surface (#1014)."""
     glacier = ice.glacier.reshape(-1)
-    floating = ice.floating.reshape(-1)
-    shade = np.where(glacier, hillshade * glacier_tone, 1.0)
-    return np.where((glacier | floating)[:, None], _shaded_glacier_rgb(shade), colors)
+    lake = (ice.lake & ~ice.glacier).reshape(-1)
+    sea_weight = (
+        ice.sea.perennial_cover.reshape(-1)
+        if soft_sea_ice_edge
+        else ice.sea.perennial.reshape(-1).astype(float)
+    )
+    sea_weight = np.where(glacier | lake, 0.0, sea_weight)
+    out = colors.astype(float, copy=False)
+    if np.any(sea_weight > 0.0):
+        ice_flat = np.array(GLACIER_COLOR_RGB, dtype=float)
+        w = sea_weight[:, None]
+        out = out * (1.0 - w) + ice_flat * w
+    solid = glacier | lake
+    if np.any(solid):
+        shade = np.where(glacier, hillshade * glacier_tone, 1.0)
+        out = np.where(solid[:, None], _shaded_glacier_rgb(shade), out)
+    return out
 
 
 def _render_grid_arrays(
     world: World, projection: str, view_rotation: np.ndarray, include_terrain_relief: bool = False,
-    *, include_surface_ice: bool = False,
+    *, include_surface_ice: bool = False, smooth_sea_ice: bool = True,
 ) -> tuple | None:
     """A uniform lat/lon grid covering the whole sphere (GRID_SPACING_RAD, independent of
     any plate's own line spacing), each cell assigned its nearest elevation node's elevation,
@@ -1233,7 +1261,7 @@ def _render_grid_arrays(
         ocean = hydrology.sample_is_ocean(world, xyz, result[1] <= world.sea_level_m)
         ice = _surface_ice(
             world, climate.compute_climate_cached(world), xyz, result[1], result[4],
-            result[3], np.concatenate(cap_chunks), ocean,
+            result[3], np.concatenate(cap_chunks), ocean, smooth_sea_ice=smooth_sea_ice,
         )
         result = result + (ice,)
     return result
@@ -1286,7 +1314,7 @@ def _bilinear_resample(
     return top * (1 - row_t) + bot * row_t
 
 
-def _biome_fields(world: World, grid_h: int, grid_w: int):
+def _biome_fields(world: World, grid_h: int, grid_w: int, *, smooth_sea_ice: bool = True):
     """The fine equirectangular grid shared by the Biome and Combined views: elevation/lake
     depth/glacier depth are a fresh nearest-node resample of the actual plate data at this
     grid's resolution (the same cKDTree technique _render_grid_arrays already uses for the
@@ -1341,7 +1369,10 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
     ocean_temp = _bilinear_resample(fields.ocean_temperature_c, fields.lat_deg, fields.lon_deg, lat_deg, lon_deg)
     precip = _bilinear_resample(fields.precipitation_mm, fields.lat_deg, fields.lon_deg, lat_deg, lon_deg)
 
-    ice = _surface_ice(world, fields, world_xyz, elevation_m, glacier_depth, lake_depth, lake_cap, is_ocean)
+    ice = _surface_ice(
+        world, fields, world_xyz, elevation_m, glacier_depth, lake_depth, lake_cap, is_ocean,
+        smooth_sea_ice=smooth_sea_ice, lat_deg=lat_deg, ocean_temperature_c=ocean_temp,
+    )
     return (
         lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip,
         lake_depth, ice, is_sea, hillshade,
@@ -1896,7 +1927,10 @@ def _draw_swell_markers(
         draw.ellipse([px - r, py - r, px + r, py + r], outline=(255, 255, 255), width=width_px)
 
 
-def _render_climate_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+def _render_climate_view(
+    world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray,
+    *, smooth_sea_ice: bool = True,
+) -> bytes:
     """Renders one of CLIMATE_VIEWS on the HEALPix grid's cells. The land side of
     `temperature` draws `world.atmosphere_cfd_state`'s native HEALPix air temperature; under
     `World.wind_model == "diagnostic"` (see that field) the CFD state is frozen and stale, so
@@ -1946,6 +1980,7 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
         # D7 replaces those values at grounded glacier and perennial sea-ice surfaces.
         _, ice, _, point_is_ocean = _point_surface_ice(
             world, cfields, grid.world_xyz, _to_healpix(cfields.elevation_m), is_ocean_hp,
+            smooth_sea_ice=smooth_sea_ice,
         )
         display_temp = ice.temperature(land_air_temp_hp, _to_healpix(cfields.ocean_temperature_c), point_is_ocean)
         _fill_rects(pixels, centers, half_px, half_px, temperature_colors(display_temp))
@@ -2041,22 +2076,31 @@ def _biome_blend_rgb(winner_ids: np.ndarray, winner_share: np.ndarray, runner_up
     return winner_rgb * share + runner_up_rgb * (1.0 - share)
 
 
-def _classify_biome_grid(world: World):
+def _classify_biome_grid(
+    world: World, *, smooth_sea_ice: bool = True, soft_sea_ice_edge: bool = True,
+):
     """`_biome_fields` on the fine biome grid plus its smoothed biome classification
     (biomes.smooth_biome_field_blend). Returns `(fields, winner_ids, winner_share,
     runner_up_ids)`, the last three flattened to one entry per cell."""
-    fields = _biome_fields(world, *biome_grid_dimensions(world.climate_density))
+    fields = _biome_fields(world, *biome_grid_dimensions(world.climate_density), smooth_sea_ice=smooth_sea_ice)
     lat_deg, _lon_deg, _xyz, bed, is_ocean, air_temp, ocean_temp, precip, _lake, ice, _is_sea, _hillshade = fields
     display_temp = ice.temperature(air_temp, ocean_temp, is_ocean)
     surface = bed + ice.glacier_depth_m
     has_sea_ice = ice.sea.fraction >= sea_ice.POLAR_SEA_ICE_FRACTION
     climate_ocean = is_ocean & (ice.glacier_depth_m == 0.0)
+    sea_ice_weight = (
+        biomes.soft_sea_ice_weight(ice.sea.fraction, sea_ice.POLAR_SEA_ICE_FRACTION)
+        if soft_sea_ice_edge
+        else None
+    )
     winner_ids, winner_share, runner_up_ids = biomes.smooth_biome_field_blend(
         display_temp, precip, surface, biomes.grid_slope(surface, lat_deg), climate_ocean, world.sea_level_m,
         lat_deg=lat_deg, axial_tilt_deg=world.axial_tilt_deg, has_sea_ice=has_sea_ice,
+        sea_ice_weight=sea_ice_weight,
     )
     display_ids = ice.display_biome(winner_ids)
-    winner_share = np.where(ice.glacier | ice.lake | has_sea_ice, 1.0, winner_share)
+    flat_ice = ice.glacier | ice.lake if soft_sea_ice_edge else (ice.glacier | ice.lake | has_sea_ice)
+    winner_share = np.where(flat_ice, 1.0, winner_share)
     return fields, display_ids.reshape(-1), winner_share.reshape(-1), runner_up_ids.reshape(-1)
 
 
@@ -2093,7 +2137,10 @@ def _encode_biome_cells(
     return _encode_image(image)
 
 
-def _render_biome_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+def _render_biome_view(
+    world: World, projection: str, width: int, height: int, view_rotation: np.ndarray,
+    *, smooth_sea_ice: bool = True, soft_sea_ice_edge: bool = True,
+) -> bytes:
     """"Biome": each cell's biome classification shown as a color mosaic (no relief shading or
     ocean hypsometry -- that's the Combined view), blended toward its runner-up class near a
     boundary rather than snapping hard between the two (see biomes.smooth_biome_field_blend and
@@ -2109,12 +2156,17 @@ def _render_biome_view(world: World, projection: str, width: int, height: int, v
     class id rides in alpha rather than RGB now that RGB itself blends across a boundary. A
     light post-fill blur (see CELL_BLUR_RADIUS_PX) further softens the cell-grid edges on top
     of the per-cell color blend; the alpha id buffer stays crisp."""
-    fields, winner_ids, winner_share, runner_up_ids = _classify_biome_grid(world)
+    fields, winner_ids, winner_share, runner_up_ids = _classify_biome_grid(
+        world, smooth_sea_ice=smooth_sea_ice, soft_sea_ice_edge=soft_sea_ice_edge,
+    )
     colors = np.clip(np.round(_biome_blend_rgb(winner_ids, winner_share, runner_up_ids)), 0, 255).astype(np.uint8)
     return _encode_biome_cells(world, projection, width, height, view_rotation, fields, colors, winner_ids + 1)
 
 
-def _render_combined_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+def _render_combined_view(
+    world: World, projection: str, width: int, height: int, view_rotation: np.ndarray,
+    *, smooth_sea_ice: bool = True, soft_sea_ice_edge: bool = True,
+) -> bytes:
     """"Combined": biome color for land, hypsometric ocean-depth shading for water (reusing
     elevation_colors, the same gradient the Elevation view itself uses) -- an approximation
     of what the planet would look like in true color from orbit, on the same fine grid the
@@ -2134,7 +2186,9 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     inland-sea id (see COMBINED_LAKE_ID_CODE) so the frontend's click-to-highlight can identify a
     land cell despite the wide shaded-relief color spread and the boundary blend. Alpha is a
     data channel, not real transparency -- the client resets it to opaque before display."""
-    fields, biome_ids, winner_share, runner_up_ids = _classify_biome_grid(world)
+    fields, biome_ids, winner_share, runner_up_ids = _classify_biome_grid(
+        world, smooth_sea_ice=smooth_sea_ice, soft_sea_ice_edge=soft_sea_ice_edge,
+    )
     _lat, _lon, _xyz, bed, is_ocean, _air, _sst, _precip, lake_depth, ice, is_sea, hillshade = fields
     elevation_m = bed + ice.glacier_depth_m
     biome_rgb = _biome_blend_rgb(biome_ids, winner_share, runner_up_ids)
@@ -2161,7 +2215,7 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     if np.any(is_lake):
         lake_rgb = np.where(is_sea_cell[:, None], np.array(SEA_COLOR_RGB, dtype=float), np.array(LAKE_COLOR_RGB, dtype=float))
         colors = np.where(is_lake[:, None], lake_rgb, colors)
-    colors = _surface_ice_colors(colors, ice, hillshade.reshape(-1), 1.0)
+    colors = _surface_ice_colors(colors, ice, hillshade.reshape(-1), 1.0, soft_sea_ice_edge=soft_sea_ice_edge)
     colors = np.clip(np.round(colors), 0, 255).astype(np.uint8)
 
     # Per-cell class id -> alpha (see COMBINED_LAKE_ID_CODE's comment): every classified cell
@@ -3106,6 +3160,8 @@ def render_png(
     view_rotation: np.ndarray | None = None,
     show_mountains: bool = False,
     show_plains_plateaus: bool = False,
+    smooth_sea_ice: bool = True,
+    soft_sea_ice_edge: bool = True,
 ) -> bytes:
     """Render `view` of `world` in `projection`, at `width`x`height` pixels, as PNG bytes.
     Mirrors what MapCanvas.tsx used to compute client-side from raw coordinate JSON -- this
@@ -3115,12 +3171,20 @@ def render_png(
 
     `show_mountains`/`show_plains_plateaus` are the Elevation view's own legend toggles (see
     _classify_terrain_relief) -- silently ignored on every other view, both default `False`
-    (an ordinary render pays no extra cost for them)."""
+    (an ordinary render pays no extra cost for them). `smooth_sea_ice` evaluates D6 sea ice
+    at display resolution using bilinearly interpolated SST; `soft_sea_ice_edge` softens the
+    transition between sea ice and open ocean."""
     if view_rotation is None:
         view_rotation = np.eye(3)
     if projection == projections.GLOBE:
-        return _render_globe(world, view, width, height, view_rotation, show_mountains, show_plains_plateaus)
-    return _render_map_png(world, projection, view, width, height, view_rotation, show_mountains, show_plains_plateaus)
+        return _render_globe(
+            world, view, width, height, view_rotation, show_mountains, show_plains_plateaus,
+            smooth_sea_ice, soft_sea_ice_edge,
+        )
+    return _render_map_png(
+        world, projection, view, width, height, view_rotation, show_mountains, show_plains_plateaus,
+        smooth_sea_ice, soft_sea_ice_edge,
+    )
 
 
 def _globe_transform(width: int, height: int) -> tuple[float, float, float]:
@@ -3152,6 +3216,8 @@ def _render_globe(
     view_rotation: np.ndarray,
     show_mountains: bool,
     show_plains_plateaus: bool,
+    smooth_sea_ice: bool = True,
+    soft_sea_ice_edge: bool = True,
 ) -> bytes:
     """The "globe" projection (#497): render the view in Behrmann, then resample it onto the
     orthographic disc of the facing hemisphere, so every view (and the Record path) gets a
@@ -3173,6 +3239,7 @@ def _render_globe(
     try:
         flat = Image.open(io.BytesIO(_render_map_png(
             world, "behrmann", view, map_width, map_height, view_rotation, show_mountains, show_plains_plateaus,
+            smooth_sea_ice, soft_sea_ice_edge,
         )))
     finally:
         _STROKE_SCALE.reset(stroke_token)
@@ -3203,6 +3270,8 @@ def _render_map_png(  # noqa: C901
     view_rotation: np.ndarray,
     show_mountains: bool = False,
     show_plains_plateaus: bool = False,
+    smooth_sea_ice: bool = True,
+    soft_sea_ice_edge: bool = True,
 ) -> bytes:
     """render_png for the flat (one-to-one) projections."""
     pixel_scale = _stroke_scale(width)
@@ -3210,11 +3279,17 @@ def _render_map_png(  # noqa: C901
     blank = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
     if view in CLIMATE_VIEWS:
-        return _render_climate_view(world, projection, view, width, height, view_rotation)
+        return _render_climate_view(world, projection, view, width, height, view_rotation, smooth_sea_ice=smooth_sea_ice)
     if view == "biome":
-        return _render_biome_view(world, projection, width, height, view_rotation)
+        return _render_biome_view(
+            world, projection, width, height, view_rotation,
+            smooth_sea_ice=smooth_sea_ice, soft_sea_ice_edge=soft_sea_ice_edge,
+        )
     if view == "combined":
-        return _render_combined_view(world, projection, width, height, view_rotation)
+        return _render_combined_view(
+            world, projection, width, height, view_rotation,
+            smooth_sea_ice=smooth_sea_ice, soft_sea_ice_edge=soft_sea_ice_edge,
+        )
     if view in RESOURCE_VIEWS:
         return _render_resource_view(world, projection, view, width, height, view_rotation)
     if view == "speckle":
@@ -3244,7 +3319,8 @@ def _render_map_png(  # noqa: C901
     show_terrain_relief = view == "elevation" and (show_mountains or show_plains_plateaus)
     grid = (
         _render_grid_arrays(
-            world, projection, view_rotation, show_terrain_relief, include_surface_ice=view == "elevation",
+            world, projection, view_rotation, show_terrain_relief,
+            include_surface_ice=view == "elevation", smooth_sea_ice=smooth_sea_ice,
         )
         if view in ("elevation", "plates")
         else None
@@ -3342,7 +3418,9 @@ def _render_map_png(  # noqa: C901
             # Keep the ice palette while letting altitude and the ice surface's own
             # slope distinguish a low glacier tongue from the top of an ice sheet.
             glacier_tone = 0.93 + 0.07 * np.clip((elev - world.sea_level_m) / 4500.0, 0.0, 1.0)
-            colors = np.rint(_surface_ice_colors(colors, surface_ice, hillshade, glacier_tone)).astype(np.uint8)
+            colors = np.rint(
+                _surface_ice_colors(colors, surface_ice, hillshade, glacier_tone, soft_sea_ice_edge=soft_sea_ice_edge)
+            ).astype(np.uint8)
         else:
             colors = np.where(
                 (glacier_depth >= hydrology.GLACIER_VISIBLE_DEPTH_M)[:, None], GLACIER_COLOR_RGB, colors,
@@ -3411,9 +3489,14 @@ def render_png_base64(
     view_rotation: np.ndarray | None = None,
     show_mountains: bool = False,
     show_plains_plateaus: bool = False,
+    smooth_sea_ice: bool = True,
+    soft_sea_ice_edge: bool = True,
 ) -> str:
     return base64.b64encode(
-        render_png(world, projection, view, width, height, view_rotation, show_mountains, show_plains_plateaus)
+        render_png(
+            world, projection, view, width, height, view_rotation, show_mountains, show_plains_plateaus,
+            smooth_sea_ice, soft_sea_ice_edge,
+        )
     ).decode("ascii")
 
 

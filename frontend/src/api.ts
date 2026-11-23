@@ -907,11 +907,15 @@ export function renderWorld(
   rotation?: number[],
   showMountains?: boolean,
   showPlainsPlateaus?: boolean,
+  smoothSeaIce = true,
+  softSeaIceEdge = true,
 ): Promise<RenderResponse> {
   const params = new URLSearchParams({ projection, view, width: String(width), height: String(height) });
   if (rotation) params.set("rotation", rotation.join(","));
   if (showMountains) params.set("show_mountains", "true");
   if (showPlainsPlateaus) params.set("show_plains_plateaus", "true");
+  if (!smoothSeaIce) params.set("smooth_sea_ice", "false");
+  if (!softSeaIceEdge) params.set("soft_sea_ice_edge", "false");
   return fetch(`${worldBase(API_BASE, worldId)}/render?${params}`).then(asJson<RenderResponse>);
 }
 

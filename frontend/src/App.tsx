@@ -429,6 +429,8 @@ export default function App() {
   // across a browser refresh" precedent as highlightedBiome.
   const [showMountains, setShowMountains] = useState(false);
   const [showPlainsPlateaus, setShowPlainsPlateaus] = useState(false);
+  const [smoothSeaIce, setSmoothSeaIce] = useState(true);
+  const [softSeaIceEdge, setSoftSeaIceEdge] = useState(true);
   useEffect(() => {
     if (mapView !== "elevation") {
       setShowMountains(false);
@@ -436,10 +438,10 @@ export default function App() {
     }
   }, [mapView]);
   // refresh() reads these at call time (see its own definition below) rather than taking them
-  // as arguments -- avoids threading two more params through every one of refresh()'s several
+  // as arguments -- avoids threading more params through every one of refresh()'s several
   // call sites, the same `mapViewRef` pattern used just above for the same reason.
-  const terrainOverlayRef = useRef({ showMountains, showPlainsPlateaus });
-  terrainOverlayRef.current = { showMountains, showPlainsPlateaus };
+  const terrainOverlayRef = useRef({ showMountains, showPlainsPlateaus, smoothSeaIce, softSeaIceEdge });
+  terrainOverlayRef.current = { showMountains, showPlainsPlateaus, smoothSeaIce, softSeaIceEdge };
   // Every world in this server process and the one this tab is showing (#563).
   // The selection lives in `?world=<id>` so tabs can show different worlds and
   // a refresh returns to the same one.
@@ -741,10 +743,18 @@ export default function App() {
       return;
     }
     const requestId = ++renderRequestIdRef.current;
-    const { showMountains: mountains, showPlainsPlateaus: plainsPlateaus } = terrainOverlayRef.current;
+    const {
+      showMountains: mountains,
+      showPlainsPlateaus: plainsPlateaus,
+      smoothSeaIce: smoothIce,
+      softSeaIceEdge: softIceEdge,
+    } = terrainOverlayRef.current;
     setRendering(true);
     try {
-      const data = await renderWorld(worldIdRef.current!, proj, view, RENDER_WIDTH, RENDER_HEIGHT, viewRotation, mountains, plainsPlateaus);
+      const data = await renderWorld(
+        worldIdRef.current!, proj, view, RENDER_WIDTH, RENDER_HEIGHT, viewRotation,
+        mountains, plainsPlateaus, smoothIce, softIceEdge,
+      );
       if (requestId === renderRequestIdRef.current) setRenderData(data);
     } catch (e) {
       if (requestId === renderRequestIdRef.current) setError(String(e));
@@ -1256,7 +1266,7 @@ export default function App() {
       refresh(projection, mapView, rotation);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projection, mapView, rotation, showMountains, showPlainsPlateaus]);
+  }, [projection, mapView, rotation, showMountains, showPlainsPlateaus, smoothSeaIce, softSeaIceEdge]);
 
   // Persists projection/mapView/rotation to VIEW_COOKIE_NAME on every change, so the next
   // page load's `initialView` (see loadViewCookie above) picks up wherever the user left off.
@@ -2218,6 +2228,30 @@ export default function App() {
                 </div>
               ) : (
                 <div style={{ opacity: 0.6 }}>Click a plate, or press Tab.</div>
+              )}
+            </fieldset>
+          )}
+
+          {(mapView === "combined" || mapView === "elevation" || mapView === "biome" || mapView === "temperature") && (
+            <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
+              <legend style={{ fontSize: 11 }}>Sea ice</legend>
+              <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={smoothSeaIce}
+                  onChange={(e) => setSmoothSeaIce(e.target.checked)}
+                />
+                High-res sea ice
+              </label>
+              {mapView !== "temperature" && (
+                <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={softSeaIceEdge}
+                    onChange={(e) => setSoftSeaIceEdge(e.target.checked)}
+                  />
+                  Soft sea ice edge
+                </label>
               )}
             </fieldset>
           )}

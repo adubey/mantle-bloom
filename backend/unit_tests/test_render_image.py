@@ -690,6 +690,41 @@ def test_sea_ice_classes_on_normal_maps_leave_the_water_budget_unchanged(view):
     assert world.sea_level_m == sea_level
 
 
+def test_soft_sea_ice_edge_blends_marginal_zone_and_toggles_cleanly():
+    lat = np.array([65.0, 67.5, 72.0])
+    heating = climate.compute_heating_index(lat, 23.5, 1.0)
+    temperature = climate.compute_land_temperature(heating, np.zeros((len(lat), 1)))[:, 0]
+    amplitude = biomes.seasonal_temp_amplitude(lat, np.zeros_like(lat), 23.5)
+    sea = sea_ice.annual_balance(temperature, amplitude, np.ones(3, dtype=bool))
+    ice = render_image._SurfaceIce(np.zeros(3), np.zeros(3, dtype=bool), sea)
+    base = np.zeros((3, 3))
+    ice_rgb = np.array(render_image.GLACIER_COLOR_RGB, dtype=float)
+
+    soft = render_image._surface_ice_colors(base, ice, np.ones(3), 1.0, soft_sea_ice_edge=True)
+    hard = render_image._surface_ice_colors(base, ice, np.ones(3), 1.0, soft_sea_ice_edge=False)
+
+    np.testing.assert_array_equal(soft[0], [0, 0, 0])
+    assert 0.0 < soft[1, 0] < ice_rgb[0]
+    np.testing.assert_array_equal(soft[2], ice_rgb)
+    np.testing.assert_array_equal(hard[1], [0, 0, 0])
+
+
+@pytest.mark.parametrize("view", ["elevation", "combined", "biome"])
+def test_sea_ice_smoothing_toggles_change_rendered_output(view):
+    world = _world(seed=11, num_plates=8, continental_fraction=0.5)
+    default_png = render_image.render_png(world, "behrmann", view, 320, 180)
+    coarse_png = render_image.render_png(world, "behrmann", view, 320, 180, smooth_sea_ice=False)
+    hard_png = render_image.render_png(world, "behrmann", view, 320, 180, soft_sea_ice_edge=False)
+
+    assert default_png != coarse_png
+    assert default_png != hard_png
+    if view in ("combined", "biome"):
+        # Softening the edge only blends RGB; the alpha-channel biome IDs stay identical.
+        default_alpha = np.asarray(Image.open(io.BytesIO(default_png)).convert("RGBA"))[:, :, 3]
+        hard_alpha = np.asarray(Image.open(io.BytesIO(hard_png)).convert("RGBA"))[:, :, 3]
+        np.testing.assert_array_equal(default_alpha, hard_alpha)
+
+
 def test_marine_glacier_surface_uses_the_unloaded_bed_for_grounding():
     world = _world(seed=11, num_plates=8)
     plate = world.plates[0]
@@ -1738,7 +1773,7 @@ def test_globe_hides_flow_arrows_on_the_far_side(monkeypatch):
     crossing = flow_arrows.FlowArrow(geometry.latlon_to_xyz(np.zeros_like(t), np.radians(110.0 + 80.0 * t)), 1.0)
     hidden = flow_arrows.FlowArrow(geometry.latlon_to_xyz(np.full_like(t, np.radians(30.0)), np.radians(160.0 + 60.0 * t)), 1.0)
 
-    def arrows_only(world, projection, view, width, height, view_rotation):
+    def arrows_only(world, projection, view, width, height, view_rotation, **_kwargs):
         padding = render_image.PADDING_PX * width / render_image.REFERENCE_WIDTH_PX
         scale, offset_x, offset_y = render_image._fit_view(render_image._sphere_extent(projection), width, height, padding)
         image = Image.new("RGB", (width, height), (0, 0, 0))
