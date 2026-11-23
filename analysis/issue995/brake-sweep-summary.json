@@ -1,0 +1,106 @@
+{
+ "o0-c0": {
+  "plates": 21,
+  "contacts": 43,
+  "median": 7.2,
+  "lt2": 0.07,
+  "lt4": 0.22,
+  "gt8": 0.45
+ },
+ "o0.25-c0.5": {
+  "plates": 23,
+  "contacts": 56,
+  "median": 3.9,
+  "lt2": 0.24,
+  "lt4": 0.53,
+  "gt8": 0.03
+ },
+ "o0.25-c0": {
+  "plates": 27,
+  "contacts": 70,
+  "median": 3.3,
+  "lt2": 0.29,
+  "lt4": 0.64,
+  "gt8": 0.07
+ },
+ "o0.25-c1": {
+  "plates": 23,
+  "contacts": 59,
+  "median": 3.2,
+  "lt2": 0.24,
+  "lt4": 0.61,
+  "gt8": 0.01
+ },
+ "o0.5-c0.5": {
+  "plates": 24,
+  "contacts": 57,
+  "median": 0.9,
+  "lt2": 0.7,
+  "lt4": 0.83,
+  "gt8": 0.0
+ },
+ "o0.5-c0": {
+  "plates": 25,
+  "contacts": 61,
+  "median": 1.2,
+  "lt2": 0.69,
+  "lt4": 0.86,
+  "gt8": 0.0
+ },
+ "o0.5-c1": {
+  "plates": 24,
+  "contacts": 57,
+  "median": 1.8,
+  "lt2": 0.54,
+  "lt4": 0.68,
+  "gt8": 0.05
+ },
+ "o0.75-c0.5": {
+  "plates": 23,
+  "contacts": 59,
+  "median": 0.5,
+  "lt2": 0.83,
+  "lt4": 0.89,
+  "gt8": 0.0
+ },
+ "o0.75-c0": {
+  "plates": 23,
+  "contacts": 59,
+  "median": 0.5,
+  "lt2": 0.78,
+  "lt4": 0.92,
+  "gt8": 0.0
+ },
+ "o0.75-c1": {
+  "plates": 23,
+  "contacts": 59,
+  "median": 0.5,
+  "lt2": 0.77,
+  "lt4": 0.88,
+  "gt8": 0.01
+ },
+ "o1-c0.5": {
+  "plates": 26,
+  "contacts": 63,
+  "median": 0.4,
+  "lt2": 0.81,
+  "lt4": 0.91,
+  "gt8": 0.0
+ },
+ "o1-c0": {
+  "plates": 26,
+  "contacts": 65,
+  "median": 0.4,
+  "lt2": 0.79,
+  "lt4": 0.91,
+  "gt8": 0.0
+ },
+ "o1-c1": {
+  "plates": 24,
+  "contacts": 59,
+  "median": 0.4,
+  "lt2": 0.78,
+  "lt4": 0.89,
+  "gt8": 0.0
+ }
+}

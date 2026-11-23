@@ -1,0 +1,389 @@
+{
+ "boundary_km_each_counted_once": 260483.4,
+ "subduction_km": 51309.2,
+ "subduction_share_of_boundary": 0.196976851499942,
+ "share_sliding_more_than_closing_or_opening": 0.4404349758948171,
+ "share_closing_past_10mm_per_yr": 0.2658273041583456,
+ "share_abs_normal_under_10mm_per_yr": 0.4530085218482253,
+ "median_relative_speed_cm_per_yr": 2.9899999999999998,
+ "plates": {
+  "PA": {
+   "area_share": 0.20523,
+   "perimeter_km": 48333.60000000004,
+   "pulled_km": 13744.3,
+   "pulled_share_of_perimeter": 0.2843632586854691,
+   "nnr_cm_per_yr": 6.464690661872958
+  },
+  "AF": {
+   "area_share": 0.11454,
+   "perimeter_km": 41793.30000000005,
+   "pulled_km": 1940.8,
+   "pulled_share_of_perimeter": 0.04643806543154041,
+   "nnr_cm_per_yr": 2.8403264862572817
+  },
+  "AN": {
+   "area_share": 0.11401,
+   "perimeter_km": 40281.29999999994,
+   "pulled_km": 2215.3000000000006,
+   "pulled_share_of_perimeter": 0.05499574244128179,
+   "nnr_cm_per_yr": 1.3217253822007544
+  },
+  "NA": {
+   "area_share": 0.10874,
+   "perimeter_km": 34361.499999999985,
+   "pulled_km": 934.6,
+   "pulled_share_of_perimeter": 0.02719904544330138,
+   "nnr_cm_per_yr": 1.9215283974568098
+  },
+  "EU": {
+   "area_share": 0.0952,
+   "perimeter_km": 41566.99999999998,
+   "pulled_km": 394.1,
+   "pulled_share_of_perimeter": 0.009481078740346916,
+   "nnr_cm_per_yr": 2.330525338304366
+  },
+  "AU": {
+   "area_share": 0.09007,
+   "perimeter_km": 36893.1,
+   "pulled_km": 6963.699999999999,
+   "pulled_share_of_perimeter": 0.18875345254261636,
+   "nnr_cm_per_yr": 6.250155282913542
+  },
+  "SA": {
+   "area_share": 0.08198,
+   "perimeter_km": 35538.69999999997,
+   "pulled_km": 1983.1000000000001,
+   "pulled_share_of_perimeter": 0.05580114072827655,
+   "nnr_cm_per_yr": 1.2400345945785274
+  },
+  "SO": {
+   "area_share": 0.03754,
+   "perimeter_km": 23444.2,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 2.7840082018103445
+  },
+  "NZ": {
+   "area_share": 0.03157,
+   "perimeter_km": 20147.099999999977,
+   "pulled_km": 6526.499999999999,
+   "pulled_share_of_perimeter": 0.32394240362136517,
+   "nnr_cm_per_yr": 7.438311983119499
+  },
+  "IN": {
+   "area_share": 0.02436,
+   "perimeter_km": 17113.5,
+   "pulled_km": 1416.7000000000003,
+   "pulled_share_of_perimeter": 0.08278259853332166,
+   "nnr_cm_per_yr": 5.618539688716958
+  },
+  "SU": {
+   "area_share": 0.01748,
+   "perimeter_km": 14026.4,
+   "pulled_km": 1808.7,
+   "pulled_share_of_perimeter": 0.12894969486111904,
+   "nnr_cm_per_yr": 3.966651009282268
+  },
+  "PS": {
+   "area_share": 0.01068,
+   "perimeter_km": 11279.9,
+   "pulled_km": 3910.9000000000005,
+   "pulled_share_of_perimeter": 0.3467140666140658,
+   "nnr_cm_per_yr": 4.137905676631872
+  },
+  "AM": {
+   "area_share": 0.01044,
+   "perimeter_km": 10623.7,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 3.3079703953497437
+  },
+  "AR": {
+   "area_share": 0.00961,
+   "perimeter_km": 10635.000000000002,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 4.80345440554576
+  },
+  "OK": {
+   "area_share": 0.00593,
+   "perimeter_km": 9459.199999999997,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 2.504514438058358
+  },
+  "CA": {
+   "area_share": 0.00581,
+   "perimeter_km": 8998.399999999998,
+   "pulled_km": 929.3999999999999,
+   "pulled_share_of_perimeter": 0.10328502844950214,
+   "nnr_cm_per_yr": 1.2623167187613342
+  },
+  "CO": {
+   "area_share": 0.00569,
+   "perimeter_km": 8082.6,
+   "pulled_km": 2789.7,
+   "pulled_share_of_perimeter": 0.3451488382451191,
+   "nnr_cm_per_yr": 7.29994617269649
+  },
+  "YA": {
+   "area_share": 0.00433,
+   "perimeter_km": 7133.9,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 3.919764410784743
+  },
+  "SC": {
+   "area_share": 0.00335,
+   "perimeter_km": 7723.7999999999965,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 1.3034977129889864
+  },
+  "CL": {
+   "area_share": 0.00297,
+   "perimeter_km": 5301.4000000000015,
+   "pulled_km": 1190.2,
+   "pulled_share_of_perimeter": 0.22450673407024554,
+   "nnr_cm_per_yr": 5.957509387370312
+  },
+  "ND": {
+   "area_share": 0.00192,
+   "perimeter_km": 5368.7000000000035,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 1.1388749096812658
+  },
+  "AP": {
+   "area_share": 0.00166,
+   "perimeter_km": 3858.499999999999,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 1.7333422197378412
+  },
+  "BS": {
+   "area_share": 0.00138,
+   "perimeter_km": 4968.499999999998,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 3.550466231090057
+  },
+  "NH": {
+   "area_share": 0.00125,
+   "perimeter_km": 3513.600000000001,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 8.459541439779663
+  },
+  "AT": {
+   "area_share": 0.00113,
+   "perimeter_km": 3345.7000000000016,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 1.2351216783603676
+  },
+  "BH": {
+   "area_share": 0.00103,
+   "perimeter_km": 3578.1000000000004,
+   "pulled_km": 563.0,
+   "pulled_share_of_perimeter": 0.15734607752717922,
+   "nnr_cm_per_yr": 6.675006060543779
+  },
+  "BU": {
+   "area_share": 0.00102,
+   "perimeter_km": 4032.9,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 5.3363598380892086
+  },
+  "KE": {
+   "area_share": 0.00099,
+   "perimeter_km": 4775.200000000001,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 4.105525735060666
+  },
+  "WL": {
+   "area_share": 0.00091,
+   "perimeter_km": 5058.600000000003,
+   "pulled_km": 121.30000000000001,
+   "pulled_share_of_perimeter": 0.023978966512473793,
+   "nnr_cm_per_yr": 6.380975964505567
+  },
+  "MS": {
+   "area_share": 0.00083,
+   "perimeter_km": 3267.7,
+   "pulled_km": 405.4,
+   "pulled_share_of_perimeter": 0.12406279646234354,
+   "nnr_cm_per_yr": 2.286355503230515
+  },
+  "MA": {
+   "area_share": 0.00081,
+   "perimeter_km": 3548.2000000000003,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 1.6661397779388634
+  },
+  "NB": {
+   "area_share": 0.00075,
+   "perimeter_km": 3834.399999999999,
+   "pulled_km": 193.7,
+   "pulled_share_of_perimeter": 0.050516378051324855,
+   "nnr_cm_per_yr": 6.994144892564297
+  },
+  "TI": {
+   "area_share": 0.00068,
+   "perimeter_km": 3247.1000000000017,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 5.203816144033218
+  },
+  "ON": {
+   "area_share": 0.00064,
+   "perimeter_km": 3384.8999999999996,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 6.124329552313587
+  },
+  "AS": {
+   "area_share": 0.00062,
+   "perimeter_km": 2356.3,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 1.535440938262702
+  },
+  "SB": {
+   "area_share": 0.00061,
+   "perimeter_km": 2783.6000000000013,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 4.413129995127731
+  },
+  "PM": {
+   "area_share": 0.00055,
+   "perimeter_km": 2593.9,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 1.9284205688636074
+  },
+  "JF": {
+   "area_share": 0.00052,
+   "perimeter_km": 3312.4,
+   "pulled_km": 1414.7000000000003,
+   "pulled_share_of_perimeter": 0.42709213863060025,
+   "nnr_cm_per_yr": 2.1041757011637965
+  },
+  "TO": {
+   "area_share": 0.00049,
+   "perimeter_km": 2747.7000000000003,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 11.261652778099783
+  },
+  "BR": {
+   "area_share": 0.00039,
+   "perimeter_km": 2131.8999999999996,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 4.522549941794305
+  },
+  "SW": {
+   "area_share": 0.00036,
+   "perimeter_km": 1822.6,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 7.3387836455033675
+  },
+  "EA": {
+   "area_share": 0.0003,
+   "perimeter_km": 1782.599999999999,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 4.142928749157295
+  },
+  "CR": {
+   "area_share": 0.00028,
+   "perimeter_km": 1859.7000000000007,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 3.1145633400352617
+  },
+  "NI": {
+   "area_share": 0.00025,
+   "perimeter_km": 1768.5999999999992,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 8.553084343379739
+  },
+  "SS": {
+   "area_share": 0.00023,
+   "perimeter_km": 1775.3999999999999,
+   "pulled_km": 1467.3,
+   "pulled_share_of_perimeter": 0.8264616424467726,
+   "nnr_cm_per_yr": 7.05622056909443
+  },
+  "MO": {
+   "area_share": 0.00021,
+   "perimeter_km": 1647.7999999999997,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 6.448889098499739
+  },
+  "RI": {
+   "area_share": 0.00021,
+   "perimeter_km": 1481.8999999999999,
+   "pulled_km": 395.8,
+   "pulled_share_of_perimeter": 0.2670895472029152,
+   "nnr_cm_per_yr": 1.2687771901035052
+  },
+  "JZ": {
+   "area_share": 0.0002,
+   "perimeter_km": 1239.0,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 7.890314062112351
+  },
+  "SL": {
+   "area_share": 0.00015,
+   "perimeter_km": 1235.0000000000002,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 2.231349209254613
+  },
+  "FT": {
+   "area_share": 5e-05,
+   "perimeter_km": 919.3000000000001,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 3.97726245118046
+  },
+  "GP": {
+   "area_share": 3e-05,
+   "perimeter_km": 575.8000000000001,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 6.091221298472129
+  },
+  "MN": {
+   "area_share": 2e-05,
+   "perimeter_km": 413.6000000000001,
+   "pulled_km": 0.0,
+   "pulled_share_of_perimeter": 0.0,
+   "nnr_cm_per_yr": 4.300444810060257
+  }
+ },
+ "per_plate_pulled_share": {
+  "plates": 52,
+  "unweighted_p10": 0.0,
+  "unweighted_median": 0.0,
+  "unweighted_p90": 0.2826358875372137,
+  "area_weighted_p10": 0.009481078740346916,
+  "area_weighted_median": 0.05499574244128179,
+  "area_weighted_p90": 0.2843632586854691,
+  "under_5pct": 35,
+  "under_10pct": 39,
+  "area_share_under_5pct": 0.40658,
+  "area_share_under_10pct": 0.62768,
+  "area_share_over_30pct": 0.048690000000000004
+ }
+}

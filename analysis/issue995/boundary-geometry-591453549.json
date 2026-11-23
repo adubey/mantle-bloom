@@ -1,0 +1,306 @@
+{
+ "seed": 591453549,
+ "setting": "b123-brake-off",
+ "samples": [
+  {
+   "myr": 50.0,
+   "band_km": 354875.0,
+   "share_tangential_exceeds_normal": 0.4868198133447911,
+   "share_abs_normal_under_1cm": 0.09912438085779983,
+   "share_closing": 0.47956639494075,
+   "share_closing_past_1cm": 0.430383454239462,
+   "median_relative_speed_cm_per_yr": 8.14858936785399,
+   "angle_tests": {
+    "15": {
+     "transform_share_of_band": 0.17132842342811677,
+     "closing_share_of_band": 0.3904146118404453,
+     "pulled_km_under_angle_and_gate": 133897.1678444105,
+     "share_of_todays_pulled_kept": 0.8918652997420893
+    },
+    "30": {
+     "transform_share_of_band": 0.32834866820347414,
+     "closing_share_of_band": 0.31936392468839686,
+     "pulled_km_under_angle_and_gate": 110705.73742025948,
+     "share_of_todays_pulled_kept": 0.7373912927136674
+    },
+    "45": {
+     "transform_share_of_band": 0.4868198133447911,
+     "closing_share_of_band": 0.24644897410706618,
+     "pulled_km_under_angle_and_gate": 86161.10493877038,
+     "share_of_todays_pulled_kept": 0.5739038466565587
+    }
+   },
+   "per_plate_pulled_share_of_own_band": {
+    "today": {
+     "plates": 21,
+     "p10": 0.3186413002202476,
+     "median": 0.45071558071558065,
+     "p90": 0.5460378604446401,
+     "under_5pct": 0,
+     "under_10pct": 0
+    },
+    "15": {
+     "plates": 21,
+     "p10": 0.25386753839466825,
+     "median": 0.4024313962873285,
+     "p90": 0.5168436293436293,
+     "under_5pct": 0,
+     "under_10pct": 0
+    },
+    "30": {
+     "plates": 21,
+     "p10": 0.21587483360739176,
+     "median": 0.32474506770086875,
+     "p90": 0.45284090909090907,
+     "under_5pct": 0,
+     "under_10pct": 0
+    },
+    "45": {
+     "plates": 21,
+     "p10": 0.1474142029374588,
+     "median": 0.2533899662941856,
+     "p90": 0.38371212121212117,
+     "under_5pct": 0,
+     "under_10pct": 0
+    }
+   },
+   "pulled_km": 150131.60382305604,
+   "pulled_age_undated_share": 0.0,
+   "pulled_age_bins_share": {
+    "0-10": 0.19946120733662723,
+    "10-30": 0.24303716966650316,
+    "30-60": 0.24665190505377282,
+    "60-100": 0.061222890895769155,
+    "100-1e+09": 0.24962682704732747
+   },
+   "pulled_force_hm_over_own_hm_gt_1.05": 0.5850578430995765,
+   "pulled_force_hm_mean_km": 62.0519309040764,
+   "pulled_own_hm_mean_km": 47.22957000771828
+  },
+  {
+   "myr": 100.0,
+   "band_km": 321000.0,
+   "share_tangential_exceeds_normal": 0.5015906490566783,
+   "share_abs_normal_under_1cm": 0.17084491914474512,
+   "share_closing": 0.49594307444510743,
+   "share_closing_past_1cm": 0.4124886655660811,
+   "median_relative_speed_cm_per_yr": 7.430490480632114,
+   "angle_tests": {
+    "15": {
+     "transform_share_of_band": 0.17143108958033623,
+     "closing_share_of_band": 0.409295065037108,
+     "pulled_km_under_angle_and_gate": 116103.8168706611,
+     "share_of_todays_pulled_kept": 0.8433654014056248
+    },
+    "30": {
+     "transform_share_of_band": 0.3262581264169528,
+     "closing_share_of_band": 0.32894440447869333,
+     "pulled_km_under_angle_and_gate": 95793.80091645893,
+     "share_of_todays_pulled_kept": 0.6958356713808859
+    },
+    "45": {
+     "transform_share_of_band": 0.5015906490566783,
+     "closing_share_of_band": 0.23756062471917977,
+     "pulled_km_under_angle_and_gate": 71337.96255549687,
+     "share_of_todays_pulled_kept": 0.5181911417528876
+    }
+   },
+   "per_plate_pulled_share_of_own_band": {
+    "today": {
+     "plates": 20,
+     "p10": 0.0,
+     "median": 0.4568117684784351,
+     "p90": 0.5246996996996997,
+     "under_5pct": 2,
+     "under_10pct": 2
+    },
+    "15": {
+     "plates": 20,
+     "p10": 0.0,
+     "median": 0.3804082447950372,
+     "p90": 0.5101726726726726,
+     "under_5pct": 2,
+     "under_10pct": 2
+    },
+    "30": {
+     "plates": 20,
+     "p10": 0.0,
+     "median": 0.32374406254123234,
+     "p90": 0.4429054054054054,
+     "under_5pct": 2,
+     "under_10pct": 2
+    },
+    "45": {
+     "plates": 20,
+     "p10": 0.0,
+     "median": 0.2317566491479535,
+     "p90": 0.344286941580756,
+     "under_5pct": 2,
+     "under_10pct": 2
+    }
+   },
+   "pulled_km": 137667.27527255987,
+   "pulled_age_undated_share": 0.0,
+   "pulled_age_bins_share": {
+    "0-10": 0.14502478964435397,
+    "10-30": 0.2217318919160224,
+    "30-60": 0.17427953868771415,
+    "60-100": 0.12689536895026868,
+    "100-1e+09": 0.33206841080164073
+   },
+   "pulled_force_hm_over_own_hm_gt_1.05": 0.49311083703725755,
+   "pulled_force_hm_mean_km": 72.11257443661064,
+   "pulled_own_hm_mean_km": 58.55072445453689
+  },
+  {
+   "myr": 150.0,
+   "band_km": 337250.0,
+   "share_tangential_exceeds_normal": 0.4800878151824386,
+   "share_abs_normal_under_1cm": 0.09397211977472954,
+   "share_closing": 0.47335094579785636,
+   "share_closing_past_1cm": 0.4254064124245741,
+   "median_relative_speed_cm_per_yr": 8.818165912317266,
+   "angle_tests": {
+    "15": {
+     "transform_share_of_band": 0.13851018928309297,
+     "closing_share_of_band": 0.4037680698202653,
+     "pulled_km_under_angle_and_gate": 108506.59365144659,
+     "share_of_todays_pulled_kept": 0.8773936306799366
+    },
+    "30": {
+     "transform_share_of_band": 0.30729353572172874,
+     "closing_share_of_band": 0.3108001703742557,
+     "pulled_km_under_angle_and_gate": 86147.19602293131,
+     "share_of_todays_pulled_kept": 0.696593622082138
+    },
+    "45": {
+     "transform_share_of_band": 0.4800878151824386,
+     "closing_share_of_band": 0.2336223004781959,
+     "pulled_km_under_angle_and_gate": 65736.5414711922,
+     "share_of_todays_pulled_kept": 0.531551317286999
+    }
+   },
+   "per_plate_pulled_share_of_own_band": {
+    "today": {
+     "plates": 25,
+     "p10": 0.16666666666666666,
+     "median": 0.39517299210651885,
+     "p90": 0.4835401418950223,
+     "under_5pct": 2,
+     "under_10pct": 2
+    },
+    "15": {
+     "plates": 25,
+     "p10": 0.1527777777777778,
+     "median": 0.34375,
+     "p90": 0.45734463276836157,
+     "under_5pct": 2,
+     "under_10pct": 2
+    },
+    "30": {
+     "plates": 25,
+     "p10": 0.1326388888888889,
+     "median": 0.2800734979306408,
+     "p90": 0.375985125985126,
+     "under_5pct": 2,
+     "under_10pct": 2
+    },
+    "45": {
+     "plates": 25,
+     "p10": 0.10416666666666667,
+     "median": 0.2,
+     "p90": 0.3146834890255943,
+     "under_5pct": 2,
+     "under_10pct": 2
+    }
+   },
+   "pulled_km": 123669.22879000084,
+   "pulled_age_undated_share": 0.0,
+   "pulled_age_bins_share": {
+    "0-10": 0.19563029976638852,
+    "10-30": 0.2405647883908175,
+    "30-60": 0.17013936282895326,
+    "60-100": 0.12347675898994706,
+    "100-1e+09": 0.2701887900238937
+   },
+   "pulled_force_hm_over_own_hm_gt_1.05": 0.5621317511703192,
+   "pulled_force_hm_mean_km": 67.52046341712612,
+   "pulled_own_hm_mean_km": 51.55839983043869
+  },
+  {
+   "myr": 200.0,
+   "band_km": 363375.0,
+   "share_tangential_exceeds_normal": 0.47112157974709773,
+   "share_abs_normal_under_1cm": 0.09103423420375881,
+   "share_closing": 0.48501750426950196,
+   "share_closing_past_1cm": 0.44148851041629333,
+   "median_relative_speed_cm_per_yr": 8.048860698222358,
+   "angle_tests": {
+    "15": {
+     "transform_share_of_band": 0.13398490689803907,
+     "closing_share_of_band": 0.41655319800542284,
+     "pulled_km_under_angle_and_gate": 127650.73278437249,
+     "share_of_todays_pulled_kept": 0.9010889849162234
+    },
+    "30": {
+     "transform_share_of_band": 0.30622433975360774,
+     "closing_share_of_band": 0.32602029209615946,
+     "pulled_km_under_angle_and_gate": 100048.28586016667,
+     "share_of_todays_pulled_kept": 0.7062427796684183
+    },
+    "45": {
+     "transform_share_of_band": 0.47112157974709773,
+     "closing_share_of_band": 0.2453118359124439,
+     "pulled_km_under_angle_and_gate": 75086.27492702086,
+     "share_of_todays_pulled_kept": 0.5300354630115592
+    }
+   },
+   "per_plate_pulled_share_of_own_band": {
+    "today": {
+     "plates": 27,
+     "p10": 0.26861289321123116,
+     "median": 0.4444755244755244,
+     "p90": 0.5299319727891157,
+     "under_5pct": 1,
+     "under_10pct": 1
+    },
+    "15": {
+     "plates": 27,
+     "p10": 0.24839645631889395,
+     "median": 0.4069105691056911,
+     "p90": 0.4993197278911566,
+     "under_5pct": 1,
+     "under_10pct": 1
+    },
+    "30": {
+     "plates": 27,
+     "p10": 0.1809207161977245,
+     "median": 0.3359010088623822,
+     "p90": 0.44335317460317464,
+     "under_5pct": 1,
+     "under_10pct": 2
+    },
+    "45": {
+     "plates": 27,
+     "p10": 0.12516909631868078,
+     "median": 0.24496336996336998,
+     "p90": 0.3153609831029186,
+     "under_5pct": 1,
+     "under_10pct": 2
+    }
+   },
+   "pulled_km": 141662.73799944465,
+   "pulled_age_undated_share": 0.0,
+   "pulled_age_bins_share": {
+    "0-10": 0.23632034518169048,
+    "10-30": 0.3017142102451011,
+    "30-60": 0.1302282079404806,
+    "60-100": 0.06704614590396264,
+    "100-1e+09": 0.2646910907287652
+   },
+   "pulled_force_hm_over_own_hm_gt_1.05": 0.5618965744587371,
+   "pulled_force_hm_mean_km": 68.2520843002572,
+   "pulled_own_hm_mean_km": 55.49897897451264
+  }
+ ]
+}

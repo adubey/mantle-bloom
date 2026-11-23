@@ -1,0 +1,40 @@
+{
+ "b123-brake-off": {
+  "runs": 20,
+  "speed_vs_time": -0.42,
+  "largest_share_vs_time": 0.65,
+  "speed_vs_largest_share": -0.72,
+  "speed_vs_time_given_largest_share": 0.09,
+  "speed_vs_count_given_time": 0.44,
+  "count_vs_time": 0.71,
+  "per_plate_speed_vs_area_spearman": -0.4,
+  "speed_by_area_quartile": [
+   9.1,
+   7.9,
+   6.4,
+   4.2
+  ],
+  "seeds_slower_last_vs_first_50myr": 14,
+  "median_change_cm_per_yr": -0.26,
+  "mean_change_cm_per_yr": -0.56
+ },
+ "brake-o0.25-c1": {
+  "runs": 20,
+  "speed_vs_time": -0.47,
+  "largest_share_vs_time": 0.63,
+  "speed_vs_largest_share": -0.5,
+  "speed_vs_time_given_largest_share": -0.23,
+  "speed_vs_count_given_time": -0.1,
+  "count_vs_time": 0.85,
+  "per_plate_speed_vs_area_spearman": -0.11,
+  "speed_by_area_quartile": [
+   3.0,
+   3.9,
+   3.4,
+   2.4
+  ],
+  "seeds_slower_last_vs_first_50myr": 19,
+  "median_change_cm_per_yr": -0.76,
+  "mean_change_cm_per_yr": -0.64
+ }
+}
