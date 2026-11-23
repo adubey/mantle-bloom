@@ -596,6 +596,7 @@ rejected with a `400`.
 | `collision_uplift_reach_multiplier` | how far the shortening cascade carries a collision into the plate (`shortening.py`'s `reach_scale`); `<1` also weakens the contested-band thickening in proportion | `lithosphere_plate.boundary_context`, `shortening.py` |
 | `contact_drag_multiplier` | the whole RFC 0008 contact brake (relief, craton and jam factors); `0` disables that brake | `torque.contact_drag_pa_s_per_m`'s `contact_gain`, via `world` (#760) |
 | `craton_drag_multiplier` | only the brake's craton component, against the relief term | `torque.contact_drag_pa_s_per_m`'s `craton_gain`, via `world` (#760) |
+| `mantle_flow_multiplier` | amplitude of the static mantle-flow field (`mantle.ConvectionCenter` strengths), as read by basal drag, rift-line and split fits and the cross-section; `0` removes the flow (with it, no plate moves: slab pull and ridge push need a slab first, #998) | `mantle.world_flow_at`, via `world` (#998) |
 | `volcanism_multiplier` | per-step eruption probability **and** metres added per eruption | `volcanism.apply_volcanic_activity` |
 | `fault_relief_multiplier` | the relief fault slip builds along fault traces (a no-op in `boundary` deformation mode) | `faults.py` |
 | `plume_multiplier` | mantle plume production rate; `0` thins every scheduled event away (a matched plume-off twin, RFC 0007) | `plumes.apply` |

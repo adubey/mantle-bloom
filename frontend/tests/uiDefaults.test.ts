@@ -18,7 +18,7 @@ import { PLATE_STEP_YEARS_TICKS } from "../src/timeSettings.js";
 // The standard UI defaults from #1007. Backend model defaults are unchanged;
 // these pin only what a fresh UI session / fresh UI world starts from.
 describe("uiDefaults (#1007)", () => {
-  it("sets the seven standard defaults", () => {
+  it("sets the standard defaults", () => {
     assert.equal(DEFAULT_KEEP_LAND_OFF_POLES, true);
     assert.equal(DEFAULT_STEP_YEARS, 10_000);
     assert.equal(DEFAULT_SIMULATE_GLACIER_MARCH, true);
@@ -29,11 +29,12 @@ describe("uiDefaults (#1007)", () => {
     assert.equal(DEFAULT_SPLIT_METHOD, "rift_lines");
   });
 
-  it("turns collision braking off and leaves every other knob at 1x", () => {
-    assert.equal(DEFAULT_TUNING.contact_drag_multiplier, 0);
-    assert.equal(DEFAULT_TUNING.craton_drag_multiplier, 0);
+  it("sets the #998 plate-motion setting and leaves every other knob at 1x", () => {
+    assert.equal(DEFAULT_TUNING.contact_drag_multiplier, 0.5);
+    assert.equal(DEFAULT_TUNING.craton_drag_multiplier, 1);
+    assert.equal(DEFAULT_TUNING.mantle_flow_multiplier, 4);
     for (const key of TUNING_MULTIPLIER_KEYS) {
-      if (key === "contact_drag_multiplier" || key === "craton_drag_multiplier") continue;
+      if (key === "contact_drag_multiplier" || key === "mantle_flow_multiplier") continue;
       assert.equal(DEFAULT_TUNING[key], 1, key);
     }
   });
@@ -45,6 +46,9 @@ describe("uiDefaults (#1007)", () => {
       glacierStepYears: 250,
       glacierStopMode: "resolve",
       splitMethod: "rift_lines",
+      ridgePushForm: "potential_energy",
+      slabDragForm: "trench_normal",
+      ageForceColumn: true,
       tuning: DEFAULT_TUNING,
     });
   });

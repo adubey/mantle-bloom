@@ -104,6 +104,13 @@ def flow_at(xyz: np.ndarray, centers: list[ConvectionCenter]) -> np.ndarray:
     return total
 
 
+def world_flow_at(world, xyz: np.ndarray) -> np.ndarray:
+    """`flow_at` over the world's centres, times its `mantle_flow_multiplier` (#998): the static field's amplitude is a
+    live world knob, so one multiplier scales the flow every reader sees (basal drag, splitting, the cross-section).
+    A world saved before the field existed reads 1.0, and x1.0 leaves the field bit-identical."""
+    return flow_at(xyz, world.mantle_centers) * getattr(world, "mantle_flow_multiplier", 1.0)
+
+
 def _skew_batch_neg(points: np.ndarray) -> np.ndarray:
     """For each point p (N, 3), build -skew(p) (N, 3, 3) so that (-skew(p)) @ omega ==
     omega x p -- i.e. the linear operator mapping omega to the rigid-rotation velocity

@@ -1,6 +1,112 @@
 # #998: model and Earth plate relative-speed distributions, rejection sampling
 
-Exploration, no model change. Status: in progress; sections are added as they are measured.
+Exploration under RFC 0021 (tracking #957; related #995). Status: complete as of 2026-11-22. Sections 1-9 and 11-17 are
+the evidence in the order it was gathered; this summary is the current answer. Section 10 is the answer as it stood
+on 2026-11-21 and is kept, superseded by this summary. The one model-side change that came out of it (a mantle-flow
+multiplier and the UI default below) is in the same PR; everything else is diagnostics in `bin/debug/`.
+
+## Summary for the next agent (read this first)
+
+**The question.** Do the model's plate relative speeds look like Earth's (PB2002), by rejection sampling, and which
+driving force or flow feature predicts rejection; is it tunable in RFC 0021 or does it need a different driver?
+
+**Answer in seven points** (all on the 20 development seeds of `analysis/issue958/development-seeds.json`, plates-only,
+1 Myr steps; "plate-mean opposition" is the contact's relative speed over the sum of the two plates' area-mean speeds,
+Earth 0.41 in the converging class; the node-velocity version in sections 16-17 gives Earth 0.52):
+
+1. **t=0 acceptance is vacuous.** At t=0 speeds come from the static mantle flow alone (slab pull and ridge push are
+   exactly zero until a slab exists). Every seed passes at t=0 and fails from 2 Myr on. Rejection is caused by slab pull
+   and ridge push switching on at the first step (sections 3-4).
+2. **With the brake off, contacts are too fast and too opposed:** median contact speed 8.4 cm/yr against Earth's 3.0,
+   plate-mean opposition 0.83 against 0.41, 0/20 accepted (sections 3, 7).
+3. **No single knob fixes both.** Force and viscosity corners (section 6), an overall partial brake (section 8), a
+   brake extended to oceanic contacts (section 11), strong driving with a partial brake (section 12) and a stronger
+   static flow alone (section 9) each move contact speed and coherence together: the brake buys coherence only by
+   removing speed, driving buys speed but not coherence.
+4. **Flow-dominated driving plus a partial brake does reach Earth's range.** Static flow x4 (flow about 60% of the
+   driving torque) with the overall contact brake at 0.5: plate speed 3.9 cm/yr at 50 Myr (5.2 at 5 Myr), median
+   contact speed 3.6, converging-class opposition 0.51, 10/20 worlds accepted at 50 Myr (section 13). On the
+   node-velocity measure the model's mean opposition (0.56) and alike share (0.20) sit inside Earth's bootstrap
+   interval (0.44 to 0.60 and 0.17 to 0.39, section 17). It is the only setting tested that does.
+5. **Why: the flow's geometry sets neighbour coherence, and the flow places the trenches.** Contacts the flow carries
+   alike end at opposition 0.34-0.40, contacts it carries oppositely at 0.71-0.81; where the flow converges contacts
+   subduct 3-4 times as often as where it opens (section 16). Flipping every centre's sign moves subduction off the
+   original downwellings (median percentile 0.77 to 0.37); turning the flow off leaves every plate still for 50 Myr
+   (section 15). The static flow is the only starter of plate motion in this model.
+6. **Tunable in RFC 0021, or a different driver?** Tunable only with a non-physical amplitude: x4 is a diagnostic, since
+   flow alone then drives plates at about 18 cm/yr. The physical content of the result is that coherent, large-scale
+   flow must carry a large share of the driving, and the model's flow is random, static, unrelated to its slabs, and
+   has only 19-23% of contact length carried alike. A different driver is the real fix (candidates below); this
+   needs an RFC revision or a new RFC.
+7. **Earth is not as coherent as first assumed.** On node velocities Earth's contacts are 27% alike (under 0.3) and
+   35% opposed (over 0.7); the model's flow x4 worlds are 19-20% and 33-36% (section 17). Earlier statements that no
+   setting reaches Earth's coherence used the plate-mean measure (0.41); a target must name its measure.
+
+**Settings tested at a glance** (converging-class plate-mean opposition; Earth 0.41; acceptance is the amended rule
+of section 5; details in the named section):
+
+| Setting | Plate speed (cm/yr) | Median contact speed (cm/yr) | Opposition | Accepted | Section |
+|---|---|---|---|---|---|
+| `b123-brake-off` (brake 0) | 4.5 | 8.4 | 0.83 | 0/20 at 50 Myr | 3, 7 |
+| `b123` brake 0.25-0.35 | 2.2-2.4 | Earth-like | 0.71-0.76 | 50-60% at 100 Myr | 8 |
+| oceanic-contact brake 0.5 (patch) | 2.9 | 4.2 | 0.70 | 2/20 at 50 Myr | 11 |
+| slab-mantle 1e20 + brake 0.5 | 4.9 | 7.1 | 0.69 | 0/20 at 50 Myr | 12 |
+| slab-mantle 1e21 + brake 0.5 | 2.8 | 4.7 | 0.75 | 0/20 at 50 Myr | 12 |
+| flow x4, brake 0 | 8.7 | 11.9 | 0.70 | 0/20 at 50 Myr | 9 |
+| flow x4 + brake 0.25 | 4.8 | 4.8 | 0.54 | 2/20 at 50 Myr | 13 |
+| **flow x4 + brake 0.5** | **3.9** | **3.6** | **0.51** | **10/20 at 50 Myr** | 13 |
+
+**What this PR changes in the product.** `World.mantle_flow_multiplier` (default 1.0, saves read 1.0, x1.0 bit-identical)
+scales the static flow wherever it is read (`mantle.world_flow_at`). The `/worlds/{id}/controls` route now also takes
+RFC 0021's force forms `ridge_push_form`, `slab_drag_form`, `age_force_column`. The UI's fresh-world defaults
+(`frontend/src/uiDefaults.ts`) become: brake 0.5 (craton component 1.0), mantle flow x4, ridge push
+`potential_energy`, slab drag `trench_normal`, age force column on. Backend model defaults, API and replay worlds are
+unchanged. This replaces #1007's "braking 0x" default; a loaded world keeps its own stored values. The setting the
+results were measured on also used RFC 0018's calibrated rift-line parameters (`analysis/issue975/settings.json`
+`common_params`, `mark_power` 2.8); the UI does not push those, so UI worlds split plates with the model's
+rift-line defaults and plate counts may differ from the 14-19 of these runs.
+
+**Caveats that bound every number above.** 20 development seeds, so acceptance rates have wide intervals; the
+rejection rule was amended after the first baseline passed (section 5, disclosed, one-sided results kept), so the
+acceptance rates are not a held-out test: a held-out seed set has not been run. One force-form family (`b123`).
+Plates-only. The x4 amplitude is unphysical. Earth is one planet's present state (106 contacts of 500 km or more).
+Literature on upper-mantle flow speed is thin and model-dependent (no measured value; 20 cm/yr in a thin
+asthenosphere channel in one convection model, more than 10x plate speed at a slab edge in Jadamec & Billen 2010);
+no source gave the far-field speed. Pitfalls found on the way: `torque_norm_nm` omits the resisting terms (use
+`torque_along_axis_nm`); the breakdown's `contact_brake` row does not see the in-process oceanic patch; opposition by
+plate-mean speed and by node velocity differ (0.41 and 0.52 for Earth); scaling the flow by a constant leaves
+opposition unchanged at t=0 (it is a ratio); WAIT from `compute_budget.py` can be the agent's own queue.
+
+**Candidate next steps** (not authorized by #998; each is a model change and needs an RFC revision or a new RFC):
+
+1. *Flow tied to slabs and downwellings.* Make downwelling strength follow existing slabs (a downwelling with a slab
+   in it speeds up, the Jadamec & Billen result) and let slabs place downwellings that persist after the slab moves
+   on; today the field is static and a trench drifts off its downwelling (section 14: the tendency fades 5 to 50 Myr).
+2. *Coherent large-scale flow geometry.* A degree-2-like field (two broad upwellings and a downwelling girdle) in place
+   of 8 random Gaussians, to raise the alike share of contact length from 19-23% toward Earth's 27%. Untested.
+3. *Slab-induced suction.* A pull toward each slab on its neighbours, falling off with distance (the low-pressure zone
+   behind a sinking slab). Untested; the in-process patch pattern of `plate_speed_samples.py --ocean-brake` is the
+   template for a diagnostic.
+4. *Prescribed slab pull*, the issue's alternative, if 1-3 do not hold up.
+5. Evaluation: run the criterion on fresh seeds; compute Earth's targets on both opposition measures; use the
+   calibrated rift-line parameters in the UI default if plate counts matter.
+
+**Reproducing.** Each seed is about 1-1.5 minutes plates-only and about 1 GB (`compute-budget` first). Captures are in
+`~/mantle-bloom-captures/issue998/` (not in the repo; regenerate with the commands in each script's docstring).
+
+| Script (`bin/debug/`) | What it does | Output (`analysis/issue998/`) |
+|---|---|---|
+| `earth_speed_reference.py` | PB2002 per-class lognormal fits, bootstrap | `earth-reference.json` |
+| `plate_speed_samples.py` | model contact samples; `--flow-scale`, `--ocean-brake` | captures only |
+| `score_speed_samples.py` | the criterion (sections 2, 5) | `scores-<setting>.json` |
+| `attribute_speed_rejection.py` | driving shares, resisting ratios, correlations | `attribution-<setting>.json` |
+| `contact_asymmetry.py` | plate-mean asymmetry and opposition per class | `contact-asymmetry*.json` |
+| `downwelling_check.py` | do trenches sit on the downwelling centres; flow off and sign-flip interventions | `downwelling-check*.json` |
+| `contact_flow_coherence.py` | per-contact flow-only and actual coherence, subduction share | `contact-flow-coherence.json` |
+| `earth_contact_coherence.py` | Earth's contact coherence from PB2002 poles | `earth-contact-coherence.json` |
+
+Settings are in `analysis/issue975/settings.json` and `analysis/issue998/settings.json` (the flow-x4 settings are
+`b123-brake-<0.25|0.5>-for-flow4`, run with `--flow-scale 4`).
 
 ## 1. Earth reference (PB2002)
 
@@ -207,7 +313,7 @@ the remaining rejections are mostly the shape of the distribution (KS), not its 
 Stronger flow raises plate and contact speeds and moves the opposition only a little (0.86 to 0.70); it does not
 make the contacts Earth-like. Mantle flow in the model is not the missing ingredient for contact speeds.
 
-## 10. Answer
+## 10. Answer as of 2026-11-21 (superseded by the summary at the top; kept as written)
 
 **Which force or flow feature predicts rejection?** Slab pull and ridge push switching on at the first step
 (sections 3-4). Speeds are mantle-flow-only at t=0 (so t=0 acceptance is vacuous), and from the first step slab

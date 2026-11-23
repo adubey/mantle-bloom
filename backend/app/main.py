@@ -49,6 +49,7 @@ from . import (
     run_control,
     stats,
     synthetic_relief,
+    torque,
     trace,
     users,
     world_names,
@@ -317,6 +318,10 @@ class ControlsRequest(BaseModel):
     wind_model: str | None = None
     fault_deformation_mode: str | None = None
     split_method: str | None = None
+    # RFC 0021's force forms (#971): B.1 ridge push, B.2 sunk-slab drag, B.3 the age force column. Experimental until G2.
+    ridge_push_form: str | None = None
+    slab_drag_form: str | None = None
+    age_force_column: bool | None = None
     # Issue #133 phase-1 proving-out flag -- see World.node_cloud_resample_mode. "kdtree"
     # (default) or "healpix". Backend/API-only for now, no Controls-panel entry.
     node_cloud_resample_mode: str | None = None
@@ -336,6 +341,7 @@ class ControlsRequest(BaseModel):
     collision_uplift_reach_multiplier: float | None = None
     contact_drag_multiplier: float | None = None
     craton_drag_multiplier: float | None = None
+    mantle_flow_multiplier: float | None = None
     volcanism_multiplier: float | None = None
     fault_relief_multiplier: float | None = None
     plume_multiplier: float | None = None
@@ -2410,6 +2416,8 @@ def _validate_controls_request(req: ControlsRequest) -> dict[str, float]:
         ("wind_model", req.wind_model, WIND_MODEL_CHOICES),
         ("fault_deformation_mode", req.fault_deformation_mode, FAULT_DEFORMATION_MODE_CHOICES),
         ("split_method", req.split_method, SPLIT_METHOD_CHOICES),
+        ("ridge_push_form", req.ridge_push_form, torque.RIDGE_PUSH_FORMS),
+        ("slab_drag_form", req.slab_drag_form, torque.SLAB_DRAG_FORMS),
         ("node_cloud_resample_mode", req.node_cloud_resample_mode, NODE_CLOUD_RESAMPLE_MODE_CHOICES),
         ("lake_stop_mode", req.lake_stop_mode, STOP_MODE_CHOICES),
         ("glacier_stop_mode", req.glacier_stop_mode, STOP_MODE_CHOICES),
@@ -2495,6 +2503,12 @@ def set_controls(world_id: str, req: ControlsRequest) -> dict:
                 except (TypeError, ValueError) as exc:
                     raise HTTPException(status_code=400, detail=str(exc)) from exc
             world.split_method = req.split_method
+        if req.ridge_push_form is not None:
+            world.ridge_push_form = req.ridge_push_form
+        if req.slab_drag_form is not None:
+            world.slab_drag_form = req.slab_drag_form
+        if req.age_force_column is not None:
+            world.age_force_column = req.age_force_column
         if req.node_cloud_resample_mode is not None:
             world.node_cloud_resample_mode = req.node_cloud_resample_mode
         if req.debug_diagnostics is not None:
@@ -2529,6 +2543,9 @@ def _controls_state(world: World) -> dict:
         "wind_model": world.wind_model,
         "fault_deformation_mode": world.fault_deformation_mode,
         "split_method": world.split_method,
+        "ridge_push_form": world.ridge_push_form,
+        "slab_drag_form": world.slab_drag_form,
+        "age_force_column": world.age_force_column,
         "node_cloud_resample_mode": world.node_cloud_resample_mode,
         "debug_diagnostics": world.debug_diagnostics,
         **{name: getattr(world, name) for name in TUNING_MULTIPLIER_FIELDS},

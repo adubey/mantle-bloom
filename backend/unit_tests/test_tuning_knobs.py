@@ -106,6 +106,27 @@ def test_brake_multipliers_round_trip_and_default_when_absent():
     assert loaded.craton_drag_multiplier == 1.0
 
 
+def test_mantle_flow_multiplier_scales_the_basal_flow_torque_and_one_is_exact():
+    # #998: the multiplier scales the static flow every reader sees. The basal drag's flow forcing `b` scales with it,
+    # its coupling `K` (a property of the plate, not the flow) does not, and x1.0 is bit-identical to no multiplier.
+    from app import torque
+
+    world = generate_world(seed=21, num_plates=8)
+    plate = max(world.plates, key=lambda p: p.node_count())
+    spacing = 0.05
+    b1, k1 = torque.basal_drag_coefficients(plate, world, spacing)
+    world.mantle_flow_multiplier = 4.0
+    b4, k4 = torque.basal_drag_coefficients(plate, world, spacing)
+    np.testing.assert_allclose(b4, 4.0 * b1, rtol=1e-12)
+    np.testing.assert_array_equal(k4, k1)
+    world.mantle_flow_multiplier = 0.0
+    b0, _ = torque.basal_drag_coefficients(plate, world, spacing)
+    assert not np.any(b0)
+    world.__dict__.pop("mantle_flow_multiplier")  # a world from before the field reads the class default, 1.0
+    b_old, _ = torque.basal_drag_coefficients(plate, world, spacing)
+    np.testing.assert_array_equal(b_old, b1)
+
+
 def test_erosion_multipliers_at_one_are_bit_identical_to_untuned():
     a = generate_world(seed=21, num_plates=8)
     b = generate_world(seed=21, num_plates=8)

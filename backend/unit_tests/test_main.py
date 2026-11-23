@@ -2536,10 +2536,33 @@ def test_controls_tuning_multipliers_round_trip_and_validate(client):
     assert world.contact_drag_multiplier == 0.0
     assert world.craton_drag_multiplier == 2.0
 
+    # The mantle-flow amplitude (#998) rides the same route.
+    resp = client.post("/world/controls", json={"mantle_flow_multiplier": 4.0})
+    assert resp.status_code == 200
+    assert resp.json()["mantle_flow_multiplier"] == 4.0
+    assert world.mantle_flow_multiplier == 4.0
+
     assert client.post("/world/controls", json={"volcanism_multiplier": -0.5}).status_code == 400
     assert world.volcanism_multiplier == 1.0  # rejected write did not land
     assert client.post("/world/controls", json={"contact_drag_multiplier": -1.0}).status_code == 400
     assert world.contact_drag_multiplier == 0.0  # rejected write did not land
+
+
+def test_controls_force_forms_round_trip_and_validate(client):
+    # RFC 0021's B.1 to B.3 force forms are settable from the UI's fresh-world push (#998); defaults are the old forms.
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    world = _default_session.world
+    body = client.post("/world/controls", json={}).json()
+    assert (body["ridge_push_form"], body["slab_drag_form"], body["age_force_column"]) == ("water_load", "isotropic", False)
+
+    resp = client.post("/world/controls", json={"ridge_push_form": "potential_energy", "slab_drag_form": "trench_normal", "age_force_column": True})
+    assert resp.status_code == 200
+    assert (resp.json()["ridge_push_form"], resp.json()["slab_drag_form"], resp.json()["age_force_column"]) == ("potential_energy", "trench_normal", True)
+    assert (world.ridge_push_form, world.slab_drag_form, world.age_force_column) == ("potential_energy", "trench_normal", True)
+
+    assert client.post("/world/controls", json={"ridge_push_form": "nope"}).status_code == 400
+    assert client.post("/world/controls", json={"slab_drag_form": "nope"}).status_code == 400
+    assert world.ridge_push_form == "potential_energy"  # a rejected write did not land
 
 
 # --- Run status and checkpoint (#375) -------------------------------------------------------

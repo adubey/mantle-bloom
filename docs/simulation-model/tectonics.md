@@ -308,8 +308,8 @@ above, so a world, or a save made before the fields existed, moves exactly as be
 | `subduction_test` (B.4) | `gate` (closing over 1 cm/yr) | `ramp`: pull scaled by `closing / subduction_gate_cm_per_yr` from zero closing (`subduction_pull_weight`). `geometric`: down-going crust at any contact that isn't diverging, and only the older side where ocean meets ocean. |
 | `slab_pull_fraction` (`f_pull`) | 1.0 | the share of the column's negative buoyancy applied as pull, in [0, 1] |
 
-They are for RFC 0021's G1 probes and G2 calibration. None is adopted yet, and none is on the
-`/world/controls` route. `collision_polarity`'s slab evidence keeps today's gate whatever
+They are for RFC 0021's G1 probes and G2 calibration. None is adopted yet. B.1 to B.3 are on the
+`/world/controls` route (#998), so the UI can set them on a fresh world; B.4, `f_pull` and the gate are not. `collision_polarity`'s slab evidence keeps today's gate whatever
 `subduction_test` says. The tests are in `backend/unit_tests/test_torque.py`.
 
 **Spatial load transfer for rift diagnosis (#487, 2026-10-19).**

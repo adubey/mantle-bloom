@@ -862,7 +862,7 @@ def basal_drag_force_vectors_n(plate, world, spacing_rad: float) -> np.ndarray:
     if len(own_points) == 0:
         return np.zeros((0, 3))
     own_velocity_m_s = np.cross(plate.omega, own_points) * lithosphere.PLANET_RADIUS_M / SECONDS_PER_YEAR
-    mantle_velocity_m_s = mantle.flow_at(own_points, world.mantle_centers) * lithosphere.PLANET_RADIUS_M / SECONDS_PER_YEAR
+    mantle_velocity_m_s = mantle.world_flow_at(world, own_points) * lithosphere.PLANET_RADIUS_M / SECONDS_PER_YEAR
     basal_coefficient_pa_s_per_m = ASTHENOSPHERE_VISCOSITY_PA_S / SHEAR_ZONE_THICKNESS_M
     return (
         basal_coefficient_pa_s_per_m
@@ -903,7 +903,7 @@ def basal_drag_coefficients(plate, world, spacing_rad: float) -> tuple[np.ndarra
         * lithosphere.PLANET_RADIUS_M**2
         / SECONDS_PER_YEAR
     )
-    flow = mantle.flow_at(own_points, world.mantle_centers)
+    flow = mantle.world_flow_at(world, own_points)
     b = np.einsum("n,ni->i", c, np.cross(own_points, flow))
     k = c.sum() * np.eye(3) - np.einsum("n,ni,nj->ij", c, own_points, own_points)
     return b, k

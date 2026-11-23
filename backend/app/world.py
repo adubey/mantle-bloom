@@ -77,6 +77,7 @@ TUNING_MULTIPLIER_FIELDS = (
     "collision_uplift_reach_multiplier",
     "contact_drag_multiplier",
     "craton_drag_multiplier",
+    "mantle_flow_multiplier",
     "volcanism_multiplier",
     "fault_relief_multiplier",
     "plume_multiplier",
@@ -503,6 +504,7 @@ class World:
     collision_uplift_reach_multiplier: float = 1.0  # horizontal reach of the collision/subduction uplift bands
     contact_drag_multiplier: float = 1.0  # the whole RFC 0008 contact brake (relief, craton and jam factors combined)
     craton_drag_multiplier: float = 1.0  # only the brake's craton component, against the relief term (#760)
+    mantle_flow_multiplier: float = 1.0  # amplitude of the static mantle-flow field every reader sees (`mantle.world_flow_at`, #998)
     # RFC 0021's force-form switches (#971), read by `torque.force_forms`. Each default is the form before RFC 0021,
     # so an older pickle falls through to today's forces. B.1 ridge push ("water_load" or "potential_energy"),
     # B.2 sunk-slab drag ("isotropic" or "trench_normal"), B.3 the age force column, B.4 the subduction test
