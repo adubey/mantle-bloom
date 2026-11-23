@@ -199,7 +199,7 @@ def _spawn_plate_from_gap(
 
     points, _ = plate.all_points_and_elevation()
     if len(points) > 0:
-        velocities = mantle.flow_at(points, world.mantle_centers)
+        velocities = mantle.world_flow_at(world, points)
         plate.set_omega(mantle.clamp_rate(mantle.fit_euler_pole(points, velocities)))
     return plate
 

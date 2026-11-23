@@ -1529,8 +1529,8 @@ export default function App() {
             });
       if (worldIdRef.current !== id) return;
       // Push the UI defaults that diverge from the backend world defaults
-      // (lake/glacier substeps & stops, RFC 0018 splitting, braking off --
-      // #1007) so the new world itself, not just the controls below, starts
+      // (lake/glacier substeps & stops, RFC 0018 splitting, the #998
+      // braking/mantle-flow/force-form setting -- #1007, #998) so the new world itself, not just the controls below, starts
       // from them. Loading a world never does this: it adopts stored values.
       await updateControls(id, freshWorldControls());
       if (worldIdRef.current !== id) return;

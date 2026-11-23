@@ -426,7 +426,7 @@ def render_png_base64(
     fault_samples = _fault_sample_set(world, sample_xyz, spacing_km) if show_faults else set()
     melt_eligible = continental & (moho_temp >= orogeny.MELT_ONSET_MOHO_C)
     line_samples = np.linspace(0, len(sample_xyz) - 1, min(24, len(sample_xyz)), dtype=int)
-    flow = mantle.flow_at(sample_xyz[line_samples], world.mantle_centers)
+    flow = mantle.world_flow_at(world, sample_xyz[line_samples])
     flow_along = np.sum(flow * tangent[line_samples], axis=1)
     lithosphere_base_km = (hc[line_samples] + hm[line_samples]) / 1000.0
     asthenosphere_thickness_km = np.maximum(SECTION_DEPTH_KM - lithosphere_base_km, 0.0)

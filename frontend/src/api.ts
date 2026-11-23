@@ -758,6 +758,7 @@ export const TUNING_MULTIPLIER_KEYS = [
   "collision_uplift_reach_multiplier",
   "contact_drag_multiplier",
   "craton_drag_multiplier",
+  "mantle_flow_multiplier",
   "volcanism_multiplier",
   "fault_relief_multiplier",
   "craton_formation_multiplier",
@@ -791,6 +792,10 @@ export type ControlsState = {
   wind_model: string;
   fault_deformation_mode: string;
   split_method: SplitMethod;
+  // RFC 0021's force forms (backend World.ridge_push_form / slab_drag_form / age_force_column, #971).
+  ridge_push_form: string;
+  slab_drag_form: string;
+  age_force_column: boolean;
   // Gate for the debug-only diagnostics (see backend World.debug_diagnostics) -- on by
   // default for a Debugging Worlds tab world, off/toggleable here for any other loaded save.
   debug_diagnostics: boolean;
@@ -814,6 +819,9 @@ export function updateControls(worldId: WorldId, controls: {
   windModel?: string;
   faultDeformationMode?: string;
   splitMethod?: SplitMethod;
+  ridgePushForm?: string;
+  slabDragForm?: string;
+  ageForceColumn?: boolean;
   debugDiagnostics?: boolean;
   tuning?: Partial<TuningMultipliers>;
 }): Promise<ControlsState> {
@@ -834,6 +842,9 @@ export function updateControls(worldId: WorldId, controls: {
       wind_model: controls.windModel,
       fault_deformation_mode: controls.faultDeformationMode,
       split_method: controls.splitMethod,
+      ridge_push_form: controls.ridgePushForm,
+      slab_drag_form: controls.slabDragForm,
+      age_force_column: controls.ageForceColumn,
       debug_diagnostics: controls.debugDiagnostics,
       ...controls.tuning,
     }),

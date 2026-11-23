@@ -70,6 +70,7 @@ const TUNING_GROUPS: { heading: string; tab: TabKey; knobs: { key: TuningKey; la
       { key: "collision_uplift_reach_multiplier", label: "Collision uplift — reach" },
       { key: "contact_drag_multiplier", label: "Collision braking — all contacts" },
       { key: "craton_drag_multiplier", label: "Collision braking — craton only" },
+      { key: "mantle_flow_multiplier", label: "Mantle flow strength" },
       { key: "volcanism_multiplier", label: "Volcanism" },
       { key: "craton_formation_multiplier", label: "Craton formation rate" },
       { key: "craton_decratonization_multiplier", label: "Craton loss to plume heads" },

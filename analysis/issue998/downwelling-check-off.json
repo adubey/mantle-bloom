@@ -1,0 +1,41 @@
+{
+ "seeds": 20,
+ "by_time": {
+  "0.0": {
+   "seeds_with_subduction": 0,
+   "subducting_mean_D": null,
+   "all_band_mean_D": 0.1420616375963178,
+   "percentile_subducting_median": null,
+   "percentile_subducting_share_above_0.9": null,
+   "z_subducting_mean": null,
+   "percentile_ridge_in_upwelling_median": null
+  },
+  "5.0": {
+   "seeds_with_subduction": 0,
+   "subducting_mean_D": null,
+   "all_band_mean_D": 0.14191137450953728,
+   "percentile_subducting_median": null,
+   "percentile_subducting_share_above_0.9": null,
+   "z_subducting_mean": null,
+   "percentile_ridge_in_upwelling_median": null
+  },
+  "20.0": {
+   "seeds_with_subduction": 0,
+   "subducting_mean_D": null,
+   "all_band_mean_D": 0.14191137450953728,
+   "percentile_subducting_median": null,
+   "percentile_subducting_share_above_0.9": null,
+   "z_subducting_mean": null,
+   "percentile_ridge_in_upwelling_median": null
+  },
+  "50.0": {
+   "seeds_with_subduction": 0,
+   "subducting_mean_D": null,
+   "all_band_mean_D": 0.14191137450953728,
+   "percentile_subducting_median": null,
+   "percentile_subducting_share_above_0.9": null,
+   "z_subducting_mean": null,
+   "percentile_ridge_in_upwelling_median": null
+  }
+ }
+}

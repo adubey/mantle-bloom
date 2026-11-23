@@ -1,0 +1,47 @@
+{
+ "Earth (PB2002, NNR)": {
+  "contacts": 106,
+  "length_km": 251477.60000000003,
+  "opposition_length_weighted_mean": 0.5215680571170551,
+  "opposition_median": 0.5198203702478886,
+  "share_alike_under_0.3": 0.2681034016548591,
+  "share_middle": 0.37871404848781753,
+  "share_opposed_over_0.7": 0.35318254985732317
+ },
+ "model flow x4, brake 0.5, 5 Myr": {
+  "contacts": 697,
+  "length_km": 2925000.0,
+  "opposition_length_weighted_mean": 0.5776601076400573,
+  "opposition_median": 0.5715870629376489,
+  "share_alike_under_0.3": 0.19393162393162394,
+  "share_middle": 0.4444230769230769,
+  "share_opposed_over_0.7": 0.36164529914529914
+ },
+ "model flow x4, brake 0.5, 20 Myr": {
+  "contacts": 788,
+  "length_km": 3180312.5,
+  "opposition_length_weighted_mean": 0.5678105839484272,
+  "opposition_median": 0.5536942064593552,
+  "share_alike_under_0.3": 0.2037535619534244,
+  "share_middle": 0.45046673872457504,
+  "share_opposed_over_0.7": 0.3457796993220006
+ },
+ "model flow x4, brake 0.5, 50 Myr": {
+  "contacts": 1016,
+  "length_km": 3723625.0,
+  "opposition_length_weighted_mean": 0.5578163413207758,
+  "opposition_median": 0.560141079290572,
+  "share_alike_under_0.3": 0.20156769277249992,
+  "share_middle": 0.4734130048004297,
+  "share_opposed_over_0.7": 0.3250193024270704
+ },
+ "model flow alone, 5 Myr geometry": {
+  "contacts": 697,
+  "length_km": 2925000.0,
+  "opposition_length_weighted_mean": 0.5716073721264945,
+  "opposition_median": 0.5644693510764943,
+  "share_alike_under_0.3": 0.18581196581196582,
+  "share_middle": 0.46247863247863247,
+  "share_opposed_over_0.7": 0.35170940170940174
+ }
+}

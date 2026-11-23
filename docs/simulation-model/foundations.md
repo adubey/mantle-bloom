@@ -542,7 +542,11 @@ mapping**: a point on a cube face `(u, v, +-1)`, normalized to the unit sphere
 (`mantle.cube_to_sphere`) -- "flow in a cube, projected to the sphere," chosen for even
 coverage with no pole clustering. Each center contributes a tangential flow vector pointing
 away from it (upwelling, positive strength) or toward it (downwelling, negative strength),
-with Gaussian falloff by angular distance (`mantle.flow_at`).
+with Gaussian falloff by angular distance (`mantle.flow_at`). The field is static and independent of the
+plates: the centres never move and no slab changes them. `World.mantle_flow_multiplier` scales its amplitude
+everywhere it is read (`mantle.world_flow_at`, #998). What this field does and does not explain about plate
+speeds and neighbour coherence, and why the UI's fresh-world default is flow x4 with the contact brake at 0.5,
+is in [analysis/issue998/README.md](../../analysis/issue998/README.md).
 
 Every step, each plate samples this field at its own current footprint (every terrain node
 plus its boundary loop -- already available, no separate sampling grid needed) and fits

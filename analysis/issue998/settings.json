@@ -1,0 +1,152 @@
+{
+ "note": "#998: the 1e20 corners of analysis/issue975/settings.json with the contact brake back on (contact_drag_multiplier default 1.0). b123-brake-0.25 and -0.35: b123 with a partial overall brake (#995 section 9 found 0.25 matches Earth's median contact speed on one seed). corner-<1e20|1e21>-lsink660-brake-<0.25|0.5>: strong driving with an intermediate overall brake.",
+ "common_params": {
+  "eps_dot0": 4.595934101500222e-08,
+  "s_warm": 0.15853359860913005,
+  "k_cap": 0.14,
+  "n_plume": 618452193851.9977,
+  "lam_grow": 0.543797610780998,
+  "l_tip_m": 143394.7340879273,
+  "oceanic_age_strength": true
+ },
+ "settings": {
+  "brake-corner-slabmantle1e20-lsink150": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "ridge_push_form": "potential_energy",
+    "slab_drag_form": "trench_normal",
+    "age_force_column": true
+   },
+   "module_knobs": {
+    "torque.ASTHENOSPHERE_VISCOSITY_PA_S": 2e+19,
+    "torque.SLAB_MANTLE_VISCOSITY_PA_S": 1e+20,
+    "torque.SUBDUCTION_LSINK_M": 150000.0
+   }
+  },
+  "brake-corner-slabmantle1e20-lsink660": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "ridge_push_form": "potential_energy",
+    "slab_drag_form": "trench_normal",
+    "age_force_column": true
+   },
+   "module_knobs": {
+    "torque.ASTHENOSPHERE_VISCOSITY_PA_S": 2e+19,
+    "torque.SLAB_MANTLE_VISCOSITY_PA_S": 1e+20,
+    "torque.SUBDUCTION_LSINK_M": 660000.0
+   }
+  },
+  "b123-brake-0.25": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "ridge_push_form": "potential_energy",
+    "slab_drag_form": "trench_normal",
+    "age_force_column": true,
+    "contact_drag_multiplier": 0.25
+   }
+  },
+  "b123-brake-0.35": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "ridge_push_form": "potential_energy",
+    "slab_drag_form": "trench_normal",
+    "age_force_column": true,
+    "contact_drag_multiplier": 0.35
+   }
+  },
+  "corner-1e20-lsink660-brake-0.25": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "ridge_push_form": "potential_energy",
+    "slab_drag_form": "trench_normal",
+    "age_force_column": true,
+    "contact_drag_multiplier": 0.25
+   },
+   "module_knobs": {
+    "torque.ASTHENOSPHERE_VISCOSITY_PA_S": 2e+19,
+    "torque.SLAB_MANTLE_VISCOSITY_PA_S": 1e+20,
+    "torque.SUBDUCTION_LSINK_M": 660000.0
+   }
+  },
+  "corner-1e20-lsink660-brake-0.5": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "ridge_push_form": "potential_energy",
+    "slab_drag_form": "trench_normal",
+    "age_force_column": true,
+    "contact_drag_multiplier": 0.5
+   },
+   "module_knobs": {
+    "torque.ASTHENOSPHERE_VISCOSITY_PA_S": 2e+19,
+    "torque.SLAB_MANTLE_VISCOSITY_PA_S": 1e+20,
+    "torque.SUBDUCTION_LSINK_M": 660000.0
+   }
+  },
+  "corner-1e21-lsink660-brake-0.25": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "ridge_push_form": "potential_energy",
+    "slab_drag_form": "trench_normal",
+    "age_force_column": true,
+    "contact_drag_multiplier": 0.25
+   },
+   "module_knobs": {
+    "torque.ASTHENOSPHERE_VISCOSITY_PA_S": 2e+19,
+    "torque.SLAB_MANTLE_VISCOSITY_PA_S": 1e+21,
+    "torque.SUBDUCTION_LSINK_M": 660000.0
+   }
+  },
+  "corner-1e21-lsink660-brake-0.5": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "ridge_push_form": "potential_energy",
+    "slab_drag_form": "trench_normal",
+    "age_force_column": true,
+    "contact_drag_multiplier": 0.5
+   },
+   "module_knobs": {
+    "torque.ASTHENOSPHERE_VISCOSITY_PA_S": 2e+19,
+    "torque.SLAB_MANTLE_VISCOSITY_PA_S": 1e+21,
+    "torque.SUBDUCTION_LSINK_M": 660000.0
+   }
+  },
+  "b123-brake-0.25-for-flow4": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "ridge_push_form": "potential_energy",
+    "slab_drag_form": "trench_normal",
+    "age_force_column": true,
+    "contact_drag_multiplier": 0.25
+   }
+  },
+  "b123-brake-0.5-for-flow4": {
+   "params": {
+    "mark_power": 2.8
+   },
+   "world_knobs": {
+    "ridge_push_form": "potential_energy",
+    "slab_drag_form": "trench_normal",
+    "age_force_column": true,
+    "contact_drag_multiplier": 0.5
+   }
+  }
+ }
+}

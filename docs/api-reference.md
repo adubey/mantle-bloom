@@ -518,13 +518,14 @@ picks how plates break up: `"great_circle"` cuts along a great circle between ma
 regimes, `"rift_lines"` uses RFC 0018's weak-line damage and rifting algorithm. See
 simulation-model/tectonics.md#splitting-along-rift-lines.
 
-The body also accepts the eighteen **geomorphic-budget tuning multipliers**
+The body also accepts the nineteen **geomorphic-budget tuning multipliers**
 (`world.TUNING_MULTIPLIER_FIELDS`): `rain_erosion_multiplier`, `river_erosion_multiplier`,
 `wind_erosion_multiplier`, `ocean_erosion_multiplier`, `coastal_leveling_multiplier`,
 `glacier_erosion_multiplier`, `seismic_erosion_multiplier`, `river_deposition_multiplier`,
 `ocean_deposition_multiplier`, `collision_uplift_multiplier`,
 `collision_uplift_reach_multiplier`, `contact_drag_multiplier`,
-`craton_drag_multiplier`, `volcanism_multiplier`, `fault_relief_multiplier`,
+`craton_drag_multiplier`, `mantle_flow_multiplier` (the static mantle-flow field's amplitude, #998),
+`volcanism_multiplier`, `fault_relief_multiplier`,
 `plume_multiplier` (plume production rate; `0` thins every scheduled event away, so the
 run is a matched plume-off twin -- see RFC 0007), `craton_formation_multiplier` (the
 Earth-like craton formation budget; `0` forms no new craton) and
@@ -534,7 +535,12 @@ one erosion / deposition / uplift / braking / volcanism / craton process, defaul
 bit for bit, except the two craton knobs, whose `1.0` is the #1001 budget rather than the earlier
 rule), and a negative value is a `400`. `contact_drag_multiplier` scales the whole RFC 0008
 contact brake (not RFC 0011's blocked-contact resistance); `craton_drag_multiplier` scales
-only its craton component (#760). See
+only its craton component (#760). `mantle_flow_multiplier` scales the amplitude of the static
+mantle-flow field everywhere it is read (`mantle.world_flow_at`: basal drag, rift-line and split fits,
+the cross-section); `1.0` is bit-identical to a world saved before the field existed. The body also takes
+RFC 0021's force forms `ridge_push_form` (`water_load` or `potential_energy`), `slab_drag_form`
+(`isotropic` or `trench_normal`) and `age_force_column` (bool), validated against `torque.RIDGE_PUSH_FORMS`
+and `torque.SLAB_DRAG_FORMS` (an unknown value is a `400`); `GET` echoes them. See
 [simulation-model/surface-processes.md#tuning-knobs](simulation-model/surface-processes.md#live-tuning-knobs-worldtuning_multiplier_fields) for what each one scales
 and measured effect sizes.
 

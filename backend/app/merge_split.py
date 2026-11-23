@@ -783,7 +783,7 @@ def maybe_split_plate(world: "World", plate: Plate, step_years: float = 0.0) -> 
         return rift_damage.breakthrough(world, plate)
 
     points, _ = plate.all_points_and_elevation()
-    velocities = mantle.flow_at(points, world.mantle_centers)
+    velocities = mantle.world_flow_at(world, points)
 
     # See SPLIT_SIZE_CERTAIN_RIFT_RAD's own comment: the bigger this plate already is, the
     # less additional mantle-flow evidence it should take to justify cutting it. Accumulated

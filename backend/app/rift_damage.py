@@ -448,7 +448,7 @@ def damage_pass(world, years: float) -> None:
 def _tie_side_factory(world, step: PlateStep):
     """A line cell with as many edges to one daughter as to the other goes to the one whose fitted rotation best
     matches the mantle flow under it."""
-    flow = mantle.flow_at(step.points, world.mantle_centers)
+    flow = mantle.world_flow_at(world, step.points)
     # `split_masks` updates the sides only between rounds, so every tie in a round shares them: fit the two poles once
     # per round, not once per tied cell (ties are common on a quad mesh, a sweep cost, #942).
     fitted = {"side": None, "poles": None}
@@ -527,7 +527,7 @@ def breakthrough(world, plate):
         return None
     cratons.record_cut_areas(world, "split", *cut_areas)
     world.next_plate_id += 1
-    flow = mantle.flow_at(step.points, world.mantle_centers)
+    flow = mantle.world_flow_at(world, step.points)
     for daughter, mask in zip(pieces, (mask_a, ~mask_a)):
         daughter.reset_age()
         daughter.set_omega(mantle.clamp_rate(mantle.fit_euler_pole(step.points[mask], flow[mask])))
