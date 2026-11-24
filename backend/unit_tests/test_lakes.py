@@ -2077,3 +2077,40 @@ def test_a_round_off_remainder_between_breached_pits_settles_its_slice(supply):
 
     assert np.all(result.lake_depth == 0.0)
     assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e-9 * supply)
+
+
+def test_parent_whose_tier_cap_is_below_saddle_does_not_merge_split_cycle():
+    # A deep glacier-covered child whose exposed margin sits above the shared saddle
+    # reads as merged in `_already_merged`, while its sibling's water already equals
+    # the saddle storage. Promoting the parent would immediately cap it at
+    # `floor_elevation + tier_depth < min_depth`, draining and splitting it every pass.
+    elevation = np.array([-1900.0, -5000.0, -1050.0, -6000.0])
+    area = np.full(4, 1.0e10)
+    hyps = lakes.CellHypsometry(
+        elevation, area, np.zeros(4), float(area[0]),
+        glacier_mask=np.array([False, True, False, False]),
+    )
+    left = lakes.Lake(
+        lake_id=0, members=np.array([0]), floor_elevation=-1900.0, min_depth=-1900.0,
+        max_depth=-1100.0, outlet_node_idx=0, sink_node_idx=0, outlet_target_idx=1,
+    )
+    right = lakes.Lake(
+        lake_id=1, members=np.array([1, 2]), floor_elevation=-5000.0, min_depth=-5000.0,
+        max_depth=-1100.0, outlet_node_idx=1, sink_node_idx=1, outlet_target_idx=0,
+    )
+    parent = lakes.Lake(
+        lake_id=2, members=np.array([0, 1, 2]), floor_elevation=-5000.0, min_depth=-1100.0,
+        max_depth=-600.0, outlet_node_idx=2, sink_node_idx=-1, outlet_target_idx=3,
+        children=[left, right],
+    )
+    previous = np.array([800.0, 0.0, 0.0, 0.0])
+    supply = np.array([1.0e12, 0.0, 0.0, 0.0])
+    climate = lakes.LakeClimate(supply, np.zeros(4), supply)
+
+    result = lakes.solve_lakes_prognostic(
+        [parent], elevation, previous, 1.0, climate, hyps, substeps=1,
+        is_ocean=np.array([False, False, False, True]),
+    )
+
+    assert result.ledger.overflow_to_ocean_m3 == pytest.approx(1.0e12)
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e3)
