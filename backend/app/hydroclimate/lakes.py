@@ -322,13 +322,20 @@ class LakeSolveTrace:
     transfers: tuple[LakeTransferTrace, ...]
 
 
-def _active_bodies(forest, elevation, depth, hypsometry):
+def _active_bodies(forest, elevation, depth, hypsometry, prev_lake_depth=None, node_area_km2=None):
     """Return the current connected water bodies, using only current-step levels."""
     bodies = []
     pending = governing_bodies(forest, elevation, depth, hypsometry)
     while pending:
         body = pending.pop()
         if body.children:
+            # A parent whose tier cap sits below its saddle cannot hold water at the
+            # merged surface; promoting it would drain and split it on the next pass.
+            if prev_lake_depth is not None and node_area_km2 is not None and not body.drains_at_floor:
+                _, tier_depth = _classify_tier(body.members, prev_lake_depth, node_area_km2)
+                if body.floor_elevation + tier_depth < body.min_depth - 1e-6:
+                    pending.extend(governing_bodies(body.children, elevation, depth, hypsometry))
+                    continue
             # A floor can reach the pass while partly flooded margins still lack the
             # volume supporting a common surface. Promoting it would lower that surface
             # below the pass and alternate merge/split on every flush (#768).
@@ -1272,7 +1279,7 @@ def _settle_prognostic_slice(
     for pass_index in range(2 * max(1, len(leaves)) + 3):
         sim_trace.check_cancelled()
         dt_input = dt if pass_index == 0 else 0.0
-        bodies = _active_bodies(forest, elevation, depth, hypsometry)
+        bodies = _active_bodies(forest, elevation, depth, hypsometry, prev_lake_depth, node_area_km2)
         body_by_id = {id(body): body for body in bodies}
         refreshed.intersection_update(body_by_id)
         body_for_leaf, body_leaf_ids = _body_leaf_mapping(bodies, leaf_of_node)
@@ -1293,7 +1300,7 @@ def _settle_prognostic_slice(
                 )
                 refreshed.add(id(body))
             processed.add(id(body))
-        next_bodies = _active_bodies(forest, elevation, depth, hypsometry)
+        next_bodies = _active_bodies(forest, elevation, depth, hypsometry, prev_lake_depth, node_area_km2)
         _record_body_transitions(bodies, next_bodies, events, seen_events)
         _release_broken_cycles(accounting, next_bodies)
         changed = {id(body) for body in next_bodies} != set(body_by_id)
@@ -1447,7 +1454,7 @@ def solve_lakes_prognostic(
     # in the final slice.
     settled_slices = 0
     prev_depth = depth.copy()
-    prev_bodies = {id(body) for body in _active_bodies(forest, elevation, depth, hypsometry)}
+    prev_bodies = {id(body) for body in _active_bodies(forest, elevation, depth, hypsometry, prev_lake_depth, node_area_km2)}
     ever_spilling_ids: set[int] = set()
     for slice_index in range(steps):
         sim_trace.check_cancelled()
@@ -1459,7 +1466,7 @@ def solve_lakes_prognostic(
         volume = float((depth * hypsometry.area_m2).sum())
         gross = float((np.abs(depth - prev_depth) * hypsometry.area_m2).sum())
         scale = max(volume, float(rates.sum()) * dt, 1.0)
-        bodies = {id(body) for body in _active_bodies(forest, elevation, depth, hypsometry)}
+        bodies = {id(body) for body in _active_bodies(forest, elevation, depth, hypsometry, prev_lake_depth, node_area_km2)}
         if gross <= LAKE_SETTLE_TOLERANCE * scale and bodies == prev_bodies:
             settled_slices += 1
         else:
@@ -1478,7 +1485,7 @@ def solve_lakes_prognostic(
     lake_depth = np.zeros(n)
     lake_is_sea = np.zeros(n, dtype=bool)
     silt_deposited = np.zeros(n)
-    final_bodies = _active_bodies(forest, elevation, depth, hypsometry)
+    final_bodies = _active_bodies(forest, elevation, depth, hypsometry, prev_lake_depth, node_area_km2)
     should_spill = np.zeros(n, dtype=bool)
     filled_elevation = np.asarray(elevation, dtype=float).copy()
     spill_target = np.full(n, -1, dtype=np.int64)
