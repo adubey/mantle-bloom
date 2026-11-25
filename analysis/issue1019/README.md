@@ -54,10 +54,40 @@ backend/.venv/bin/python bin/debug/replay_d8_meltwater.py <save> --backend <back
 
 ## Results
 
+The reviewed D8 head `0cf10cd596a63d3db5dc1703271d90c941620064` and the pinned baseline
+were replayed sequentially from the converted seed 649658380 save for 10 Myr at 0.25 Myr
+steps. The corrected per-step data and ten largest network discharges are in
+[`baseline`](g6-baseline-649658380-025-corrected.json) and
+[`D8`](g6-d8-649658380-025-reviewed.json).
+
+| Measure | Baseline | D8 |
+| --- | ---: | ---: |
+| Ice-margin networks, range over steps | 75–129 | 70–114 |
+| Ice-margin networks, final step | 97 | 88 |
+| Sum of step wall times | 1,684 s | 1,605 s |
+| Peak RSS | 1,041 MB | 1,074 MB |
+
+The D8 glacier source (ice release and rain on ice) totalled 3.112 × 10¹⁸ m³; 99.55%
+of that total was delivered to lakes or the ocean during the steps, and the minimum
+per-step delivery share was 98.69%. The bare-snow source totalled 1.767 × 10²⁰ m³,
+with 96.17% delivered to lakes or the ocean in aggregate and at least 95.17% in each
+step. The largest absolute source-ledger residual relative to its input was 2.09 × 10⁻¹⁶
+for glacier water and 3.23 × 10⁻¹⁶ for bare snowmelt. Unresolved glacier drainage totalled
+1.39% of glacier-source input; the highest per-step fraction was 7.68%. This water remains
+in ground routing, so the unresolved amount is a diagnostic and not an additional ledger
+destination. The maximum number of filled pits in a step was 15; surface melt on routed
+warm-based ice thicker than 1 km totalled 1.124 × 10¹⁶ m³.
+
+The network counts differ, but this single trajectory does not isolate routing from changes
+in lake, river and ice evolution or establish variability. Other diagnosis step sizes and
+seeds, ice-age reporting arms and the held-out gate remain open; these results do not
+complete G6. Both runs were sequential and the machine's budget check reported no other
+heavy runs at the start of each arm.
+
 The first baseline arm on seed 649658380 at 0.25 Myr steps is superseded: review found its
 network diagnostic included headwaters in the interior of the ice sheet. Its 40-step output
 is preserved in [`g6-baseline-649658380-025.json`](g6-baseline-649658380-025.json), but is
-not G6 evidence. Repeat the baseline with the corrected diagnostic before comparing D8.
+not G6 evidence. The corrected baseline and comparison are reported above.
 The corresponding D8 arm was started and interrupted at the owner's request for reviews;
 it wrote no completed checkpoints. A one-step development smoke replay on seed
 649658380 at 0.25 Myr used branch commit `809d123351e727f5789648c368c0a05817f4894e` and
