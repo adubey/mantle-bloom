@@ -2236,24 +2236,26 @@ def _run_animation_worker(
         last_frame = 0
         if session.deleted:
             return
-        _hydrate_locked(session)
-        world = _require_world(session)
-        animation = render_image.stream_animation_mp4(
-            world, req.projection, req.view, req.width, req.height, view_rotation,
-            req.step_years, req.steps_per_frame, req.num_frames,
-            step_fn=lambda w, y: _animate_step(session, w, y), stop_event=session.animation_stop_event,
-        )
-        anim_spec = {
-            "total_frames": req.num_frames,
-            "steps_per_frame": req.steps_per_frame,
-            "step_years": req.step_years,
-            "projection": req.projection,
-            "view": req.view,
-            "width": req.width,
-            "height": req.height,
-        }
-        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="animate-step")
+        animation = None
+        pool = None
         try:
+            _hydrate_locked(session)
+            world = _require_world(session)
+            animation = render_image.stream_animation_mp4(
+                world, req.projection, req.view, req.width, req.height, view_rotation,
+                req.step_years, req.steps_per_frame, req.num_frames,
+                step_fn=lambda w, y: _animate_step(session, w, y), stop_event=session.animation_stop_event,
+            )
+            anim_spec = {
+                "total_frames": req.num_frames,
+                "steps_per_frame": req.steps_per_frame,
+                "step_years": req.step_years,
+                "projection": req.projection,
+                "view": req.view,
+                "width": req.width,
+                "height": req.height,
+            }
+            pool = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="animate-step")
             while True:
                 step_gen = _next_animation_message(session, world, animation, last_frame, req.num_frames, pool)
                 message = _consume_animation_step(step_gen, job)
@@ -2297,8 +2299,10 @@ def _run_animation_worker(
             detail = f"{type(exc).__name__}: {exc}"
             error_payload = (json.dumps({"type": "error", "detail": detail}) + "\n", detail)
         finally:
-            animation.close()
-            pool.shutdown(wait=False)
+            if animation is not None:
+                animation.close()
+            if pool is not None:
+                pool.shutdown(wait=False)
     finally:
         try:
             if acquired and not (completed and _hosted_worker):
@@ -2350,23 +2354,6 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
     _require_valid_step_years(req.step_years, field="step_years")
     view_rotation = _parse_view_rotation(req.rotation)
 
-    # Mark busy synchronously so an overlapping step/generate/animation 503s,
-    # and refuse to clobber an uncollected MP4 from a finished recording (409).
-    refusal = session.begin_animation_operation()
-    if refusal == "busy":
-        raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
-    if refusal == "pending_result":
-        raise HTTPException(
-            status_code=409,
-            detail="a completed animation video is still waiting to be saved or discarded",
-        )
-    if session.world is None and session.deferred_summary is None:
-        session.end_operation()
-        raise HTTPException(status_code=404, detail="no world generated yet")
-
-    # Clear any stale signal from a previous run so this fresh run starts unsignaled.
-    session.animation_stop_event.clear()
-
     initial_elapsed = session.world.elapsed_years if session.world is not None else (
         float(session.deferred_summary.get("elapsed_years", 0.0)) if session.deferred_summary else 0.0
     )
@@ -2378,7 +2365,23 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
         elapsed_years=initial_elapsed,
     )
     sub = job.subscribe(replay_latest=False)
-    session.set_animation_job(job)
+
+    # Atomically reserve the world and publish `job` under `_busy_lock` so an
+    # overlapping step/generate/animation 503s, an uncollected MP4 409s, and
+    # GET /run never observes busy without the animation job (#1033).
+    refusal = session.begin_animation_operation(job)
+    if refusal == "busy":
+        raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
+    if refusal == "pending_result":
+        raise HTTPException(
+            status_code=409,
+            detail="a completed animation video is still waiting to be saved or discarded",
+        )
+    if refusal == "no_world":
+        raise HTTPException(status_code=404, detail="no world generated yet")
+
+    # Clear any stale signal from a previous run so this fresh run starts unsignaled.
+    session.animation_stop_event.clear()
 
     worker = threading.Thread(
         target=_run_animation_worker,

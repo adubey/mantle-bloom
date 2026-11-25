@@ -1874,25 +1874,47 @@ export default function App() {
               ? (job.unbounded ? `Recorded ${job.frame} frames` : `Frame ${job.frame} of ${job.total}`)
               : null,
           );
-          attachAnimationStream(
-            worldId,
-            (p) => applyAnimationProgress(worldId, job.projection, job.unbounded, p),
-            controller.signal,
-          )
-            .then((result) => finishAnimationSuccess(worldId, result, job.total, job.unbounded))
-            .catch((e) => {
-              if (controller.signal.aborted) return;
-              return finishAnimationError(worldId, e, job.total, job.unbounded);
-            })
-            .finally(() => {
-              if (!controller.signal.aborted) {
-                clearAnimationOverlayCollapsed(worldId);
-                setAnimation(null);
-                setAnimationStopping(false);
-                setRunPhase(null);
-              }
-              if (activeAnimationWorldRef.current === worldId) activeAnimationWorldRef.current = null;
-            });
+          const clearAttached = () => {
+            if (!controller.signal.aborted) {
+              clearAnimationOverlayCollapsed(worldId);
+              setAnimation(null);
+              setAnimationStopping(false);
+              setRunPhase(null);
+            }
+            if (activeAnimationWorldRef.current === worldId) activeAnimationWorldRef.current = null;
+          };
+          const attachActive = (retriesLeft: number) => {
+            attachAnimationStream(
+              worldId,
+              (p) => applyAnimationProgress(worldId, job.projection, job.unbounded, p),
+              controller.signal,
+            )
+              .then(async (result) => {
+                await finishAnimationSuccess(worldId, result, job.total, job.unbounded);
+                clearAttached();
+              })
+              .catch(async (e) => {
+                if (controller.signal.aborted) {
+                  clearAttached();
+                  return;
+                }
+                if (retriesLeft > 0) {
+                  const nextRun = await fetchRunState(worldId, undefined, undefined, controller.signal).catch(() => null);
+                  if (controller.signal.aborted || worldIdRef.current !== worldId) {
+                    clearAttached();
+                    return;
+                  }
+                  if (nextRun?.animation?.active || nextRun?.animation?.has_result) {
+                    setAnimationStopping(Boolean(nextRun.animation.stopping));
+                    attachActive(retriesLeft - 1);
+                    return;
+                  }
+                }
+                await finishAnimationError(worldId, e, job.total, job.unbounded);
+                clearAttached();
+              });
+          };
+          attachActive(1);
           return;
         }
         if (job.has_result) {

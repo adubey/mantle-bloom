@@ -209,29 +209,29 @@ class WorldSession:
         with self._busy_lock:
             return self.animation_job
 
-    def set_animation_job(self, job: AnimationJob) -> None:
-        with self._busy_lock:
-            self.animation_job = job
-
     def has_pending_animation_result(self) -> bool:
         """True while a completed animation's MP4 is still waiting to be saved or discarded."""
         with self._busy_lock:
             job = self.animation_job
             return job is not None and not job.is_active() and job.has_result()
 
-    def begin_animation_operation(self) -> str | None:
-        """Atomically reserve the world for a new animation (#1033).
+    def begin_animation_operation(self, job: AnimationJob) -> str | None:
+        """Atomically reserve the world and publish `job` under `_busy_lock` (#1033).
 
         Returns None on success, `"busy"` if another operation is already running,
-        or `"pending_result"` if a finished MP4 is still awaiting Save or Discard.
+        `"pending_result"` if a finished MP4 is still awaiting Save or Discard, or
+        `"no_world"` if no world has been generated yet.
         """
         with self._busy_lock:
             if self._operation_busy:
                 return "busy"
-            job = self.animation_job
-            if job is not None and not job.is_active() and job.has_result():
+            existing = self.animation_job
+            if existing is not None and not existing.is_active() and existing.has_result():
                 return "pending_result"
+            if self.world is None and self.deferred_summary is None:
+                return "no_world"
             self._operation_busy = True
+            self.animation_job = job
             return None
 
     def clear_finished_animation_job(self, job_id: str | None = None) -> None:

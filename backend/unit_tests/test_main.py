@@ -2219,6 +2219,33 @@ def test_animate_reconnect_mid_run_and_stop_delivers_video(client, monkeypatch):
     assert _wait_until(lambda: not _default_session.operation_busy(), timeout=5.0)
 
 
+def test_animate_setup_failure_emits_error_line_and_records_job_error(client, monkeypatch):
+    # Muse review finding #1 on PR #1034: if _hydrate_locked raises during worker
+    # setup before `animation`/`pool` exist, subscribers must receive an error line
+    # (not a silent empty close) and no lock/operation flag may leak.
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
+    wid = _default_session.world_id
+
+    def boom(_session):
+        raise RuntimeError("checkpoint hydrate failed")
+
+    monkeypatch.setattr(main, "_hydrate_locked", boom)
+    resp = client.post(
+        f"/worlds/{wid}/animate",
+        json={"projection": "eckert4", "view": "elevation", "width": 64, "height": 64,
+              "step_years": 100_000, "num_frames": 2},
+    )
+    assert resp.status_code == 200
+    lines = [json.loads(line) for line in resp.text.splitlines() if line]
+    assert len(lines) == 1
+    assert lines[0]["type"] == "error"
+    assert "checkpoint hydrate failed" in lines[0]["detail"]
+    run = client.get(f"/worlds/{wid}/run").json()
+    assert run["animation"]["active"] is False
+    assert run["animation"]["has_result"] is False
+    assert "checkpoint hydrate failed" in run["animation"]["error"]
+
+
 def test_animate_progress_carries_a_live_stats_snapshot(client):
     # GitHub issue #155: the Stats panel used to sit frozen for the whole recording, since
     # GET /world/stats blocks on the world lock that /world/animate holds throughout. Each
