@@ -2268,6 +2268,23 @@ class _SettleWatch:
 MARCH_RESOLVE_MAX_BED_CUT_M = 1.0e-2
 
 
+def _march_settled_or_capped(
+    stop_on_settle: bool,
+    settled: int,
+    settle_patience: int,
+    watch_settled: bool,
+    max_bed_cut_m: float,
+    substeps: int,
+    max_march_substeps: int | None,
+) -> bool:
+    """True when the glacier march has settled or reached its max substep cap."""
+    if max_march_substeps is not None and substeps >= max_march_substeps:
+        return True
+    if not stop_on_settle or max_bed_cut_m > MARCH_RESOLVE_MAX_BED_CUT_M:
+        return False
+    return settled >= settle_patience or watch_settled
+
+
 def _hold_remainder(
     recent: list[tuple],
     remaining: float,
@@ -2540,7 +2557,9 @@ def _march_glacier(
     ice = None
     cost = ice_sheet.MARCH_COST
     glacier_step_years = float(getattr(world, "glacier_step_years", ice_sheet.MARCH_SUBSTEP_YEARS))
-    stop_on_settle = getattr(world, "glacier_stop_mode", "exhaust") == "resolve"
+    glacier_stop_mode = getattr(world, "glacier_stop_mode", "exhaust")
+    stop_on_settle = glacier_stop_mode in ("resolve", "max")
+    max_march_substeps = getattr(world, "glacier_max_substeps", None) if glacier_stop_mode == "max" else None
     base_sub = min(glacier_step_years, years)
     sub = base_sub
     capped = False
@@ -2625,14 +2644,20 @@ def _march_glacier(
             last_change = abs(pair_now - pair_before) / max(pair_before, 1.0)
             pair_changes.append(last_change)
             settled = settled + 1 if last_change < ice_sheet.MARCH_SETTLE_TOLERANCE else 0
-            if stop_on_settle and settled >= ice_sheet.MARCH_SETTLE_PATIENCE and max_bed_cut_m <= MARCH_RESOLVE_MAX_BED_CUT_M:
+            if _march_settled_or_capped(
+                stop_on_settle, settled, ice_sheet.MARCH_SETTLE_PATIENCE, False,
+                max_bed_cut_m, substeps, max_march_substeps,
+            ):
                 break
             # Pair boundaries only, so both substeps of a pair share one length (#822).
             if cost.adaptive:
                 sub = _adapt_substep_years(cost, sub, base_sub, last_change)
         # The #822 recurrence and trend tests (no-ops at the D2 default).
         watch_settled, watch_sub = watch.observe(depth, volumes, sub, years - elapsed)
-        if stop_on_settle and watch_settled and max_bed_cut_m <= MARCH_RESOLVE_MAX_BED_CUT_M:
+        if _march_settled_or_capped(
+            stop_on_settle, settled, ice_sheet.MARCH_SETTLE_PATIENCE, watch_settled,
+            max_bed_cut_m, substeps, max_march_substeps,
+        ):
             break
         sub = sub if watch_sub is None else watch_sub
         if not capped and cost.max_substeps is not None and substeps >= cost.max_substeps and elapsed < years - 1e-6:
@@ -3115,10 +3140,12 @@ def compute_hydrology(
     # and spill depend on liquid and ice together. The solve integrates that whole column, and
     # `advance_lake_ice` then splits what is left between ice and liquid (#757). Ice on a cell
     # the solve empties goes with its water.
+    lake_stop_mode = getattr(world, "lake_stop_mode", "resolve")
     lake_result = lakes.solve_lakes_prognostic(
         forest, lake_elevation, lake_opening_column, years, lake_climate, hypsometry,
         substeps=lake_substeps(years, getattr(world, "lake_step_years", None)) if SUBSTEP_LAKES else 1,
-        stop_on_settle=getattr(world, "lake_stop_mode", "resolve") != "exhaust",
+        stop_on_settle=lake_stop_mode != "exhaust",
+        max_substeps=getattr(world, "lake_max_substeps", None) if lake_stop_mode == "max" else None,
         is_ocean=is_ocean,
         diagnostic_trace=diagnostic_trace,
         displaced_water_targets=source_targets,

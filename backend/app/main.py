@@ -313,8 +313,10 @@ class ControlsRequest(BaseModel):
     simulate_glacier_march: bool | None = None
     lake_step_years: float | None = None
     lake_stop_mode: str | None = None
+    lake_max_substeps: int | None = None
     glacier_step_years: float | None = None
     glacier_stop_mode: str | None = None
+    glacier_max_substeps: int | None = None
     wind_model: str | None = None
     fault_deformation_mode: str | None = None
     split_method: str | None = None
@@ -356,7 +358,7 @@ WIND_MODEL_CHOICES = ("cfd", "diagnostic")
 FAULT_DEFORMATION_MODE_CHOICES = faults.FAULT_DEFORMATION_MODES
 SPLIT_METHOD_CHOICES = rift_damage.SPLIT_METHODS
 NODE_CLOUD_RESAMPLE_MODE_CHOICES = healpix_grid.NODE_CLOUD_RESAMPLE_MODE_CHOICES
-STOP_MODE_CHOICES = ("exhaust", "resolve")
+STOP_MODE_CHOICES = ("exhaust", "resolve", "max")
 LAKE_STEP_YEARS_RANGE = (50.0, 1000.0)
 GLACIER_STEP_YEARS_RANGE = (100.0, 1000.0)
 
@@ -2434,6 +2436,12 @@ def _validate_controls_request(req: ControlsRequest) -> dict[str, float]:
     ):
         if value is not None and (not np.isfinite(value) or value < lo or value > hi):
             raise HTTPException(status_code=400, detail=f"{name} must be in [{lo:g}, {hi:g}] (got {value})")
+    for name, value in (
+        ("lake_max_substeps", req.lake_max_substeps),
+        ("glacier_max_substeps", req.glacier_max_substeps),
+    ):
+        if value is not None and value < 1:
+            raise HTTPException(status_code=400, detail=f"{name} must be >= 1 (got {value})")
     tuning_updates = {name: getattr(req, name) for name in TUNING_MULTIPLIER_FIELDS if getattr(req, name) is not None}
     for name, value in tuning_updates.items():
         if not np.isfinite(value) or value < 0.0:
@@ -2449,10 +2457,14 @@ def _apply_time_controls(world: World, req: ControlsRequest) -> None:
         world.lake_step_years = float(req.lake_step_years)
     if req.lake_stop_mode is not None:
         world.lake_stop_mode = req.lake_stop_mode
+    if req.lake_max_substeps is not None:
+        world.lake_max_substeps = int(req.lake_max_substeps)
     if req.glacier_step_years is not None:
         world.glacier_step_years = float(req.glacier_step_years)
     if req.glacier_stop_mode is not None:
         world.glacier_stop_mode = req.glacier_stop_mode
+    if req.glacier_max_substeps is not None:
+        world.glacier_max_substeps = int(req.glacier_max_substeps)
 
 
 @app.post("/worlds/{world_id}/controls")
@@ -2541,8 +2553,10 @@ def _controls_state(world: World) -> dict:
         "simulate_glacier_march": world.simulate_glacier_march,
         "lake_step_years": world.lake_step_years,
         "lake_stop_mode": world.lake_stop_mode,
+        "lake_max_substeps": world.lake_max_substeps,
         "glacier_step_years": world.glacier_step_years,
         "glacier_stop_mode": world.glacier_stop_mode,
+        "glacier_max_substeps": world.glacier_max_substeps,
         "wind_model": world.wind_model,
         "fault_deformation_mode": world.fault_deformation_mode,
         "split_method": world.split_method,

@@ -585,15 +585,19 @@ class World:
     # via POST /worlds/{world_id}/controls and the Time Settings dialog.
     # - lake_step_years: 50-1000 yr slice length (default 1000 yr); honors the chosen slice
     #   without the LAKE_MAX_SUBSTEPS cap.
-    # - lake_stop_mode: "resolve" (default: lump remaining time into one slice once settled)
-    #   or "exhaust" (run every slice through the full tectonic step).
+    # - lake_stop_mode: "resolve" (default: lump remaining time into one slice once settled),
+    #   "exhaust" (run every slice through the full tectonic step), or "max" (stop on settle
+    #   or after lake_max_substeps slices, then lump remaining time into one final slice).
     # - glacier_step_years: 100-1000 yr substep length (default 250 yr).
-    # - glacier_stop_mode: "exhaust" (default: march the full step, D3) or "resolve" (hold
-    #   the settled state for the remainder of the step, D2).
+    # - glacier_stop_mode: "exhaust" (default: march the full step, D3), "resolve" (hold
+    #   the settled state for the remainder of the step, D2), or "max" (stop on settle or
+    #   after glacier_max_substeps substeps, then hold and scale flows for the remainder).
     lake_step_years: float = 1000.0
     lake_stop_mode: str = "resolve"
+    lake_max_substeps: int = 20
     glacier_step_years: float = 250.0
     glacier_stop_mode: str = "exhaust"
+    glacier_max_substeps: int = 40
     # Which wind field feeds climate.py (live-adjustable via POST /world/controls, the
     # "Controls" window). "cfd": the genuine time-integrated shallow-water solve in
     # atmosphere_cfd.py, advanced once per step by _advance_fluid_dynamics -- the most

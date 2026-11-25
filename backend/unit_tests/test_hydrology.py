@@ -2998,6 +2998,32 @@ def test_glacier_step_years_and_stop_mode_resolve_vs_exhaust():
     assert resolve_log["marched_years"] + resolve_log["held_years"] == pytest.approx(years)
     assert resolve_fields.ice.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e6)
 
+    # "max" stops after N normal substeps and holds & scales flows for the remainder,
+    # while still stopping early if it settles before N.
+    max_world = _flow_line_march_world()
+    max_world.glacier_step_years = 500.0
+    max_world.glacier_stop_mode = "max"
+    max_world.glacier_max_substeps = 3
+    ice_sheet.MARCH_LOG.clear()
+    max_fields = hydrology.compute_hydrology(max_world, precip, temp_cold, years=years)
+    max_log = ice_sheet.MARCH_LOG[-1]
+    assert max_log["substeps"] == 3
+    assert max_log["marched_years"] == pytest.approx(1500.0)
+    assert max_log["held_years"] == pytest.approx(8500.0)
+    assert max_fields.ice.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e6)
+
+    early_world = _flow_line_march_world()
+    early_world.glacier_step_years = 500.0
+    early_world.glacier_stop_mode = "max"
+    early_world.glacier_max_substeps = 18
+    early_world.plates[0].set_fields_on_plate(glacier_depth=np.full(12, 50.0))
+    ice_sheet.MARCH_LOG.clear()
+    early_fields = hydrology.compute_hydrology(early_world, precip, temp_warm, years=years)
+    early_log = ice_sheet.MARCH_LOG[-1]
+    assert early_log["settled"] is True
+    assert early_log["substeps"] == resolve_log["substeps"]
+    assert early_fields.ice.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e6)
+
 
 def test_hold_remainder_closes_ice_stock_and_preserves_bare_snowmelt():
     # PR #1000 review: holding a fixed closing ice stock must keep residual_m3 == 0,

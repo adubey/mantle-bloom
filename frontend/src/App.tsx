@@ -45,9 +45,10 @@ import type { Mat3 } from "./rotation";
 import { getCookie, setCookie } from "./cookies";
 import { saveRecordedVideo } from "./download";
 import {
-  DEFAULT_GLACIER_STEP_YEARS, DEFAULT_GLACIER_STOP_MODE, DEFAULT_KEEP_LAND_OFF_POLES,
-  DEFAULT_LAKE_STEP_YEARS, DEFAULT_LAKE_STOP_MODE, DEFAULT_SIMULATE_GLACIER_MARCH,
-  DEFAULT_SPLIT_METHOD, DEFAULT_STEP_YEARS, DEFAULT_TUNING, freshWorldControls,
+  DEFAULT_GLACIER_MAX_SUBSTEPS, DEFAULT_GLACIER_STEP_YEARS, DEFAULT_GLACIER_STOP_MODE,
+  DEFAULT_KEEP_LAND_OFF_POLES, DEFAULT_LAKE_MAX_SUBSTEPS, DEFAULT_LAKE_STEP_YEARS,
+  DEFAULT_LAKE_STOP_MODE, DEFAULT_SIMULATE_GLACIER_MARCH, DEFAULT_SPLIT_METHOD,
+  DEFAULT_STEP_YEARS, DEFAULT_TUNING, freshWorldControls,
 } from "./uiDefaults";
 
 // The map is displayed at DISPLAY_WIDTH x DISPLAY_HEIGHT (CSS pixels, unchanged from
@@ -630,8 +631,10 @@ export default function App() {
   const [simulateGlacierMarch, setSimulateGlacierMarch] = useState(DEFAULT_SIMULATE_GLACIER_MARCH);
   const [lakeStepYears, setLakeStepYears] = useState(DEFAULT_LAKE_STEP_YEARS);
   const [lakeStopMode, setLakeStopMode] = useState<StopMode>(DEFAULT_LAKE_STOP_MODE);
+  const [lakeMaxSubsteps, setLakeMaxSubsteps] = useState(DEFAULT_LAKE_MAX_SUBSTEPS);
   const [glacierStepYears, setGlacierStepYears] = useState(DEFAULT_GLACIER_STEP_YEARS);
   const [glacierStopMode, setGlacierStopMode] = useState<StopMode>(DEFAULT_GLACIER_STOP_MODE);
+  const [glacierMaxSubsteps, setGlacierMaxSubsteps] = useState(DEFAULT_GLACIER_MAX_SUBSTEPS);
   // "cfd" (shallow-water solve) or "diagnostic" (fast closed-form ABL wind) -- see backend
   // app/world.py's World.wind_model. Live-adjustable via Controls like the toggles above.
   const [windModel, setWindModel] = useState(DEFAULT_WIND_MODEL);
@@ -892,8 +895,10 @@ export default function App() {
     simulateGlacierMarch?: boolean;
     lakeStepYears?: number;
     lakeStopMode?: StopMode;
+    lakeMaxSubsteps?: number;
     glacierStepYears?: number;
     glacierStopMode?: StopMode;
+    glacierMaxSubsteps?: number;
     windModel?: string;
     faultDeformationMode?: string;
     splitMethod?: SplitMethod;
@@ -959,6 +964,11 @@ export default function App() {
     pushControls({ lakeStopMode: v });
   }, [pushControls]);
 
+  const handleLakeMaxSubstepsChange = useCallback((v: number) => {
+    setLakeMaxSubsteps(v);
+    pushControls({ lakeMaxSubsteps: v });
+  }, [pushControls]);
+
   const handleGlacierStepYearsChange = useCallback((v: number) => {
     setGlacierStepYears(v);
     pushControls({ glacierStepYears: v });
@@ -967,6 +977,11 @@ export default function App() {
   const handleGlacierStopModeChange = useCallback((v: StopMode) => {
     setGlacierStopMode(v);
     pushControls({ glacierStopMode: v });
+  }, [pushControls]);
+
+  const handleGlacierMaxSubstepsChange = useCallback((v: number) => {
+    setGlacierMaxSubsteps(v);
+    pushControls({ glacierMaxSubsteps: v });
   }, [pushControls]);
 
   const handleSolarMultiplierChange = useCallback((v: number) => {
@@ -1046,8 +1061,10 @@ export default function App() {
       setSimulateGlacierMarch(controls.simulate_glacier_march);
       setLakeStepYears(controls.lake_step_years);
       setLakeStopMode(controls.lake_stop_mode);
+      setLakeMaxSubsteps(controls.lake_max_substeps);
       setGlacierStepYears(controls.glacier_step_years);
       setGlacierStopMode(controls.glacier_stop_mode);
+      setGlacierMaxSubsteps(controls.glacier_max_substeps);
       setWindModel(controls.wind_model);
       setFaultDeformationMode(controls.fault_deformation_mode);
       setSplitMethod(controls.split_method);
@@ -1559,8 +1576,10 @@ export default function App() {
       setSimulateGlacierMarch(DEFAULT_SIMULATE_GLACIER_MARCH);
       setLakeStepYears(DEFAULT_LAKE_STEP_YEARS);
       setLakeStopMode(DEFAULT_LAKE_STOP_MODE);
+      setLakeMaxSubsteps(DEFAULT_LAKE_MAX_SUBSTEPS);
       setGlacierStepYears(DEFAULT_GLACIER_STEP_YEARS);
       setGlacierStopMode(DEFAULT_GLACIER_STOP_MODE);
+      setGlacierMaxSubsteps(DEFAULT_GLACIER_MAX_SUBSTEPS);
       setWindModel(DEFAULT_WIND_MODEL);
       setFaultDeformationMode(DEFAULT_FAULT_DEFORMATION_MODE);
       setSplitMethod(DEFAULT_SPLIT_METHOD);
@@ -3041,15 +3060,19 @@ export default function App() {
           stepYears={stepYears}
           lakeStepYears={lakeStepYears}
           lakeStopMode={lakeStopMode}
+          lakeMaxSubsteps={lakeMaxSubsteps}
           glacierStepYears={glacierStepYears}
           glacierStopMode={glacierStopMode}
+          glacierMaxSubsteps={glacierMaxSubsteps}
           simulateClimateBiomes={simulateClimateBiomes}
           simulateGlacierMarch={simulateGlacierMarch}
           onStepYearsChange={handleStepYearsChange}
           onLakeStepYearsChange={handleLakeStepYearsChange}
           onLakeStopModeChange={handleLakeStopModeChange}
+          onLakeMaxSubstepsChange={handleLakeMaxSubstepsChange}
           onGlacierStepYearsChange={handleGlacierStepYearsChange}
           onGlacierStopModeChange={handleGlacierStopModeChange}
+          onGlacierMaxSubstepsChange={handleGlacierMaxSubstepsChange}
           onSimulateGlacierMarchChange={handleSimulateGlacierMarchChange}
           onClose={() => setShowTimeModal(false)}
         />

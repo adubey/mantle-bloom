@@ -776,7 +776,7 @@ export type TuningMultipliers = Record<TuningKey, number>;
 // caller should re-fetch /worlds/{world_id}/render and /worlds/{world_id}/stats right after this resolves to see the
 // effect.
 export type SplitMethod = "great_circle" | "rift_lines";
-export type StopMode = "exhaust" | "resolve";
+export type StopMode = "exhaust" | "resolve" | "max";
 
 export type ControlsState = {
   sea_level_m: number;
@@ -787,8 +787,10 @@ export type ControlsState = {
   simulate_glacier_march: boolean;
   lake_step_years: number;
   lake_stop_mode: StopMode;
+  lake_max_substeps: number;
   glacier_step_years: number;
   glacier_stop_mode: StopMode;
+  glacier_max_substeps: number;
   wind_model: string;
   fault_deformation_mode: string;
   split_method: SplitMethod;
@@ -814,8 +816,10 @@ export function updateControls(worldId: WorldId, controls: {
   simulateGlacierMarch?: boolean;
   lakeStepYears?: number;
   lakeStopMode?: StopMode;
+  lakeMaxSubsteps?: number;
   glacierStepYears?: number;
   glacierStopMode?: StopMode;
+  glacierMaxSubsteps?: number;
   windModel?: string;
   faultDeformationMode?: string;
   splitMethod?: SplitMethod;
@@ -837,8 +841,10 @@ export function updateControls(worldId: WorldId, controls: {
       simulate_glacier_march: controls.simulateGlacierMarch,
       lake_step_years: controls.lakeStepYears,
       lake_stop_mode: controls.lakeStopMode,
+      lake_max_substeps: controls.lakeMaxSubsteps,
       glacier_step_years: controls.glacierStepYears,
       glacier_stop_mode: controls.glacierStopMode,
+      glacier_max_substeps: controls.glacierMaxSubsteps,
       wind_model: controls.windModel,
       fault_deformation_mode: controls.faultDeformationMode,
       split_method: controls.splitMethod,

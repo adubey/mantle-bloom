@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { TUNING_MULTIPLIER_KEYS } from "../src/api.js";
 import {
+  DEFAULT_GLACIER_MAX_SUBSTEPS,
   DEFAULT_GLACIER_STEP_YEARS,
   DEFAULT_GLACIER_STOP_MODE,
   DEFAULT_KEEP_LAND_OFF_POLES,
+  DEFAULT_LAKE_MAX_SUBSTEPS,
   DEFAULT_LAKE_STEP_YEARS,
   DEFAULT_LAKE_STOP_MODE,
   DEFAULT_SIMULATE_GLACIER_MARCH,
@@ -24,8 +26,10 @@ describe("uiDefaults (#1007)", () => {
     assert.equal(DEFAULT_SIMULATE_GLACIER_MARCH, true);
     assert.equal(DEFAULT_GLACIER_STEP_YEARS, 250);
     assert.equal(DEFAULT_GLACIER_STOP_MODE, "resolve");
+    assert.equal(DEFAULT_GLACIER_MAX_SUBSTEPS, 40);
     assert.equal(DEFAULT_LAKE_STEP_YEARS, 50);
     assert.equal(DEFAULT_LAKE_STOP_MODE, "resolve");
+    assert.equal(DEFAULT_LAKE_MAX_SUBSTEPS, 20);
     assert.equal(DEFAULT_SPLIT_METHOD, "rift_lines");
   });
 
@@ -43,8 +47,10 @@ describe("uiDefaults (#1007)", () => {
     assert.deepEqual(freshWorldControls(), {
       lakeStepYears: 50,
       lakeStopMode: "resolve",
+      lakeMaxSubsteps: 20,
       glacierStepYears: 250,
       glacierStopMode: "resolve",
+      glacierMaxSubsteps: 40,
       splitMethod: "rift_lines",
       ridgePushForm: "potential_energy",
       slabDragForm: "trench_normal",

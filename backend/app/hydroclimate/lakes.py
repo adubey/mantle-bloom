@@ -1387,6 +1387,7 @@ def solve_lakes_prognostic(
     *,
     substeps: int = 1,
     stop_on_settle: bool = True,
+    max_substeps: int | None = None,
     is_ocean: np.ndarray | None = None,
     diagnostic_trace: bool = False,
     displaced_water_targets: np.ndarray | None = None,
@@ -1474,7 +1475,8 @@ def solve_lakes_prognostic(
         prev_depth = depth.copy()
         prev_bodies = bodies
         remaining = steps - slice_index - 1
-        if stop_on_settle and settled_slices >= 2 and remaining > 0:
+        hit_max = max_substeps is not None and (slice_index + 1) >= max_substeps
+        if stop_on_settle and (settled_slices >= 2 or hit_max) and remaining > 0:
             _settle_prognostic_slice(
                 forest, depth, prev_lake_depth, dt * remaining, rates, climate, evaporation, sublimation,
                 hypsometry, is_ocean, accounting, leaves, leaf_of_node, parent_by_id, events, seen_events,
