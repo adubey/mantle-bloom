@@ -125,6 +125,12 @@ Three kinds of water/forcing move along `flow_target`:
   extrapolates it at the same rate during settle-and-hold. The balance correction for
   a held glacier changes only glacier release. Calved ice goes directly to the ocean,
   and accumulation stays in the glacier.
+- **Glacier drainage** moves land-based ice release and rain on ice to the glacier margin
+  before the river and lake passes. Warm-based cells use hydraulic head
+  `bed + (rho_ice / rho_water) * thickness`, filled toward the margin. Cold-based cells
+  follow the ice-surface target until they enter warm-based ice or reach a margin. The
+  reverse search uses the directed neighbor graph and retains a source at its node when
+  it cannot find a margin. Ground routing receives the resulting margin sources.
 - **Liquid water at cold sinks.** Runoff and glacier meltwater supply a lake at a cold
   sink. Its water column can hold liquid water and a seasonal cap (RFC 0015 D4 and D5).
   See [Glaciation](#glaciation-hydrologypy).

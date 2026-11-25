@@ -2003,6 +2003,76 @@ def _ice_surface_flow_target(
     return np.where(on_ice & has_lower, neighbor_idx[rows, col], ground_target).astype(np.int64)
 
 
+def _glacier_water_targets(
+    bed: np.ndarray,
+    thickness: np.ndarray,
+    glacier_depth: np.ndarray,
+    warm_based: np.ndarray,
+    is_ocean: np.ndarray,
+    neighbor_idx: np.ndarray,
+    ground_target: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Find acyclic routes to an ice margin and filled hydraulic potential in metres.
+
+    Warm ice uses a minimax flood of hydraulic head. Cold ice contributes only its
+    ice-surface edge to the reverse search. A node without a route to a margin stays a
+    terminal, so its water remains accounted for in ground routing (#1019).
+    """
+    from . import ice_sheet
+
+    n, k = neighbor_idx.shape
+    if k == 0:
+        return np.full(n, -1, dtype=np.int64), np.full(n, np.inf)
+    on_ice = (glacier_depth >= GLACIER_VISIBLE_DEPTH_M) & ~is_ocean
+    if not np.any(on_ice):
+        return np.full(n, -1, dtype=np.int64), np.full(n, np.inf)
+    warm = on_ice & warm_based
+    head = bed + (ice_sheet.RHO_ICE / ice_sheet.RHO_WATER) * thickness
+    cold_targets = _ice_surface_flow_target(bed + thickness, neighbor_idx, glacier_depth, ground_target)
+    rows = np.repeat(np.arange(n), k)
+    reverse = coo_matrix(
+        (np.ones(len(rows), dtype=np.int8), (neighbor_idx.ravel(), rows)), shape=(n, n),
+    ).tocsr()
+    targets = np.full(n, -1, dtype=np.int64)
+    levels = np.full(n, np.inf)
+    heap = []
+    boundary = np.any(~on_ice[neighbor_idx], axis=1)
+    cold_exit = on_ice & ~warm & ((cold_targets < 0) | ~on_ice[np.maximum(cold_targets, 0)])
+    for node in np.flatnonzero((warm & boundary) | cold_exit):
+        levels[node] = head[node]
+        heapq.heappush(heap, (float(levels[node]), int(node)))
+
+    while heap:
+        level, node = heapq.heappop(heap)
+        if level != levels[node]:
+            continue
+        for upstream in reverse.indices[reverse.indptr[node]:reverse.indptr[node + 1]]:
+            if not on_ice[upstream] or (not warm[upstream] and cold_targets[upstream] != node):
+                continue
+            candidate = max(level, head[upstream])
+            if candidate < levels[upstream]:
+                levels[upstream] = candidate
+                targets[upstream] = node
+                heapq.heappush(heap, (float(candidate), int(upstream)))
+    return targets, levels
+
+
+def _route_glacier_water_to_margin(
+    source: np.ndarray, on_ice: np.ndarray, targets: np.ndarray, head: np.ndarray,
+) -> np.ndarray:
+    """Move ice-derived water to margin nodes; leave off-ice sources where they fell."""
+    if not np.any(on_ice):
+        return source.copy()
+    unresolved = on_ice & ~np.isfinite(head) & (source > 0.0)
+    if np.any(unresolved):
+        _logger.warning(
+            "Glacier drainage has no route to a margin at %d source nodes (%.6g m^3/yr)",
+            np.count_nonzero(unresolved), float(source[unresolved].sum()),
+        )
+    routed = route_downstream(head, ~on_ice, targets, source)
+    return np.where(on_ice, routed.deposited, source)
+
+
 def glacier_rain_partition_mm(
     precipitation_mm: np.ndarray,
     wet_fraction: np.ndarray,
@@ -3054,7 +3124,14 @@ def compute_hydrology(
     bare_snowmelt_source_m3 = meltwater_m3_per_yr(ice.bare_snowmelt_depth_m, areas, years)
     ice_release_source_m3 = meltwater_m3_per_yr(ice.ice_release_depth_m, areas, years)
     dry_runoff_m3 += bare_snowmelt_source_m3
-    meltwater_source_m3 = ice_release_source_m3 + ice_rain_m3
+    on_ice = (new_glacier_depth >= GLACIER_VISIBLE_DEPTH_M) & ~is_ocean
+    ice_water_targets, ice_water_head = _glacier_water_targets(
+        elevation, ice.thickness, new_glacier_depth, ice.warm_based,
+        is_ocean, neighbor_idx, flow_target,
+    )
+    meltwater_source_m3 = _route_glacier_water_to_margin(
+        ice_release_source_m3 + ice_rain_m3, on_ice, ice_water_targets, ice_water_head,
+    )
     # External sources must reach their natural leaf sinks before the prognostic solve. A
     # previously full lake can redirect its sink along the outlet edge in `flow_target`; make
     # each hierarchy leaf sink terminal for this source pass so persisted spill state cannot

@@ -74,6 +74,66 @@ def test_external_water_sources_keep_their_own_transit_loss_rules():
     assert routed["wet_precip"][1][2] == pytest.approx(100.0)
 
 
+def test_glacier_water_fills_a_hydraulic_pit_and_reaches_the_margin():
+    bed = np.array([5.0, 0.0, 4.0, 3.0])
+    thickness = np.array([10.0, 10.0, 10.0, 0.0])
+    neighbors = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
+    on_ice = thickness >= hydrology.GLACIER_VISIBLE_DEPTH_M
+    targets, levels = hydrology._glacier_water_targets(
+        bed, thickness, thickness, on_ice, np.zeros(4, dtype=bool), neighbors, np.full(4, -1),
+    )
+
+    assert targets.tolist() == [1, 2, -1, -1]
+    assert levels[1] > bed[1] + ice_sheet.RHO_ICE / ice_sheet.RHO_WATER * thickness[1]
+    source = np.array([2.0, 3.0, 4.0, 5.0])
+    routed = hydrology._route_glacier_water_to_margin(source, on_ice, targets, levels)
+    np.testing.assert_allclose(routed, [0.0, 0.0, 9.0, 5.0])
+
+
+def test_cold_ice_joins_warm_based_drainage():
+    bed = np.array([100.0, 50.0, 0.0, 0.0])
+    thickness = np.array([20.0, 20.0, 20.0, 0.0])
+    neighbors = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
+    on_ice = thickness >= hydrology.GLACIER_VISIBLE_DEPTH_M
+    warm = np.array([False, True, True, False])
+    targets, levels = hydrology._glacier_water_targets(
+        bed, thickness, thickness, warm, np.zeros(4, dtype=bool), neighbors, np.full(4, -1),
+    )
+
+    assert targets.tolist() == [1, 2, -1, -1]
+    routed = hydrology._route_glacier_water_to_margin(np.array([7.0, 0.0, 0.0, 0.0]), on_ice, targets, levels)
+    np.testing.assert_allclose(routed, [0.0, 0.0, 7.0, 0.0])
+
+
+def test_warm_ice_pit_uses_the_lower_of_two_margin_spills():
+    bed = np.array([0.0, 8.0, 0.0, 3.0, 0.0])
+    thickness = np.array([0.0, 10.0, 10.0, 10.0, 0.0])
+    neighbors = np.array([[1, 1], [0, 2], [1, 3], [2, 4], [3, 3]])
+    on_ice = thickness >= hydrology.GLACIER_VISIBLE_DEPTH_M
+    targets, levels = hydrology._glacier_water_targets(
+        bed, thickness, thickness, on_ice, np.zeros(5, dtype=bool), neighbors, np.full(5, -1),
+    )
+
+    assert targets[2] == 3
+    routed = hydrology._route_glacier_water_to_margin(np.array([0.0, 0.0, 7.0, 0.0, 0.0]), on_ice, targets, levels)
+    np.testing.assert_allclose(routed, [0.0, 0.0, 0.0, 7.0, 0.0])
+
+
+def test_glacier_water_without_a_margin_remains_accounted_for():
+    bed = np.array([3.0, 1.0, 2.0])
+    thickness = np.full(3, 20.0)
+    neighbors = np.array([[1, 2], [0, 2], [0, 1]])
+    on_ice = np.ones(3, dtype=bool)
+    targets, levels = hydrology._glacier_water_targets(
+        bed, thickness, thickness, on_ice, np.zeros(3, dtype=bool), neighbors, np.full(3, -1),
+    )
+
+    source = np.array([2.0, 3.0, 4.0])
+    routed = hydrology._route_glacier_water_to_margin(source, on_ice, targets, levels)
+    np.testing.assert_allclose(routed, source)
+    assert np.all(np.isinf(levels))
+
+
 def test_compute_hydrology_exposes_wet_precipitation_once_in_external_supply():
     theta = 0.05 * np.arange(40)
     elevation = np.full(40, 300.0)
