@@ -127,11 +127,14 @@ Three kinds of water/forcing move along `flow_target`:
   and accumulation stays in the glacier.
 - **Glacier drainage** moves ice release and rain on grounded ice to the glacier margin
   before the river and lake passes. Warm-based cells use hydraulic head
-  `bed + (rho_ice / rho_water) * thickness`, filled toward the margin. Cold-based cells
+  `bed + (rho_ice / rho_water) * thickness`, filled toward the lowest reachable outlet,
+  including the elevation of the adjacent ice-free bed. Cold-based cells
   follow the ice-surface target until they enter warm-based ice or reach a margin. The
   reverse search uses the directed neighbor graph and retains a source at its node when
-  it cannot find a margin. Ground routing receives the resulting margin sources. Meltwater
-  at a marine margin enters the ocean directly.
+  it cannot find a margin; an interior cold sink is not an outlet. Ground routing receives
+  water on the ice-free side of the margin. Meltwater at a marine margin enters the ocean
+  directly and is included in ocean discharge. The earlier breach gate uses ice rain as
+  runoff along ground paths with transit loss, because glacier routing has not run yet.
 - **Meltwater source budgets** report the current step's glacier release plus rain on ice,
   and bare-ground snowmelt, separately. `glacier_meltwater_ledger` and
   `bare_snowmelt_ledger` attribute each source to lake supply, ocean export, transit loss,

@@ -27,7 +27,8 @@ def _arguments(parser) -> None:
 def _glacier_rivers(hydro, hydrology) -> list[float]:
     """Mouth discharges of networks with a headwater next to visible glacier ice."""
     ice = np.asarray(hydro.glacier_depth) >= hydrology.GLACIER_VISIBLE_DEPTH_M
-    near_ice = ice | np.any(ice[hydro.neighbor_idx], axis=1)
+    neighbors_ice = ice[hydro.neighbor_idx]
+    near_ice = (ice & np.any(~neighbors_ice, axis=1)) | (~ice & np.any(neighbors_ice, axis=1))
     discharges = []
     for river in hydrology.group_rivers(hydro):
         members = river.member_idx

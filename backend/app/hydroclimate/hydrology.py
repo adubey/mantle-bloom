@@ -603,7 +603,8 @@ class LandWaterLedger:
     """RFC 0016 G0 rain-only land budget for one step, in m^3 (#725). This is an interim
     boundary: snow accumulation and ice storage are outside it, and `meltwater_m3` now enters
     in physical water (RFC 0015 D1, #789: ice converts by mass), so its closure is not the
-    full G0 gate (see `full_land_water_residual_m3`).
+    full G0 gate (see `full_land_water_residual_m3`). Rain and melt on grounded marine
+    ice are included in the inputs and ocean export.
     `stranded_overflow_m3` is lake overflow that could not be delivered to the ocean, for
     example because a world has no ocean node. With a receiving ocean, terminal sink and cycle
     settlements from exported overflow are transferred there (#731). `residual_m3` is what
@@ -2080,6 +2081,7 @@ def _glacier_water_targets(
     warm_based: np.ndarray,
     neighbor_idx: np.ndarray,
     ground_target: np.ndarray,
+    is_ocean: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Find acyclic routes to an ice margin and filled hydraulic potential in metres.
 
@@ -2096,6 +2098,7 @@ def _glacier_water_targets(
     if not np.any(on_ice):
         return np.full(n, -1, dtype=np.int64), np.full(n, np.inf)
     warm = on_ice & warm_based
+    # Cold ice follows surface edges; head there only orders the shared flood.
     head = bed + (ice_sheet.RHO_ICE / ice_sheet.RHO_WATER) * thickness
     cold_targets = _ice_surface_flow_target(bed + thickness, neighbor_idx, glacier_depth, ground_target)
     rows = np.repeat(np.arange(n), k)
@@ -2110,10 +2113,22 @@ def _glacier_water_targets(
     targets = np.full(n, -1, dtype=np.int64)
     levels = np.full(n, np.inf)
     heap = []
-    boundary = np.any(~on_ice[neighbor_idx], axis=1)
-    cold_exit = on_ice & ~warm & ((cold_targets < 0) | ~on_ice[np.maximum(cold_targets, 0)])
-    for node in np.flatnonzero((warm & boundary) | cold_exit):
-        levels[node] = head[node]
+    off_ice_bed = np.where(~on_ice[neighbor_idx], bed[neighbor_idx], np.inf)
+    exit_col = np.argmin(off_ice_bed, axis=1)
+    exit_bed = off_ice_bed[np.arange(n), exit_col]
+    warm_exit = warm & np.isfinite(exit_bed)
+    ocean = np.zeros(n, dtype=bool) if is_ocean is None else is_ocean
+    cold_exit = on_ice & ~warm & (
+        ((cold_targets >= 0) & ~on_ice[np.maximum(cold_targets, 0)])
+        | ((cold_targets < 0) & ocean)
+    )
+    for node in np.flatnonzero(warm_exit | cold_exit):
+        if warm_exit[node]:
+            targets[node] = neighbor_idx[node, exit_col[node]]
+            levels[node] = max(head[node], exit_bed[node])
+        else:
+            targets[node] = cold_targets[node]
+            levels[node] = head[node]
         heapq.heappush(heap, (float(levels[node]), int(node)))
 
     while heap:
@@ -2144,7 +2159,7 @@ def _route_glacier_water_to_margin(
             np.count_nonzero(unresolved), float(source[unresolved].sum()),
         )
     routed = route_downstream(head, ~on_ice, targets, source)
-    return np.where(on_ice, routed.deposited, source)
+    return np.where(on_ice, 0.0, source) + routed.deposited
 
 
 def _glacier_drainage_diagnostics(
@@ -3142,7 +3157,6 @@ def compute_hydrology(
     wet_precip_mm = wet_precip_mm - bed_frozen_snow_mm
     frozen_wet_snow_mm = frozen_wet_snow_mm - bed_frozen_snow_mm
     dry_share = np.clip(1.0 - np.asarray(wet_fraction, dtype=float), 0.0, 1.0)
-    dry_rain_intensity_mm = np.where(dry_share > 0.0, dry_rain_mm / np.maximum(dry_share, 1e-12), 0.0)
     dry_precip_mm = dry_fraction * precipitation_at_nodes
     open_season_temperature_c = seasonal_open_mean_c(lake_temperature_c, seasonal_amplitude, FREEZE_POINT_C)
     lake_open_evaporation_m_per_yr = (
@@ -3177,11 +3191,12 @@ def compute_hydrology(
         # The gate sees the same water budget the lakes are balanced with below, as far as it
         # can before routing: liquid precipitation, and the same per-node river losses.
         breach_water = breaching.WaterBalance(
-            dry_rain_intensity_mm, temperature_at_nodes, areas,
-            loss_fraction=dry_transit_loss, dry_fraction=dry_fraction,
+            bare_rain_intensity_mm, temperature_at_nodes, areas,
+            loss_fraction=dry_transit_loss, dry_fraction=bare_share,
             direct_supply_m3_per_yr=wet_precip_m3,
             lake_evaporation_m_per_yr=lake_open_evaporation_m_per_yr,
             lake_sublimation_m_per_yr=lake_sublimation_m_per_yr,
+            extra_runoff_m3_per_yr=ice_rain_m3,
         )
         breach_carve_rate = breaching.bedrock_carve_rate_m_per_myr(craton_strength)
         # The #867 bound arms (off by default) widen the carving allowance of threatened
@@ -3262,7 +3277,7 @@ def compute_hydrology(
     on_ice = new_glacier_depth >= GLACIER_VISIBLE_DEPTH_M
     ice_water_targets, ice_water_head = _glacier_water_targets(
         elevation, ice.thickness, new_glacier_depth, ice.warm_based,
-        neighbor_idx, flow_target,
+        neighbor_idx, flow_target, is_ocean,
     )
     meltwater_source_m3 = _route_glacier_water_to_margin(
         ice_release_source_m3 + ice_rain_m3, on_ice, ice_water_targets, ice_water_head,
@@ -3468,6 +3483,7 @@ def compute_hydrology(
     lake_water_ledger = replace(phase_ledger, residual_m3=liquid_residual_m3 + ice_residual_m3)
     through_m3 = (river_route.routed_m3 + overflow_route.routed_m3) / interval_years + wet_through
     settled_m3 = river_route.settled_m3 / interval_years + wet_settled + overflow_settled
+    settled_m3 += np.where(is_ocean, meltwater_source_m3, 0.0)
     river_water_m = (
         np.divide(river_route.storage_m3 + overflow_route.storage_m3, areas, out=np.zeros(n), where=areas > 0.0)
         if has_interval else prev_river_water_m

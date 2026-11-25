@@ -128,6 +128,28 @@ def _step(points, area, elevation, depth, climate, years, sea_level=0.0, is_ocea
     )
 
 
+@pytest.mark.parametrize("min_nodes", [1, 100000], ids=["plastic", "small"])
+def test_bare_snow_on_ocean_inside_glacier_domain_is_not_booked(monkeypatch, min_nodes):
+    monkeypatch.setattr(ice_sheet, "ICE_BODY_MIN_NODES", min_nodes)
+    points, r, elevation, area = _continent(ocean_floor=-10.0)
+    ocean = elevation <= 0.0
+    climate = _cold(len(points), temperature=np.where(r < 400e3, -20.0, 2.0), amplitude=10.0)
+    melt_bare_snow = ice_sheet._melt_bare_snow
+
+    def check_bare_snow(out, idx, *args):
+        assert not np.any(ocean[idx])
+        return melt_bare_snow(out, idx, *args)
+
+    monkeypatch.setattr(ice_sheet, "_melt_bare_snow", check_bare_snow)
+    _, _, ice = _step(points, area, elevation, np.zeros(len(points)), climate, 1000.0, is_ocean=ocean)
+    if min_nodes == 1:
+        domain = ice.bodies[0].domain_nodes
+        assert np.any(ocean[domain])
+    assert np.any(climate.rates(np.zeros(len(points)))[0][ocean] > 0.0)
+    assert np.all(ice.bare_snowmelt_depth_m[ocean] == 0.0)
+    assert np.dot(ice.bare_snowmelt_depth_m, area) == pytest.approx(ice.ledger.snow_melted_m3)
+
+
 def _graded_climate(r, precipitation=500.0, inner_km=500.0):
     """Cold inside `inner_km`, warming outward past freezing, with a 10 C seasonal swing."""
     temperature = -25.0 + 30.0 * np.clip(r / (inner_km * 1e3), 0.0, 2.0) - 15.0

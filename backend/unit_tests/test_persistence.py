@@ -167,6 +167,8 @@ def test_saved_ice_ledgers_drop_retired_frozen_water_fields(version):
     assert loaded.hydrology_cache.ice.bare_snowmelt_depth_m is None
     assert loaded.hydrology_cache.ice.surface_melt_depth_m is None
     assert loaded.hydrology_cache.glacier_meltwater_ledger is None
+    assert loaded.hydrology_cache.bare_snowmelt_ledger is None
+    assert loaded.hydrology_cache.warm_thick_surface_melt_m3 is None
     assert loaded.hydrology_cache.glacier_drainage is None
 
 
@@ -179,12 +181,14 @@ def test_d8_diagnostics_survive_saved_hydrology_cache():
         ocean_export_m3=3.0, transit_loss_m3=1.0, river_storage_m3=3.0,
     )
     cache.glacier_drainage = hydrology.GlacierDrainageDiagnostics(2, 1, 5.0, 0.0)
+    cache.bare_snowmelt_ledger = cache.glacier_meltwater_ledger
     cache.warm_thick_surface_melt_m3 = 4.0
     world.hydrology_cache = cache
 
     restored = persistence.load_world_bytes(persistence.save_world_bytes(world)).hydrology_cache
 
     assert restored.glacier_meltwater_ledger.residual_m3 == 0.0
+    assert restored.bare_snowmelt_ledger.residual_m3 == 0.0
     assert restored.glacier_drainage.filled_pit_count == 2
     assert restored.glacier_drainage.filled_region_count == 1
     assert restored.warm_thick_surface_melt_m3 == 4.0

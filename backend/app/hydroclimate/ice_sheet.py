@@ -1309,7 +1309,7 @@ def step_ice(
             if len(dom_nodes) < ICE_BODY_MIN_NODES:
                 body = _uniform_body(out, body_nodes, opening, area, bed, climate, is_ocean, dt_myr)
                 rest = np.setdiff1d(dom_nodes, body_nodes)
-                ledger.snow_melted_m3 += _melt_bare_snow(out, rest, bare_acc, area, dt_myr)
+                ledger.snow_melted_m3 += _melt_bare_snow(out, rest[~is_ocean[rest]], bare_acc, area, dt_myr)
             else:
                 dom = _build_domain(graph, dom_nodes, phi, bed, c, area, sea_level_m, is_ocean, climate)
                 hint = _body_margin_hint(margin_hint_m, body_nodes)
@@ -1453,7 +1453,7 @@ def _plastic_body(
     elif bm > 0.0:
         out.ice_release_m3[body_nodes] += bm * area[body_nodes] / area[body_nodes].sum()
     # Snow on bare ground that can't feed the body melts where it fell.
-    bare_snow = (1.0 - cov) * dom.area * np.where(feeds, 0.0, acc0) * dt_myr
+    bare_snow = (1.0 - cov) * dom.area * np.where(feeds | dom.ocean, 0.0, acc0) * dt_myr
     out.bare_snowmelt_m3[nodes] += bare_snow
     out.retained_snow[nodes] = np.where(feeds, 1.0, cov)
     ledger.snow_melted_m3 += float(bare_snow.sum())

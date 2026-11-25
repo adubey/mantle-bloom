@@ -28,7 +28,8 @@ to the corresponding original checksum recorded by #548.
 
 Each step records the two source budgets, their residuals, filled hydraulic depressions,
 their throughput, unresolved drainage, surface melt routed from thick warm-based ice, and
-the count and ten largest discharges of ice-margin river networks. A filled pit is a
+the count and ten largest discharges of ice-margin river networks. Their headwaters must
+be on an ice cell adjacent to ice-free ground, or on ice-free ground adjacent to ice. A filled pit is a
 warm-based local-minimum plateau whose hydraulic head was raised. Throughput is summed on
 entry to each connected region of raised head. A region can contain multiple pits. The
 baseline has no D8 source budgets or filled-pit diagnostics, so these values
@@ -53,11 +54,10 @@ backend/.venv/bin/python bin/debug/replay_d8_meltwater.py <save> --backend <back
 
 ## Results
 
-The first G6 baseline arm completed on seed 649658380 at 0.25 Myr steps. The 40 steps
-reported 76–129 ice-margin networks, with 97 in the last step. Its per-step wall times
-totalled 1,707 s and peak RSS was 1,044 MB. The per-step network counts and discharges are
-in [`g6-baseline-649658380-025.json`](g6-baseline-649658380-025.json). The other G6 and
-held-out arms remain open.
+The first baseline arm on seed 649658380 at 0.25 Myr steps is superseded: review found its
+network diagnostic included headwaters in the interior of the ice sheet. Its 40-step output
+is preserved in [`g6-baseline-649658380-025.json`](g6-baseline-649658380-025.json), but is
+not G6 evidence. Repeat the baseline with the corrected diagnostic before comparing D8.
 The corresponding D8 arm was started and interrupted at the owner's request for reviews;
 it wrote no completed checkpoints. A one-step development smoke replay on seed
 649658380 at 0.25 Myr used branch commit `809d123351e727f5789648c368c0a05817f4894e` and
