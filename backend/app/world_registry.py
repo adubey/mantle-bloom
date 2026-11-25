@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Iterator
 from . import public_view, world_names
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, avoids an import cycle
+    from .animation_job import AnimationJob
     from .checkpoint import CheckpointStore
     from .replay_log import ReplayLog
     from .run_control import WorldRunner
@@ -133,6 +134,8 @@ class WorldSession:
     public_renders: public_view.RenderCache = field(default_factory=public_view.RenderCache)
     guest_steps: public_view.GuestStepCoordinator = field(default_factory=public_view.GuestStepCoordinator)
     animation_stop_event: threading.Event = field(default_factory=threading.Event)
+    # Active or finished-uncollected background animation job (#1033).
+    animation_job: AnimationJob | None = None
     # Set by main.py once the session exists: the runner's callbacks need
     # main's step/checkpoint helpers, which cannot be imported here.
     runner: WorldRunner | None = None
@@ -201,6 +204,16 @@ class WorldSession:
     def operation_busy(self) -> bool:
         with self._busy_lock:
             return self._operation_busy
+
+    def clear_finished_animation_job(self, job_id: str | None = None) -> None:
+        """Drop a completed animation job (and its buffered MP4) once saved, discarded,
+        or replaced by a fresh world. Never clears an active job."""
+        job = self.animation_job
+        if job is None or job.is_active():
+            return
+        if job_id is not None and job.job_id != job_id:
+            return
+        self.animation_job = None
 
     def record(self) -> dict:
         return {

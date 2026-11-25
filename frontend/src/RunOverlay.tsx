@@ -15,13 +15,18 @@ interface Props {
   // (recordings with no fixed frame count, the debug-generate path).
   fraction?: number;
   onCollapse: () => void;
+  // Optional inline Stop control (used while recording an animation so the path to
+  // control the run is immediately visible, including after a page refresh, #1033).
+  onStop?: () => void;
+  stopping?: boolean;
+  stopLabel?: string;
 }
 
 // The expanded run display: a floating card over the map with a spinner, the current
 // phase, and learn links for it (#629). Non-modal on purpose -- it never takes a scrim,
 // so Play's Stop button stays clickable underneath. The X drops back to just the
 // sidebar's pulsing line, whose pop-out icon re-opens this.
-export default function RunOverlay({ headline, phase, group, context, fraction, onCollapse }: Props) {
+export default function RunOverlay({ headline, phase, group, context, fraction, onCollapse, onStop, stopping, stopLabel }: Props) {
   const links = phaseLinks(phase);
   return (
     <div
@@ -66,8 +71,20 @@ export default function RunOverlay({ headline, phase, group, context, fraction, 
         </div>
       </div>
       {fraction !== undefined && (
-        <div style={{ marginBottom: links.length > 0 ? 10 : 0 }}>
+        <div style={{ marginBottom: links.length > 0 || onStop ? 10 : 0 }}>
           <ProgressBar label={`${headline}${phase ? `: ${phase}` : ""}`} fraction={fraction} />
+        </div>
+      )}
+      {onStop && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: links.length > 0 ? 10 : 0 }}>
+          <button
+            type="button"
+            onClick={onStop}
+            disabled={stopping}
+            style={{ fontSize: 12, padding: "4px 10px" }}
+          >
+            {stopping ? "Stopping…" : (stopLabel ?? "⏹ Stop recording")}
+          </button>
         </div>
       )}
       {links.length > 0 && (

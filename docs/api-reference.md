@@ -354,8 +354,14 @@ Both return:
 ```json
 { "running": true, "step_years": 100000.0, "stepping": false, "error": null, "run_version": 14,
   "phase": { "label": "Updating faults", "group": "Stepping/Moving plates", "fraction": 0.22 },
-  "world": { "revision": "3f9a1c2e-12", "seed": 0, "elapsed_years": 1200000.0 } }
+  "world": { "revision": "3f9a1c2e-12", "seed": 0, "elapsed_years": 1200000.0 },
+  "animation": null }
 ```
+
+`animation` is `null` when no background animation is active or waiting to be collected; otherwise
+it summarizes the world's `AnimationJob` (`job_id`, `active`, `stopping`, `frame`, `total`,
+`unbounded`, `elapsed_years`, `has_result`, `stopped_early`, `error`, `projection`, `view`) so a
+refreshed tab can reconnect via `GET /worlds/{world_id}/animate/stream` (#1033).
 
 `phase` is the user-visible phase of the step under way, or `null` between steps (#801). It does
 not move `run_version`: a phase change must not wake every viewer's long poll, so the app reads
@@ -727,11 +733,16 @@ this bounds worst-case request time. `step_years` gets the same validation as
 `/worlds/{world_id}/step`'s `years` (`400` unless positive, finite, and at most 100 Myr, #557), and
 `steps_per_frame` is bounded to `[1, main.MAX_STEPS_PER_FRAME]` (100, the dialog's largest
 choice), so one frame holds the compute gate for at most 100 steps and a whole run for
-at most the dialog's own maximum of 47,900. The animation dialog's "keep going until Stop is
-pressed" mode just sends `num_frames` at that ceiling and expects the client to call
+at most the dialog's own maximum of 47,900. The animation dialog's "keep going until Stop is pressed" mode sends `num_frames` at that
+ceiling with `"unbounded": true` and expects the client to call
 `POST /worlds/{world_id}/animate/stop` (below) rather than waiting for it to be reached on its own.
 `404` if no world has been generated yet, `503` if a step or another animation is already
 in progress.
+
+The animation runs on a server-side background thread (`backend/app/animation_job.py`, #1033)
+decoupled from the initiating HTTP connection: disconnecting (for example, refreshing the browser)
+does not stop the recording or discard the MP4. A refreshed tab inspects `GET /worlds/{world_id}/run`'s
+`animation` field and reconnects via `GET /worlds/{world_id}/animate/stream` (below).
 
 **This permanently advances the world** by up to `(num_frames - 1) * years_per_frame` years
 -- less if the run is ended early via `/worlds/{world_id}/animate/stop` -- the same as calling
@@ -767,13 +778,28 @@ at least one frame, `done` carries the partial video and an `error` string; the 
 checkpoint remains available for recovery. Failures before a frame or while finalizing the
 encoder emit an `{"type": "error", "detail": "..."}` line instead.
 
+## `GET /worlds/{world_id}/animate/stream`
+
+Reconnects to an in-progress or finished-but-uncollected background animation (#1033) using the
+same `application/x-ndjson` protocol as `POST /worlds/{world_id}/animate`. While the job is active,
+the server immediately emits the latest completed `progress` frame (so a refreshed tab repaints
+the live preview and progress state at once) and streams subsequent frames until completion. Once
+finished, reconnecting immediately emits the final `done` (or `error`) line with the buffered MP4.
+`404` when no active or pending animation exists for the world.
+
+## `DELETE /worlds/{world_id}/animate/result`
+
+Frees a finished animation's buffered MP4 on the server after the user saves or discards it
+(#1033). Accepts an optional `?job_id=<id>` query parameter so a stale dismissal cannot clear a
+newer run; never clears an animation that is still running. Always `200` (`{"status": "ok"}`).
+
 ## `POST /worlds/{world_id}/animate/stop`
 
-The toolbar's "⏹ Stop" action while recording -- signals the in-progress `/worlds/{world_id}/animate`
-stream to end cleanly after its current frame rather than the next one: the stream still
-flushes the encoder and its `done` line still carries a complete (just shorter) video,
-unlike the client simply dropping the connection. No request body; always `200`, including
-when no animation is currently running (a no-op).
+The Stop action while recording (toolbar, `RunOverlay`, or collapsed `ProgressBar`) -- signals the
+in-progress background animation job to end cleanly after its current frame rather than the next
+one: the job still flushes the encoder and its `done` line still carries a complete (just shorter)
+video, and `GET /worlds/{world_id}/run` reflects `animation.stopping: true` until it finishes. No
+request body; always `200`, including when no animation is currently running (a no-op).
 
 ## `GET /worlds/{world_id}/animate/recovery`
 

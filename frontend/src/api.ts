@@ -857,6 +857,22 @@ export function updateControls(worldId: WorldId, controls: {
   }).then(asJson<ControlsState>);
 }
 
+// Active or finished-uncollected server-side animation job (#1033).
+export interface AnimationJobStatus {
+  job_id: string;
+  active: boolean;
+  stopping: boolean;
+  frame: number;
+  total: number;
+  unbounded: boolean;
+  elapsed_years: number;
+  has_result: boolean;
+  stopped_early: boolean;
+  error: string | null;
+  projection: Projection;
+  view: MapView;
+}
+
 // Play/Stop (backend app/run_control.py, #375): the server steps the world itself while
 // `running`, and keeps that status across a restart. `error` says why a run stopped on its own.
 // `stepping` can outlast Stop: a step under way finishes, and the world moves once more.
@@ -870,6 +886,7 @@ export interface RunState {
   // phase change must not wake every viewer. Null between steps.
   phase: { label: string; group: string | null; fraction: number } | null;
   world: { revision: string; seed: number; elapsed_years: number } | null;
+  animation?: AnimationJobStatus | null;
 }
 
 // A refusal that retrying won't fix, such as an expired session (401).
@@ -1149,6 +1166,8 @@ export interface AnimateResponse extends WorldSummary {
   // "you pressed Stop" from "keep going" mode running out its (generous) safety ceiling.
   stoppedEarly: boolean;
   error?: string;
+  // Server-side animation job id (#1033) for dismissing the buffered MP4 after Save/Discard.
+  jobId?: string;
 }
 
 // Progress during a Record run -- `frame` of `total` frames rendered so far, plus
@@ -1203,16 +1222,10 @@ const ANIMATE_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 // call rejects, losing whatever video was in progress; the toolbar's "Stop" button
 // deliberately doesn't use it, going through stopAnimation() instead so the run still
 // finishes cleanly.
-export async function animateWorld(
-  worldId: WorldId,
-  projection: Projection,
-  view: MapView,
-  width: number,
-  height: number,
-  rotation: number[] | undefined,
-  stepYears: number,
-  stepsPerFrame: number,
-  numFrames: number,
+async function consumeAnimationStream(
+  url: string,
+  init: RequestInit,
+  logContext: Record<string, unknown>,
   onProgress?: (progress: AnimateProgress) => void,
   cancelSignal?: AbortSignal,
 ): Promise<AnimateResponse> {
@@ -1236,28 +1249,14 @@ export async function animateWorld(
     );
   };
   rearmIdleTimer();
-  // An explicit `cancelSignal` abort folds into the same path as the idle watchdog.
+  const onCancel = () => idleAbort.abort(new DOMException("animation cancelled", "AbortError"));
   if (cancelSignal) {
-    if (cancelSignal.aborted) idleAbort.abort(new DOMException("animation cancelled", "AbortError"));
-    else cancelSignal.addEventListener("abort", () => idleAbort.abort(new DOMException("animation cancelled", "AbortError")));
+    if (cancelSignal.aborted) onCancel();
+    else cancelSignal.addEventListener("abort", onCancel, { once: true });
   }
 
   try {
-    const resp = await fetch(`${worldBase(API_BASE, worldId)}/animate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projection,
-        view,
-        width,
-        height,
-        rotation: rotation ? rotation.join(",") : null,
-        step_years: stepYears,
-        steps_per_frame: stepsPerFrame,
-        num_frames: numFrames,
-      }),
-      signal: idleAbort.signal,
-    });
+    const resp = await fetch(url, { ...init, signal: idleAbort.signal });
     responseStatus = resp.status;
     responseContentType = resp.headers.get("content-type");
     stage = "response body";
@@ -1268,12 +1267,7 @@ export async function animateWorld(
     console.info("[mantle-bloom] Animation stream opened", {
       status: responseStatus,
       contentType: responseContentType,
-      projection,
-      view,
-      width,
-      height,
-      requestedFrames: numFrames,
-      stepsPerFrame,
+      ...logContext,
     });
 
     stage = "reading animation stream";
@@ -1311,8 +1305,12 @@ export async function animateWorld(
       mime: done.mime as string,
       stoppedEarly: Boolean(done.stopped_early),
       error: typeof done.error === "string" ? done.error : undefined,
+      jobId: typeof done.job_id === "string" ? done.job_id : undefined,
     };
   } catch (error) {
+    if (cancelSignal?.aborted) {
+      throw new DOMException("animation cancelled", "AbortError");
+    }
     const diagnostic = {
       stage,
       responseStatus,
@@ -1334,7 +1332,69 @@ export async function animateWorld(
     );
   } finally {
     clearTimeout(idleTimer);
+    cancelSignal?.removeEventListener("abort", onCancel);
   }
+}
+
+export async function animateWorld(
+  worldId: WorldId,
+  projection: Projection,
+  view: MapView,
+  width: number,
+  height: number,
+  rotation: number[] | undefined,
+  stepYears: number,
+  stepsPerFrame: number,
+  numFrames: number,
+  onProgress?: (progress: AnimateProgress) => void,
+  cancelSignal?: AbortSignal,
+  unbounded = false,
+): Promise<AnimateResponse> {
+  return consumeAnimationStream(
+    `${worldBase(API_BASE, worldId)}/animate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projection,
+        view,
+        width,
+        height,
+        rotation: rotation ? rotation.join(",") : null,
+        step_years: stepYears,
+        steps_per_frame: stepsPerFrame,
+        num_frames: numFrames,
+        unbounded,
+      }),
+    },
+    { projection, view, width, height, requestedFrames: numFrames, stepsPerFrame, unbounded },
+    onProgress,
+    cancelSignal,
+  );
+}
+
+// Reconnect to an in-progress or finished-but-uncollected background animation (#1033).
+export async function attachAnimationStream(
+  worldId: WorldId,
+  onProgress?: (progress: AnimateProgress) => void,
+  cancelSignal?: AbortSignal,
+): Promise<AnimateResponse> {
+  return consumeAnimationStream(
+    `${worldBase(API_BASE, worldId)}/animate/stream`,
+    { method: "GET" },
+    { reconnected: true },
+    onProgress,
+    cancelSignal,
+  );
+}
+
+// Clear a finished animation's buffered MP4 on the server after Save or Discard (#1033).
+export function dismissAnimationResult(worldId: WorldId, jobId?: string): Promise<void> {
+  const query = jobId ? `?job_id=${encodeURIComponent(jobId)}` : "";
+  return fetch(`${worldBase(API_BASE, worldId)}/animate/result${query}`, {
+    method: "DELETE",
+    signal: AbortSignal.timeout(15000),
+  }).then(() => undefined);
 }
 
 // The toolbar's "Stop" button while an animation is recording -- asks the server to end the

@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from scipy.spatial import cKDTree
 
 from . import (
+    animation_job,
     auth,
     billing,
     body_limit,
@@ -110,6 +111,7 @@ async def _lifespan(_app: FastAPI):
     _restore_checkpoint()
     yield
     for session in _registry.list():
+        session.animation_stop_event.set()
         if session.runner is not None:
             session.runner.close()
         # The writer is a daemon thread: give a record of the last rare event time to land.
@@ -291,6 +293,9 @@ class AnimateRequest(BaseModel):
     # Total frames, including frame 0 (the world's current, unstepped state) -- so this
     # permanently advances the world by (num_frames - 1) * steps_per_frame * step_years years.
     num_frames: int
+    # True when the user chose "keep going until Stop is pressed" so a reconnected tab
+    # restores the same unbounded progress presentation instead of showing "Frame X of 480" (#1033).
+    unbounded: bool = False
 
 
 class ExportHexGridRequest(BaseModel):
@@ -663,6 +668,7 @@ def _set_world(session: WorldSession, world: World, *, prerender_viewer: bool = 
     session.world = world
     session.deferred_summary = None
     session.load_error = None
+    session.clear_finished_animation_job()
     if session.replay_log is not None:
         session.replay_log.clear_recent_events()
     _world_changed(session, prerender_viewer=prerender_viewer)
@@ -2113,7 +2119,7 @@ def _animate_step(session: WorldSession, world: World, years: float) -> None:
         _step_world(session, world, years)
 
 
-def _animate_message_line(session, world, message, last_frame, anim_spec: dict):
+def _animate_message_line(session, world, message, last_frame, anim_spec: dict, *, job_id: str | None = None):
     """Folds one stream_animation_mp4 message into its NDJSON line plus stream state.
 
     Returns `(line, last_frame, completed)`. A progress line checkpoints the world
@@ -2183,64 +2189,151 @@ def _animate_message_line(session, world, message, last_frame, anim_spec: dict):
     # Keep the last whole-frame checkpoint when a step may have failed partway.
     if not error:
         _clear_animation_progress(session)
-    return json.dumps({
+    done_payload = {
         "type": "done",
         "mime": "video/mp4",
         "video_base64": base64.b64encode(mp4_bytes).decode("ascii"),
         "stopped_early": stopped_early,
         "error": error,
         **_summary(session, world),
-    }) + "\n", last_frame, not bool(error)
+    }
+    if job_id is not None:
+        done_payload["job_id"] = job_id
+    return json.dumps(done_payload) + "\n", last_frame, not bool(error)
 
 
-def _publish_disconnected_animation(session: WorldSession) -> None:
-    """Publish a disconnected animation's completed frames (review on #756).
+def _consume_animation_step(gen, job: animation_job.AnimationJob):
+    """Drain `_next_animation_message`, forwarding keepalive ticks to `job`."""
+    while True:
+        try:
+            heartbeat_line = next(gen)
+        except StopIteration as stop:
+            return stop.value
+        job.publish_heartbeat(heartbeat_line)
 
-    The frames were checkpointed individually, but without this the feed
-    revision, render cache and index would still describe the pre-animation
-    world; publishing without re-checkpointing (completed=False) skips the
-    redundant pickle. Non-blocking: disconnect finalization must never park
-    on the session lock. The gate is tried first (gate -> lock); without it
-    the publish skips its viewer pre-render rather than render ungated."""
-    gate_held = _compute_gate.acquire(timeout=0)
+
+def _run_animation_worker(
+    session: WorldSession,
+    req: AnimateRequest,
+    view_rotation,
+    job: animation_job.AnimationJob,
+) -> None:
+    """Execute an animation on a background thread independent of HTTP disconnects (#1033)."""
+    acquired = False
+    completed = False
+    done_payload: tuple[str, bool, str | None, float] | None = None
+    error_payload: tuple[str, str] | None = None
+    _compute_gate.acquire()
     try:
-        if session.lock.acquire(blocking=False):
-            try:
-                _world_changed(session, False, prerender_viewer=gate_held)
-            finally:
+        session.lock.acquire()
+    except BaseException:
+        _compute_gate.release()
+        session.end_operation()
+        job.finish_empty()
+        raise
+    acquired = True
+    try:
+        last_frame = 0
+        if session.deleted:
+            return
+        _hydrate_locked(session)
+        world = _require_world(session)
+        animation = render_image.stream_animation_mp4(
+            world, req.projection, req.view, req.width, req.height, view_rotation,
+            req.step_years, req.steps_per_frame, req.num_frames,
+            step_fn=lambda w, y: _animate_step(session, w, y), stop_event=session.animation_stop_event,
+        )
+        anim_spec = {
+            "total_frames": req.num_frames,
+            "steps_per_frame": req.steps_per_frame,
+            "step_years": req.step_years,
+            "projection": req.projection,
+            "view": req.view,
+            "width": req.width,
+            "height": req.height,
+        }
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="animate-step")
+        try:
+            while True:
+                step_gen = _next_animation_message(session, world, animation, last_frame, req.num_frames, pool)
+                message = _consume_animation_step(step_gen, job)
+                if message is None:
+                    break
+                line, last_frame, completed = _animate_message_line(
+                    session, world, message, last_frame, anim_spec, job_id=job.job_id,
+                )
+                if message[0] == "heartbeat":
+                    job.publish_heartbeat(line, elapsed_years=message[3])
+                    continue
+                if message[0] == "done":
+                    _, _, stopped_early, *failure = message
+                    err = failure[0] if failure else None
+                    done_payload = (line, stopped_early, err, world.elapsed_years)
+                    break
+                # Progress frame: release locks while publishing so other worlds aren't starved.
+                frame_elapsed = message[4]
                 session.lock.release()
+                _compute_gate.release()
+                acquired = False
+                job.publish_progress(line, frame=last_frame, elapsed_years=frame_elapsed)
+                _compute_gate.acquire()
+                try:
+                    session.lock.acquire()
+                except BaseException:
+                    _compute_gate.release()
+                    raise
+                acquired = True
+        except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
+            _logger.exception(
+                "animation stream failed at frame %s/%s (projection=%s view=%s size=%sx%s steps_per_frame=%s)",
+                last_frame,
+                req.num_frames,
+                req.projection,
+                req.view,
+                req.width,
+                req.height,
+                req.steps_per_frame,
+            )
+            detail = f"{type(exc).__name__}: {exc}"
+            error_payload = (json.dumps({"type": "error", "detail": detail}) + "\n", detail)
+        finally:
+            animation.close()
+            pool.shutdown(wait=False)
     finally:
-        if gate_held:
-            _compute_gate.release()
+        try:
+            if acquired and not (completed and _hosted_worker):
+                _world_changed(session, completed)
+        finally:
+            if acquired:
+                session.lock.release()
+                _compute_gate.release()
+            session.end_operation()
+            if done_payload is not None:
+                line, stopped_early, err, elapsed = done_payload
+                job.finish_done(line, stopped_early=stopped_early, error=err, elapsed_years=elapsed)
+            elif error_payload is not None:
+                line, detail = error_payload
+                job.finish_error(line, detail=detail)
+            else:
+                job.finish_empty()
 
 
 @app.post("/worlds/{world_id}/animate")
 def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
-    """The "File > Make Animation" action: streams newline-delimited JSON progress while
-    rendering an H.264/MP4 video of `view`/`projection`'s progress -- one frame for the
-    world's current state plus `req.num_frames - 1` more, each `req.steps_per_frame` real
-    steps of `req.step_years` further along, with only the last of those steps rendered (see
-    render_image.stream_animation_mp4 for why that's not the same as one bigger step). Each
-    response line is one JSON object: `{"type": "progress", "frame": n, "total": N,
-    "image_base64": <that frame's PNG>, "elapsed_years": <world.elapsed_years after this
-    frame>, "stats": <latest World.stats_history snapshot, or null>}` as each frame finishes,
-    then a final `{"type": "done",
-    "video_base64": ..., "mime": "video/mp4", ...world summary fields}`. While a frame's
-    step batch runs, `{"type": "heartbeat", "frame": n, "total": N,
-    "elapsed_years": <world.elapsed_years after this step>}` ticks flow whenever a step
-    lands more than a minute after the previous line (#611) -- imageless proof the run is
-    still stepping, so the client's idle watchdog doesn't abort a slow batch as stalled.
-    If rendering raises partway through, a `{"type": "error",
-    "detail": ...}` line is emitted instead -- the HTTP status is already 200 by then, since
-    the stream has started.
+    """The "File > Make Animation" action: starts a server-side background animation job
+    and streams newline-delimited JSON progress while rendering an H.264/MP4 video of
+    `view`/`projection`'s progress -- one frame for the world's current state plus
+    `req.num_frames - 1` more, each `req.steps_per_frame` real steps of `req.step_years`
+    further along, with only the last of those steps rendered (see
+    render_image.stream_animation_mp4). Disconnecting the HTTP client (e.g. a page refresh)
+    does not stop the animation: the background job keeps running and a refreshed tab can
+    reconnect via `GET /worlds/{world_id}/animate/stream` (#1033).
 
     **This permanently advances the world** by
     `(req.num_frames - 1) * req.steps_per_frame * req.step_years` years, the same as calling
-    /worlds/{world_id}/step that many times -- not a side-effect-free preview. Same validation as
-    /worlds/{world_id}/render for projection/view/width/height/rotation, plus `num_frames` bounded to
-    `[1, MAX_ANIMATION_FRAMES]` and `steps_per_frame` required to be `>= 1` (each frame costs
-    up to `steps_per_frame` full step_world calls + one render). `404` if no world has been
-    generated yet, `503` if a generation, step, or animation is already in progress."""
+    /worlds/{world_id}/step that many times -- not a side-effect-free preview. `404` if no
+    world has been generated yet, `503` if a generation, step, or animation is already in
+    progress."""
     session = _session_or_404(world_id)
     if req.projection not in projections.PROJECTIONS:
         raise HTTPException(status_code=400, detail=f"unknown projection {req.projection!r}")
@@ -2257,142 +2350,78 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
     _require_valid_step_years(req.step_years, field="step_years")
     view_rotation = _parse_view_rotation(req.rotation)
 
-    # Mark busy synchronously, not via a `with` block -- the response streams, so
-    # the release has to happen in the generator's own `finally` instead. An overlapping
-    # step/animation on this world still 503s before the stream starts.
-    # Read session.world once the stream holds the gate and session lock (see step).
+    # Mark busy synchronously so an overlapping step/generate/animation on this world 503s.
     _begin_world_operation(session)
+    if session.world is None and session.deferred_summary is None:
+        session.end_operation()
+        raise HTTPException(status_code=404, detail="no world generated yet")
 
-    # Clear any stale signal from a previous run (e.g. a stop request that arrived after that
-    # run had already finished on its own) so this fresh run starts unsignaled.
+    # Clear any stale signal from a previous run so this fresh run starts unsignaled.
     session.animation_stop_event.clear()
 
-    def _stream():
-        acquired = False
-        _compute_gate.acquire()
-        try:
-            session.lock.acquire()
-        except BaseException:
-            # Lock.acquire() raises only on interpreter-level events, but if it
-            # did, `acquired` would stay False while the gate is held -- a wedge
-            # every world shares and no flag tracks. Release it first.
-            _compute_gate.release()
-            raise
-        acquired = True
-        try:
-            # The world may have been deleted while this stream queued at the gate.
-            # Bail out quietly rather than animating a detached session. Inside the
-            # try on purpose (see generate): a pre-try return would skip the finally
-            # and leak the gate, the session lock and the operation flag. Both flags
-            # are initialized before the bail: the finally below reads them.
-            last_frame = 0
-            completed = False
-            if session.deleted:
-                return
-            _hydrate_locked(session)
-            world = _require_world(session)
-            animation = render_image.stream_animation_mp4(
-                world, req.projection, req.view, req.width, req.height, view_rotation,
-                req.step_years, req.steps_per_frame, req.num_frames,
-                step_fn=lambda w, y: _animate_step(session, w, y), stop_event=session.animation_stop_event,
-            )
-            # Static run parameters for the recovery sidecar: a resume replays the
-            # same run shape from the checkpointed world (#638).
-            anim_spec = {
-                "total_frames": req.num_frames,
-                "steps_per_frame": req.steps_per_frame,
-                "step_years": req.step_years,
-                "projection": req.projection,
-                "view": req.view,
-                "width": req.width,
-                "height": req.height,
-            }
-            pool = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="animate-step")
-            try:
-                while True:
-                    # Advance one frame while holding the locks, then let them go
-                    # while the line goes out to the client: holding the global
-                    # gate across up to 480 frames would starve every other world
-                    # at the FIFO gate (and pin a worker thread for the whole
-                    # run). The operation flag stays held throughout, so no other
-                    # world replacer can swap session.world underneath; each frame
-                    # ends on a whole step, so anything running between frames
-                    # sees a consistent world.
-                    message = yield from _next_animation_message(session, world, animation, last_frame, req.num_frames, pool)
-                    if message is None:
-                        break
-                    line, last_frame, completed = _animate_message_line(session, world, message, last_frame, anim_spec)
-                    if message[0] == "heartbeat":
-                        # Mid-batch tick (#611): the world is only partially stepped,
-                        # so the locks stay held across this yield -- releasing them
-                        # would let a concurrent save/render observe a torn world.
-                        # The outer finally still releases on disconnect.
-                        yield line
-                        continue
-                    session.lock.release()
-                    _compute_gate.release()
-                    acquired = False
-                    try:
-                        yield line
-                    except GeneratorExit:
-                        # The client disconnected mid-stream -- close the inner generator
-                        # so its try/finally flushes and closes the encoder instead of
-                        # leaking the native libx264 context (see stream_animation_mp4).
-                        animation.close()
-                        raise
-                    if completed and _hosted_worker:
-                        break
-                    _compute_gate.acquire()
-                    try:
-                        session.lock.acquire()
-                    except BaseException:
-                        _compute_gate.release()
-                        raise
-                    acquired = True
-            except GeneratorExit:
-                # A failure line (below) is yielded while holding the locks, so a
-                # disconnect there lands here rather than in the loop's handler.
-                animation.close()
-                raise
-            except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
-                _logger.exception(
-                    "animation stream failed at frame %s/%s (projection=%s view=%s size=%sx%s steps_per_frame=%s)",
-                    last_frame,
-                    req.num_frames,
-                    req.projection,
-                    req.view,
-                    req.width,
-                    req.height,
-                    req.steps_per_frame,
-                )
-                yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
-            finally:
-                pool.shutdown(wait=False)
-        finally:
-            try:
-                if acquired:
-                    _world_changed(session, completed)
-                elif last_frame and not _hosted_worker:
-                    _publish_disconnected_animation(session)
-            finally:
-                if acquired:
-                    session.lock.release()
-                    _compute_gate.release()
-                session.end_operation()
+    initial_elapsed = session.world.elapsed_years if session.world is not None else (
+        float(session.deferred_summary.get("elapsed_years", 0.0)) if session.deferred_summary else 0.0
+    )
+    job = animation_job.AnimationJob(
+        total=req.num_frames,
+        unbounded=req.unbounded,
+        projection=req.projection,
+        view=req.view,
+        elapsed_years=initial_elapsed,
+    )
+    sub = job.subscribe(replay_latest=False)
+    session.animation_job = job
 
-    return StreamingResponse(_stream(), media_type="application/x-ndjson")
+    worker = threading.Thread(
+        target=_run_animation_worker,
+        args=(session, req, view_rotation, job),
+        name=f"animate-{session.world_id[:8]}",
+        daemon=True,
+    )
+    worker.start()
+
+    return StreamingResponse(job.iter_stream(sub), media_type="application/x-ndjson")
+
+
+@app.get("/worlds/{world_id}/animate/stream")
+def animate_stream(world_id: str) -> StreamingResponse:
+    """Reconnect to an in-progress or finished-but-uncollected background animation (#1033).
+
+    Streams the same newline-delimited JSON protocol as `POST /worlds/{world_id}/animate`:
+    immediately emits the latest progress frame if active (or the final `done`/`error` line
+    if already finished), then forwards subsequent lines until completion. `404` when no
+    animation job is active or waiting to be collected."""
+    session = _session_or_404(world_id, hydrate=False)
+    job = session.animation_job
+    if job is None:
+        raise HTTPException(status_code=404, detail="no active or pending animation for this world")
+    sub = job.subscribe(replay_latest=True)
+    return StreamingResponse(job.iter_stream(sub), media_type="application/x-ndjson")
+
+
+@app.delete("/worlds/{world_id}/animate/result")
+def animate_dismiss_result(world_id: str, job_id: str | None = None) -> dict:
+    """Discard a finished animation's buffered MP4 after the user saves or dismisses it (#1033).
+
+    No-op when no finished animation is present or `job_id` doesn't match; never clears an
+    animation that is still running."""
+    session = _session_or_404(world_id, hydrate=False)
+    session.clear_finished_animation_job(job_id=job_id)
+    return {"status": "ok"}
 
 
 @app.post("/worlds/{world_id}/animate/stop")
 def animate_stop(world_id: str) -> dict:
-    """Signals an in-progress POST /worlds/{world_id}/animate stream (the "Stop" toolbar button while
-    recording -- see App.tsx) to end cleanly after its current frame: the stream still
-    flushes the encoder and returns the video made so far, unlike the client just aborting
-    the connection, which drops the video entirely. This is what makes "keep going until
-    Stop is pressed" mode useful -- without it, stopping would lose the recording. A no-op
-    (still 200) if no animation is currently running or it already finished; the signal is
-    cleared at the start of each new animate() run, not here, so it can't leak into one."""
-    _session_or_404(world_id).animation_stop_event.set()
+    """Signals an in-progress animation job (the "Stop" button while recording -- see App.tsx)
+    to end cleanly after its current frame: the job still flushes the encoder and produces the
+    video made so far. A no-op (still 200) if no animation is currently running or it already
+    finished; the signal is cleared at the start of each new animate() run, not here, so it
+    can't leak into one."""
+    session = _session_or_404(world_id)
+    session.animation_stop_event.set()
+    job = session.animation_job
+    if job is not None:
+        job.mark_stopping()
     return {"status": "ok"}
 
 
@@ -3851,6 +3880,7 @@ def _run_summary(session: WorldSession) -> dict:
         "run_version": run_version,
         "phase": runner.phase(),
         "world": session.feed.summary(),
+        "animation": session.animation_job.summary() if session.animation_job is not None else None,
     }
 
 
