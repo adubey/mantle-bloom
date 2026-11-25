@@ -159,6 +159,8 @@ def test_volume_contract_closes_per_body_and_across_the_world():
         ice_release = ice.ice_release_depth_m
         np.testing.assert_array_equal(melt, ice_release + bare_snowmelt)
         assert np.dot(ice_release, area) == pytest.approx(ledger.meltwater_m3 - ledger.snow_melted_m3)
+        assert np.dot(ice.surface_melt_depth_m, area) == pytest.approx(ledger.surface_melt_m3)
+        assert np.all(ice.surface_melt_depth_m <= ice_release)
         assert float(ice.calved_m3.sum()) == pytest.approx(ledger.calved_m3)
     assert ledger.closing_m3 > 0.0
 

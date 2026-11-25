@@ -125,12 +125,23 @@ Three kinds of water/forcing move along `flow_target`:
   extrapolates it at the same rate during settle-and-hold. The balance correction for
   a held glacier changes only glacier release. Calved ice goes directly to the ocean,
   and accumulation stays in the glacier.
-- **Glacier drainage** moves land-based ice release and rain on ice to the glacier margin
+- **Glacier drainage** moves ice release and rain on grounded ice to the glacier margin
   before the river and lake passes. Warm-based cells use hydraulic head
   `bed + (rho_ice / rho_water) * thickness`, filled toward the margin. Cold-based cells
   follow the ice-surface target until they enter warm-based ice or reach a margin. The
   reverse search uses the directed neighbor graph and retains a source at its node when
-  it cannot find a margin. Ground routing receives the resulting margin sources.
+  it cannot find a margin. Ground routing receives the resulting margin sources. Meltwater
+  at a marine margin enters the ocean directly.
+- **Meltwater source budgets** report the current step's glacier release plus rain on ice,
+  and bare-ground snowmelt, separately. `glacier_meltwater_ledger` and
+  `bare_snowmelt_ledger` attribute each source to lake supply, ocean export, transit loss,
+  land settlement, and the river storage retained from this step's input. The river ledger
+  accounts for water already stored at the start of the step. The source budgets are
+  calculated using the same reach travel times and loss rules as the physical river pass.
+  `glacier_drainage` counts connected regions of filled warm-based hydraulic head and their
+  incoming water once per region, and reports water with no route to a margin. The count
+  can combine adjacent depressions. `warm_thick_surface_melt_m3` records surface melt
+  routed from cells whose closing warm-based ice is thicker than 1 km.
 - **Liquid water at cold sinks.** Runoff and glacier meltwater supply a lake at a cold
   sink. Its water column can hold liquid water and a seasonal cap (RFC 0015 D4 and D5).
   See [Glaciation](#glaciation-hydrologypy).

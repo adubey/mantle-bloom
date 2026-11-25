@@ -174,6 +174,7 @@ Gate 2 load, mesh and capacity diagnostics.
 | [`measure_breaching.py`](debugging/scripts-water-ice.md#measure_breachingpy) | depression breaching on and off |
 | [`river_substep_arms.py`](debugging/scripts-water-ice.md#river_substep_armspy) | #867's river-substep arms: a reference trajectory with checkpoints, then branches from one |
 | [`measure_ice_sheet.py`](debugging/scripts-water-ice.md#measure_ice_sheetpy) | glacier extent, volume, erosion and the ice ledger |
+| [`replay_d8_meltwater.py`](debugging/scripts-water-ice.md#replay_d8_meltwaterpy) | RFC 0015 G6 source budgets, drainage and ice-margin river networks |
 | [`measure_seasonal_melt.py`](debugging/scripts-water-ice.md#measure_seasonal_meltpy) | glaciated land by annual-mean temperature |
 | [`measure_ice_loading.py`](debugging/scripts-water-ice.md#measure_ice_loadingpy) | isostatic ice-load deflection |
 | [`measure_meltwater_faults.py`](debugging/scripts-water-ice.md#measure_meltwater_faultspy) | earthquakes triggered by ice unloading |

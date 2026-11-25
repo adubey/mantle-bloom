@@ -766,7 +766,8 @@ class IceStep:
     D3's `abrasion_depth_m` is the material-limited depth fed back into the working bed;
     `raw_abrasion_depth_m` retains uncapped physical demand for the erosion budget.
     `ice_release_depth_m` and `bare_snowmelt_depth_m` give the two meltwater sources
-    in metres of ice over each cell. Older cached steps lack these diagnostics."""
+    in metres of ice over each cell. `surface_melt_depth_m` is the surface-melt share
+    of ice release. Older cached steps lack these diagnostics."""
 
     thickness: np.ndarray
     covered: np.ndarray
@@ -781,6 +782,7 @@ class IceStep:
     raw_abrasion_depth_m: np.ndarray | None = None
     ice_release_depth_m: np.ndarray | None = None
     bare_snowmelt_depth_m: np.ndarray | None = None
+    surface_melt_depth_m: np.ndarray | None = None
 
 
 @dataclass
@@ -1361,6 +1363,7 @@ def step_ice(
         frozen_precipitation=frozen_precipitation,
         ice_release_depth_m=ice_release_depth_m,
         bare_snowmelt_depth_m=bare_snowmelt_depth_m,
+        surface_melt_depth_m=out.surface_melt_m3 / safe_area,
     )
 
 
@@ -1396,6 +1399,7 @@ class _Output:
     def __init__(self, n: int):
         self.depth = np.zeros(n)
         self.ice_release_m3 = np.zeros(n)
+        self.surface_melt_m3 = np.zeros(n)
         self.bare_snowmelt_m3 = np.zeros(n)
         self.calved = np.zeros(n)
         self.thickness = np.zeros(n)
@@ -1414,6 +1418,7 @@ def _uniform_body(out: _Output, nodes, opening, area, bed, climate, is_ocean, dt
     out.retained_snow[nodes] = 1.0
     out.surface[nodes] = bed[nodes] + h if h > 0.0 else np.nan
     out.ice_release_m3[nodes] += (sm + bm) * area[nodes] / area[nodes].sum()
+    out.surface_melt_m3[nodes] += sm * area[nodes] / area[nodes].sum()
     body = BodyBalance(nodes, opening, acc, sm, bm, 0.0, 0.0, 0.0, saturated=excess > 0.0, domain_nodes=nodes)
     _shed_excess(out, body, excess, nodes, bool(np.any(is_ocean[nodes])), area)
     return body
@@ -1432,12 +1437,21 @@ def _plastic_body(
     _, r_sm, r_bm = shape.rates
     acc0, sm0, _ = dom.bare_rates
     feeds = (acc0 - sm0) > 0.0
-    # Booked melt goes to the nodes in proportion to where it happens.
-    where_melt = shape.cover * dom.area * (r_sm + r_bm) + (1.0 - cov) * dom.area * np.where(feeds, sm0, 0.0)
-    if where_melt.sum() > 0.0:
-        out.ice_release_m3[nodes] += (sm + bm) * where_melt / where_melt.sum()
-    elif sm + bm > 0.0:
-        out.ice_release_m3[body_nodes] += (sm + bm) * area[body_nodes] / area[body_nodes].sum()
+    # The two melt processes have different spatial rates (#1019).
+    where_surface = shape.cover * dom.area * r_sm + (1.0 - cov) * dom.area * np.where(feeds, sm0, 0.0)
+    where_basal = shape.cover * dom.area * r_bm
+    if where_surface.sum() > 0.0:
+        surface_melt = sm * where_surface / where_surface.sum()
+        out.ice_release_m3[nodes] += surface_melt
+        out.surface_melt_m3[nodes] += surface_melt
+    elif sm > 0.0:
+        surface_melt = sm * area[body_nodes] / area[body_nodes].sum()
+        out.ice_release_m3[body_nodes] += surface_melt
+        out.surface_melt_m3[body_nodes] += surface_melt
+    if where_basal.sum() > 0.0:
+        out.ice_release_m3[nodes] += bm * where_basal / where_basal.sum()
+    elif bm > 0.0:
+        out.ice_release_m3[body_nodes] += bm * area[body_nodes] / area[body_nodes].sum()
     # Snow on bare ground that can't feed the body melts where it fell.
     bare_snow = (1.0 - cov) * dom.area * np.where(feeds, 0.0, acc0) * dt_myr
     out.bare_snowmelt_m3[nodes] += bare_snow
