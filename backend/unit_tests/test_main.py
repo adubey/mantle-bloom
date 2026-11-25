@@ -2147,12 +2147,22 @@ def test_animate_disconnect_mid_stream_keeps_running_and_preserves_video(client)
     mp4 = base64.b64decode(lines[-1]["video_base64"])
     assert b"ftyp" in mp4[:32]
 
+    # While the MP4 is uncollected: hosted sleep is vetoed and a second recording 409s.
+    assert main._session_can_sleep(_default_session) is False
+    conflict = client.post(
+        f"/worlds/{wid}/animate",
+        json={"projection": "eckert4", "view": "elevation", "width": 64, "height": 64,
+              "step_years": 100_000, "num_frames": 2},
+    )
+    assert conflict.status_code == 409
+
     # Dismissing with a mismatched job_id leaves it alone; matching job_id clears it.
     assert client.delete(f"/worlds/{wid}/animate/result?job_id=wrong").status_code == 200
     assert client.get(f"/worlds/{wid}/run").json()["animation"] is not None
     assert client.delete(f"/worlds/{wid}/animate/result?job_id={anim['job_id']}").status_code == 200
     assert client.get(f"/worlds/{wid}/run").json()["animation"] is None
     assert client.get(f"/worlds/{wid}/animate/stream").status_code == 404
+    assert main._session_can_sleep(_default_session) is True
 
 
 def test_animate_reconnect_mid_run_and_stop_delivers_video(client, monkeypatch):

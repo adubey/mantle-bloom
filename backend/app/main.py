@@ -2350,8 +2350,16 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
     _require_valid_step_years(req.step_years, field="step_years")
     view_rotation = _parse_view_rotation(req.rotation)
 
-    # Mark busy synchronously so an overlapping step/generate/animation on this world 503s.
-    _begin_world_operation(session)
+    # Mark busy synchronously so an overlapping step/generate/animation 503s,
+    # and refuse to clobber an uncollected MP4 from a finished recording (409).
+    refusal = session.begin_animation_operation()
+    if refusal == "busy":
+        raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
+    if refusal == "pending_result":
+        raise HTTPException(
+            status_code=409,
+            detail="a completed animation video is still waiting to be saved or discarded",
+        )
     if session.world is None and session.deferred_summary is None:
         session.end_operation()
         raise HTTPException(status_code=404, detail="no world generated yet")
@@ -2370,7 +2378,7 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
         elapsed_years=initial_elapsed,
     )
     sub = job.subscribe(replay_latest=False)
-    session.animation_job = job
+    session.set_animation_job(job)
 
     worker = threading.Thread(
         target=_run_animation_worker,
@@ -2392,7 +2400,7 @@ def animate_stream(world_id: str) -> StreamingResponse:
     if already finished), then forwards subsequent lines until completion. `404` when no
     animation job is active or waiting to be collected."""
     session = _session_or_404(world_id, hydrate=False)
-    job = session.animation_job
+    job = session.get_animation_job()
     if job is None:
         raise HTTPException(status_code=404, detail="no active or pending animation for this world")
     sub = job.subscribe(replay_latest=True)
@@ -2419,7 +2427,7 @@ def animate_stop(world_id: str) -> dict:
     can't leak into one."""
     session = _session_or_404(world_id)
     session.animation_stop_event.set()
-    job = session.animation_job
+    job = session.get_animation_job()
     if job is not None:
         job.mark_stopping()
     return {"status": "ok"}
@@ -3880,7 +3888,9 @@ def _run_summary(session: WorldSession) -> dict:
         "run_version": run_version,
         "phase": runner.phase(),
         "world": session.feed.summary(),
-        "animation": session.animation_job.summary() if session.animation_job is not None else None,
+        "animation": (
+            job.summary() if (job := session.get_animation_job()) is not None else None
+        ),
     }
 
 
@@ -3947,7 +3957,12 @@ def _worker_idle() -> dict:
 
 
 def _session_can_sleep(session: WorldSession) -> bool:
-    if session.operation_busy() or session.guest_steps.busy() or not session.lock.acquire(blocking=False):
+    if (
+        session.operation_busy()
+        or session.has_pending_animation_result()
+        or session.guest_steps.busy()
+        or not session.lock.acquire(blocking=False)
+    ):
         return False
     try:
         session.runner.retry_unsaved_status()

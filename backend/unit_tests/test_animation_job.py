@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from app.animation_job import AnimationJob
+from app.animation_job import MAX_SUBSCRIBER_BACKLOG, AnimationJob
 
 
 def test_subscribe_receives_progress_heartbeat_and_done():
@@ -76,3 +76,20 @@ def test_finish_error_and_finish_empty():
     empty_job.finish_empty()
     assert empty_job.is_active() is False
     assert list(empty_job.iter_stream(sub)) == []
+
+
+def test_slow_subscriber_bounds_preview_backlog_and_preserves_terminal_line():
+    job = AnimationJob(total=25, unbounded=False, projection="behrmann", view="elevation")
+    sub = job.subscribe(replay_latest=False)
+    for frame in range(1, 21):
+        line = json.dumps({"type": "progress", "frame": frame, "total": 25, "elapsed_years": float(frame)}) + "\n"
+        job.publish_progress(line, frame=frame, elapsed_years=float(frame))
+    done = json.dumps({"type": "done", "mime": "video/mp4", "video_base64": "DDDD", "stopped_early": False}) + "\n"
+    job.finish_done(done, stopped_early=False, error=None, elapsed_years=25.0)
+
+    received = [json.loads(line) for line in job.iter_stream(sub)]
+    previews = [msg for msg in received if msg["type"] == "progress"]
+    assert len(previews) == MAX_SUBSCRIBER_BACKLOG
+    assert [msg["frame"] for msg in previews] == list(range(21 - MAX_SUBSCRIBER_BACKLOG, 21))
+    assert received[-1]["type"] == "done"
+    assert received[-1]["video_base64"] == "DDDD"

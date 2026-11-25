@@ -205,15 +205,46 @@ class WorldSession:
         with self._busy_lock:
             return self._operation_busy
 
+    def get_animation_job(self) -> AnimationJob | None:
+        with self._busy_lock:
+            return self.animation_job
+
+    def set_animation_job(self, job: AnimationJob) -> None:
+        with self._busy_lock:
+            self.animation_job = job
+
+    def has_pending_animation_result(self) -> bool:
+        """True while a completed animation's MP4 is still waiting to be saved or discarded."""
+        with self._busy_lock:
+            job = self.animation_job
+            return job is not None and not job.is_active() and job.has_result()
+
+    def begin_animation_operation(self) -> str | None:
+        """Atomically reserve the world for a new animation (#1033).
+
+        Returns None on success, `"busy"` if another operation is already running,
+        or `"pending_result"` if a finished MP4 is still awaiting Save or Discard.
+        """
+        with self._busy_lock:
+            if self._operation_busy:
+                return "busy"
+            job = self.animation_job
+            if job is not None and not job.is_active() and job.has_result():
+                return "pending_result"
+            self._operation_busy = True
+            return None
+
     def clear_finished_animation_job(self, job_id: str | None = None) -> None:
-        """Drop a completed animation job (and its buffered MP4) once saved, discarded,
-        or replaced by a fresh world. Never clears an active job."""
-        job = self.animation_job
-        if job is None or job.is_active():
-            return
-        if job_id is not None and job.job_id != job_id:
-            return
-        self.animation_job = None
+        """Atomically drop a completed animation job (and its buffered MP4) once saved,
+        discarded, or replaced by a fresh world. Never clears an active job or races
+        with a newly published one (#1033)."""
+        with self._busy_lock:
+            job = self.animation_job
+            if job is None or job.is_active():
+                return
+            if job_id is not None and job.job_id != job_id:
+                return
+            self.animation_job = None
 
     def record(self) -> dict:
         return {

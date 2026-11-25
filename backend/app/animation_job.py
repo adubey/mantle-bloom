@@ -8,10 +8,53 @@ resulting MP4. Both the initiating POST stream and reconnected GET
 
 from __future__ import annotations
 
-import queue
+from collections import deque
 import threading
 import uuid
 from typing import Iterator
+
+# Cap unread preview/heartbeat lines buffered per slow subscriber so a stalled
+# reader cannot accumulate hundreds of base64 PNGs in memory while the terminal
+# done/error line is always delivered reliably (#1033).
+MAX_SUBSCRIBER_BACKLOG = 8
+
+
+class _Subscriber:
+    """Bounded-backlog stream channel for one HTTP subscriber."""
+
+    def __init__(self, maxlen: int = MAX_SUBSCRIBER_BACKLOG) -> None:
+        self._cond = threading.Condition()
+        self._previews: deque[str] = deque(maxlen=maxlen)
+        self._terminal: str | None = None
+        self._closed: bool = False
+
+    def push_preview(self, line: str) -> None:
+        with self._cond:
+            if self._closed:
+                return
+            self._previews.append(line)
+            self._cond.notify()
+
+    def push_terminal(self, line: str | None) -> None:
+        with self._cond:
+            if self._closed:
+                return
+            if line is not None:
+                self._terminal = line
+            self._closed = True
+            self._cond.notify()
+
+    def next_line(self) -> str | None:
+        with self._cond:
+            while not self._previews and self._terminal is None and not self._closed:
+                self._cond.wait()
+            if self._previews:
+                return self._previews.popleft()
+            if self._terminal is not None:
+                line = self._terminal
+                self._terminal = None
+                return line
+            return None
 
 
 class AnimationJob:
@@ -45,11 +88,15 @@ class AnimationJob:
         # Terminal "done" or "error" NDJSON line, kept until dismissed so a tab
         # refreshing after completion still surfaces SaveAnimationModal.
         self._terminal_line: str | None = None
-        self._subscribers: list[queue.Queue[str | None]] = []
+        self._subscribers: list[_Subscriber] = []
 
     def is_active(self) -> bool:
         with self._lock:
             return self._active
+
+    def has_result(self) -> bool:
+        with self._lock:
+            return self._has_result
 
     def summary(self) -> dict:
         """Compact, lock-free-from-world status payload for GET /worlds/{world_id}/run."""
@@ -74,7 +121,7 @@ class AnimationJob:
             if self._active:
                 self._stopping = True
 
-    def subscribe(self, *, replay_latest: bool = False) -> queue.Queue[str | None]:
+    def subscribe(self, *, replay_latest: bool = False) -> _Subscriber:
         """Register a stream consumer.
 
         `replay_latest=False` is for the initiating POST /animate stream (registered
@@ -83,30 +130,29 @@ class AnimationJob:
         job is still running it immediately receives the latest progress snapshot,
         and if the job already finished it immediately receives the terminal line.
         """
-        sub: queue.Queue[str | None] = queue.Queue()
+        sub = _Subscriber()
         with self._lock:
             if self._terminal_line is not None:
-                sub.put(self._terminal_line)
-                sub.put(None)
+                sub.push_terminal(self._terminal_line)
                 return sub
             if not self._active:
-                sub.put(None)
+                sub.push_terminal(None)
                 return sub
             if replay_latest and self._latest_progress_line is not None:
-                sub.put(self._latest_progress_line)
+                sub.push_preview(self._latest_progress_line)
             self._subscribers.append(sub)
         return sub
 
-    def unsubscribe(self, sub: queue.Queue[str | None]) -> None:
+    def unsubscribe(self, sub: _Subscriber) -> None:
         with self._lock:
             if sub in self._subscribers:
                 self._subscribers.remove(sub)
 
-    def iter_stream(self, sub: queue.Queue[str | None]) -> Iterator[str]:
+    def iter_stream(self, sub: _Subscriber) -> Iterator[str]:
         """Yield NDJSON lines for one HTTP stream subscriber without affecting the job."""
         try:
             while True:
-                line = sub.get()
+                line = sub.next_line()
                 if line is None:
                     break
                 yield line
@@ -118,15 +164,17 @@ class AnimationJob:
             self._frame = frame
             self._elapsed_years = elapsed_years
             self._latest_progress_line = line
-            for sub in self._subscribers:
-                sub.put(line)
+            subscribers = list(self._subscribers)
+        for sub in subscribers:
+            sub.push_preview(line)
 
     def publish_heartbeat(self, line: str, *, elapsed_years: float | None = None) -> None:
         with self._lock:
             if elapsed_years is not None:
                 self._elapsed_years = elapsed_years
-            for sub in self._subscribers:
-                sub.put(line)
+            subscribers = list(self._subscribers)
+        for sub in subscribers:
+            sub.push_preview(line)
 
     def finish_done(
         self,
@@ -148,8 +196,7 @@ class AnimationJob:
             subscribers = list(self._subscribers)
             self._subscribers.clear()
         for sub in subscribers:
-            sub.put(line)
-            sub.put(None)
+            sub.push_terminal(line)
 
     def finish_error(self, line: str, *, detail: str) -> None:
         with self._lock:
@@ -162,8 +209,7 @@ class AnimationJob:
             subscribers = list(self._subscribers)
             self._subscribers.clear()
         for sub in subscribers:
-            sub.put(line)
-            sub.put(None)
+            sub.push_terminal(line)
 
     def finish_empty(self) -> None:
         """Close out a job that bailed before producing a result (e.g. deleted world)."""
@@ -174,4 +220,4 @@ class AnimationJob:
             subscribers = list(self._subscribers)
             self._subscribers.clear()
         for sub in subscribers:
-            sub.put(None)
+            sub.push_terminal(None)

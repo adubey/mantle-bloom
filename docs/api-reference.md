@@ -737,7 +737,7 @@ at most the dialog's own maximum of 47,900. The animation dialog's "keep going u
 ceiling with `"unbounded": true` and expects the client to call
 `POST /worlds/{world_id}/animate/stop` (below) rather than waiting for it to be reached on its own.
 `404` if no world has been generated yet, `503` if a step or another animation is already
-in progress.
+in progress, `409` if a completed animation MP4 is still waiting to be saved or discarded.
 
 The animation runs on a server-side background thread (`backend/app/animation_job.py`, #1033)
 decoupled from the initiating HTTP connection: disconnecting (for example, refreshing the browser)

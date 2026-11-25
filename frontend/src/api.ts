@@ -1403,13 +1403,16 @@ export function dismissAnimationResult(worldId: WorldId, jobId?: string): Promis
 // (just shorter) video, rather than the caller aborting the connection and losing it. This is
 // what makes the animation dialog's "keep going until Stop is pressed" mode useful. A no-op
 // if no animation is running.
-export function stopAnimation(worldId: WorldId): Promise<void> {
-  // Bounded so a hung server can't leave the toolbar's Stop hanging forever (#638):
-  // the caller reports a delivery failure instead of silently swallowing it.
-  return fetch(`${worldBase(API_BASE, worldId)}/animate/stop`, {
+export async function stopAnimation(worldId: WorldId): Promise<void> {
+  // Bounded so a hung server can't leave Stop hanging forever (#638), and checks
+  // resp.ok so a refused stop (e.g. 503) lets the UI re-enable Stop for retry (#1033).
+  const resp = await fetch(`${worldBase(API_BASE, worldId)}/animate/stop`, {
     method: "POST",
     signal: AbortSignal.timeout(30000),
-  }).then(() => undefined);
+  });
+  if (!resp.ok) {
+    throw new Error(`${resp.status} ${resp.statusText}: ${await resp.text()}`);
+  }
 }
 
 // What GET /worlds/{world_id}/animate/recovery reports about an interrupted run

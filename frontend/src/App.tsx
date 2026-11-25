@@ -1897,7 +1897,30 @@ export default function App() {
         }
         if (job.has_result) {
           attachAnimationStream(worldId, undefined, controller.signal)
-            .then((result) => finishAnimationSuccess(worldId, result, job.total, job.unbounded))
+            .then(async (result) => {
+              if (controller.signal.aborted || worldIdRef.current !== worldId) return;
+              if (result.error) {
+                const recovery = await fetchAnimationRecovery(worldId).catch(() => null);
+                if (controller.signal.aborted || worldIdRef.current !== worldId) return;
+                setAnimationFailure({
+                  failure: {
+                    frame: job.frame,
+                    total: job.total,
+                    unbounded: job.unbounded,
+                    error: result.error,
+                    partialVideo: true,
+                  },
+                  recovery,
+                });
+              }
+              setAnimationResult(result);
+              // Refresh from the live world summary rather than applying the cached
+              // recording snapshot, in case another tab stepped the world afterward (#1033).
+              const liveSummary = await fetchWorldSummary(worldId).catch(() => null);
+              if (liveSummary && !controller.signal.aborted && worldIdRef.current === worldId) {
+                await handleWorldAdvanced(liveSummary);
+              }
+            })
             .catch(() => {
               // best-effort: result may have been dismissed in another tab
             });
