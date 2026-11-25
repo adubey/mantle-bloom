@@ -14,6 +14,18 @@ arms do not gate the RFC. The save inventory and original hashes are in
 record their checksums as well as their original hashes. The script enables the glacier
 march in both arms and records the saved march controls and ice-age period.
 
+The converted v5 inputs have these SHA-256 checksums. The private B2 catalog links each
+to the corresponding original checksum recorded by #548.
+
+| Set | Seed | Converted save SHA-256 |
+|---|---:|---|
+| Diagnosis | 997271774 | `07971ee25cdbc364cd887ea8f4fffc69ceed49b1933d09ea38e3864ea95328b8` |
+| Diagnosis | 649658380 | `06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b6b31131f` |
+| Diagnosis, ice ages | 374464662 | `a9eed5dae3b685c3ed0350a1035bf3adbc66afbe958b64e639139583da52801a` |
+| Held out, ice ages | 447276134 | `22b60fee062d10eea11838b3006beed5fd228e4e22b28e0d556602ff7b99a30d` |
+| Held out | 628977350 | `e5acdb30a642b1c6d3cccc1480874acf807a16ff0b5258ef9958ee6e89af2303` |
+| Held out | 295569319 | `1af7fcb73f6b7c727fb36f2037af712088bae692509b7842b08c6a6b9e4d9c27` |
+
 Each step records the two source budgets, their residuals, filled hydraulic depressions,
 their throughput, unresolved drainage, surface melt routed from thick warm-based ice, and
 the count and ten largest discharges of ice-margin river networks. A filled pit is a
