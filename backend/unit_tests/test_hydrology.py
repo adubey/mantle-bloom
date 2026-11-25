@@ -181,6 +181,22 @@ def test_connected_filled_region_counts_both_local_pits():
     assert diagnostics.filled_pit_throughput_m3 == pytest.approx(4.0)
 
 
+def test_flat_filled_pit_counts_once():
+    bed = np.array([5.0, 0.0, 0.0, 4.0, 0.0])
+    thickness = np.array([10.0, 10.0, 10.0, 10.0, 0.0])
+    neighbors = np.array([[1, 1], [0, 2], [1, 3], [2, 4], [3, 3]])
+    on_ice = thickness >= hydrology.GLACIER_VISIBLE_DEPTH_M
+    targets, levels = hydrology._glacier_water_targets(
+        bed, thickness, thickness, on_ice, neighbors, np.full(5, -1),
+    )
+    diagnostics = hydrology._glacier_drainage_diagnostics(
+        np.ones(5), on_ice, on_ice, bed, thickness, neighbors, targets, levels, 1.0,
+    )
+
+    assert diagnostics.filled_pit_count == 1
+    assert diagnostics.filled_region_count == 1
+
+
 def test_glacier_water_without_a_margin_remains_accounted_for():
     bed = np.array([3.0, 1.0, 2.0])
     thickness = np.full(3, 20.0)
