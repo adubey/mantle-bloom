@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 from app.animation_job import MAX_SUBSCRIBER_BACKLOG, AnimationJob
@@ -20,8 +21,9 @@ def test_subscribe_receives_progress_heartbeat_and_done():
     assert job.summary()["active"] is True
 
     job.publish_heartbeat(hb, elapsed_years=250.0)
-    job.mark_stopping()
+    job.request_stop()
     assert job.summary()["stopping"] is True
+    assert job.stop_event.is_set() is True
 
     job.finish_done(done, stopped_early=True, error=None, elapsed_years=300.0)
     assert job.is_active() is False
@@ -93,3 +95,32 @@ def test_slow_subscriber_bounds_preview_backlog_and_preserves_terminal_line():
     assert [msg["frame"] for msg in previews] == list(range(21 - MAX_SUBSCRIBER_BACKLOG, 21))
     assert received[-1]["type"] == "done"
     assert received[-1]["video_base64"] == "DDDD"
+
+
+def test_async_stream_cancels_and_unsubscribes_while_worker_is_silent():
+    # Codex round-2 review finding #3: disconnecting while no lines are being
+    # emitted must immediately exit the async iterator and unsubscribe without
+    # waiting for the next frame or stopping the job.
+    async def run():
+        job = AnimationJob(total=5, unbounded=False, projection="behrmann", view="elevation")
+        sub = job.subscribe(replay_latest=False)
+        assert job.subscriber_count() == 1
+
+        async def consume():
+            async for _line in job.iter_stream_async(sub):
+                pass
+
+        task = asyncio.create_task(consume())
+        await asyncio.sleep(0.02)
+        assert not task.done()
+
+        task.cancel()
+        try:
+            await asyncio.wait_for(task, timeout=1.0)
+        except asyncio.CancelledError:
+            pass
+
+        assert job.subscriber_count() == 0
+        assert job.is_active() is True
+
+    asyncio.run(run())

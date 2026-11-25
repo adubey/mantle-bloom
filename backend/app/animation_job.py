@@ -8,10 +8,11 @@ resulting MP4. Both the initiating POST stream and reconnected GET
 
 from __future__ import annotations
 
+import asyncio
 from collections import deque
 import threading
 import uuid
-from typing import Iterator
+from typing import AsyncIterator, Iterator
 
 # Cap unread preview/heartbeat lines buffered per slow subscriber so a stalled
 # reader cannot accumulate hundreds of base64 PNGs in memory while the terminal
@@ -20,20 +21,34 @@ MAX_SUBSCRIBER_BACKLOG = 8
 
 
 class _Subscriber:
-    """Bounded-backlog stream channel for one HTTP subscriber."""
+    """Bounded-backlog stream channel for one HTTP subscriber.
+
+    Supports both synchronous reads (`next_line`) and cancellation-aware async
+    reads (`next_line_async`) so disconnecting while the worker is silent
+    immediately releases the ASGI task without holding a threadpool slot.
+    """
 
     def __init__(self, maxlen: int = MAX_SUBSCRIBER_BACKLOG) -> None:
         self._cond = threading.Condition()
         self._previews: deque[str] = deque(maxlen=maxlen)
         self._terminal: str | None = None
         self._closed: bool = False
+        self._async_waiter: tuple[asyncio.AbstractEventLoop, asyncio.Event] | None = None
+
+    def _wake_waiters_locked(self) -> None:
+        self._cond.notify()
+        waiter = self._async_waiter
+        if waiter is not None:
+            loop, event = waiter
+            if not loop.is_closed():
+                loop.call_soon_threadsafe(event.set)
 
     def push_preview(self, line: str) -> None:
         with self._cond:
             if self._closed:
                 return
             self._previews.append(line)
-            self._cond.notify()
+            self._wake_waiters_locked()
 
     def push_terminal(self, line: str | None) -> None:
         with self._cond:
@@ -42,19 +57,42 @@ class _Subscriber:
             if line is not None:
                 self._terminal = line
             self._closed = True
-            self._cond.notify()
+            self._wake_waiters_locked()
+
+    def _pop_ready_locked(self) -> tuple[bool, str | None]:
+        if self._previews:
+            return True, self._previews.popleft()
+        if self._terminal is not None:
+            line = self._terminal
+            self._terminal = None
+            return True, line
+        if self._closed:
+            return True, None
+        return False, None
 
     def next_line(self) -> str | None:
         with self._cond:
-            while not self._previews and self._terminal is None and not self._closed:
+            while True:
+                ready, line = self._pop_ready_locked()
+                if ready:
+                    return line
                 self._cond.wait()
-            if self._previews:
-                return self._previews.popleft()
-            if self._terminal is not None:
-                line = self._terminal
-                self._terminal = None
-                return line
-            return None
+
+    async def next_line_async(self) -> str | None:
+        loop = asyncio.get_running_loop()
+        while True:
+            with self._cond:
+                ready, line = self._pop_ready_locked()
+                if ready:
+                    return line
+                event = asyncio.Event()
+                self._async_waiter = (loop, event)
+            try:
+                await event.wait()
+            finally:
+                with self._cond:
+                    if self._async_waiter is not None and self._async_waiter[1] is event:
+                        self._async_waiter = None
 
 
 class AnimationJob:
@@ -74,6 +112,9 @@ class AnimationJob:
         self.unbounded: bool = unbounded
         self.projection: str = projection
         self.view: str = view
+        # Per-job stop event initialized before publication so an early Stop
+        # can never be erased by startup clearing a shared session event (#1033).
+        self.stop_event: threading.Event = threading.Event()
         self._lock = threading.Lock()
         self._active: bool = True
         self._stopping: bool = False
@@ -98,6 +139,10 @@ class AnimationJob:
         with self._lock:
             return self._has_result
 
+    def subscriber_count(self) -> int:
+        with self._lock:
+            return len(self._subscribers)
+
     def summary(self) -> dict:
         """Compact, lock-free-from-world status payload for GET /worlds/{world_id}/run."""
         with self._lock:
@@ -116,10 +161,11 @@ class AnimationJob:
                 "view": self.view,
             }
 
-    def mark_stopping(self) -> None:
+    def request_stop(self) -> None:
         with self._lock:
             if self._active:
                 self._stopping = True
+                self.stop_event.set()
 
     def subscribe(self, *, replay_latest: bool = False) -> _Subscriber:
         """Register a stream consumer.
@@ -149,10 +195,21 @@ class AnimationJob:
                 self._subscribers.remove(sub)
 
     def iter_stream(self, sub: _Subscriber) -> Iterator[str]:
-        """Yield NDJSON lines for one HTTP stream subscriber without affecting the job."""
+        """Yield NDJSON lines synchronously for unit tests."""
         try:
             while True:
                 line = sub.next_line()
+                if line is None:
+                    break
+                yield line
+        finally:
+            self.unsubscribe(sub)
+
+    async def iter_stream_async(self, sub: _Subscriber) -> AsyncIterator[str]:
+        """Yield NDJSON lines asynchronously so client disconnects release immediately."""
+        try:
+            while True:
+                line = await sub.next_line_async()
                 if line is None:
                     break
                 yield line

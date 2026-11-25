@@ -25,7 +25,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Callable, Iterator
 
 from . import public_view, world_names
 
@@ -230,9 +230,21 @@ class WorldSession:
                 return "pending_result"
             if self.world is None and self.deferred_summary is None:
                 return "no_world"
+            self.animation_stop_event.clear()
             self._operation_busy = True
             self.animation_job = job
             return None
+
+    def finish_animation_operation(self, complete_job: Callable[[], None]) -> None:
+        """Publish the job's terminal state and release `_operation_busy` atomically (#1033).
+
+        Prevents a gap where `_operation_busy` is False before `job.has_result()` is True,
+        which could let a second POST /animate clobber the finished MP4 or let
+        `_session_can_sleep` retire the worker.
+        """
+        with self._busy_lock:
+            complete_job()
+            self._operation_busy = False
 
     def clear_finished_animation_job(self, job_id: str | None = None) -> None:
         """Atomically drop a completed animation job (and its buffered MP4) once saved,

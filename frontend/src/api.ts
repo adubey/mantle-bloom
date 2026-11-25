@@ -1389,12 +1389,15 @@ export async function attachAnimationStream(
 }
 
 // Clear a finished animation's buffered MP4 on the server after Save or Discard (#1033).
-export function dismissAnimationResult(worldId: WorldId, jobId?: string): Promise<void> {
+export async function dismissAnimationResult(worldId: WorldId, jobId?: string): Promise<void> {
   const query = jobId ? `?job_id=${encodeURIComponent(jobId)}` : "";
-  return fetch(`${worldBase(API_BASE, worldId)}/animate/result${query}`, {
+  const resp = await fetch(`${worldBase(API_BASE, worldId)}/animate/result${query}`, {
     method: "DELETE",
     signal: AbortSignal.timeout(15000),
-  }).then(() => undefined);
+  });
+  if (!resp.ok) {
+    throw new Error(`${resp.status} ${resp.statusText}: ${await resp.text()}`);
+  }
 }
 
 // The toolbar's "Stop" button while an animation is recording -- asks the server to end the

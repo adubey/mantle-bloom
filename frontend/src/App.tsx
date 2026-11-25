@@ -706,7 +706,7 @@ export default function App() {
   // disabled while `animation` is set (see `animating`). The toolbar's "Stop" button goes
   // through api.ts's stopAnimation rather than aborting the request, so the stream ends
   // cleanly and still returns the video (see handleStopAnimation below).
-  const [animation, setAnimation] = useState<{ frame: number; total: number; unbounded: boolean } | null>(null);
+  const [animation, setAnimation] = useState<{ frame: number; total: number; unbounded: boolean; elapsedYears: number | null } | null>(null);
   const [animationStopping, setAnimationStopping] = useState(false);
   const [animationResult, setAnimationResult] = useState<AnimateResponse | null>(null);
   // Why the save dialog's last Save failed; the dialog stays open so the video isn't lost (#961).
@@ -1115,7 +1115,7 @@ export default function App() {
       // Frames belong to the world the run started on; drop them when the
       // selection moved on rather than painting the old world (#563 S7).
       if (worldIdRef.current !== id) return;
-      setAnimation({ frame: p.frame, total: p.total, unbounded });
+      setAnimation({ frame: p.frame, total: p.total, unbounded, elapsedYears: p.elapsedYears });
       animationFrameRef.current = p.frame;
       setRunPhase(unbounded ? `Recorded ${p.frame} frames` : `Frame ${p.frame} of ${p.total}`);
       // Keep the sidebar's "elapsed" readout climbing frame by frame instead of it
@@ -1177,7 +1177,7 @@ export default function App() {
       setAnimationResult(null);
       setAnimationSaveError(null);
       setAnimationStopping(false);
-      setAnimation({ frame: 0, total: numFrames, unbounded });
+      setAnimation({ frame: 0, total: numFrames, unbounded, elapsedYears: summary?.elapsed_years ?? null });
       animationFrameRef.current = 0;
       setOverlayCollapsed(false);
       setRunPhase(null);
@@ -1218,7 +1218,7 @@ export default function App() {
         setRunPhase(null);
       }
     },
-    [projection, rotation, stepYears, applyAnimationProgress, finishAnimationSuccess, finishAnimationError],
+    [projection, rotation, stepYears, summary?.elapsed_years, applyAnimationProgress, finishAnimationSuccess, finishAnimationError],
   );
 
   // The stopped-animation dialog's "Recover..." button (#638): resumes the frames
@@ -1256,9 +1256,9 @@ export default function App() {
   }, []);
 
   // The save-or-discard dialog's "Save" button (see SaveAnimationModal.tsx) -- downloads the
-  // finished MP4, then closes the dialog same as Discard would. A failed save keeps the dialog
-  // open with the reason, so the video can still be saved rather than silently lost (#961).
-  const handleSaveAnimation = useCallback(() => {
+  // finished MP4, then clears the server's buffered copy before closing. A failed save or
+  // server dismissal keeps the dialog open with the reason so the user can retry (#961, #1033).
+  const handleSaveAnimation = useCallback(async () => {
     if (!animationResult) return;
     try {
       saveRecordedVideo(animationResult);
@@ -1267,17 +1267,29 @@ export default function App() {
       setAnimationSaveError(String(e));
       return;
     }
-    const id = worldIdRef.current;
-    if (id) dismissAnimationResult(id, animationResult.jobId).catch(() => {});
+    try {
+      await dismissAnimationResult(animationResult.world_id, animationResult.jobId);
+    } catch (e) {
+      console.error("[mantle-bloom] Clearing the server recording failed", e);
+      setAnimationSaveError(`Video downloaded, but clearing the server copy failed (click Discard to retry): ${String(e)}`);
+      return;
+    }
     setAnimationSaveError(null);
     setAnimationResult(null);
   }, [animationResult]);
 
-  // The save-or-discard dialog's "Discard" button -- throws away the finished video. Doesn't
-  // touch the world itself, which already permanently advanced when the recording ran.
-  const handleDiscardAnimation = useCallback(() => {
-    const id = worldIdRef.current;
-    if (id && animationResult) dismissAnimationResult(id, animationResult.jobId).catch(() => {});
+  // The save-or-discard dialog's "Discard" button -- clears the server's buffered copy and
+  // throws away the finished video. Keeps the dialog open if the server DELETE fails so
+  // the user can retry instead of hitting a 409 on the next Record (#1033).
+  const handleDiscardAnimation = useCallback(async () => {
+    if (!animationResult) return;
+    try {
+      await dismissAnimationResult(animationResult.world_id, animationResult.jobId);
+    } catch (e) {
+      console.error("[mantle-bloom] Clearing the server recording failed", e);
+      setAnimationSaveError(`Clearing the server copy failed: ${String(e)}`);
+      return;
+    }
     setAnimationSaveError(null);
     setAnimationResult(null);
   }, [animationResult]);
@@ -1865,7 +1877,7 @@ export default function App() {
         if (!job || activeAnimationWorldRef.current === worldId) return;
         if (job.active) {
           activeAnimationWorldRef.current = worldId;
-          setAnimation({ frame: job.frame, total: job.total, unbounded: job.unbounded });
+          setAnimation({ frame: job.frame, total: job.total, unbounded: job.unbounded, elapsedYears: job.elapsed_years });
           animationFrameRef.current = job.frame;
           setAnimationStopping(job.stopping);
           setOverlayCollapsed(readAnimationOverlayCollapsed(worldId));
@@ -2097,7 +2109,7 @@ export default function App() {
             </div>
           </fieldset>
 
-          <button onClick={() => setShowStatsModal(true)} disabled={!summary} style={{ fontSize: 12 }}>
+          <button onClick={() => setShowStatsModal(true)} disabled={!summary && !stats} style={{ fontSize: 12 }}>
             📊 Stats
           </button>
 
@@ -2556,11 +2568,15 @@ export default function App() {
             </fieldset>
           )}
 
-          {summary && (
+          {(summary || animation) && (
             <div style={{ fontSize: 11, opacity: 0.8 }}>
-              <div>seed: {summary.seed}</div>
-              <div>plates: {summary.num_plates}</div>
-              <div>elapsed: {(summary.elapsed_years / 1e6).toFixed(stepYears < 10_000 ? 3 : stepYears < 100_000 ? 2 : 1)} Myr</div>
+              {summary && <div>seed: {summary.seed}</div>}
+              {summary && <div>plates: {summary.num_plates}</div>}
+              {(summary?.elapsed_years ?? animation?.elapsedYears ?? null) !== null && (
+                <div>
+                  elapsed: {(((summary?.elapsed_years ?? animation?.elapsedYears) as number) / 1e6).toFixed(stepYears < 10_000 ? 3 : stepYears < 100_000 ? 2 : 1)} Myr
+                </div>
+              )}
               {animation && <div>{animation.frame} frames recorded</div>}
             </div>
           )}

@@ -112,6 +112,8 @@ async def _lifespan(_app: FastAPI):
     yield
     for session in _registry.list():
         session.animation_stop_event.set()
+        if (job := session.get_animation_job()) is not None:
+            job.request_stop()
         if session.runner is not None:
             session.runner.close()
         # The writer is a daemon thread: give a record of the last rare event time to land.
@@ -2228,8 +2230,7 @@ def _run_animation_worker(
         session.lock.acquire()
     except BaseException:
         _compute_gate.release()
-        session.end_operation()
-        job.finish_empty()
+        session.finish_animation_operation(job.finish_empty)
         raise
     acquired = True
     try:
@@ -2244,7 +2245,7 @@ def _run_animation_worker(
             animation = render_image.stream_animation_mp4(
                 world, req.projection, req.view, req.width, req.height, view_rotation,
                 req.step_years, req.steps_per_frame, req.num_frames,
-                step_fn=lambda w, y: _animate_step(session, w, y), stop_event=session.animation_stop_event,
+                step_fn=lambda w, y: _animate_step(session, w, y), stop_event=job.stop_event,
             )
             anim_spec = {
                 "total_frames": req.num_frames,
@@ -2311,15 +2312,18 @@ def _run_animation_worker(
             if acquired:
                 session.lock.release()
                 _compute_gate.release()
-            session.end_operation()
-            if done_payload is not None:
-                line, stopped_early, err, elapsed = done_payload
-                job.finish_done(line, stopped_early=stopped_early, error=err, elapsed_years=elapsed)
-            elif error_payload is not None:
-                line, detail = error_payload
-                job.finish_error(line, detail=detail)
-            else:
-                job.finish_empty()
+
+            def _complete_job() -> None:
+                if done_payload is not None:
+                    line, stopped_early, err, elapsed = done_payload
+                    job.finish_done(line, stopped_early=stopped_early, error=err, elapsed_years=elapsed)
+                elif error_payload is not None:
+                    line, detail = error_payload
+                    job.finish_error(line, detail=detail)
+                else:
+                    job.finish_empty()
+
+            session.finish_animation_operation(_complete_job)
 
 
 @app.post("/worlds/{world_id}/animate")
@@ -2380,9 +2384,6 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
     if refusal == "no_world":
         raise HTTPException(status_code=404, detail="no world generated yet")
 
-    # Clear any stale signal from a previous run so this fresh run starts unsignaled.
-    session.animation_stop_event.clear()
-
     worker = threading.Thread(
         target=_run_animation_worker,
         args=(session, req, view_rotation, job),
@@ -2391,7 +2392,7 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
     )
     worker.start()
 
-    return StreamingResponse(job.iter_stream(sub), media_type="application/x-ndjson")
+    return StreamingResponse(job.iter_stream_async(sub), media_type="application/x-ndjson")
 
 
 @app.get("/worlds/{world_id}/animate/stream")
@@ -2407,7 +2408,7 @@ def animate_stream(world_id: str) -> StreamingResponse:
     if job is None:
         raise HTTPException(status_code=404, detail="no active or pending animation for this world")
     sub = job.subscribe(replay_latest=True)
-    return StreamingResponse(job.iter_stream(sub), media_type="application/x-ndjson")
+    return StreamingResponse(job.iter_stream_async(sub), media_type="application/x-ndjson")
 
 
 @app.delete("/worlds/{world_id}/animate/result")
@@ -2426,13 +2427,12 @@ def animate_stop(world_id: str) -> dict:
     """Signals an in-progress animation job (the "Stop" button while recording -- see App.tsx)
     to end cleanly after its current frame: the job still flushes the encoder and produces the
     video made so far. A no-op (still 200) if no animation is currently running or it already
-    finished; the signal is cleared at the start of each new animate() run, not here, so it
-    can't leak into one."""
+    finished."""
     session = _session_or_404(world_id)
     session.animation_stop_event.set()
     job = session.get_animation_job()
     if job is not None:
-        job.mark_stopping()
+        job.request_stop()
     return {"status": "ok"}
 
 
