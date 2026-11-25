@@ -70,10 +70,11 @@ river model, river presentation uses physical discharge and physical flow-edge l
 lake silt reads the physical lake inflow (#363). The legacy route is only a fallback now.
 Three kinds of water/forcing move along `flow_target`:
 
-- **Physical water**, in m^3/yr: rain on the lagged wet fraction goes directly to lake storage;
-  only the dry fraction incurs land Budyko evapotranspiration and supplies runoff, alongside
-  separately routed glacier meltwater. Dry runoff transit loss is scaled by the dry cell
-  fraction; glacier melt keeps the existing per-node transit loss. The breach gate preserves
+- **Physical water**, in m^3/yr: rain on the lagged wet fraction goes directly to lake storage.
+  Rain on exposed dry ground incurs Budyko evapotranspiration and supplies runoff. Rain on
+  the opening ice cover joins the glacier meltwater source in full. Bare-ground snowmelt
+  joins dry runoff. Dry runoff transit loss is scaled by the dry cell fraction; glacier
+  melt and rain on ice use the per-node transit loss. The breach gate preserves
   wet-cell rain as a separate loss-free supply when chained pits merge or pass overflow on.
   `HydrologyFields.lake_external_supply_m3_per_yr` and its wet-rain, dry-runoff and meltwater
   source arrays expose settled external supply before internal lake-to-lake transfers (#587).

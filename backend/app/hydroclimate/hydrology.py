@@ -2949,11 +2949,18 @@ def compute_hydrology(
     # water for `f_free` and ice for the rest, so neither counts the other's season.
     lake_sublimation_m_per_yr = LAKE_ICE_SUBLIMATION_M_PER_YR * (1.0 - ice_free_fraction)
     evaporation_mm = breaching.open_water_evaporation_mm(temperature_at_nodes)
-    _, dry_runoff_m3, dry_et_m3 = _partition_precipitation_sources(
-        dry_rain_intensity_mm, evaporation_mm, areas, np.zeros(n)
+    # Rain falling on ice enters glacier drainage in full (#1019). Budyko's land
+    # evapotranspiration applies to the exposed dry ground, not the ice-covered share.
+    bare_share = dry_share * (1.0 - ice_cover_open)
+    bare_rain_intensity_mm = np.divide(
+        bare_rain_mm, bare_share, out=np.zeros(n), where=bare_share > 0.0,
     )
-    dry_runoff_m3 = dry_runoff_m3 * dry_share
-    dry_et_m3 = dry_et_m3 * dry_share
+    _, bare_runoff_m3, bare_et_m3 = _partition_precipitation_sources(
+        bare_rain_intensity_mm, evaporation_mm, areas, np.zeros(n)
+    )
+    ice_rain_m3 = ice_rain_mm / 1000.0 * areas
+    dry_runoff_m3 = bare_runoff_m3 * bare_share
+    dry_et_m3 = bare_et_m3 * bare_share
     wet_precip_m3 = wet_precip_mm / 1000.0 * areas
     breach = None
     interface_pass = None
@@ -3044,7 +3051,10 @@ def compute_hydrology(
     # meltwater keeps the existing full per-node loss. Their
     # through-flow is river discharge; settled external sources feed the lakes below at any
     # temperature.
-    meltwater_source_m3 = meltwater_m3_per_yr(melt, areas, years)
+    bare_snowmelt_source_m3 = meltwater_m3_per_yr(ice.bare_snowmelt_depth_m, areas, years)
+    ice_release_source_m3 = meltwater_m3_per_yr(ice.ice_release_depth_m, areas, years)
+    dry_runoff_m3 += bare_snowmelt_source_m3
+    meltwater_source_m3 = ice_release_source_m3 + ice_rain_m3
     # External sources must reach their natural leaf sinks before the prognostic solve. A
     # previously full lake can redirect its sink along the outlet edge in `flow_target`; make
     # each hierarchy leaf sink terminal for this source pass so persisted spill state cannot
@@ -3240,8 +3250,8 @@ def compute_hydrology(
     )
     river_ledger = _merge_river_passes(river_route, overflow_route)
     land = ~is_ocean
-    rain_m3 = float((wet_precip_m3 + dry_runoff_m3 + dry_et_m3)[land].sum()) * interval_years
-    meltwater_m3 = float(meltwater_source_m3[land].sum()) * interval_years
+    rain_m3 = float((wet_precip_m3 + dry_runoff_m3 - bare_snowmelt_source_m3 + dry_et_m3 + ice_rain_m3)[land].sum()) * interval_years
+    meltwater_m3 = float(meltwater_m3_per_yr(melt, areas, years)[land].sum()) * interval_years
     dry_et_total_m3 = float(dry_et_m3[land].sum()) * interval_years
     ocean_export_m3 = (
         river_route.ledger.ocean_export_m3 + phase_ledger.overflow_to_ocean_m3

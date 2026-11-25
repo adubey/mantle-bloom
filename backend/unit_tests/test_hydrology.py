@@ -97,6 +97,31 @@ def test_compute_hydrology_exposes_wet_precipitation_once_in_external_supply():
     )
 
 
+def test_rain_on_ice_bypasses_land_evapotranspiration(monkeypatch):
+    theta = 0.002 * np.arange(12)
+    elevation = 500.0 - 60.0 * np.arange(12)
+    plate = _flow_line_plate(0, theta, elevation)
+    glacier = np.zeros(12)
+    glacier[0] = 20.0
+    plate.set_fields_on_plate(glacier_depth=glacier)
+    world = World(seed=0, plates=[plate])
+    captured = {}
+    original = hydrology._route_external_water_sources
+
+    def capture(elevation, ocean, targets, dry_runoff, wet_precip, meltwater, dry_loss, transit_loss):
+        captured["dry_runoff"] = dry_runoff.copy()
+        captured["meltwater"] = meltwater.copy()
+        return original(elevation, ocean, targets, dry_runoff, wet_precip, meltwater, dry_loss, transit_loss)
+
+    monkeypatch.setattr(hydrology, "_route_external_water_sources", capture)
+    fields = hydrology.compute_hydrology(world, np.full(12, 800.0), np.full(12, 15.0), years=0.0)
+
+    area = fields.hypsometry.area_m2[0]
+    assert captured["meltwater"][0] == pytest.approx(0.8 * area)
+    assert captured["dry_runoff"][0] == 0.0
+    assert captured["dry_runoff"][1] < 0.8 * fields.hypsometry.area_m2[1]
+
+
 @pytest.mark.usefixtures("substep_lakes")
 def test_compute_hydrology_passes_capped_substeps_to_lake_solve(monkeypatch):
     # #875 production wiring: with the knob on, compute_hydrology must hand the
@@ -1008,18 +1033,26 @@ def test_discharge_carries_the_ice_ledgers_meltwater_exactly_once_at_any_step_le
         # (RFC 0015 D2, #789) sums hundreds of substep ledgers, and the initial-vs-final
         # reach inventory differs by the transit transient, so single-solve 1e-9 no longer
         # holds.
-        # Meltwater converts by mass (RFC 0015 D1, #789): the routed water is the ice
-        # ledger's meltwater times RHO_ICE / RHO_WATER.
+        # The glacier source also carries rain on the opening ice cover (#1019).
+        opening_temperature = ice_sheet.air_temperature_at_elevation(
+            np.full(12, -6.0), 0.0, np.full(12, 200.0),
+        )
+        rain_fraction = 1.0 - ice_sheet.snow_fraction(opening_temperature, np.full(12, 18.0))
+        rain_on_ice = float(np.dot(0.1 * rain_fraction, _node_areas(world)))
         assert (
             fields.lake_external_meltwater_m3_per_yr.sum()
+            + fields.lake_external_dry_runoff_m3_per_yr.sum()
             + fields.lake_external_river_storage_m3_per_yr.sum()
         ) == pytest.approx(
-            ledger.meltwater_m3 * lithosphere.RHO_ICE / lithosphere.RHO_WATER / years, rel=1e-6
+            ledger.meltwater_m3 * lithosphere.RHO_ICE / lithosphere.RHO_WATER / years + rain_on_ice, rel=1e-6
         )
         assert fields.lake_external_wet_precip_m3_per_yr.sum() == 0.0
-        # Rain on the ice (a third of the precipitation at -6 C with an 18 C swing) drains
-        # as ordinary runoff for now; D8 will route it on the ice instead.
-        assert fields.lake_external_dry_runoff_m3_per_yr.sum() > 0.0
+        assert fields.lake_external_dry_runoff_m3_per_yr.sum() == pytest.approx(
+            ledger.snow_melted_m3 * lithosphere.RHO_ICE / lithosphere.RHO_WATER / years, rel=1e-6,
+        )
+        land = fields.land_water_ledger
+        assert land.rain_m3 == pytest.approx(rain_on_ice * years)
+        assert abs(land.residual_m3) <= 1e-9 * (land.rain_m3 + land.meltwater_m3)
 
 
 def test_discharge_from_fixed_rainfall_does_not_depend_on_step_length():
