@@ -53,7 +53,13 @@ backend/.venv/bin/python bin/debug/replay_d8_meltwater.py <save> --backend <back
 
 ## Results
 
-G6 and held-out runs have not yet been made. A one-step development smoke replay on seed
+The first G6 baseline arm completed on seed 649658380 at 0.25 Myr steps. The 40 steps
+reported 76–129 ice-margin networks, with 97 in the last step. Its per-step wall times
+totalled 1,707 s and peak RSS was 1,044 MB. The per-step network counts and discharges are
+in [`g6-baseline-649658380-025.json`](g6-baseline-649658380-025.json). The other G6 and
+held-out arms remain open.
+The corresponding D8 arm was started and interrupted at the owner's request for reviews;
+it wrote no completed checkpoints. A one-step development smoke replay on seed
 649658380 at 0.25 Myr used branch commit `809d123351e727f5789648c368c0a05817f4894e` and
 converted save SHA-256 `06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b6b31131f`.
 The glacier and bare-snow source residuals were 16 m³ of 1.88 × 10¹⁷ m³ and −650 m³ of
