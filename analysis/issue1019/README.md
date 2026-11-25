@@ -107,6 +107,44 @@ reported zero shed meltwater. The two step sizes produce different warm-thick me
 and unresolved shares, and further seeds are needed before attributing those differences.
 The arms ran sequentially with no other heavy run reported at either start.
 
+Seed 997271774 was replayed next from the converted 87.4 Myr save with the same 0.25 Myr
+steps. Its SHA-256 is `07971ee25cdbc364cd887ea8f4fffc69ceed49b1933d09ea38e3864ea95328b8`.
+Per-step results are in [`baseline`](g6-baseline-997271774-025.json) and
+[`D8`](g6-d8-997271774-025.json).
+
+| Measure | Baseline | D8 |
+| --- | ---: | ---: |
+| Ice-margin networks, range over steps | 203–279 | 176–284 |
+| Ice-margin networks, final step | 223 | 262 |
+| Sum of step wall times | 2,069 s | 2,138 s |
+| Peak RSS | 1,432 MB | 1,293 MB |
+
+D8's 6.730 × 10¹⁹ m³ glacier source delivered 89.33% to lakes or ocean in aggregate,
+with at least 83.31% in any step. The 2.118 × 10²⁰ m³ bare-snow source delivered 92.40%
+in aggregate and at least 90.02% per step. Maximum absolute relative source-ledger residuals
+were 3.32 × 10⁻¹⁶ and 3.25 × 10⁻¹⁶. Unresolved drainage was 2.31% of total glacier input,
+at most 3.73% in a step; it remained in ground routing. This is a second diagnosis save,
+but the timestep and ice-age reporting arms and held-out gate remain open.
+
+The same save was also replayed at 1 Myr steps. Per-step outputs are in
+[`baseline`](g6-baseline-997271774-100.json) and [`D8`](g6-d8-997271774-100.json).
+
+| Measure | Baseline | D8 |
+| --- | ---: | ---: |
+| Ice-margin networks, range over steps | 223–282 | 214–285 |
+| Ice-margin networks, final step | 273 | 252 |
+| Sum of step wall times | 1,722 s | 1,694 s |
+| Peak RSS | 1,323 MB | 1,387 MB |
+
+D8's 6.363 × 10¹⁹ m³ glacier source delivered 91.48% to lakes or ocean in aggregate
+(at least 86.67% per step). The 2.082 × 10²⁰ m³ bare-snow source delivered 93.25%
+(at least 92.08% per step). Maximum absolute relative source-ledger residuals were
+1.87 × 10⁻¹⁶ and 2.44 × 10⁻¹⁶. Unresolved glacier drainage was 5.29% of total input,
+with at most 14.12% in one step; unresolved water remains in ground routing. This step
+size also reported repeated nodes at the 5 km ice-depth guard in both baseline and D8;
+on D8 one step shed about 1,690 km³ as meltwater while other reported steps shed zero.
+The guard behaviour warrants review alongside the remaining G6 arms.
+
 The first baseline arm on seed 649658380 at 0.25 Myr steps is superseded: review found its
 network diagnostic included headwaters in the interior of the ice sheet. Its 40-step output
 is preserved in [`g6-baseline-649658380-025.json`](g6-baseline-649658380-025.json), but is
