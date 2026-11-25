@@ -2292,7 +2292,8 @@ def test_controls_queued_during_animation_apply_after_current_frame(client, monk
         allow_frame2.set()
 
     assert _wait_until(lambda: not _default_session.operation_busy(), timeout=5.0)
-    # Queued controls were applied cleanly and queue admission is closed after finish.
+    # Queued control was NOT applied mid-frame-2, then applied cleanly once frame 2 finished.
+    assert observed_solar_at_frame2 == [1.0]
     assert _default_session.world.solar_multiplier == 1.25
     assert _default_session.get_pending_controls() == {}
     queued, _ = _default_session.try_queue_pending_controls({"solar_multiplier": 0.9})

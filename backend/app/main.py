@@ -299,7 +299,8 @@ class AnimateRequest(BaseModel):
     # restores the same unbounded progress presentation instead of showing "Frame X of 480" (#1033).
     unbounded: bool = False
     # True when the user wants intermediate simulation steps (between encoded frames when
-    # steps_per_frame > 1) rendered in parallel for live UI preview without encoding into the MP4.
+    # steps_per_frame > 1) rendered synchronously under the compute gate for live UI preview
+    # without encoding into the MP4.
     preview_intermediate_steps: bool = False
 
 
