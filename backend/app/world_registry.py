@@ -25,11 +25,12 @@ import time
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Callable, Iterator
 
 from . import public_view, world_names
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, avoids an import cycle
+    from .animation_job import AnimationJob
     from .checkpoint import CheckpointStore
     from .replay_log import ReplayLog
     from .run_control import WorldRunner
@@ -133,6 +134,13 @@ class WorldSession:
     public_renders: public_view.RenderCache = field(default_factory=public_view.RenderCache)
     guest_steps: public_view.GuestStepCoordinator = field(default_factory=public_view.GuestStepCoordinator)
     animation_stop_event: threading.Event = field(default_factory=threading.Event)
+    # Active or finished-uncollected background animation job (#1033).
+    animation_job: AnimationJob | None = None
+    # Control edits submitted while an animation is running, applied at the next
+    # frame boundary once the current frame finishes rendering (#1033).
+    _accepting_pending_controls: bool = field(default=False, repr=False)
+    _pending_controls: dict[str, object] = field(default_factory=dict, repr=False)
+    _controls_snapshot: dict | None = field(default=None, repr=False)
     # Set by main.py once the session exists: the runner's callbacks need
     # main's step/checkpoint helpers, which cannot be imported here.
     runner: WorldRunner | None = None
@@ -201,6 +209,97 @@ class WorldSession:
     def operation_busy(self) -> bool:
         with self._busy_lock:
             return self._operation_busy
+
+    def get_animation_job(self) -> AnimationJob | None:
+        with self._busy_lock:
+            return self.animation_job
+
+    def has_pending_animation_result(self) -> bool:
+        """True while a completed animation's MP4 is still waiting to be saved or discarded."""
+        with self._busy_lock:
+            job = self.animation_job
+            return job is not None and not job.is_active() and job.has_result()
+
+    def begin_animation_operation(self, job: AnimationJob) -> str | None:
+        """Atomically reserve the world and publish `job` under `_busy_lock` (#1033).
+
+        Returns None on success, `"busy"` if another operation is already running,
+        `"pending_result"` if a finished MP4 is still awaiting Save or Discard, or
+        `"no_world"` if no world has been generated yet.
+        """
+        with self._busy_lock:
+            if self._operation_busy:
+                return "busy"
+            existing = self.animation_job
+            if existing is not None and not existing.is_active() and existing.has_result():
+                return "pending_result"
+            if self.world is None and self.deferred_summary is None:
+                return "no_world"
+            self.animation_stop_event.clear()
+            self._operation_busy = True
+            self._accepting_pending_controls = True
+            self.animation_job = job
+            return None
+
+    def finish_animation_operation(self, complete_job: Callable[[], None]) -> None:
+        """Publish the job's terminal state and release `_operation_busy` atomically (#1033).
+
+        Prevents a gap where `_operation_busy` is False before `job.has_result()` is True,
+        which could let a second POST /animate clobber the finished MP4 or let
+        `_session_can_sleep` retire the worker.
+        """
+        with self._busy_lock:
+            self._accepting_pending_controls = False
+            complete_job()
+            self._operation_busy = False
+
+    def clear_finished_animation_job(self, job_id: str | None = None) -> None:
+        """Atomically drop a completed animation job (and its buffered MP4) once saved,
+        discarded, or replaced by a fresh world. Never clears an active job or races
+        with a newly published one (#1033)."""
+        with self._busy_lock:
+            job = self.animation_job
+            if job is None or job.is_active():
+                return
+            if job_id is not None and job.job_id != job_id:
+                return
+            self.animation_job = None
+
+    def try_queue_pending_controls(self, updates: dict[str, object]) -> tuple[bool, dict[str, object]]:
+        """Atomically enqueue control changes only while an animation is accepting them (#1033).
+
+        Returns `(True, merged_pending)` if queued, or `(False, {})` once the worker has
+        closed the queue for finalization so the caller applies them under the normal lock.
+        """
+        with self._busy_lock:
+            if not self._accepting_pending_controls:
+                return False, {}
+            self._pending_controls.update(updates)
+            return True, dict(self._pending_controls)
+
+    def get_pending_controls(self) -> dict[str, object]:
+        with self._busy_lock:
+            return dict(self._pending_controls)
+
+    def drain_pending_controls(self, *, close_queue: bool = False) -> dict[str, object]:
+        with self._busy_lock:
+            if close_queue:
+                self._accepting_pending_controls = False
+            pending = dict(self._pending_controls)
+            self._pending_controls.clear()
+            return pending
+
+    def clear_pending_controls(self) -> None:
+        with self._busy_lock:
+            self._pending_controls.clear()
+
+    def set_controls_snapshot(self, state: dict | None) -> None:
+        with self._busy_lock:
+            self._controls_snapshot = None if state is None else dict(state)
+
+    def get_controls_snapshot(self) -> dict | None:
+        with self._busy_lock:
+            return None if self._controls_snapshot is None else dict(self._controls_snapshot)
 
     def record(self) -> dict:
         return {

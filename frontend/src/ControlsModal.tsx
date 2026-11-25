@@ -14,6 +14,7 @@ interface Props {
   splitMethod: SplitMethod;
   debugDiagnostics: boolean;
   tuning: TuningMultipliers;
+  animating?: boolean;
   onSeaLevelChange: (v: number) => void;
   onSolarMultiplierChange: (v: number) => void;
   onIceAgePeriodChange: (v: number) => void;
@@ -125,6 +126,7 @@ export default function ControlsModal({
   splitMethod,
   debugDiagnostics,
   tuning,
+  animating = false,
   onSeaLevelChange,
   onSolarMultiplierChange,
   onIceAgePeriodChange,
@@ -228,6 +230,23 @@ export default function ControlsModal({
             </button>
           ))}
         </div>
+
+        {animating && (
+          <div
+            style={{
+              fontSize: 11,
+              color: "#b7c9ff",
+              background: "#1d2642",
+              border: "1px solid #394b7a",
+              borderRadius: 4,
+              padding: "6px 8px",
+              marginBottom: 12,
+            }}
+          >
+            Animation in progress — changes are queued on the server and apply after the current
+            frame finishes rendering.
+          </div>
+        )}
 
         {tab === "world" && (
           <div>

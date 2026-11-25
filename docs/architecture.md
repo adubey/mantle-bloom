@@ -750,6 +750,8 @@ users.py             per-user store behind the paid tier (#620): users, linked i
                      free/paid/admin
 run_control.py       the run/stopped status and the background thread that steps a running
                      world (see #run-and-checkpoint above)
+animation_job.py     per-world background animation state and NDJSON pub/sub so recordings
+                     survive page refreshes and reconnected tabs can control or collect them (#1033)
 trace.py             nested wall-clock spans: the run overlay's phase labels, groups and
                      fractions, and the profiler's timings (see #trace-spans below)
 checkpoint.py        atomic world and run-status checkpoints on persistent storage, and

@@ -18,11 +18,13 @@ it, so there's no payload-size reason to keep the grid coarse -- it's a free-sta
 from __future__ import annotations
 
 import base64
+from collections import deque
 import copy
 import functools
 import io
 import logging
 import threading
+import time
 from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -3544,6 +3546,15 @@ def _run_cancellable_step(
         working = None
 
 
+def _encode_png_to_mp4(png_bytes: bytes, enc_w: int, enc_h: int, stream, container) -> None:
+    frame_img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+    if frame_img.size != (enc_w, enc_h):
+        frame_img = frame_img.crop((0, 0, enc_w, enc_h))
+    av_frame = av.VideoFrame.from_ndarray(np.asarray(frame_img), format="rgb24")
+    for packet in stream.encode(av_frame):
+        container.mux(packet)
+
+
 def stream_animation_mp4(
     world: World,
     projection: str,
@@ -3556,6 +3567,8 @@ def stream_animation_mp4(
     num_frames: int,
     step_fn=step_world,
     stop_event=None,
+    on_preview: Callable[[bytes, float, dict | None, float | None], None] | None = None,
+    on_step_timing: Callable[[float], None] | None = None,
 ):
     """Generator driving the "Record" toolbar action. Renders `world`'s progress in
     `view`/`projection` as an H.264/MP4 video -- frame 0 is the world's current state, and
@@ -3619,25 +3632,34 @@ def stream_animation_mp4(
     failure = None
     frames_done = 0
     clock = HeartbeatClock()
+    step_durations: deque[float] = deque(maxlen=10)
+    seconds_per_step: float | None = None
     try:
         try:
             for i in range(num_frames):
                 if i > 0:
-                    for _ in range(steps_per_frame):
+                    for step_idx in range(steps_per_frame):
+                        t0 = time.monotonic()
                         if not _run_cancellable_step(world, step_fn, step_years, stop_event):
                             stopped_early = True
                             break
-                        if clock.due():
+                        step_durations.append(time.monotonic() - t0)
+                        seconds_per_step = sum(step_durations) / len(step_durations)
+                        if on_step_timing is not None:
+                            on_step_timing(seconds_per_step)
+                        if on_preview is not None and step_idx < steps_per_frame - 1:
+                            # Render intermediate preview synchronously under _compute_gate so
+                            # Numba parallel=True kernels in render_png and step_world never overlap.
+                            preview_png = render_png(world, projection, view, width, height, view_rotation)
+                            preview_stats = world.stats_history[-1] if world.stats_history else None
+                            on_preview(preview_png, world.elapsed_years, preview_stats, seconds_per_step)
+                            clock.stamp()
+                        elif clock.due():
                             yield ("heartbeat", i + 1, num_frames, world.elapsed_years)
                     if stopped_early:
                         break
                 png_bytes = render_png(world, projection, view, width, height, view_rotation)
-                frame_img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
-                if frame_img.size != (enc_w, enc_h):
-                    frame_img = frame_img.crop((0, 0, enc_w, enc_h))
-                av_frame = av.VideoFrame.from_ndarray(np.asarray(frame_img), format="rgb24")
-                for packet in stream.encode(av_frame):
-                    container.mux(packet)
+                _encode_png_to_mp4(png_bytes, enc_w, enc_h, stream, container)
                 # The frame's own PNG rides along with the progress tick so the frontend can paint it
                 # straight onto the main map -- the animation runs in the background while the world
                 # is locked, so a normal /world/render for the same state would 503 (see main.py).

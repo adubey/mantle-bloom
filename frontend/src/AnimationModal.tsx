@@ -33,7 +33,12 @@ interface Props {
   // (not pre-multiplied into a years total) -- the backend runs every one of those steps for
   // real between frames, only rendering the last, rather than taking one bigger step (see
   // api.ts's animateWorld).
-  onStartAnimation: (opts: { numFrames: number; stepsPerFrame: number; unbounded: boolean }) => void;
+  onStartAnimation: (opts: {
+    numFrames: number;
+    stepsPerFrame: number;
+    unbounded: boolean;
+    previewIntermediateSteps: boolean;
+  }) => void;
 }
 
 function fmtMyr(years: number): string {
@@ -50,6 +55,7 @@ export default function AnimationModal({ hasWorld, stepYears, mapView, onClose, 
   // while unbounded runs only get the spinner (#637). "Run until I've seen enough"
   // stays one checkbox away.
   const [unbounded, setUnbounded] = useState(false);
+  const [previewIntermediateSteps, setPreviewIntermediateSteps] = useState(false);
   const yearsPerFrame = stepsPerFrame * stepYears;
 
   const isRenderedMapView = !NON_RENDERED_VIEWS.includes(mapView);
@@ -88,6 +94,29 @@ export default function AnimationModal({ hasWorld, stepYears, mapView, onClose, 
                 ))}
               </select>
             </label>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                marginBottom: 10,
+                cursor: stepsPerFrame > 1 ? "pointer" : "default",
+                opacity: stepsPerFrame > 1 ? 1 : 0.5,
+              }}
+              title={
+                stepsPerFrame > 1
+                  ? "Render intermediate simulation steps for the live map without adding them to the MP4"
+                  : "Only applies when Steps per frame is greater than 1"
+              }
+            >
+              <input
+                type="checkbox"
+                checked={previewIntermediateSteps && stepsPerFrame > 1}
+                disabled={stepsPerFrame <= 1}
+                onChange={(e) => setPreviewIntermediateSteps(e.target.checked)}
+              />
+              Display frames that aren&apos;t part of the animation
+            </label>
             <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 10 }}>
               {fmtMyr(yearsPerFrame)} per frame ({stepsPerFrame.toLocaleString()} × {stepYears.toLocaleString()} yr/step,
               every one of them actually simulated -- only the last of each frame's steps is rendered).{" "}
@@ -102,7 +131,14 @@ export default function AnimationModal({ hasWorld, stepYears, mapView, onClose, 
               its own, then a dialog lets you save or discard the MP4.
             </div>
             <button
-              onClick={() => onStartAnimation({ numFrames, stepsPerFrame, unbounded })}
+              onClick={() =>
+                onStartAnimation({
+                  numFrames,
+                  stepsPerFrame,
+                  unbounded,
+                  previewIntermediateSteps: previewIntermediateSteps && stepsPerFrame > 1,
+                })
+              }
               disabled={!canStart}
               style={{ width: "100%", fontSize: 12 }}
             >

@@ -11,6 +11,11 @@ interface Props {
   // When the bar fronts an expanded run overlay (see RunOverlay.tsx), the pop-out icon
   // that re-opens it after the overlay's X collapsed it (#629).
   onExpand?: () => void;
+  // Optional inline Stop control so a collapsed animation bar still exposes a direct
+  // path to stop the recording (#1033).
+  onStop?: () => void;
+  stopping?: boolean;
+  stopLabel?: string;
   style?: CSSProperties;
   // A real fraction (0 to 1) from the backend's NDJSON progress stream (see api.ts's
   // generateWorld `onProgress` -- world.py's generate_world_progress is where these
@@ -21,7 +26,7 @@ interface Props {
   fraction?: number;
 }
 
-export default function ProgressBar({ label, text, onExpand, style, fraction }: Props) {
+export default function ProgressBar({ label, text, onExpand, onStop, stopping, stopLabel, style, fraction }: Props) {
   const determinate = fraction !== undefined;
   const percent = determinate ? Math.round(fraction * 100) : undefined;
   return (
@@ -45,6 +50,27 @@ export default function ProgressBar({ label, text, onExpand, style, fraction }: 
           <div className="progress-indeterminate" />
         )}
       </div>
+      {onStop && (
+        <button
+          type="button"
+          title={stopping ? "Stopping…" : (stopLabel ?? "Stop recording")}
+          aria-label={stopping ? "Stopping…" : (stopLabel ?? "Stop recording")}
+          onClick={onStop}
+          disabled={stopping}
+          style={{
+            background: "transparent",
+            border: "1px solid #444",
+            borderRadius: 4,
+            color: stopping ? "#8b8fa3" : "#ff8a8a",
+            cursor: stopping ? "default" : "pointer",
+            fontSize: 11,
+            lineHeight: 1,
+            padding: "2px 4px",
+          }}
+        >
+          ⏹
+        </button>
+      )}
       {onExpand && (
         <button
           type="button"

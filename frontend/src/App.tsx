@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import {
-  animateWorld, createWorld, deleteWorld, fetchAnimationRecovery, fetchControls, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchRunState, fetchStats, fetchStatsHistory, fetchSuggestedName, fetchVolcanoes, fetchWorldSummary, fetchWorlds, generateDebugWorld, generateWorld, patchWorld, renderWorld, setRunState, stopAnimation, updateControls, worldLabel,
+  animateWorld, attachAnimationStream, createWorld, deleteWorld, dismissAnimationResult, fetchAnimationRecovery, fetchControls, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchRunState, fetchStats, fetchStatsHistory, fetchSuggestedName, fetchVolcanoes, fetchWorldSummary, fetchWorlds, generateDebugWorld, generateWorld, patchWorld, renderWorld, setRunState, stopAnimation, updateControls, worldLabel,
   RunStateRefused, TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
-  AnimateResponse, AnimationRecovery, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, SplitMethod, StopMode, TuningKey, TuningMultipliers, ViewerView, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
+  AnimateProgress, AnimateResponse, AnimationRecovery, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, SplitMethod, StopMode, TuningKey, TuningMultipliers, ViewerView, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
 } from "./api";
+import {
+  clearAnimationOverlayCollapsed,
+  formatStepDuration,
+  readAnimationOverlayCollapsed,
+  writeAnimationOverlayCollapsed,
+} from "./animationOverlayPrefs";
 import { withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
 import MapCanvas from "./MapCanvas";
 import MantleCrossSection from "./MantleCrossSection";
@@ -705,7 +711,14 @@ export default function App() {
   // disabled while `animation` is set (see `animating`). The toolbar's "Stop" button goes
   // through api.ts's stopAnimation rather than aborting the request, so the stream ends
   // cleanly and still returns the video (see handleStopAnimation below).
-  const [animation, setAnimation] = useState<{ frame: number; total: number; unbounded: boolean } | null>(null);
+  const [animation, setAnimation] = useState<{
+    frame: number;
+    total: number;
+    unbounded: boolean;
+    elapsedYears: number | null;
+    secondsPerStep: number | null;
+  } | null>(null);
+  const [animationStopping, setAnimationStopping] = useState(false);
   const [animationResult, setAnimationResult] = useState<AnimateResponse | null>(null);
   // Why the save dialog's last Save failed; the dialog stays open so the video isn't lost (#961).
   const [animationSaveError, setAnimationSaveError] = useState<string | null>(null);
@@ -717,6 +730,7 @@ export default function App() {
   const [animationFailure, setAnimationFailure] = useState<{ failure: FailedAnimation; recovery: AnimationRecovery | null } | null>(null);
   const [recoveringAnimation, setRecoveringAnimation] = useState(false);
   const animationFrameRef = useRef(0);
+  const activeAnimationWorldRef = useRef<WorldId | null>(null);
   const animating = animation !== null;
 
   // Two refresh() calls can be in flight at once -- e.g. changing map mode while a step is
@@ -914,9 +928,11 @@ export default function App() {
       const payload = pendingControlsRef.current;
       pendingControlsRef.current = {};
       try {
-        await updateControls(worldIdRef.current!, payload);
-        setCrossSectionWorldRevision((revision) => revision + 1);
-        await Promise.all([refresh(projection, mapViewRef.current, rotation), recordStats()]);
+        const res = await updateControls(worldIdRef.current!, payload);
+        if (!res.pending) {
+          setCrossSectionWorldRevision((revision) => revision + 1);
+          await Promise.all([refresh(projection, mapViewRef.current, rotation), recordStats()]);
+        }
       } catch (e) {
         setError(String(e));
       }
@@ -1107,82 +1123,150 @@ export default function App() {
     ]);
   }, [projection, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
 
+  const applyAnimationProgress = useCallback(
+    (id: WorldId, frameProjection: Projection, unbounded: boolean, p: AnimateProgress) => {
+      // Frames belong to the world the run started on; drop them when the
+      // selection moved on rather than painting the old world (#563 S7).
+      if (worldIdRef.current !== id) return;
+      if (p.isPreview) {
+        setAnimation((prev) =>
+          prev
+            ? {
+                ...prev,
+                elapsedYears: p.elapsedYears,
+                secondsPerStep: p.secondsPerStep ?? prev.secondsPerStep,
+              }
+            : prev,
+        );
+      } else {
+        setAnimation((prev) => ({
+          frame: p.frame,
+          total: p.total,
+          unbounded,
+          elapsedYears: p.elapsedYears,
+          secondsPerStep: p.secondsPerStep ?? prev?.secondsPerStep ?? null,
+        }));
+        animationFrameRef.current = p.frame;
+        setRunPhase(unbounded ? `Recorded ${p.frame} frames` : `Frame ${p.frame} of ${p.total}`);
+      }
+      // Keep the sidebar's "elapsed" readout climbing frame by frame instead of it
+      // sitting frozen at the pre-recording value until the whole run resolves.
+      setSummary((prev) => (prev ? { ...prev, elapsed_years: p.elapsedYears } : prev));
+      // Likewise for the Stats panel -- GET /worlds/{world_id}/stats would just block on the
+      // world lock for the whole run, so this stream-carried snapshot (see api.ts's
+      // AnimateProgress) is what lets it update live instead (GitHub issue #155).
+      if (p.stats) applyStats(p.stats);
+      if (p.imageBase64) {
+        // Paint the frame onto the main map. renderRequestIdRef is bumped so any
+        // pre-animation refresh() still in flight can't clobber it afterward.
+        renderRequestIdRef.current++;
+        setRenderData({ projection: frameProjection, elapsed_years: p.elapsedYears, image_base64: p.imageBase64 });
+      }
+    },
+    [applyStats],
+  );
+
+  const finishAnimationSuccess = useCallback(
+    async (id: WorldId, result: AnimateResponse, numFrames: number, unbounded: boolean) => {
+      if (worldIdRef.current !== id) return;
+      if (result.error) {
+        const recovery = await fetchAnimationRecovery(id).catch(() => null);
+        if (worldIdRef.current !== id) return;
+        setAnimationFailure({
+          failure: { frame: animationFrameRef.current, total: numFrames, unbounded, error: result.error, partialVideo: true },
+          recovery,
+        });
+      }
+      setAnimationResult(result);
+      await handleWorldAdvanced(result);
+    },
+    [handleWorldAdvanced],
+  );
+
+  const finishAnimationError = useCallback(
+    async (id: WorldId, error: unknown, numFrames: number, unbounded: boolean) => {
+      if (worldIdRef.current !== id) return;
+      const recovery = await fetchAnimationRecovery(id).catch(() => null);
+      if (worldIdRef.current !== id) return;
+      setAnimationFailure({
+        failure: { frame: animationFrameRef.current, total: numFrames, unbounded, error: String(error) },
+        recovery,
+      });
+    },
+    [],
+  );
+
   // The Record toolbar button's AnimationModal -- run the whole recording in the background.
   // Each streamed frame's PNG is painted straight onto the main map (the run holds the server
   // world lock, so a normal render would 503 -- see api.ts/main.py), so the main display
   // doubles as the animation preview; every world-mutating control is disabled until it
-  // finishes or the toolbar's Stop button ends it (see `animating`, handleStopAnimation).
+  // finishes or the Stop button ends it (see `animating`, handleStopAnimation).
   const handleStartAnimation = useCallback(
-    async ({ numFrames, stepsPerFrame, unbounded }: { numFrames: number; stepsPerFrame: number; unbounded: boolean }) => {
+    async ({
+      numFrames,
+      stepsPerFrame,
+      unbounded,
+      previewIntermediateSteps = false,
+    }: {
+      numFrames: number;
+      stepsPerFrame: number;
+      unbounded: boolean;
+      previewIntermediateSteps?: boolean;
+    }) => {
       setShowAnimationModal(false);
       setError(null);
       setAnimationResult(null);
       setAnimationSaveError(null);
-      setAnimation({ frame: 0, total: numFrames, unbounded });
+      setAnimationStopping(false);
+      setAnimation({
+        frame: 0,
+        total: numFrames,
+        unbounded,
+        elapsedYears: summary?.elapsed_years ?? null,
+        secondsPerStep: null,
+      });
       animationFrameRef.current = 0;
       setOverlayCollapsed(false);
       setRunPhase(null);
       const view = mapViewRef.current;
       const id = worldIdRef.current;
+      if (id) {
+        activeAnimationWorldRef.current = id;
+        writeAnimationOverlayCollapsed(id, false);
+      }
       try {
-        const result = await animateWorld(id!,
-          projection, view, RENDER_WIDTH, RENDER_HEIGHT, rotation, stepYears, stepsPerFrame, numFrames,
-          (p) => {
-            // Frames belong to the world the run started on; drop them when the
-            // selection moved on rather than painting the old world (#563 S7).
-            if (worldIdRef.current !== id) return;
-            setAnimation({ frame: p.frame, total: p.total, unbounded });
-            animationFrameRef.current = p.frame;
-            setRunPhase(unbounded ? `Recorded ${p.frame} frames` : `Frame ${p.frame} of ${p.total}`);
-            // Keep the sidebar's "elapsed" readout climbing frame by frame instead of it
-            // sitting frozen at the pre-recording value until the whole run resolves.
-            setSummary((prev) => (prev ? { ...prev, elapsed_years: p.elapsedYears } : prev));
-            // Likewise for the Stats panel -- GET /worlds/{world_id}/stats would just block on the
-            // world lock for the whole run, so this stream-carried snapshot (see api.ts's
-            // AnimateProgress) is what lets it update live instead (GitHub issue #155).
-            if (p.stats) applyStats(p.stats);
-            if (p.imageBase64) {
-              // Paint the frame onto the main map. renderRequestIdRef is bumped so any
-              // pre-animation refresh() still in flight can't clobber it afterward.
-              renderRequestIdRef.current++;
-              setRenderData({ projection, elapsed_years: p.elapsedYears, image_base64: p.imageBase64 });
-            }
-          },
+        const result = await animateWorld(
+          id!,
+          projection,
+          view,
+          RENDER_WIDTH,
+          RENDER_HEIGHT,
+          rotation,
+          stepYears,
+          stepsPerFrame,
+          numFrames,
+          (p) => applyAnimationProgress(id!, projection, unbounded, p),
+          undefined,
+          unbounded,
+          previewIntermediateSteps,
         );
-        // Reached whether the run finished on its own or the toolbar's Stop button ended it
-        // early (see api.ts's stopAnimation -- the stream still finishes cleanly and returns
-        // the video either way, so both cases resolve here rather than throwing).
-        // handleWorldAdvanced drops a stale world on its own, but skip setting the
-        // video result too when the selection moved on mid-run.
-        if (worldIdRef.current !== id) return;
-        if (result.error) {
-          const recovery = await fetchAnimationRecovery(id!).catch(() => null);
-          if (worldIdRef.current !== id) return;
-          setAnimationFailure({
-            failure: { frame: animationFrameRef.current, total: numFrames, unbounded, error: result.error, partialVideo: true },
-            recovery,
-          });
-        }
-        setAnimationResult(result);
-        await handleWorldAdvanced(result);
+        await finishAnimationSuccess(id!, result, numFrames, unbounded);
       } catch (e) {
         // A failed recording ends in the "Animation stopped" dialog, not a bare
         // error (#638): the server kept every completed frame's simulation work,
-        // so offer resuming from the last checkpoint. The recovery fetch failing
-        // just means nothing to resume -- the dialog says so.
-        if (worldIdRef.current === id) {
-          const recovery = await fetchAnimationRecovery(id!).catch(() => null);
-          setAnimationFailure({
-            failure: { frame: animationFrameRef.current, total: numFrames, unbounded, error: String(e) },
-            recovery,
-          });
-        }
+        // so offer resuming from the last checkpoint.
+        await finishAnimationError(id!, e, numFrames, unbounded);
       } finally {
+        if (id) {
+          clearAnimationOverlayCollapsed(id);
+          if (activeAnimationWorldRef.current === id) activeAnimationWorldRef.current = null;
+        }
         setAnimation(null);
+        setAnimationStopping(false);
         setRunPhase(null);
       }
     },
-    [projection, rotation, stepYears, handleWorldAdvanced, applyStats],
+    [projection, rotation, stepYears, summary?.elapsed_years, applyAnimationProgress, finishAnimationSuccess, finishAnimationError],
   );
 
   // The stopped-animation dialog's "Recover..." button (#638): resumes the frames
@@ -1207,20 +1291,22 @@ export default function App() {
     }
   }, [animationFailure, handleStartAnimation]);
 
-  // The toolbar's "Stop" button while recording -- asks the server to end the animation
-  // cleanly after its current frame (see api.ts's stopAnimation) so it still finishes with a
-  // complete, saveable video rather than being abandoned mid-run. Fire-and-forget: the
-  // animateWorld call above is what actually resolves once the stream's final "done"
-  // message arrives; a failure to even deliver the stop request surfaces as `error` so it
-  // isn't silently swallowed.
+  // The Stop button while recording (toolbar, RunOverlay, or collapsed ProgressBar) --
+  // asks the server to end the animation cleanly after its current frame (see api.ts's
+  // stopAnimation) so it still finishes with a complete, saveable video rather than being
+  // abandoned mid-run.
   const handleStopAnimation = useCallback(() => {
-    stopAnimation(worldIdRef.current!).catch((e) => setError(String(e)));
+    setAnimationStopping(true);
+    stopAnimation(worldIdRef.current!).catch((e) => {
+      setAnimationStopping(false);
+      setError(String(e));
+    });
   }, []);
 
   // The save-or-discard dialog's "Save" button (see SaveAnimationModal.tsx) -- downloads the
-  // finished MP4, then closes the dialog same as Discard would. A failed save keeps the dialog
-  // open with the reason, so the video can still be saved rather than silently lost (#961).
-  const handleSaveAnimation = useCallback(() => {
+  // finished MP4, then clears the server's buffered copy before closing. A failed save or
+  // server dismissal keeps the dialog open with the reason so the user can retry (#961, #1033).
+  const handleSaveAnimation = useCallback(async () => {
     if (!animationResult) return;
     try {
       saveRecordedVideo(animationResult);
@@ -1229,16 +1315,32 @@ export default function App() {
       setAnimationSaveError(String(e));
       return;
     }
+    try {
+      await dismissAnimationResult(animationResult.world_id, animationResult.jobId);
+    } catch (e) {
+      console.error("[mantle-bloom] Clearing the server recording failed", e);
+      setAnimationSaveError(`Video downloaded, but clearing the server copy failed (click Discard to retry): ${String(e)}`);
+      return;
+    }
     setAnimationSaveError(null);
     setAnimationResult(null);
   }, [animationResult]);
 
-  // The save-or-discard dialog's "Discard" button -- throws away the finished video. Doesn't
-  // touch the world itself, which already permanently advanced when the recording ran.
-  const handleDiscardAnimation = useCallback(() => {
+  // The save-or-discard dialog's "Discard" button -- clears the server's buffered copy and
+  // throws away the finished video. Keeps the dialog open if the server DELETE fails so
+  // the user can retry instead of hitting a 409 on the next Record (#1033).
+  const handleDiscardAnimation = useCallback(async () => {
+    if (!animationResult) return;
+    try {
+      await dismissAnimationResult(animationResult.world_id, animationResult.jobId);
+    } catch (e) {
+      console.error("[mantle-bloom] Clearing the server recording failed", e);
+      setAnimationSaveError(`Clearing the server copy failed: ${String(e)}`);
+      return;
+    }
     setAnimationSaveError(null);
     setAnimationResult(null);
-  }, []);
+  }, [animationResult]);
 
   // Resets the view orientation back to the default (lat=0/lon=0, see rotation.ts) -- just
   // updates state, same as a completed drag; the effect below does the actual re-fetch.
@@ -1744,6 +1846,10 @@ export default function App() {
         .then((run) => {
           if (cancelled || worldIdRef.current !== recordingWorldId) return;
           setAnimationPhase(run.phase ? { label: run.phase.label, group: run.phase.group } : null);
+          const rate = run.animation?.seconds_per_step;
+          if (typeof rate === "number") {
+            setAnimation((prev) => (prev ? { ...prev, secondsPerStep: rate } : prev));
+          }
         })
         .catch(() => {
           // best-effort, like Play's poll above
@@ -1801,25 +1907,128 @@ export default function App() {
     return () => controller.abort();
   }, [playing, worldId]);
 
-  // A run the server already has going (started from another tab, or resumed after a
-  // restart) shows as playing.
+  // A run or background animation the server already has going (started before a refresh,
+  // from another tab, or resumed after a restart) reconnects on load (#375, #1033).
   useEffect(() => {
     if (!worldId) return;
-    fetchRunState(worldId)
+    const controller = new AbortController();
+    fetchRunState(worldId, undefined, undefined, controller.signal)
       .then((run) => {
+        if (controller.signal.aborted || worldIdRef.current !== worldId) return;
         shownRevisionRef.current = run.world?.revision;
-        if (!run.running) return;
-        if (Number.isFinite(run.step_years) && run.step_years > 0) {
-          setStepYears(Math.round(run.step_years));
+        if (run.running) {
+          if (Number.isFinite(run.step_years) && run.step_years > 0) {
+            setStepYears(Math.round(run.step_years));
+          }
+          setPlaying(true);
+          // Same collapsed default as a fresh Play press above (#653).
+          setOverlayCollapsed(true);
+          setRunPhase(PLAYING_FALLBACK_PHASE);
         }
-        setPlaying(true);
-        // Same collapsed default as a fresh Play press above (#653).
-        setOverlayCollapsed(true);
-        setRunPhase(PLAYING_FALLBACK_PHASE);
+        const job = run.animation;
+        if (!job || activeAnimationWorldRef.current === worldId) return;
+        if (job.active) {
+          activeAnimationWorldRef.current = worldId;
+          setAnimation({
+            frame: job.frame,
+            total: job.total,
+            unbounded: job.unbounded,
+            elapsedYears: job.elapsed_years,
+            secondsPerStep: typeof job.seconds_per_step === "number" ? job.seconds_per_step : null,
+          });
+          animationFrameRef.current = job.frame;
+          setAnimationStopping(job.stopping);
+          setOverlayCollapsed(readAnimationOverlayCollapsed(worldId));
+          setRunPhase(
+            job.frame > 0
+              ? (job.unbounded ? `Recorded ${job.frame} frames` : `Frame ${job.frame} of ${job.total}`)
+              : null,
+          );
+          const clearAttached = () => {
+            if (!controller.signal.aborted) {
+              clearAnimationOverlayCollapsed(worldId);
+              setAnimation(null);
+              setAnimationStopping(false);
+              setRunPhase(null);
+            }
+            if (activeAnimationWorldRef.current === worldId) activeAnimationWorldRef.current = null;
+          };
+          const attachActive = (retriesLeft: number) => {
+            attachAnimationStream(
+              worldId,
+              (p) => applyAnimationProgress(worldId, job.projection, job.unbounded, p),
+              controller.signal,
+            )
+              .then(async (result) => {
+                await finishAnimationSuccess(worldId, result, job.total, job.unbounded);
+                clearAttached();
+              })
+              .catch(async (e) => {
+                if (controller.signal.aborted) {
+                  clearAttached();
+                  return;
+                }
+                if (retriesLeft > 0) {
+                  const nextRun = await fetchRunState(worldId, undefined, undefined, controller.signal).catch(() => null);
+                  if (controller.signal.aborted || worldIdRef.current !== worldId) {
+                    clearAttached();
+                    return;
+                  }
+                  if (nextRun?.animation?.active || nextRun?.animation?.has_result) {
+                    setAnimationStopping(Boolean(nextRun.animation.stopping));
+                    attachActive(retriesLeft - 1);
+                    return;
+                  }
+                }
+                await finishAnimationError(worldId, e, job.total, job.unbounded);
+                clearAttached();
+              });
+          };
+          attachActive(1);
+          return;
+        }
+        if (job.has_result) {
+          attachAnimationStream(worldId, undefined, controller.signal)
+            .then(async (result) => {
+              if (controller.signal.aborted || worldIdRef.current !== worldId) return;
+              if (result.error) {
+                const recovery = await fetchAnimationRecovery(worldId).catch(() => null);
+                if (controller.signal.aborted || worldIdRef.current !== worldId) return;
+                setAnimationFailure({
+                  failure: {
+                    frame: job.frame,
+                    total: job.total,
+                    unbounded: job.unbounded,
+                    error: result.error,
+                    partialVideo: true,
+                  },
+                  recovery,
+                });
+              }
+              setAnimationResult(result);
+              // Refresh from the live world summary rather than applying the cached
+              // recording snapshot, in case another tab stepped the world afterward (#1033).
+              const liveSummary = await fetchWorldSummary(worldId).catch(() => null);
+              if (liveSummary && !controller.signal.aborted && worldIdRef.current === worldId) {
+                await handleWorldAdvanced(liveSummary);
+              }
+            })
+            .catch(() => {
+              // best-effort: result may have been dismissed in another tab
+            });
+          return;
+        }
+        if (job.error) {
+          animationFrameRef.current = job.frame;
+          finishAnimationError(worldId, job.error, job.total, job.unbounded).finally(() => {
+            dismissAnimationResult(worldId, job.job_id).catch(() => {});
+          });
+        }
       })
       .catch(() => {
         // best-effort: without it, Play still shows the run's state once pressed
       });
+    return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [worldId]);
 
@@ -1847,6 +2056,8 @@ export default function App() {
   const shownPhase = recordingPhase ? recordingPhase.label : runPhase;
   const shownGroup = recordingPhase ? recordingPhase.group : runGroup;
   const shownContext = recordingPhase ? runPhase : null;
+  const animationStepRate =
+    animation && animation.secondsPerStep !== null ? formatStepDuration(animation.secondsPerStep) : null;
   const overlayFraction =
     animation && !animation.unbounded && animation.total > 0
       ? animation.frame / animation.total
@@ -1877,9 +2088,25 @@ export default function App() {
           {(busy || (runActive && overlayCollapsed)) && (
             <ProgressBar
               label={overlayHeadline}
-              text={shownPhase ? `${overlayHeadline}: ${shownContext ? `${shownContext} · ` : shownGroup ? `${groupName(shownGroup)} · ` : ""}${shownPhase}` : overlayHeadline}
+              text={
+                shownPhase
+                  ? `${overlayHeadline}: ${shownContext ? `${shownContext} · ` : shownGroup ? `${groupName(shownGroup)} · ` : ""}${animationStepRate ? `${animationStepRate} · ` : ""}${shownPhase}`
+                  : animationStepRate
+                    ? `${overlayHeadline}: ${animationStepRate}`
+                    : overlayHeadline
+              }
               fraction={overlayFraction}
-              onExpand={overlayCollapsed ? () => setOverlayCollapsed(false) : undefined}
+              onStop={animating ? handleStopAnimation : undefined}
+              stopping={animationStopping}
+              stopLabel="Stop recording"
+              onExpand={
+                overlayCollapsed
+                  ? () => {
+                      setOverlayCollapsed(false);
+                      if (animating && worldId) writeAnimationOverlayCollapsed(worldId, false);
+                    }
+                  : undefined
+              }
             />
           )}
           {/* Map renders have no run behind them, so the overlay above never covers
@@ -1894,8 +2121,15 @@ export default function App() {
               phase={shownPhase}
               group={shownGroup}
               context={shownContext}
+              subcontext={animationStepRate}
               fraction={overlayFraction}
-              onCollapse={() => setOverlayCollapsed(true)}
+              onStop={animating ? handleStopAnimation : undefined}
+              stopping={animationStopping}
+              stopLabel="⏹ Stop recording"
+              onCollapse={() => {
+                setOverlayCollapsed(true);
+                if (animating && worldId) writeAnimationOverlayCollapsed(worldId, true);
+              }}
             />
           )}
 
@@ -1942,13 +2176,13 @@ export default function App() {
             </div>
           </fieldset>
 
-          <button onClick={() => setShowStatsModal(true)} disabled={!summary} style={{ fontSize: 12 }}>
+          <button onClick={() => setShowStatsModal(true)} disabled={!summary && !stats} style={{ fontSize: 12 }}>
             📊 Stats
           </button>
 
           <button
             onClick={() => setShowControlsModal(true)}
-            disabled={!summary || animating}
+            disabled={!summary && !animating}
             style={{ fontSize: 12 }}
           >
             🎛️ Controls
@@ -1994,7 +2228,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => (animating ? handleStopAnimation() : handleStopRun())}
-                disabled={(!playing && !animating) || stopping}
+                disabled={(!playing && !animating) || stopping || animationStopping}
                 title="Stop"
                 aria-label="Stop"
                 style={{ flex: 1, fontSize: 15, lineHeight: 1, padding: "4px 0" }}
@@ -2208,6 +2442,9 @@ export default function App() {
                 Rendering frame {animation.frame} of {animation.total}… the map is stepping in
                 the background. Press ⏹ Stop above to finish early.
               </div>
+              {animationStepRate && (
+                <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>{animationStepRate}</div>
+              )}
             </fieldset>
           )}
 
@@ -2401,12 +2638,17 @@ export default function App() {
             </fieldset>
           )}
 
-          {summary && (
+          {(summary || animation) && (
             <div style={{ fontSize: 11, opacity: 0.8 }}>
-              <div>seed: {summary.seed}</div>
-              <div>plates: {summary.num_plates}</div>
-              <div>elapsed: {(summary.elapsed_years / 1e6).toFixed(stepYears < 10_000 ? 3 : stepYears < 100_000 ? 2 : 1)} Myr</div>
+              {summary && <div>seed: {summary.seed}</div>}
+              {summary && <div>plates: {summary.num_plates}</div>}
+              {(summary?.elapsed_years ?? animation?.elapsedYears ?? null) !== null && (
+                <div>
+                  elapsed: {(((summary?.elapsed_years ?? animation?.elapsedYears) as number) / 1e6).toFixed(stepYears < 10_000 ? 3 : stepYears < 100_000 ? 2 : 1)} Myr
+                </div>
+              )}
               {animation && <div>{animation.frame} frames recorded</div>}
+              {animationStepRate && <div>{animationStepRate}</div>}
             </div>
           )}
           {error && (
@@ -3063,6 +3305,7 @@ export default function App() {
           splitMethod={splitMethod}
           debugDiagnostics={debugDiagnostics}
           tuning={tuning}
+          animating={animating}
           onSeaLevelChange={handleSeaLevelChange}
           onSolarMultiplierChange={handleSolarMultiplierChange}
           onIceAgePeriodChange={handleIceAgePeriodChange}
