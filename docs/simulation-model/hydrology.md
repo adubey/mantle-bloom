@@ -138,9 +138,9 @@ Three kinds of water/forcing move along `flow_target`:
   land settlement, and the river storage retained from this step's input. The river ledger
   accounts for water already stored at the start of the step. The source budgets are
   calculated using the same reach travel times and loss rules as the physical river pass.
-  `glacier_drainage` counts connected regions of filled warm-based hydraulic head and their
-  incoming water once per region, and reports water with no route to a margin. The count
-  can combine adjacent depressions. `warm_thick_surface_melt_m3` records surface melt
+  `glacier_drainage` counts filled warm-based hydraulic-head minima and connected filled
+  regions, reports water entering those regions, and reports water with no route to a
+  margin. A connected region can contain multiple minima. `warm_thick_surface_melt_m3` records surface melt
   routed from cells whose closing warm-based ice is thicker than 1 km.
 - **Liquid water at cold sinks.** Runoff and glacier meltwater supply a lake at a cold
   sink. Its water column can hold liquid water and a seasonal cap (RFC 0015 D4 and D5).

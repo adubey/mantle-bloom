@@ -130,6 +130,7 @@ def test_glacier_water_fills_a_hydraulic_pit_and_reaches_the_margin():
         source, on_ice, on_ice, bed, thickness, neighbors, targets, levels, 2.0,
     )
     assert diagnostics.filled_pit_count == 1
+    assert diagnostics.filled_region_count == 1
     assert diagnostics.filled_pit_throughput_m3 == pytest.approx(10.0)
     assert diagnostics.unresolved_m3 == 0.0
 
@@ -161,6 +162,23 @@ def test_warm_ice_pit_uses_the_lower_of_two_margin_spills():
     assert targets[2] == 3
     routed = hydrology._route_glacier_water_to_margin(np.array([0.0, 0.0, 7.0, 0.0, 0.0]), on_ice, targets, levels)
     np.testing.assert_allclose(routed, [0.0, 0.0, 0.0, 7.0, 0.0])
+
+
+def test_connected_filled_region_counts_both_local_pits():
+    bed = np.array([5.0, 0.0, 2.0, 0.0, 4.0, 0.0])
+    thickness = np.array([10.0, 10.0, 10.0, 10.0, 10.0, 0.0])
+    neighbors = np.array([[1, 1], [0, 2], [1, 3], [2, 4], [3, 5], [4, 4]])
+    on_ice = thickness >= hydrology.GLACIER_VISIBLE_DEPTH_M
+    targets, levels = hydrology._glacier_water_targets(
+        bed, thickness, thickness, on_ice, neighbors, np.full(6, -1),
+    )
+    diagnostics = hydrology._glacier_drainage_diagnostics(
+        np.ones(6), on_ice, on_ice, bed, thickness, neighbors, targets, levels, 1.0,
+    )
+
+    assert diagnostics.filled_pit_count == 2
+    assert diagnostics.filled_region_count == 1
+    assert diagnostics.filled_pit_throughput_m3 == pytest.approx(4.0)
 
 
 def test_glacier_water_without_a_margin_remains_accounted_for():

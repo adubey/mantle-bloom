@@ -567,9 +567,10 @@ class MeltwaterSourceLedger:
 
 @dataclass
 class GlacierDrainageDiagnostics:
-    """Filled hydraulic depressions and their interval throughput (#1019)."""
+    """Filled hydraulic pits, connected filled regions and interval throughput (#1019)."""
 
     filled_pit_count: int
+    filled_region_count: int
     filled_pit_throughput_m3: float
     unresolved_m3: float
 
@@ -2152,7 +2153,7 @@ def _glacier_drainage_diagnostics(
     levels: np.ndarray,
     years: float,
 ) -> GlacierDrainageDiagnostics:
-    """Count connected filled regions and their incoming water, once per region (#1019)."""
+    """Count filled local minima and water entering connected filled regions (#1019)."""
     from . import ice_sheet
 
     head = bed + (ice_sheet.RHO_ICE / ice_sheet.RHO_WATER) * thickness
@@ -2160,19 +2161,39 @@ def _glacier_drainage_diagnostics(
     unresolved = float(source[on_ice & ~np.isfinite(levels)].sum()) * years
     nodes = np.flatnonzero(filled)
     if not len(nodes):
-        return GlacierDrainageDiagnostics(0, 0.0, unresolved)
+        return GlacierDrainageDiagnostics(0, 0, 0.0, unresolved)
 
     n, k = neighbor_idx.shape
     rows = np.repeat(np.arange(n), k)
     adjacency = coo_matrix(
         (np.ones(len(rows), dtype=np.int8), (rows, neighbor_idx.ravel())), shape=(n, n),
     ).tocsr()
-    count, _ = connected_components(adjacency[nodes][:, nodes], directed=False)
+    region_count, _ = connected_components(adjacency[nodes][:, nodes], directed=False)
+    pit_count = _filled_hydraulic_pit_count(head, filled, on_ice & warm_based, neighbor_idx)
     through = route_downstream(levels, ~on_ice, targets, source).through_flux
     safe_targets = np.maximum(targets, 0)
     enters = on_ice & ~filled & (targets >= 0) & filled[safe_targets]
     throughput = float(source[filled].sum() + through[enters].sum()) * years
-    return GlacierDrainageDiagnostics(int(count), throughput, unresolved)
+    return GlacierDrainageDiagnostics(pit_count, int(region_count), throughput, unresolved)
+
+
+def _filled_hydraulic_pit_count(
+    head: np.ndarray, filled: np.ndarray, warm: np.ndarray, neighbor_idx: np.ndarray,
+) -> int:
+    """Count filled local-minimum plateaus, including each pit in a shared region."""
+    nodes = np.flatnonzero(warm)
+    n, k = neighbor_idx.shape
+    rows = np.repeat(np.arange(n), k)
+    cols = neighbor_idx.ravel()
+    equal = warm[rows] & warm[cols] & (head[rows] == head[cols])
+    plateaus = coo_matrix(
+        (np.ones(int(equal.sum()), dtype=np.int8), (rows[equal], cols[equal])), shape=(n, n),
+    ).tocsr()
+    count, labels = connected_components(plateaus[nodes][:, nodes], directed=False)
+    lower_neighbor = np.any(warm[neighbor_idx[nodes]] & (head[neighbor_idx[nodes]] < head[nodes, None]), axis=1)
+    has_lower = np.bincount(labels, weights=lower_neighbor.astype(int), minlength=count) > 0
+    has_unfilled = np.bincount(labels, weights=(~filled[nodes]).astype(int), minlength=count) > 0
+    return int(np.count_nonzero(~has_lower & ~has_unfilled))
 
 
 def glacier_rain_partition_mm(

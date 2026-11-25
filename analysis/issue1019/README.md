@@ -15,9 +15,10 @@ march in both arms and records the saved march controls and ice-age period.
 
 Each step records the two source budgets, their residuals, filled hydraulic depressions,
 their throughput, unresolved drainage, surface melt routed from thick warm-based ice, and
-the count and ten largest discharges of ice-margin river networks. A filled depression is
-one connected region of raised warm-based hydraulic head. Adjacent filled pits can count as
-one region. The baseline has no D8 source budgets or filled-pit diagnostics, so these values
+the count and ten largest discharges of ice-margin river networks. A filled pit is a
+warm-based local-minimum plateau whose hydraulic head was raised. Throughput is summed on
+entry to each connected region of raised head. A region can contain multiple pits. The
+baseline has no D8 source budgets or filled-pit diagnostics, so these values
 are unavailable there. The networks are computed on both arms.
 
 The expected direction is more glacier water reaching a margin, but no size of the change
@@ -39,4 +40,9 @@ backend/.venv/bin/python bin/debug/replay_d8_meltwater.py <save> --backend <back
 
 ## Results
 
-G6 and held-out runs have not yet been made.
+G6 and held-out runs have not yet been made. A one-step development smoke replay on seed
+649658380 at 0.25 Myr used branch commit `809d123351e727f5789648c368c0a05817f4894e` and
+converted save SHA-256 `06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b6b31131f`.
+The glacier and bare-snow source residuals were 16 m³ of 1.88 × 10¹⁷ m³ and −650 m³ of
+4.13 × 10¹⁸ m³, respectively. No drainage was unresolved. This development run used the
+earlier connected-region count for pits and is not a G6 measurement.
