@@ -298,6 +298,9 @@ class AnimateRequest(BaseModel):
     # True when the user chose "keep going until Stop is pressed" so a reconnected tab
     # restores the same unbounded progress presentation instead of showing "Frame X of 480" (#1033).
     unbounded: bool = False
+    # True when the user wants intermediate simulation steps (between encoded frames when
+    # steps_per_frame > 1) rendered in parallel for live UI preview without encoding into the MP4.
+    preview_intermediate_steps: bool = False
 
 
 class ExportHexGridRequest(BaseModel):
@@ -2121,7 +2124,16 @@ def _animate_step(session: WorldSession, world: World, years: float) -> None:
         _step_world(session, world, years)
 
 
-def _animate_message_line(session, world, message, last_frame, anim_spec: dict, *, job_id: str | None = None):
+def _animate_message_line(
+    session,
+    world,
+    message,
+    last_frame,
+    anim_spec: dict,
+    *,
+    job_id: str | None = None,
+    seconds_per_step: float | None = None,
+):
     """Folds one stream_animation_mp4 message into its NDJSON line plus stream state.
 
     Returns `(line, last_frame, completed)`. A progress line checkpoints the world
@@ -2166,7 +2178,7 @@ def _animate_message_line(session, world, message, last_frame, anim_spec: dict, 
             session.feed.publish(world)
         if watched:
             _prerender_viewer_image(session)
-        return json.dumps({
+        progress_payload = {
             "type": "progress",
             "frame": frame,
             "total": total,
@@ -2181,7 +2193,10 @@ def _animate_message_line(session, world, message, last_frame, anim_spec: dict, 
             # simulate_climate_biomes off leaves climate_cache empty) -- the
             # frontend just keeps showing its last-known snapshot in that case.
             "stats": world.stats_history[-1] if world.stats_history else None,
-        }) + "\n", frame, False
+        }
+        if seconds_per_step is not None:
+            progress_payload["seconds_per_step"] = seconds_per_step
+        return json.dumps(progress_payload) + "\n", frame, False
     _, mp4_bytes, stopped_early, *failure = message
     error = failure[0] if failure else None
     if _hosted_worker and not error:
@@ -2242,10 +2257,35 @@ def _run_animation_worker(
         try:
             _hydrate_locked(session)
             world = _require_world(session)
+            def _on_preview(
+                png_bytes: bytes,
+                elapsed_years: float,
+                stats_snapshot: dict | None,
+                rate: float | None,
+            ) -> None:
+                preview_payload: dict = {
+                    "type": "preview",
+                    "frame": job.frame(),
+                    "total": req.num_frames,
+                    "image_base64": base64.b64encode(png_bytes).decode("ascii"),
+                    "elapsed_years": elapsed_years,
+                    "stats": stats_snapshot,
+                }
+                if rate is not None:
+                    preview_payload["seconds_per_step"] = rate
+                job.publish_preview(
+                    json.dumps(preview_payload) + "\n",
+                    elapsed_years=elapsed_years,
+                    seconds_per_step=rate,
+                )
+
             animation = render_image.stream_animation_mp4(
                 world, req.projection, req.view, req.width, req.height, view_rotation,
                 req.step_years, req.steps_per_frame, req.num_frames,
-                step_fn=lambda w, y: _animate_step(session, w, y), stop_event=job.stop_event,
+                step_fn=lambda w, y: _animate_step(session, w, y),
+                stop_event=job.stop_event,
+                on_preview=_on_preview if req.preview_intermediate_steps else None,
+                on_step_timing=job.set_seconds_per_step,
             )
             anim_spec = {
                 "total_frames": req.num_frames,
@@ -2262,11 +2302,18 @@ def _run_animation_worker(
                 message = _consume_animation_step(step_gen, job)
                 if message is None:
                     break
+                step_rate = job.seconds_per_step()
                 line, last_frame, completed = _animate_message_line(
-                    session, world, message, last_frame, anim_spec, job_id=job.job_id,
+                    session,
+                    world,
+                    message,
+                    last_frame,
+                    anim_spec,
+                    job_id=job.job_id,
+                    seconds_per_step=step_rate,
                 )
                 if message[0] == "heartbeat":
-                    job.publish_heartbeat(line, elapsed_years=message[3])
+                    job.publish_heartbeat(line, elapsed_years=message[3], seconds_per_step=step_rate)
                     continue
                 if message[0] == "done":
                     _, _, stopped_early, *failure = message
@@ -2278,7 +2325,9 @@ def _run_animation_worker(
                 session.lock.release()
                 _compute_gate.release()
                 acquired = False
-                job.publish_progress(line, frame=last_frame, elapsed_years=frame_elapsed)
+                job.publish_progress(
+                    line, frame=last_frame, elapsed_years=frame_elapsed, seconds_per_step=step_rate,
+                )
                 _compute_gate.acquire()
                 try:
                     session.lock.acquire()

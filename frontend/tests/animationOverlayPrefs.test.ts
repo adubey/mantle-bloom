@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   clearAnimationOverlayCollapsed,
+  formatStepDuration,
   readAnimationOverlayCollapsed,
   writeAnimationOverlayCollapsed,
 } from "../src/animationOverlayPrefs.ts";
@@ -53,5 +54,13 @@ describe("animationOverlayPrefs (#1033)", () => {
     writeAnimationOverlayCollapsed("world-1", true, storage);
     clearAnimationOverlayCollapsed("world-1", storage);
     assert.equal(readAnimationOverlayCollapsed("world-1", storage), false);
+  });
+
+  it("formats step durations in seconds/step up to 120s and minutes/step above 120s", () => {
+    assert.equal(formatStepDuration(0.426), "0.43 s/step");
+    assert.equal(formatStepDuration(12.34), "12.3 s/step");
+    assert.equal(formatStepDuration(120), "120.0 s/step");
+    assert.equal(formatStepDuration(126), "2.1 min/step");
+    assert.equal(formatStepDuration(210), "3.5 min/step");
   });
 });

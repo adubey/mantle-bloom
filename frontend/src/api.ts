@@ -539,7 +539,7 @@ async function readStreamMessages(
     reader,
     (line) => {
       const msg = JSON.parse(line) as Record<string, unknown>;
-      if (msg.type === "progress") {
+      if (msg.type === "progress" || msg.type === "preview") {
         onProgress(msg);
       } else if (msg.type === "heartbeat") {
         onHeartbeat?.(msg);
@@ -866,6 +866,7 @@ export interface AnimationJobStatus {
   total: number;
   unbounded: boolean;
   elapsed_years: number;
+  seconds_per_step?: number | null;
   has_result: boolean;
   stopped_early: boolean;
   error: string | null;
@@ -1185,6 +1186,10 @@ export interface AnimateProgress {
   // sitting frozen until it finishes. `undefined` if this frame's step didn't record one (e.g.
   // simulate_climate_biomes off) or on older servers that don't send the field.
   stats?: WorldStats;
+  // Rolling average seconds per simulation step, once at least one step has finished.
+  secondsPerStep?: number;
+  // True for intermediate-step preview renders (not encoded into the MP4) and heartbeats.
+  isPreview?: boolean;
 }
 
 // Each animation frame is a full step_world + render (see backend app/main.py's
@@ -1274,7 +1279,8 @@ async function consumeAnimationStream(
     const done = await readStreamMessages(
       resp.body.getReader(),
       (msg) => {
-        lastFrame = Number(msg.frame) || lastFrame;
+        const isPreview = msg.type === "preview";
+        if (!isPreview) lastFrame = Number(msg.frame) || lastFrame;
         lastProgressAt = Date.now();
         onProgress?.({
           frame: msg.frame as number,
@@ -1282,12 +1288,25 @@ async function consumeAnimationStream(
           imageBase64: msg.image_base64 as string | undefined,
           elapsedYears: msg.elapsed_years as number,
           stats: (msg.stats as WorldStats | null | undefined) ?? undefined,
+          secondsPerStep: typeof msg.seconds_per_step === "number" ? msg.seconds_per_step : undefined,
+          isPreview,
         });
       },
       (byteLength) => {
         chunksReceived++;
         bytesReceived += byteLength;
         rearmIdleTimer();
+      },
+      (msg) => {
+        if (typeof msg.seconds_per_step === "number" || typeof msg.elapsed_years === "number") {
+          onProgress?.({
+            frame: lastFrame,
+            total: Number(msg.total) || 0,
+            elapsedYears: Number(msg.elapsed_years) || 0,
+            secondsPerStep: typeof msg.seconds_per_step === "number" ? msg.seconds_per_step : undefined,
+            isPreview: true,
+          });
+        }
       },
     );
 
@@ -1349,6 +1368,7 @@ export async function animateWorld(
   onProgress?: (progress: AnimateProgress) => void,
   cancelSignal?: AbortSignal,
   unbounded = false,
+  previewIntermediateSteps = false,
 ): Promise<AnimateResponse> {
   return consumeAnimationStream(
     `${worldBase(API_BASE, worldId)}/animate`,
@@ -1365,9 +1385,10 @@ export async function animateWorld(
         steps_per_frame: stepsPerFrame,
         num_frames: numFrames,
         unbounded,
+        preview_intermediate_steps: previewIntermediateSteps,
       }),
     },
-    { projection, view, width, height, requestedFrames: numFrames, stepsPerFrame, unbounded },
+    { projection, view, width, height, requestedFrames: numFrames, stepsPerFrame, unbounded, previewIntermediateSteps },
     onProgress,
     cancelSignal,
   );

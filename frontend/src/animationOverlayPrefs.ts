@@ -43,3 +43,15 @@ export function clearAnimationOverlayCollapsed(worldId: string, storage: Storage
     // best-effort
   }
 }
+
+// Format a rolling step duration for the animation progress UI: seconds/step,
+// switching to minutes/step once a step takes more than 120 seconds (#1033).
+export function formatStepDuration(secondsPerStep: number): string {
+  if (secondsPerStep > 120) {
+    return `${(secondsPerStep / 60).toFixed(1)} min/step`;
+  }
+  if (secondsPerStep >= 10) {
+    return `${secondsPerStep.toFixed(1)} s/step`;
+  }
+  return `${secondsPerStep.toFixed(2)} s/step`;
+}

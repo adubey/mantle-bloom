@@ -360,8 +360,8 @@ Both return:
 
 `animation` is `null` when no background animation is active or waiting to be collected; otherwise
 it summarizes the world's `AnimationJob` (`job_id`, `active`, `stopping`, `frame`, `total`,
-`unbounded`, `elapsed_years`, `has_result`, `stopped_early`, `error`, `projection`, `view`) so a
-refreshed tab can reconnect via `GET /worlds/{world_id}/animate/stream` (#1033).
+`unbounded`, `elapsed_years`, `seconds_per_step`, `has_result`, `stopped_early`, `error`,
+`projection`, `view`) so a refreshed tab can reconnect via `GET /worlds/{world_id}/animate/stream` (#1033).
 
 `phase` is the user-visible phase of the step under way, or `null` between steps (#801). It does
 not move `run_version`: a phase change must not wake every viewer's long poll, so the app reads
@@ -760,10 +760,13 @@ per line, so the client can drive a progress bar instead of blocking on one opaq
 ```
 
 While a frame's step batch runs, `{"type": "heartbeat", "frame": n, "total": N,
-"elapsed_years": ...}` ticks flow whenever a step lands more than a minute after the
-previous line (#611) -- imageless proof the run is still stepping, so the client's
-idle watchdog doesn't abort a slow batch as stalled. The frontend ignores their shape;
-their bytes alone reset its timer.
+"elapsed_years": ..., "seconds_per_step": ...}` ticks flow whenever a step lands more than a minute
+after the previous line (#611) -- imageless proof the run is still stepping, so the client's
+idle watchdog doesn't abort a slow batch as stalled. When `"preview_intermediate_steps": true` and
+`steps_per_frame > 1`, intermediate steps between encoded frames are rendered in parallel on an
+isolated snapshot and streamed as `{"type": "preview", "frame": n, "total": N, "image_base64": ...,
+"elapsed_years": ..., "stats": ..., "seconds_per_step": ...}` lines for live UI display without
+being encoded into the MP4.
 
 Each `progress` line carries that frame's own rendered PNG in `image_base64` (same encoding
 as `/worlds/{world_id}/render`) -- the frontend paints it straight onto the main map so the display

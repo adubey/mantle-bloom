@@ -7,7 +7,12 @@ import {
 import type {
   AnimateProgress, AnimateResponse, AnimationRecovery, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, SplitMethod, StopMode, TuningKey, TuningMultipliers, ViewerView, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
 } from "./api";
-import { clearAnimationOverlayCollapsed, readAnimationOverlayCollapsed, writeAnimationOverlayCollapsed } from "./animationOverlayPrefs";
+import {
+  clearAnimationOverlayCollapsed,
+  formatStepDuration,
+  readAnimationOverlayCollapsed,
+  writeAnimationOverlayCollapsed,
+} from "./animationOverlayPrefs";
 import { withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
 import MapCanvas from "./MapCanvas";
 import MantleCrossSection from "./MantleCrossSection";
@@ -706,7 +711,13 @@ export default function App() {
   // disabled while `animation` is set (see `animating`). The toolbar's "Stop" button goes
   // through api.ts's stopAnimation rather than aborting the request, so the stream ends
   // cleanly and still returns the video (see handleStopAnimation below).
-  const [animation, setAnimation] = useState<{ frame: number; total: number; unbounded: boolean; elapsedYears: number | null } | null>(null);
+  const [animation, setAnimation] = useState<{
+    frame: number;
+    total: number;
+    unbounded: boolean;
+    elapsedYears: number | null;
+    secondsPerStep: number | null;
+  } | null>(null);
   const [animationStopping, setAnimationStopping] = useState(false);
   const [animationResult, setAnimationResult] = useState<AnimateResponse | null>(null);
   // Why the save dialog's last Save failed; the dialog stays open so the video isn't lost (#961).
@@ -1115,9 +1126,27 @@ export default function App() {
       // Frames belong to the world the run started on; drop them when the
       // selection moved on rather than painting the old world (#563 S7).
       if (worldIdRef.current !== id) return;
-      setAnimation({ frame: p.frame, total: p.total, unbounded, elapsedYears: p.elapsedYears });
-      animationFrameRef.current = p.frame;
-      setRunPhase(unbounded ? `Recorded ${p.frame} frames` : `Frame ${p.frame} of ${p.total}`);
+      if (p.isPreview) {
+        setAnimation((prev) =>
+          prev
+            ? {
+                ...prev,
+                elapsedYears: p.elapsedYears,
+                secondsPerStep: p.secondsPerStep ?? prev.secondsPerStep,
+              }
+            : prev,
+        );
+      } else {
+        setAnimation((prev) => ({
+          frame: p.frame,
+          total: p.total,
+          unbounded,
+          elapsedYears: p.elapsedYears,
+          secondsPerStep: p.secondsPerStep ?? prev?.secondsPerStep ?? null,
+        }));
+        animationFrameRef.current = p.frame;
+        setRunPhase(unbounded ? `Recorded ${p.frame} frames` : `Frame ${p.frame} of ${p.total}`);
+      }
       // Keep the sidebar's "elapsed" readout climbing frame by frame instead of it
       // sitting frozen at the pre-recording value until the whole run resolves.
       setSummary((prev) => (prev ? { ...prev, elapsed_years: p.elapsedYears } : prev));
@@ -1171,13 +1200,29 @@ export default function App() {
   // doubles as the animation preview; every world-mutating control is disabled until it
   // finishes or the Stop button ends it (see `animating`, handleStopAnimation).
   const handleStartAnimation = useCallback(
-    async ({ numFrames, stepsPerFrame, unbounded }: { numFrames: number; stepsPerFrame: number; unbounded: boolean }) => {
+    async ({
+      numFrames,
+      stepsPerFrame,
+      unbounded,
+      previewIntermediateSteps = false,
+    }: {
+      numFrames: number;
+      stepsPerFrame: number;
+      unbounded: boolean;
+      previewIntermediateSteps?: boolean;
+    }) => {
       setShowAnimationModal(false);
       setError(null);
       setAnimationResult(null);
       setAnimationSaveError(null);
       setAnimationStopping(false);
-      setAnimation({ frame: 0, total: numFrames, unbounded, elapsedYears: summary?.elapsed_years ?? null });
+      setAnimation({
+        frame: 0,
+        total: numFrames,
+        unbounded,
+        elapsedYears: summary?.elapsed_years ?? null,
+        secondsPerStep: null,
+      });
       animationFrameRef.current = 0;
       setOverlayCollapsed(false);
       setRunPhase(null);
@@ -1201,6 +1246,7 @@ export default function App() {
           (p) => applyAnimationProgress(id!, projection, unbounded, p),
           undefined,
           unbounded,
+          previewIntermediateSteps,
         );
         await finishAnimationSuccess(id!, result, numFrames, unbounded);
       } catch (e) {
@@ -1798,6 +1844,10 @@ export default function App() {
         .then((run) => {
           if (cancelled || worldIdRef.current !== recordingWorldId) return;
           setAnimationPhase(run.phase ? { label: run.phase.label, group: run.phase.group } : null);
+          const rate = run.animation?.seconds_per_step;
+          if (typeof rate === "number") {
+            setAnimation((prev) => (prev ? { ...prev, secondsPerStep: rate } : prev));
+          }
         })
         .catch(() => {
           // best-effort, like Play's poll above
@@ -1877,7 +1927,13 @@ export default function App() {
         if (!job || activeAnimationWorldRef.current === worldId) return;
         if (job.active) {
           activeAnimationWorldRef.current = worldId;
-          setAnimation({ frame: job.frame, total: job.total, unbounded: job.unbounded, elapsedYears: job.elapsed_years });
+          setAnimation({
+            frame: job.frame,
+            total: job.total,
+            unbounded: job.unbounded,
+            elapsedYears: job.elapsed_years,
+            secondsPerStep: typeof job.seconds_per_step === "number" ? job.seconds_per_step : null,
+          });
           animationFrameRef.current = job.frame;
           setAnimationStopping(job.stopping);
           setOverlayCollapsed(readAnimationOverlayCollapsed(worldId));
@@ -1998,6 +2054,8 @@ export default function App() {
   const shownPhase = recordingPhase ? recordingPhase.label : runPhase;
   const shownGroup = recordingPhase ? recordingPhase.group : runGroup;
   const shownContext = recordingPhase ? runPhase : null;
+  const animationStepRate =
+    animation && animation.secondsPerStep !== null ? formatStepDuration(animation.secondsPerStep) : null;
   const overlayFraction =
     animation && !animation.unbounded && animation.total > 0
       ? animation.frame / animation.total
@@ -2028,7 +2086,13 @@ export default function App() {
           {(busy || (runActive && overlayCollapsed)) && (
             <ProgressBar
               label={overlayHeadline}
-              text={shownPhase ? `${overlayHeadline}: ${shownContext ? `${shownContext} · ` : shownGroup ? `${groupName(shownGroup)} · ` : ""}${shownPhase}` : overlayHeadline}
+              text={
+                shownPhase
+                  ? `${overlayHeadline}: ${shownContext ? `${shownContext} · ` : shownGroup ? `${groupName(shownGroup)} · ` : ""}${animationStepRate ? `${animationStepRate} · ` : ""}${shownPhase}`
+                  : animationStepRate
+                    ? `${overlayHeadline}: ${animationStepRate}`
+                    : overlayHeadline
+              }
               fraction={overlayFraction}
               onStop={animating ? handleStopAnimation : undefined}
               stopping={animationStopping}
@@ -2055,6 +2119,7 @@ export default function App() {
               phase={shownPhase}
               group={shownGroup}
               context={shownContext}
+              subcontext={animationStepRate}
               fraction={overlayFraction}
               onStop={animating ? handleStopAnimation : undefined}
               stopping={animationStopping}
@@ -2375,6 +2440,9 @@ export default function App() {
                 Rendering frame {animation.frame} of {animation.total}… the map is stepping in
                 the background. Press ⏹ Stop above to finish early.
               </div>
+              {animationStepRate && (
+                <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>{animationStepRate}</div>
+              )}
             </fieldset>
           )}
 
@@ -2578,6 +2646,7 @@ export default function App() {
                 </div>
               )}
               {animation && <div>{animation.frame} frames recorded</div>}
+              {animationStepRate && <div>{animationStepRate}</div>}
             </div>
           )}
           {error && (

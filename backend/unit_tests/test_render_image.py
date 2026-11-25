@@ -499,6 +499,50 @@ def test_stream_animation_mp4_stays_silent_between_frames_when_steps_are_fast():
     assert len(step_calls) == 3  # (2 - 1) * 3 real, individual step_fn calls
 
 
+def test_stream_animation_mp4_reports_step_timing_and_renders_intermediate_previews_in_parallel():
+    import threading
+    import time
+
+    world = _world()
+    timings: list[float] = []
+    previews: list[tuple[bytes, float, float | None]] = []
+    preview_received = threading.Event()
+
+    step_num = [0]
+
+    def _step(w, years):
+        step_num[0] += 1
+        time.sleep(0.02)
+        w.elapsed_years += years
+        if step_num[0] == 4:
+            # Give the parallel preview thread time to finish rendering an earlier step
+            # before the final frame closes the preview renderer.
+            preview_received.wait(timeout=5.0)
+
+    def _on_preview(png_bytes, elapsed_years, _stats, rate):
+        previews.append((png_bytes, elapsed_years, rate))
+        preview_received.set()
+
+    messages = list(render_image.stream_animation_mp4(
+        world, "behrmann", "elevation", 64, 64, None, 100_000, 4, 2,
+        step_fn=_step,
+        on_preview=_on_preview,
+        on_step_timing=timings.append,
+    ))
+    # Wait briefly if the last submitted preview was finishing on the background thread.
+    preview_received.wait(timeout=2.0)
+
+    # Encoded MP4 still has only the 2 animation frames, not the intermediate previews.
+    assert [m[0] for m in messages] == ["progress", "progress", "done"]
+    assert len(timings) == 4
+    assert all(t > 0 for t in timings)
+    assert len(previews) >= 1
+    png, elapsed, rate = previews[0]
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    assert 0 < elapsed < 400_000
+    assert rate is not None and rate > 0
+
+
 def test_geomorph_colors_diverge_around_zero():
     # Neutral grey at no net change, warm where the step net-lowered a node, cool where it
     # net-raised one -- and clamped to the end stops past the +-60 m band.

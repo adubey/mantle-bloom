@@ -120,6 +120,7 @@ class AnimationJob:
         self._stopping: bool = False
         self._frame: int = 0
         self._elapsed_years: float = elapsed_years
+        self._seconds_per_step: float | None = None
         self._stopped_early: bool = False
         self._error: str | None = None
         self._has_result: bool = False
@@ -143,6 +144,18 @@ class AnimationJob:
         with self._lock:
             return len(self._subscribers)
 
+    def frame(self) -> int:
+        with self._lock:
+            return self._frame
+
+    def seconds_per_step(self) -> float | None:
+        with self._lock:
+            return self._seconds_per_step
+
+    def set_seconds_per_step(self, rate: float) -> None:
+        with self._lock:
+            self._seconds_per_step = rate
+
     def summary(self) -> dict:
         """Compact, lock-free-from-world status payload for GET /worlds/{world_id}/run."""
         with self._lock:
@@ -154,6 +167,7 @@ class AnimationJob:
                 "total": self.total,
                 "unbounded": self.unbounded,
                 "elapsed_years": self._elapsed_years,
+                "seconds_per_step": self._seconds_per_step,
                 "has_result": self._has_result,
                 "stopped_early": self._stopped_early,
                 "error": self._error,
@@ -216,19 +230,55 @@ class AnimationJob:
         finally:
             self.unsubscribe(sub)
 
-    def publish_progress(self, line: str, *, frame: int, elapsed_years: float) -> None:
+    def publish_progress(
+        self,
+        line: str,
+        *,
+        frame: int,
+        elapsed_years: float,
+        seconds_per_step: float | None = None,
+    ) -> None:
         with self._lock:
             self._frame = frame
             self._elapsed_years = elapsed_years
+            if seconds_per_step is not None:
+                self._seconds_per_step = seconds_per_step
             self._latest_progress_line = line
             subscribers = list(self._subscribers)
         for sub in subscribers:
             sub.push_preview(line)
 
-    def publish_heartbeat(self, line: str, *, elapsed_years: float | None = None) -> None:
+    def publish_preview(
+        self,
+        line: str,
+        *,
+        elapsed_years: float,
+        seconds_per_step: float | None = None,
+    ) -> None:
+        """Publish an intermediate-step preview PNG without advancing the encoded frame count."""
+        with self._lock:
+            if not self._active:
+                return
+            self._elapsed_years = elapsed_years
+            if seconds_per_step is not None:
+                self._seconds_per_step = seconds_per_step
+            self._latest_progress_line = line
+            subscribers = list(self._subscribers)
+        for sub in subscribers:
+            sub.push_preview(line)
+
+    def publish_heartbeat(
+        self,
+        line: str,
+        *,
+        elapsed_years: float | None = None,
+        seconds_per_step: float | None = None,
+    ) -> None:
         with self._lock:
             if elapsed_years is not None:
                 self._elapsed_years = elapsed_years
+            if seconds_per_step is not None:
+                self._seconds_per_step = seconds_per_step
             subscribers = list(self._subscribers)
         for sub in subscribers:
             sub.push_preview(line)

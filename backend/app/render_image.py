@@ -18,11 +18,14 @@ it, so there's no payload-size reason to keep the grid coarse -- it's a free-sta
 from __future__ import annotations
 
 import base64
+from collections import deque
+import concurrent.futures
 import copy
 import functools
 import io
 import logging
 import threading
+import time
 from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -3544,6 +3547,82 @@ def _run_cancellable_step(
         working = None
 
 
+def _render_snapshot(world: World) -> World:
+    """Create an isolated copy of `world` for parallel preview rendering (#1033).
+
+    Strips history/log/ephemeral-cache fields that `render_png` never reads so the
+    snapshot stays smaller while sharing zero mutable state with the stepping thread.
+    """
+    shallow = copy.copy(world)
+    shallow.stats_history = []
+    shallow.events = []
+    shallow.node_kdtree_cache = None
+    shallow.node_kdtree_relief_cache = None
+    shallow.node_hillshade_cache = None
+    shallow.node_position_tree_cache = None
+    return copy.deepcopy(shallow)
+
+
+class _ParallelPreviewRenderer:
+    """Renders intermediate animation steps on a background thread in parallel with stepping (#1033).
+
+    At most one preview render runs at a time; if a render is still in flight when another
+    intermediate step finishes, that step is skipped rather than queueing a backlog or
+    slowing down the simulation loop.
+    """
+
+    def __init__(
+        self,
+        projection: str,
+        view: str,
+        width: int,
+        height: int,
+        view_rotation: np.ndarray,
+        on_preview: Callable[[bytes, float, dict | None, float | None], None],
+    ) -> None:
+        self._projection = projection
+        self._view = view
+        self._width = width
+        self._height = height
+        self._view_rotation = None if view_rotation is None else np.array(view_rotation, copy=True)
+        self._on_preview = on_preview
+        self._closed = threading.Event()
+        self._pool = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="animate-preview")
+        self._pending: concurrent.futures.Future | None = None
+
+    def maybe_submit(self, world: World, seconds_per_step: float | None) -> None:
+        if self._closed.is_set():
+            return
+        if self._pending is not None and not self._pending.done():
+            return
+        snapshot = _render_snapshot(world)
+        elapsed_years = world.elapsed_years
+        stats = copy.deepcopy(world.stats_history[-1]) if world.stats_history else None
+        self._pending = self._pool.submit(self._render_one, snapshot, elapsed_years, stats, seconds_per_step)
+
+    def _render_one(
+        self,
+        snapshot: World,
+        elapsed_years: float,
+        stats: dict | None,
+        seconds_per_step: float | None,
+    ) -> None:
+        if self._closed.is_set():
+            return
+        try:
+            png_bytes = render_png(
+                snapshot, self._projection, self._view, self._width, self._height, self._view_rotation,
+            )
+            if not self._closed.is_set():
+                self._on_preview(png_bytes, elapsed_years, stats, seconds_per_step)
+        except Exception:  # noqa: BLE001 -- preview render must never fail the real animation
+            logging.getLogger(__name__).debug("intermediate animation preview render failed", exc_info=True)
+
+    def close(self) -> None:
+        self._closed.set()
+        self._pool.shutdown(wait=False)
+
+
 def stream_animation_mp4(
     world: World,
     projection: str,
@@ -3556,6 +3635,8 @@ def stream_animation_mp4(
     num_frames: int,
     step_fn=step_world,
     stop_event=None,
+    on_preview: Callable[[bytes, float, dict | None, float | None], None] | None = None,
+    on_step_timing: Callable[[float], None] | None = None,
 ):
     """Generator driving the "Record" toolbar action. Renders `world`'s progress in
     `view`/`projection` as an H.264/MP4 video -- frame 0 is the world's current state, and
@@ -3619,14 +3700,28 @@ def stream_animation_mp4(
     failure = None
     frames_done = 0
     clock = HeartbeatClock()
+    step_durations: deque[float] = deque(maxlen=10)
+    seconds_per_step: float | None = None
+    preview_renderer = (
+        _ParallelPreviewRenderer(projection, view, width, height, view_rotation, on_preview)
+        if on_preview is not None and steps_per_frame > 1
+        else None
+    )
     try:
         try:
             for i in range(num_frames):
                 if i > 0:
-                    for _ in range(steps_per_frame):
+                    for step_idx in range(steps_per_frame):
+                        t0 = time.monotonic()
                         if not _run_cancellable_step(world, step_fn, step_years, stop_event):
                             stopped_early = True
                             break
+                        step_durations.append(time.monotonic() - t0)
+                        seconds_per_step = sum(step_durations) / len(step_durations)
+                        if on_step_timing is not None:
+                            on_step_timing(seconds_per_step)
+                        if preview_renderer is not None and step_idx < steps_per_frame - 1:
+                            preview_renderer.maybe_submit(world, seconds_per_step)
                         if clock.due():
                             yield ("heartbeat", i + 1, num_frames, world.elapsed_years)
                     if stopped_early:
@@ -3654,6 +3749,8 @@ def stream_animation_mp4(
         for packet in stream.encode():  # flush libx264's remaining buffered frames
             container.mux(packet)
     finally:
+        if preview_renderer is not None:
+            preview_renderer.close()
         # A disconnected client abandons this generator mid-loop (see main.py's animate
         # GeneratorExit path): the encoder context must still be closed, or each abandoned
         # run leaks a native libx264 context. Closed exactly once -- normal completion
