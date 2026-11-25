@@ -543,6 +543,24 @@ def test_stream_animation_mp4_reports_step_timing_and_renders_intermediate_previ
     assert rate is not None and rate > 0
 
 
+def test_stream_animation_mp4_parallel_render_pipelines_all_frames_in_order():
+    world = _world()
+
+    def _step(w, years):
+        w.elapsed_years += years
+
+    messages = list(render_image.stream_animation_mp4(
+        world, "behrmann", "elevation", 64, 64, None, 100_000, 1, 4,
+        step_fn=_step,
+        parallel_render=True,
+    ))
+    assert [m[0] for m in messages] == ["progress", "progress", "progress", "progress", "done"]
+    assert [m[1] for m in messages[:4]] == [1, 2, 3, 4]
+    assert [m[4] for m in messages[:4]] == [0.0, 100_000.0, 200_000.0, 300_000.0]
+    mp4 = messages[-1][1]
+    assert b"ftyp" in mp4[:32]
+
+
 def test_geomorph_colors_diverge_around_zero():
     # Neutral grey at no net change, warm where the step net-lowered a node, cool where it
     # net-raised one -- and clamped to the end stops past the +-60 m band.

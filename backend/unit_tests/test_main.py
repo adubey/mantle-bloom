@@ -2246,6 +2246,59 @@ def test_animate_setup_failure_emits_error_line_and_records_job_error(client, mo
     assert "checkpoint hydrate failed" in run["animation"]["error"]
 
 
+def test_controls_queued_during_animation_apply_after_current_frame(client, monkeypatch):
+    # Issue #1033: Controls stay editable during an active animation; changes are
+    # cached on the server (`pending: true`) and applied once the current frame renders.
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
+    wid = _default_session.world_id
+    frame1_emitted = threading.Event()
+    allow_frame2 = threading.Event()
+    observed_solar_at_frame2: list[float] = []
+
+    def fake_stream(world, *_args, **_kwargs):
+        yield ("progress", 1, 2, b"png-1", 0.0)
+        frame1_emitted.set()
+        allow_frame2.wait(timeout=5.0)
+        observed_solar_at_frame2.append(world.solar_multiplier)
+        yield ("progress", 2, 2, b"png-2", 100_000.0)
+        yield ("done", b"\x00\x00\x00\x18ftypisom", False)
+
+    monkeypatch.setattr(main.render_image, "stream_animation_mp4", fake_stream)
+    try:
+        chunk_count = _post_streaming_then_disconnect(
+            f"/worlds/{wid}/animate",
+            {"projection": "eckert4", "view": "elevation", "width": 64, "height": 64,
+             "step_years": 100_000, "num_frames": 2},
+            disconnect_after_chunks=1,
+        )
+        assert chunk_count == 1
+        assert frame1_emitted.wait(timeout=5.0)
+
+        # POST /controls returns immediately with pending=True instead of blocking.
+        resp = client.post(
+            f"/worlds/{wid}/controls",
+            json={"solar_multiplier": 1.25, "parallel_render": True},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["pending"] is True
+        assert body["solar_multiplier"] == 1.25
+        assert body["parallel_render"] is True
+
+        # GET /controls reflects the queued values lock-free while running.
+        got = client.get(f"/worlds/{wid}/controls").json()
+        assert got["pending"] is True
+        assert got["solar_multiplier"] == 1.25
+    finally:
+        allow_frame2.set()
+
+    assert _wait_until(lambda: not _default_session.operation_busy(), timeout=5.0)
+    # Queued controls were applied cleanly and persisted onto world/session.
+    assert _default_session.world.solar_multiplier == 1.25
+    assert _default_session.parallel_render is True
+    assert _default_session.get_pending_controls() == {}
+
+
 def test_animate_progress_carries_a_live_stats_snapshot(client):
     # GitHub issue #155: the Stats panel used to sit frozen for the whole recording, since
     # GET /world/stats blocks on the world lock that /world/animate holds throughout. Each

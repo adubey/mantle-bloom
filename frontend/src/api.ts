@@ -801,6 +801,10 @@ export type ControlsState = {
   // Gate for the debug-only diagnostics (see backend World.debug_diagnostics) -- on by
   // default for a Debugging Worlds tab world, off/toggleable here for any other loaded save.
   debug_diagnostics: boolean;
+  // Session-level pipelined parallel rendering toggle (#1033).
+  parallel_render?: boolean;
+  // True when the update was queued on the server because an animation is in progress (#1033).
+  pending?: boolean;
 } & TuningMultipliers;
 
 export function fetchControls(worldId: WorldId): Promise<ControlsState> {
@@ -827,6 +831,7 @@ export function updateControls(worldId: WorldId, controls: {
   slabDragForm?: string;
   ageForceColumn?: boolean;
   debugDiagnostics?: boolean;
+  parallelRender?: boolean;
   tuning?: Partial<TuningMultipliers>;
 }): Promise<ControlsState> {
   return fetch(`${worldBase(API_BASE, worldId)}/controls`, {
@@ -852,6 +857,7 @@ export function updateControls(worldId: WorldId, controls: {
       slab_drag_form: controls.slabDragForm,
       age_force_column: controls.ageForceColumn,
       debug_diagnostics: controls.debugDiagnostics,
+      parallel_render: controls.parallelRender,
       ...controls.tuning,
     }),
   }).then(asJson<ControlsState>);

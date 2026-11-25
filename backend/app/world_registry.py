@@ -136,6 +136,13 @@ class WorldSession:
     animation_stop_event: threading.Event = field(default_factory=threading.Event)
     # Active or finished-uncollected background animation job (#1033).
     animation_job: AnimationJob | None = None
+    # Whether animation MP4 frames are pipelined on a background render thread
+    # in parallel with simulation stepping (opt-in via Controls -> World, outside World).
+    parallel_render: bool = False
+    # Control edits submitted while an animation is running, applied at the next
+    # frame boundary once the current frame finishes rendering (#1033).
+    _pending_controls: dict[str, object] = field(default_factory=dict, repr=False)
+    _controls_snapshot: dict | None = field(default=None, repr=False)
     # Set by main.py once the session exists: the runner's callbacks need
     # main's step/checkpoint helpers, which cannot be imported here.
     runner: WorldRunner | None = None
@@ -257,6 +264,34 @@ class WorldSession:
             if job_id is not None and job.job_id != job_id:
                 return
             self.animation_job = None
+
+    def queue_pending_controls(self, updates: dict[str, object]) -> dict[str, object]:
+        """Merge control changes queued while an animation is running (#1033)."""
+        with self._busy_lock:
+            self._pending_controls.update(updates)
+            return dict(self._pending_controls)
+
+    def get_pending_controls(self) -> dict[str, object]:
+        with self._busy_lock:
+            return dict(self._pending_controls)
+
+    def drain_pending_controls(self) -> dict[str, object]:
+        with self._busy_lock:
+            pending = dict(self._pending_controls)
+            self._pending_controls.clear()
+            return pending
+
+    def clear_pending_controls(self) -> None:
+        with self._busy_lock:
+            self._pending_controls.clear()
+
+    def set_controls_snapshot(self, state: dict) -> None:
+        with self._busy_lock:
+            self._controls_snapshot = dict(state)
+
+    def get_controls_snapshot(self) -> dict | None:
+        with self._busy_lock:
+            return None if self._controls_snapshot is None else dict(self._controls_snapshot)
 
     def record(self) -> dict:
         return {

@@ -337,6 +337,9 @@ class ControlsRequest(BaseModel):
     # Issue #133 phase-1 proving-out flag -- see World.node_cloud_resample_mode. "kdtree"
     # (default) or "healpix". Backend/API-only for now, no Controls-panel entry.
     node_cloud_resample_mode: str | None = None
+    # Session-level pipelined parallel rendering toggle (#1033): when True, animation
+    # MP4 frames render on a background thread in parallel with the next frame's steps.
+    parallel_render: bool | None = None
     # Geomorphic-budget tuning knobs -- dimensionless multipliers, 1.0 == untuned (see
     # world.TUNING_MULTIPLIER_FIELDS and World's field group). Same "only the touched one is
     # sent" convention as the fields above; each is rejected below if negative.
@@ -674,6 +677,8 @@ def _set_world(session: WorldSession, world: World, *, prerender_viewer: bool = 
     session.deferred_summary = None
     session.load_error = None
     session.clear_finished_animation_job()
+    session.clear_pending_controls()
+    session.set_controls_snapshot(_controls_state(session, world))
     if session.replay_log is not None:
         session.replay_log.clear_recent_events()
     _world_changed(session, prerender_viewer=prerender_viewer)
@@ -2178,6 +2183,10 @@ def _animate_message_line(
             session.feed.publish(world)
         if watched:
             _prerender_viewer_image(session)
+        stats_snap = next(
+            (s for s in reversed(world.stats_history) if s.get("elapsed_years") == elapsed_years),
+            world.stats_history[-1] if world.stats_history else None,
+        )
         progress_payload = {
             "type": "progress",
             "frame": frame,
@@ -2186,13 +2195,9 @@ def _animate_message_line(
             "elapsed_years": elapsed_years,
             # Each frame's step_fn call already records a stats.py snapshot onto
             # World.stats_history (see World.record_stats, called from step_world)
-            # -- ride the latest one along here so the Stats panel can update live
-            # instead of sitting frozen until the run finishes (GET stats
-            # would just wait at the compute gate for the whole run, see its own
-            # docstring). `None` if record_stats skipped recording this step (e.g.
-            # simulate_climate_biomes off leaves climate_cache empty) -- the
-            # frontend just keeps showing its last-known snapshot in that case.
-            "stats": world.stats_history[-1] if world.stats_history else None,
+            # -- ride the matching one along here so the Stats panel updates live
+            # even when parallel_render pipelines the next step ahead (#155, #1033).
+            "stats": stats_snap,
         }
         if seconds_per_step is not None:
             progress_payload["seconds_per_step"] = seconds_per_step
@@ -2286,6 +2291,7 @@ def _run_animation_worker(
                 stop_event=job.stop_event,
                 on_preview=_on_preview if req.preview_intermediate_steps else None,
                 on_step_timing=job.set_seconds_per_step,
+                parallel_render=session.parallel_render,
             )
             anim_spec = {
                 "total_frames": req.num_frames,
@@ -2335,6 +2341,8 @@ def _run_animation_worker(
                     _compute_gate.release()
                     raise
                 acquired = True
+                # Apply any control edits queued while the previous frame rendered (#1033).
+                _apply_pending_controls_locked(session, world)
         except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
             _logger.exception(
                 "animation stream failed at frame %s/%s (projection=%s view=%s size=%sx%s steps_per_frame=%s)",
@@ -2355,8 +2363,11 @@ def _run_animation_worker(
                 pool.shutdown(wait=False)
     finally:
         try:
-            if acquired and not (completed and _hosted_worker):
-                _world_changed(session, completed)
+            if acquired:
+                if session.world is not None:
+                    _apply_pending_controls_locked(session, session.world)
+                if not (completed and _hosted_worker):
+                    _world_changed(session, completed)
         finally:
             if acquired:
                 session.lock.release()
@@ -2556,83 +2567,114 @@ def _apply_time_controls(world: World, req: ControlsRequest) -> None:
         world.glacier_max_substeps = int(req.glacier_max_substeps)
 
 
+def _apply_controls_locked(
+    session: WorldSession,
+    world: World,
+    req: ControlsRequest,
+    tuning_updates: dict[str, float],
+) -> dict:
+    """Apply validated control updates to `world` and `session`; caller holds session.lock."""
+    if req.sea_level_m is not None:
+        # Sea level is eustatic now (see eustasy.py) -- the slider sets the conserved
+        # ocean water volume to whatever floats the current hypsometry at this level,
+        # rather than pinning sea_level_m directly (which the next step would re-solve away).
+        eustasy.set_sea_level_via_water_budget(world, req.sea_level_m)
+        world.node_hillshade_cache = None  # The new water level can float grounded ice.
+    if req.solar_multiplier is not None:
+        world.solar_multiplier = req.solar_multiplier
+    if req.ice_age_period_years is not None:
+        world.ice_age_period_years = max(0.0, float(req.ice_age_period_years))
+    if req.simulate_plate_movement is not None:
+        world.simulate_plate_movement = req.simulate_plate_movement
+    if req.simulate_climate_biomes is not None:
+        world.simulate_climate_biomes = req.simulate_climate_biomes
+    _apply_time_controls(world, req)
+    if req.wind_model is not None:
+        world.wind_model = req.wind_model
+    if req.fault_deformation_mode is not None:
+        world.fault_deformation_mode = req.fault_deformation_mode
+    if req.split_method is not None:
+        if req.split_method == "rift_lines":
+            try:
+                rift_damage.RiftLineParams.with_overrides(world.rift_line_params)
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        world.split_method = req.split_method
+    if req.ridge_push_form is not None:
+        world.ridge_push_form = req.ridge_push_form
+    if req.slab_drag_form is not None:
+        world.slab_drag_form = req.slab_drag_form
+    if req.age_force_column is not None:
+        world.age_force_column = req.age_force_column
+    if req.node_cloud_resample_mode is not None:
+        world.node_cloud_resample_mode = req.node_cloud_resample_mode
+    if req.debug_diagnostics is not None:
+        world.debug_diagnostics = req.debug_diagnostics
+    if req.parallel_render is not None:
+        session.parallel_render = req.parallel_render
+    for name, value in tuning_updates.items():
+        setattr(world, name, float(value))
+    world.climate_cache = climate.compute_climate(world, *climate.grid_dimensions(world.climate_density))
+    state = _controls_state(session, world)
+    session.set_controls_snapshot(state)
+    return state
+
+
+def _apply_pending_controls_locked(session: WorldSession, world: World) -> bool:
+    """Drain and apply any controls queued while an animation frame was running (#1033)."""
+    pending = session.drain_pending_controls()
+    if not pending:
+        return False
+    try:
+        req = ControlsRequest(**pending)
+        tuning_updates = _validate_controls_request(req)
+        _apply_controls_locked(session, world, req, tuning_updates)
+        return True
+    except Exception:  # noqa: BLE001 -- queued control error must not crash an active animation
+        _logger.exception("failed to apply queued animation controls")
+        return False
+
+
 @app.post("/worlds/{world_id}/controls")
 def set_controls(world_id: str, req: ControlsRequest) -> dict:
     """Live-adjusts sea level, solar heat, ice-age frequency, the plate-movement/climate-biomes
-    step toggles, the wind model, fault deformation mode, plate split method, and/or the
-    geomorphic-budget tuning multipliers
-    (world.TUNING_MULTIPLIER_FIELDS -- rain/river/wind/ocean/glacier/seismic erosion,
-    coastal leveling, river/ocean deposition, collision uplift rate & reach, contact
-    braking (whole brake and craton-only), volcanism,
-    fault relief strength, plume production, craton formation and plume decratonization
-    (#1001); all dimensionless, 1.0 == untuned) on the current world (the "Controls" window -- see
-    World.sea_level_m/World.solar_multiplier/World.simulate_plate_movement/
-    World.simulate_climate_biomes/World.wind_model and World's tuning-knob field group) and
-    immediately recomputes world.climate_cache so the very next /worlds/{world_id}/render or
-    /worlds/{world_id}/stats call reflects the change without waiting for a step -- climate_cache is
-    otherwise only refreshed by erosion.py once per step (see World.climate_cache), which
-    would make a real-time control feel laggy or unresponsive between steps. This one-time
-    recompute happens regardless of the current simulate_climate_biomes setting -- it's a
-    single call triggered by a UI action, not a per-step cost, so it's cheap even when the
-    user has turned off per-step climate computation to speed up stepping. `400` for an
-    unknown wind model or a negative multiplier; `404` if no world has been generated yet."""
+    step toggles, the wind model, fault deformation mode, plate split method, parallel rendering,
+    and/or the geomorphic-budget tuning multipliers on the current world. When an animation is
+    currently running on this world, changes are validated and cached on the server (`pending: true`)
+    and applied cleanly once the current frame finishes rendering (#1033)."""
     session = _session_or_404(world_id)
     tuning_updates = _validate_controls_request(req)
+    job = session.get_animation_job()
+    if job is not None and job.is_active():
+        updates = {k: v for k, v in req.model_dump().items() if v is not None}
+        pending = session.queue_pending_controls(updates)
+        base = session.get_controls_snapshot() or {}
+        return {**base, **pending, "pending": True}
     with _compute_gate.hold(), session.lock:
         _hydrate_locked(session)
         world = _require_world(session)
-        if req.sea_level_m is not None:
-            # Sea level is eustatic now (see eustasy.py) -- the slider sets the conserved
-            # ocean water volume to whatever floats the current hypsometry at this level,
-            # rather than pinning sea_level_m directly (which the next step would re-solve away).
-            eustasy.set_sea_level_via_water_budget(world, req.sea_level_m)
-            world.node_hillshade_cache = None  # The new water level can float grounded ice.
-        if req.solar_multiplier is not None:
-            world.solar_multiplier = req.solar_multiplier
-        if req.ice_age_period_years is not None:
-            world.ice_age_period_years = max(0.0, float(req.ice_age_period_years))
-        if req.simulate_plate_movement is not None:
-            world.simulate_plate_movement = req.simulate_plate_movement
-        if req.simulate_climate_biomes is not None:
-            world.simulate_climate_biomes = req.simulate_climate_biomes
-        _apply_time_controls(world, req)
-        if req.wind_model is not None:
-            world.wind_model = req.wind_model
-        if req.fault_deformation_mode is not None:
-            world.fault_deformation_mode = req.fault_deformation_mode
-        if req.split_method is not None:
-            if req.split_method == "rift_lines":
-                try:
-                    rift_damage.RiftLineParams.with_overrides(world.rift_line_params)
-                except (TypeError, ValueError) as exc:
-                    raise HTTPException(status_code=400, detail=str(exc)) from exc
-            world.split_method = req.split_method
-        if req.ridge_push_form is not None:
-            world.ridge_push_form = req.ridge_push_form
-        if req.slab_drag_form is not None:
-            world.slab_drag_form = req.slab_drag_form
-        if req.age_force_column is not None:
-            world.age_force_column = req.age_force_column
-        if req.node_cloud_resample_mode is not None:
-            world.node_cloud_resample_mode = req.node_cloud_resample_mode
-        if req.debug_diagnostics is not None:
-            world.debug_diagnostics = req.debug_diagnostics
-        for name, value in tuning_updates.items():
-            setattr(world, name, float(value))
-        world.climate_cache = climate.compute_climate(world, *climate.grid_dimensions(world.climate_density))
+        state = _apply_controls_locked(session, world, req, tuning_updates)
         # Sea level and climate change what the viewer's renders show.
         _world_changed(session)
-        return _controls_state(world)
+        return {**state, "pending": False}
 
 
 @app.get("/worlds/{world_id}/controls")
 def get_controls(world_id: str) -> dict:
     session = _session_or_404(world_id)
+    job = session.get_animation_job()
+    if job is not None and job.is_active():
+        snap = session.get_controls_snapshot()
+        if snap is not None:
+            pending = session.get_pending_controls()
+            return {**snap, **pending, "pending": bool(pending)}
     with session.lock:
-        return _controls_state(_require_world(session))
+        state = _controls_state(session, _require_world(session))
+        session.set_controls_snapshot(state)
+        return {**state, "pending": False}
 
 
-def _controls_state(world: World) -> dict:
+def _controls_state(session: WorldSession, world: World) -> dict:
     return {
         "sea_level_m": world.sea_level_m,
         "solar_multiplier": world.solar_multiplier,
@@ -2643,6 +2685,7 @@ def _controls_state(world: World) -> dict:
         "lake_step_years": world.lake_step_years,
         "lake_stop_mode": world.lake_stop_mode,
         "lake_max_substeps": world.lake_max_substeps,
+        "parallel_render": session.parallel_render,
         "glacier_step_years": world.glacier_step_years,
         "glacier_stop_mode": world.glacier_stop_mode,
         "glacier_max_substeps": world.glacier_max_substeps,

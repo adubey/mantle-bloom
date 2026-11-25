@@ -3623,6 +3623,15 @@ class _ParallelPreviewRenderer:
         self._pool.shutdown(wait=False)
 
 
+def _encode_png_to_mp4(png_bytes: bytes, enc_w: int, enc_h: int, stream, container) -> None:
+    frame_img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+    if frame_img.size != (enc_w, enc_h):
+        frame_img = frame_img.crop((0, 0, enc_w, enc_h))
+    av_frame = av.VideoFrame.from_ndarray(np.asarray(frame_img), format="rgb24")
+    for packet in stream.encode(av_frame):
+        container.mux(packet)
+
+
 def stream_animation_mp4(
     world: World,
     projection: str,
@@ -3637,6 +3646,7 @@ def stream_animation_mp4(
     stop_event=None,
     on_preview: Callable[[bytes, float, dict | None, float | None], None] | None = None,
     on_step_timing: Callable[[float], None] | None = None,
+    parallel_render: bool = False,
 ):
     """Generator driving the "Record" toolbar action. Renders `world`'s progress in
     `view`/`projection` as an H.264/MP4 video -- frame 0 is the world's current state, and
@@ -3707,6 +3717,13 @@ def stream_animation_mp4(
         if on_preview is not None and steps_per_frame > 1
         else None
     )
+    frame_pool = (
+        concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="animate-frame")
+        if parallel_render and num_frames > 2
+        else None
+    )
+    pending_frame: tuple[int, float, concurrent.futures.Future[bytes]] | None = None
+    rot_copy = None if view_rotation is None else np.array(view_rotation, copy=True)
     try:
         try:
             for i in range(num_frames):
@@ -3726,21 +3743,44 @@ def stream_animation_mp4(
                             yield ("heartbeat", i + 1, num_frames, world.elapsed_years)
                     if stopped_early:
                         break
-                png_bytes = render_png(world, projection, view, width, height, view_rotation)
-                frame_img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
-                if frame_img.size != (enc_w, enc_h):
-                    frame_img = frame_img.crop((0, 0, enc_w, enc_h))
-                av_frame = av.VideoFrame.from_ndarray(np.asarray(frame_img), format="rgb24")
-                for packet in stream.encode(av_frame):
-                    container.mux(packet)
-                # The frame's own PNG rides along with the progress tick so the frontend can paint it
-                # straight onto the main map -- the animation runs in the background while the world
-                # is locked, so a normal /world/render for the same state would 503 (see main.py).
-                frames_done = i + 1
-                yield ("progress", i + 1, num_frames, png_bytes, world.elapsed_years)
-                # A progress line is itself proof of life for the client's watchdog.
+                if pending_frame is not None:
+                    prev_num, prev_elapsed, prev_future = pending_frame
+                    pending_frame = None
+                    prev_png = prev_future.result()
+                    _encode_png_to_mp4(prev_png, enc_w, enc_h, stream, container)
+                    frames_done = prev_num
+                    yield ("progress", prev_num, num_frames, prev_png, prev_elapsed)
+                    clock.stamp()
+                if frame_pool is not None and 0 < i < num_frames - 1:
+                    # Pipeline frame i's render on a background thread while frame i+1 steps.
+                    snap = _render_snapshot(world)
+                    fut = frame_pool.submit(render_png, snap, projection, view, width, height, rot_copy)
+                    pending_frame = (i + 1, world.elapsed_years, fut)
+                else:
+                    png_bytes = render_png(world, projection, view, width, height, view_rotation)
+                    _encode_png_to_mp4(png_bytes, enc_w, enc_h, stream, container)
+                    frames_done = i + 1
+                    yield ("progress", i + 1, num_frames, png_bytes, world.elapsed_years)
+                    clock.stamp()
+            if pending_frame is not None:
+                prev_num, prev_elapsed, prev_future = pending_frame
+                pending_frame = None
+                prev_png = prev_future.result()
+                _encode_png_to_mp4(prev_png, enc_w, enc_h, stream, container)
+                frames_done = prev_num
+                yield ("progress", prev_num, num_frames, prev_png, prev_elapsed)
                 clock.stamp()
         except Exception as exc:  # noqa: BLE001 -- preserve completed frames on a failed step or render
+            if pending_frame is not None:
+                try:
+                    prev_num, prev_elapsed, prev_future = pending_frame
+                    pending_frame = None
+                    prev_png = prev_future.result()
+                    _encode_png_to_mp4(prev_png, enc_w, enc_h, stream, container)
+                    frames_done = prev_num
+                    yield ("progress", prev_num, num_frames, prev_png, prev_elapsed)
+                except Exception:  # noqa: BLE001 -- original failure takes precedence
+                    pass
             if not frames_done:
                 raise
             logging.getLogger(__name__).exception("animation failed after frame %s", frames_done)
@@ -3751,6 +3791,8 @@ def stream_animation_mp4(
     finally:
         if preview_renderer is not None:
             preview_renderer.close()
+        if frame_pool is not None:
+            frame_pool.shutdown(wait=False)
         # A disconnected client abandons this generator mid-loop (see main.py's animate
         # GeneratorExit path): the encoder context must still be closed, or each abandoned
         # run leaks a native libx264 context. Closed exactly once -- normal completion

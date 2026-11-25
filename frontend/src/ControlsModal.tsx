@@ -13,7 +13,9 @@ interface Props {
   faultDeformationMode: string;
   splitMethod: SplitMethod;
   debugDiagnostics: boolean;
+  parallelRender: boolean;
   tuning: TuningMultipliers;
+  animating?: boolean;
   onSeaLevelChange: (v: number) => void;
   onSolarMultiplierChange: (v: number) => void;
   onIceAgePeriodChange: (v: number) => void;
@@ -23,6 +25,7 @@ interface Props {
   onFaultDeformationModeChange: (v: string) => void;
   onSplitMethodChange: (v: SplitMethod) => void;
   onDebugDiagnosticsChange: (v: boolean) => void;
+  onParallelRenderChange: (v: boolean) => void;
   onTuningChange: (key: TuningKey, v: number) => void;
   onTuningReset: () => void;
   // The selected world's identity, edited on the World tab (#597).
@@ -124,7 +127,9 @@ export default function ControlsModal({
   faultDeformationMode,
   splitMethod,
   debugDiagnostics,
+  parallelRender,
   tuning,
+  animating = false,
   onSeaLevelChange,
   onSolarMultiplierChange,
   onIceAgePeriodChange,
@@ -134,6 +139,7 @@ export default function ControlsModal({
   onFaultDeformationModeChange,
   onSplitMethodChange,
   onDebugDiagnosticsChange,
+  onParallelRenderChange,
   onTuningChange,
   onTuningReset,
   worldName,
@@ -229,6 +235,23 @@ export default function ControlsModal({
           ))}
         </div>
 
+        {animating && (
+          <div
+            style={{
+              fontSize: 11,
+              color: "#b7c9ff",
+              background: "#1d2642",
+              border: "1px solid #394b7a",
+              borderRadius: 4,
+              padding: "6px 8px",
+              marginBottom: 12,
+            }}
+          >
+            Animation in progress — changes are queued on the server and apply after the current
+            frame finishes rendering.
+          </div>
+        )}
+
         {tab === "world" && (
           <div>
             <label style={{ display: "block", marginBottom: 12, fontSize: 12 }}>
@@ -265,6 +288,20 @@ export default function ControlsModal({
             </label>
             <div style={{ fontSize: 11, color: "#999", marginTop: 6 }}>
               Public worlds list on /view for anyone to watch.
+            </div>
+            <div style={{ borderTop: "1px solid #333", paddingTop: 12, marginTop: 12 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={parallelRender}
+                  onChange={(e) => onParallelRenderChange(e.target.checked)}
+                />
+                Parallel rendering
+              </label>
+              <div style={{ fontSize: 11, color: "#999", marginTop: 6 }}>
+                Pipeline animation frame renders on a background thread while the next frame steps
+                (uses extra memory for a render snapshot; speeds up multi-core runs).
+              </div>
             </div>
           </div>
         )}
