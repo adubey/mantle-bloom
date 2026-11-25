@@ -2803,6 +2803,30 @@ def test_all_land_rain_and_snow_are_accounted_for_by_mass():
 
 
 @pytest.mark.usefixtures("march_glaciers")
+def test_thick_warm_ice_reports_routed_surface_melt():
+    world = _flow_line_march_world()
+    world.sea_level_m = -1000.0
+    world.plates[0].set_fields_on_plate(glacier_depth=np.where(np.arange(12) < 4, 3000.0, 0.0))
+    fields = hydrology.compute_hydrology(
+        world, np.zeros(12), np.full(12, -10.0), years=250.0,
+        seasonal_amplitude_at_nodes=np.full(12, 40.0),
+    )
+    ice = fields.ice
+    _, levels = hydrology._glacier_water_targets(
+        fields.elevation, ice.thickness, fields.glacier_depth, ice.warm_based,
+        fields.neighbor_idx, fields.flow_target,
+    )
+    selected = (
+        (fields.glacier_depth >= hydrology.GLACIER_VISIBLE_DEPTH_M)
+        & ice.warm_based & (ice.thickness > 1000.0) & np.isfinite(levels)
+    )
+    expected = float(np.dot(ice.surface_melt_depth_m[selected], _node_areas(world)[selected]))
+    expected *= ice_sheet.RHO_ICE / ice_sheet.RHO_WATER
+    assert expected > 0.0
+    assert fields.warm_thick_surface_melt_m3 == pytest.approx(expected)
+
+
+@pytest.mark.usefixtures("march_glaciers")
 def test_grounded_marine_glacier_melt_is_accounted_for():
     world, (fields,) = _glacier_ledger_run(
         np.zeros(12), np.full(12, 8.0), np.full(12, 15.0), steps=1,
