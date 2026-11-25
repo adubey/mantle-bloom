@@ -50,6 +50,7 @@ import {
   DEFAULT_LAKE_STOP_MODE, DEFAULT_SIMULATE_GLACIER_MARCH, DEFAULT_SPLIT_METHOD,
   DEFAULT_STEP_YEARS, DEFAULT_TUNING, freshWorldControls,
 } from "./uiDefaults";
+import { maxSubstepsBound } from "./timeSettings";
 
 // The map is displayed at DISPLAY_WIDTH x DISPLAY_HEIGHT (CSS pixels, unchanged from
 // before), but the image requested from the server is RENDER_SCALE times bigger -- a
@@ -956,8 +957,14 @@ export default function App() {
 
   const handleLakeStepYearsChange = useCallback((v: number) => {
     setLakeStepYears(v);
-    pushControls({ lakeStepYears: v });
-  }, [pushControls]);
+    const bound = maxSubstepsBound(stepYears, v);
+    if (lakeMaxSubsteps > bound) {
+      setLakeMaxSubsteps(bound);
+      pushControls({ lakeStepYears: v, lakeMaxSubsteps: bound });
+    } else {
+      pushControls({ lakeStepYears: v });
+    }
+  }, [pushControls, stepYears, lakeMaxSubsteps]);
 
   const handleLakeStopModeChange = useCallback((v: StopMode) => {
     setLakeStopMode(v);
@@ -971,8 +978,14 @@ export default function App() {
 
   const handleGlacierStepYearsChange = useCallback((v: number) => {
     setGlacierStepYears(v);
-    pushControls({ glacierStepYears: v });
-  }, [pushControls]);
+    const bound = maxSubstepsBound(stepYears, v);
+    if (glacierMaxSubsteps > bound) {
+      setGlacierMaxSubsteps(bound);
+      pushControls({ glacierStepYears: v, glacierMaxSubsteps: bound });
+    } else {
+      pushControls({ glacierStepYears: v });
+    }
+  }, [pushControls, stepYears, glacierMaxSubsteps]);
 
   const handleGlacierStopModeChange = useCallback((v: StopMode) => {
     setGlacierStopMode(v);
@@ -1668,8 +1681,22 @@ export default function App() {
   // A change of step size while running takes effect on the server's next step.
   const handleStepYearsChange = useCallback((years: number) => {
     setStepYears(years);
+    const lakeBound = maxSubstepsBound(years, lakeStepYears);
+    const glacierBound = maxSubstepsBound(years, glacierStepYears);
+    const nextControls: { lakeMaxSubsteps?: number; glacierMaxSubsteps?: number } = {};
+    if (lakeMaxSubsteps > lakeBound) {
+      setLakeMaxSubsteps(lakeBound);
+      nextControls.lakeMaxSubsteps = lakeBound;
+    }
+    if (glacierMaxSubsteps > glacierBound) {
+      setGlacierMaxSubsteps(glacierBound);
+      nextControls.glacierMaxSubsteps = glacierBound;
+    }
+    if (nextControls.lakeMaxSubsteps !== undefined || nextControls.glacierMaxSubsteps !== undefined) {
+      pushControls(nextControls);
+    }
     if (playing) setRunState(worldIdRef.current!, true, years).catch((e) => setError(String(e)));
-  }, [playing]);
+  }, [playing, lakeStepYears, glacierStepYears, lakeMaxSubsteps, glacierMaxSubsteps, pushControls]);
 
   // The world revision this tab last showed while following a run.
   const shownRevisionRef = useRef<string | undefined>(undefined);

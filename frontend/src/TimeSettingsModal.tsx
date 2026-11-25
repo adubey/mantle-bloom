@@ -1,10 +1,12 @@
 import type { StopMode } from "./api";
 import ModalShell from "./ModalShell";
 import {
+  clampMaxSubsteps,
   GLACIER_STEP_YEARS_MAX,
   GLACIER_STEP_YEARS_MIN,
   LAKE_STEP_YEARS_MAX,
   LAKE_STEP_YEARS_MIN,
+  maxSubstepsBound,
   PLATE_STEP_YEARS_TICKS,
   plateYearsToTickIndex,
 } from "./timeSettings";
@@ -43,11 +45,6 @@ const COLUMN_HEADING_STYLE = {
   color: "#8b8fa3",
   marginBottom: 12,
 } as const;
-
-function clampMaxSubsteps(raw: number, maxBound: number): number {
-  if (!Number.isFinite(raw)) return 1;
-  return Math.min(maxBound, Math.max(1, Math.round(raw)));
-}
 
 function stopModeNote(kind: "lake" | "glacier", mode: StopMode, maxSubsteps: number): string {
   if (kind === "lake") {
@@ -168,8 +165,8 @@ export default function TimeSettingsModal({
   onClose,
 }: Props) {
   const glacierActive = simulateClimateBiomes && simulateGlacierMarch;
-  const lakeMaxBound = Math.max(1, Math.ceil(stepYears / lakeStepYears));
-  const glacierMaxBound = Math.max(1, Math.ceil(stepYears / glacierStepYears));
+  const lakeMaxBound = maxSubstepsBound(stepYears, lakeStepYears);
+  const glacierMaxBound = maxSubstepsBound(stepYears, glacierStepYears);
 
   return (
     <ModalShell title="Time" onClose={onClose} width={520}>
