@@ -2,7 +2,8 @@
 
 ## Replay plan
 
-Compare D8 with the pre-D8 main commit `eb3cbc4febbfa7a2df51c30d01916ab091a9f647`.
+Compare D8 with the pre-D8 main commit `57651bf2425d8d8b71a2a3230a8814ae74f7d7bd`.
+This baseline includes the lake tier-cap fix in PR #1030, which landed after D8 began.
 For each arm record the exact implementation commit and save SHA-256. Use
 `bin/debug/replay_d8_meltwater.py` with the same save, controls and step schedule in both
 arms. The diagnosis saves are seeds 997271774 and 649658380 with ice ages off. Replay each
@@ -46,3 +47,9 @@ converted save SHA-256 `06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b
 The glacier and bare-snow source residuals were 16 m³ of 1.88 × 10¹⁷ m³ and −650 m³ of
 4.13 × 10¹⁸ m³, respectively. No drainage was unresolved. This development run used the
 earlier connected-region count for pits and is not a G6 measurement.
+
+An initial baseline replay from `eb3cbc4febbfa7a2df51c30d01916ab091a9f647` on seed
+649658380 at 0.25 Myr steps was stopped after 1.5 Myr when #1030 landed. Its six completed
+steps remain in the local run output. They are not used in the comparison because the lake
+tier-cap fix changes lake routing. The replay plan above pins the updated baseline before
+the comparison is restarted.
