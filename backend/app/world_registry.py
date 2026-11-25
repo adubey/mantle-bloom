@@ -293,9 +293,9 @@ class WorldSession:
         with self._busy_lock:
             self._pending_controls.clear()
 
-    def set_controls_snapshot(self, state: dict) -> None:
+    def set_controls_snapshot(self, state: dict | None) -> None:
         with self._busy_lock:
-            self._controls_snapshot = dict(state)
+            self._controls_snapshot = None if state is None else dict(state)
 
     def get_controls_snapshot(self) -> dict | None:
         with self._busy_lock:

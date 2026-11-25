@@ -676,7 +676,7 @@ def _set_world(session: WorldSession, world: World, *, prerender_viewer: bool = 
     session.load_error = None
     session.clear_finished_animation_job()
     session.clear_pending_controls()
-    session.set_controls_snapshot(_controls_state(world))
+    session.set_controls_snapshot(_controls_state(world) if isinstance(world, World) else None)
     if session.replay_log is not None:
         session.replay_log.clear_recent_events()
     _world_changed(session, prerender_viewer=prerender_viewer)
