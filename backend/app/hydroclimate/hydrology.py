@@ -2285,6 +2285,29 @@ def _march_settled_or_capped(
     return settled >= settle_patience or watch_settled
 
 
+def _check_user_max_cap(
+    max_march_substeps: int | None,
+    substeps: int,
+    remaining: float,
+    settle_diagnostic_fired: bool,
+    max_bed_cut_m: float,
+) -> bool:
+    """Return True when the user's max substep cap ended an unsettled march, warning on active bed cut."""
+    user_capped = (
+        max_march_substeps is not None
+        and substeps >= max_march_substeps
+        and remaining > 1e-6
+        and not settle_diagnostic_fired
+    )
+    if user_capped and max_bed_cut_m > MARCH_RESOLVE_MAX_BED_CUT_M:
+        _logger.warning(
+            "glacier march reached glacier_max_substeps=%d while bed cut %.3f m > %.3f m; "
+            "holding and scaling unsettled flows for remaining %.0f yr",
+            max_march_substeps, max_bed_cut_m, MARCH_RESOLVE_MAX_BED_CUT_M, remaining,
+        )
+    return user_capped
+
+
 def _hold_remainder(
     recent: list[tuple],
     remaining: float,
@@ -2559,7 +2582,10 @@ def _march_glacier(
     glacier_step_years = float(getattr(world, "glacier_step_years", ice_sheet.MARCH_SUBSTEP_YEARS))
     glacier_stop_mode = getattr(world, "glacier_stop_mode", "exhaust")
     stop_on_settle = glacier_stop_mode in ("resolve", "max")
-    max_march_substeps = getattr(world, "glacier_max_substeps", None) if glacier_stop_mode == "max" else None
+    raw_max_substeps = getattr(world, "glacier_max_substeps", None)
+    max_march_substeps = (
+        max(1, int(raw_max_substeps)) if glacier_stop_mode == "max" and raw_max_substeps is not None else None
+    )
     base_sub = min(glacier_step_years, years)
     sub = base_sub
     capped = False
@@ -2696,9 +2722,11 @@ def _march_glacier(
     if settled < ice_sheet.MARCH_SETTLE_PATIENCE and len(pair_changes) >= 2 and pair_changes[0] > 0.0:
         tipping_growth = pair_changes[-1] / pair_changes[0]
     settle_diagnostic_fired = settled >= ice_sheet.MARCH_SETTLE_PATIENCE or watch.settled_by is not None
+    user_capped = _check_user_max_cap(max_march_substeps, substeps, remaining, settle_diagnostic_fired, max_bed_cut_m)
     ice_sheet.MARCH_LOG.append({
         "substeps": substeps, "marched_years": elapsed, "held_years": max(remaining, 0.0),
         "settled": settle_diagnostic_fired,
+        "capped_by": "max" if user_capped else ("cost" if capped else None),
         "settle_test": watch.settled_by or ("pair" if settled >= ice_sheet.MARCH_SETTLE_PATIENCE else None),
         "period": watch.period if watch.settled_by == "recurrence" else None,
         "trend_changes": [round(c, 8) for c in watch.trend_changes[-8:]],

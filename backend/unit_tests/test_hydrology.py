@@ -3008,6 +3008,7 @@ def test_glacier_step_years_and_stop_mode_resolve_vs_exhaust():
     max_fields = hydrology.compute_hydrology(max_world, precip, temp_cold, years=years)
     max_log = ice_sheet.MARCH_LOG[-1]
     assert max_log["substeps"] == 3
+    assert max_log["capped_by"] == "max"
     assert max_log["marched_years"] == pytest.approx(1500.0)
     assert max_log["held_years"] == pytest.approx(8500.0)
     assert max_fields.ice.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e6)
