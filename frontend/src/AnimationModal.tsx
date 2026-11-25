@@ -105,7 +105,7 @@ export default function AnimationModal({ hasWorld, stepYears, mapView, onClose, 
               }}
               title={
                 stepsPerFrame > 1
-                  ? "Render intermediate simulation steps in parallel for the live map without adding them to the MP4"
+                  ? "Render intermediate simulation steps for the live map without adding them to the MP4"
                   : "Only applies when Steps per frame is greater than 1"
               }
             >

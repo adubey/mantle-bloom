@@ -653,7 +653,6 @@ export default function App() {
   // Gate for the debug-only diagnostics -- see backend World.debug_diagnostics. Live-adjustable
   // via Controls like windModel.
   const [debugDiagnostics, setDebugDiagnostics] = useState(DEFAULT_DEBUG_DIAGNOSTICS);
-  const [parallelRender, setParallelRender] = useState(false);
   // Geomorphic-budget tuning knobs (see DEFAULT_TUNING / backend World's *_multiplier
   // group) -- one object of dimensionless multipliers, live-adjustable via Controls, reset
   // to all-1.0 on a fresh Generate and synced from the loaded world on Load.
@@ -919,7 +918,6 @@ export default function App() {
     faultDeformationMode?: string;
     splitMethod?: SplitMethod;
     debugDiagnostics?: boolean;
-    parallelRender?: boolean;
     tuning?: Partial<TuningMultipliers>;
   }>({});
   const pushControls = useCallback((next: typeof pendingControlsRef.current) => {
@@ -1045,11 +1043,6 @@ export default function App() {
     pushControls({ debugDiagnostics: v });
   }, [pushControls]);
 
-  const handleParallelRenderChange = useCallback((v: boolean) => {
-    setParallelRender(v);
-    pushControls({ parallelRender: v });
-  }, [pushControls]);
-
   // FileModal's "Load World" -- a loaded world fully replaces the current one, same as a
   // fresh Generate (see handleGenerate above), plus syncing every live Controls value
   // (seaLevelM/solarMultiplier/simulatePlateMovement/simulateClimateBiomes) to the *loaded*
@@ -1105,7 +1098,6 @@ export default function App() {
       setFaultDeformationMode(controls.fault_deformation_mode);
       setSplitMethod(controls.split_method);
       setDebugDiagnostics(controls.debug_diagnostics);
-      setParallelRender(controls.parallel_render ?? false);
       setTuning(Object.fromEntries(TUNING_MULTIPLIER_KEYS.map((k) => [k, controls[k]])) as TuningMultipliers);
       await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
     } catch (e) {
@@ -3312,7 +3304,6 @@ export default function App() {
           faultDeformationMode={faultDeformationMode}
           splitMethod={splitMethod}
           debugDiagnostics={debugDiagnostics}
-          parallelRender={parallelRender}
           tuning={tuning}
           animating={animating}
           onSeaLevelChange={handleSeaLevelChange}
@@ -3324,7 +3315,6 @@ export default function App() {
           onFaultDeformationModeChange={handleFaultDeformationModeChange}
           onSplitMethodChange={handleSplitMethodChange}
           onDebugDiagnosticsChange={handleDebugDiagnosticsChange}
-          onParallelRenderChange={handleParallelRenderChange}
           onTuningChange={handleTuningChange}
           onTuningReset={handleTuningReset}
           worldName={worlds.find((w) => w.world_id === worldId)?.name ?? ""}

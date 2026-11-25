@@ -136,11 +136,9 @@ class WorldSession:
     animation_stop_event: threading.Event = field(default_factory=threading.Event)
     # Active or finished-uncollected background animation job (#1033).
     animation_job: AnimationJob | None = None
-    # Whether animation MP4 frames are pipelined on a background render thread
-    # in parallel with simulation stepping (opt-in via Controls -> World, outside World).
-    parallel_render: bool = False
     # Control edits submitted while an animation is running, applied at the next
     # frame boundary once the current frame finishes rendering (#1033).
+    _accepting_pending_controls: bool = field(default=False, repr=False)
     _pending_controls: dict[str, object] = field(default_factory=dict, repr=False)
     _controls_snapshot: dict | None = field(default=None, repr=False)
     # Set by main.py once the session exists: the runner's callbacks need
@@ -239,6 +237,7 @@ class WorldSession:
                 return "no_world"
             self.animation_stop_event.clear()
             self._operation_busy = True
+            self._accepting_pending_controls = True
             self.animation_job = job
             return None
 
@@ -250,6 +249,7 @@ class WorldSession:
         `_session_can_sleep` retire the worker.
         """
         with self._busy_lock:
+            self._accepting_pending_controls = False
             complete_job()
             self._operation_busy = False
 
@@ -265,18 +265,26 @@ class WorldSession:
                 return
             self.animation_job = None
 
-    def queue_pending_controls(self, updates: dict[str, object]) -> dict[str, object]:
-        """Merge control changes queued while an animation is running (#1033)."""
+    def try_queue_pending_controls(self, updates: dict[str, object]) -> tuple[bool, dict[str, object]]:
+        """Atomically enqueue control changes only while an animation is accepting them (#1033).
+
+        Returns `(True, merged_pending)` if queued, or `(False, {})` once the worker has
+        closed the queue for finalization so the caller applies them under the normal lock.
+        """
         with self._busy_lock:
+            if not self._accepting_pending_controls:
+                return False, {}
             self._pending_controls.update(updates)
-            return dict(self._pending_controls)
+            return True, dict(self._pending_controls)
 
     def get_pending_controls(self) -> dict[str, object]:
         with self._busy_lock:
             return dict(self._pending_controls)
 
-    def drain_pending_controls(self) -> dict[str, object]:
+    def drain_pending_controls(self, *, close_queue: bool = False) -> dict[str, object]:
         with self._busy_lock:
+            if close_queue:
+                self._accepting_pending_controls = False
             pending = dict(self._pending_controls)
             self._pending_controls.clear()
             return pending

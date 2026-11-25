@@ -499,29 +499,19 @@ def test_stream_animation_mp4_stays_silent_between_frames_when_steps_are_fast():
     assert len(step_calls) == 3  # (2 - 1) * 3 real, individual step_fn calls
 
 
-def test_stream_animation_mp4_reports_step_timing_and_renders_intermediate_previews_in_parallel():
-    import threading
+def test_stream_animation_mp4_reports_step_timing_and_renders_intermediate_previews():
     import time
 
     world = _world()
     timings: list[float] = []
     previews: list[tuple[bytes, float, float | None]] = []
-    preview_received = threading.Event()
-
-    step_num = [0]
 
     def _step(w, years):
-        step_num[0] += 1
-        time.sleep(0.02)
+        time.sleep(0.01)
         w.elapsed_years += years
-        if step_num[0] == 4:
-            # Give the parallel preview thread time to finish rendering an earlier step
-            # before the final frame closes the preview renderer.
-            preview_received.wait(timeout=5.0)
 
     def _on_preview(png_bytes, elapsed_years, _stats, rate):
         previews.append((png_bytes, elapsed_years, rate))
-        preview_received.set()
 
     messages = list(render_image.stream_animation_mp4(
         world, "behrmann", "elevation", 64, 64, None, 100_000, 4, 2,
@@ -529,36 +519,15 @@ def test_stream_animation_mp4_reports_step_timing_and_renders_intermediate_previ
         on_preview=_on_preview,
         on_step_timing=timings.append,
     ))
-    # Wait briefly if the last submitted preview was finishing on the background thread.
-    preview_received.wait(timeout=2.0)
 
-    # Encoded MP4 still has only the 2 animation frames, not the intermediate previews.
+    # Encoded MP4 still has only the 2 animation frames, not the 3 intermediate previews.
     assert [m[0] for m in messages] == ["progress", "progress", "done"]
     assert len(timings) == 4
     assert all(t > 0 for t in timings)
-    assert len(previews) >= 1
-    png, elapsed, rate = previews[0]
-    assert png[:8] == b"\x89PNG\r\n\x1a\n"
-    assert 0 < elapsed < 400_000
-    assert rate is not None and rate > 0
-
-
-def test_stream_animation_mp4_parallel_render_pipelines_all_frames_in_order():
-    world = _world()
-
-    def _step(w, years):
-        w.elapsed_years += years
-
-    messages = list(render_image.stream_animation_mp4(
-        world, "behrmann", "elevation", 64, 64, None, 100_000, 1, 4,
-        step_fn=_step,
-        parallel_render=True,
-    ))
-    assert [m[0] for m in messages] == ["progress", "progress", "progress", "progress", "done"]
-    assert [m[1] for m in messages[:4]] == [1, 2, 3, 4]
-    assert [m[4] for m in messages[:4]] == [0.0, 100_000.0, 200_000.0, 300_000.0]
-    mp4 = messages[-1][1]
-    assert b"ftyp" in mp4[:32]
+    assert len(previews) == 3
+    assert [elapsed for _, elapsed, _ in previews] == [100_000.0, 200_000.0, 300_000.0]
+    assert previews[0][0][:8] == b"\x89PNG\r\n\x1a\n"
+    assert previews[0][2] is not None and previews[0][2] > 0
 
 
 def test_geomorph_colors_diverge_around_zero():

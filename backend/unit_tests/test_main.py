@@ -2277,13 +2277,12 @@ def test_controls_queued_during_animation_apply_after_current_frame(client, monk
         # POST /controls returns immediately with pending=True instead of blocking.
         resp = client.post(
             f"/worlds/{wid}/controls",
-            json={"solar_multiplier": 1.25, "parallel_render": True},
+            json={"solar_multiplier": 1.25},
         )
         assert resp.status_code == 200
         body = resp.json()
         assert body["pending"] is True
         assert body["solar_multiplier"] == 1.25
-        assert body["parallel_render"] is True
 
         # GET /controls reflects the queued values lock-free while running.
         got = client.get(f"/worlds/{wid}/controls").json()
@@ -2293,10 +2292,15 @@ def test_controls_queued_during_animation_apply_after_current_frame(client, monk
         allow_frame2.set()
 
     assert _wait_until(lambda: not _default_session.operation_busy(), timeout=5.0)
-    # Queued controls were applied cleanly and persisted onto world/session.
+    # Queued controls were applied cleanly and queue admission is closed after finish.
     assert _default_session.world.solar_multiplier == 1.25
-    assert _default_session.parallel_render is True
     assert _default_session.get_pending_controls() == {}
+    queued, _ = _default_session.try_queue_pending_controls({"solar_multiplier": 0.9})
+    assert queued is False
+    # A POST /controls after finish applies directly (pending=False), never stranded.
+    post_after = client.post(f"/worlds/{wid}/controls", json={"solar_multiplier": 1.1}).json()
+    assert post_after["pending"] is False
+    assert _default_session.world.solar_multiplier == 1.1
 
 
 def test_animate_progress_carries_a_live_stats_snapshot(client):

@@ -255,9 +255,12 @@ class AnimationJob:
         elapsed_years: float,
         seconds_per_step: float | None = None,
     ) -> None:
-        """Publish an intermediate-step preview PNG without advancing the encoded frame count."""
+        """Publish an intermediate-step preview PNG without advancing the encoded frame count.
+
+        Drops any stale preview older than the latest published elapsed_years (#1033).
+        """
         with self._lock:
-            if not self._active:
+            if not self._active or elapsed_years < self._elapsed_years:
                 return
             self._elapsed_years = elapsed_years
             if seconds_per_step is not None:

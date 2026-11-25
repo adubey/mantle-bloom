@@ -124,3 +124,21 @@ def test_async_stream_cancels_and_unsubscribes_while_worker_is_silent():
         assert job.is_active() is True
 
     asyncio.run(run())
+
+
+def test_publish_preview_drops_stale_previews_older_than_latest_progress():
+    job = AnimationJob(total=4, unbounded=False, projection="behrmann", view="elevation")
+    p2 = json.dumps({"type": "progress", "frame": 2, "total": 4, "elapsed_years": 200.0}) + "\n"
+    stale = json.dumps({"type": "preview", "frame": 1, "total": 4, "elapsed_years": 150.0}) + "\n"
+    fresh = json.dumps({"type": "preview", "frame": 2, "total": 4, "elapsed_years": 250.0}) + "\n"
+
+    job.publish_progress(p2, frame=2, elapsed_years=200.0)
+    job.publish_preview(stale, elapsed_years=150.0)
+    assert job.summary()["elapsed_years"] == 200.0
+
+    # Reconnect still gets p2, not the stale preview.
+    sub_before_fresh = job.subscribe(replay_latest=True)
+    job.publish_preview(fresh, elapsed_years=250.0)
+    assert job.summary()["elapsed_years"] == 250.0
+    job.finish_empty()
+    assert list(job.iter_stream(sub_before_fresh)) == [p2, fresh]

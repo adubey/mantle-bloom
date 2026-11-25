@@ -337,9 +337,6 @@ class ControlsRequest(BaseModel):
     # Issue #133 phase-1 proving-out flag -- see World.node_cloud_resample_mode. "kdtree"
     # (default) or "healpix". Backend/API-only for now, no Controls-panel entry.
     node_cloud_resample_mode: str | None = None
-    # Session-level pipelined parallel rendering toggle (#1033): when True, animation
-    # MP4 frames render on a background thread in parallel with the next frame's steps.
-    parallel_render: bool | None = None
     # Geomorphic-budget tuning knobs -- dimensionless multipliers, 1.0 == untuned (see
     # world.TUNING_MULTIPLIER_FIELDS and World's field group). Same "only the touched one is
     # sent" convention as the fields above; each is rejected below if negative.
@@ -678,7 +675,7 @@ def _set_world(session: WorldSession, world: World, *, prerender_viewer: bool = 
     session.load_error = None
     session.clear_finished_animation_job()
     session.clear_pending_controls()
-    session.set_controls_snapshot(_controls_state(session, world))
+    session.set_controls_snapshot(_controls_state(world))
     if session.replay_log is not None:
         session.replay_log.clear_recent_events()
     _world_changed(session, prerender_viewer=prerender_viewer)
@@ -2291,7 +2288,6 @@ def _run_animation_worker(
                 stop_event=job.stop_event,
                 on_preview=_on_preview if req.preview_intermediate_steps else None,
                 on_step_timing=job.set_seconds_per_step,
-                parallel_render=session.parallel_render,
             )
             anim_spec = {
                 "total_frames": req.num_frames,
@@ -2365,7 +2361,11 @@ def _run_animation_worker(
         try:
             if acquired:
                 if session.world is not None:
-                    _apply_pending_controls_locked(session, session.world)
+                    # Atomically close queue admission before the final drain so no POST /controls
+                    # can enqueue after this drain and get stranded (#1033).
+                    _apply_pending_controls_locked(session, session.world, close_queue=True)
+                else:
+                    session.drain_pending_controls(close_queue=True)
                 if not (completed and _hosted_worker):
                     _world_changed(session, completed)
         finally:
@@ -2610,19 +2610,19 @@ def _apply_controls_locked(
         world.node_cloud_resample_mode = req.node_cloud_resample_mode
     if req.debug_diagnostics is not None:
         world.debug_diagnostics = req.debug_diagnostics
-    if req.parallel_render is not None:
-        session.parallel_render = req.parallel_render
     for name, value in tuning_updates.items():
         setattr(world, name, float(value))
     world.climate_cache = climate.compute_climate(world, *climate.grid_dimensions(world.climate_density))
-    state = _controls_state(session, world)
+    state = _controls_state(world)
     session.set_controls_snapshot(state)
     return state
 
 
-def _apply_pending_controls_locked(session: WorldSession, world: World) -> bool:
+def _apply_pending_controls_locked(
+    session: WorldSession, world: World, *, close_queue: bool = False,
+) -> bool:
     """Drain and apply any controls queued while an animation frame was running (#1033)."""
-    pending = session.drain_pending_controls()
+    pending = session.drain_pending_controls(close_queue=close_queue)
     if not pending:
         return False
     try:
@@ -2638,16 +2638,15 @@ def _apply_pending_controls_locked(session: WorldSession, world: World) -> bool:
 @app.post("/worlds/{world_id}/controls")
 def set_controls(world_id: str, req: ControlsRequest) -> dict:
     """Live-adjusts sea level, solar heat, ice-age frequency, the plate-movement/climate-biomes
-    step toggles, the wind model, fault deformation mode, plate split method, parallel rendering,
-    and/or the geomorphic-budget tuning multipliers on the current world. When an animation is
-    currently running on this world, changes are validated and cached on the server (`pending: true`)
-    and applied cleanly once the current frame finishes rendering (#1033)."""
+    step toggles, the wind model, fault deformation mode, plate split method, and/or the
+    geomorphic-budget tuning multipliers on the current world. When an animation is actively
+    accepting queued edits on this world, changes are validated and cached on the server
+    (`pending: true`) and applied cleanly once the current frame finishes rendering (#1033)."""
     session = _session_or_404(world_id)
     tuning_updates = _validate_controls_request(req)
-    job = session.get_animation_job()
-    if job is not None and job.is_active():
-        updates = {k: v for k, v in req.model_dump().items() if v is not None}
-        pending = session.queue_pending_controls(updates)
+    updates = {k: v for k, v in req.model_dump().items() if v is not None}
+    queued, pending = session.try_queue_pending_controls(updates)
+    if queued:
         base = session.get_controls_snapshot() or {}
         return {**base, **pending, "pending": True}
     with _compute_gate.hold(), session.lock:
@@ -2669,12 +2668,12 @@ def get_controls(world_id: str) -> dict:
             pending = session.get_pending_controls()
             return {**snap, **pending, "pending": bool(pending)}
     with session.lock:
-        state = _controls_state(session, _require_world(session))
+        state = _controls_state(_require_world(session))
         session.set_controls_snapshot(state)
         return {**state, "pending": False}
 
 
-def _controls_state(session: WorldSession, world: World) -> dict:
+def _controls_state(world: World) -> dict:
     return {
         "sea_level_m": world.sea_level_m,
         "solar_multiplier": world.solar_multiplier,
@@ -2685,7 +2684,6 @@ def _controls_state(session: WorldSession, world: World) -> dict:
         "lake_step_years": world.lake_step_years,
         "lake_stop_mode": world.lake_stop_mode,
         "lake_max_substeps": world.lake_max_substeps,
-        "parallel_render": session.parallel_render,
         "glacier_step_years": world.glacier_step_years,
         "glacier_stop_mode": world.glacier_stop_mode,
         "glacier_max_substeps": world.glacier_max_substeps,

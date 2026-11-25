@@ -470,7 +470,11 @@ changing a world that has already been replaced.
 ## `GET /worlds/{world_id}/controls`, `POST /worlds/{world_id}/controls`
 
 `GET` returns the current controls without recomputing climate, publishing a revision,
-or saving the world.
+or saving the world. While an animation is running on the world, `POST` validates and queues
+the requested updates on the server (`"pending": true`) without blocking on the world lock,
+`GET` returns the cached snapshot merged with any queued updates, and the animation worker
+applies the queued changes after the current frame finishes rendering (closing queue admission
+atomically before its final drain so late requests fall through to the normal locked path, #1033).
 
 
 Request body (all fields optional, independently settable -- the "Controls" window sends
@@ -760,11 +764,11 @@ per line, so the client can drive a progress bar instead of blocking on one opaq
 ```
 
 While a frame's step batch runs, `{"type": "heartbeat", "frame": n, "total": N,
-"elapsed_years": ..., "seconds_per_step": ...}` ticks flow whenever a step lands more than a minute
+"elapsed_years": ...}` ticks flow whenever a step lands more than a minute
 after the previous line (#611) -- imageless proof the run is still stepping, so the client's
 idle watchdog doesn't abort a slow batch as stalled. When `"preview_intermediate_steps": true` and
-`steps_per_frame > 1`, intermediate steps between encoded frames are rendered in parallel on an
-isolated snapshot and streamed as `{"type": "preview", "frame": n, "total": N, "image_base64": ...,
+`steps_per_frame > 1`, intermediate steps between encoded frames are rendered synchronously under
+the compute gate and streamed as `{"type": "preview", "frame": n, "total": N, "image_base64": ...,
 "elapsed_years": ..., "stats": ..., "seconds_per_step": ...}` lines for live UI display without
 being encoded into the MP4.
 
