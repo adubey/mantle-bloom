@@ -2099,8 +2099,13 @@ def _glacier_water_targets(
     head = bed + (ice_sheet.RHO_ICE / ice_sheet.RHO_WATER) * thickness
     cold_targets = _ice_surface_flow_target(bed + thickness, neighbor_idx, glacier_depth, ground_target)
     rows = np.repeat(np.arange(n), k)
+    cold_nodes = np.flatnonzero(on_ice & ~warm & (cold_targets >= 0))
     reverse = coo_matrix(
-        (np.ones(len(rows), dtype=np.int8), (neighbor_idx.ravel(), rows)), shape=(n, n),
+        (
+            np.ones(len(rows) + len(cold_nodes), dtype=np.int8),
+            (np.concatenate((neighbor_idx.ravel(), cold_targets[cold_nodes])), np.concatenate((rows, cold_nodes))),
+        ),
+        shape=(n, n),
     ).tocsr()
     targets = np.full(n, -1, dtype=np.int64)
     levels = np.full(n, np.inf)

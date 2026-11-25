@@ -150,6 +150,20 @@ def test_cold_ice_joins_warm_based_drainage():
     np.testing.assert_allclose(routed, [0.0, 0.0, 7.0, 0.0])
 
 
+def test_cold_surface_pit_follows_a_nonlocal_ground_spill_to_warm_ice():
+    bed = np.array([0.0, 100.0, 10.0, 0.0])
+    thickness = np.array([20.0, 20.0, 20.0, 0.0])
+    neighbors = np.array([[1], [0], [3], [2]])
+    ground = np.array([2, -1, -1, -1])
+    on_ice = thickness >= hydrology.GLACIER_VISIBLE_DEPTH_M
+    warm = np.array([False, False, True, False])
+    targets, levels = hydrology._glacier_water_targets(bed, thickness, thickness, warm, neighbors, ground)
+
+    assert targets[0] == 2
+    routed = hydrology._route_glacier_water_to_margin(np.array([7.0, 0.0, 0.0, 0.0]), on_ice, targets, levels)
+    np.testing.assert_allclose(routed, [0.0, 0.0, 7.0, 0.0])
+
+
 def test_warm_ice_pit_uses_the_lower_of_two_margin_spills():
     bed = np.array([0.0, 8.0, 0.0, 3.0, 0.0])
     thickness = np.array([0.0, 10.0, 10.0, 10.0, 0.0])
