@@ -1387,6 +1387,7 @@ def solve_lakes_prognostic(
     *,
     substeps: int = 1,
     stop_on_settle: bool = True,
+    max_substeps: int | None = None,
     is_ocean: np.ndarray | None = None,
     diagnostic_trace: bool = False,
     displaced_water_targets: np.ndarray | None = None,
@@ -1397,7 +1398,10 @@ def solve_lakes_prognostic(
     Each substep advances physical volume, limits evaporation and sublimation to the water
     available, and sends only water above a body's active cap to the leaf selected by the
     hierarchy outlet. The temporal partition is uniform until the settle-stop
-    (below) lumps a settled remainder into one slice. An implicit volume update
+    (below) lumps a settled remainder into one slice. When `stop_on_settle` is True
+    and `max_substeps` is set, the solver stops after at most `max(1, max_substeps)`
+    normal slices (or earlier if settled) and lumps any remaining time into one final
+    slice; `max_substeps` is ignored when `stop_on_settle` is False. An implicit volume update
     keeps the fast loss response stable when one slice spans thousands of years, while spill
     cascades settle through hierarchy receivers rather than repeated terrain-routing rounds.
     `prev_lake_depth` is the opening water column: hydrology passes liquid and lake ice
@@ -1415,6 +1419,7 @@ def solve_lakes_prognostic(
         lake.is_spilling = False
 
     steps = max(1, int(substeps))
+    max_steps = None if max_substeps is None else max(1, int(max_substeps))
     dt = years / steps
     rates = climate.external_supply_m3_per_yr
     if rates is None:
@@ -1474,7 +1479,8 @@ def solve_lakes_prognostic(
         prev_depth = depth.copy()
         prev_bodies = bodies
         remaining = steps - slice_index - 1
-        if stop_on_settle and settled_slices >= 2 and remaining > 0:
+        hit_max = max_steps is not None and (slice_index + 1) >= max_steps
+        if stop_on_settle and (settled_slices >= 2 or hit_max) and remaining > 0:
             _settle_prognostic_slice(
                 forest, depth, prev_lake_depth, dt * remaining, rates, climate, evaporation, sublimation,
                 hypsometry, is_ocean, accounting, leaves, leaf_of_node, parent_by_id, events, seen_events,

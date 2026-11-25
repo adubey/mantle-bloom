@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  clampMaxSubsteps,
+  maxSubstepsBound,
   PLATE_STEP_YEARS_MAX,
   PLATE_STEP_YEARS_MIN,
   PLATE_STEP_YEARS_TICKS,
@@ -23,5 +25,14 @@ describe("timeSettings log slider", () => {
     }
     assert.equal(plateYearsToTickIndex(100), 0);
     assert.equal(plateYearsToTickIndex(1_000_000), PLATE_STEP_YEARS_TICKS.length - 1);
+  });
+
+  it("computes and clamps max substeps bounds from step and substep years", () => {
+    assert.equal(maxSubstepsBound(10_000, 250), 40);
+    assert.equal(maxSubstepsBound(10_000, 300), 34);
+    assert.equal(maxSubstepsBound(1_000, 2_000), 1);
+    assert.equal(clampMaxSubsteps(0, 40), 1);
+    assert.equal(clampMaxSubsteps(100, 20), 20);
+    assert.equal(clampMaxSubsteps(Number.NaN, 20), 1);
   });
 });

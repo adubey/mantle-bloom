@@ -40,3 +40,12 @@ export function plateYearsToTickIndex(years: number): number {
   }
   return bestIndex;
 }
+
+export function maxSubstepsBound(stepYears: number, substepYears: number): number {
+  return Math.max(1, Math.ceil(stepYears / Math.max(substepYears, 1)));
+}
+
+export function clampMaxSubsteps(raw: number, maxBound: number): number {
+  if (!Number.isFinite(raw)) return 1;
+  return Math.min(maxBound, Math.max(1, Math.round(raw)));
+}

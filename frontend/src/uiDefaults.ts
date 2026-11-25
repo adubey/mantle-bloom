@@ -16,12 +16,15 @@ export const DEFAULT_STEP_YEARS = 10_000;
 // (5) Lake substeps: 50 yr, stopping once lakes resolve.
 export const DEFAULT_LAKE_STEP_YEARS = 50;
 export const DEFAULT_LAKE_STOP_MODE: StopMode = "resolve";
+export const DEFAULT_LAKE_MAX_SUBSTEPS = 20;
 // (3) Glacier march on, and (4) 250 yr substeps stopping once ice resolves.
 // With the 10,000 yr plate step above a march is 40 substeps, not the
 // minutes-long Myr-step march the old off default guarded against.
 export const DEFAULT_SIMULATE_GLACIER_MARCH = true;
 export const DEFAULT_GLACIER_STEP_YEARS = 250;
 export const DEFAULT_GLACIER_STOP_MODE: StopMode = "resolve";
+// Average steps to resolution across historical settled glacier runs (~40 in #789, ~43 in #811).
+export const DEFAULT_GLACIER_MAX_SUBSTEPS = 40;
 // (6) RFC 0018 rift-line plate splitting.
 export const DEFAULT_SPLIT_METHOD: SplitMethod = "rift_lines";
 // (7) The #998 plate-motion setting: collision braking at 0.5x (craton component left at 1x) and the static mantle
@@ -47,8 +50,10 @@ export const DEFAULT_AGE_FORCE_COLUMN = true;
 export function freshWorldControls(): {
   lakeStepYears: number;
   lakeStopMode: StopMode;
+  lakeMaxSubsteps: number;
   glacierStepYears: number;
   glacierStopMode: StopMode;
+  glacierMaxSubsteps: number;
   splitMethod: SplitMethod;
   ridgePushForm: string;
   slabDragForm: string;
@@ -58,8 +63,10 @@ export function freshWorldControls(): {
   return {
     lakeStepYears: DEFAULT_LAKE_STEP_YEARS,
     lakeStopMode: DEFAULT_LAKE_STOP_MODE,
+    lakeMaxSubsteps: DEFAULT_LAKE_MAX_SUBSTEPS,
     glacierStepYears: DEFAULT_GLACIER_STEP_YEARS,
     glacierStopMode: DEFAULT_GLACIER_STOP_MODE,
+    glacierMaxSubsteps: DEFAULT_GLACIER_MAX_SUBSTEPS,
     splitMethod: DEFAULT_SPLIT_METHOD,
     ridgePushForm: DEFAULT_RIDGE_PUSH_FORM,
     slabDragForm: DEFAULT_SLAB_DRAG_FORM,

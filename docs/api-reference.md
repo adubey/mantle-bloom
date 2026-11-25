@@ -471,7 +471,7 @@ Request body (all fields optional, independently settable -- the "Controls" wind
 only whichever control the user touched):
 
 ```json
-{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "ice_age_period_years": 300000, "simulate_plate_movement": true, "simulate_climate_biomes": true, "simulate_glacier_march": true, "lake_step_years": 1000.0, "lake_stop_mode": "resolve", "glacier_step_years": 250.0, "glacier_stop_mode": "exhaust", "wind_model": "cfd", "fault_deformation_mode": "fault", "split_method": "great_circle" }
+{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "ice_age_period_years": 300000, "simulate_plate_movement": true, "simulate_climate_biomes": true, "simulate_glacier_march": true, "lake_step_years": 1000.0, "lake_stop_mode": "resolve", "lake_max_substeps": 20, "glacier_step_years": 250.0, "glacier_stop_mode": "exhaust", "glacier_max_substeps": 40, "wind_model": "cfd", "fault_deformation_mode": "fault", "split_method": "great_circle" }
 ```
 
 Live-adjusts `World.sea_level_m` (default `0.0`), `World.solar_multiplier` (default `1.0`,
@@ -482,10 +482,13 @@ simulation-model/hydrology.md#glaciation, negative is clamped to `0`), `World.si
 (default `true`; `false` solves the ice once per step and freezes it there -- minutes
 cheaper per long step, see simulation-model/hydrology.md#glaciation), `World.lake_step_years`
 (default `1000.0`, range `50`–`1000` yr), `World.lake_stop_mode` (`"resolve"` default: lump
-remaining time into one slice once settled; `"exhaust"`: run every slice),
-`World.glacier_step_years` (default `250.0`, range `100`–`1000` yr), `World.glacier_stop_mode`
-(`"exhaust"` default: march the full step; `"resolve"`: hold the settled state for the
-remainder of the step), `World.wind_model`
+remaining time into one slice once settled; `"exhaust"`: run every slice; `"max"`: stop on
+settle or after `World.lake_max_substeps` normal slices and lump the remaining time into one
+final slice), `World.lake_max_substeps` (default `20`, `>= 1`), `World.glacier_step_years`
+(default `250.0`, range `100`–`1000` yr), `World.glacier_stop_mode` (`"exhaust"` default: march
+the full step; `"resolve"`: hold the settled state for the remainder of the step; `"max"`:
+stop on settle or after `World.glacier_max_substeps` normal substeps and hold/scale flows for
+the remainder of the step), `World.glacier_max_substeps` (default `40`, `>= 1`), `World.wind_model`
 (`"diagnostic"` default, or `"cfd"` -- a `400` for any other value), and/or
 `World.fault_deformation_mode` (`"boundary"` default, or `"fault"` / `"both"`) on the
 *current* world

@@ -2370,25 +2370,33 @@ def test_controls_time_step_and_stop_mode_round_trip_and_validation(client):
     defaults = client.get("/world/controls").json()
     assert defaults["lake_step_years"] == 1000.0
     assert defaults["lake_stop_mode"] == "resolve"
+    assert defaults["lake_max_substeps"] == 20
     assert defaults["glacier_step_years"] == 250.0
     assert defaults["glacier_stop_mode"] == "exhaust"
+    assert defaults["glacier_max_substeps"] == 40
 
     resp = client.post("/world/controls", json={
         "lake_step_years": 150,
-        "lake_stop_mode": "exhaust",
+        "lake_stop_mode": "max",
+        "lake_max_substeps": 12,
         "glacier_step_years": 500,
-        "glacier_stop_mode": "resolve",
+        "glacier_stop_mode": "max",
+        "glacier_max_substeps": 8,
     })
     assert resp.status_code == 200
     body = resp.json()
     assert body["lake_step_years"] == 150.0
-    assert body["lake_stop_mode"] == "exhaust"
+    assert body["lake_stop_mode"] == "max"
+    assert body["lake_max_substeps"] == 12
     assert body["glacier_step_years"] == 500.0
-    assert body["glacier_stop_mode"] == "resolve"
+    assert body["glacier_stop_mode"] == "max"
+    assert body["glacier_max_substeps"] == 8
     assert world.lake_step_years == 150.0
-    assert world.lake_stop_mode == "exhaust"
+    assert world.lake_stop_mode == "max"
+    assert world.lake_max_substeps == 12
     assert world.glacier_step_years == 500.0
-    assert world.glacier_stop_mode == "resolve"
+    assert world.glacier_stop_mode == "max"
+    assert world.glacier_max_substeps == 8
 
     for bad_payload in (
         {"lake_step_years": 25},
@@ -2397,6 +2405,8 @@ def test_controls_time_step_and_stop_mode_round_trip_and_validation(client):
         {"glacier_step_years": 1500},
         {"lake_stop_mode": "invalid"},
         {"glacier_stop_mode": "invalid"},
+        {"lake_max_substeps": 0},
+        {"glacier_max_substeps": 0},
     ):
         bad = client.post("/world/controls", json=bad_payload)
         assert bad.status_code == 400

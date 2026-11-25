@@ -1,10 +1,12 @@
 import type { StopMode } from "./api";
 import ModalShell from "./ModalShell";
 import {
+  clampMaxSubsteps,
   GLACIER_STEP_YEARS_MAX,
   GLACIER_STEP_YEARS_MIN,
   LAKE_STEP_YEARS_MAX,
   LAKE_STEP_YEARS_MIN,
+  maxSubstepsBound,
   PLATE_STEP_YEARS_TICKS,
   plateYearsToTickIndex,
 } from "./timeSettings";
@@ -13,15 +15,19 @@ interface Props {
   stepYears: number;
   lakeStepYears: number;
   lakeStopMode: StopMode;
+  lakeMaxSubsteps: number;
   glacierStepYears: number;
   glacierStopMode: StopMode;
+  glacierMaxSubsteps: number;
   simulateClimateBiomes: boolean;
   simulateGlacierMarch: boolean;
   onStepYearsChange: (years: number) => void;
   onLakeStepYearsChange: (years: number) => void;
   onLakeStopModeChange: (mode: StopMode) => void;
+  onLakeMaxSubstepsChange: (max: number) => void;
   onGlacierStepYearsChange: (years: number) => void;
   onGlacierStopModeChange: (mode: StopMode) => void;
+  onGlacierMaxSubstepsChange: (max: number) => void;
   onSimulateGlacierMarchChange: (enabled: boolean) => void;
   onClose: () => void;
 }
@@ -29,6 +35,7 @@ interface Props {
 const STOP_MODES: { value: StopMode; label: string }[] = [
   { value: "exhaust", label: "Exhaust" },
   { value: "resolve", label: "Resolve" },
+  { value: "max", label: "Max" },
 ];
 
 const COLUMN_HEADING_STYLE = {
@@ -39,19 +46,41 @@ const COLUMN_HEADING_STYLE = {
   marginBottom: 12,
 } as const;
 
+function stopModeNote(kind: "lake" | "glacier", mode: StopMode, maxSubsteps: number): string {
+  if (kind === "lake") {
+    if (mode === "resolve") return "Stop slicing once lakes settle and lump the remaining time into one final slice.";
+    if (mode === "max") {
+      return `Stop once lakes settle, or after ${maxSubsteps} normal slices and lump the remaining time into one final slice.`;
+    }
+    return "Run every lake slice across the full tectonic step.";
+  }
+  if (mode === "resolve") return "Stop marching once ice volume settles and hold that state for the remainder of the step.";
+  if (mode === "max") {
+    return `Stop once ice volume settles, or after ${maxSubsteps} substeps and hold that state for the remainder of the step.`;
+  }
+  return "March ice sheets through the full tectonic step without early hold.";
+}
+
 function StopModeToggle({
   label,
   value,
+  maxSubsteps,
+  maxBound,
   disabled = false,
   note,
   onChange,
+  onMaxSubstepsChange,
 }: {
   label: string;
   value: StopMode;
+  maxSubsteps: number;
+  maxBound: number;
   disabled?: boolean;
   note: string;
   onChange: (mode: StopMode) => void;
+  onMaxSubstepsChange: (max: number) => void;
 }) {
+  const clampedMax = clampMaxSubsteps(maxSubsteps, maxBound);
   return (
     <div style={{ marginBottom: 16, opacity: disabled ? 0.5 : 1 }}>
       <div style={{ marginBottom: 6, fontSize: 12 }}>{label}</div>
@@ -83,6 +112,33 @@ function StopModeToggle({
           );
         })}
       </div>
+      {value === "max" && (
+        <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 8, fontSize: 12 }}>
+          <span>Max steps (1–{maxBound.toLocaleString()})</span>
+          <input
+            type="number"
+            min={1}
+            max={maxBound}
+            step={1}
+            value={clampedMax}
+            disabled={disabled}
+            onChange={(e) => {
+              const parsed = Number(e.target.value);
+              if (Number.isFinite(parsed)) onMaxSubstepsChange(clampMaxSubsteps(parsed, maxBound));
+            }}
+            style={{
+              width: 72,
+              background: "#181a24",
+              border: "1px solid #333",
+              borderRadius: 4,
+              color: "#e6e8ef",
+              fontSize: 12,
+              padding: "3px 6px",
+              textAlign: "right",
+            }}
+          />
+        </label>
+      )}
       <div style={{ fontSize: 11, color: "#999", marginTop: 6 }}>{note}</div>
     </div>
   );
@@ -92,19 +148,25 @@ export default function TimeSettingsModal({
   stepYears,
   lakeStepYears,
   lakeStopMode,
+  lakeMaxSubsteps,
   glacierStepYears,
   glacierStopMode,
+  glacierMaxSubsteps,
   simulateClimateBiomes,
   simulateGlacierMarch,
   onStepYearsChange,
   onLakeStepYearsChange,
   onLakeStopModeChange,
+  onLakeMaxSubstepsChange,
   onGlacierStepYearsChange,
   onGlacierStopModeChange,
+  onGlacierMaxSubstepsChange,
   onSimulateGlacierMarchChange,
   onClose,
 }: Props) {
   const glacierActive = simulateClimateBiomes && simulateGlacierMarch;
+  const lakeMaxBound = maxSubstepsBound(stepYears, lakeStepYears);
+  const glacierMaxBound = maxSubstepsBound(stepYears, glacierStepYears);
 
   return (
     <ModalShell title="Time" onClose={onClose} width={520}>
@@ -174,25 +236,23 @@ export default function TimeSettingsModal({
           <StopModeToggle
             label="Lake"
             value={lakeStopMode}
+            maxSubsteps={lakeMaxSubsteps}
+            maxBound={lakeMaxBound}
             disabled={!simulateClimateBiomes}
-            note={
-              lakeStopMode === "resolve"
-                ? "Stop slicing once lakes settle and lump the remaining time into one final slice."
-                : "Run every lake slice across the full tectonic step."
-            }
+            note={stopModeNote("lake", lakeStopMode, clampMaxSubsteps(lakeMaxSubsteps, lakeMaxBound))}
             onChange={onLakeStopModeChange}
+            onMaxSubstepsChange={onLakeMaxSubstepsChange}
           />
 
           <StopModeToggle
             label="Glacier"
             value={glacierStopMode}
+            maxSubsteps={glacierMaxSubsteps}
+            maxBound={glacierMaxBound}
             disabled={!glacierActive}
-            note={
-              glacierStopMode === "resolve"
-                ? "Stop marching once ice volume settles and hold that state for the remainder of the step."
-                : "March ice sheets through the full tectonic step without early hold."
-            }
+            note={stopModeNote("glacier", glacierStopMode, clampMaxSubsteps(glacierMaxSubsteps, glacierMaxBound))}
             onChange={onGlacierStopModeChange}
+            onMaxSubstepsChange={onGlacierMaxSubstepsChange}
           />
         </div>
       </div>
