@@ -79,10 +79,33 @@ destination. The maximum number of filled pits in a step was 15; surface melt on
 warm-based ice thicker than 1 km totalled 1.124 × 10¹⁶ m³.
 
 The network counts differ, but this single trajectory does not isolate routing from changes
-in lake, river and ice evolution or establish variability. Other diagnosis step sizes and
-seeds, ice-age reporting arms and the held-out gate remain open; these results do not
+in lake, river and ice evolution or establish variability. The other diagnosis seed,
+ice-age reporting arms and the held-out gate remain open; these results do not
 complete G6. Both runs were sequential and the machine's budget check reported no other
 heavy runs at the start of each arm.
+
+The same seed was then replayed for 10 Myr at 1 Myr steps, using the same baseline and
+D8 code (the D8 head `ffb54ee2e6f1f09714a1513bdfef22b0a9266f0f` adds only the preceding
+analysis). Per-step results are in [`baseline`](g6-baseline-649658380-100.json) and
+[`D8`](g6-d8-649658380-100.json).
+
+| Measure | Baseline | D8 |
+| --- | ---: | ---: |
+| Ice-margin networks, range over steps | 78–109 | 75–101 |
+| Ice-margin networks, final step | 94 | 87 |
+| Sum of step wall times | 1,090 s | 1,126 s |
+| Peak RSS | 1,033 MB | 1,025 MB |
+
+D8's 3.849 × 10¹⁸ m³ glacier source delivered 99.33% to lakes or ocean in aggregate
+(at least 98.49% per step). The 1.767 × 10²⁰ m³ bare-snow source delivered 95.52%
+(at least 93.85% per step). Their maximum absolute relative residuals were 1.68 × 10⁻¹⁶
+and 4.35 × 10⁻¹⁶ respectively. Unresolved drainage was 3.79% of total glacier source,
+with a maximum of 12.22% in one step; it remained in ground routing. The maximum filled
+pit count was 21, and warm-based surface melt on ice thicker than 1 km totalled
+5.854 × 10¹⁶ m³. On the second D8 step two nodes reached the 5 km depth guard; the solver
+reported zero shed meltwater. The two step sizes produce different warm-thick melt totals
+and unresolved shares, and further seeds are needed before attributing those differences.
+The arms ran sequentially with no other heavy run reported at either start.
 
 The first baseline arm on seed 649658380 at 0.25 Myr steps is superseded: review found its
 network diagnostic included headwaters in the interior of the ice sheet. Its 40-step output
