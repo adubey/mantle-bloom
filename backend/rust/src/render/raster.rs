@@ -35,10 +35,10 @@ pub const RIVER_CORE_WIDTH_FRACTION: f64 = 0.5;
 pub const RIVER_HALO_FILL_FRACTION: f64 = 0.55;
 pub const RIVER_CANYON_SHADE: f64 = 0.15;
 
-const ELEVATION_STOP_E: [f64; 11] = [
+pub const ELEVATION_STOP_E: [f64; 11] = [
     -11000.0, -4000.0, -1500.0, -200.0, 0.0, 40.0, 200.0, 1200.0, 3000.0, 6000.0, 9000.0,
 ];
-const ELEVATION_STOP_RGB: [[f64; 3]; 11] = [
+pub const ELEVATION_STOP_RGB: [[f64; 3]; 11] = [
     [10.0, 10.0, 40.0],
     [15.0, 40.0, 110.0],
     [40.0, 110.0, 190.0],
