@@ -299,8 +299,9 @@ class AnimateRequest(BaseModel):
     # restores the same unbounded progress presentation instead of showing "Frame X of 480" (#1033).
     unbounded: bool = False
     # True when the user wants intermediate simulation steps (between encoded frames when
-    # steps_per_frame > 1) rendered synchronously under the compute gate for live UI preview
-    # without encoding into the MP4.
+    # steps_per_frame > 1) rendered for live UI preview without encoding into the MP4;
+    # uses non-blocking parallel Rust rendering when available (#1039), falling back to
+    # synchronous rendering under the compute gate on Python-only views.
     preview_intermediate_steps: bool = False
 
 
@@ -1991,6 +1992,52 @@ def render(
     if not (1 <= width <= MAX_RENDER_DIMENSION_PX and 1 <= height <= MAX_RENDER_DIMENSION_PX):
         raise HTTPException(status_code=400, detail=f"width/height must be in [1, {MAX_RENDER_DIMENSION_PX}]")
     view_rotation = _parse_view_rotation(rotation)
+
+    from . import _render_rust
+
+    if (
+        _render_rust.RUST_AVAILABLE
+        and view in _render_rust.RUST_RENDER_VIEWS
+        and projection in _render_rust.RUST_RENDER_PROJECTIONS
+        and render_image.render_png is render_image._ORIG_RENDER_PNG
+        and render_image.render_png_base64 is render_image._ORIG_RENDER_PNG_BASE64
+    ):
+        snap = None
+        elapsed_years = 0.0
+        with session.lock:
+            world = _require_world(session)
+            custom_options = show_mountains or show_plains_plateaus or not smooth_sea_ice or not soft_sea_ice_edge
+            cached = _admin_preview(session, projection, view, width, height, view_rotation, custom_options)
+            if cached is not None:
+                return {"projection": projection, "elapsed_years": world.elapsed_years, "image_base64": cached}
+            if world.climate_cache is not None and _render_rust.can_render_rust(
+                world,
+                projection,
+                view,
+                orig_render_map_png=render_image._ORIG_RENDER_MAP_PNG,
+                current_render_map_png=render_image._render_map_png,
+            ):
+                elapsed_years = world.elapsed_years
+                snap = _render_rust.build_render_snapshot(
+                    world,
+                    projection,
+                    view,
+                    width,
+                    height,
+                    view_rotation,
+                    show_mountains=show_mountains,
+                    show_plains_plateaus=show_plains_plateaus,
+                    smooth_sea_ice=smooth_sea_ice,
+                    soft_sea_ice_edge=soft_sea_ice_edge,
+                )
+        if snap is not None:
+            png_bytes, _ = _render_rust.render_snapshot(snap, want_png=True, want_rgb=False)
+            assert png_bytes is not None
+            return {
+                "projection": projection,
+                "elapsed_years": elapsed_years,
+                "image_base64": base64.b64encode(png_bytes).decode("ascii"),
+            }
 
     with _compute_gate.hold(), session.lock:
         world = _require_world(session)
