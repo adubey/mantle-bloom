@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -16,16 +17,45 @@ from .hydroclimate import hydrology, ice_sheet
 if TYPE_CHECKING:
     from .world import World
 
+_logger = logging.getLogger(__name__)
 _DISABLE_RUST = os.environ.get("MANTLE_BLOOM_DISABLE_RUST") == "1"
 
+_REQUIRED_RUST_EXPORTS = (
+    "render_pool_threads",
+    "grid_edt",
+    "smooth_biome_field_blend_rs",
+    "biome_relative_shade_factor_rs",
+    "fill_rects_rs",
+    "spill_path_rs",
+    "render_biome_or_combined",
+    "render_elevation",
+    "render_constants_rs",
+)
+
+
+def _resolve_rust_module(mod):
+    if mod is None:
+        return None
+    missing = [name for name in _REQUIRED_RUST_EXPORTS if not hasattr(mod, name)]
+    if missing:
+        _logger.warning(
+            "mantle_bloom_rust is missing render exports %s (stale build?); falling back to Python. "
+            "Rebuild with `backend/.venv/bin/python bin/build_rust.py` or `./bin/setup.sh`.",
+            missing,
+        )
+        return None
+    return mod
+
+
 if _DISABLE_RUST:
-    _rust = None
+    _imported_rust = None
 else:
     try:
-        import mantle_bloom_rust as _rust
+        import mantle_bloom_rust as _imported_rust
     except ImportError:
-        _rust = None
+        _imported_rust = None
 
+_rust = _resolve_rust_module(_imported_rust)
 RUST_AVAILABLE: bool = _rust is not None
 
 RUST_RENDER_VIEWS = frozenset({"combined", "biome", "elevation"})

@@ -13,15 +13,17 @@ use numpy::{
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
+use pyo3::types::{PyBytes, PyDict};
 use rayon::prelude::*;
 
 use crate::render::biomes::{
     bilinear_sample_climate, biome_relative_shade_factor, biome_relative_shade_factor_i64,
     grid_cell_indices_scalar, grid_continentality_dist, sea_ice_annual_balance_scalar,
     seasonal_fraction_above_scalar, seasonal_temp_amplitude, smooth_biome_field_blend_core,
-    soft_sea_ice_weight_scalar, BIOME_COLORS, COMBINED_LAKE_ID_CODE, COMBINED_SEA_ID_CODE,
-    POLAR_SEA_ICE_FRACTION,
+    soft_sea_ice_weight_scalar, BIOME_COLORS, BIOME_SHADE_AMPLITUDE, COMBINED_LAKE_ID_CODE,
+    COMBINED_SEA_ID_CODE, CONTINENTALITY_SATURATION_RAD, OCEAN_HEAT_FLUX_W_M2,
+    PERENNIAL_COVER_HIGH, PERENNIAL_COVER_LOW, POLAR_SEA_ICE_FRACTION, SEAWATER_FREEZING_C,
+    SHELF_RANGE_RAD,
 };
 use crate::render::kdtree::KdTree;
 use crate::render::projection::{
@@ -33,10 +35,11 @@ use crate::render::raster::{
     crop_even_rgb24, draw_rivers_rgb, elevation_colors_float, elevation_colors_u8, encode_png_rgb,
     encode_png_rgba, fill_rects_generic, fill_rects_rgb, fill_rects_rgb_and_alpha,
     gaussian_blur_rgb, globe_source_size, resample_globe_rgb, resample_globe_rgba, RiverSegments,
-    BACKGROUND_RGB, CELL_BLUR_RADIUS_PX, CELL_OVERLAP_FACTOR, GLACIER_COLOR_RGB, LAKE_COLOR_RGB,
-    MOUNTAIN_OVERLAY_RGB, OCEAN_PELAGIC_RELIEF_BLEND, PADDING_PX, PLAINS_PLATEAU_OVERLAY_RGB,
-    REFERENCE_WIDTH_PX, RELIEF_BLEND_MAX, RELIEF_ELEVATION_RANGE_M, SEA_COLOR_RGB,
-    TERRAIN_MOUNTAIN, TERRAIN_OVERLAY_ALPHA, TERRAIN_PLAINS_PLATEAU,
+    BACKGROUND_RGB, CELL_BLUR_RADIUS_PX, CELL_OVERLAP_FACTOR, ELEVATION_STOP_E,
+    ELEVATION_STOP_RGB, GLACIER_COLOR_RGB, LAKE_COLOR_RGB, MOUNTAIN_OVERLAY_RGB,
+    OCEAN_PELAGIC_RELIEF_BLEND, PADDING_PX, PLAINS_PLATEAU_OVERLAY_RGB, REFERENCE_WIDTH_PX,
+    RELIEF_BLEND_MAX, RELIEF_ELEVATION_RANGE_M, RIVER_COLOR_RGB, SEA_COLOR_RGB, TERRAIN_MOUNTAIN,
+    TERRAIN_OVERLAY_ALPHA, TERRAIN_PLAINS_PLATEAU,
 };
 
 const GLACIER_VISIBLE_DEPTH_M: f64 = 10.0;
@@ -286,8 +289,32 @@ pub fn spill_path_rs(
     let elev_s = elevation.as_slice()?;
     let ocean_s = is_ocean.as_slice()?;
 
+    let n = elev_s.len();
+    if n == 0 || ocean_s.len() != n || indptr_s.len() != n + 1 {
+        return Err(PyValueError::new_err("shape mismatch in spill_path_rs"));
+    }
+    if source >= n || target >= n {
+        return Err(PyValueError::new_err(format!(
+            "source ({source}) or target ({target}) out of bounds for {n} nodes"
+        )));
+    }
+    if indptr_s[0] < 0 {
+        return Err(PyValueError::new_err("negative indptr entry in spill_path_rs"));
+    }
+    for win in indptr_s.windows(2) {
+        if win[1] < win[0] {
+            return Err(PyValueError::new_err("non-monotonic indptr in spill_path_rs"));
+        }
+    }
+    let used_edges = indptr_s[n] as usize;
+    if used_edges > indices_s.len() {
+        return Err(PyValueError::new_err("indptr exceeds indices length in spill_path_rs"));
+    }
+    if indices_s[..used_edges].iter().any(|&nbr| nbr < 0 || (nbr as usize) >= n) {
+        return Err(PyValueError::new_err("neighbor index out of bounds in spill_path_rs"));
+    }
+
     let path = py.detach(|| {
-        let n = elev_s.len();
         let mut best = vec![f64::INFINITY; n];
         best[source] = elev_s[source];
         let mut heap = BinaryHeap::new();
@@ -480,6 +507,88 @@ fn compute_hillshade_from_tree(
         .collect()
 }
 
+fn opt_vec<'py, T: numpy::Element + Copy>(
+    opt: Option<PyReadonlyArray1<'py, T>>,
+) -> PyResult<Option<Vec<T>>> {
+    opt.map(|a| Ok(a.as_slice()?.to_vec())).transpose()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_render_inputs(
+    width: usize,
+    height: usize,
+    n_pts: usize,
+    elev_len: usize,
+    lake_len: usize,
+    lake_ice_len: usize,
+    glac_len: usize,
+    opt_point_lens: &[Option<usize>],
+    need_channel_for_hillshade: bool,
+    hydro_points_same: bool,
+    hpts_len: Option<usize>,
+    opt_hydro_lens: &[Option<usize>],
+    clim_h: usize,
+    clim_w: usize,
+    c_air_len: usize,
+    c_sst_len: usize,
+    c_lat_len: usize,
+    c_pre_len: Option<usize>,
+    c_elev_len: Option<usize>,
+    c_ocean_len: Option<usize>,
+    r_from_len: usize,
+    r_to_len: usize,
+    r_wf_len: usize,
+    r_ca_len: usize,
+    r_cf_len: usize,
+) -> PyResult<()> {
+    if width == 0 || height == 0 {
+        return Err(PyValueError::new_err("render dimensions must be positive"));
+    }
+    if n_pts == 0
+        || elev_len != n_pts
+        || lake_len != n_pts
+        || lake_ice_len != n_pts
+        || glac_len != n_pts
+        || opt_point_lens.iter().any(|&l| l.is_some_and(|v| v != n_pts))
+    {
+        return Err(PyValueError::new_err("point array length mismatch in render inputs"));
+    }
+    if need_channel_for_hillshade {
+        return Err(PyValueError::new_err(
+            "channel_depth and channel_width are required when hillshade is omitted",
+        ));
+    }
+    let n_hydro = if hydro_points_same {
+        n_pts
+    } else {
+        hpts_len.unwrap_or(0)
+    };
+    if opt_hydro_lens.iter().any(|&l| l.is_some_and(|v| n_hydro == 0 || v != n_hydro)) {
+        return Err(PyValueError::new_err("hydro array length mismatch in render inputs"));
+    }
+    if clim_h == 0 || clim_w == 0 {
+        return Err(PyValueError::new_err("climate grid dimensions must be positive"));
+    }
+    let clim_n = clim_h * clim_w;
+    if c_air_len != clim_n
+        || c_sst_len != clim_n
+        || c_lat_len != clim_h
+        || c_pre_len.is_some_and(|v| v != clim_n)
+        || c_elev_len.is_some_and(|v| v != clim_n)
+        || c_ocean_len.is_some_and(|v| v != clim_n)
+    {
+        return Err(PyValueError::new_err("climate array shape mismatch in render inputs"));
+    }
+    if r_to_len != r_from_len
+        || r_wf_len != r_from_len
+        || r_ca_len != r_from_len
+        || r_cf_len != r_from_len
+    {
+        return Err(PyValueError::new_err("river array length mismatch in render inputs"));
+    }
+    Ok(())
+}
+
 fn package_outputs(
     py: Python<'_>,
     rgb: &[u8],
@@ -611,6 +720,9 @@ pub fn render_biome_or_combined(
         "biome" => false,
         _ => return Err(PyValueError::new_err(format!("Unsupported view {view:?}"))),
     };
+    if grid_h == 0 || grid_w == 0 {
+        return Err(PyValueError::new_err("grid_h and grid_w must be positive"));
+    }
     let req_proj = Projection::parse(projection).map_err(PyValueError::new_err)?;
     let rot = to_rot9(&view_rotation)?;
     let pts_v = to_pts3(&points)?;
@@ -618,26 +730,54 @@ pub fn render_biome_or_combined(
     let lake_v = lake_depth.as_slice()?.to_vec();
     let lake_ice_v = lake_ice.as_slice()?.to_vec();
     let glac_v = glacier_depth.as_slice()?.to_vec();
-    let hill_v = hillshade.map(|a| a.as_slice().unwrap().to_vec());
-    let cdepth_v = channel_depth.map(|a| a.as_slice().unwrap().to_vec());
-    let cwidth_v = channel_width.map(|a| a.as_slice().unwrap().to_vec());
+    let hill_v = opt_vec(hillshade)?;
+    let cdepth_v = opt_vec(channel_depth)?;
+    let cwidth_v = opt_vec(channel_width)?;
     let hpts_v = hydro_points.map(|a| to_pts3(&a)).transpose()?;
-    let hocean_v = hydro_is_ocean.map(|a| a.as_slice().unwrap().to_vec());
-    let hsea_v = hydro_is_sea.map(|a| a.as_slice().unwrap().to_vec());
-    let hlake_ice_v = hydro_perennial_lake_ice.map(|a| a.as_slice().unwrap().to_vec());
+    let hocean_v = opt_vec(hydro_is_ocean)?;
+    let hsea_v = opt_vec(hydro_is_sea)?;
+    let hlake_ice_v = opt_vec(hydro_perennial_lake_ice)?;
 
     let c_air = clim_air_temp.as_slice()?.to_vec();
     let c_sst = clim_ocean_temp.as_slice()?.to_vec();
     let c_pre = clim_precip.as_slice()?.to_vec();
     let c_lat = clim_lat_deg.as_slice()?.to_vec();
-    let c_elev = clim_elev_m.map(|a| a.as_slice().unwrap().to_vec());
-    let c_ocean = clim_is_ocean.map(|a| a.as_slice().unwrap().to_vec());
+    let c_elev = opt_vec(clim_elev_m)?;
+    let c_ocean = opt_vec(clim_is_ocean)?;
 
     let r_from = to_pts3(&river_from_xyz)?;
     let r_to = to_pts3(&river_to_xyz)?;
     let r_wf = river_width_frac.as_slice()?.to_vec();
     let r_ca = river_color_alpha.as_slice()?.to_vec();
     let r_cf = river_canyon_fill.as_slice()?.to_vec();
+
+    validate_render_inputs(
+        width,
+        height,
+        pts_v.len(),
+        elev_v.len(),
+        lake_v.len(),
+        lake_ice_v.len(),
+        glac_v.len(),
+        &[hill_v.as_ref().map(Vec::len), cdepth_v.as_ref().map(Vec::len), cwidth_v.as_ref().map(Vec::len)],
+        is_combined && hill_v.is_none() && (cdepth_v.is_none() || cwidth_v.is_none()),
+        hydro_points_same,
+        hpts_v.as_ref().map(Vec::len),
+        &[hocean_v.as_ref().map(Vec::len), hsea_v.as_ref().map(Vec::len), hlake_ice_v.as_ref().map(Vec::len)],
+        clim_h,
+        clim_w,
+        c_air.len(),
+        c_sst.len(),
+        c_lat.len(),
+        Some(c_pre.len()),
+        c_elev.as_ref().map(Vec::len),
+        c_ocean.as_ref().map(Vec::len),
+        r_from.len(),
+        r_to.len(),
+        r_wf.len(),
+        r_ca.len(),
+        r_cf.len(),
+    )?;
 
     let (out_rgb, out_alpha) = py.detach(|| {
         render_pool().1.install(|| {
@@ -1200,6 +1340,9 @@ pub fn render_elevation(
     want_rgb: bool,
     stroke_scale_override: f64,
 ) -> PyResult<(Option<Py<PyBytes>>, Option<Py<PyArray3<u8>>>)> {
+    if grid_spacing_rad <= 0.0 || !grid_spacing_rad.is_finite() {
+        return Err(PyValueError::new_err("grid_spacing_rad must be positive and finite"));
+    }
     let req_proj = Projection::parse(projection).map_err(PyValueError::new_err)?;
     let rot = to_rot9(&view_rotation)?;
     let pts_v = to_pts3(&points)?;
@@ -1207,27 +1350,60 @@ pub fn render_elevation(
     let lake_v = lake_depth.as_slice()?.to_vec();
     let lake_ice_v = lake_ice.as_slice()?.to_vec();
     let glac_v = glacier_depth.as_slice()?.to_vec();
-    let hill_v = hillshade.map(|a| a.as_slice().unwrap().to_vec());
-    let cdepth_v = channel_depth.map(|a| a.as_slice().unwrap().to_vec());
-    let cwidth_v = channel_width.map(|a| a.as_slice().unwrap().to_vec());
-    let trelief_v = terrain_relief.map(|a| a.as_slice().unwrap().to_vec());
+    let hill_v = opt_vec(hillshade)?;
+    let cdepth_v = opt_vec(channel_depth)?;
+    let cwidth_v = opt_vec(channel_width)?;
+    let trelief_v = opt_vec(terrain_relief)?;
 
     let hpts_v = hydro_points.map(|a| to_pts3(&a)).transpose()?;
-    let hocean_v = hydro_is_ocean.map(|a| a.as_slice().unwrap().to_vec());
-    let hsea_v = hydro_is_sea.map(|a| a.as_slice().unwrap().to_vec());
-    let hlake_ice_v = hydro_perennial_lake_ice.map(|a| a.as_slice().unwrap().to_vec());
+    let hocean_v = opt_vec(hydro_is_ocean)?;
+    let hsea_v = opt_vec(hydro_is_sea)?;
+    let hlake_ice_v = opt_vec(hydro_perennial_lake_ice)?;
 
     let c_air = clim_air_temp.as_slice()?.to_vec();
     let c_sst = clim_ocean_temp.as_slice()?.to_vec();
     let c_lat = clim_lat_deg.as_slice()?.to_vec();
-    let c_elev = clim_elev_m.map(|a| a.as_slice().unwrap().to_vec());
-    let c_ocean = clim_is_ocean.map(|a| a.as_slice().unwrap().to_vec());
+    let c_elev = opt_vec(clim_elev_m)?;
+    let c_ocean = opt_vec(clim_is_ocean)?;
 
     let r_from = to_pts3(&river_from_xyz)?;
     let r_to = to_pts3(&river_to_xyz)?;
     let r_wf = river_width_frac.as_slice()?.to_vec();
     let r_ca = river_color_alpha.as_slice()?.to_vec();
     let r_cf = river_canyon_fill.as_slice()?.to_vec();
+
+    validate_render_inputs(
+        width,
+        height,
+        pts_v.len(),
+        elev_v.len(),
+        lake_v.len(),
+        lake_ice_v.len(),
+        glac_v.len(),
+        &[
+            hill_v.as_ref().map(Vec::len),
+            cdepth_v.as_ref().map(Vec::len),
+            cwidth_v.as_ref().map(Vec::len),
+            trelief_v.as_ref().map(Vec::len),
+        ],
+        hill_v.is_none() && (cdepth_v.is_none() || cwidth_v.is_none()),
+        hydro_points_same,
+        hpts_v.as_ref().map(Vec::len),
+        &[hocean_v.as_ref().map(Vec::len), hsea_v.as_ref().map(Vec::len), hlake_ice_v.as_ref().map(Vec::len)],
+        clim_h,
+        clim_w,
+        c_air.len(),
+        c_sst.len(),
+        c_lat.len(),
+        None,
+        c_elev.as_ref().map(Vec::len),
+        c_ocean.as_ref().map(Vec::len),
+        r_from.len(),
+        r_to.len(),
+        r_wf.len(),
+        r_ca.len(),
+        r_cf.len(),
+    )?;
 
     let out_rgb = py.detach(|| {
         render_pool().1.install(|| {
@@ -1564,4 +1740,33 @@ pub fn render_elevation(
     });
 
     package_outputs(py, &out_rgb, None, width, height, want_png, want_rgb)
+}
+
+#[pyfunction]
+pub fn render_constants_rs(py: Python<'_>) -> PyResult<Py<PyDict>> {
+    let d = PyDict::new(py);
+    d.set_item("biome_colors", BIOME_COLORS.iter().map(|c| c.to_vec()).collect::<Vec<_>>())?;
+    d.set_item("elevation_stop_e", ELEVATION_STOP_E.to_vec())?;
+    d.set_item("elevation_stop_rgb", ELEVATION_STOP_RGB.iter().map(|c| c.to_vec()).collect::<Vec<_>>())?;
+    d.set_item("background_rgb", BACKGROUND_RGB.to_vec())?;
+    d.set_item("lake_color_rgb", LAKE_COLOR_RGB.to_vec())?;
+    d.set_item("sea_color_rgb", SEA_COLOR_RGB.to_vec())?;
+    d.set_item("glacier_color_rgb", GLACIER_COLOR_RGB.to_vec())?;
+    d.set_item("river_color_rgb", RIVER_COLOR_RGB.to_vec())?;
+    d.set_item("mountain_overlay_rgb", MOUNTAIN_OVERLAY_RGB.to_vec())?;
+    d.set_item("plains_plateau_overlay_rgb", PLAINS_PLATEAU_OVERLAY_RGB.to_vec())?;
+    d.set_item("terrain_overlay_alpha", TERRAIN_OVERLAY_ALPHA)?;
+    d.set_item("cell_overlap_factor", CELL_OVERLAP_FACTOR)?;
+    d.set_item("cell_blur_radius_px", CELL_BLUR_RADIUS_PX)?;
+    d.set_item("biome_shade_amplitude", BIOME_SHADE_AMPLITUDE)?;
+    d.set_item("continentality_saturation_rad", CONTINENTALITY_SATURATION_RAD)?;
+    d.set_item("shelf_range_rad", SHELF_RANGE_RAD)?;
+    d.set_item("seawater_freezing_c", SEAWATER_FREEZING_C)?;
+    d.set_item("ocean_heat_flux_w_m2", OCEAN_HEAT_FLUX_W_M2)?;
+    d.set_item("polar_sea_ice_fraction", POLAR_SEA_ICE_FRACTION)?;
+    d.set_item("perennial_cover_low", PERENNIAL_COVER_LOW)?;
+    d.set_item("perennial_cover_high", PERENNIAL_COVER_HIGH)?;
+    d.set_item("combined_lake_id_code", COMBINED_LAKE_ID_CODE)?;
+    d.set_item("combined_sea_id_code", COMBINED_SEA_ID_CODE)?;
+    Ok(d.unbind())
 }

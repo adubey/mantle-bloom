@@ -3845,8 +3845,13 @@ def stream_animation_mp4(
     sitting frozen until the whole run (and its final world summary) completes -- then a
     final `("done", mp4_bytes, stopped_early, error)` carrying the video, whether
     `stop_event` ended the run early, and an error string if a step or render failed
-    after at least one frame. While a
-    frame's step batch runs, yields `("heartbeat", frame, num_frames, elapsed_years)`
+    after at least one frame. By default for Rust-eligible views (`parallel_render=None`),
+    background frame rendering overlaps the next frame's steps, so `("progress", ...)` for
+    frame `k` can arrive mid-batch after `world` has already begun stepping frame `k + 1`.
+    Callers that persist world checkpoints or drain queued controls must therefore act inside
+    `on_frame_boundary(frame_num, elapsed_years)` (invoked synchronously right before queuing
+    the background render at the exact end of frame `k`) rather than on `"progress"` receipt.
+    While a frame's step batch runs, yields `("heartbeat", frame, num_frames, elapsed_years)`
     whenever more than ANIMATION_HEARTBEAT_INTERVAL_S has passed since the last yield:
     a batch of slow steps with no other output tripped the client's idle watchdog
     (#611), and these imageless ticks reset that timer without checkpointing or

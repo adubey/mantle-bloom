@@ -55,6 +55,12 @@ if [ ! -f frontend/node_modules/.package-lock.json ]; then
   exit 1
 fi
 
+# Keep the native Rust extension in sync after pulling Rust changes (#1039);
+# --skip-if-unchanged exits immediately without invoking cargo when up to date.
+if [ "${MANTLE_BLOOM_SKIP_RUST:-0}" != "1" ] && [ -x backend/.venv/bin/python ]; then
+  backend/.venv/bin/python bin/build_rust.py --locked --skip-if-unchanged
+fi
+
 "$SCRIPT_DIR/stop.sh" --port "$port" --frontend-port "$frontend_port"
 if [ "$stay_awake" = true ]; then
   CAFFEINATE=caffeinate

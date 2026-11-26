@@ -1029,6 +1029,9 @@ fn shade_factor_from_buckets(buckets: Vec<Vec<(f64, usize)>>, n: usize) -> Vec<f
             if m <= 1 {
                 return items.into_iter().map(|(_, idx)| (idx, 1.0)).collect();
             }
+            if items.iter().any(|(v, _)| v.is_nan()) {
+                return items.into_iter().map(|(_, idx)| (idx, f64::NAN)).collect();
+            }
             items.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(Ordering::Equal));
             let mut out = Vec::with_capacity(m);
             let denom = (m - 1) as f64;
