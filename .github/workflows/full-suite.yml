@@ -54,6 +54,20 @@ jobs:
           cache: pip
           cache-dependency-path: backend/constraints.txt
 
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.skip.outputs.skip != 'true'
+
+      - uses: actions/cache@v4
+        if: steps.skip.outputs.skip != 'true'
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('backend/rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
       - name: Install deps
         if: steps.skip.outputs.skip != 'true'
         run: ./bin/setup.sh --backend-only
@@ -74,6 +88,18 @@ jobs:
           python-version: "3.14"
           cache: pip
           cache-dependency-path: backend/constraints.txt
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('backend/rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - name: Install deps
         run: ./bin/setup.sh --backend-only

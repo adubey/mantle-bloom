@@ -8,7 +8,8 @@ Local development and localhost sign-in are covered by [local hosting](local-hos
 
 The public service runs on Railway from the repository's root [Dockerfile](../Dockerfile),
 configured as code in [.railway/railway.ts](../.railway/railway.ts). The multi-stage image
-builds the React frontend and installs the pinned Python runtime. One public Uvicorn process
+builds the React frontend, compiles the `mantle_bloom_rust` PyO3 extension (`backend/rust/`)
+in a `rust-builder` stage, and installs the pinned Python runtime. One public Uvicorn process
 serves the frontend and API from the same origin and starts a private simulation worker on demand. Railway builds from `main` and uses `GET /healthz` as its
 health check. The Docker image is portable; Railway is the only deployment configured in
 this repository.

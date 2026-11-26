@@ -45,7 +45,7 @@ from scipy.sparse.csgraph import connected_components, dijkstra
 from .. import geometry, trace
 from ..elevation_lines import PLANET_RADIUS_KM
 from ..lithosphere import GRAVITY_M_S2, RHO_ICE, RHO_WATER, floating_water_depth_m
-from . import hydrology
+from . import _glacier_rust, hydrology
 from .climate import air_temperature_at_elevation
 
 _logger = logging.getLogger(__name__)
@@ -905,6 +905,14 @@ def _shape(dom: _Domain, d: float, sea_level_m: float) -> _Shape:
     return _Shape(d, active, surface, thickness, depth, cover, volume, dom.climate.rates(mean_thickness))
 
 
+_DEFAULT_SHAPE = _shape
+
+
+def _shape_is_custom() -> bool:
+    """True when a test monkeypatched `_shape` (ignoring `trace.wrap` decorators from profiling)."""
+    return _shape is not _DEFAULT_SHAPE and getattr(_shape, "__wrapped__", None) is not _DEFAULT_SHAPE
+
+
 def _bracketed_root(f, lo: float, hi: float, f_lo: float, f_hi: float, tolerance: float):
     """Illinois false position on a bracket with f(lo) <= 0 < f(hi). Returns the final
     (lo, hi): f may jump (a node freezing over, a cell grounding), so the caller picks a side
@@ -1212,6 +1220,7 @@ def step_ice(
     graph_step_m: float | None = None,
     margin_hint_m: np.ndarray | None = None,
     cost: MarchCost | None = None,
+    rust_graph=None,
 ) -> tuple[np.ndarray, np.ndarray, IceStep]:
     """One glacier step over the whole node cloud. See the module docstring for the method.
 
@@ -1234,6 +1243,32 @@ def step_ice(
     length of a prebuilt `graph` (`median_edge_m`), which the march finds once (#147).
     `margin_hint_m` is `margin_hints` of the previous march substep's bodies: it speeds
     the search for each body's opening extent and never changes what is found (#147)."""
+    if _glacier_rust.RUST_AVAILABLE and not _shape_is_custom():
+        if rust_graph is None:
+            graph_for_rust = symmetric_graph(points, neighbor_idx) if graph is None else graph
+            step_for_rust = median_edge_m(graph_for_rust) if graph_step_m is None else graph_step_m
+            rust_graph = _glacier_rust.build_march_graph(graph_for_rust, step_for_rust)
+        depth, melt_m, ice = _glacier_rust.step_ice(
+            rust_graph,
+            area_m2,
+            elevation,
+            prior_deflection_m,
+            sea_level_m,
+            prev_depth,
+            climate,
+            mobile_cover_m,
+            is_ocean,
+            years,
+            margin_hint_m,
+            None if cost is None else cost.dijkstra_limit_m,
+            body_cls=BodyBalance,
+            ledger_cls=IceLedger,
+            frozen_cls=FrozenPrecipitation,
+            ice_step_cls=IceStep,
+        )
+        if warn:
+            warn_if_capped(ice.ledger)
+        return depth, melt_m, ice
     n = len(points)
     area = np.asarray(area_m2, dtype=float)
     dt_myr = years / 1_000_000.0

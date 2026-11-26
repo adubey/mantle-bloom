@@ -12,6 +12,17 @@ COPY frontend/ ./
 ENV VITE_API_BASE=""
 RUN npm run build
 
+# Build the Rust glacier-march PyO3 extension targeting Python 3.14 on Linux.
+FROM python:3.14-slim AS rust-builder
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates build-essential \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+ENV PATH="/root/.cargo/bin:${PATH}"
+WORKDIR /src
+COPY backend/rust ./backend/rust
+COPY bin/build_rust.py ./bin/build_rust.py
+RUN python3 bin/build_rust.py --locked --out-dir /rust-ext
+
 # Python 3.14 matches CI, which tests against the same backend/constraints.txt pins.
 FROM python:3.14-slim
 ENV PYTHONUNBUFFERED=1 \
@@ -21,6 +32,9 @@ WORKDIR /app/backend
 # Runtime deps only, at the pinned versions: no pytest/ruff/vulture in the image.
 COPY backend/requirements-runtime.txt backend/constraints.txt ./
 RUN pip install -r requirements-runtime.txt -c constraints.txt
+COPY --from=rust-builder /rust-ext/mantle_bloom_rust.so /tmp/mantle_bloom_rust.so
+RUN python3 -c "import pathlib, shutil, sysconfig; shutil.move('/tmp/mantle_bloom_rust.so', str(pathlib.Path(sysconfig.get_path('platlib')) / 'mantle_bloom_rust.so'))" \
+    && python3 -c "import mantle_bloom_rust"
 COPY backend/app ./app
 COPY --from=frontend /src/frontend/dist /app/frontend/dist
 
