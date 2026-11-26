@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from scipy.sparse import csr_matrix
 from scipy.spatial import cKDTree
 
 from app import lithosphere, world as world_mod
@@ -186,19 +187,75 @@ def test_march_helpers_rust_match_python():
     _assert_close(we_r, we_p)
 
 
-def test_step_world_rust_matches_python_at_coarse_density(monkeypatch):
-    w_rust = world_mod.generate_world(seed=0, node_density=0.5, climate_density=0.5, fluid_density=0.5)
-    w_rust.wind_model = "diagnostic"
-    for _ in range(2):
-        world_mod.step_world(w_rust, 100_000.0)
+def _step_coarse_world(monkeypatch, *, use_rust: bool):
+    monkeypatch.setattr(_glacier_rust, "RUST_AVAILABLE", use_rust)
+    w = world_mod.generate_world(seed=0, node_density=0.5, climate_density=0.5, fluid_density=0.5)
+    w.wind_model = "diagnostic"
+    melt_total = 0.0
+    last_closing = 0.0
+    orig_step_ice = ice_sheet.step_ice
 
-    monkeypatch.setattr(_glacier_rust, "RUST_AVAILABLE", False)
-    w_py = world_mod.generate_world(seed=0, node_density=0.5, climate_density=0.5, fluid_density=0.5)
-    w_py.wind_model = "diagnostic"
+    def _record(*args, **kwargs):
+        nonlocal melt_total, last_closing
+        depth, melt_m, ice = orig_step_ice(*args, **kwargs)
+        melt_total += float(np.dot(melt_m, args[2]))
+        last_closing = float(ice.ledger.closing_m3)
+        return depth, melt_m, ice
+
+    monkeypatch.setattr(ice_sheet, "step_ice", _record)
     for _ in range(2):
-        world_mod.step_world(w_py, 100_000.0)
+        world_mod.step_world(w, 100_000.0)
+    return w, last_closing, melt_total
+
+
+def test_step_world_rust_matches_python_at_coarse_density(monkeypatch):
+    w_rust, close_rust, melt_rust = _step_coarse_world(monkeypatch, use_rust=True)
+    w_py, close_py, melt_py = _step_coarse_world(monkeypatch, use_rust=False)
 
     assert w_rust.sea_level_m == pytest.approx(w_py.sea_level_m, rel=1e-9, abs=1e-6)
+    assert close_rust == pytest.approx(close_py, rel=1e-8, abs=1e-6)
+    assert melt_rust == pytest.approx(melt_py, rel=1e-8, abs=1e-6)
     for pr, pp in zip(w_rust.plates, w_py.plates):
         _assert_close(pr.collect("elevation"), pp.collect("elevation"), rtol=1e-8, atol=1e-5)
         _assert_close(pr.collect("glacier_depth"), pp.collect("glacier_depth"), rtol=1e-8, atol=1e-5)
+
+
+def test_step_ice_preserves_equal_distance_ownership_at_three_node_cutoff(monkeypatch):
+    # Edges 0-2, 1-2, 0-3 with equal lengths and seeds 0, 1: cell 2 sits at equal graph distance
+    # from both seeds, right at the ICE_BODY_MIN_NODES (= 3) domain-size cutoff.
+    n = 4
+    rows = [0, 2, 1, 2, 0, 3]
+    cols = [2, 0, 2, 1, 3, 0]
+    w_m = np.full(len(rows), 100_000.0)
+    graph = csr_matrix((w_m, (rows, cols)), shape=(n, n))
+    step_m = 100_000.0
+    rg = _glacier_rust.build_march_graph(graph, step_m)
+
+    pts = np.eye(3)[np.arange(n) % 3]
+    nb = np.zeros((n, 3), dtype=int)
+    area = np.full(n, 1e9)
+    elev = np.zeros(n)
+    defl = np.zeros(n)
+    prev_depth = np.array([1500.0, 1500.0, 0.0, 0.0])
+    temp = np.full(n, -15.0)
+    amp = np.full(n, 5.0)
+    precip = np.full(n, 500.0)
+    is_ocean = np.zeros(n, dtype=bool)
+    mobile = np.zeros(n)
+    climate = ice_sheet.SurfaceClimate(precip, temp, amp, temp < 0.0)
+
+    d_rust, m_rust, ice_rust = ice_sheet.step_ice(
+        pts, nb, area, elev, defl, -500.0, prev_depth, climate, mobile, is_ocean, 250.0,
+        graph=graph, graph_step_m=step_m, rust_graph=rg,
+    )
+
+    monkeypatch.setattr(_glacier_rust, "RUST_AVAILABLE", False)
+    d_py, m_py, ice_py = ice_sheet.step_ice(
+        pts, nb, area, elev, defl, -500.0, prev_depth, climate, mobile, is_ocean, 250.0,
+        graph=graph, graph_step_m=step_m,
+    )
+
+    _assert_close(d_rust, d_py)
+    _assert_close(m_rust, m_py)
+    assert [b.domain_nodes.tolist() for b in ice_rust.bodies] == [b.domain_nodes.tolist() for b in ice_py.bodies]
+    assert ice_rust.ledger.closing_m3 == pytest.approx(ice_py.ledger.closing_m3, rel=1e-12, abs=1e-6)

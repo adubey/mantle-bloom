@@ -90,39 +90,47 @@ pub fn max_nan(a: f64, b: f64) -> f64 {
     }
 }
 
+#[derive(Clone, Copy, Default)]
+pub struct NeumaierSum {
+    sum: f64,
+    c: f64,
+}
+
+impl NeumaierSum {
+    #[inline]
+    pub fn add(&mut self, x: f64) {
+        let t = self.sum + x;
+        if self.sum.abs() >= x.abs() {
+            self.c += (self.sum - t) + x;
+        } else {
+            self.c += (x - t) + self.sum;
+        }
+        self.sum = t;
+    }
+
+    #[inline]
+    pub fn finish(self) -> f64 {
+        self.sum + self.c
+    }
+}
+
 /// Neumaier compensated dot product for high-precision summation matching NumPy/BLAS `np.dot`.
 pub fn compensated_dot(a: &[f64], b: &[f64]) -> f64 {
     debug_assert_eq!(a.len(), b.len());
-    let mut sum = 0.0_f64;
-    let mut c = 0.0_f64;
+    let mut acc = NeumaierSum::default();
     for i in 0..a.len() {
-        let term = a[i] * b[i];
-        let t = sum + term;
-        if sum.abs() >= term.abs() {
-            c += (sum - t) + term;
-        } else {
-            c += (term - t) + sum;
-        }
-        sum = t;
+        acc.add(a[i] * b[i]);
     }
-    sum + c
+    acc.finish()
 }
 
 /// Neumaier compensated dot product over an index slice.
 pub fn compensated_dot_indexed(indices: &[usize], a: &[f64], b: &[f64]) -> f64 {
-    let mut sum = 0.0_f64;
-    let mut c = 0.0_f64;
+    let mut acc = NeumaierSum::default();
     for &u in indices {
-        let term = a[u] * b[u];
-        let t = sum + term;
-        if sum.abs() >= term.abs() {
-            c += (sum - t) + term;
-        } else {
-            c += (term - t) + sum;
-        }
-        sum = t;
+        acc.add(a[u] * b[u]);
     }
-    sum + c
+    acc.finish()
 }
 
 #[inline]

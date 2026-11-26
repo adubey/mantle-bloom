@@ -1,12 +1,14 @@
 const UNSEEN: u32 = u32::MAX;
 
-/// Indexed 4-ary min-heap over node IDs, keyed by `(dist[node], node)` with in-place decrease-key.
-pub struct IndexedHeap {
+/// Indexed 4-ary min-heap over node IDs, keyed by `(dist[node], node)` (or higher node ID
+/// first when `TIE_HIGHER` is true, matching SciPy `dijkstra` tie-breaking) with in-place
+/// decrease-key.
+pub struct IndexedHeap<const TIE_HIGHER: bool = false> {
     heap: Vec<u32>,
     pos: Vec<u32>,
 }
 
-impl IndexedHeap {
+impl<const TIE_HIGHER: bool> IndexedHeap<TIE_HIGHER> {
     pub fn new(n: usize) -> Self {
         Self {
             heap: Vec::with_capacity(n / 4 + 16),
@@ -25,7 +27,10 @@ impl IndexedHeap {
     fn less(a: u32, b: u32, dist: &[f64]) -> bool {
         let da = dist[a as usize];
         let db = dist[b as usize];
-        da < db || (da == db && a < b)
+        if da != db {
+            return da < db;
+        }
+        if TIE_HIGHER { a > b } else { a < b }
     }
 
     #[inline]
@@ -110,7 +115,8 @@ fn outside_dijkstra(
 ) -> (Vec<f64>, Vec<i32>) {
     let mut dist = vec![f64::INFINITY; n];
     let mut sources = vec![-1_i32; n];
-    let mut heap = IndexedHeap::new(n);
+    // SciPy csgraph.dijkstra pops higher node IDs first on equal distance and updates strictly (<).
+    let mut heap = IndexedHeap::<true>::new(n);
 
     for i in 0..n {
         if seeds[i] {
@@ -145,7 +151,7 @@ fn outside_dijkstra(
                     continue;
                 }
             }
-            if cand < dist[v] || (cand == dist[v] && src < sources[v]) {
+            if cand < dist[v] {
                 dist[v] = cand;
                 sources[v] = src;
                 heap.push_or_decrease(v as u32, &dist);
@@ -194,7 +200,7 @@ pub fn inside_distance_local(
 ) -> Vec<f64> {
     let mut allowed = vec![false; n];
     let mut dist = vec![f64::INFINITY; n];
-    let mut heap = IndexedHeap::new(n);
+    let mut heap = IndexedHeap::<false>::new(n);
     let mut any_boundary = false;
 
     for i in 0..n {
@@ -283,5 +289,19 @@ mod tests {
         let (phi, sources) = signed_distance(4, &indptr, &indices, &lengths, &eligible, &seeds, &members, None);
         assert_eq!(phi, vec![-10.0, -5.0, 5.0, 10.0]);
         assert_eq!(sources, vec![0, 1, 1, 1]);
+    }
+
+    #[test]
+    fn test_outside_distance_tie_matches_scipy() {
+        // Edges: 0-2, 1-2, 0-3 with equal weights and seeds 0, 1.
+        // SciPy 1.18.0 returns sources [0, 1, 1, 0].
+        let indptr = vec![0, 2, 3, 5, 6];
+        let indices = vec![2, 3, 2, 0, 1, 0];
+        let lengths = vec![1.0; 6];
+        let eligible = vec![true; 4];
+        let seeds = vec![true, true, false, false];
+        let members = vec![true, true, false, false];
+        let (_, sources) = outside_distance(4, &indptr, &indices, &lengths, &eligible, &seeds, &members, None);
+        assert_eq!(sources, vec![0, 1, 1, 0]);
     }
 }

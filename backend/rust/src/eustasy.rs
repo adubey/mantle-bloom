@@ -4,7 +4,7 @@ use std::collections::{BinaryHeap, VecDeque};
 use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::prelude::*;
 
-use crate::climate::{clip_min, max_nan, min_nan, RHO_ICE, RHO_WATER};
+use crate::climate::{clip_min, max_nan, min_nan, NeumaierSum, RHO_ICE, RHO_WATER};
 use crate::graph::{build_flood_adjacency_from_neighbor_idx, MarchGraph};
 
 const SOLVE_TOLERANCE_M: f64 = 1.0;
@@ -139,16 +139,16 @@ pub fn seeded_flood_levels_core(
 
 #[inline]
 fn volume_at_level(levels: &[f64], floor: &[f64], areas: &[f64], h: f64) -> f64 {
-    let mut total = 0.0_f64;
+    let mut total = NeumaierSum::default();
     for i in 0..levels.len() {
         if levels[i] <= h {
             let d = h - floor[i];
             if d > 0.0 {
-                total += areas[i] * d;
+                total.add(areas[i] * d);
             }
         }
     }
-    total
+    total.finish()
 }
 
 #[inline]
@@ -159,16 +159,16 @@ fn volume_at_bracketed(
     coastal: &[(f64, f64, f64)],
     h: f64,
 ) -> f64 {
-    let mut total = v_blo_always + area_always * (h - blo);
+    let mut coastal_sum = NeumaierSum::default();
     for &(lvl, flr, area) in coastal {
         if lvl <= h {
             let d = h - flr;
             if d > 0.0 {
-                total += area * d;
+                coastal_sum.add(area * d);
             }
         }
     }
-    total
+    (v_blo_always + area_always * (h - blo)) + coastal_sum.finish()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -188,13 +188,14 @@ pub fn solve_sea_level_connected_core(
     }
     let mut min_z = f64::INFINITY;
     let mut max_z = f64::NEG_INFINITY;
-    let mut total_area = 0.0_f64;
+    let mut total_area_acc = NeumaierSum::default();
     for i in 0..n {
         let z = elevations[i];
         min_z = min_nan(min_z, z);
         max_z = max_nan(max_z, z);
-        total_area += areas[i];
+        total_area_acc.add(areas[i]);
     }
+    let total_area = total_area_acc.finish();
     if water_volume_m3 <= 0.0 || total_area <= 0.0 {
         return min_z;
     }
@@ -212,8 +213,8 @@ pub fn solve_sea_level_connected_core(
     if let Some((blo, bhi)) = bracket {
         if blo < bhi {
             let bounded = seeded_flood_levels_bounded(indptr, adjacency, elevations, seed, Some(bhi));
-            let mut v_blo_always = 0.0_f64;
-            let mut area_always = 0.0_f64;
+            let mut v_blo_acc = NeumaierSum::default();
+            let mut area_acc = NeumaierSum::default();
             let mut coastal: Vec<(f64, f64, f64)> = Vec::new();
             for i in 0..n {
                 let lvl = bounded[i];
@@ -221,13 +222,15 @@ pub fn solve_sea_level_connected_core(
                     let flr = floor[i];
                     let a = areas[i];
                     if lvl <= blo && flr <= blo {
-                        v_blo_always += a * (blo - flr);
-                        area_always += a;
+                        v_blo_acc.add(a * (blo - flr));
+                        area_acc.add(a);
                     } else {
                         coastal.push((lvl, flr, a));
                     }
                 }
             }
+            let v_blo_always = v_blo_acc.finish();
+            let area_always = area_acc.finish();
             let v_blo = volume_at_bracketed(v_blo_always, area_always, blo, &coastal, blo);
             let v_bhi = volume_at_bracketed(v_blo_always, area_always, blo, &coastal, bhi);
             if v_blo <= water_volume_m3 && water_volume_m3 <= v_bhi {

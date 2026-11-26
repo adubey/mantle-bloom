@@ -31,13 +31,17 @@ Profiling young-world steps on `origin/main` (`bf382b23`, `profile_phases.py --s
 
 ## 3. Correctness & Equivalence Verification
 
-- **Unit tests:** `backend/unit_tests/test_glacier_rust.py` (5 tests) plus `test_ice_sheet.py`, `test_eustasy.py`, `test_hydrology.py` (245 tests passed).
-- **Same-input parity (`seed=0, d=1`, substep 97):** `exact_step_ab.py` measured a max ice depth difference of `3.99e-10 m` against the Python reference on identical substep inputs.
-- **Multi-step sensitivity (`seed=0, d=1`, 3 steps):** `generate_world` matched to `4.5e-13 m` on `glacier_depth`, and substeps `0..96` matched to `<1e-4 m`. At substep 97, `1e-13` floating-point rounding flipped a discrete `trend-1k` `SettleWatch` convergence threshold (`4.5e-4 m`), branching substep counts (`245` vs `198` on step 0, yielding `-180.98 m` vs `-188.00 m` sea level on step 0 and `-122.86 m` vs `-116.71 m` after 3 steps). At Density 4 (`4/4/2`), substep count (`235.0` mean), lake tier bodies (`20, 23, 23, 25`), and gross overflow (`2.04e+08, 9.83e+08, 3.13e+08, 6.41e+08 km^3`) remained bit-for-bit identical across all 4 steps.
+- **Unit & stress tests:** `backend/unit_tests/test_glacier_rust.py` (6 tests, including equal-distance ownership at the `ICE_BODY_MIN_NODES = 3` cutoff and coarse-density `sea_level_m` / `closing_m3` / `melt_m3` parity), `backend/stress_tests/test_glacier_rust.py` (2 density-1 same-opening-state parity tests), plus `test_ice_sheet.py`, `test_eustasy.py`, and `test_hydrology.py`.
+- **Equal-distance tie-breaking (Codex P2):** `outside_dijkstra` in `backend/rust/src/distance.rs` pops higher node IDs first on equal distance with strict `cand < dist[v]` relaxation, matching SciPy 1.18.0 (`0/1,000` mismatches across random equal- and mixed-weight graphs, and identical domain assignment `[0, 3]` / `[1, 2]` on edges `0–2, 1–2, 0–3` with seeds `0, 1`).
+- **Density-1 substep & summation parity (Codex P1):**
+  - Lockstep comparison across all 198 substeps on identical inputs (`seed=0, d=1`) showed exact agreement in `march_substep_prep`, `apply_march_abrasion`, `connected_ocean_mask`, and body domains, `2.11e-11 m` max `sea_level` diff, and `3.68e-8 m` worst `step_ice` depth diff.
+  - With `NeumaierSum` compensated summation across `plastic.rs` (`budget_rates`, `solve_uniform_body`), `ice_step.rs`, and `eustasy.rs`, Rust (`245` substeps, `sea_level = -184.633294270 m`) matches pure Python using exact IEEE-754 `math.fsum(a * b)` (`245` substeps, `sea_level = -184.633294270 m`) to all 9 decimal places on `seed=0, d=1`. Pure Python with pairwise `np.sum(a * b)` also takes the `245`-substep branch (`-184.627802235 m`), whereas Apple Accelerate `np.dot` lands on `198` substeps (`-191.345074250 m`) because a 1-ULP difference (`margin_diff = 5.821e-11 m` on body 0) grows exponentially across substeps `72..150` at surge node `5323` and flips `trend_shrink_ratio` (`> 1.5`) at substep 179 (in `exhaust` mode).
+  - On `seed=1, d=1` from an identical opening state, Rust and default Python (`np.dot`) take the same `220` substeps with `+2.64e-4 m` sea-level diff, `-1.66e-4` relative closing-ice diff, and `+4.17e-8` relative routed-meltwater diff.
+- **Density-4 parity (`4/4/2`):** Substep counts (`235.0` mean), lake tier bodies (`20, 23, 23, 25`), and gross overflow (`2.04e+08, 9.83e+08, 3.13e+08, 6.41e+08 km^3`) remained bit-for-bit identical across all 4 steps.
 
 ## 4. Before/After Benchmarks (Idle Machine, Back-to-Back)
 
-Measured with `profile_phases.py --seed 0 --scenarios step --steps 3 --warmup 1 --wind-model diagnostic` and `/usr/bin/time -l`:
+Measured with `profile_phases.py --seed 0 --scenarios step --steps 3 --warmup 1 --wind-model diagnostic` and `/usr/bin/time -l` (Density 4 has identical `235.0` substeps/step on both arms; pre-fix Density 1's `236.7 vs 200.3` substeps reflected the `seed=0` dot-product branch described above):
 
 ### Density 4 (`4/4/2`, 124,046 nodes, 17 plates)
 

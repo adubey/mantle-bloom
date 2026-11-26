@@ -6,8 +6,8 @@ use rayon::prelude::*;
 use crate::climate::{
     air_temperature_at_elevation_scalar, bare_rates_scalar, clip_min, compensated_dot,
     compensated_dot_indexed, is_grounded_scalar, node_rates_scalar, snow_fraction_scalar,
-    warm_based_scalar, yield_stress_scalar, FLOTATION_RATIO, GLACIER_MAX_DEPTH_M, GRAVITY_M_S2,
-    ICE_BODY_MIN_NODES, ICE_SLIDING_FRACTION, ICE_VELOCITY_MIN_THICKNESS_M, RHO_ICE,
+    warm_based_scalar, yield_stress_scalar, NeumaierSum, FLOTATION_RATIO, GLACIER_MAX_DEPTH_M,
+    GRAVITY_M_S2, ICE_BODY_MIN_NODES, ICE_SLIDING_FRACTION, ICE_VELOCITY_MIN_THICKNESS_M, RHO_ICE,
 };
 use crate::distance::signed_distance;
 use crate::graph::{connected_components_masked, MarchGraph};
@@ -83,7 +83,11 @@ fn shed_excess_items(
     if excess <= 0.0 {
         return (Vec::new(), Vec::new(), 0.0, 0.0);
     }
-    let total_area: f64 = margin_nodes.iter().map(|&u| area[u]).sum();
+    let mut total_area_acc = NeumaierSum::default();
+    for &u in margin_nodes {
+        total_area_acc.add(area[u]);
+    }
+    let total_area = total_area_acc.finish();
     let mut items = Vec::with_capacity(margin_nodes.len());
     for &u in margin_nodes {
         items.push((u, excess * (area[u] / total_area)));
@@ -123,7 +127,11 @@ fn solve_one_uniform_body(
         bed_frozen_snow,
         dt_myr,
     );
-    let body_area_sum: f64 = body_nodes.iter().map(|&u| area[u]).sum();
+    let mut body_area_acc = NeumaierSum::default();
+    for &u in body_nodes {
+        body_area_acc.add(area[u]);
+    }
+    let body_area_sum = body_area_acc.finish();
     let marine = body_nodes.iter().any(|&u| is_ocean[u]);
     let (excess_calved, excess_melt, calved_m3, overflow_m3) =
         shed_excess_items(excess, body_nodes, marine, area);
@@ -135,7 +143,7 @@ fn solve_one_uniform_body(
     let mut dom_surface = vec![f64::NAN; m];
     let mut dom_melt_m3 = vec![0.0; m];
     let mut dom_retained_snow = vec![0.0; m];
-    let mut extra_bare_snow_melted = 0.0;
+    let mut extra_bare_snow_melted = NeumaierSum::default();
 
     for (idx, &u) in dom_nodes.iter().enumerate() {
         if is_member[u] {
@@ -148,7 +156,7 @@ fn solve_one_uniform_body(
         } else {
             let w = bare_acc[u] * area[u] * dt_myr;
             dom_melt_m3[idx] = w;
-            extra_bare_snow_melted += w;
+            extra_bare_snow_melted.add(w);
         }
     }
 
@@ -173,7 +181,7 @@ fn solve_one_uniform_body(
         dom_retained_snow,
         excess_calved,
         excess_melt,
-        extra_bare_snow_melted,
+        extra_bare_snow_melted: extra_bare_snow_melted.finish(),
     }
 }
 
@@ -195,7 +203,7 @@ fn solve_one_plastic_body(
     let mut dom_covered = Vec::with_capacity(m);
     let mut dom_surface = Vec::with_capacity(m);
     let mut where_melt = Vec::with_capacity(m);
-    let mut where_melt_sum = 0.0_f64;
+    let mut where_melt_acc = NeumaierSum::default();
 
     for i in 0..m {
         let cov = shape.cover[i].min(1.0);
@@ -209,8 +217,9 @@ fn solve_one_plastic_body(
         let wm = shape.cover[i] * dom.area[i] * (shape.rate_sm[i] + shape.rate_bm[i])
             + (1.0 - cov) * dom.area[i] * if feeds { dom.bare_sm[i] } else { 0.0 };
         where_melt.push(wm);
-        where_melt_sum += wm;
+        where_melt_acc.add(wm);
     }
+    let where_melt_sum = where_melt_acc.finish();
 
     let mut dom_melt_m3 = vec![0.0_f64; m];
     if where_melt_sum > 0.0 {
@@ -218,7 +227,11 @@ fn solve_one_plastic_body(
             dom_melt_m3[i] += (sm + bm) * where_melt[i] / where_melt_sum;
         }
     } else if sm + bm > 0.0 {
-        let body_area_sum: f64 = body_nodes.iter().map(|&u| area[u]).sum();
+        let mut body_area_acc = NeumaierSum::default();
+        for &u in body_nodes {
+            body_area_acc.add(area[u]);
+        }
+        let body_area_sum = body_area_acc.finish();
         for (i, &u) in dom.nodes.iter().enumerate() {
             if body_nodes.binary_search(&u).is_ok() {
                 dom_melt_m3[i] += (sm + bm) * area[u] / body_area_sum;
@@ -227,13 +240,13 @@ fn solve_one_plastic_body(
     }
 
     let mut dom_retained_snow = Vec::with_capacity(m);
-    let mut extra_bare_snow_melted = 0.0_f64;
+    let mut extra_bare_snow_melted = NeumaierSum::default();
     for i in 0..m {
         let cov = dom_covered[i];
         let feeds = (dom.bare_acc[i] - dom.bare_sm[i]) > 0.0;
         let bare_snow = (1.0 - cov) * dom.area[i] * if feeds { 0.0 } else { dom.bare_acc[i] } * dt_myr;
         dom_melt_m3[i] += bare_snow;
-        extra_bare_snow_melted += bare_snow;
+        extra_bare_snow_melted.add(bare_snow);
         dom_retained_snow.push(if feeds { 1.0 } else { cov });
     }
 
@@ -283,7 +296,7 @@ fn solve_one_plastic_body(
         dom_retained_snow,
         excess_calved,
         excess_melt,
-        extra_bare_snow_melted,
+        extra_bare_snow_melted: extra_bare_snow_melted.finish(),
     }
 }
 
@@ -470,7 +483,7 @@ pub fn step_ice<'py>(
         let mut retained_snow = vec![0.0_f64; n];
         let mut in_domain = vec![false; n];
         let mut body_outs: Vec<BodyOut> = Vec::new();
-        let mut snow_melted_m3 = 0.0_f64;
+        let mut snow_melted_acc = NeumaierSum::default();
 
         if any_members {
             let (comp, num_bodies) =
@@ -691,12 +704,11 @@ pub fn step_ice<'py>(
                 for (u, v) in &out_b.excess_melt {
                     melt_m3[*u] += *v;
                 }
-                snow_melted_m3 += out_b.extra_bare_snow_melted;
+                snow_melted_acc.add(out_b.extra_bare_snow_melted);
 
                 let mut capped_here = 0.0_f64;
                 let mut calved_guard = 0.0_f64;
-                let mut closing_sum = 0.0_f64;
-                let mut closing_comp = 0.0_f64;
+                let mut closing_acc = NeumaierSum::default();
                 for &u_i64 in &out_b.domain_nodes {
                     let u = u_i64 as usize;
                     if depth[u] > GLACIER_MAX_DEPTH_M {
@@ -718,18 +730,11 @@ pub fn step_ice<'py>(
                         covered[u] = 0.0;
                         surface[u] = f64::NAN;
                     }
-                    let term = depth[u] * area[u];
-                    let t = closing_sum + term;
-                    if closing_sum.abs() >= term.abs() {
-                        closing_comp += (closing_sum - t) + term;
-                    } else {
-                        closing_comp += (term - t) + closing_sum;
-                    }
-                    closing_sum = t;
+                    closing_acc.add(depth[u] * area[u]);
                 }
                 out_b.capped_m3 += capped_here;
                 out_b.calved_m3 += calved_guard;
-                out_b.closing_m3 = closing_sum + closing_comp;
+                out_b.closing_m3 = closing_acc.finish();
                 body_outs.push(out_b);
             }
         }
@@ -738,9 +743,10 @@ pub fn step_ice<'py>(
             if !in_domain[i] && !ocean[i] {
                 let water = bare_acc[i] * area[i] * dt_myr;
                 melt_m3[i] += water;
-                snow_melted_m3 += water;
+                snow_melted_acc.add(water);
             }
         }
+        let snow_melted_m3 = snow_melted_acc.finish();
 
         let mut accumulation_m3 = 0.0_f64;
         let mut surface_melt_m3 = 0.0_f64;
@@ -754,7 +760,11 @@ pub fn step_ice<'py>(
             overflow_m3 += b.overflow_m3;
             capped_m3 += b.capped_m3;
         }
-        let calved_m3: f64 = calved.iter().sum();
+        let mut calved_acc = NeumaierSum::default();
+        for &cv in &calved {
+            calved_acc.add(cv);
+        }
+        let calved_m3 = calved_acc.finish();
         let closing_m3: f64 = compensated_dot(&depth, area);
         let cap_thresh = GLACIER_MAX_DEPTH_M * (1.0 - 1e-9);
         let mut capped_nodes = 0_usize;
@@ -812,10 +822,10 @@ pub fn step_ice<'py>(
         }
 
         let mut melt_m = Vec::with_capacity(n);
-        let mut land_m3 = 0.0_f64;
-        let mut ocean_retained_m3 = 0.0_f64;
-        let mut retained_m3 = 0.0_f64;
-        let mut bare_melted_m3 = 0.0_f64;
+        let mut land_acc = NeumaierSum::default();
+        let mut ocean_retained_acc = NeumaierSum::default();
+        let mut retained_acc = NeumaierSum::default();
+        let mut bare_melted_acc = NeumaierSum::default();
         for i in 0..n {
             melt_m.push(melt_m3[i] / if area[i] > 0.0 { area[i] } else { 1.0 });
             let mut smm = match dry_snow {
@@ -827,14 +837,18 @@ pub fn step_ice<'py>(
             }
             let f_m3 = clip_min(smm, 0.0) / 1000.0 * area[i] * years;
             let r_m3 = f_m3 * retained_snow[i];
-            retained_m3 += r_m3;
+            retained_acc.add(r_m3);
             if ocean[i] {
-                ocean_retained_m3 += r_m3;
+                ocean_retained_acc.add(r_m3);
             } else {
-                land_m3 += f_m3;
-                bare_melted_m3 += f_m3 - r_m3;
+                land_acc.add(f_m3);
+                bare_melted_acc.add(f_m3 - r_m3);
             }
         }
+        let land_m3 = land_acc.finish();
+        let ocean_retained_m3 = ocean_retained_acc.finish();
+        let retained_m3 = retained_acc.finish();
+        let bare_melted_m3 = bare_melted_acc.finish();
 
         (
             depth,

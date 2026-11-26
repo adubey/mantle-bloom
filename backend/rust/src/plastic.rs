@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crate::climate::{
     clip_min, compensated_dot, floating_water_depth_scalar, is_grounded_scalar, node_rates_scalar,
-    FLOTATION_RATIO, GLACIER_MAX_DEPTH_M, ICE_FLOTATION_PASSES, ICE_ROOT_MAX_ITERATIONS,
-    ICE_ROOT_TOLERANCE_M,
+    NeumaierSum, FLOTATION_RATIO, GLACIER_MAX_DEPTH_M, ICE_FLOTATION_PASSES,
+    ICE_ROOT_MAX_ITERATIONS, ICE_ROOT_TOLERANCE_M,
 };
 use crate::distance::IndexedHeap;
 
@@ -83,25 +83,31 @@ impl IceShape {
     }
 
     pub fn budget_rates(&self, dom: &LocalDomain) -> (f64, f64, f64) {
-        let mut acc_sum = 0.0_f64;
-        let mut sm_sum = 0.0_f64;
-        let mut bm_sum = 0.0_f64;
+        let mut acc_cov = NeumaierSum::default();
+        let mut acc_bare = NeumaierSum::default();
+        let mut sm_cov = NeumaierSum::default();
+        let mut sm_bare = NeumaierSum::default();
+        let mut bm_cov = NeumaierSum::default();
         for i in 0..dom.nodes.len() {
             let cov = self.cover[i];
             let area = dom.area[i];
             let covered = cov * area;
-            acc_sum += covered * self.rate_acc[i];
-            sm_sum += covered * self.rate_sm[i];
-            bm_sum += covered * self.rate_bm[i];
+            acc_cov.add(covered * self.rate_acc[i]);
+            sm_cov.add(covered * self.rate_sm[i]);
+            bm_cov.add(covered * self.rate_bm[i]);
             let acc0 = dom.bare_acc[i];
             let sm0 = dom.bare_sm[i];
             if acc0 - sm0 > 0.0 {
                 let bare = (1.0 - cov.min(1.0)) * area;
-                acc_sum += bare * acc0;
-                sm_sum += bare * sm0;
+                acc_bare.add(bare * acc0);
+                sm_bare.add(bare * sm0);
             }
         }
-        (acc_sum, sm_sum, bm_sum)
+        (
+            acc_cov.finish() + acc_bare.finish(),
+            sm_cov.finish() + sm_bare.finish(),
+            bm_cov.finish(),
+        )
     }
 }
 
@@ -675,24 +681,29 @@ pub fn solve_uniform_body(
     bed_frozen_snow: Option<&[f64]>,
     dt_myr: f64,
 ) -> (f64, f64, f64, f64, f64) {
-    let mut total_area = 0.0_f64;
+    let mut total_area_acc = NeumaierSum::default();
     for &u in nodes {
-        total_area += area[u];
+        total_area_acc.add(area[u]);
     }
+    let total_area = total_area_acc.finish();
 
     let budget = |h: f64| -> (f64, f64, f64) {
-        let mut acc_sum = 0.0_f64;
-        let mut sm_sum = 0.0_f64;
-        let mut bm_sum = 0.0_f64;
+        let mut acc_sum = NeumaierSum::default();
+        let mut sm_sum = NeumaierSum::default();
+        let mut bm_sum = NeumaierSum::default();
         for &u in nodes {
             let fric = frictional.map_or(0.0, |v| v[u]);
             let bfs = bed_frozen_snow.map(|v| v[u]);
             let (a, s, b) = node_rates_scalar(h, temp_c[u], amp_c[u], precip[u], fric, bfs);
-            acc_sum += area[u] * a;
-            sm_sum += area[u] * s;
-            bm_sum += area[u] * b;
+            acc_sum.add(area[u] * a);
+            sm_sum.add(area[u] * s);
+            bm_sum.add(area[u] * b);
         }
-        (dt_myr * acc_sum, dt_myr * sm_sum, dt_myr * bm_sum)
+        (
+            dt_myr * acc_sum.finish(),
+            dt_myr * sm_sum.finish(),
+            dt_myr * bm_sum.finish(),
+        )
     };
 
     let g = |h: f64| -> f64 {
