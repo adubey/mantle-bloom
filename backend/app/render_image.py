@@ -18,11 +18,15 @@ it, so there's no payload-size reason to keep the grid coarse -- it's a free-sta
 from __future__ import annotations
 
 import base64
+from collections import deque
+import concurrent.futures
 import copy
 import functools
 import io
 import logging
+import os
 import threading
+import time
 from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -35,7 +39,7 @@ from numba import njit
 from PIL import Image, ImageDraw, ImageFilter
 from scipy.spatial import cKDTree
 
-from . import cratons, flow_arrows, geometry, healpix_grid, lithosphere, mantle, plates, plumes, projections, trace
+from . import _render_rust, cratons, flow_arrows, geometry, healpix_grid, lithosphere, mantle, plates, plumes, projections, trace
 from .hydroclimate import biomes, climate, coastline, geology, hydrology, ice_sheet, sea_ice, volcanism
 from .elevation_lines import DEFAULT_NODE_DENSITY, PLANET_RADIUS_KM, effective_is_continental_from_codes, line_spacing_rad
 from .world import PROGRESS_HEARTBEAT_INTERVAL_S, HeartbeatClock, World, step_world
@@ -398,8 +402,9 @@ PLATE_PALETTE = np.array(
 )
 
 # A simple hypsometric tint: deep blue -> shallow blue -> coastal green -> tan -> brown ->
-# pale rocky gray peaks. Kept in sync by hand with the palette this was ported from
-# (frontend/src/elevationColor.ts, now deleted -- this is the sole copy). Deliberately no
+# pale rocky gray peaks. Kept in sync with the elevation color table in
+# backend/rust/src/render/raster.rs (enforced by unit_tests/test_render_rust.py;
+# frontend/src/elevationColor.ts was deleted). Deliberately no
 # stop here is pure (255, 255, 255) white, even at the highest peaks -- white is reserved
 # exclusively for actual ice cover (GLACIER_COLOR_RGB, applied as an overlay below) so it
 # reads unambiguously as "glaciated," not "merely high/rocky."
@@ -1636,6 +1641,9 @@ def _fill_rects(pixels: np.ndarray, centers: np.ndarray, half_w, half_h, colors:
     # np.where on RGB tuples, float blends) -- normalize to the buffer's dtype and layout once
     # so the kernel is a single specialization.
     colors = np.ascontiguousarray(colors).reshape(len(centers), -1).astype(pixels.dtype, copy=False)
+    if pixels.dtype == np.uint8 and pixels.flags["C_CONTIGUOUS"] and _render_rust.RUST_AVAILABLE:
+        _render_rust.fill_rects(pixels, x0, x1, y0, y1, colors)
+        return
     _fill_rects_kernel(pixels, x0, x1, y0, y1, colors)
 
 
@@ -3177,6 +3185,30 @@ def render_png(
     transition between sea ice and open ocean."""
     if view_rotation is None:
         view_rotation = np.eye(3)
+    if _render_rust.can_render_rust(
+        world,
+        projection,
+        view,
+        orig_render_map_png=_ORIG_RENDER_MAP_PNG,
+        current_render_map_png=_render_map_png,
+    ):
+        snap = _render_rust.build_render_snapshot(
+            world,
+            projection,
+            view,
+            width,
+            height,
+            view_rotation,
+            show_mountains=show_mountains,
+            show_plains_plateaus=show_plains_plateaus,
+            smooth_sea_ice=smooth_sea_ice,
+            soft_sea_ice_edge=soft_sea_ice_edge,
+            stroke_scale_override=float(_STROKE_SCALE.get()),
+        )
+        if snap is not None:
+            png_bytes, _ = _render_rust.render_snapshot(snap, want_png=True, want_rgb=False)
+            assert png_bytes is not None
+            return png_bytes
     if projection == projections.GLOBE:
         return _render_globe(
             world, view, width, height, view_rotation, show_mountains, show_plains_plateaus,
@@ -3475,6 +3507,9 @@ def _render_map_png(  # noqa: C901
     return _encode_image(image)
 
 
+_ORIG_RENDER_MAP_PNG = _render_map_png
+
+
 def _encode_image(image: Image.Image) -> bytes:
     buf = io.BytesIO()
     image.save(buf, format="PNG")
@@ -3499,6 +3534,10 @@ def render_png_base64(
             smooth_sea_ice, soft_sea_ice_edge,
         )
     ).decode("ascii")
+
+
+_ORIG_RENDER_PNG = render_png
+_ORIG_RENDER_PNG_BASE64 = render_png_base64
 
 
 # How long each animation frame is shown, milliseconds -- matches frontend/src/App.tsx's own
@@ -3544,6 +3583,219 @@ def _run_cancellable_step(
         working = None
 
 
+def _encode_png_to_mp4(png_bytes: bytes, enc_w: int, enc_h: int, stream, container) -> None:
+    frame_img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+    if frame_img.size != (enc_w, enc_h):
+        frame_img = frame_img.crop((0, 0, enc_w, enc_h))
+    av_frame = av.VideoFrame.from_ndarray(np.asarray(frame_img), format="rgb24")
+    for packet in stream.encode(av_frame):
+        container.mux(packet)
+
+
+def _encode_rgb_to_mp4(rgb24: np.ndarray, enc_w: int, enc_h: int, stream, container) -> None:
+    if rgb24.shape[1] != enc_w or rgb24.shape[0] != enc_h:
+        rgb24 = rgb24[:enc_h, :enc_w, :]
+    av_frame = av.VideoFrame.from_ndarray(np.ascontiguousarray(rgb24), format="rgb24")
+    for packet in stream.encode(av_frame):
+        container.mux(packet)
+
+
+class _ParallelRustPreviewRenderer:
+    """Renders intermediate step previews on a background thread via Rust without holding `_compute_gate`."""
+
+    def __init__(
+        self,
+        projection: str,
+        view: str,
+        width: int,
+        height: int,
+        view_rotation: np.ndarray | None,
+        on_preview: Callable[[bytes, float, dict | None, float | None], None],
+    ) -> None:
+        self._projection = projection
+        self._view = view
+        self._width = width
+        self._height = height
+        self._view_rotation = None if view_rotation is None else np.array(view_rotation, copy=True)
+        self._on_preview = on_preview
+        self._closed = threading.Event()
+        self._floor_lock = threading.Lock()
+        self._min_elapsed_years = float("-inf")
+        self._pool = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="animate-preview")
+        self._pending: concurrent.futures.Future | None = None
+
+    def advance_floor(self, elapsed_years: float) -> None:
+        with self._floor_lock:
+            if elapsed_years > self._min_elapsed_years:
+                self._min_elapsed_years = elapsed_years
+
+    def maybe_submit(self, world: World, seconds_per_step: float | None) -> None:
+        if self._closed.is_set():
+            return
+        if self._pending is not None and not self._pending.done():
+            return
+        snap = _render_rust.build_render_snapshot(
+            world, self._projection, self._view, self._width, self._height, self._view_rotation
+        )
+        if snap is None:
+            return
+        elapsed_years = world.elapsed_years
+        stats = copy.deepcopy(world.stats_history[-1]) if world.stats_history else None
+        self._pending = self._pool.submit(self._render_one, snap, elapsed_years, stats, seconds_per_step)
+
+    def _render_one(
+        self,
+        snap: _render_rust.RenderSnapshot,
+        elapsed_years: float,
+        stats: dict | None,
+        seconds_per_step: float | None,
+    ) -> None:
+        with self._floor_lock:
+            if self._closed.is_set() or elapsed_years < self._min_elapsed_years:
+                return
+        try:
+            png_bytes, _ = _render_rust.render_snapshot(snap, want_png=True, want_rgb=False)
+            if png_bytes is None:
+                return
+            with self._floor_lock:
+                if self._closed.is_set() or elapsed_years < self._min_elapsed_years:
+                    return
+                self._min_elapsed_years = elapsed_years
+            self._on_preview(png_bytes, elapsed_years, stats, seconds_per_step)
+        except Exception:  # noqa: BLE001 -- preview render must never fail the real animation
+            logging.getLogger(__name__).debug("intermediate Rust animation preview render failed", exc_info=True)
+
+    def close(self) -> None:
+        self._closed.set()
+        self._pool.shutdown(wait=True)
+
+
+def _render_rust_frame_pair(snap: _render_rust.RenderSnapshot) -> tuple[bytes, np.ndarray]:
+    png_bytes, rgb24 = _render_rust.render_snapshot(snap, want_png=True, want_rgb=True)
+    assert png_bytes is not None and rgb24 is not None
+    return png_bytes, rgb24
+
+
+def _flush_pending_frame(pending_frame, enc_w: int, enc_h: int, stream, container) -> tuple[int, bytes, float]:
+    prev_num, prev_elapsed, prev_future = pending_frame
+    png_bytes, rgb24 = prev_future.result()
+    _encode_rgb_to_mp4(rgb24, enc_w, enc_h, stream, container)
+    return prev_num, png_bytes, prev_elapsed
+
+
+def _flush_pending_box(
+    pending_box: list,
+    frames_box: list[int],
+    enc_w: int,
+    enc_h: int,
+    stream,
+    container,
+    preview_renderer: _ParallelRustPreviewRenderer | None,
+) -> tuple[int, bytes, float] | None:
+    pending_frame = pending_box[0]
+    if pending_frame is None:
+        return None
+    pending_box[0] = None
+    prev_num, prev_png, prev_elapsed = _flush_pending_frame(pending_frame, enc_w, enc_h, stream, container)
+    frames_box[0] = prev_num
+    if preview_renderer is not None:
+        preview_renderer.advance_floor(prev_elapsed)
+    return prev_num, prev_png, prev_elapsed
+
+
+def _render_sync_frame(
+    world: World,
+    projection: str,
+    view: str,
+    width: int,
+    height: int,
+    view_rotation: np.ndarray | None,
+    enc_w: int,
+    enc_h: int,
+    stream,
+    container,
+    *,
+    rust_eligible: bool,
+) -> bytes:
+    if rust_eligible:
+        snap = _render_rust.build_render_snapshot(world, projection, view, width, height, view_rotation)
+        if snap is not None:
+            png_bytes, rgb24 = _render_rust_frame_pair(snap)
+            _encode_rgb_to_mp4(rgb24, enc_w, enc_h, stream, container)
+            return png_bytes
+    png_bytes = render_png(world, projection, view, width, height, view_rotation)
+    _encode_png_to_mp4(png_bytes, enc_w, enc_h, stream, container)
+    return png_bytes
+
+
+def _run_animation_step_batch(
+    world: World,
+    projection: str,
+    view: str,
+    width: int,
+    height: int,
+    view_rotation: np.ndarray,
+    step_fn,
+    step_years: float,
+    steps_per_frame: int,
+    stop_event,
+    step_durations: deque[float],
+    on_step_timing: Callable[[float], None] | None,
+    on_preview: Callable[[bytes, float, dict | None, float | None], None] | None,
+    preview_renderer: _ParallelRustPreviewRenderer | None,
+    clock: HeartbeatClock,
+    frame_num: int,
+    num_frames: int,
+    pending_box: list,
+    frames_box: list[int],
+    enc_w: int,
+    enc_h: int,
+    stream,
+    container,
+):
+    """Run one frame's `steps_per_frame` steps, flushing any finished prior frame before newer output."""
+    stopped_early = False
+    for step_idx in range(steps_per_frame):
+        t0 = time.monotonic()
+        if not _run_cancellable_step(world, step_fn, step_years, stop_event):
+            stopped_early = True
+            break
+        step_durations.append(time.monotonic() - t0)
+        seconds_per_step = sum(step_durations) / len(step_durations)
+        if on_step_timing is not None:
+            on_step_timing(seconds_per_step)
+        if pending_box[0] is not None and pending_box[0][2].done():
+            flushed = _flush_pending_box(
+                pending_box, frames_box, enc_w, enc_h, stream, container, preview_renderer
+            )
+            if flushed is not None:
+                prev_num, prev_png, prev_elapsed = flushed
+                yield ("progress", prev_num, num_frames, prev_png, prev_elapsed)
+                clock.stamp()
+        if on_preview is not None and step_idx < steps_per_frame - 1:
+            if pending_box[0] is not None:
+                prev_num, prev_png, prev_elapsed = _flush_pending_box(
+                    pending_box, frames_box, enc_w, enc_h, stream, container, preview_renderer
+                )
+                yield ("progress", prev_num, num_frames, prev_png, prev_elapsed)
+                clock.stamp()
+            if preview_renderer is not None:
+                preview_renderer.maybe_submit(world, seconds_per_step)
+            else:
+                preview_png = render_png(world, projection, view, width, height, view_rotation)
+                preview_stats = world.stats_history[-1] if world.stats_history else None
+                on_preview(preview_png, world.elapsed_years, preview_stats, seconds_per_step)
+                clock.stamp()
+        if clock.due():
+            if pending_box[0] is not None:
+                prev_num, prev_png, prev_elapsed = _flush_pending_box(
+                    pending_box, frames_box, enc_w, enc_h, stream, container, preview_renderer
+                )
+                yield ("progress", prev_num, num_frames, prev_png, prev_elapsed)
+            yield ("heartbeat", frame_num, num_frames, world.elapsed_years)
+    return stopped_early
+
+
 def stream_animation_mp4(
     world: World,
     projection: str,
@@ -3556,6 +3808,10 @@ def stream_animation_mp4(
     num_frames: int,
     step_fn=step_world,
     stop_event=None,
+    on_preview: Callable[[bytes, float, dict | None, float | None], None] | None = None,
+    on_step_timing: Callable[[float], None] | None = None,
+    parallel_render: bool | None = None,
+    on_frame_boundary: Callable[[int, float], None] | None = None,
 ):
     """Generator driving the "Record" toolbar action. Renders `world`'s progress in
     `view`/`projection` as an H.264/MP4 video -- frame 0 is the world's current state, and
@@ -3615,45 +3871,111 @@ def stream_animation_mp4(
     # begin playback before the whole blob has arrived.
     stream.options = {"crf": ANIMATION_CRF, "movflags": "+faststart"}
 
+    rust_eligible = (
+        render_png is _ORIG_RENDER_PNG
+        and _render_rust.can_render_rust(
+            world,
+            projection,
+            view,
+            orig_render_map_png=_ORIG_RENDER_MAP_PNG,
+            current_render_map_png=_render_map_png,
+        )
+    )
+    if parallel_render is None:
+        use_parallel = rust_eligible and os.environ.get("MANTLE_BLOOM_PARALLEL_RENDER") != "0"
+    else:
+        use_parallel = bool(parallel_render) and rust_eligible
+
     stopped_early = False
     failure = None
-    frames_done = 0
+    frames_box = [0]
     clock = HeartbeatClock()
+    step_durations: deque[float] = deque(maxlen=10)
+    preview_renderer = (
+        _ParallelRustPreviewRenderer(projection, view, width, height, view_rotation, on_preview)
+        if (on_preview is not None and use_parallel)
+        else None
+    )
+    frame_pool = (
+        concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="animate-render")
+        if (use_parallel and num_frames > 2)
+        else None
+    )
+    pending_box: list = [None]
     try:
         try:
             for i in range(num_frames):
                 if i > 0:
-                    for _ in range(steps_per_frame):
-                        if not _run_cancellable_step(world, step_fn, step_years, stop_event):
-                            stopped_early = True
-                            break
-                        if clock.due():
-                            yield ("heartbeat", i + 1, num_frames, world.elapsed_years)
+                    stopped_early = yield from _run_animation_step_batch(
+                        world, projection, view, width, height, view_rotation,
+                        step_fn, step_years, steps_per_frame, stop_event,
+                        step_durations, on_step_timing, on_preview, preview_renderer,
+                        clock, i + 1, num_frames,
+                        pending_box, frames_box, enc_w, enc_h, stream, container,
+                    )
                     if stopped_early:
                         break
-                png_bytes = render_png(world, projection, view, width, height, view_rotation)
-                frame_img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
-                if frame_img.size != (enc_w, enc_h):
-                    frame_img = frame_img.crop((0, 0, enc_w, enc_h))
-                av_frame = av.VideoFrame.from_ndarray(np.asarray(frame_img), format="rgb24")
-                for packet in stream.encode(av_frame):
-                    container.mux(packet)
-                # The frame's own PNG rides along with the progress tick so the frontend can paint it
-                # straight onto the main map -- the animation runs in the background while the world
-                # is locked, so a normal /world/render for the same state would 503 (see main.py).
-                frames_done = i + 1
-                yield ("progress", i + 1, num_frames, png_bytes, world.elapsed_years)
-                # A progress line is itself proof of life for the client's watchdog.
-                clock.stamp()
+                flushed = _flush_pending_box(
+                    pending_box, frames_box, enc_w, enc_h, stream, container, preview_renderer
+                )
+                if flushed is not None:
+                    prev_num, prev_png, prev_elapsed = flushed
+                    yield ("progress", prev_num, num_frames, prev_png, prev_elapsed)
+                    clock.stamp()
+                snap = (
+                    _render_rust.build_render_snapshot(world, projection, view, width, height, view_rotation)
+                    if (
+                        frame_pool is not None
+                        and 0 < i < num_frames - 1
+                        and not (stop_event is not None and stop_event.is_set())
+                    )
+                    else None
+                )
+                if snap is not None:
+                    assert frame_pool is not None
+                    fut = frame_pool.submit(_render_rust_frame_pair, snap)
+                    pending_box[0] = (i + 1, world.elapsed_years, fut)
+                    if on_frame_boundary is not None:
+                        on_frame_boundary(i + 1, world.elapsed_years)
+                else:
+                    png_bytes = _render_sync_frame(
+                        world, projection, view, width, height, view_rotation,
+                        enc_w, enc_h, stream, container, rust_eligible=rust_eligible,
+                    )
+                    frames_box[0] = i + 1
+                    if preview_renderer is not None:
+                        preview_renderer.advance_floor(world.elapsed_years)
+                    yield ("progress", i + 1, num_frames, png_bytes, world.elapsed_years)
+                    clock.stamp()
+            flushed = _flush_pending_box(
+                pending_box, frames_box, enc_w, enc_h, stream, container, preview_renderer
+            )
+            if flushed is not None:
+                prev_num, prev_png, prev_elapsed = flushed
+                yield ("progress", prev_num, num_frames, prev_png, prev_elapsed)
         except Exception as exc:  # noqa: BLE001 -- preserve completed frames on a failed step or render
-            if not frames_done:
+            if pending_box[0] is not None:
+                try:
+                    _flush_pending_box(
+                        pending_box, frames_box, enc_w, enc_h, stream, container, preview_renderer
+                    )
+                    # Do NOT yield ("progress", ...): when a step fails mid-batch, `world` may be
+                    # half-stepped, so yielding "progress" would make main._animate_message_line
+                    # checkpoint a mid-batch world (#638). Keep the encoded MP4 frame only.
+                except Exception:  # noqa: BLE001 -- original failure takes precedence
+                    pass
+            if not frames_box[0]:
                 raise
-            logging.getLogger(__name__).exception("animation failed after frame %s", frames_done)
+            logging.getLogger(__name__).exception("animation failed after frame %s", frames_box[0])
             failure = f"{type(exc).__name__}: {exc}"
 
         for packet in stream.encode():  # flush libx264's remaining buffered frames
             container.mux(packet)
     finally:
+        if preview_renderer is not None:
+            preview_renderer.close()
+        if frame_pool is not None:
+            frame_pool.shutdown(wait=True)
         # A disconnected client abandons this generator mid-loop (see main.py's animate
         # GeneratorExit path): the encoder context must still be closed, or each abandoned
         # run leaks a native libx264 context. Closed exactly once -- normal completion

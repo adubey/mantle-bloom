@@ -207,6 +207,12 @@ BIOME_SHADE_MIN = 1.0 - BIOME_SHADE_AMPLITUDE
 BIOME_SHADE_MAX = 1.0 + BIOME_SHADE_AMPLITUDE
 
 
+def _rust_bridge():
+    from .. import _render_rust
+
+    return _render_rust
+
+
 def biome_relative_shade_factor(biome_ids: np.ndarray, elevation_m: np.ndarray) -> np.ndarray:
     """Per-cell brightness multiplier, same shape as `biome_ids`: a continuous ramp from
     BIOME_SHADE_MIN at a class's lowest-elevation cell to BIOME_SHADE_MAX at its highest,
@@ -222,6 +228,9 @@ def biome_relative_shade_factor(biome_ids: np.ndarray, elevation_m: np.ndarray) 
     corduroy across terrain that is actually uniform. Equal elevation must mean equal shade."""
     biome_ids = np.asarray(biome_ids)
     elevation_m = np.asarray(elevation_m)
+    rust = _rust_bridge()
+    if rust.RUST_AVAILABLE and biome_ids.size > 0:
+        return rust.biome_relative_shade_factor(biome_ids, elevation_m)
     flat_ids = biome_ids.reshape(-1)
     flat_elevation = elevation_m.reshape(-1)
 
@@ -918,19 +927,23 @@ def grid_continentality(is_ocean: np.ndarray) -> np.ndarray:
     converted to arc via the grid's own resolution (longitude compression at high latitude is
     ignored -- a visually inconsequential over-estimate near the poles, same tradeoff the rest
     of this module already accepts)."""
-    land = ~np.asarray(is_ocean)
+    land = ~np.asarray(is_ocean, dtype=bool)
     if not land.any():
         return np.zeros(land.shape, dtype=float)
-    dist_rad = distance_transform_edt(land) * (_equator_cell_km(land.shape[1]) / PLANET_RADIUS_KM)
+    rust = _rust_bridge()
+    edt = rust.grid_edt(land) if rust.RUST_AVAILABLE else distance_transform_edt(land)
+    dist_rad = edt * (_equator_cell_km(land.shape[1]) / PLANET_RADIUS_KM)
     return np.clip(dist_rad / CONTINENTALITY_SATURATION_RAD, 0.0, 1.0)
 
 
 def grid_dist_to_land_rad(is_ocean: np.ndarray) -> np.ndarray:
     """(H, W) arc distance from each ocean cell to the nearest land cell (0 over land)."""
-    ocean = np.asarray(is_ocean)
+    ocean = np.asarray(is_ocean, dtype=bool)
     if not ocean.any() or ocean.all():
         return np.zeros(ocean.shape, dtype=float)
-    return distance_transform_edt(ocean) * (_equator_cell_km(ocean.shape[1]) / PLANET_RADIUS_KM)
+    rust = _rust_bridge()
+    edt = rust.grid_edt(ocean) if rust.RUST_AVAILABLE else distance_transform_edt(ocean)
+    return edt * (_equator_cell_km(ocean.shape[1]) / PLANET_RADIUS_KM)
 
 
 _NEIGHBOUR_OFFSETS = tuple((dy, dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if (dy, dx) != (0, 0))
@@ -1020,6 +1033,41 @@ def _smooth_biome_classify(
     return biome_ids, overridden, continentality, dist_to_land_rad, has_sea_ice, lat_grid
 
 
+_ORIG_NEIGHBOUR_VOTE = _neighbour_vote
+_ORIG_CLASSIFY_BIOMES = classify_biomes
+_ORIG_CLASSIFY_KOPPEN = classify_koppen
+_ORIG_CLASSIFY_KOPPEN_SOFT = classify_koppen_soft
+_ORIG_CLASSIFY_PELAGIC = classify_pelagic
+_ORIG_CLASSIFY_PELAGIC_SOFT = classify_pelagic_soft
+_ORIG_GRID_CONTINENTALITY = grid_continentality
+_ORIG_GRID_DIST_TO_LAND_RAD = grid_dist_to_land_rad
+
+
+def _can_use_rust_biomes(elevation_m: np.ndarray, lat_deg: np.ndarray) -> tuple[bool, np.ndarray | None]:
+    rust = _rust_bridge()
+    if (
+        not rust.RUST_AVAILABLE
+        or _neighbour_vote is not _ORIG_NEIGHBOUR_VOTE
+        or classify_biomes is not _ORIG_CLASSIFY_BIOMES
+        or classify_koppen is not _ORIG_CLASSIFY_KOPPEN
+        or classify_koppen_soft is not _ORIG_CLASSIFY_KOPPEN_SOFT
+        or classify_pelagic is not _ORIG_CLASSIFY_PELAGIC
+        or classify_pelagic_soft is not _ORIG_CLASSIFY_PELAGIC_SOFT
+        or grid_continentality is not _ORIG_GRID_CONTINENTALITY
+        or grid_dist_to_land_rad is not _ORIG_GRID_DIST_TO_LAND_RAD
+        or elevation_m.shape[0] == 0
+        or elevation_m.shape[1] == 0
+    ):
+        return False, None
+    lat_arr = np.asarray(lat_deg, dtype=float)
+    if lat_arr.ndim == 1:
+        return lat_arr.shape[0] == elevation_m.shape[0], lat_arr
+    if lat_arr.ndim == 2 and lat_arr.shape == elevation_m.shape:
+        if np.all(lat_arr == lat_arr[:, :1]):
+            return True, lat_arr[:, 0]
+    return False, None
+
+
 def smooth_biome_field(
     temperature_c: np.ndarray,
     precipitation_mm: np.ndarray,
@@ -1037,8 +1085,23 @@ def smooth_biome_field(
     per-cell primitive. Inputs must all be the same 2D (H, W) grid; `lat_deg` may be a (H,)
     row vector or a full grid. Computes continentality and coast distance from `is_ocean`
     itself. `has_sea_ice` is D6’s half-year coverage mask when supplied."""
+    elev_arr = np.asarray(elevation_m)
+    if elev_arr.ndim != 2:
+        raise ValueError("smooth_biome_field needs 2D grid inputs; use classify_biomes for a flat array")
+    use_rust, lat_1d = _can_use_rust_biomes(elev_arr, lat_deg)
+    if use_rust and lat_1d is not None:
+        biome_ids, _share, _ru = _rust_bridge().smooth_biome_field_blend(
+            temperature_c,
+            precipitation_mm,
+            is_ocean,
+            lat_1d,
+            axial_tilt_deg,
+            has_sea_ice=has_sea_ice,
+            sea_ice_weight=None,
+        )
+        return biome_ids
     biome_ids, _overridden, _cont, _dist, _ice, _lat_grid = _smooth_biome_classify(
-        temperature_c, precipitation_mm, elevation_m, slope, is_ocean, sea_level_m,
+        temperature_c, precipitation_mm, elev_arr, slope, is_ocean, sea_level_m,
         lat_deg, axial_tilt_deg, has_sea_ice,
     )
     return biome_ids
@@ -1080,8 +1143,22 @@ def smooth_biome_field_blend(
     exists specifically to erase noisy speckle by imposing the surrounding consensus, and
     blending such a cell toward its own (outvoted, noise-driven) original soft weights would
     undo exactly that cleanup."""
+    elev_arr = np.asarray(elevation_m)
+    if elev_arr.ndim != 2:
+        raise ValueError("smooth_biome_field needs 2D grid inputs; use classify_biomes for a flat array")
+    use_rust, lat_1d = _can_use_rust_biomes(elev_arr, lat_deg)
+    if use_rust and lat_1d is not None:
+        return _rust_bridge().smooth_biome_field_blend(
+            temperature_c,
+            precipitation_mm,
+            is_ocean,
+            lat_1d,
+            axial_tilt_deg,
+            has_sea_ice=has_sea_ice,
+            sea_ice_weight=sea_ice_weight,
+        )
     biome_ids, overridden, continentality, dist_to_land_rad, has_sea_ice, lat_grid = _smooth_biome_classify(
-        temperature_c, precipitation_mm, elevation_m, slope, is_ocean, sea_level_m,
+        temperature_c, precipitation_mm, elev_arr, slope, is_ocean, sea_level_m,
         lat_deg, axial_tilt_deg, has_sea_ice,
     )
 

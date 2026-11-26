@@ -34,7 +34,7 @@ binaries = collect_dynamic_libs("llvmlite") + collect_dynamic_libs("av")
 hiddenimports = (
     collect_submodules("uvicorn")
     + collect_submodules("app")
-    + ["numba", "llvmlite", "scipy._lib.array_api_compat", "astropy_healpix"]
+    + ["numba", "llvmlite", "scipy._lib.array_api_compat", "astropy_healpix", "mantle_bloom_rust"]
 )
 
 a = Analysis(

@@ -56,13 +56,15 @@ def test_old_pickle_without_time_step_controls_uses_defaults():
     from app import persistence
 
     world = generate_world(seed=5, num_plates=8)
-    for field in ("lake_step_years", "lake_stop_mode", "glacier_step_years", "glacier_stop_mode"):
+    for field in ("lake_step_years", "lake_stop_mode", "lake_max_substeps", "glacier_step_years", "glacier_stop_mode", "glacier_max_substeps"):
         world.__dict__.pop(field, None)
     loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
     assert loaded.lake_step_years == 1000.0
     assert loaded.lake_stop_mode == "resolve"
+    assert loaded.lake_max_substeps == 20
     assert loaded.glacier_step_years == 250.0
     assert loaded.glacier_stop_mode == "exhaust"
+    assert loaded.glacier_max_substeps == 40
 
 
 def test_brake_multipliers_reach_the_quasistatic_solve(monkeypatch):

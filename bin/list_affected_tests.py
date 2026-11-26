@@ -38,6 +38,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BACKEND = REPO_ROOT / "backend"
 APP_DIR = BACKEND / "app"
+RUST_DIR = BACKEND / "rust"
 TESTS_DIR = BACKEND / "unit_tests"
 
 # Changing these can change any test's outcome without touching an import edge.
@@ -46,6 +47,8 @@ FULL_SUITE_FILES = {
     BACKEND / "requirements.txt",
     BACKEND / "requirements-runtime.txt",
 }
+# Files outside backend/app that map directly to Python modules in the import graph.
+RUST_AFFECTED_MODULES = ("hydroclimate._glacier_rust",)
 # Files outside backend/ that a test exercises without importing them.
 EXTRA_TEST_DEPENDENCIES = {
     REPO_ROOT / "bin" / "list_affected_tests.py": TESTS_DIR / "test_list_affected_tests.py",
@@ -79,7 +82,7 @@ def changed_backend_files(base: str) -> set[Path]:
     absolute paths, additions/deletions/renames included (a rename is a deletion of the old
     path and an addition of the new one)."""
     changed = set()
-    paths = ["backend/app", "backend/unit_tests"] + [
+    paths = ["backend/app", "backend/rust", "backend/unit_tests"] + [
         str(f.relative_to(REPO_ROOT)) for f in sorted(FULL_SUITE_FILES | set(EXTRA_TEST_DEPENDENCIES))
     ]
     committed = run_git("diff", "--name-only", base, "HEAD", "--", *paths)
@@ -211,6 +214,8 @@ def main() -> int:  # noqa: C901
     for f in changed:
         if f in EXTRA_TEST_DEPENDENCIES:
             extra_tests.add(EXTRA_TEST_DEPENDENCIES[f])
+        elif RUST_DIR in f.parents and (RUST_DIR / "target") not in f.parents:
+            changed_modules.update(m for m in RUST_AFFECTED_MODULES if m in app_module_names)
         elif APP_DIR in f.parents:
             mod = module_name(f)
             if mod is None:

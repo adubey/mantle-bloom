@@ -308,6 +308,41 @@ def test_lake_stop_mode_exhaust_runs_every_slice_without_settle_stop(monkeypatch
     assert len(calls) == 10
 
 
+def test_lake_stop_mode_max_caps_normal_slices_then_lumps_remainder(monkeypatch):
+    # "max" runs up to max_substeps normal slices, then lumps remaining years into one final slice,
+    # while still stopping early if the state settles first.
+    forest = lakes.build_lake_hierarchy(_SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS)
+    area = np.full(3, 1.7e14)
+    hyps = lakes.CellHypsometry(
+        _SINK_ELEVATION, area, np.array([50.0, 50.0, 0.0]), float(area[0])
+    )
+    real_slice = lakes._settle_prognostic_slice
+    calls = []
+
+    def spy(*args, **kwargs):
+        calls.append(args[3])
+        return real_slice(*args, **kwargs)
+
+    monkeypatch.setattr(lakes, "_settle_prognostic_slice", spy)
+    # Filling basin with zero evaporation keeps moving every slice -> hits max_substeps=3, then 1 remainder slice.
+    filling_climate = lakes.LakeClimate(np.zeros(3), np.zeros(3), np.array([5.0e11, 0.0, 0.0]))
+    lakes.solve_lakes_prognostic(
+        forest, _SINK_ELEVATION, np.zeros(3), 10_000.0, filling_climate,
+        hyps, substeps=10, stop_on_settle=True, max_substeps=3,
+    )
+    assert calls == [1000.0, 1000.0, 1000.0, 7000.0]
+
+    # Already-settled state with a higher max_substeps stops early on settle.
+    calls.clear()
+    lakes.solve_lakes_prognostic(
+        forest, _SINK_ELEVATION, np.zeros(3), 10_000.0,
+        lakes.LakeClimate(np.zeros(3), np.full(3, 1.0), np.zeros(3)),
+        hyps, substeps=10, stop_on_settle=True, max_substeps=8,
+    )
+    assert len(calls) < 8
+    assert sum(calls) == pytest.approx(10_000.0)
+
+
 def test_prognostic_lake_volume_converges_as_substeps_grow_below_cap():
     # #875: a filling, evaporating basin with sub-cell relief, held below its
     # rim. Whole-cell fixtures flood at full area at once and cannot show the

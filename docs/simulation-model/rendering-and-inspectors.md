@@ -164,6 +164,14 @@ couldn't update while a rotation drag was in progress (see "Rotating the view" b
 the live preview only redraws the *previous* rendered frame underneath a wireframe graticule,
 never the legend baked into it.
 
+### Parallel Rust rendering (`_render_rust.py`, `backend/rust/src/render/`)
+
+The `combined`, `biome`, and `elevation` views (and `globe` resampling over Behrmann for those views) execute in `mantle_bloom_rust` through `_render_rust.RenderSnapshot` when `node_cloud_resample_mode == "kdtree"` and `MANTLE_BLOOM_DISABLE_RUST` is not `"1"` (#1039).
+
+- **Snapshot and thread isolation:** `build_render_snapshot` copies only the flat contiguous arrays required for the requested view under `session.lock`, then `render_snapshot` releases the GIL (`py.detach`) and runs on a dedicated bounded `rayon::ThreadPool` (`MANTLE_BLOOM_RENDER_THREADS`, defaulting to `1` on machines with `<= 4` hardware threads and `2` otherwise). Because this path never enters Numba, `GET /worlds/{world_id}/render` bypasses `_compute_gate` once `world.climate_cache` is populated.
+- **Fused biome blending:** Biome classification, 2-pass 8-neighbor vote, 2D Euclidean distance transforms, inline top-2 soft blending (avoiding a full 41-layer grid tensor), rank-based relief shading, 3D k-d tree resampling, cell rasterization, separable 3-pass box blur, river/canyon compositing, and PNG encoding run in Rust. `combined` and `biome` preserve un-blurred `255 - id_code` alpha IDs for click-to-highlight (`MapCanvas.tsx`).
+- **Pipelined animations and previews:** In `stream_animation_mp4`, Rust renders return raw `rgb24` frames directly to PyAV (`_encode_rgb_to_mp4`) alongside PNG progress bytes, pipeline frame `i`'s render/encode while frame `i + 1` steps (`MANTLE_BLOOM_PARALLEL_RENDER=0` disables pipelining), and render intermediate step previews on a non-blocking background worker (`_ParallelRustPreviewRenderer`).
+
 ### Ice on the maps
 
 Elevation, Combined, and Biome draw land and grounded marine glaciers at or above the

@@ -21,3 +21,6 @@ frontend/dist/
 
 # Workspace-local git worktrees (see the worktree skill) for agents scoped to the workspace root.
 /worktrees/
+
+# Rust build artifacts for the glacier-march PyO3 extension.
+backend/rust/target/

@@ -1,0 +1,69 @@
+# Issue #1036: Accelerate Glacier March in Rust
+
+## 1. Hotspot Confirmation
+
+Profiling young-world steps on `origin/main` (`bf382b23`, `profile_phases.py --seed 0 --scenarios step --steps 3 --warmup 1 --wind-model diagnostic`) confirmed that the glacier march dominates stepping time at both densities (consistent with mature-world figures of 72–90%+ in `analysis/issue147/README.md`):
+
+- **Density 4 (`4/4/2`, 124,046 nodes, 17 plates):** Glacier march takes **20.96 s / 26.47 s** per step (**79.2%**):
+  - `Solving march ice`: `14.26 s`
+  - `Solving connected-ocean sea level`: `5.09 s`
+  - `Re-solving march sea level` (own time): `1.61 s`
+  - Non-march step time: `5.51 s`
+- **Density 1 (`1/1/1`, 30,712 nodes, 19 plates):** Glacier march takes **8.77 s / 10.91 s** per step (**80.4%**):
+  - `Solving march ice`: `7.18 s`
+  - `Solving connected-ocean sea level`: `1.17 s`
+  - `Re-solving march sea level` (own time): `0.42 s`
+
+## 2. Implementation Summary
+
+- **Rust PyO3 extension (`backend/rust/`, module `mantle_bloom_rust`):**
+  - `MarchGraph`: prebuilt compact `u32`/`i32` CSR and flood adjacency reused across all substeps of a march.
+  - `step_ice` (`ice_step.rs`, `distance.rs`, `plastic.rs`, `climate.rs`): parallel setup with `rayon`, parallel signed-distance sweeps (`4`-ary `IndexedHeap`), local plastic domain solver with in-place scratch reuse and scalar climate evaluation, frozen-precip / ablation / grounding-line mass balance, releasing the GIL via `py.detach`.
+  - `seeded_flood_levels`, `solve_sea_level_connected`, `below_sea_components`, `connected_ocean_mask` (`eustasy.rs`, `graph.rs`): priority-flood with Barnes plain-queue optimization, warm-bracket ceiling pruning, pre-integrated deep-ocean + coastal-slice connected-ocean sea-level solve, and `u32` union-find component labeling.
+  - `march_substep_prep`, `apply_march_abrasion` (`climate.rs`): substep climate prep and abrasion kernels.
+- **Python wiring & fallback (`backend/app/hydroclimate/_glacier_rust.py`, `ice_sheet.py`, `eustasy.py`, `hydrology.py`):**
+  - Uses Rust automatically when compiled and no test monkeypatch overrides `_shape` or `_seeded_flood_levels` (with `MANTLE_BLOOM_DISABLE_RUST=1` override and transparent pure-Python fallback).
+  - Kept the outer `_march_glacier` Python orchestration (`0.13 s` own time; PyO3 marshaling ~`0.002 s`) and `backend/constraints.txt` untouched.
+- **Local, CI, and Railway builds:**
+  - `bin/build_rust.py` builds via `cargo build --release --locked` and installs `mantle_bloom_rust.so` into the active venv without altering pinned Python packages (`bin/setup.sh` invokes `--skip-if-unchanged` unless `MANTLE_BLOOM_SKIP_RUST=1`).
+  - `Dockerfile` compiles `mantle_bloom_rust.so` in a `rust-builder` stage (`cargo build --release --locked`) and copies it into the runtime image `platlib`, verified with `import mantle_bloom_rust, app.hosted` in CI (`docker` job).
+  - Desktop packaging (`bin/package.sh`, `bin/mantle-bloom.spec`, `.github/workflows/package.yml`) includes `mantle_bloom_rust`.
+
+## 3. Correctness & Equivalence Verification
+
+- **Unit & stress tests:** `backend/unit_tests/test_glacier_rust.py` (6 tests, including equal-distance ownership at the `ICE_BODY_MIN_NODES = 3` cutoff and coarse-density `sea_level_m` / `closing_m3` / `melt_m3` parity), `backend/stress_tests/test_glacier_rust.py` (2 density-1 same-opening-state parity tests), plus `test_ice_sheet.py`, `test_eustasy.py`, and `test_hydrology.py`.
+- **Equal-distance tie-breaking (Codex P2):** `outside_dijkstra` in `backend/rust/src/distance.rs` pops higher node IDs first on equal distance with strict `cand < dist[v]` relaxation, matching SciPy 1.18.0 (`0/1,000` mismatches across random equal- and mixed-weight graphs, and identical domain assignment `[0, 3]` / `[1, 2]` on edges `0–2, 1–2, 0–3` with seeds `0, 1`).
+- **Density-1 substep & summation parity (Codex P1):**
+  - Lockstep comparison across all 198 substeps on identical inputs (`seed=0, d=1`) showed exact agreement in `march_substep_prep`, `apply_march_abrasion`, `connected_ocean_mask`, and body domains, `2.11e-11 m` max `sea_level` diff, and `3.68e-8 m` worst `step_ice` depth diff.
+  - With `NeumaierSum` compensated summation across `plastic.rs` (`budget_rates`, `solve_uniform_body`), `ice_step.rs`, and `eustasy.rs`, Rust (`245` substeps, `sea_level = -184.633294270 m`) matches pure Python using exact IEEE-754 `math.fsum(a * b)` (`245` substeps, `sea_level = -184.633294270 m`) to all 9 decimal places on `seed=0, d=1`. Pure Python with pairwise `np.sum(a * b)` also takes the `245`-substep branch (`-184.627802235 m`), whereas Apple Accelerate `np.dot` lands on `198` substeps (`-191.345074250 m`) because a 1-ULP difference (`margin_diff = 5.821e-11 m` on body 0) grows exponentially across substeps `72..150` at surge node `5323` and flips `trend_shrink_ratio` (`> 1.5`) at substep 179 (in `exhaust` mode).
+  - On `seed=1, d=1` from an identical opening state, Rust and default Python (`np.dot`) take the same `220` substeps with `+2.64e-4 m` sea-level diff, `-1.66e-4` relative closing-ice diff, and `+4.17e-8` relative routed-meltwater diff.
+- **Density-4 parity (`4/4/2`):** Substep counts (`235.0` mean), lake tier bodies (`20, 23, 23, 25`), and gross overflow (`2.04e+08, 9.83e+08, 3.13e+08, 6.41e+08 km^3`) remained bit-for-bit identical across all 4 steps.
+
+## 4. Before/After Benchmarks (Idle Machine, Back-to-Back)
+
+Measured with `profile_phases.py --seed 0 --scenarios step --steps 3 --warmup 1 --wind-model diagnostic` and `/usr/bin/time -l` (Density 4 has identical `235.0` substeps/step on both arms; pre-fix Density 1's `236.7 vs 200.3` substeps reflected the `seed=0` dot-product branch described above):
+
+### Density 4 (`4/4/2`, 124,046 nodes, 17 plates)
+
+| Metric | `origin/main` (`bf382b23`) | Rust (`issue-1036`) | Speedup |
+|---|---:|---:|---:|
+| Step wall time (mean of 3) | **26.47 s** (`26.78, 26.15, 26.47`) | **12.68 s** (`13.06, 12.38, 12.59`) | **2.09x** |
+| Glacier march total | **20.96 s** | **7.18 s** | **2.92x** |
+| — `Solving march ice` | 14.26 s | 5.97 s | **2.39x** |
+| — `Solving connected-ocean sea level` | 5.09 s | 0.34 s | **14.97x** |
+| — `Re-solving march sea level` (own) | 1.61 s | 0.87 s | **1.85x** |
+| Non-march step time | 5.51 s | 5.50 s | 1.00x |
+| Mean substeps / step | 235.0 | 235.0 | — |
+| Peak RSS | 974.8 MB (`974,798,848` B) | 1,012.9 MB (`1,012,858,880` B) | +3.9% |
+
+### Density 1 (`1/1/1`, 30,712 nodes, 19 plates)
+
+| Metric | `origin/main` (`bf382b23`) | Rust (`issue-1036`) | Speedup |
+|---|---:|---:|---:|
+| Step wall time (mean of 3) | **10.91 s** (`11.27, 11.22, 10.24`) | **4.52 s** (`4.44, 4.46, 4.66`) | **2.41x** |
+| Glacier march total | **8.77 s** | **2.40 s** | **3.65x** |
+| — `Solving march ice` | 7.18 s | 2.12 s | **3.39x** |
+| — `Solving connected-ocean sea level` | 1.17 s | 0.08 s | **14.6x** |
+| — `Re-solving march sea level` (own) | 0.42 s | 0.20 s | **2.10x** |
+| Mean substeps / step | 236.7 | 200.3 | — |
+| Peak RSS | 441.3 MB (`441,286,656` B) | 504.4 MB (`504,446,976` B) | +14.3% |

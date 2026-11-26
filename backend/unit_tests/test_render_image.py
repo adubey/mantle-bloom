@@ -316,6 +316,9 @@ def test_stream_animation_mp4_stop_event_ends_the_run_early_but_still_yields_a_v
 
 
 def test_stream_animation_mp4_preserves_frames_when_step_fails():
+    import os
+    from app import _render_rust
+
     world = _world()
     calls = 0
 
@@ -330,7 +333,10 @@ def test_stream_animation_mp4_preserves_frames_when_step_fails():
         world, "behrmann", "elevation", 64, 64, None, 1_000_000, 1, 4,
         step_fn=failing_step,
     ))
-    assert [m[1] for m in messages if m[0] == "progress"] == [1, 2]
+    pipelined = _render_rust.RUST_AVAILABLE and os.environ.get("MANTLE_BLOOM_PARALLEL_RENDER") != "0"
+    # In pipelined mode frame 2 is rendered in the background during step 3 and flushed into
+    # the MP4 on step-3 failure without emitting a "progress" checkpoint trigger (#638, #1039).
+    assert [m[1] for m in messages if m[0] == "progress"] == ([1] if pipelined else [1, 2])
     done = messages[-1]
     assert done[3] == "RuntimeError: Lake slice failed to settle"
     with av.open(io.BytesIO(done[1])) as container:
@@ -497,6 +503,38 @@ def test_stream_animation_mp4_stays_silent_between_frames_when_steps_are_fast():
     ))
     assert [m[0] for m in messages] == ["progress", "progress", "done"]
     assert len(step_calls) == 3  # (2 - 1) * 3 real, individual step_fn calls
+
+
+def test_stream_animation_mp4_reports_step_timing_and_renders_intermediate_previews():
+    import time
+
+    world = _world()
+    timings: list[float] = []
+    previews: list[tuple[bytes, float, float | None]] = []
+
+    def _step(w, years):
+        time.sleep(0.01)
+        w.elapsed_years += years
+
+    def _on_preview(png_bytes, elapsed_years, _stats, rate):
+        previews.append((png_bytes, elapsed_years, rate))
+
+    messages = list(render_image.stream_animation_mp4(
+        world, "behrmann", "elevation", 64, 64, None, 100_000, 4, 2,
+        step_fn=_step,
+        on_preview=_on_preview,
+        on_step_timing=timings.append,
+        parallel_render=False,
+    ))
+
+    # Encoded MP4 still has only the 2 animation frames, not the 3 intermediate previews.
+    assert [m[0] for m in messages] == ["progress", "progress", "done"]
+    assert len(timings) == 4
+    assert all(t > 0 for t in timings)
+    assert len(previews) == 3
+    assert [elapsed for _, elapsed, _ in previews] == [100_000.0, 200_000.0, 300_000.0]
+    assert previews[0][0][:8] == b"\x89PNG\r\n\x1a\n"
+    assert previews[0][2] is not None and previews[0][2] > 0
 
 
 def test_geomorph_colors_diverge_around_zero():

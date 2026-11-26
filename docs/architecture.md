@@ -5,8 +5,12 @@
 - **Backend:** Python, FastAPI + uvicorn, numpy (rotation/vector math), scipy (`cKDTree`
   for initial plate assignment, boundary-adjacency, merge-detection, and plate-defragment
   queries, `scipy.cluster.vq.kmeans2` for split clustering,
-  `scipy.sparse.csgraph.connected_components` for plate defragmentation), Pillow
-  (server-side map rendering, see `render_image.py`), pytest.
+  `scipy.sparse.csgraph.connected_components` for plate defragmentation), a compiled PyO3
+  Rust extension (`backend/rust/`, imported as `mantle_bloom_rust` via
+  `hydroclimate/_glacier_rust.py` for the glacier march, plastic ice-sheet sweeps, and
+  connected-ocean sea-level flood/bisection, and via `_render_rust.py` for `combined`,
+  `biome`, `elevation`, and `globe` rendering on a dedicated bounded `rayon` pool), Pillow
+  (fallback and debug map rendering, see `render_image.py`), pytest.
 - **Frontend:** React + TypeScript via Vite, plain HTML `<canvas>` — no mapping/charting
   library: data-backed raster maps decode a PNG the backend already rendered and draw it
   (`ctx.drawImage`), which a library would be more ceremony than the problem needs. Other
@@ -750,6 +754,8 @@ users.py             per-user store behind the paid tier (#620): users, linked i
                      free/paid/admin
 run_control.py       the run/stopped status and the background thread that steps a running
                      world (see #run-and-checkpoint above)
+animation_job.py     per-world background animation state and NDJSON pub/sub so recordings
+                     survive page refreshes and reconnected tabs can control or collect them (#1033)
 trace.py             nested wall-clock spans: the run overlay's phase labels, groups and
                      fractions, and the profiler's timings (see #trace-spans below)
 checkpoint.py        atomic world and run-status checkpoints on persistent storage, and
@@ -764,6 +770,9 @@ render_image.py      renders /worlds/{world_id}/render's requested view/resoluti
                      (see simulation-model/rendering-and-inspectors.md#render-image and simulation-model/climate.md#climate),
                      plus /worlds/{world_id}/animate's streamed H.264/MP4 rendering (stream_animation_mp4)
                      and the "speckle" coastal-dither debug overlay (see debugging/map-views.md)
+_render_rust.py      flat-array `RenderSnapshot` builder and PyO3 bridge to `mantle_bloom_rust`
+                     for `combined`, `biome`, `elevation`, and `globe` rendering on a dedicated
+                     bounded `rayon` pool outside `_compute_gate` (#1039)
 flow_arrows.py       traces the wind and ocean-current views' super arrows: a few long
                      streamlines along the prevailing flow (see simulation-model/climate.md#climate)
 persistence.py       whole-World save/load to a single versioned envelope: v5 is a zip of

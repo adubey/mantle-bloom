@@ -354,8 +354,14 @@ Both return:
 ```json
 { "running": true, "step_years": 100000.0, "stepping": false, "error": null, "run_version": 14,
   "phase": { "label": "Updating faults", "group": "Stepping/Moving plates", "fraction": 0.22 },
-  "world": { "revision": "3f9a1c2e-12", "seed": 0, "elapsed_years": 1200000.0 } }
+  "world": { "revision": "3f9a1c2e-12", "seed": 0, "elapsed_years": 1200000.0 },
+  "animation": null }
 ```
+
+`animation` is `null` when no background animation is active or waiting to be collected; otherwise
+it summarizes the world's `AnimationJob` (`job_id`, `active`, `stopping`, `frame`, `total`,
+`unbounded`, `elapsed_years`, `seconds_per_step`, `has_result`, `stopped_early`, `error`,
+`projection`, `view`) so a refreshed tab can reconnect via `GET /worlds/{world_id}/animate/stream` (#1033).
 
 `phase` is the user-visible phase of the step under way, or `null` between steps (#801). It does
 not move `run_version`: a phase change must not wake every viewer's long poll, so the app reads
@@ -464,14 +470,18 @@ changing a world that has already been replaced.
 ## `GET /worlds/{world_id}/controls`, `POST /worlds/{world_id}/controls`
 
 `GET` returns the current controls without recomputing climate, publishing a revision,
-or saving the world.
+or saving the world. While an animation is running on the world, `POST` validates and queues
+the requested updates on the server (`"pending": true`) without blocking on the world lock,
+`GET` returns the cached snapshot merged with any queued updates, and the animation worker
+applies the queued changes after the current frame finishes rendering (closing queue admission
+atomically before its final drain so late requests fall through to the normal locked path, #1033).
 
 
 Request body (all fields optional, independently settable -- the "Controls" window sends
 only whichever control the user touched):
 
 ```json
-{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "ice_age_period_years": 300000, "simulate_plate_movement": true, "simulate_climate_biomes": true, "simulate_glacier_march": true, "lake_step_years": 1000.0, "lake_stop_mode": "resolve", "glacier_step_years": 250.0, "glacier_stop_mode": "exhaust", "wind_model": "cfd", "fault_deformation_mode": "fault", "split_method": "great_circle" }
+{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "ice_age_period_years": 300000, "simulate_plate_movement": true, "simulate_climate_biomes": true, "simulate_glacier_march": true, "lake_step_years": 1000.0, "lake_stop_mode": "resolve", "lake_max_substeps": 20, "glacier_step_years": 250.0, "glacier_stop_mode": "exhaust", "glacier_max_substeps": 40, "wind_model": "cfd", "fault_deformation_mode": "fault", "split_method": "great_circle" }
 ```
 
 Live-adjusts `World.sea_level_m` (default `0.0`), `World.solar_multiplier` (default `1.0`,
@@ -482,10 +492,13 @@ simulation-model/hydrology.md#glaciation, negative is clamped to `0`), `World.si
 (default `true`; `false` solves the ice once per step and freezes it there -- minutes
 cheaper per long step, see simulation-model/hydrology.md#glaciation), `World.lake_step_years`
 (default `1000.0`, range `50`–`1000` yr), `World.lake_stop_mode` (`"resolve"` default: lump
-remaining time into one slice once settled; `"exhaust"`: run every slice),
-`World.glacier_step_years` (default `250.0`, range `100`–`1000` yr), `World.glacier_stop_mode`
-(`"exhaust"` default: march the full step; `"resolve"`: hold the settled state for the
-remainder of the step), `World.wind_model`
+remaining time into one slice once settled; `"exhaust"`: run every slice; `"max"`: stop on
+settle or after `World.lake_max_substeps` normal slices and lump the remaining time into one
+final slice), `World.lake_max_substeps` (default `20`, `>= 1`), `World.glacier_step_years`
+(default `250.0`, range `100`–`1000` yr), `World.glacier_stop_mode` (`"exhaust"` default: march
+the full step; `"resolve"`: hold the settled state for the remainder of the step; `"max"`:
+stop on settle or after `World.glacier_max_substeps` normal substeps and hold/scale flows for
+the remainder of the step), `World.glacier_max_substeps` (default `40`, `>= 1`), `World.wind_model`
 (`"diagnostic"` default, or `"cfd"` -- a `400` for any other value), and/or
 `World.fault_deformation_mode` (`"boundary"` default, or `"fault"` / `"both"`) on the
 *current* world
@@ -724,11 +737,16 @@ this bounds worst-case request time. `step_years` gets the same validation as
 `/worlds/{world_id}/step`'s `years` (`400` unless positive, finite, and at most 100 Myr, #557), and
 `steps_per_frame` is bounded to `[1, main.MAX_STEPS_PER_FRAME]` (100, the dialog's largest
 choice), so one frame holds the compute gate for at most 100 steps and a whole run for
-at most the dialog's own maximum of 47,900. The animation dialog's "keep going until Stop is
-pressed" mode just sends `num_frames` at that ceiling and expects the client to call
+at most the dialog's own maximum of 47,900. The animation dialog's "keep going until Stop is pressed" mode sends `num_frames` at that
+ceiling with `"unbounded": true` and expects the client to call
 `POST /worlds/{world_id}/animate/stop` (below) rather than waiting for it to be reached on its own.
 `404` if no world has been generated yet, `503` if a step or another animation is already
-in progress.
+in progress, `409` if a completed animation MP4 is still waiting to be saved or discarded.
+
+The animation runs on a server-side background thread (`backend/app/animation_job.py`, #1033)
+decoupled from the initiating HTTP connection: disconnecting (for example, refreshing the browser)
+does not stop the recording or discard the MP4. A refreshed tab inspects `GET /worlds/{world_id}/run`'s
+`animation` field and reconnects via `GET /worlds/{world_id}/animate/stream` (below).
 
 **This permanently advances the world** by up to `(num_frames - 1) * years_per_frame` years
 -- less if the run is ended early via `/worlds/{world_id}/animate/stop` -- the same as calling
@@ -746,10 +764,13 @@ per line, so the client can drive a progress bar instead of blocking on one opaq
 ```
 
 While a frame's step batch runs, `{"type": "heartbeat", "frame": n, "total": N,
-"elapsed_years": ...}` ticks flow whenever a step lands more than a minute after the
-previous line (#611) -- imageless proof the run is still stepping, so the client's
-idle watchdog doesn't abort a slow batch as stalled. The frontend ignores their shape;
-their bytes alone reset its timer.
+"elapsed_years": ...}` ticks flow whenever a step lands more than a minute
+after the previous line (#611) -- imageless proof the run is still stepping, so the client's
+idle watchdog doesn't abort a slow batch as stalled. When `"preview_intermediate_steps": true` and
+`steps_per_frame > 1`, intermediate steps between encoded frames are rendered synchronously under
+the compute gate and streamed as `{"type": "preview", "frame": n, "total": N, "image_base64": ...,
+"elapsed_years": ..., "stats": ..., "seconds_per_step": ...}` lines for live UI display without
+being encoded into the MP4.
 
 Each `progress` line carries that frame's own rendered PNG in `image_base64` (same encoding
 as `/worlds/{world_id}/render`) -- the frontend paints it straight onto the main map so the display
@@ -764,13 +785,28 @@ at least one frame, `done` carries the partial video and an `error` string; the 
 checkpoint remains available for recovery. Failures before a frame or while finalizing the
 encoder emit an `{"type": "error", "detail": "..."}` line instead.
 
+## `GET /worlds/{world_id}/animate/stream`
+
+Reconnects to an in-progress or finished-but-uncollected background animation (#1033) using the
+same `application/x-ndjson` protocol as `POST /worlds/{world_id}/animate`. While the job is active,
+the server immediately emits the latest completed `progress` frame (so a refreshed tab repaints
+the live preview and progress state at once) and streams subsequent frames until completion. Once
+finished, reconnecting immediately emits the final `done` (or `error`) line with the buffered MP4.
+`404` when no active or pending animation exists for the world.
+
+## `DELETE /worlds/{world_id}/animate/result`
+
+Frees a finished animation's buffered MP4 on the server after the user saves or discards it
+(#1033). Accepts an optional `?job_id=<id>` query parameter so a stale dismissal cannot clear a
+newer run; never clears an animation that is still running. Always `200` (`{"status": "ok"}`).
+
 ## `POST /worlds/{world_id}/animate/stop`
 
-The toolbar's "⏹ Stop" action while recording -- signals the in-progress `/worlds/{world_id}/animate`
-stream to end cleanly after its current frame rather than the next one: the stream still
-flushes the encoder and its `done` line still carries a complete (just shorter) video,
-unlike the client simply dropping the connection. No request body; always `200`, including
-when no animation is currently running (a no-op).
+The Stop action while recording (toolbar, `RunOverlay`, or collapsed `ProgressBar`) -- signals the
+in-progress background animation job to end cleanly after its current frame rather than the next
+one: the job still flushes the encoder and its `done` line still carries a complete (just shorter)
+video, and `GET /worlds/{world_id}/run` reflects `animation.stopping: true` until it finishes. No
+request body; always `200`, including when no animation is currently running (a no-op).
 
 ## `GET /worlds/{world_id}/animate/recovery`
 

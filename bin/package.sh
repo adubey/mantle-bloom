@@ -18,6 +18,7 @@ fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
 pip install -q -r requirements-build.txt
+.venv/bin/python "$REPO_ROOT/bin/build_rust.py" --skip-if-unchanged
 cd "$REPO_ROOT"
 
 echo "==> Running PyInstaller"

@@ -539,7 +539,7 @@ async function readStreamMessages(
     reader,
     (line) => {
       const msg = JSON.parse(line) as Record<string, unknown>;
-      if (msg.type === "progress") {
+      if (msg.type === "progress" || msg.type === "preview") {
         onProgress(msg);
       } else if (msg.type === "heartbeat") {
         onHeartbeat?.(msg);
@@ -776,7 +776,7 @@ export type TuningMultipliers = Record<TuningKey, number>;
 // caller should re-fetch /worlds/{world_id}/render and /worlds/{world_id}/stats right after this resolves to see the
 // effect.
 export type SplitMethod = "great_circle" | "rift_lines";
-export type StopMode = "exhaust" | "resolve";
+export type StopMode = "exhaust" | "resolve" | "max";
 
 export type ControlsState = {
   sea_level_m: number;
@@ -787,8 +787,10 @@ export type ControlsState = {
   simulate_glacier_march: boolean;
   lake_step_years: number;
   lake_stop_mode: StopMode;
+  lake_max_substeps: number;
   glacier_step_years: number;
   glacier_stop_mode: StopMode;
+  glacier_max_substeps: number;
   wind_model: string;
   fault_deformation_mode: string;
   split_method: SplitMethod;
@@ -799,6 +801,8 @@ export type ControlsState = {
   // Gate for the debug-only diagnostics (see backend World.debug_diagnostics) -- on by
   // default for a Debugging Worlds tab world, off/toggleable here for any other loaded save.
   debug_diagnostics: boolean;
+  // True when the update was queued on the server because an animation is in progress (#1033).
+  pending?: boolean;
 } & TuningMultipliers;
 
 export function fetchControls(worldId: WorldId): Promise<ControlsState> {
@@ -814,8 +818,10 @@ export function updateControls(worldId: WorldId, controls: {
   simulateGlacierMarch?: boolean;
   lakeStepYears?: number;
   lakeStopMode?: StopMode;
+  lakeMaxSubsteps?: number;
   glacierStepYears?: number;
   glacierStopMode?: StopMode;
+  glacierMaxSubsteps?: number;
   windModel?: string;
   faultDeformationMode?: string;
   splitMethod?: SplitMethod;
@@ -837,8 +843,10 @@ export function updateControls(worldId: WorldId, controls: {
       simulate_glacier_march: controls.simulateGlacierMarch,
       lake_step_years: controls.lakeStepYears,
       lake_stop_mode: controls.lakeStopMode,
+      lake_max_substeps: controls.lakeMaxSubsteps,
       glacier_step_years: controls.glacierStepYears,
       glacier_stop_mode: controls.glacierStopMode,
+      glacier_max_substeps: controls.glacierMaxSubsteps,
       wind_model: controls.windModel,
       fault_deformation_mode: controls.faultDeformationMode,
       split_method: controls.splitMethod,
@@ -849,6 +857,23 @@ export function updateControls(worldId: WorldId, controls: {
       ...controls.tuning,
     }),
   }).then(asJson<ControlsState>);
+}
+
+// Active or finished-uncollected server-side animation job (#1033).
+export interface AnimationJobStatus {
+  job_id: string;
+  active: boolean;
+  stopping: boolean;
+  frame: number;
+  total: number;
+  unbounded: boolean;
+  elapsed_years: number;
+  seconds_per_step?: number | null;
+  has_result: boolean;
+  stopped_early: boolean;
+  error: string | null;
+  projection: Projection;
+  view: MapView;
 }
 
 // Play/Stop (backend app/run_control.py, #375): the server steps the world itself while
@@ -864,6 +889,7 @@ export interface RunState {
   // phase change must not wake every viewer. Null between steps.
   phase: { label: string; group: string | null; fraction: number } | null;
   world: { revision: string; seed: number; elapsed_years: number } | null;
+  animation?: AnimationJobStatus | null;
 }
 
 // A refusal that retrying won't fix, such as an expired session (401).
@@ -1143,6 +1169,8 @@ export interface AnimateResponse extends WorldSummary {
   // "you pressed Stop" from "keep going" mode running out its (generous) safety ceiling.
   stoppedEarly: boolean;
   error?: string;
+  // Server-side animation job id (#1033) for dismissing the buffered MP4 after Save/Discard.
+  jobId?: string;
 }
 
 // Progress during a Record run -- `frame` of `total` frames rendered so far, plus
@@ -1160,6 +1188,10 @@ export interface AnimateProgress {
   // sitting frozen until it finishes. `undefined` if this frame's step didn't record one (e.g.
   // simulate_climate_biomes off) or on older servers that don't send the field.
   stats?: WorldStats;
+  // Rolling average seconds per simulation step, once at least one step has finished.
+  secondsPerStep?: number;
+  // True for intermediate-step preview renders (not encoded into the MP4) and heartbeats.
+  isPreview?: boolean;
 }
 
 // Each animation frame is a full step_world + render (see backend app/main.py's
@@ -1197,16 +1229,10 @@ const ANIMATE_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 // call rejects, losing whatever video was in progress; the toolbar's "Stop" button
 // deliberately doesn't use it, going through stopAnimation() instead so the run still
 // finishes cleanly.
-export async function animateWorld(
-  worldId: WorldId,
-  projection: Projection,
-  view: MapView,
-  width: number,
-  height: number,
-  rotation: number[] | undefined,
-  stepYears: number,
-  stepsPerFrame: number,
-  numFrames: number,
+async function consumeAnimationStream(
+  url: string,
+  init: RequestInit,
+  logContext: Record<string, unknown>,
   onProgress?: (progress: AnimateProgress) => void,
   cancelSignal?: AbortSignal,
 ): Promise<AnimateResponse> {
@@ -1230,28 +1256,14 @@ export async function animateWorld(
     );
   };
   rearmIdleTimer();
-  // An explicit `cancelSignal` abort folds into the same path as the idle watchdog.
+  const onCancel = () => idleAbort.abort(new DOMException("animation cancelled", "AbortError"));
   if (cancelSignal) {
-    if (cancelSignal.aborted) idleAbort.abort(new DOMException("animation cancelled", "AbortError"));
-    else cancelSignal.addEventListener("abort", () => idleAbort.abort(new DOMException("animation cancelled", "AbortError")));
+    if (cancelSignal.aborted) onCancel();
+    else cancelSignal.addEventListener("abort", onCancel, { once: true });
   }
 
   try {
-    const resp = await fetch(`${worldBase(API_BASE, worldId)}/animate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projection,
-        view,
-        width,
-        height,
-        rotation: rotation ? rotation.join(",") : null,
-        step_years: stepYears,
-        steps_per_frame: stepsPerFrame,
-        num_frames: numFrames,
-      }),
-      signal: idleAbort.signal,
-    });
+    const resp = await fetch(url, { ...init, signal: idleAbort.signal });
     responseStatus = resp.status;
     responseContentType = resp.headers.get("content-type");
     stage = "response body";
@@ -1262,19 +1274,15 @@ export async function animateWorld(
     console.info("[mantle-bloom] Animation stream opened", {
       status: responseStatus,
       contentType: responseContentType,
-      projection,
-      view,
-      width,
-      height,
-      requestedFrames: numFrames,
-      stepsPerFrame,
+      ...logContext,
     });
 
     stage = "reading animation stream";
     const done = await readStreamMessages(
       resp.body.getReader(),
       (msg) => {
-        lastFrame = Number(msg.frame) || lastFrame;
+        const isPreview = msg.type === "preview";
+        if (!isPreview) lastFrame = Number(msg.frame) || lastFrame;
         lastProgressAt = Date.now();
         onProgress?.({
           frame: msg.frame as number,
@@ -1282,12 +1290,25 @@ export async function animateWorld(
           imageBase64: msg.image_base64 as string | undefined,
           elapsedYears: msg.elapsed_years as number,
           stats: (msg.stats as WorldStats | null | undefined) ?? undefined,
+          secondsPerStep: typeof msg.seconds_per_step === "number" ? msg.seconds_per_step : undefined,
+          isPreview,
         });
       },
       (byteLength) => {
         chunksReceived++;
         bytesReceived += byteLength;
         rearmIdleTimer();
+      },
+      (msg) => {
+        if (typeof msg.seconds_per_step === "number" || typeof msg.elapsed_years === "number") {
+          onProgress?.({
+            frame: lastFrame,
+            total: Number(msg.total) || 0,
+            elapsedYears: Number(msg.elapsed_years) || 0,
+            secondsPerStep: typeof msg.seconds_per_step === "number" ? msg.seconds_per_step : undefined,
+            isPreview: true,
+          });
+        }
       },
     );
 
@@ -1305,8 +1326,12 @@ export async function animateWorld(
       mime: done.mime as string,
       stoppedEarly: Boolean(done.stopped_early),
       error: typeof done.error === "string" ? done.error : undefined,
+      jobId: typeof done.job_id === "string" ? done.job_id : undefined,
     };
   } catch (error) {
+    if (cancelSignal?.aborted) {
+      throw new DOMException("animation cancelled", "AbortError");
+    }
     const diagnostic = {
       stage,
       responseStatus,
@@ -1328,6 +1353,73 @@ export async function animateWorld(
     );
   } finally {
     clearTimeout(idleTimer);
+    cancelSignal?.removeEventListener("abort", onCancel);
+  }
+}
+
+export async function animateWorld(
+  worldId: WorldId,
+  projection: Projection,
+  view: MapView,
+  width: number,
+  height: number,
+  rotation: number[] | undefined,
+  stepYears: number,
+  stepsPerFrame: number,
+  numFrames: number,
+  onProgress?: (progress: AnimateProgress) => void,
+  cancelSignal?: AbortSignal,
+  unbounded = false,
+  previewIntermediateSteps = false,
+): Promise<AnimateResponse> {
+  return consumeAnimationStream(
+    `${worldBase(API_BASE, worldId)}/animate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projection,
+        view,
+        width,
+        height,
+        rotation: rotation ? rotation.join(",") : null,
+        step_years: stepYears,
+        steps_per_frame: stepsPerFrame,
+        num_frames: numFrames,
+        unbounded,
+        preview_intermediate_steps: previewIntermediateSteps,
+      }),
+    },
+    { projection, view, width, height, requestedFrames: numFrames, stepsPerFrame, unbounded, previewIntermediateSteps },
+    onProgress,
+    cancelSignal,
+  );
+}
+
+// Reconnect to an in-progress or finished-but-uncollected background animation (#1033).
+export async function attachAnimationStream(
+  worldId: WorldId,
+  onProgress?: (progress: AnimateProgress) => void,
+  cancelSignal?: AbortSignal,
+): Promise<AnimateResponse> {
+  return consumeAnimationStream(
+    `${worldBase(API_BASE, worldId)}/animate/stream`,
+    { method: "GET" },
+    { reconnected: true },
+    onProgress,
+    cancelSignal,
+  );
+}
+
+// Clear a finished animation's buffered MP4 on the server after Save or Discard (#1033).
+export async function dismissAnimationResult(worldId: WorldId, jobId?: string): Promise<void> {
+  const query = jobId ? `?job_id=${encodeURIComponent(jobId)}` : "";
+  const resp = await fetch(`${worldBase(API_BASE, worldId)}/animate/result${query}`, {
+    method: "DELETE",
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!resp.ok) {
+    throw new Error(`${resp.status} ${resp.statusText}: ${await resp.text()}`);
   }
 }
 
@@ -1337,13 +1429,16 @@ export async function animateWorld(
 // (just shorter) video, rather than the caller aborting the connection and losing it. This is
 // what makes the animation dialog's "keep going until Stop is pressed" mode useful. A no-op
 // if no animation is running.
-export function stopAnimation(worldId: WorldId): Promise<void> {
-  // Bounded so a hung server can't leave the toolbar's Stop hanging forever (#638):
-  // the caller reports a delivery failure instead of silently swallowing it.
-  return fetch(`${worldBase(API_BASE, worldId)}/animate/stop`, {
+export async function stopAnimation(worldId: WorldId): Promise<void> {
+  // Bounded so a hung server can't leave Stop hanging forever (#638), and checks
+  // resp.ok so a refused stop (e.g. 503) lets the UI re-enable Stop for retry (#1033).
+  const resp = await fetch(`${worldBase(API_BASE, worldId)}/animate/stop`, {
     method: "POST",
     signal: AbortSignal.timeout(30000),
-  }).then(() => undefined);
+  });
+  if (!resp.ok) {
+    throw new Error(`${resp.status} ${resp.statusText}: ${await resp.text()}`);
+  }
 }
 
 // What GET /worlds/{world_id}/animate/recovery reports about an interrupted run

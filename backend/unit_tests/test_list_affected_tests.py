@@ -263,3 +263,18 @@ def test_changed_script_affects_its_own_test(fake_repo):
     script = fake_repo / "bin" / "list_affected_tests.py"
     script.write_text(script.read_text() + "\n# tweak\n")
     assert _affected(_run(fake_repo)) == {"unit_tests/test_list_affected_tests.py"}
+
+
+def test_changed_rust_source_affects_glacier_modules(fake_repo):
+    _write(fake_repo / "backend/app/hydroclimate/__init__.py", "")
+    _write(fake_repo / "backend/app/hydroclimate/_glacier_rust.py", "RUST_AVAILABLE = True\n")
+    _write(fake_repo / "backend/app/hydroclimate/ice_sheet.py", "from . import _glacier_rust\n")
+    _write(
+        fake_repo / "backend/unit_tests/test_glacier_rust.py",
+        "from app.hydroclimate import ice_sheet\n\ndef test_ok():\n    assert ice_sheet._glacier_rust.RUST_AVAILABLE\n",
+    )
+    _git(fake_repo, "add", "-A")
+    _git(fake_repo, "commit", "-q", "-m", "add rust bridge")
+
+    _write(fake_repo / "backend/rust/src/lib.rs", "// updated\n")
+    assert _affected(_run(fake_repo)) == {"unit_tests/test_glacier_rust.py"}

@@ -65,6 +65,9 @@ class _WorldClient:
     def post(self, url, **kwargs):
         return self._inner.post(self._map(url), **kwargs)
 
+    def delete(self, url, **kwargs):
+        return self._inner.delete(self._map(url), **kwargs)
+
 
 @pytest.fixture
 def client():
@@ -1856,6 +1859,9 @@ def test_animate_forwards_heartbeats_while_a_frame_batch_runs_slowly(client, mon
 
     messages = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
     assert [m["type"] for m in messages] == ["progress", "heartbeat", "progress", "heartbeat", "progress", "done"]
+    progress = [m for m in messages if m["type"] == "progress"]
+    assert [m["frame"] for m in progress] == [1, 2, 3]
+    assert [m["elapsed_years"] for m in progress] == [0.0, 100_000.0, 200_000.0]
     heartbeats = [m for m in messages if m["type"] == "heartbeat"]
     assert [m["frame"] for m in heartbeats] == [2, 3]
     assert [m["elapsed_years"] for m in heartbeats] == [100_000.0, 200_000.0]
@@ -2110,23 +2116,195 @@ def test_animate_sidecar_never_passes_a_failed_checkpoint(tmp_path, monkeypatch)
     assert store.load_animation_progress() is None
 
 
-def test_animate_disconnect_mid_stream_still_publishes_completed_frames(client):
-    # Round-4 Finding 3: animate used to defer its only _world_changed to normal
-    # completion, so a disconnect left the feed revision, render cache and index
-    # describing the pre-animation world even though the completed frames were
-    # already checkpointed. Disconnect after the first frame's progress line;
-    # the feed must still advance past the pre-animation revision.
+def test_animate_disconnect_mid_stream_keeps_running_and_preserves_video(client):
+    # Issue #1033: disconnecting mid-stream (e.g. a page refresh) must keep the
+    # background animation running to completion, advance the world, and hold
+    # the finished MP4 until a reconnected tab collects and dismisses it.
     _post_generate(client, json={"seed": 9, "num_plates": 6})
     before = _default_session.feed.revision()
+    wid = _default_session.world_id
     chunk_count = _post_streaming_then_disconnect(
-        f"/worlds/{_default_session.world_id}/animate",
+        f"/worlds/{wid}/animate",
         {"projection": "eckert4", "view": "elevation", "width": 64, "height": 64,
          "step_years": 100_000, "num_frames": 2},
         disconnect_after_chunks=1,
     )
     assert chunk_count == 1  # confirms the scenario really did cut the stream short
-    assert _wait_until(lambda: _default_session.feed.revision() != before)
+    assert _wait_until(lambda: not _default_session.operation_busy(), timeout=15.0)
     assert _default_session.feed.revision() != before
+
+    run = client.get(f"/worlds/{wid}/run").json()
+    anim = run["animation"]
+    assert anim is not None
+    assert anim["active"] is False
+    assert anim["has_result"] is True
+    assert anim["frame"] == 2
+    assert anim["total"] == 2
+
+    # Reconnecting via GET /animate/stream delivers the buffered MP4 immediately.
+    reconnect = client.get(f"/worlds/{wid}/animate/stream")
+    assert reconnect.status_code == 200
+    lines = [json.loads(line) for line in reconnect.text.splitlines() if line]
+    assert lines[-1]["type"] == "done"
+    assert lines[-1]["job_id"] == anim["job_id"]
+    mp4 = base64.b64decode(lines[-1]["video_base64"])
+    assert b"ftyp" in mp4[:32]
+
+    # While the MP4 is uncollected: hosted sleep is vetoed and a second recording 409s.
+    assert main._session_can_sleep(_default_session) is False
+    conflict = client.post(
+        f"/worlds/{wid}/animate",
+        json={"projection": "eckert4", "view": "elevation", "width": 64, "height": 64,
+              "step_years": 100_000, "num_frames": 2},
+    )
+    assert conflict.status_code == 409
+
+    # Dismissing with a mismatched job_id leaves it alone; matching job_id clears it.
+    assert client.delete(f"/worlds/{wid}/animate/result?job_id=wrong").status_code == 200
+    assert client.get(f"/worlds/{wid}/run").json()["animation"] is not None
+    assert client.delete(f"/worlds/{wid}/animate/result?job_id={anim['job_id']}").status_code == 200
+    assert client.get(f"/worlds/{wid}/run").json()["animation"] is None
+    assert client.get(f"/worlds/{wid}/animate/stream").status_code == 404
+    assert main._session_can_sleep(_default_session) is True
+
+
+def test_animate_reconnect_mid_run_and_stop_delivers_video(client, monkeypatch):
+    # Issue #1033: a refreshed tab reconnects while an animation is still running,
+    # sees active=True and unbounded=True in GET /run, can stop it cleanly via
+    # POST /animate/stop, and receives the finalized video on GET /animate/stream.
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
+    wid = _default_session.world_id
+    frame1_emitted = threading.Event()
+    allow_frame2 = threading.Event()
+
+    def fake_stream(world, *_args, stop_event=None, **_kwargs):
+        yield ("progress", 1, 10, b"png-frame-1", 100.0)
+        frame1_emitted.set()
+        allow_frame2.wait(timeout=5.0)
+        if stop_event is not None and stop_event.is_set():
+            yield ("done", b"\x00\x00\x00\x18ftypisom", True)
+            return
+        yield ("progress", 2, 10, b"png-frame-2", 200.0)
+        yield ("done", b"\x00\x00\x00\x18ftypisom", False)
+
+    monkeypatch.setattr(main.render_image, "stream_animation_mp4", fake_stream)
+    try:
+        chunk_count = _post_streaming_then_disconnect(
+            f"/worlds/{wid}/animate",
+            {"projection": "eckert4", "view": "elevation", "width": 64, "height": 64,
+             "step_years": 100_000, "num_frames": 10, "unbounded": True},
+            disconnect_after_chunks=1,
+        )
+        assert chunk_count == 1
+        assert frame1_emitted.wait(timeout=5.0)
+
+        run = client.get(f"/worlds/{wid}/run").json()
+        assert run["animation"]["active"] is True
+        assert run["animation"]["unbounded"] is True
+        assert run["animation"]["frame"] == 1
+        assert run["animation"]["stopping"] is False
+
+        # DELETE /animate/result must not clear an active animation.
+        assert client.delete(f"/worlds/{wid}/animate/result").status_code == 200
+        assert client.get(f"/worlds/{wid}/run").json()["animation"]["active"] is True
+
+        # Stop marks stopping=True and lets the background worker finish cleanly.
+        assert client.post(f"/worlds/{wid}/animate/stop").status_code == 200
+        assert client.get(f"/worlds/{wid}/run").json()["animation"]["stopping"] is True
+    finally:
+        allow_frame2.set()
+
+    reconnect = client.get(f"/worlds/{wid}/animate/stream")
+    assert reconnect.status_code == 200
+    lines = [json.loads(line) for line in reconnect.text.splitlines() if line]
+    assert lines[-1]["type"] == "done"
+    assert lines[-1]["stopped_early"] is True
+    assert _wait_until(lambda: not _default_session.operation_busy(), timeout=5.0)
+
+
+def test_animate_setup_failure_emits_error_line_and_records_job_error(client, monkeypatch):
+    # Muse review finding #1 on PR #1034: if _hydrate_locked raises during worker
+    # setup before `animation`/`pool` exist, subscribers must receive an error line
+    # (not a silent empty close) and no lock/operation flag may leak.
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
+    wid = _default_session.world_id
+
+    def boom(_session):
+        raise RuntimeError("checkpoint hydrate failed")
+
+    monkeypatch.setattr(main, "_hydrate_locked", boom)
+    resp = client.post(
+        f"/worlds/{wid}/animate",
+        json={"projection": "eckert4", "view": "elevation", "width": 64, "height": 64,
+              "step_years": 100_000, "num_frames": 2},
+    )
+    assert resp.status_code == 200
+    lines = [json.loads(line) for line in resp.text.splitlines() if line]
+    assert len(lines) == 1
+    assert lines[0]["type"] == "error"
+    assert "checkpoint hydrate failed" in lines[0]["detail"]
+    run = client.get(f"/worlds/{wid}/run").json()
+    assert run["animation"]["active"] is False
+    assert run["animation"]["has_result"] is False
+    assert "checkpoint hydrate failed" in run["animation"]["error"]
+
+
+def test_controls_queued_during_animation_apply_after_current_frame(client, monkeypatch):
+    # Issue #1033: Controls stay editable during an active animation; changes are
+    # cached on the server (`pending: true`) and applied once the current frame renders.
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
+    wid = _default_session.world_id
+    frame1_emitted = threading.Event()
+    allow_frame2 = threading.Event()
+    observed_solar_at_frame2: list[float] = []
+
+    def fake_stream(world, *_args, **_kwargs):
+        yield ("progress", 1, 2, b"png-1", 0.0)
+        frame1_emitted.set()
+        allow_frame2.wait(timeout=5.0)
+        observed_solar_at_frame2.append(world.solar_multiplier)
+        yield ("progress", 2, 2, b"png-2", 100_000.0)
+        yield ("done", b"\x00\x00\x00\x18ftypisom", False)
+
+    monkeypatch.setattr(main.render_image, "stream_animation_mp4", fake_stream)
+    try:
+        chunk_count = _post_streaming_then_disconnect(
+            f"/worlds/{wid}/animate",
+            {"projection": "eckert4", "view": "elevation", "width": 64, "height": 64,
+             "step_years": 100_000, "num_frames": 2},
+            disconnect_after_chunks=1,
+        )
+        assert chunk_count == 1
+        assert frame1_emitted.wait(timeout=5.0)
+
+        # POST /controls returns immediately with pending=True instead of blocking.
+        resp = client.post(
+            f"/worlds/{wid}/controls",
+            json={"solar_multiplier": 1.25},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["pending"] is True
+        assert body["solar_multiplier"] == 1.25
+
+        # GET /controls reflects the queued values lock-free while running.
+        got = client.get(f"/worlds/{wid}/controls").json()
+        assert got["pending"] is True
+        assert got["solar_multiplier"] == 1.25
+    finally:
+        allow_frame2.set()
+
+    assert _wait_until(lambda: not _default_session.operation_busy(), timeout=5.0)
+    # Queued control was NOT applied mid-frame-2, then applied cleanly once frame 2 finished.
+    assert observed_solar_at_frame2 == [1.0]
+    assert _default_session.world.solar_multiplier == 1.25
+    assert _default_session.get_pending_controls() == {}
+    queued, _ = _default_session.try_queue_pending_controls({"solar_multiplier": 0.9})
+    assert queued is False
+    # A POST /controls after finish applies directly (pending=False), never stranded.
+    post_after = client.post(f"/worlds/{wid}/controls", json={"solar_multiplier": 1.1}).json()
+    assert post_after["pending"] is False
+    assert _default_session.world.solar_multiplier == 1.1
 
 
 def test_animate_progress_carries_a_live_stats_snapshot(client):
@@ -2370,25 +2548,33 @@ def test_controls_time_step_and_stop_mode_round_trip_and_validation(client):
     defaults = client.get("/world/controls").json()
     assert defaults["lake_step_years"] == 1000.0
     assert defaults["lake_stop_mode"] == "resolve"
+    assert defaults["lake_max_substeps"] == 20
     assert defaults["glacier_step_years"] == 250.0
     assert defaults["glacier_stop_mode"] == "exhaust"
+    assert defaults["glacier_max_substeps"] == 40
 
     resp = client.post("/world/controls", json={
         "lake_step_years": 150,
-        "lake_stop_mode": "exhaust",
+        "lake_stop_mode": "max",
+        "lake_max_substeps": 12,
         "glacier_step_years": 500,
-        "glacier_stop_mode": "resolve",
+        "glacier_stop_mode": "max",
+        "glacier_max_substeps": 8,
     })
     assert resp.status_code == 200
     body = resp.json()
     assert body["lake_step_years"] == 150.0
-    assert body["lake_stop_mode"] == "exhaust"
+    assert body["lake_stop_mode"] == "max"
+    assert body["lake_max_substeps"] == 12
     assert body["glacier_step_years"] == 500.0
-    assert body["glacier_stop_mode"] == "resolve"
+    assert body["glacier_stop_mode"] == "max"
+    assert body["glacier_max_substeps"] == 8
     assert world.lake_step_years == 150.0
-    assert world.lake_stop_mode == "exhaust"
+    assert world.lake_stop_mode == "max"
+    assert world.lake_max_substeps == 12
     assert world.glacier_step_years == 500.0
-    assert world.glacier_stop_mode == "resolve"
+    assert world.glacier_stop_mode == "max"
+    assert world.glacier_max_substeps == 8
 
     for bad_payload in (
         {"lake_step_years": 25},
@@ -2397,6 +2583,8 @@ def test_controls_time_step_and_stop_mode_round_trip_and_validation(client):
         {"glacier_step_years": 1500},
         {"lake_stop_mode": "invalid"},
         {"glacier_stop_mode": "invalid"},
+        {"lake_max_substeps": 0},
+        {"glacier_max_substeps": 0},
     ):
         bad = client.post("/world/controls", json=bad_payload)
         assert bad.status_code == 400
