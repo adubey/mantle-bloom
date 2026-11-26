@@ -72,7 +72,7 @@ import numpy as np
 from numba import njit
 
 from .. import trace
-from . import hydrology
+from . import _glacier_rust, hydrology
 from ..elevation_lines import line_spacing_rad
 
 if TYPE_CHECKING:
@@ -302,6 +302,7 @@ def _seeded_flood_level_kernel(
 def _seeded_flood_levels(
     elevations: np.ndarray, neighbor_idx: np.ndarray, seed: np.ndarray,
     adjacency: tuple[np.ndarray, np.ndarray] | None = None,
+    rust_graph=None,
 ) -> np.ndarray:
     """Every candidate level's `_seeded_connected_mask` at once: the mask at `h` is exactly
     `levels <= h`. Raising `h` only ever merges nodes into the seed's component, so each node
@@ -309,11 +310,25 @@ def _seeded_flood_levels(
     the union-find at every candidate (#147: the glacier march re-solves sea level some 24
     times a step, about 20 candidates each). `adjacency` is `flood_adjacency(neighbor_idx)`
     when the caller already holds it, else it is built here."""
+    if _glacier_rust.RUST_AVAILABLE:
+        return _glacier_rust.seeded_flood_levels(
+            elevations, neighbor_idx, seed, adjacency=adjacency, rust_graph=rust_graph
+        )
     indptr, edges = flood_adjacency(neighbor_idx) if adjacency is None else adjacency
     return _seeded_flood_level_kernel(
         indptr, edges,
         np.ascontiguousarray(elevations, dtype=np.float64),
         np.ascontiguousarray(seed, dtype=np.bool_),
+    )
+
+
+_DEFAULT_SEEDED_FLOOD_LEVELS = _seeded_flood_levels
+
+
+def _seeded_flood_levels_is_custom() -> bool:
+    return (
+        _seeded_flood_levels is not _DEFAULT_SEEDED_FLOOD_LEVELS
+        and getattr(_seeded_flood_levels, "__wrapped__", None) is not _DEFAULT_SEEDED_FLOOD_LEVELS
     )
 
 
@@ -452,6 +467,7 @@ def _solve_sea_level_connected(
     bracket: tuple[float, float] | None = None,
     seed_adjacency: tuple[np.ndarray, np.ndarray] | None = None,
     ice_water_m: np.ndarray | None = None,
+    rust_graph=None,
 ) -> float:
     """`solve_sea_level`, but bisecting against `ocean_water_volume_m3` (connectivity-restricted)
     rather than the bare `total_water_volume_m3` -- see this module's own docstring for why a
@@ -472,6 +488,18 @@ def _solve_sea_level_connected(
     anchor = _seed_anchor(world, elevations, seed_is_ocean, seed_neighbor_idx)
     explicit_seed = anchor is not None and anchor[0] is seed_neighbor_idx
     adjacency = seed_adjacency if explicit_seed else None
+    if anchor is not None and _glacier_rust.RUST_AVAILABLE and not _seeded_flood_levels_is_custom():
+        return _glacier_rust.solve_sea_level_connected(
+            elevations,
+            areas_m2,
+            water_volume_m3,
+            anchor[1],
+            anchor[0],
+            bracket=bracket,
+            seed_adjacency=adjacency,
+            ice_water_m=ice_water_m,
+            rust_graph=rust_graph if explicit_seed else None,
+        )
     floor = _liquid_floor(elevations, ice_water_m)
     if anchor is None:
         def unseeded_volume_at(h: float) -> float:

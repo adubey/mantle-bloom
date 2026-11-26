@@ -37,8 +37,24 @@ jobs:
           cache: pip
           cache-dependency-path: backend/constraints.txt
 
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('backend/rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
       - name: Install deps
         run: ./bin/setup.sh --backend-only
+
+      - name: Rust unit tests
+        working-directory: backend/rust
+        run: cargo test --locked
 
       - name: Ruff
         run: backend/.venv/bin/ruff check --output-format github
@@ -90,3 +106,15 @@ jobs:
       - name: Typecheck the Railway config
         working-directory: .railway
         run: npm ci --no-audit --no-fund && npm run typecheck
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Railway Docker image
+        run: docker build -t mantle-bloom-test .
+
+      - name: Verify Rust extension and hosted app import
+        run: docker run --rm mantle-bloom-test python3 -c "import mantle_bloom_rust, app.hosted; print('Docker Rust OK')"

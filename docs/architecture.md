@@ -5,7 +5,10 @@
 - **Backend:** Python, FastAPI + uvicorn, numpy (rotation/vector math), scipy (`cKDTree`
   for initial plate assignment, boundary-adjacency, merge-detection, and plate-defragment
   queries, `scipy.cluster.vq.kmeans2` for split clustering,
-  `scipy.sparse.csgraph.connected_components` for plate defragmentation), Pillow
+  `scipy.sparse.csgraph.connected_components` for plate defragmentation), a compiled PyO3
+  Rust extension (`backend/rust/`, imported as `mantle_bloom_rust` via
+  `hydroclimate/_glacier_rust.py` for the glacier march, plastic ice-sheet sweeps, and
+  connected-ocean sea-level flood/bisection), Pillow
   (server-side map rendering, see `render_image.py`), pytest.
 - **Frontend:** React + TypeScript via Vite, plain HTML `<canvas>` — no mapping/charting
   library: data-backed raster maps decode a PNG the backend already rendered and draw it

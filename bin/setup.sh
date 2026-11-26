@@ -36,6 +36,11 @@ fi
 echo "Installing backend deps..."
 .venv/bin/python -m pip install -q -r requirements.txt -c constraints.txt
 
+if [ "${MANTLE_BLOOM_SKIP_RUST:-0}" != "1" ]; then
+  echo "Building Rust extension..."
+  .venv/bin/python "$REPO_ROOT/bin/build_rust.py" --skip-if-unchanged
+fi
+
 # Persist a per-worktree save-directory default for tools that need frontend-saved worlds.
 # This file lives under the ignored venv so setup doesn't expose a personal path in Git.
 SAVE_ENV="$REPO_ROOT/backend/.venv/mantle-bloom-env.sh"

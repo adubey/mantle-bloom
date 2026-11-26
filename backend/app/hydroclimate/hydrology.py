@@ -98,7 +98,7 @@ from scipy.sparse import coo_matrix
 from scipy.spatial import cKDTree
 
 from .. import cratons, geometry, healpix_grid, trace
-from . import breaching, lakes, river_substeps
+from . import _glacier_rust, breaching, lakes, river_substeps
 from ..elevation_lines import DEFAULT_NODE_DENSITY, PLANET_RADIUS_KM, line_spacing_rad
 from ..plates import (
     Plate,
@@ -722,7 +722,7 @@ def _below_sea_components_kernel(below: np.ndarray, neighbor_idx: np.ndarray) ->
     return labels
 
 
-def _below_sea_components(below: np.ndarray, neighbor_idx: np.ndarray) -> np.ndarray:
+def _below_sea_components(below: np.ndarray, neighbor_idx: np.ndarray, *, rust_graph=None) -> np.ndarray:
     """Connected-component label per node over the `neighbor_idx` edges joining two
     below-sea-level nodes. Shared by `connected_ocean_mask` and
     `force_earth_strait_connections`, which must agree on the components.
@@ -731,6 +731,8 @@ def _below_sea_components(below: np.ndarray, neighbor_idx: np.ndarray) -> np.nda
     and building a sparse graph for `scipy.sparse.csgraph.connected_components` each time
     cost more than the labelling). Labels are numbered by each component's lowest node,
     as scipy numbers them, so callers that pick a component by label see no change."""
+    if _glacier_rust.RUST_AVAILABLE:
+        return _glacier_rust.below_sea_components(below, neighbor_idx, rust_graph=rust_graph)
     return _below_sea_components_kernel(
         np.ascontiguousarray(below, dtype=np.bool_), np.ascontiguousarray(neighbor_idx, dtype=np.int64)
     )
@@ -744,6 +746,7 @@ def connected_ocean_mask(
     *,
     areas_m2: np.ndarray | None = None,
     prior_ocean: np.ndarray | None = None,
+    rust_graph=None,
 ) -> np.ndarray:
     """Per-node bool, True only where a node is both below sea level *and* part of the world
     ocean -- the single largest connected below-sea-level body, plus any other body that is an
@@ -775,6 +778,19 @@ def connected_ocean_mask(
         if n <= FLOW_NEIGHBOR_COUNT:
             return below
         neighbor_idx = _build_neighbor_graph(points)
+
+    if _glacier_rust.RUST_AVAILABLE:
+        return _glacier_rust.connected_ocean_mask(
+            elevation,
+            sea_level_m,
+            neighbor_idx,
+            areas_m2=areas_m2,
+            prior_ocean=prior_ocean,
+            enclosed_min_area_km2=ENCLOSED_OCEAN_MIN_AREA_KM2,
+            enclosed_keep_area_km2=ENCLOSED_OCEAN_KEEP_AREA_KM2,
+            planet_radius_km=PLANET_RADIUS_KM,
+            rust_graph=rust_graph,
+        )
 
     labels = _below_sea_components(below, neighbor_idx)
 
@@ -2109,6 +2125,7 @@ def _march_sea_level(
     elevation: np.ndarray,
     warm_half_width_m: float,
     flood_adjacency: tuple[np.ndarray, np.ndarray] | None = None,
+    rust_graph=None,
 ) -> tuple[float, np.ndarray]:
     """One march substep's sea-level re-solve from the current ice debit, with the
     ocean mask (review of #806): the re-solve anchors on the march's own current-step
@@ -2129,8 +2146,11 @@ def _march_sea_level(
         seed_is_ocean=ocean_mask, seed_neighbor_idx=neighbor_idx,
         bracket=(sea_level - warm_half_width_m, sea_level + warm_half_width_m),
         seed_adjacency=flood_adjacency, ice_water_m=ice_water_m,
+        rust_graph=rust_graph,
     )
-    ocean_mask = connected_ocean_mask(points, elevation, sea_level, neighbor_idx, areas_m2=areas, prior_ocean=ocean_mask)
+    ocean_mask = connected_ocean_mask(
+        points, elevation, sea_level, neighbor_idx, areas_m2=areas, prior_ocean=ocean_mask, rust_graph=rust_graph,
+    )
     if getattr(world, "premade_world_id", None) == "earth":
         ocean_mask = force_earth_strait_connections(points, ocean_mask, elevation, sea_level, neighbor_idx)
     return sea_level, ocean_mask
@@ -2379,6 +2399,11 @@ def _apply_march_abrasion(
 ) -> float:
     """Book one interval's glacial abrasion against cover and substrate headroom in place.
     Returns the maximum bed cut (m) across all nodes for this interval."""
+    if _glacier_rust.RUST_AVAILABLE:
+        return _glacier_rust.apply_march_abrasion(
+            sliding_speed_m_per_yr, dt, multiplier, ocean_mask, cover_remaining,
+            substrate_headroom, craton_keep, raw_abrasion_depth, abrasion_depth, working_elevation,
+        )
     from . import glacier_erosion
 
     raw = glacier_erosion.abrasion_depth_m(sliding_speed_m_per_yr, dt, multiplier)
@@ -2402,6 +2427,43 @@ def _worst_substep_move(volumes: list[float]) -> float:
     volume path is subsampled, so it can't show that on its own (#842)."""
     moves = [abs(b - a) / max(a, 1.0) for a, b in zip(volumes, volumes[1:])]
     return round(max(moves), 6) if moves else 0.0
+
+
+def _march_substep_climate(
+    working_elevation: np.ndarray,
+    deflection_f64: np.ndarray,
+    ref_depth: np.ndarray,
+    ref_heat: np.ndarray,
+    sea_level: float,
+    ocean_mask: np.ndarray,
+    crust_h_m: np.ndarray,
+    mantle_h_m: np.ndarray,
+    rho_crust: np.ndarray,
+    temp_nodes_f64: np.ndarray,
+    dry_precip_f64: np.ndarray,
+    amp_f64: np.ndarray,
+    dry_snow_mm: np.ndarray,
+    bed_frozen_snow_mm: np.ndarray,
+):
+    from .. import lithosphere
+    from . import ice_sheet
+
+    if _glacier_rust.RUST_AVAILABLE:
+        temperature, frozen = _glacier_rust.march_substep_prep(
+            working_elevation, deflection_f64, ref_depth, sea_level, ocean_mask,
+            crust_h_m, mantle_h_m, rho_crust, temp_nodes_f64,
+        )
+    else:
+        unloaded_bed = working_elevation - deflection_f64
+        load = lithosphere.grounded_ice_load_kg_m2(ref_depth, unloaded_bed, sea_level, ocean_mask)
+        target = lithosphere.ice_load_deflection(crust_h_m, mantle_h_m, rho_crust, load)
+        temperature = ice_sheet.air_temperature_at_elevation(temp_nodes_f64, deflection_f64, target)
+        frozen = (temperature < FREEZE_POINT_C) | (ref_depth >= GLACIER_VISIBLE_DEPTH_M)
+    return ice_sheet.SurfaceClimate(
+        dry_precip_f64, temperature, amp_f64,
+        frozen, np.asarray(ref_heat, dtype=float),
+        dry_snow_mm=dry_snow_mm, bed_frozen_snow_mm=bed_frozen_snow_mm,
+    )
 
 
 def _march_glacier(
@@ -2474,6 +2536,8 @@ def _march_glacier(
     with _phase("Building the glacier-march graph"):
         march_graph = ice_sheet.symmetric_graph(np.asarray(points), np.asarray(neighbor_idx))
         march_step_m = ice_sheet.median_edge_m(march_graph)
+        neighbor_idx = np.asarray(neighbor_idx)
+        rust_graph = _glacier_rust.build_march_graph(march_graph, march_step_m, neighbor_idx)
     depth = np.clip(np.asarray(prev_glacier_depth, dtype=float), 0.0, None).copy()
     heat = np.asarray(opening_heat_w_m2, dtype=float)
     if heat.shape != (n,):
@@ -2486,29 +2550,42 @@ def _march_glacier(
     has_ocean = bool(ocean_mask.any())
     # Like the graph above, the flood's edge lists are fixed for the march: built once
     # here instead of inside every re-solve (#147).
-    neighbor_idx = np.asarray(neighbor_idx)
     flood_adjacency = eustasy.flood_adjacency(neighbor_idx) if has_ocean else None
-    crust_h_m = collect_all_crustal_thickness(plates_in_order)
-    mantle_h_m = collect_all_mantle_lithosphere_thickness(plates_in_order)
-    rho_crust = np.concatenate([lithosphere.node_crust_density(p.collect("crust_type_code"), p.crust_type) for p in plates_in_order])
-    craton_keep = 1.0 - cratons.CRATON_EROSION_RESISTANCE * cratons.strength(
-        np.concatenate([p.collect("craton_crust_m") for p in plates_in_order])
+    crust_h_m = np.ascontiguousarray(collect_all_crustal_thickness(plates_in_order), dtype=np.float64)
+    mantle_h_m = np.ascontiguousarray(collect_all_mantle_lithosphere_thickness(plates_in_order), dtype=np.float64)
+    rho_crust = np.ascontiguousarray(
+        np.concatenate([lithosphere.node_crust_density(p.collect("crust_type_code"), p.crust_type) for p in plates_in_order]),
+        dtype=np.float64,
+    )
+    craton_keep = np.ascontiguousarray(
+        1.0 - cratons.CRATON_EROSION_RESISTANCE * cratons.strength(
+            np.concatenate([p.collect("craton_crust_m") for p in plates_in_order])
+        ),
+        dtype=np.float64,
     )
     removable_hc_m = np.where(
         crust_h_m > 0.0,
         np.clip(crust_h_m - lithosphere.MIN_CRUSTAL_THICKNESS_M, 0.0, None),
         np.inf,
     )
-    cover_remaining = np.minimum(
-        np.clip(np.asarray(mobile_cover_m, dtype=float), 0.0, None),
-        removable_hc_m,
+    cover_remaining = np.ascontiguousarray(
+        np.minimum(
+            np.clip(np.asarray(mobile_cover_m, dtype=float), 0.0, None),
+            removable_hc_m,
+        ),
+        dtype=np.float64,
     )
     # Match erosion.apply_erosion's source order: glacier removes loose cover first, then
     # substrate above the Hc floor scaled by craton resistance. The interval bed feedback
     # must not include rock the final material transfer cannot remove.
-    substrate_headroom = np.clip(removable_hc_m - cover_remaining, 0.0, None)
-    working_elevation = np.asarray(elevation, dtype=float).copy()
+    substrate_headroom = np.ascontiguousarray(np.clip(removable_hc_m - cover_remaining, 0.0, None), dtype=np.float64)
+    working_elevation = np.ascontiguousarray(elevation, dtype=np.float64).copy()
     elevations = working_elevation
+    deflection_f64 = np.ascontiguousarray(deflection_m, dtype=np.float64)
+    dry_precip_f64 = np.ascontiguousarray(dry_precip_mm, dtype=np.float64)
+    temp_nodes_f64 = np.ascontiguousarray(temperature_at_nodes, dtype=np.float64)
+    amp_f64 = np.ascontiguousarray(seasonal_amplitude, dtype=np.float64)
+    mobile_f64 = np.ascontiguousarray(mobile_cover_m, dtype=np.float64)
     _, hyps_areas = eustasy.hypsometry(world)
     to_water = ice_sheet.RHO_ICE / ice_sheet.RHO_WATER
     # Everything eustasy holds out of the ocean except the ice, which the march re-debits
@@ -2522,20 +2599,16 @@ def _march_glacier(
     total_water = float(total_water)
 
     def solve_once(sub_years: float, ref_depth: np.ndarray, ref_heat: np.ndarray, margin_hint_m: np.ndarray | None = None):
-        unloaded_bed = working_elevation - np.asarray(deflection_m, dtype=float)
-        load = lithosphere.grounded_ice_load_kg_m2(ref_depth, unloaded_bed, sea_level, ocean_mask)
-        target = lithosphere.ice_load_deflection(crust_h_m, mantle_h_m, rho_crust, load)
-        temperature = ice_sheet.air_temperature_at_elevation(temperature_at_nodes, deflection_m, target)
-        frozen = (temperature < FREEZE_POINT_C) | (ref_depth >= GLACIER_VISIBLE_DEPTH_M)
-        climate = ice_sheet.SurfaceClimate(
-            np.asarray(dry_precip_mm, dtype=float), temperature, np.asarray(seasonal_amplitude, dtype=float),
-            frozen, np.asarray(ref_heat, dtype=float),
-            dry_snow_mm=dry_snow_mm, bed_frozen_snow_mm=bed_frozen_snow_mm,
+        climate = _march_substep_climate(
+            working_elevation, deflection_f64, ref_depth, ref_heat, sea_level, ocean_mask,
+            crust_h_m, mantle_h_m, rho_crust, temp_nodes_f64, dry_precip_f64, amp_f64,
+            dry_snow_mm, bed_frozen_snow_mm,
         )
         return ice_sheet.step_ice(
-            points, neighbor_idx, areas, working_elevation, deflection_m, sea_level, depth,
-            climate, np.asarray(mobile_cover_m, dtype=float), ocean_mask, sub_years,
+            points, neighbor_idx, areas, working_elevation, deflection_f64, sea_level, depth,
+            climate, mobile_f64, ocean_mask, sub_years,
             warn=False, graph=march_graph, graph_step_m=march_step_m, margin_hint_m=margin_hint_m,
+            rust_graph=rust_graph,
         )
 
     if years <= 1e-6:
@@ -2654,7 +2727,7 @@ def _march_glacier(
                     sea_level, ocean_mask = _march_sea_level(
                         world, elevations, hyps_areas, total_water, lakes_trapped, to_water,
                         areas, depth, sea_level, ocean_mask, neighbor_idx, points, working_elevation,
-                        warm_half_width_m, flood_adjacency,
+                        warm_half_width_m, flood_adjacency, rust_graph=rust_graph,
                     )
                 resolved_debit = _march_ice_debit_m3(to_water, areas, depth, working_elevation, sea_level, ocean_mask)
                 resolves += 1
