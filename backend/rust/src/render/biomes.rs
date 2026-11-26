@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 use rayon::prelude::*;
 
@@ -267,17 +268,29 @@ fn edt_1d(f: &[f64], d: &mut [f64], v: &mut [usize], z: &mut [f64]) {
 /// Exact 2D Euclidean distance transform matching `scipy.ndimage.distance_transform_edt(mask)`.
 ///
 /// Distance is 0 where `mask[i]` is `false`, and Euclidean distance (in cells) to the nearest
-/// `false` cell where `mask[i]` is `true`. Returns all 0.0 when no `false` cell exists.
+/// `false` cell where `mask[i]` is `true`. Returns `sqrt((r + 1)^2 + c^2)` when all cells are
+/// `true`, matching SciPy's `distance_transform_edt` initialization (#1039).
 pub fn edt_2d_bool(mask: &[bool], h: usize, w: usize) -> Vec<f64> {
     const INF: f64 = 1e20;
     let n = h * w;
     if n == 0 {
         return Vec::new();
     }
-    let any_false = mask.par_iter().any(|&m| !m);
     let any_true = mask.par_iter().any(|&m| m);
-    if !any_false || !any_true {
+    if !any_true {
         return vec![0.0; n];
+    }
+    let any_false = mask.par_iter().any(|&m| !m);
+    if !any_false {
+        let mut out = vec![0.0f64; n];
+        out.par_chunks_mut(w).enumerate().for_each(|(r, row)| {
+            let dy = (r + 1) as f64;
+            for (c, cell) in row.iter_mut().enumerate() {
+                let dx = c as f64;
+                *cell = (dy * dy + dx * dx).sqrt();
+            }
+        });
+        return out;
     }
 
     let mut col_dist = vec![0.0f64; n];
@@ -331,6 +344,9 @@ pub fn grid_continentality_dist(is_ocean: &[bool], h: usize, w: usize) -> Vec<f6
 }
 
 pub fn grid_dist_to_land_rad(is_ocean: &[bool], h: usize, w: usize) -> Vec<f64> {
+    if !is_ocean.iter().any(|&o| o) || is_ocean.iter().all(|&o| o) {
+        return vec![0.0; h * w];
+    }
     let eq_cell_km = 2.0 * std::f64::consts::PI * PLANET_RADIUS_KM / w as f64;
     let scale = eq_cell_km / PLANET_RADIUS_KM;
     let mut dist = edt_2d_bool(is_ocean, h, w);
@@ -1005,17 +1021,7 @@ pub fn smooth_biome_field_blend_core(
     (biome_ids, winner_share, runner_up_ids)
 }
 
-/// Rank-based shaded-relief factor per cell matching `scipy.stats.rankdata(..., method="average")`.
-pub fn biome_relative_shade_factor(biome_ids: &[u8], elevation_m: &[f64]) -> Vec<f64> {
-    let n = biome_ids.len();
-    let mut buckets: Vec<Vec<(f64, usize)>> = vec![Vec::new(); N_BIOMES];
-    for (i, (&bid, &elev)) in biome_ids.iter().zip(elevation_m.iter()).enumerate() {
-        let b = bid as usize;
-        if b < N_BIOMES {
-            buckets[b].push((elev, i));
-        }
-    }
-
+fn shade_factor_from_buckets(buckets: Vec<Vec<(f64, usize)>>, n: usize) -> Vec<f64> {
     let bucket_factors: Vec<Vec<(usize, f64)>> = buckets
         .into_par_iter()
         .map(|mut items| {
@@ -1054,6 +1060,39 @@ pub fn biome_relative_shade_factor(biome_ids: &[u8], elevation_m: &[f64]) -> Vec
         }
     }
     factors
+}
+
+/// Rank-based shaded-relief factor per cell matching `scipy.stats.rankdata(..., method="average")`.
+pub fn biome_relative_shade_factor(biome_ids: &[u8], elevation_m: &[f64]) -> Vec<f64> {
+    let n = biome_ids.len();
+    let mut buckets: Vec<Vec<(f64, usize)>> = vec![Vec::new(); N_BIOMES];
+    let mut extra: HashMap<u8, Vec<(f64, usize)>> = HashMap::new();
+    for (i, (&bid, &elev)) in biome_ids.iter().zip(elevation_m.iter()).enumerate() {
+        let b = bid as usize;
+        if b < N_BIOMES {
+            buckets[b].push((elev, i));
+        } else {
+            extra.entry(bid).or_default().push((elev, i));
+        }
+    }
+    buckets.extend(extra.into_values());
+    shade_factor_from_buckets(buckets, n)
+}
+
+/// Arbitrary `i64` ID variant of `biome_relative_shade_factor` matching Python `np.unique`.
+pub fn biome_relative_shade_factor_i64(biome_ids: &[i64], elevation_m: &[f64]) -> Vec<f64> {
+    let n = biome_ids.len();
+    let mut buckets: Vec<Vec<(f64, usize)>> = vec![Vec::new(); N_BIOMES];
+    let mut extra: HashMap<i64, Vec<(f64, usize)>> = HashMap::new();
+    for (i, (&bid, &elev)) in biome_ids.iter().zip(elevation_m.iter()).enumerate() {
+        if (0..N_BIOMES as i64).contains(&bid) {
+            buckets[bid as usize].push((elev, i));
+        } else {
+            extra.entry(bid).or_default().push((elev, i));
+        }
+    }
+    buckets.extend(extra.into_values());
+    shade_factor_from_buckets(buckets, n)
 }
 
 // ---------------------------------------------------------------------------
@@ -1153,11 +1192,6 @@ pub fn sea_ice_annual_balance_scalar(
     let temperature_c = ocean_temperature_c + (sea_level_air_c - ocean_baseline_c);
     let amplitude_c = seasonal_temp_amplitude(lat_deg, 0.0, axial_tilt_deg, None);
 
-    let freezing_days =
-        365.25 * seasonal_positive_degrees_scalar(-SEAWATER_FREEZING_C - (-temperature_c), amplitude_c, 0.0);
-    //Wait: seasonal_freezing_degrees(mean, amp, thresh) = seasonal_positive_degrees(thresh - mean, amp, 0.0)
-    // Check: above expression simplified to thresh - mean! Let's write it explicitly to be crystal clear:
-    let _ = freezing_days;
     let freezing_days =
         365.25 * seasonal_positive_degrees_scalar(SEAWATER_FREEZING_C - temperature_c, amplitude_c, 0.0);
     let thawing_days = 365.25 * seasonal_positive_degrees_scalar(temperature_c, amplitude_c, 0.0);
@@ -1268,5 +1302,18 @@ mod tests {
         let ov = neighbor_vote_2pass(&mut ids, &ocean, 5, 5);
         assert_eq!(ids[12], 14);
         assert!(ov[12]);
+    }
+
+    #[test]
+    fn edt_all_true_matches_scipy_and_all_false_is_zero() {
+        let d_true = edt_2d_bool(&vec![true; 32], 4, 8);
+        for r in 0..4usize {
+            for c in 0..8usize {
+                let expected = (((r + 1) * (r + 1) + c * c) as f64).sqrt();
+                assert!((d_true[r * 8 + c] - expected).abs() < 1e-12);
+            }
+        }
+        let d_false = edt_2d_bool(&vec![false; 32], 4, 8);
+        assert!(d_false.iter().all(|&v| v == 0.0));
     }
 }

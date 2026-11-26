@@ -315,14 +315,15 @@ def build_render_snapshot(
     smooth_sea_ice: bool = True,
     soft_sea_ice_edge: bool = True,
     stroke_scale_override: float = 1.0,
-) -> RenderSnapshot:
+) -> RenderSnapshot | None:
     """Copy only the flat arrays needed by `view` into an immutable `RenderSnapshot`."""
     from . import render_image
     from .hydroclimate import climate
 
     rot = np.eye(3, dtype=np.float64) if view_rotation is None else np.array(view_rotation, dtype=np.float64, copy=True)
     collected = plates.collect_all_points(world.plates)
-    assert collected is not None
+    if collected is None:
+        return None
     all_points, all_elevation, _owner = collected
     all_points = np.ascontiguousarray(all_points, dtype=np.float64)
     all_elevation = np.ascontiguousarray(all_elevation, dtype=np.float64)

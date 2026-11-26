@@ -1035,6 +1035,12 @@ def _smooth_biome_classify(
 
 _ORIG_NEIGHBOUR_VOTE = _neighbour_vote
 _ORIG_CLASSIFY_BIOMES = classify_biomes
+_ORIG_CLASSIFY_KOPPEN = classify_koppen
+_ORIG_CLASSIFY_KOPPEN_SOFT = classify_koppen_soft
+_ORIG_CLASSIFY_PELAGIC = classify_pelagic
+_ORIG_CLASSIFY_PELAGIC_SOFT = classify_pelagic_soft
+_ORIG_GRID_CONTINENTALITY = grid_continentality
+_ORIG_GRID_DIST_TO_LAND_RAD = grid_dist_to_land_rad
 
 
 def _can_use_rust_biomes(elevation_m: np.ndarray, lat_deg: np.ndarray) -> tuple[bool, np.ndarray | None]:
@@ -1043,6 +1049,12 @@ def _can_use_rust_biomes(elevation_m: np.ndarray, lat_deg: np.ndarray) -> tuple[
         not rust.RUST_AVAILABLE
         or _neighbour_vote is not _ORIG_NEIGHBOUR_VOTE
         or classify_biomes is not _ORIG_CLASSIFY_BIOMES
+        or classify_koppen is not _ORIG_CLASSIFY_KOPPEN
+        or classify_koppen_soft is not _ORIG_CLASSIFY_KOPPEN_SOFT
+        or classify_pelagic is not _ORIG_CLASSIFY_PELAGIC
+        or classify_pelagic_soft is not _ORIG_CLASSIFY_PELAGIC_SOFT
+        or grid_continentality is not _ORIG_GRID_CONTINENTALITY
+        or grid_dist_to_land_rad is not _ORIG_GRID_DIST_TO_LAND_RAD
         or elevation_m.shape[0] == 0
         or elevation_m.shape[1] == 0
     ):

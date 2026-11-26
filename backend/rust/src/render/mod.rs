@@ -17,10 +17,11 @@ use pyo3::types::PyBytes;
 use rayon::prelude::*;
 
 use crate::render::biomes::{
-    bilinear_sample_climate, biome_relative_shade_factor, grid_cell_indices_scalar,
-    grid_continentality_dist, sea_ice_annual_balance_scalar, seasonal_fraction_above_scalar,
-    seasonal_temp_amplitude, smooth_biome_field_blend_core, soft_sea_ice_weight_scalar,
-    BIOME_COLORS, COMBINED_LAKE_ID_CODE, COMBINED_SEA_ID_CODE, POLAR_SEA_ICE_FRACTION,
+    bilinear_sample_climate, biome_relative_shade_factor, biome_relative_shade_factor_i64,
+    grid_cell_indices_scalar, grid_continentality_dist, sea_ice_annual_balance_scalar,
+    seasonal_fraction_above_scalar, seasonal_temp_amplitude, smooth_biome_field_blend_core,
+    soft_sea_ice_weight_scalar, BIOME_COLORS, COMBINED_LAKE_ID_CODE, COMBINED_SEA_ID_CODE,
+    POLAR_SEA_ICE_FRACTION,
 };
 use crate::render::kdtree::KdTree;
 use crate::render::projection::{
@@ -125,6 +126,20 @@ pub fn smooth_biome_field_blend_rs(
     if lat_vec.len() != h || p_vec.len() != h * w || o_vec.len() != h * w {
         return Err(PyValueError::new_err("shape mismatch in smooth_biome_field_blend_rs"));
     }
+    if let Some(ref v) = ice_vec {
+        if v.len() != h * w {
+            return Err(PyValueError::new_err(
+                "has_sea_ice shape mismatch in smooth_biome_field_blend_rs",
+            ));
+        }
+    }
+    if let Some(ref v) = sw_vec {
+        if v.len() != h * w {
+            return Err(PyValueError::new_err(
+                "sea_ice_weight shape mismatch in smooth_biome_field_blend_rs",
+            ));
+        }
+    }
 
     let (ids, shares, runner_ups) = py.detach(|| {
         render_pool().1.install(|| {
@@ -168,19 +183,15 @@ pub fn biome_relative_shade_factor_rs(
     biome_ids: PyReadonlyArray1<'_, i64>,
     elevation_m: PyReadonlyArray1<'_, f64>,
 ) -> PyResult<Py<PyArray1<f64>>> {
-    let ids: Vec<u8> = biome_ids
-        .as_array()
-        .iter()
-        .map(|&v| v.clamp(0, 255) as u8)
-        .collect();
-    let elev: Vec<f64> = elevation_m.as_array().iter().copied().collect();
+    let ids = biome_ids.as_slice()?.to_vec();
+    let elev = elevation_m.as_slice()?.to_vec();
     if ids.len() != elev.len() {
         return Err(PyValueError::new_err("biome_ids and elevation_m length mismatch"));
     }
     let out = py.detach(|| {
         render_pool()
             .1
-            .install(|| biome_relative_shade_factor(&ids, &elev))
+            .install(|| biome_relative_shade_factor_i64(&ids, &elev))
     });
     Ok(PyArray1::from_vec(py, out).unbind())
 }
@@ -650,7 +661,6 @@ pub fn render_biome_or_combined(
             } else {
                 None
             };
-            let need_hillshade = is_combined || hill_v.is_some();
             let resolved_hill = if is_combined {
                 match &hill_v {
                     Some(h) => h.clone(),
@@ -664,7 +674,6 @@ pub fn render_biome_or_combined(
                     ),
                 }
             } else {
-                let _ = need_hillshade;
                 Vec::new()
             };
 

@@ -5,7 +5,6 @@ import gc
 import io
 import json
 import math
-import os
 import tempfile
 import threading
 import time
@@ -1842,7 +1841,7 @@ def test_animate_forwards_heartbeats_while_a_frame_batch_runs_slowly(client, mon
     # GitHub issue #611: the client's idle watchdog aborts the stream after minutes
     # without bytes. A slow step batch must surface as imageless heartbeat lines --
     # no checkpoint, no render -- that reset that timer without disturbing the run.
-    from app import _render_rust, render_image
+    from app import render_image
 
     now = [0.0]
 
@@ -1859,13 +1858,7 @@ def test_animate_forwards_heartbeats_while_a_frame_batch_runs_slowly(client, mon
     assert resp.status_code == 200
 
     messages = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
-    pipelined = _render_rust.RUST_AVAILABLE and os.environ.get("MANTLE_BLOOM_PARALLEL_RENDER") != "0"
-    expected_types = (
-        ["progress", "heartbeat", "heartbeat", "progress", "progress", "done"]
-        if pipelined
-        else ["progress", "heartbeat", "progress", "heartbeat", "progress", "done"]
-    )
-    assert [m["type"] for m in messages] == expected_types
+    assert [m["type"] for m in messages] == ["progress", "heartbeat", "progress", "heartbeat", "progress", "done"]
     progress = [m for m in messages if m["type"] == "progress"]
     assert [m["frame"] for m in progress] == [1, 2, 3]
     assert [m["elapsed_years"] for m in progress] == [0.0, 100_000.0, 200_000.0]
