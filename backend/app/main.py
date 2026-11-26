@@ -185,6 +185,20 @@ _user_store = users.shared_store()
 # operation on a different world waits at the compute gate instead. Quick read-side holders
 # just wait their brief window out.
 _compute_gate = FairComputeGate()
+_rust_render_semaphore_lock = threading.Lock()
+_rust_render_semaphore: threading.Semaphore | None = None
+
+
+def _rust_render_permit() -> threading.Semaphore:
+    """Bound concurrent off-gate `/render` snapshot allocations and Rust renders (#1039)."""
+    global _rust_render_semaphore
+    if _rust_render_semaphore is None:
+        with _rust_render_semaphore_lock:
+            if _rust_render_semaphore is None:
+                from . import _render_rust
+
+                _rust_render_semaphore = threading.Semaphore(max(_render_rust.render_pool_threads(), 1))
+    return _rust_render_semaphore
 
 
 class SketchRequest(BaseModel):
@@ -299,8 +313,9 @@ class AnimateRequest(BaseModel):
     # restores the same unbounded progress presentation instead of showing "Frame X of 480" (#1033).
     unbounded: bool = False
     # True when the user wants intermediate simulation steps (between encoded frames when
-    # steps_per_frame > 1) rendered synchronously under the compute gate for live UI preview
-    # without encoding into the MP4.
+    # steps_per_frame > 1) rendered for live UI preview without encoding into the MP4;
+    # uses non-blocking parallel Rust rendering when available (#1039), falling back to
+    # synchronous rendering under the compute gate on Python-only views.
     preview_intermediate_steps: bool = False
 
 
@@ -1992,6 +2007,53 @@ def render(
         raise HTTPException(status_code=400, detail=f"width/height must be in [1, {MAX_RENDER_DIMENSION_PX}]")
     view_rotation = _parse_view_rotation(rotation)
 
+    from . import _render_rust
+
+    if (
+        _render_rust.RUST_AVAILABLE
+        and view in _render_rust.RUST_RENDER_VIEWS
+        and projection in _render_rust.RUST_RENDER_PROJECTIONS
+        and render_image.render_png is render_image._ORIG_RENDER_PNG
+        and render_image.render_png_base64 is render_image._ORIG_RENDER_PNG_BASE64
+    ):
+        with _rust_render_permit():
+            snap = None
+            elapsed_years = 0.0
+            with session.lock:
+                world = _require_world(session)
+                custom_options = show_mountains or show_plains_plateaus or not smooth_sea_ice or not soft_sea_ice_edge
+                cached = _admin_preview(session, projection, view, width, height, view_rotation, custom_options)
+                if cached is not None:
+                    return {"projection": projection, "elapsed_years": world.elapsed_years, "image_base64": cached}
+                if world.climate_cache is not None and _render_rust.can_render_rust(
+                    world,
+                    projection,
+                    view,
+                    orig_render_map_png=render_image._ORIG_RENDER_MAP_PNG,
+                    current_render_map_png=render_image._render_map_png,
+                ):
+                    elapsed_years = world.elapsed_years
+                    snap = _render_rust.build_render_snapshot(
+                        world,
+                        projection,
+                        view,
+                        width,
+                        height,
+                        view_rotation,
+                        show_mountains=show_mountains,
+                        show_plains_plateaus=show_plains_plateaus,
+                        smooth_sea_ice=smooth_sea_ice,
+                        soft_sea_ice_edge=soft_sea_ice_edge,
+                    )
+            if snap is not None:
+                png_bytes, _ = _render_rust.render_snapshot(snap, want_png=True, want_rgb=False)
+                assert png_bytes is not None
+                return {
+                    "projection": projection,
+                    "elapsed_years": elapsed_years,
+                    "image_base64": base64.b64encode(png_bytes).decode("ascii"),
+                }
+
     with _compute_gate.hold(), session.lock:
         world = _require_world(session)
         custom_options = show_mountains or show_plains_plateaus or not smooth_sea_ice or not soft_sea_ice_edge
@@ -2087,7 +2149,7 @@ ANIMATION_KEEPALIVE_INTERVAL_S = 30.0
 ANIMATION_KEEPALIVE_STALL_LIMIT_S = 30 * 60.0
 
 
-def _next_animation_message(session, world, animation, last_frame: int, total: int, pool):
+def _next_animation_message(session, world, animation, last_frame: int, total: int, pool, boundary=None):
     """Advance `animation` one message on a worker thread, yielding a heartbeat line every
     ANIMATION_KEEPALIVE_INTERVAL_S while it runs (#801), and return the message (None once the
     animation has finished) -- use as `message = yield from ...`. `pool` is the run's one
@@ -2110,11 +2172,14 @@ def _next_animation_message(session, world, animation, last_frame: int, total: i
                 seen_phase, changed_at = phase, now
             if now - changed_at >= ANIMATION_KEEPALIVE_STALL_LIMIT_S:
                 continue
+            hb_elapsed = world.elapsed_years
+            if boundary is not None and last_frame < boundary[0]:
+                hb_elapsed = min(hb_elapsed, boundary[1])
             yield json.dumps({
                 "type": "heartbeat",
                 "frame": min(last_frame + 1, total),
                 "total": total,
-                "elapsed_years": world.elapsed_years,
+                "elapsed_years": hb_elapsed,
             }) + "\n"
     finally:
         concurrent.futures.wait([future])
@@ -2127,6 +2192,25 @@ def _animate_step(session: WorldSession, world: World, years: float) -> None:
         _step_world(session, world, years)
 
 
+def _record_frame_checkpoint_locked(session, world, anim_spec: dict, frame: int) -> None:
+    """Persist world checkpoint, recovery sidecar, and viewer feed at one exact whole-frame boundary."""
+    watched = session.feed.has_waiters()
+    if _hosted_worker:
+        session.checkpoint_dirty = True
+        session.public_renders.clear()
+        session.feed.publish(world)
+    # The sidecar must never get ahead of the checkpoint: if this frame's
+    # world save failed, recovery keeps pointing at the older checkpointed
+    # frame (resuming may redo a little work, but never silently skips any).
+    if _checkpoint_world(session):
+        _record_animation_progress(session, {**anim_spec, "completed_frames": frame})
+    if not _hosted_worker:
+        session.public_renders.clear()
+        session.feed.publish(world)
+    if watched:
+        _prerender_viewer_image(session)
+
+
 def _animate_message_line(
     session,
     world,
@@ -2136,20 +2220,15 @@ def _animate_message_line(
     *,
     job_id: str | None = None,
     seconds_per_step: float | None = None,
+    already_checkpointed: bool = False,
 ):
     """Folds one stream_animation_mp4 message into its NDJSON line plus stream state.
 
     Returns `(line, last_frame, completed)`. A progress line checkpoints the world
-    first -- each frame ends on a whole step, so a run that ends badly later (a
-    disconnect, a failed step or encoder) still keeps the frames before it -- and
-    records the frame in the recovery sidecar (`anim_spec` carries the run's static
-    parameters for a later resume, #638). It also publishes the frame to the world's
-    viewers (no checkpoint/index write -- just feed + render-cache) so /view watches
-    each animation step instead of nothing until the end (#653). A heartbeat line just forwards the tick:
-    the world is mid-batch, so no checkpoint (#611). The done line commits the
-    hosted world before sending the video and clears the recovery sidecar. The
-    standalone app publishes the completed run in the stream's finalizer.
-    Split out of animate() so that function stays under the complexity cap."""
+    first (unless already checkpointed at the frame boundary for pipelined Rust
+    renders, #1039) -- each frame ends on a whole step, so a run that ends badly
+    later still keeps the frames before it -- and records the frame in the recovery
+    sidecar (#638). Split out of animate() so that function stays under the complexity cap."""
     if message[0] == "heartbeat":
         _, frame, total, elapsed_years = message
         return json.dumps({
@@ -2160,27 +2239,8 @@ def _animate_message_line(
         }) + "\n", last_frame, False
     if message[0] == "progress":
         _, frame, total, frame_png, elapsed_years = message
-        watched = session.feed.has_waiters()
-        if _hosted_worker:
-            session.checkpoint_dirty = True
-            session.public_renders.clear()
-            session.feed.publish(world)
-        # The sidecar must never get ahead of the checkpoint: if this frame's
-        # world save failed, recovery keeps pointing at the older checkpointed
-        # frame (resuming may redo a little work, but never silently skips any).
-        if _checkpoint_world(session):
-            _record_animation_progress(session, {**anim_spec, "completed_frames": frame})
-        # Each frame ends on a whole step with the locks held, so publish it for
-        # /view watchers: an animation otherwise shows them nothing until its final
-        # publish minutes or hours later (#653). No checkpoint or index write here --
-        # the frame was just checkpointed above and the run's finally publishes fully.
-        # The viewer preview is pre-rendered like any other published change (#658;
-        # audience captured first -- publish pops the waiter list).
-        if not _hosted_worker:
-            session.public_renders.clear()
-            session.feed.publish(world)
-        if watched:
-            _prerender_viewer_image(session)
+        if not already_checkpointed:
+            _record_frame_checkpoint_locked(session, world, anim_spec, frame)
         stats_snap = next(
             (s for s in reversed(world.stats_history) if s.get("elapsed_years") == elapsed_years),
             world.stats_history[-1] if world.stats_history else None,
@@ -2232,6 +2292,34 @@ def _consume_animation_step(gen, job: animation_job.AnimationJob):
         job.publish_heartbeat(heartbeat_line)
 
 
+def _make_animation_preview_callback(job: animation_job.AnimationJob, total_frames: int):
+    """Build intermediate preview callback for `stream_animation_mp4` (#1033, #1039)."""
+
+    def _on_preview(
+        png_bytes: bytes,
+        elapsed_years: float,
+        stats_snapshot: dict | None,
+        rate: float | None,
+    ) -> None:
+        preview_payload: dict = {
+            "type": "preview",
+            "frame": job.frame(),
+            "total": total_frames,
+            "image_base64": base64.b64encode(png_bytes).decode("ascii"),
+            "elapsed_years": elapsed_years,
+            "stats": stats_snapshot,
+        }
+        if rate is not None:
+            preview_payload["seconds_per_step"] = rate
+        job.publish_preview(
+            json.dumps(preview_payload) + "\n",
+            elapsed_years=elapsed_years,
+            seconds_per_step=rate,
+        )
+
+    return _on_preview
+
+
 def _run_animation_worker(
     session: WorldSession,
     req: AnimateRequest,
@@ -2260,36 +2348,12 @@ def _run_animation_worker(
         try:
             _hydrate_locked(session)
             world = _require_world(session)
-            def _on_preview(
-                png_bytes: bytes,
-                elapsed_years: float,
-                stats_snapshot: dict | None,
-                rate: float | None,
-            ) -> None:
-                preview_payload: dict = {
-                    "type": "preview",
-                    "frame": job.frame(),
-                    "total": req.num_frames,
-                    "image_base64": base64.b64encode(png_bytes).decode("ascii"),
-                    "elapsed_years": elapsed_years,
-                    "stats": stats_snapshot,
-                }
-                if rate is not None:
-                    preview_payload["seconds_per_step"] = rate
-                job.publish_preview(
-                    json.dumps(preview_payload) + "\n",
-                    elapsed_years=elapsed_years,
-                    seconds_per_step=rate,
-                )
-
-            animation = render_image.stream_animation_mp4(
-                world, req.projection, req.view, req.width, req.height, view_rotation,
-                req.step_years, req.steps_per_frame, req.num_frames,
-                step_fn=lambda w, y: _animate_step(session, w, y),
-                stop_event=job.stop_event,
-                on_preview=_on_preview if req.preview_intermediate_steps else None,
-                on_step_timing=job.set_seconds_per_step,
+            on_preview = (
+                _make_animation_preview_callback(job, req.num_frames)
+                if req.preview_intermediate_steps
+                else None
             )
+
             anim_spec = {
                 "total_frames": req.num_frames,
                 "steps_per_frame": req.steps_per_frame,
@@ -2299,13 +2363,33 @@ def _run_animation_worker(
                 "width": req.width,
                 "height": req.height,
             }
+            boundary = [0, 0.0]
+
+            def _on_frame_boundary(frame_num: int, boundary_elapsed: float) -> None:
+                boundary[0] = frame_num
+                boundary[1] = boundary_elapsed
+                _record_frame_checkpoint_locked(session, world, anim_spec, frame_num)
+                _apply_pending_controls_locked(session, world)
+
+            animation = render_image.stream_animation_mp4(
+                world, req.projection, req.view, req.width, req.height, view_rotation,
+                req.step_years, req.steps_per_frame, req.num_frames,
+                step_fn=lambda w, y: _animate_step(session, w, y),
+                stop_event=job.stop_event,
+                on_preview=on_preview,
+                on_step_timing=job.set_seconds_per_step,
+                on_frame_boundary=_on_frame_boundary,
+            )
             pool = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="animate-step")
             while True:
-                step_gen = _next_animation_message(session, world, animation, last_frame, req.num_frames, pool)
+                step_gen = _next_animation_message(
+                    session, world, animation, last_frame, req.num_frames, pool, boundary=boundary
+                )
                 message = _consume_animation_step(step_gen, job)
                 if message is None:
                     break
                 step_rate = job.seconds_per_step()
+                already_checkpointed = message[0] == "progress" and message[1] <= boundary[0]
                 line, last_frame, completed = _animate_message_line(
                     session,
                     world,
@@ -2314,6 +2398,7 @@ def _run_animation_worker(
                     anim_spec,
                     job_id=job.job_id,
                     seconds_per_step=step_rate,
+                    already_checkpointed=already_checkpointed,
                 )
                 if message[0] == "heartbeat":
                     job.publish_heartbeat(line, elapsed_years=message[3], seconds_per_step=step_rate)
@@ -2338,8 +2423,8 @@ def _run_animation_worker(
                     _compute_gate.release()
                     raise
                 acquired = True
-                # Apply any control edits queued while the previous frame rendered (#1033).
-                _apply_pending_controls_locked(session, world)
+                if not already_checkpointed:
+                    _apply_pending_controls_locked(session, world)
         except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
             _logger.exception(
                 "animation stream failed at frame %s/%s (projection=%s view=%s size=%sx%s steps_per_frame=%s)",

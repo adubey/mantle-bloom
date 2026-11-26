@@ -1859,6 +1859,9 @@ def test_animate_forwards_heartbeats_while_a_frame_batch_runs_slowly(client, mon
 
     messages = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
     assert [m["type"] for m in messages] == ["progress", "heartbeat", "progress", "heartbeat", "progress", "done"]
+    progress = [m for m in messages if m["type"] == "progress"]
+    assert [m["frame"] for m in progress] == [1, 2, 3]
+    assert [m["elapsed_years"] for m in progress] == [0.0, 100_000.0, 200_000.0]
     heartbeats = [m for m in messages if m["type"] == "heartbeat"]
     assert [m["frame"] for m in heartbeats] == [2, 3]
     assert [m["elapsed_years"] for m in heartbeats] == [100_000.0, 200_000.0]

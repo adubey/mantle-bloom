@@ -8,8 +8,9 @@
   `scipy.sparse.csgraph.connected_components` for plate defragmentation), a compiled PyO3
   Rust extension (`backend/rust/`, imported as `mantle_bloom_rust` via
   `hydroclimate/_glacier_rust.py` for the glacier march, plastic ice-sheet sweeps, and
-  connected-ocean sea-level flood/bisection), Pillow
-  (server-side map rendering, see `render_image.py`), pytest.
+  connected-ocean sea-level flood/bisection, and via `_render_rust.py` for `combined`,
+  `biome`, `elevation`, and `globe` rendering on a dedicated bounded `rayon` pool), Pillow
+  (fallback and debug map rendering, see `render_image.py`), pytest.
 - **Frontend:** React + TypeScript via Vite, plain HTML `<canvas>` — no mapping/charting
   library: data-backed raster maps decode a PNG the backend already rendered and draw it
   (`ctx.drawImage`), which a library would be more ceremony than the problem needs. Other
@@ -769,6 +770,9 @@ render_image.py      renders /worlds/{world_id}/render's requested view/resoluti
                      (see simulation-model/rendering-and-inspectors.md#render-image and simulation-model/climate.md#climate),
                      plus /worlds/{world_id}/animate's streamed H.264/MP4 rendering (stream_animation_mp4)
                      and the "speckle" coastal-dither debug overlay (see debugging/map-views.md)
+_render_rust.py      flat-array `RenderSnapshot` builder and PyO3 bridge to `mantle_bloom_rust`
+                     for `combined`, `biome`, `elevation`, and `globe` rendering on a dedicated
+                     bounded `rayon` pool outside `_compute_gate` (#1039)
 flow_arrows.py       traces the wind and ocean-current views' super arrows: a few long
                      streamlines along the prevailing flow (see simulation-model/climate.md#climate)
 persistence.py       whole-World save/load to a single versioned envelope: v5 is a zip of

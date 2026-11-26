@@ -316,6 +316,9 @@ def test_stream_animation_mp4_stop_event_ends_the_run_early_but_still_yields_a_v
 
 
 def test_stream_animation_mp4_preserves_frames_when_step_fails():
+    import os
+    from app import _render_rust
+
     world = _world()
     calls = 0
 
@@ -330,7 +333,10 @@ def test_stream_animation_mp4_preserves_frames_when_step_fails():
         world, "behrmann", "elevation", 64, 64, None, 1_000_000, 1, 4,
         step_fn=failing_step,
     ))
-    assert [m[1] for m in messages if m[0] == "progress"] == [1, 2]
+    pipelined = _render_rust.RUST_AVAILABLE and os.environ.get("MANTLE_BLOOM_PARALLEL_RENDER") != "0"
+    # In pipelined mode frame 2 is rendered in the background during step 3 and flushed into
+    # the MP4 on step-3 failure without emitting a "progress" checkpoint trigger (#638, #1039).
+    assert [m[1] for m in messages if m[0] == "progress"] == ([1] if pipelined else [1, 2])
     done = messages[-1]
     assert done[3] == "RuntimeError: Lake slice failed to settle"
     with av.open(io.BytesIO(done[1])) as container:
@@ -518,6 +524,7 @@ def test_stream_animation_mp4_reports_step_timing_and_renders_intermediate_previ
         step_fn=_step,
         on_preview=_on_preview,
         on_step_timing=timings.append,
+        parallel_render=False,
     ))
 
     # Encoded MP4 still has only the 2 animation frames, not the 3 intermediate previews.

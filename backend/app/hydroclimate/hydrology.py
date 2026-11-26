@@ -3656,8 +3656,15 @@ def _spill_path(fields: HydrologyFields, adjacency: tuple[np.ndarray, np.ndarray
     indptr, indices = adjacency
     elevation = np.asarray(fields.elevation, dtype=np.float64)
     is_ocean = np.asarray(fields.is_ocean, dtype=np.bool_)
+    ceiling = float(_spill_path_ceiling(fields, source))
+    from .. import _render_rust
+
+    if _render_rust.spill_path_can_use_rust():
+        return _render_rust.spill_path(
+            indptr, indices, elevation, is_ocean, source, target, ceiling, SPILL_PATH_MAX_NODES
+        )
     level = _spill_pass_level(
-        indptr, indices, elevation, is_ocean, source, target, float(_spill_path_ceiling(fields, source)), SPILL_PATH_MAX_NODES
+        indptr, indices, elevation, is_ocean, source, target, ceiling, SPILL_PATH_MAX_NODES
     )
     if not np.isfinite(level):
         return []
