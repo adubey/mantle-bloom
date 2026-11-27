@@ -13,7 +13,9 @@ packet does not meet the draft's required display and supporting evidence.
 | Rain shadows | Provisionally weak or absent: three-cell signed contrasts are negative and fewer than half of profiles are windward-wetter. | Provisionally weak or absent on the same evidence; maps lack geographic overlays and per-range evidence. | Provisional weak/absent, pending a compliant packet. A crest peak alone does not establish a multi-cell shadow. |
 | Dry interiors | Inconclusive: no matched latitude/exposure evidence or labeled geography. | Inconclusive for the same reason. | Inconclusive; aggregate coast-distance means alone cannot establish a comparable interior. |
 
-The 752–849 overlapping eligible profiles have median windward-minus-lee contrasts of
+The 752–849 counts in the draft are transport crossings, not eligible multi-cell
+profiles. After requiring at least two valid cells on each side, there are 729–832
+overlapping profiles. Their median windward-minus-lee contrasts are
 −0.08 to −8.54 mm/yr and 36.6–45.8% windward-wetter profiles across the four combinations.
 They are not independent mountain ranges. These measurements describe the calibration
 world and are not new automatic thresholds. See the draft and
