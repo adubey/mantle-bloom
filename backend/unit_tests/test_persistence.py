@@ -136,12 +136,22 @@ def test_saved_ice_ledgers_drop_retired_frozen_water_fields(version):
 
     if version == 4:
         vars(ledger).update(retired)
+        del cache.ice.ice_release_depth_m, cache.ice.bare_snowmelt_depth_m, cache.ice.surface_melt_depth_m
+        del cache.glacier_meltwater_ledger, cache.bare_snowmelt_ledger, cache.warm_thick_surface_melt_m3
+        del cache.glacier_drainage
         data = pickle.dumps({"format": persistence.SAVE_FORMAT, "version": 4, "surface": "empty", "world": world})
     else:
         output = io.BytesIO()
         with zipfile.ZipFile(io.BytesIO(persistence.save_world_bytes(world))) as original, zipfile.ZipFile(output, "w") as save:
             manifest = json.loads(original.read("manifest.json"))
-            manifest["world"]["hydrology_cache"]["fields"]["ice"]["fields"]["ledger"]["fields"].update(retired)
+            ice_fields = manifest["world"]["hydrology_cache"]["fields"]["ice"]["fields"]
+            ice_fields["ledger"]["fields"].update(retired)
+            del ice_fields["ice_release_depth_m"], ice_fields["bare_snowmelt_depth_m"]
+            del ice_fields["surface_melt_depth_m"]
+            cache_fields = manifest["world"]["hydrology_cache"]["fields"]
+            del cache_fields["glacier_meltwater_ledger"], cache_fields["bare_snowmelt_ledger"]
+            del cache_fields["warm_thick_surface_melt_m3"]
+            del cache_fields["glacier_drainage"]
             save.writestr("manifest.json", json.dumps(manifest))
             for name in original.namelist():
                 if name != "manifest.json":
@@ -153,6 +163,35 @@ def test_saved_ice_ledgers_drop_retired_frozen_water_fields(version):
     assert restored.closing_m3 == 7.0
     assert restored.residual_m3 == 0.0
     assert retired.keys().isdisjoint(vars(restored))
+    assert loaded.hydrology_cache.ice.ice_release_depth_m is None
+    assert loaded.hydrology_cache.ice.bare_snowmelt_depth_m is None
+    assert loaded.hydrology_cache.ice.surface_melt_depth_m is None
+    assert loaded.hydrology_cache.glacier_meltwater_ledger is None
+    assert loaded.hydrology_cache.bare_snowmelt_ledger is None
+    assert loaded.hydrology_cache.warm_thick_surface_melt_m3 is None
+    assert loaded.hydrology_cache.glacier_drainage is None
+
+
+def test_d8_diagnostics_survive_saved_hydrology_cache():
+    world = World(seed=0, plates=[])
+    empty = np.zeros(0)
+    cache = hydrology.compute_hydrology(world, empty, empty, years=0.0)
+    cache.glacier_meltwater_ledger = hydrology.MeltwaterSourceLedger(
+        input_m3=10.0, lake_supply_m3=2.0, land_settlement_m3=1.0,
+        ocean_export_m3=3.0, transit_loss_m3=1.0, river_storage_m3=3.0,
+    )
+    cache.glacier_drainage = hydrology.GlacierDrainageDiagnostics(2, 1, 5.0, 0.0)
+    cache.bare_snowmelt_ledger = cache.glacier_meltwater_ledger
+    cache.warm_thick_surface_melt_m3 = 4.0
+    world.hydrology_cache = cache
+
+    restored = persistence.load_world_bytes(persistence.save_world_bytes(world)).hydrology_cache
+
+    assert restored.glacier_meltwater_ledger.residual_m3 == 0.0
+    assert restored.bare_snowmelt_ledger.residual_m3 == 0.0
+    assert restored.glacier_drainage.filled_pit_count == 2
+    assert restored.glacier_drainage.filled_region_count == 1
+    assert restored.warm_thick_surface_melt_m3 == 4.0
 
 
 def test_loading_a_save_drops_pre_node_key_collision_polarity_frame():

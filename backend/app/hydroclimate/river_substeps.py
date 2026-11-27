@@ -305,7 +305,10 @@ def _reroute(world, hydro, elevation, channel, cover, notch, remaining_years, so
         lake_elevation, is_ocean, flow_target, hydro.river_source_m3_per_yr,
         loss_fraction=getattr(hydro, "river_transit_loss", None),
     )
-    discharge = np.where(is_ocean, routed.deposited, routed.through_flux) / hydrology.SECONDS_PER_YEAR
+    # route_downstream accepts sources only on land. Preserve sources already at marine
+    # nodes (notably grounded marine glacier melt) alongside land flux delivered there.
+    direct_marine = np.where(is_ocean, hydro.river_source_m3_per_yr, 0.0)
+    discharge = np.where(is_ocean, routed.deposited + direct_marine, routed.through_flux) / hydrology.SECONDS_PER_YEAR
     return flow_target, discharge, breach
 
 

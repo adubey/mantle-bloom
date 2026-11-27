@@ -87,6 +87,9 @@ def test_step_ice_rust_matches_python_across_bodies_and_edge_cases(monkeypatch):
     _assert_close(ice_rust.balance_flux_m3_per_yr, ice_py.balance_flux_m3_per_yr)
     _assert_close(ice_rust.sliding_speed_m_per_yr, ice_py.sliding_speed_m_per_yr)
     _assert_close(ice_rust.calved_m3, ice_py.calved_m3)
+    for field in ("ice_release_depth_m", "surface_melt_depth_m", "bare_snowmelt_depth_m"):
+        _assert_close(getattr(ice_rust, field), getattr(ice_py, field))
+    _assert_close(m_rust, ice_rust.ice_release_depth_m + ice_rust.bare_snowmelt_depth_m)
     assert len(ice_rust.bodies) == len(ice_py.bodies)
     for br, bp in zip(ice_rust.bodies, ice_py.bodies):
         np.testing.assert_array_equal(br.nodes, bp.nodes)

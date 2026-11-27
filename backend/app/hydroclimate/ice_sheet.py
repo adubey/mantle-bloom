@@ -758,14 +758,16 @@ def warn_if_capped(ledger: IceLedger) -> None:
 @dataclass
 class IceStep:
     """One glacier step's diagnostics, aligned with hydrology's node arrays and kept on
-    `HydrologyFields.ice` (so in saves: the new depth and meltwater, which hydrology already
-    carries elsewhere, aren't repeated here).
+    `HydrologyFields.ice`, which keeps them available on save and reload.
 
     `thickness` is the plastic profile's ice thickness at each node and `covered` the cell's
     ice-covered fraction. `calved_m3` is ice that left for the ocean, unrouted. The sliding
     speed is reported in m/yr as a calibrated estimate from the model's mass-balance flux.
     D3's `abrasion_depth_m` is the material-limited depth fed back into the working bed;
-    `raw_abrasion_depth_m` retains uncapped physical demand for the erosion budget."""
+    `raw_abrasion_depth_m` retains uncapped physical demand for the erosion budget.
+    `ice_release_depth_m` and `bare_snowmelt_depth_m` give the two meltwater sources
+    in metres of ice over each cell. `surface_melt_depth_m` is the surface-melt share
+    of ice release. Older cached steps lack these diagnostics."""
 
     thickness: np.ndarray
     covered: np.ndarray
@@ -778,6 +780,9 @@ class IceStep:
     frozen_precipitation: FrozenPrecipitation | None = None
     abrasion_depth_m: np.ndarray | None = None
     raw_abrasion_depth_m: np.ndarray | None = None
+    ice_release_depth_m: np.ndarray | None = None
+    bare_snowmelt_depth_m: np.ndarray | None = None
+    surface_melt_depth_m: np.ndarray | None = None
 
 
 @dataclass
@@ -1339,7 +1344,7 @@ def step_ice(
             if len(dom_nodes) < ICE_BODY_MIN_NODES:
                 body = _uniform_body(out, body_nodes, opening, area, bed, climate, is_ocean, dt_myr)
                 rest = np.setdiff1d(dom_nodes, body_nodes)
-                ledger.snow_melted_m3 += _melt_bare_snow(out, rest, bare_acc, area, dt_myr)
+                ledger.snow_melted_m3 += _melt_bare_snow(out, rest[~is_ocean[rest]], bare_acc, area, dt_myr)
             else:
                 dom = _build_domain(graph, dom_nodes, phi, bed, c, area, sea_level_m, is_ocean, climate)
                 hint = _body_margin_hint(margin_hint_m, body_nodes)
@@ -1376,7 +1381,10 @@ def step_ice(
         points, neighbor_idx, area, out.surface, out.depth, opening_depth, thickness, out.covered, climate, is_warm, years,
         graph=graph,
     )
-    melt_m = out.melt_m3 / np.where(area > 0.0, area, 1.0)
+    safe_area = np.where(area > 0.0, area, 1.0)
+    ice_release_depth_m = out.ice_release_m3 / safe_area
+    bare_snowmelt_depth_m = out.bare_snowmelt_m3 / safe_area
+    melt_m = ice_release_depth_m + bare_snowmelt_depth_m
     frozen_precipitation = _frozen_precipitation(climate, area, years, out.retained_snow, is_ocean)
     return out.depth, melt_m, IceStep(
         thickness=thickness,
@@ -1388,6 +1396,9 @@ def step_ice(
         ledger=ledger,
         bodies=bodies,
         frozen_precipitation=frozen_precipitation,
+        ice_release_depth_m=ice_release_depth_m,
+        bare_snowmelt_depth_m=bare_snowmelt_depth_m,
+        surface_melt_depth_m=out.surface_melt_m3 / safe_area,
     )
 
 
@@ -1422,7 +1433,9 @@ class _Output:
 
     def __init__(self, n: int):
         self.depth = np.zeros(n)
-        self.melt_m3 = np.zeros(n)
+        self.ice_release_m3 = np.zeros(n)
+        self.surface_melt_m3 = np.zeros(n)
+        self.bare_snowmelt_m3 = np.zeros(n)
         self.calved = np.zeros(n)
         self.thickness = np.zeros(n)
         self.covered = np.zeros(n)
@@ -1439,7 +1452,8 @@ def _uniform_body(out: _Output, nodes, opening, area, bed, climate, is_ocean, dt
     out.depth[nodes] = h
     out.retained_snow[nodes] = 1.0
     out.surface[nodes] = bed[nodes] + h if h > 0.0 else np.nan
-    out.melt_m3[nodes] += (sm + bm) * area[nodes] / area[nodes].sum()
+    out.ice_release_m3[nodes] += (sm + bm) * area[nodes] / area[nodes].sum()
+    out.surface_melt_m3[nodes] += sm * area[nodes] / area[nodes].sum()
     body = BodyBalance(nodes, opening, acc, sm, bm, 0.0, 0.0, 0.0, saturated=excess > 0.0, domain_nodes=nodes)
     _shed_excess(out, body, excess, nodes, bool(np.any(is_ocean[nodes])), area)
     return body
@@ -1458,15 +1472,24 @@ def _plastic_body(
     _, r_sm, r_bm = shape.rates
     acc0, sm0, _ = dom.bare_rates
     feeds = (acc0 - sm0) > 0.0
-    # Booked melt goes to the nodes in proportion to where it happens.
-    where_melt = shape.cover * dom.area * (r_sm + r_bm) + (1.0 - cov) * dom.area * np.where(feeds, sm0, 0.0)
-    if where_melt.sum() > 0.0:
-        out.melt_m3[nodes] += (sm + bm) * where_melt / where_melt.sum()
-    elif sm + bm > 0.0:
-        out.melt_m3[body_nodes] += (sm + bm) * area[body_nodes] / area[body_nodes].sum()
+    # The two melt processes have different spatial rates (#1019).
+    where_surface = shape.cover * dom.area * r_sm + (1.0 - cov) * dom.area * np.where(feeds, sm0, 0.0)
+    where_basal = shape.cover * dom.area * r_bm
+    if where_surface.sum() > 0.0:
+        surface_melt = sm * where_surface / where_surface.sum()
+        out.ice_release_m3[nodes] += surface_melt
+        out.surface_melt_m3[nodes] += surface_melt
+    elif sm > 0.0:
+        surface_melt = sm * area[body_nodes] / area[body_nodes].sum()
+        out.ice_release_m3[body_nodes] += surface_melt
+        out.surface_melt_m3[body_nodes] += surface_melt
+    if where_basal.sum() > 0.0:
+        out.ice_release_m3[nodes] += bm * where_basal / where_basal.sum()
+    elif bm > 0.0:
+        out.ice_release_m3[body_nodes] += bm * area[body_nodes] / area[body_nodes].sum()
     # Snow on bare ground that can't feed the body melts where it fell.
-    bare_snow = (1.0 - cov) * dom.area * np.where(feeds, 0.0, acc0) * dt_myr
-    out.melt_m3[nodes] += bare_snow
+    bare_snow = (1.0 - cov) * dom.area * np.where(feeds | dom.ocean, 0.0, acc0) * dt_myr
+    out.bare_snowmelt_m3[nodes] += bare_snow
     out.retained_snow[nodes] = np.where(feeds, 1.0, cov)
     ledger.snow_melted_m3 += float(bare_snow.sum())
     body = BodyBalance(body_nodes, opening, acc, sm, bm, 0.0, 0.0, 0.0, margin_m=shape.d, saturated=saturated, domain_nodes=nodes)
@@ -1487,7 +1510,7 @@ def _shed_excess(out: _Output, body: BodyBalance, excess: float, margin, marine:
         out.calved[margin] += excess * share
         body.calved_m3 += excess
     else:
-        out.melt_m3[margin] += excess * share
+        out.ice_release_m3[margin] += excess * share
         body.overflow_m3 += excess
 
 
@@ -1502,7 +1525,7 @@ def _guard_body(out: _Output, body: BodyBalance, bed, area, sea_level_m, is_ocea
         kept = out.depth[nodes] - over
         out.thickness[nodes] *= np.divide(kept, out.depth[nodes], out=np.ones_like(kept), where=out.depth[nodes] > 0.0)
         out.depth[nodes] = kept
-        out.melt_m3[nodes] += over * area[nodes]
+        out.ice_release_m3[nodes] += over * area[nodes]
         body.capped_m3 += float(np.dot(over, area[nodes]))
     afloat = (out.depth[nodes] > 0.0) & ~is_grounded(out.depth[nodes], bed[nodes], sea_level_m, is_ocean[nodes])
     if np.any(afloat):
@@ -1519,7 +1542,7 @@ def _guard_body(out: _Output, body: BodyBalance, bed, area, sea_level_m, is_ocea
 def _melt_bare_snow(out: _Output, idx: np.ndarray, bare_acc: np.ndarray, area: np.ndarray, dt_myr: float) -> float:
     """Snowfall on ice-free cells `idx` over the step melts where it fell. Returns m^3."""
     water = bare_acc[idx] * area[idx] * dt_myr
-    out.melt_m3[idx] += water
+    out.bare_snowmelt_m3[idx] += water
     return float(water.sum())
 
 

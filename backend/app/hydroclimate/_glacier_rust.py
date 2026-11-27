@@ -75,6 +75,9 @@ def step_ice(
     (
         depth,
         melt_m,
+        ice_release_m,
+        surface_melt_by_node_m,
+        bare_snowmelt_m,
         thickness,
         covered,
         is_warm,
@@ -162,6 +165,9 @@ def step_ice(
         ledger=ledger,
         bodies=bodies,
         frozen_precipitation=frozen_precipitation,
+        ice_release_depth_m=np.asarray(ice_release_m, dtype=np.float64),
+        surface_melt_depth_m=np.asarray(surface_melt_by_node_m, dtype=np.float64),
+        bare_snowmelt_depth_m=np.asarray(bare_snowmelt_m, dtype=np.float64),
     )
 
 

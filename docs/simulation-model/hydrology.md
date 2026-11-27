@@ -70,10 +70,11 @@ river model, river presentation uses physical discharge and physical flow-edge l
 lake silt reads the physical lake inflow (#363). The legacy route is only a fallback now.
 Three kinds of water/forcing move along `flow_target`:
 
-- **Physical water**, in m^3/yr: rain on the lagged wet fraction goes directly to lake storage;
-  only the dry fraction incurs land Budyko evapotranspiration and supplies runoff, alongside
-  separately routed glacier meltwater. Dry runoff transit loss is scaled by the dry cell
-  fraction; glacier melt keeps the existing per-node transit loss. The breach gate preserves
+- **Physical water**, in m^3/yr: rain on the lagged wet fraction goes directly to lake storage.
+  Rain on exposed dry ground incurs Budyko evapotranspiration and supplies runoff. Rain on
+  the opening ice cover joins the glacier meltwater source in full. Bare-ground snowmelt
+  joins dry runoff. Dry runoff transit loss is scaled by the dry cell fraction; glacier
+  melt and rain on ice use the per-node transit loss. The breach gate preserves
   wet-cell rain as a separate loss-free supply when chained pits merge or pass overflow on.
   `HydrologyFields.lake_external_supply_m3_per_yr` and its wet-rain, dry-runoff and meltwater
   source arrays expose settled external supply before internal lake-to-lake transfers (#587).
@@ -118,8 +119,39 @@ Three kinds of water/forcing move along `flow_target`:
 - **Glacier meltwater** is the ice ledger's per-step volume (`IceLedger.meltwater_m3`: surface
   and basal melt, overflow, ice shed at the depth guard, and snow melting on bare ground)
   divided by the step length (`hydrology.meltwater_m3_per_yr`). Melted ice converts by mass
-  (`RHO_ICE / RHO_WATER`). Calved ice goes to the ocean unrouted, and accumulation stays ice,
-  so neither is discharge.
+  (`RHO_ICE / RHO_WATER`). `IceStep.ice_release_depth_m` and `bare_snowmelt_depth_m` record
+  each source in metres of ice over its cell. Integrating bare snowmelt over cell area gives
+  `IceLedger.snow_melted_m3`. The glacier march sums this share over its intervals and
+  extrapolates it at the same rate during settle-and-hold. The balance correction for
+  a held glacier changes only glacier release. Calved ice goes directly to the ocean,
+  and accumulation stays in the glacier.
+- **Glacier drainage** moves ice release and rain on grounded ice to the glacier margin
+  before the river and lake passes. Warm-based cells use hydraulic head
+  `bed + (rho_ice / rho_water) * thickness`. A minimax flood finds the reachable filled
+  level; each warm cell then follows its steepest downhill edge on that filled surface,
+  including exposed neighbors, with the flood order breaking flat ties without cycles.
+  Cold-based cells
+  follow the ice-surface target until they enter warm-based ice or reach a margin. The
+  reverse search uses the directed neighbor graph and retains a source at its node when
+  it cannot find a margin; an interior cold sink is not an outlet. Ground routing receives
+  water on the ice-free side of the margin. Meltwater at a marine margin enters the ocean
+  directly and is included in ocean discharge, including when the optional multi-slice river
+  march re-routes the terrain. The earlier breach gate uses ice rain as runoff along ground
+  paths with transit loss, because glacier routing has not run yet.
+- **Meltwater source budgets** report the current step's glacier release plus rain on ice,
+  and bare-ground snowmelt, separately. `glacier_meltwater_ledger` and
+  `bare_snowmelt_ledger` attribute each source to lake supply, ocean export, transit loss,
+  land settlement, and the river storage retained from this step's input. The river ledger
+  accounts for water already stored at the start of the step. Glacier input is measured before
+  the ice-margin handoff, so its residual also exposes any loss or duplication in that routing
+  pass. The source budgets are calculated using the same reach travel times and loss rules as
+  the physical river pass. Unresolved ice drainage remains available to ground routing; if that
+  fallback later reaches a lake or ocean, it counts as delivered, while the unresolved share is
+  reported separately to bound that contribution.
+  `glacier_drainage` counts filled warm-based hydraulic-head minima and connected filled
+  regions, reports water entering those regions, and reports water with no route to a
+  margin. A connected region can contain multiple minima. `warm_thick_surface_melt_m3` records surface melt
+  routed from cells whose closing warm-based ice is thicker than 1 km.
 - **Liquid water at cold sinks.** Runoff and glacier meltwater supply a lake at a cold
   sink. Its water column can hold liquid water and a seasonal cap (RFC 0015 D4 and D5).
   See [Glaciation](#glaciation-hydrologypy).

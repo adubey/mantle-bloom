@@ -1,0 +1,22 @@
+{
+  "commit": "57651bf2425d8d8b71a2a3230a8814ae74f7d7bd",
+  "save_sha256": "06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b6b31131f",
+  "step_years": 1000000.0,
+  "ice_age_period_years": 0.0,
+  "simulate_glacier_march": true,
+  "glacier_stop_mode": "exhaust",
+  "glacier_step_years": 250.0,
+  "peak_rss_mb": 1032.51968,
+  "steps": [
+    {"elapsed_myr":7.4,"wall_s":110.99150620913133,"glacier_source":null,"bare_snow_source":null,"drainage":null,"warm_thick_surface_melt_m3":null,"ice_margin_networks":89,"largest_ice_margin_discharges_m3_s":[46072.59489568488,17240.823747440616,9328.759800594426,9057.996395245138,8154.2503101873735,7713.901698939445,7126.761151276133,3529.810226701553,859.4014625325337,483.85818252467436]},
+    {"elapsed_myr":8.4,"wall_s":115.9772396250628,"glacier_source":null,"bare_snow_source":null,"drainage":null,"warm_thick_surface_melt_m3":null,"ice_margin_networks":97,"largest_ice_margin_discharges_m3_s":[42481.96324156289,5679.720555012168,5178.856374739,2873.3323847053275,2454.936569464953,1240.1457256179804,789.1328526659906,712.2686644122106,710.9764038412104,399.7071583422384]},
+    {"elapsed_myr":9.4,"wall_s":114.70476379198954,"glacier_source":null,"bare_snow_source":null,"drainage":null,"warm_thick_surface_melt_m3":null,"ice_margin_networks":79,"largest_ice_margin_discharges_m3_s":[18855.940846598292,7354.206289908367,2885.811020684121,2027.417174266743,1291.6432942351464,1233.1550383086103,1067.6966168716513,618.8947719093737,514.675843370711,188.30366719119812]},
+    {"elapsed_myr":10.4,"wall_s":96.63559895800427,"glacier_source":null,"bare_snow_source":null,"drainage":null,"warm_thick_surface_melt_m3":null,"ice_margin_networks":78,"largest_ice_margin_discharges_m3_s":[10469.42516714488,8485.992609616138,3249.5206843566843,862.1343423434536,856.6702307321845,799.0134287198088,671.3151381875256,530.4613474533271,314.3296459758563,256.0994464996448]},
+    {"elapsed_myr":11.4,"wall_s":102.64086841698736,"glacier_source":null,"bare_snow_source":null,"drainage":null,"warm_thick_surface_melt_m3":null,"ice_margin_networks":93,"largest_ice_margin_discharges_m3_s":[15525.147061446412,8313.25595304442,3518.570242993706,1009.7931597153406,855.0603773427141,830.039790064675,660.2720366627157,598.104684885975,487.2892046246499,313.1663785181801]},
+    {"elapsed_myr":12.4,"wall_s":104.35402575018816,"glacier_source":null,"bare_snow_source":null,"drainage":null,"warm_thick_surface_melt_m3":null,"ice_margin_networks":99,"largest_ice_margin_discharges_m3_s":[14396.385928360522,10258.556482220893,3503.989560811238,1445.5280025667582,871.4808677858571,530.1575517897423,526.8007221791115,444.06292916569254,419.4343104766484,339.7231801423446]},
+    {"elapsed_myr":13.4,"wall_s":98.26085679209791,"glacier_source":null,"bare_snow_source":null,"drainage":null,"warm_thick_surface_melt_m3":null,"ice_margin_networks":109,"largest_ice_margin_discharges_m3_s":[17931.98966864553,2962.4704034151678,1515.739909004183,957.0620879634828,937.3387465778179,747.6135149530677,689.441638955812,520.2285951176473,415.8601876391082,382.80648057114064]},
+    {"elapsed_myr":14.4,"wall_s":101.72467712499201,"glacier_source":null,"bare_snow_source":null,"drainage":null,"warm_thick_surface_melt_m3":null,"ice_margin_networks":88,"largest_ice_margin_discharges_m3_s":[19038.94736764606,2255.774732382117,1874.6103801799334,1751.7461776838024,1232.3435510419504,981.1082299619477,722.7478406997661,550.8889149542711,473.71853840641114,428.0669349237815]},
+    {"elapsed_myr":15.4,"wall_s":142.78219766612165,"glacier_source":null,"bare_snow_source":null,"drainage":null,"warm_thick_surface_melt_m3":null,"ice_margin_networks":85,"largest_ice_margin_discharges_m3_s":[16344.914784391065,3492.767798127626,2615.2960539870337,750.9921025703123,605.7781757661274,431.074461104626,396.3674398612288,263.74414571751646,195.7248391369297,176.87083222010264]},
+    {"elapsed_myr":16.4,"wall_s":101.58156379102729,"glacier_source":null,"bare_snow_source":null,"drainage":null,"warm_thick_surface_melt_m3":null,"ice_margin_networks":94,"largest_ice_margin_discharges_m3_s":[13963.422081362098,12025.464335417759,6036.159781434171,867.8927633873845,763.7158152323037,761.5197347620267,646.1060106734142,468.38077497589103,310.2460696957512,306.4848645903008]}
+  ]
+}
