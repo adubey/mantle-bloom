@@ -49,3 +49,84 @@ def test_disable_rust_environment():
         [sys.executable, "-c", "from app.hydroclimate import _routing_rust; assert not _routing_rust.RUST_AVAILABLE"],
         cwd=Path(__file__).resolve().parents[1], env=env, check=True,
     )
+
+
+@pytest.mark.skipif(not _routing_rust.RUST_AVAILABLE, reason="Rust extension unavailable")
+@pytest.mark.parametrize("with_erosion", [False, True])
+def test_downstream_matches_reference_with_cycles_and_losses(monkeypatch, with_erosion):
+    rng = np.random.default_rng(1046)
+    for _ in range(20):
+        n = 80
+        elevation = rng.integers(0, 10, n).astype(float)
+        ocean = rng.random(n) < 0.15
+        target = rng.integers(-1, n, n)
+        source, retain, loss, erosion = (rng.random(n) for _ in range(4))
+        args = elevation, ocean, target, source, retain, loss, erosion if with_erosion else None
+        actual = hydrology.route_downstream(*args)
+        monkeypatch.setattr(_routing_rust, "RUST_AVAILABLE", False)
+        expected = hydrology.route_downstream(*args)
+        monkeypatch.setattr(_routing_rust, "RUST_AVAILABLE", True)
+        for name in ("through_flux", "deposited", "retained", "sink_settlement",
+                     "ocean_export", "cycle_settlement", "evaporated"):
+            np.testing.assert_array_equal(getattr(actual, name), getattr(expected, name))
+        if with_erosion:
+            np.testing.assert_array_equal(actual.erosion_only_flux, expected.erosion_only_flux)
+        assert actual.residual == expected.residual
+
+
+@pytest.mark.skipif(not _routing_rust.RUST_AVAILABLE, reason="Rust extension unavailable")
+def test_routing_order_matches_reference_for_uphill_edges_and_ties(monkeypatch):
+    rng = np.random.default_rng(1046)
+    for _ in range(50):
+        n = 100
+        elevation = rng.integers(-5, 5, n).astype(float)
+        ocean = rng.random(n) < 0.1
+        target = rng.integers(-1, n, n)
+        actual = hydrology._routing_order(elevation, ocean, target)
+        monkeypatch.setattr(_routing_rust, "RUST_AVAILABLE", False)
+        expected = hydrology._routing_order(elevation, ocean, target)
+        monkeypatch.setattr(_routing_rust, "RUST_AVAILABLE", True)
+        assert actual == expected
+
+
+@pytest.mark.skipif(not _routing_rust.RUST_AVAILABLE, reason="Rust extension unavailable")
+@pytest.mark.parametrize("dt", [0.0, 100.0])
+def test_river_reach_sweep_matches_reference(monkeypatch, dt):
+    rng = np.random.default_rng(1046)
+    n = 100
+    order = np.arange(n, dtype=np.int64)
+    target = np.minimum(order + 1, n - 1)
+    target[-1] = -1
+    ocean = np.zeros(n, dtype=bool)
+    ocean[-2] = True
+    stores = rng.random(n) < 0.6
+    tau = rng.uniform(10.0, 1000.0, n)
+    storage, runoff, melt, prior, runoff_loss, melt_loss = (rng.random(n) for _ in range(6))
+
+    def run():
+        inputs = [runoff.copy(), melt.copy(), prior.copy()]
+        result = hydrology._sweep_river_reaches(
+            order, target, ocean, stores, tau, dt, storage, *inputs, runoff_loss, melt_loss,
+        )
+        return result, inputs
+
+    actual, actual_inputs = run()
+    monkeypatch.setattr(_routing_rust, "RUST_AVAILABLE", False)
+    expected, expected_inputs = run()
+    for a, b in zip(list(actual) + actual_inputs, list(expected) + expected_inputs, strict=True):
+        np.testing.assert_array_equal(a, b)
+
+
+@pytest.mark.skipif(not _routing_rust.RUST_AVAILABLE, reason="Rust extension unavailable")
+def test_river_reach_sweep_falls_back_for_strided_mutable_inputs(monkeypatch):
+    n = 8
+    order = np.arange(n, dtype=np.int64)
+    target = np.full(n, -1, dtype=np.int64)
+    ocean = np.zeros(n, dtype=bool)
+    stores = np.zeros(n, dtype=bool)
+    zeros = np.zeros(n)
+    runoff = np.ones(n * 2)[::2]
+    args = order, target, ocean, stores, np.ones(n), 1.0, zeros, runoff, zeros.copy(), zeros.copy(), zeros, zeros
+    monkeypatch.setattr(_routing_rust._rust, "sweep_river_reaches_rs", lambda *args: pytest.fail("native path used"))
+    result = hydrology._sweep_river_reaches(*args)
+    np.testing.assert_array_equal(result[3], runoff)

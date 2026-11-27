@@ -1383,6 +1383,14 @@ def _routing_order(elevation: np.ndarray, is_ocean: np.ndarray, flow_target: np.
     if not np.any(elevation[targets[land_edge]] >= elevation[land_indices[land_edge]]):
         return land_indices[np.argsort(-elevation[land_indices])].tolist(), []
 
+    # NumPy's fast downhill sort is retained to preserve its tie order. Non-finite
+    # elevations also keep Python's heap ordering (#1046).
+    if (
+        _routing_rust.RUST_AVAILABLE and hasattr(_routing_rust._rust, "routing_order_rs")
+        and np.all(np.isfinite(elevation))
+    ):
+        return _routing_rust.routing_order(elevation, is_ocean, flow_target)
+
     n = len(elevation)
     indegree = np.bincount(targets[land_edge], minlength=n)
     heap = [(-float(elevation[i]), int(i)) for i in land_indices[indegree[land_indices] == 0]]
@@ -1513,6 +1521,23 @@ def route_downstream(
     `erosion_only_source_amount` is supplied, it is propagated beside the primary source with
     the same losses but without retention/deposition, and remains the third item when unpacked."""
     n = len(elevation)
+    if _routing_rust.RUST_AVAILABLE and hasattr(_routing_rust._rust, "route_downstream_rs"):
+        order, stuck = _routing_order(elevation, is_ocean, flow_target)
+        arrays = _routing_rust.route_downstream(
+            order, stuck, flow_target, is_ocean, source_amount,
+            retain_fraction if retain_fraction is not None else np.zeros(n),
+            loss_fraction if loss_fraction is not None else np.zeros(n), erosion_only_source_amount,
+        )
+        through, deposited, retained, sink, export, cycle, evaporated, erosion = arrays
+        source_total = float(np.where(~is_ocean, source_amount, 0.0).sum())
+        residual = source_total - (
+            sum(retained.tolist()) + sum(sink.tolist()) + sum(export.tolist())
+            + sum(cycle.tolist()) + sum(evaporated.tolist())
+        )
+        return DownstreamRoutingResult(
+            through, deposited, retained, sink, export, cycle, evaporated,
+            erosion if erosion_only_source_amount is not None else None, residual,
+        )
     through_flux = np.where(~is_ocean, source_amount, 0.0).astype(np.float64).tolist()
     erosion_only_flux = (
         np.where(~is_ocean, erosion_only_source_amount, 0.0).astype(np.float64).tolist()
@@ -1650,7 +1675,7 @@ def river_residence_time_s(length_m: np.ndarray, discharge_m3_s: np.ndarray) -> 
 
 
 @njit(cache=True)
-def _sweep_river_reaches(
+def _sweep_river_reaches_python(
     order, target, is_ocean, stores, tau_s, dt_s, storage_0, runoff, melt, prior, runoff_loss, melt_loss,
 ):
     """The reservoir form of `route_downstream`: each node in `order` applies the exact
@@ -1712,6 +1737,28 @@ def _sweep_river_reaches(
     return (
         storage_1, gross_out, routed, settled_runoff, settled_melt, settled_prior, ocean_export,
         evaporation, inflow, residual,
+    )
+
+
+def _sweep_river_reaches(
+    order, target, is_ocean, stores, tau_s, dt_s, storage_0, runoff, melt, prior, runoff_loss, melt_loss,
+):
+    arrays = (order, target, is_ocean, stores, tau_s, storage_0, runoff, melt, prior, runoff_loss, melt_loss)
+    dtypes = (np.int64, np.int64, bool, bool, np.float64, np.float64, np.float64, np.float64,
+              np.float64, np.float64, np.float64)
+    if (
+        _routing_rust.RUST_AVAILABLE and hasattr(_routing_rust._rust, "sweep_river_reaches_rs")
+        and all(isinstance(a, np.ndarray) and a.dtype == dtype and a.flags.c_contiguous
+                for a, dtype in zip(arrays, dtypes, strict=True))
+        and all(a.flags.writeable for a in (runoff, melt, prior))
+        and not any(np.shares_memory(arrays[i], b) for i in (6, 7, 8)
+                    for j, b in enumerate(arrays) if i != j)
+    ):
+        return tuple(_routing_rust._rust.sweep_river_reaches_rs(
+            order, target, is_ocean, stores, tau_s, dt_s, storage_0, runoff, melt, prior, runoff_loss, melt_loss,
+        ))
+    return _sweep_river_reaches_python(
+        order, target, is_ocean, stores, tau_s, dt_s, storage_0, runoff, melt, prior, runoff_loss, melt_loss,
     )
 
 
