@@ -85,3 +85,21 @@ Because `integrate_body_volume_rs` sums float64 terms sequentially rather than v
 | `craton_balance_error_km3` | 1.024e-06 | 0.0 | -1.024e-06 |
 | Runtime | 156.9 s | 159.2 s | +2.3 s (noisy shared host) |
 | Peak RSS | 984.6 MB | 908.3 MB | -7.8% |
+
+## Step 3 routing comparison: preregistration
+
+Principle #2 calls for compiled work where per-node routing limits simulation pace. This
+comparison tests whether native accumulation and uphill DAG ordering reduce routing time while
+preserving flow destinations, ledgers, and reservoir state. The baseline is `f1b75db6`;
+the candidate is the issue branch. Both use diagnostic wind, one warmup and three measured
+100,000-year steps, sequentially on the same host. The young world uses seed 0 and densities
+4/4/2. The mature world is `mantle-bloom-seed47235302-67900000y.bloom`, SHA-256
+`eff1f6d7abdfe46c7af5b45ab23f136f3fac591f4d95f3457017c1e7d933216b`.
+
+The primary performance measure is the sum of `Ordering the flow network` and `Routing flow
+downstream` phase times; total step time and peak RSS are secondary. Expect a reduction in
+routing time, with no material increase in RSS. As in the preceding routing slice, a phase
+change below 10% or total-step change below 2% is inconclusive; replicate noisy results.
+Exact routing-order, flux, and ledger parity are the principal invariants, with tight numerical
+parity for reservoir arithmetic. Any observed model-output change requires a saved-world
+replay comparison before claiming end-to-end parity.
