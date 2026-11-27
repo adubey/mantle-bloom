@@ -74,7 +74,137 @@ separately because water in this category may later be delivered by ground routi
 
 ## Results
 
-**Prior candidate only; superseded by the review-fix reruns below.** Seeds 628977350 and
+### Review-fix reruns
+
+The first revised-candidate diagnosis seed completed after the outlet-selection and
+source-ledger fixes, on head `d524d9795542874923e5edb64c9c73ca7c1202fb`. It used seed
+649658380 (converted save SHA-256
+`06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b6b31131f`), the Rust glacier
+solver, and both preregistered step sizes for 10 Myr each. The 0.25 Myr arm had 40 steps
+(6.4 to 16.4 Myr save age); the 1 Myr arm had 10 steps over the same interval. Compact
+per-step records: [`0.25 Myr`](g6-d8-d524d979-649658380-025-reviewfix.json) and
+[`1 Myr`](g6-d8-d524d979-649658380-100-reviewfix.json). Full raw outputs and their
+checksums remain in the private captures directory.
+
+| Measure | 0.25 Myr | 1 Myr |
+| --- | ---: | ---: |
+| Ice-margin networks, range over steps | 74–117 | 74–92 |
+| Ice-margin networks, final step | 98 | 74 |
+| Sum of step wall times | 783 s | 513 s |
+| Peak RSS | 1,069 MB | 993 MB |
+
+At 0.25 Myr steps, the 3.196 × 10¹⁸ m³ glacier source delivered 99.58% to lakes or ocean in
+aggregate and at least 98.62% in any step. The 1.787 × 10²⁰ m³ bare-snow source delivered
+96.12% in aggregate and at least 95.33% per step. Maximum absolute relative ledger residuals
+were 3.09 × 10⁻¹⁶ for glacier water and 2.97 × 10⁻¹⁶ for bare snowmelt. Unresolved glacier
+drainage was 1.46% of glacier input. The maximum filled-pit count was 14 and thick warm-ice
+surface melt totalled 1.409 × 10¹⁶ m³.
+
+At 1 Myr steps, the 3.592 × 10¹⁸ m³ glacier source delivered 99.17% in aggregate and at
+least 97.48% per step. The 1.766 × 10²⁰ m³ bare-snow source delivered 95.87% in aggregate
+and at least 94.71% per step. Maximum absolute relative ledger residuals were 2.90 × 10⁻¹⁶
+and 2.47 × 10⁻¹⁶ respectively. Unresolved glacier drainage was 1.65% of glacier input;
+the maximum filled-pit count was 18 and thick warm-ice surface melt totalled
+6.565 × 10¹⁶ m³. One step reached the 5 km depth guard and shed zero meltwater.
+
+The second revised-candidate seed, 997271774, has completed at both preregistered step sizes
+(40 steps at 0.25 Myr and 10 at 1 Myr, from 87.4 to 97.4 Myr) on the same commit and Rust
+glacier solver. Compact per-step records: [`0.25 Myr`](g6-d8-d524d979-997271774-025-reviewfix.json)
+and [`1 Myr`](g6-d8-d524d979-997271774-100-reviewfix.json); the full raw outputs and checksums
+are in the private captures directory.
+
+| Measure | 0.25 Myr | 1 Myr |
+| --- | ---: | ---: |
+| Ice-margin networks, range over steps | 190–282 | 216–275 |
+| Ice-margin networks, final step | 220 | 262 |
+| Sum of step wall times | 1,017 s | 694 s |
+| Peak RSS | 1,379 MB | 1,082 MB |
+
+At 0.25 Myr steps, the 6.779 × 10¹⁹ m³ glacier source delivered 89.11% to lakes or ocean in
+aggregate and at least 82.96% per step. The 2.136 × 10²⁰ m³ bare-snow source delivered 92.23%
+in aggregate and at least 90.09% per step. Maximum absolute relative ledger residuals were
+3.80 × 10⁻¹⁶ and 2.90 × 10⁻¹⁶ respectively. Unresolved glacier drainage was 2.74% of input;
+the maximum filled-pit count was 68 and thick warm-ice surface melt totalled
+5.401 × 10¹⁷ m³. One step hit the 5 km depth guard and shed zero meltwater.
+
+At 1 Myr steps, the 6.347 × 10¹⁹ m³ glacier source delivered 91.47% in aggregate and at
+least 86.25% per step. The 2.079 × 10²⁰ m³ bare-snow source delivered 93.25% in aggregate
+and at least 92.05% per step. Maximum absolute relative ledger residuals were 1.92 × 10⁻¹⁶
+and 2.05 × 10⁻¹⁶ respectively. Unresolved glacier drainage was 5.80% of input; the maximum
+filled-pit count was 77 and thick warm-ice surface melt totalled 1.406 × 10¹⁸ m³. The 5 km
+depth guard appeared in nine steps and shed 4,710 km³ in one of them.
+
+The first held-out seed, 628977350, has completed at both step sizes (40 steps at 0.25 Myr
+and 10 at 1 Myr, from 226.7 to 236.7 Myr) on the same commit and Rust glacier solver.
+Compact per-step records: [`0.25 Myr`](g6-d8-d524d979-628977350-025-reviewfix.json) and
+[`1 Myr`](g6-d8-d524d979-628977350-100-reviewfix.json); the full raw outputs and checksums
+are in the private captures directory.
+
+| Measure | 0.25 Myr | 1 Myr |
+| --- | ---: | ---: |
+| Ice-margin networks, range over steps | 1,188–1,921 | 1,329–1,957 |
+| Ice-margin networks, final step | 1,651 | 1,442 |
+| Sum of step wall times | 2,350 s | 1,491 s |
+| Peak RSS | 1,486 MB | 1,391 MB |
+
+The 2.883 × 10²⁰ m³ glacier source delivered 98.60% to lakes or ocean in aggregate and at
+least 97.50% per step. The 1.049 × 10¹⁹ m³ bare-snow source delivered 99.19% in aggregate
+and at least 97.89% per step. Maximum absolute relative ledger residuals were 3.19 × 10⁻¹⁶
+and 2.64 × 10⁻¹⁶ respectively. Unresolved glacier drainage was 0.052% of input; the maximum
+filled-pit count was 391 and thick warm-ice surface melt totalled 2.056 × 10¹⁶ m³. The 5 km
+depth guard appeared in 36 steps and shed 468 km³ in one of them.
+
+At 1 Myr steps, the 2.261 × 10²⁰ m³ glacier source delivered 99.03% in aggregate and at
+least 98.40% per step. The 1.058 × 10¹⁹ m³ bare-snow source delivered 99.53% in aggregate
+and at least 99.22% per step. Maximum absolute relative ledger residuals were 1.72 × 10⁻¹⁶
+and 2.06 × 10⁻¹⁶ respectively. Unresolved glacier drainage was 0.0052% of input; the maximum
+filled-pit count was 297 and thick warm-ice surface melt totalled 2.033 × 10¹⁶ m³. The 5 km
+depth guard appeared in 10 steps and shed 139,000 km³ in one of them.
+
+Held-out seed 295569319 has completed its 0.25 Myr arm (40 steps from 180.1 to 190.1 Myr)
+on the same commit and Rust glacier solver. Its compact per-step record is
+[`D8`](g6-d8-d524d979-295569319-025-reviewfix.json); the full raw output and checksum are in
+the private captures directory.
+
+| Measure | Revised D8, 0.25 Myr |
+| --- | ---: |
+| Ice-margin networks, range over steps | 579–685 |
+| Ice-margin networks, final step | 595 |
+| Sum of step wall times | 1,078 s |
+| Peak RSS | 2,477 MB |
+
+The 8.991 × 10¹⁹ m³ glacier source delivered 98.45% to lakes or ocean in aggregate and at
+least 97.67% per step. The 2.151 × 10²⁰ m³ bare-snow source delivered 95.43% in aggregate
+and at least 92.58% per step. Maximum absolute relative ledger residuals were 3.34 × 10⁻¹⁶
+and 2.96 × 10⁻¹⁶ respectively. Unresolved glacier drainage was 1.26% of input; the maximum
+filled-pit count was 157 and thick warm-ice surface melt totalled 4.639 × 10¹⁷ m³. The 5 km
+depth guard appeared in 19 steps and shed no meltwater.
+
+The same held-out seed has completed its 1 Myr arm (10 steps from 180.1 to 190.1 Myr) on
+the revised candidate. Its compact per-step record is
+[`D8`](g6-d8-d524d979-295569319-100-reviewfix.json); the full raw output and checksum are in
+the private captures directory.
+
+| Measure | Revised D8, 1 Myr |
+| --- | ---: |
+| Ice-margin networks, range over steps | 524–673 |
+| Ice-margin networks, final step | 572 |
+| Sum of step wall times | 713 s |
+| Peak RSS | 2,150 MB |
+
+The 8.891 × 10¹⁹ m³ glacier source delivered 98.36% to lakes or ocean in aggregate and at
+least 97.81% per step. The 2.124 × 10²⁰ m³ bare-snow source delivered 94.65% in aggregate
+and at least 92.39% per step. Maximum absolute relative ledger residuals were 3.73 × 10⁻¹⁶
+and 1.97 × 10⁻¹⁶ respectively. Unresolved glacier drainage was 2.49% of input; the maximum
+filled-pit count was 162 and thick warm-ice surface melt totalled 5.038 × 10¹⁷ m³. The 5 km
+depth guard appeared in 10 steps and shed no meltwater.
+
+All four revised-candidate held-out arms exceed the RFC's 50% glacier-source delivery
+criterion. The smallest aggregate share was 98.36% (seed 295569319 at 1 Myr steps), and
+the smallest per-step share was 97.50% (seed 628977350 at 0.25 Myr steps). All glacier and
+bare-snow source ledgers closed to round-off in all four arms.
+
+**Prior candidate only; superseded by the review-fix reruns above.** Seeds 628977350 and
 295569319 exceeded the 50% glacier-source delivery criterion at both step sizes on the
 earlier candidate. That evidence remains useful historically but does not close G6 for the
 revised routing. The separate report-only ice-age held-out seed 447276134 was also recorded

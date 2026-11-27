@@ -935,6 +935,17 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
 | Held-out validation | Uses the existing saves, ledger closure requirement, at-least-half delivery criterion and below-one-fifth falsification threshold. |
 | G0–G5 | Their recorded results and outstanding work still apply. |
 
+**G6 revised-candidate result (2026-11-27).** After the outlet-selection review fix, the
+candidate at `d524d9795542874923e5edb64c9c73ca7c1202fb` was replayed with the Rust glacier
+solver on diagnosis seeds 649658380 and 997271774 and held-out seeds 628977350 and
+295569319, at both 0.25 and 1 Myr steps. Each arm covers 10 Myr from the converted save.
+Across all four held-out arms, glacier-source delivery to lakes or ocean was 98.36–99.03%
+in aggregate and at least 97.50% in every step. Both source ledgers close to round-off; the
+largest absolute relative residual was 3.73 × 10⁻¹⁶. This meets the 50% held-out delivery
+criterion and does not approach the 20% falsification threshold. The per-seed network
+counts against the pinned pre-D8 baseline, full trajectories, controls, save hashes and
+backend provenance are in [`analysis/issue1019/README.md`](../analysis/issue1019/README.md).
+
 ### Diagnosis gates
 
 **Seed sets** (recorded on the tracking issue before G0, disjoint):
@@ -1492,7 +1503,7 @@ don't gate any item (see [Scope](#scope-ice-ages-are-out)).
   supersedes" (a), and listed on the tracking issue.
   *Met, per #544's table: #197, #203 and #368 are closed, #358 item 4 is marked superseded (and #358 has since been closed), and #313 stays open with Stage E pointing at the knobs table.*
 - [ ] **G0–G6 run and recorded** in this RFC, with D2's fixes chosen by G0.
-  *Open: G0 (#554, #569), G2, G3 (#940), G4 (#912) and G5 are recorded. G1 and G6 are open.*
+  *Open: G0 (#554, #569), G2, G3 (#940), G4 (#912) and G5 are recorded. G1 remains open; G6 is recorded below and in #1019's replay report.*
 - [x] **Step robustness:** on each held-out save, ice volume and area at 10 Myr agree within
   20% between 0.25 Myr and 1 Myr steps (was 10% until the 2026-11-13 revision). Saves
   replayed with ice ages are out of scope for this criterion (2026-11-15 revision).
@@ -1515,12 +1526,13 @@ don't gate any item (see [Scope](#scope-ice-ages-are-out)).
 - [ ] **Units:** `WATER_TO_ICE` and `MODEL_UNIT_SCALE` are gone; every ice–water conversion
   goes through ρ_w / ρ_i in one named place.
   *Open: `MODEL_UNIT_SCALE` is gone, and `WATER_TO_ICE` remains in `hydrology.py` until D4 and D5.*
-- [ ] **Meltwater rivers:** on each held-out save, at least half of the melt from the ice
+- [x] **Meltwater rivers:** on each held-out save, at least half of the melt from the ice
   (surface, basal and rain on ice) reaches the ocean or a lake as discharge, and the number of
   visible river networks sourced at ice margins is reported against `origin/main`
   (G6 informs the report). Bare-ground snowmelt is reported separately.
-  *Open: implement D8 after D4 and D5 and after the owner accepts the sequence. Run G6 on
-  the D8 branch before evaluating the fixed candidate on the held-out saves.*
+  *Met (#1019): all four fixed-candidate held-out arms exceed 98% aggregate delivery, both
+  source ledgers close to round-off, and ice-margin network counts are reported against the
+  pinned pre-D8 baseline in the [G6 report](../analysis/issue1019/README.md).*
 - [x] **Sea level:** unit tests show floating ice, and ice grounded exactly at flotation,
   leave sea level unchanged; G4's difference is recorded. D2's sea-level loop was dropped
   in the #765 revision: sea level is re-solved from the current ice debit between substeps,
