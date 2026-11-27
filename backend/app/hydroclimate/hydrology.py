@@ -99,7 +99,7 @@ from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 from .. import cratons, geometry, healpix_grid, trace
-from . import _glacier_rust, _lakes_rust, breaching, lakes, river_substeps
+from . import _glacier_rust, _lakes_rust, _routing_rust, breaching, lakes, river_substeps
 from ..elevation_lines import DEFAULT_NODE_DENSITY, PLANET_RADIUS_KM, line_spacing_rad
 from ..plates import (
     Plate,
@@ -1303,6 +1303,11 @@ def _compute_flow_direction(
 
     The target routes liquid on the ground even at sub-zero annual mean. At an ice margin
     it also receives material routed off the glacier surface (#539, #991)."""
+    if _routing_rust.RUST_AVAILABLE:
+        return _routing_rust.flow_direction(
+            elevation, is_ocean, neighbor_idx, water_surface_offset, filled_elevation,
+            spill_target, prev_channel_depth, CHANNEL_PREFERENCE_THRESHOLD_M,
+        )
     n = len(elevation)
     neighbor_elev = elevation[neighbor_idx]  # (n, k)
     own_elev = elevation[:, None]
