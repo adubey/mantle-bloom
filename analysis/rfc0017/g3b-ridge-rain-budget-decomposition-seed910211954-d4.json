@@ -1,0 +1,759 @@
+{
+  "density": 4,
+  "local_source_definition": "Combined land source proxy: lake/sea evaporation, river evaporation, and vegetation; the captured source array does not retain these tags separately.",
+  "measurements": {
+    "finite_volume/cfd": {
+      "arms": {
+        "control": {
+          "lee_rain_components_mm_yr_per_link": {
+            "bulk_sink_mm_yr": {
+              "count": 849,
+              "mean": 166.35824746505858,
+              "median": 39.113902988095695,
+              "p10": 5.133758984336007,
+              "p90": 474.33543468965104
+            },
+            "intercepted_rain_placed_at_lee_mm_yr": {
+              "count": 849,
+              "mean": 0.0,
+              "median": 0.0,
+              "p10": 0.0,
+              "p90": 0.0
+            },
+            "saturation_overflow_placed_at_lee_mm_yr": {
+              "count": 849,
+              "mean": 102.56179481864893,
+              "median": 0.0,
+              "p10": 0.0,
+              "p90": 271.3030850058695
+            },
+            "total_rain_actually_placed_at_lee_mm_yr": {
+              "count": 849,
+              "mean": 268.9200422837075,
+              "median": 65.23129486161311,
+              "p10": 5.234998541859309,
+              "p90": 708.1103251991269
+            }
+          },
+          "local_source_mm_yr_equivalent": {
+            "count": 849,
+            "mean": 82.07312949996393,
+            "median": 46.247252718861006,
+            "p10": 0.21775510934507392,
+            "p90": 166.66236580242887
+          },
+          "local_vapor_source_kg_s_per_lee_reservoir": {
+            "count": 849,
+            "mean": 87206.38601391263,
+            "median": 39446.197423479694,
+            "p10": 140.74370414290448,
+            "p90": 156118.83550147724
+          },
+          "median_fraction_of_placed_lee_rain": {
+            "bulk_sink_mm_yr": 1.0,
+            "intercepted_rain_placed_at_lee_mm_yr": 0.0,
+            "saturation_overflow_placed_at_lee_mm_yr": 0.0
+          },
+          "net_face_import_kg_s_per_lee_reservoir": {
+            "count": 849,
+            "mean": 181028.7826860086,
+            "median": 5671.255238754093,
+            "p10": -83032.64233133725,
+            "p90": 425584.89792796224
+          },
+          "solver_local_budget_residual_before_overflow_placement_kg_s": {
+            "count": 849,
+            "mean": 1.6382674199042266e-10,
+            "median": 4.149569576838985e-12,
+            "p10": -1.5366822481155382e-09,
+            "p90": 1.862645149230957e-09
+          }
+        },
+        "ridge_025": {
+          "lee_rain_components_mm_yr_per_link": {
+            "bulk_sink_mm_yr": {
+              "count": 849,
+              "mean": 140.8556811133989,
+              "median": 31.204089918975008,
+              "p10": 4.6923369474050665,
+              "p90": 390.7056594571851
+            },
+            "intercepted_rain_placed_at_lee_mm_yr": {
+              "count": 849,
+              "mean": 23.80738055361597,
+              "median": 0.0,
+              "p10": 0.0,
+              "p90": 0.0
+            },
+            "saturation_overflow_placed_at_lee_mm_yr": {
+              "count": 849,
+              "mean": 74.5529716766485,
+              "median": 0.0,
+              "p10": 0.0,
+              "p90": 103.30597821987907
+            },
+            "total_rain_actually_placed_at_lee_mm_yr": {
+              "count": 849,
+              "mean": 239.21603334366338,
+              "median": 52.693347580441625,
+              "p10": 5.135726447605772,
+              "p90": 598.9468854390325
+            }
+          },
+          "local_source_mm_yr_equivalent": {
+            "count": 849,
+            "mean": 82.07312949996393,
+            "median": 46.247252718861006,
+            "p10": 0.21775510934507392,
+            "p90": 166.66236580242887
+          },
+          "local_vapor_source_kg_s_per_lee_reservoir": {
+            "count": 849,
+            "mean": 87206.38601391263,
+            "median": 39446.197423479694,
+            "p10": 140.74370414290448,
+            "p90": 156118.83550147724
+          },
+          "median_fraction_of_placed_lee_rain": {
+            "bulk_sink_mm_yr": 1.0,
+            "intercepted_rain_placed_at_lee_mm_yr": 0.0,
+            "saturation_overflow_placed_at_lee_mm_yr": 0.0
+          },
+          "net_face_import_kg_s_per_lee_reservoir": {
+            "count": 849,
+            "mean": 162020.0976892027,
+            "median": 3535.9973474943145,
+            "p10": -86730.00905484427,
+            "p90": 359334.1619240769
+          },
+          "solver_local_budget_residual_before_overflow_placement_kg_s": {
+            "count": 849,
+            "mean": 1.9525117238237654e-10,
+            "median": 1.2988721209694631e-11,
+            "p10": -9.662471711635586e-10,
+            "p90": 1.6880221664905548e-09
+          }
+        }
+      },
+      "matched_crest_to_lee_links": 849,
+      "paired_effects": {
+        "bulk_sink_rain_mm_yr": {
+          "candidate_minus_control": {
+            "count": 849,
+            "mean": -25.502566351659702,
+            "median": -5.1157885788474715,
+            "p10": -63.227657614040275,
+            "p90": -0.11952445864378822
+          },
+          "share_lower": 0.9893992932862191
+        },
+        "intercepted_rain_placed_at_lee_mm_yr": {
+          "candidate_minus_control": {
+            "count": 849,
+            "mean": 23.80738055361597,
+            "median": 0.0,
+            "p10": 0.0,
+            "p90": 0.0
+          },
+          "share_lower": 0.0
+        },
+        "local_source_mm_yr_equivalent": {
+          "candidate_minus_control": {
+            "count": 849,
+            "mean": 0.0,
+            "median": 0.0,
+            "p10": 0.0,
+            "p90": 0.0
+          },
+          "share_lower": 0.0
+        },
+        "saturation_overflow_placed_at_lee_mm_yr": {
+          "candidate_minus_control": {
+            "count": 849,
+            "mean": -28.00882314200043,
+            "median": 0.0,
+            "p10": -74.49773240226821,
+            "p90": 0.0
+          },
+          "share_lower": 0.22614840989399293
+        },
+        "total_rain_actually_placed_at_lee_mm_yr": {
+          "candidate_minus_control": {
+            "count": 849,
+            "mean": -29.704008940044165,
+            "median": -6.249631917724823,
+            "p10": -163.67108912219427,
+            "p90": -0.016128554355523912
+          },
+          "share_lower": 0.934040047114252
+        }
+      }
+    },
+    "finite_volume/diagnostic": {
+      "arms": {
+        "control": {
+          "lee_rain_components_mm_yr_per_link": {
+            "bulk_sink_mm_yr": {
+              "count": 828,
+              "mean": 89.61665754058916,
+              "median": 11.068975646957686,
+              "p10": 0.16825930275717565,
+              "p90": 263.85940565446873
+            },
+            "intercepted_rain_placed_at_lee_mm_yr": {
+              "count": 828,
+              "mean": 0.0,
+              "median": 0.0,
+              "p10": 0.0,
+              "p90": 0.0
+            },
+            "saturation_overflow_placed_at_lee_mm_yr": {
+              "count": 828,
+              "mean": 188.6732640000459,
+              "median": 0.0,
+              "p10": 0.0,
+              "p90": 524.9531397648467
+            },
+            "total_rain_actually_placed_at_lee_mm_yr": {
+              "count": 828,
+              "mean": 278.2899215406351,
+              "median": 25.162884695706786,
+              "p10": 0.1703026004500912,
+              "p90": 697.3628027588622
+            }
+          },
+          "local_source_mm_yr_equivalent": {
+            "count": 828,
+            "mean": 37.088677236667905,
+            "median": 2.7772222475049713,
+            "p10": 0.009657349588677085,
+            "p90": 91.79235054453797
+          },
+          "local_vapor_source_kg_s_per_lee_reservoir": {
+            "count": 828,
+            "mean": 44211.51542680943,
+            "median": 2180.6815311874248,
+            "p10": 13.043693022387677,
+            "p90": 99341.72802134017
+          },
+          "median_fraction_of_placed_lee_rain": {
+            "bulk_sink_mm_yr": 1.0,
+            "intercepted_rain_placed_at_lee_mm_yr": 0.0,
+            "saturation_overflow_placed_at_lee_mm_yr": 0.0
+          },
+          "net_face_import_kg_s_per_lee_reservoir": {
+            "count": 828,
+            "mean": 310458.50175554235,
+            "median": 3635.9946361932957,
+            "p10": -9780.614966465442,
+            "p90": 274165.8291826795
+          },
+          "solver_local_budget_residual_before_overflow_placement_kg_s": {
+            "count": 828,
+            "mean": 6.917051393887003e-11,
+            "median": 0.0,
+            "p10": -2.9795046430081126e-10,
+            "p90": 4.656612873077393e-10
+          }
+        },
+        "ridge_025": {
+          "lee_rain_components_mm_yr_per_link": {
+            "bulk_sink_mm_yr": {
+              "count": 828,
+              "mean": 84.33757199991189,
+              "median": 9.564454510170533,
+              "p10": 0.153158178288787,
+              "p90": 251.546499425345
+            },
+            "intercepted_rain_placed_at_lee_mm_yr": {
+              "count": 828,
+              "mean": 8.600454563565021,
+              "median": 0.0,
+              "p10": 0.0,
+              "p90": 0.0
+            },
+            "saturation_overflow_placed_at_lee_mm_yr": {
+              "count": 828,
+              "mean": 167.9972792539917,
+              "median": 0.0,
+              "p10": 0.0,
+              "p90": 406.1619127848685
+            },
+            "total_rain_actually_placed_at_lee_mm_yr": {
+              "count": 828,
+              "mean": 260.9353058174686,
+              "median": 20.805785097541104,
+              "p10": 0.15928933963778935,
+              "p90": 654.753687326671
+            }
+          },
+          "local_source_mm_yr_equivalent": {
+            "count": 828,
+            "mean": 37.088677236667905,
+            "median": 2.7772222475049713,
+            "p10": 0.009657349588677085,
+            "p90": 91.79235054453797
+          },
+          "local_vapor_source_kg_s_per_lee_reservoir": {
+            "count": 828,
+            "mean": 44211.51542680943,
+            "median": 2180.6815311874248,
+            "p10": 13.043693022387677,
+            "p90": 99341.72802134017
+          },
+          "median_fraction_of_placed_lee_rain": {
+            "bulk_sink_mm_yr": 1.0,
+            "intercepted_rain_placed_at_lee_mm_yr": 0.0,
+            "saturation_overflow_placed_at_lee_mm_yr": 0.0
+          },
+          "net_face_import_kg_s_per_lee_reservoir": {
+            "count": 828,
+            "mean": 300305.7915587848,
+            "median": 3745.3333331804324,
+            "p10": -9764.617942109284,
+            "p90": 253141.3868545618
+          },
+          "solver_local_budget_residual_before_overflow_placement_kg_s": {
+            "count": 828,
+            "mean": 3.395076143109905e-11,
+            "median": 0.0,
+            "p10": -3.150489646941423e-10,
+            "p90": 3.4924596548080444e-10
+          }
+        }
+      },
+      "matched_crest_to_lee_links": 828,
+      "paired_effects": {
+        "bulk_sink_rain_mm_yr": {
+          "candidate_minus_control": {
+            "count": 828,
+            "mean": -5.279085540677267,
+            "median": -0.41138165770062884,
+            "p10": -15.55294244693347,
+            "p90": -0.00016153159456202583
+          },
+          "share_lower": 0.9106280193236715
+        },
+        "intercepted_rain_placed_at_lee_mm_yr": {
+          "candidate_minus_control": {
+            "count": 828,
+            "mean": 8.600454563565021,
+            "median": 0.0,
+            "p10": 0.0,
+            "p90": 0.0
+          },
+          "share_lower": 0.0
+        },
+        "local_source_mm_yr_equivalent": {
+          "candidate_minus_control": {
+            "count": 828,
+            "mean": 0.0,
+            "median": 0.0,
+            "p10": 0.0,
+            "p90": 0.0
+          },
+          "share_lower": 0.0
+        },
+        "saturation_overflow_placed_at_lee_mm_yr": {
+          "candidate_minus_control": {
+            "count": 828,
+            "mean": -20.67598474605422,
+            "median": 0.0,
+            "p10": -53.771714328754044,
+            "p90": 0.0
+          },
+          "share_lower": 0.358695652173913
+        },
+        "total_rain_actually_placed_at_lee_mm_yr": {
+          "candidate_minus_control": {
+            "count": 828,
+            "mean": -17.354615723166468,
+            "median": -1.3487015035983365,
+            "p10": -58.93677934842776,
+            "p90": -0.0005312725978936856
+          },
+          "share_lower": 0.9384057971014492
+        }
+      }
+    },
+    "wind_arrows/cfd": {
+      "arms": {
+        "control": {
+          "lee_rain_components_mm_yr_per_link": {
+            "bulk_sink_mm_yr": {
+              "count": 842,
+              "mean": 154.1403216385789,
+              "median": 29.19542945385178,
+              "p10": 3.2177612564316673,
+              "p90": 391.59489643562574
+            },
+            "intercepted_rain_placed_at_lee_mm_yr": {
+              "count": 842,
+              "mean": 0.0,
+              "median": 0.0,
+              "p10": 0.0,
+              "p90": 0.0
+            },
+            "saturation_overflow_placed_at_lee_mm_yr": {
+              "count": 842,
+              "mean": 168.15102813431707,
+              "median": 0.0,
+              "p10": 0.0,
+              "p90": 383.21801146058914
+            },
+            "total_rain_actually_placed_at_lee_mm_yr": {
+              "count": 842,
+              "mean": 322.29134977289607,
+              "median": 41.45945366082243,
+              "p10": 3.38575340392379,
+              "p90": 721.3153194939968
+            }
+          },
+          "local_source_mm_yr_equivalent": {
+            "count": 842,
+            "mean": 80.60746648342922,
+            "median": 47.30857943510223,
+            "p10": 0.22696324115110317,
+            "p90": 170.16199221196524
+          },
+          "local_vapor_source_kg_s_per_lee_reservoir": {
+            "count": 842,
+            "mean": 82394.50912013746,
+            "median": 39261.58872427777,
+            "p10": 140.99267068904894,
+            "p90": 156115.6869155451
+          },
+          "median_fraction_of_placed_lee_rain": {
+            "bulk_sink_mm_yr": 1.0,
+            "intercepted_rain_placed_at_lee_mm_yr": 0.0,
+            "saturation_overflow_placed_at_lee_mm_yr": 0.0
+          },
+          "net_face_import_kg_s_per_lee_reservoir": {
+            "count": 842,
+            "mean": 263183.6321935715,
+            "median": 387.8181594508783,
+            "p10": -91679.409796698,
+            "p90": 347472.23291366646
+          },
+          "solver_local_budget_residual_before_overflow_placement_kg_s": {
+            "count": 842,
+            "mean": 1.669909193769492e-10,
+            "median": 3.865352482534945e-12,
+            "p10": -7.566995918750763e-10,
+            "p90": 1.36496964842081e-09
+          }
+        },
+        "ridge_025": {
+          "lee_rain_components_mm_yr_per_link": {
+            "bulk_sink_mm_yr": {
+              "count": 842,
+              "mean": 133.9735287553139,
+              "median": 24.835696274188315,
+              "p10": 3.0221854938537573,
+              "p90": 321.9350868658596
+            },
+            "intercepted_rain_placed_at_lee_mm_yr": {
+              "count": 842,
+              "mean": 24.778780613709525,
+              "median": 0.0,
+              "p10": 0.0,
+              "p90": 0.0
+            },
+            "saturation_overflow_placed_at_lee_mm_yr": {
+              "count": 842,
+              "mean": 131.28781384179223,
+              "median": 0.0,
+              "p10": 0.0,
+              "p90": 152.61470081480178
+            },
+            "total_rain_actually_placed_at_lee_mm_yr": {
+              "count": 842,
+              "mean": 290.0401232108156,
+              "median": 38.290510501876135,
+              "p10": 3.2233809342722344,
+              "p90": 600.4767539339116
+            }
+          },
+          "local_source_mm_yr_equivalent": {
+            "count": 842,
+            "mean": 80.60746648342922,
+            "median": 47.30857943510223,
+            "p10": 0.22696324115110317,
+            "p90": 170.16199221196524
+          },
+          "local_vapor_source_kg_s_per_lee_reservoir": {
+            "count": 842,
+            "mean": 82394.50912013746,
+            "median": 39261.58872427777,
+            "p10": 140.99267068904894,
+            "p90": 156115.6869155451
+          },
+          "median_fraction_of_placed_lee_rain": {
+            "bulk_sink_mm_yr": 1.0,
+            "intercepted_rain_placed_at_lee_mm_yr": 0.0,
+            "saturation_overflow_placed_at_lee_mm_yr": 0.0
+          },
+          "net_face_import_kg_s_per_lee_reservoir": {
+            "count": 842,
+            "mean": 228589.38001113635,
+            "median": 519.8594703257843,
+            "p10": -90751.31969531855,
+            "p90": 281530.0347634121
+          },
+          "solver_local_budget_residual_before_overflow_placement_kg_s": {
+            "count": 842,
+            "mean": 2.1612969002247765e-10,
+            "median": 5.6843418860808015e-12,
+            "p10": -7.508788257837291e-10,
+            "p90": 1.366424839943647e-09
+          }
+        }
+      },
+      "matched_crest_to_lee_links": 842,
+      "paired_effects": {
+        "bulk_sink_rain_mm_yr": {
+          "candidate_minus_control": {
+            "count": 842,
+            "mean": -20.166792883265035,
+            "median": -2.6226249289520256,
+            "p10": -40.1750887413769,
+            "p90": -0.03256906401898396
+          },
+          "share_lower": 0.982185273159145
+        },
+        "intercepted_rain_placed_at_lee_mm_yr": {
+          "candidate_minus_control": {
+            "count": 842,
+            "mean": 24.778780613709525,
+            "median": 0.0,
+            "p10": 0.0,
+            "p90": 0.0
+          },
+          "share_lower": 0.0
+        },
+        "local_source_mm_yr_equivalent": {
+          "candidate_minus_control": {
+            "count": 842,
+            "mean": 0.0,
+            "median": 0.0,
+            "p10": 0.0,
+            "p90": 0.0
+          },
+          "share_lower": 0.0
+        },
+        "saturation_overflow_placed_at_lee_mm_yr": {
+          "candidate_minus_control": {
+            "count": 842,
+            "mean": -36.863214292524866,
+            "median": 0.0,
+            "p10": -63.97389299495545,
+            "p90": 0.0
+          },
+          "share_lower": 0.18171021377672208
+        },
+        "total_rain_actually_placed_at_lee_mm_yr": {
+          "candidate_minus_control": {
+            "count": 842,
+            "mean": -32.25122656208038,
+            "median": -2.8452219800429255,
+            "p10": -152.1926858238013,
+            "p90": -0.007292269340205818
+          },
+          "share_lower": 0.9299287410926366
+        }
+      }
+    },
+    "wind_arrows/diagnostic": {
+      "arms": {
+        "control": {
+          "lee_rain_components_mm_yr_per_link": {
+            "bulk_sink_mm_yr": {
+              "count": 752,
+              "mean": 76.75610410219102,
+              "median": 6.8531540299881755,
+              "p10": 0.2705286240649415,
+              "p90": 217.0804998243834
+            },
+            "intercepted_rain_placed_at_lee_mm_yr": {
+              "count": 752,
+              "mean": 0.0,
+              "median": 0.0,
+              "p10": 0.0,
+              "p90": 0.0
+            },
+            "saturation_overflow_placed_at_lee_mm_yr": {
+              "count": 752,
+              "mean": 142.23428056395778,
+              "median": 0.0,
+              "p10": 0.0,
+              "p90": 426.38292134743506
+            },
+            "total_rain_actually_placed_at_lee_mm_yr": {
+              "count": 752,
+              "mean": 218.99038466614883,
+              "median": 8.681669567711179,
+              "p10": 0.2966181152430071,
+              "p90": 660.0843492897118
+            }
+          },
+          "local_source_mm_yr_equivalent": {
+            "count": 752,
+            "mean": 37.37739121263937,
+            "median": 3.7314231796160486,
+            "p10": 0.07583071648351578,
+            "p90": 104.46299776976801
+          },
+          "local_vapor_source_kg_s_per_lee_reservoir": {
+            "count": 752,
+            "mean": 41723.7932242543,
+            "median": 2863.97418507193,
+            "p10": 36.20625116391781,
+            "p90": 96998.39662005348
+          },
+          "median_fraction_of_placed_lee_rain": {
+            "bulk_sink_mm_yr": 1.0,
+            "intercepted_rain_placed_at_lee_mm_yr": 0.0,
+            "saturation_overflow_placed_at_lee_mm_yr": 0.0
+          },
+          "net_face_import_kg_s_per_lee_reservoir": {
+            "count": 752,
+            "mean": 164676.26124371294,
+            "median": 405.9221599423263,
+            "p10": -12487.670658011884,
+            "p90": 178899.74097690813
+          },
+          "solver_local_budget_residual_before_overflow_placement_kg_s": {
+            "count": 752,
+            "mean": 3.4023955056817625e-11,
+            "median": 0.0,
+            "p10": -2.3210304789245122e-10,
+            "p90": 1.673470251262188e-10
+          }
+        },
+        "ridge_025": {
+          "lee_rain_components_mm_yr_per_link": {
+            "bulk_sink_mm_yr": {
+              "count": 752,
+              "mean": 72.96694468618193,
+              "median": 6.336204931861325,
+              "p10": 0.2563390094193604,
+              "p90": 206.7682689534953
+            },
+            "intercepted_rain_placed_at_lee_mm_yr": {
+              "count": 752,
+              "mean": 3.438066784393671,
+              "median": 0.0,
+              "p10": 0.0,
+              "p90": 0.0
+            },
+            "saturation_overflow_placed_at_lee_mm_yr": {
+              "count": 752,
+              "mean": 130.95685301821447,
+              "median": 0.0,
+              "p10": 0.0,
+              "p90": 390.0369322190764
+            },
+            "total_rain_actually_placed_at_lee_mm_yr": {
+              "count": 752,
+              "mean": 207.36186448879005,
+              "median": 7.82566374087229,
+              "p10": 0.2827752321301393,
+              "p90": 628.8138737063462
+            }
+          },
+          "local_source_mm_yr_equivalent": {
+            "count": 752,
+            "mean": 37.37739121263937,
+            "median": 3.7314231796160486,
+            "p10": 0.07583071648351578,
+            "p90": 104.46299776976801
+          },
+          "local_vapor_source_kg_s_per_lee_reservoir": {
+            "count": 752,
+            "mean": 41723.7932242543,
+            "median": 2863.97418507193,
+            "p10": 36.20625116391781,
+            "p90": 96998.39662005348
+          },
+          "median_fraction_of_placed_lee_rain": {
+            "bulk_sink_mm_yr": 1.0,
+            "intercepted_rain_placed_at_lee_mm_yr": 0.0,
+            "saturation_overflow_placed_at_lee_mm_yr": 0.0
+          },
+          "net_face_import_kg_s_per_lee_reservoir": {
+            "count": 752,
+            "mean": 157652.8288484021,
+            "median": 329.0954566557359,
+            "p10": -12646.212301594871,
+            "p90": 171552.181388122
+          },
+          "solver_local_budget_residual_before_overflow_placement_kg_s": {
+            "count": 752,
+            "mean": 4.982694857230696e-11,
+            "median": 0.0,
+            "p10": -2.1027517504990095e-10,
+            "p90": 1.6516423784196327e-10
+          }
+        }
+      },
+      "matched_crest_to_lee_links": 752,
+      "paired_effects": {
+        "bulk_sink_rain_mm_yr": {
+          "candidate_minus_control": {
+            "count": 752,
+            "mean": -3.789159416009101,
+            "median": -0.334323431075061,
+            "p10": -10.891419884907982,
+            "p90": -0.0009405882953512769
+          },
+          "share_lower": 0.9468085106382979
+        },
+        "intercepted_rain_placed_at_lee_mm_yr": {
+          "candidate_minus_control": {
+            "count": 752,
+            "mean": 3.438066784393671,
+            "median": 0.0,
+            "p10": 0.0,
+            "p90": 0.0
+          },
+          "share_lower": 0.0
+        },
+        "local_source_mm_yr_equivalent": {
+          "candidate_minus_control": {
+            "count": 752,
+            "mean": 0.0,
+            "median": 0.0,
+            "p10": 0.0,
+            "p90": 0.0
+          },
+          "share_lower": 0.0
+        },
+        "saturation_overflow_placed_at_lee_mm_yr": {
+          "candidate_minus_control": {
+            "count": 752,
+            "mean": -11.277427545743341,
+            "median": 0.0,
+            "p10": -16.101885140133966,
+            "p90": 0.0
+          },
+          "share_lower": 0.2327127659574468
+        },
+        "total_rain_actually_placed_at_lee_mm_yr": {
+          "candidate_minus_control": {
+            "count": 752,
+            "mean": -11.628520177358777,
+            "median": -0.5186074980631354,
+            "p10": -29.114339983941814,
+            "p90": -0.0006288303517947743
+          },
+          "share_lower": 0.9401595744680851
+        }
+      }
+    }
+  },
+  "placement_note": "Saturation overflow is spread north/south to nearby native cells at the same longitude within the same surface class; its receiving reservoir can differ from its source reservoir.",
+  "purpose": "Post-hoc component attribution on the same captured fields; no world stepping or parameter changes.",
+  "rain_component_units": "mm/yr, area-mean within each receiving coarse land reservoir after placement",
+  "save": "seed910211954-221.6myr.bloom",
+  "save_digest": "1f167a8d9e0edf06c3c52b23598dc2f776adc2927f843beb992b5193ad30fd67"
+}
