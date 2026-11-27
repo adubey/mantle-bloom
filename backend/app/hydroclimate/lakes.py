@@ -80,6 +80,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .. import trace as sim_trace
+from . import _lakes_rust
 
 _logger = logging.getLogger(__name__)
 
@@ -834,6 +835,24 @@ def _integrate_body_volume(available, members, cap_level, dry_level, dt_step, ev
         volume = area * relief * wet * wet
         evaporated = area * wet * (evap * (1.0 + SHALLOW_EVAPORATION_BOOST * (1.0 - wet)) + sub) * dt_step
         return volume, min(evaporated, available), 0.0, level
+
+    if _lakes_rust.RUST_AVAILABLE:
+        return _lakes_rust.integrate_body_volume(
+            available,
+            members,
+            cap_level,
+            dry_level,
+            dt_step,
+            hypsometry.elevation,
+            hypsometry.relief_m,
+            hypsometry.area_m2,
+            evaporation,
+            sublimation,
+            SHALLOW_EVAPORATION_BOOST,
+            _LEVEL_SOLVE_MAX_ITERATIONS,
+            _NEWTON_ITERATIONS,
+            _LEVEL_SOLVE_STORAGE_TOLERANCE,
+        )
 
     cap_volume = hypsometry.volume(cap_level, members) if np.isfinite(cap_level) else np.inf
     z = hypsometry.elevation[members]
@@ -1896,6 +1915,9 @@ def _catchment_roots(elevation: np.ndarray, is_ocean: np.ndarray, neighbor_idx: 
     compression (the same amortized technique union-find's own `find` uses) rather than
     recursion, since a chain's length is bounded only by the graph's diameter and a recursive
     version risks Python's recursion limit on a large world."""
+    if _lakes_rust.RUST_AVAILABLE:
+        return _lakes_rust.catchment_roots(elevation, is_ocean, neighbor_idx, _OCEAN_CATCHMENT).tolist()
+
     n = len(elevation)
     neighbor_elev = elevation[neighbor_idx]
     own_elev = elevation[:, None]
@@ -1932,42 +1954,93 @@ def _catchment_roots(elevation: np.ndarray, is_ocean: np.ndarray, neighbor_idx: 
     return catchment_root
 
 
-def build_lake_hierarchy(  # noqa: C901
-    elevation: np.ndarray,
-    is_ocean: np.ndarray,
-    neighbor_idx: np.ndarray,
-    interface_pass_elevation: np.ndarray | None = None,
-) -> list["Lake"]:
-    """Returns the forest of top-level `Lake` roots: every lake that was either finalized by
-    reaching the ocean (`max_depth` set) or is left as an unresolved closed/endorheic basin
-    (`max_depth is None`, a legitimate "no known spill" case -- a real Caspian-Sea-style basin
-    that can fill to its own rim and hold indefinitely) once every catchment-boundary edge has
-    been processed. Every non-root `Lake` is still reachable by walking down through `children`.
-    Ocean nodes, and any node whose own steepest descent drains straight to the ocean without
-    passing through a land local minimum, never appear in any `Lake.members` -- see this
-    module's own docstring for the two-phase algorithm. ``interface_pass_elevation``, when
-    supplied, contains caller-validated effective passes aligned with ``neighbor_idx`` and
-    replaces the default endpoint-maximum edge weight. `hydrology.compute_hydrology` supplies
-    one built from `breaching.py`'s notched passage elevations (established channels plus this
-    step's breach notches). Without it, the endpoint maximum of bare centres is used."""
-    n = len(elevation)
-    if n == 0:
-        return []
-    k = neighbor_idx.shape[1] if neighbor_idx.ndim == 2 else 0
-    if k == 0:
-        return []
-    if interface_pass_elevation is not None:
-        interface_pass_elevation = np.asarray(interface_pass_elevation, dtype=float)
-        if interface_pass_elevation.shape != neighbor_idx.shape:
-            raise ValueError("interface_pass_elevation must match neighbor_idx")
-        if not np.all(np.isfinite(interface_pass_elevation)):
-            raise ValueError("interface_pass_elevation must be finite")
-
-    catchment_root = _catchment_roots(elevation, is_ocean, neighbor_idx)
+def _init_catchment_lakes(
+    catchment_root: list[int],
+    elevation_list: list[float],
+) -> tuple[dict[int, list[int]], dict[int, Lake], int]:
+    """Group non-ocean catchment nodes and materialize one leaf `Lake` per catchment (#1046)."""
     catchment_members: dict[int, list[int]] = {}
     for node, root in enumerate(catchment_root):
         if root != _OCEAN_CATCHMENT:
             catchment_members.setdefault(root, []).append(node)
+
+    component_lake: dict[int, Lake] = {}
+    next_id = 0
+    for root, members in catchment_members.items():
+        component_lake[root] = _make_leaf(next_id, members, elevation_list, sink_node_idx=root)
+        next_id += 1
+    return catchment_members, component_lake, next_id
+
+
+def _apply_ocean_merge(
+    component_lake: dict[int, Lake],
+    roots: list[Lake],
+    land_root: int,
+    land_node: int,
+    ocean_node: int,
+    w: float,
+) -> None:
+    """Finalize one basin reaching the ocean, shared by Python and Rust paths (#1046)."""
+    lake = component_lake.pop(land_root, None)
+    if lake is not None:
+        lake.max_depth = w
+        lake.outlet_node_idx = land_node
+        lake.outlet_target_idx = ocean_node
+        roots.append(lake)
+
+
+def _apply_saddle_merge(
+    component_lake: dict[int, Lake],
+    next_id: int,
+    elevation_list: list[float],
+    a: int,
+    b: int,
+    w: float,
+    ra: int,
+    rb: int,
+) -> int:
+    """Merge two non-ocean components across a saddle, shared by Python and Rust paths (#1046)."""
+    # Every catchment was eagerly given a leaf above, so these should always be present;
+    # the fallback below is only a defensive no-op for an unreachable degenerate case
+    # (e.g. a node with no neighbors at all). `ra`/`rb` are themselves real node indices
+    # (union-find representatives that trace back to a literal catchment-root node -- see
+    # the pre-merge loop), so they're valid sink_node_idx values for this fallback.
+    lake_a = component_lake.pop(ra, None) or _make_leaf(next_id, [ra], elevation_list, sink_node_idx=ra)
+    lake_b = component_lake.pop(rb, None) or _make_leaf(next_id + 1, [rb], elevation_list, sink_node_idx=rb)
+    next_id += 2
+
+    lake_a.max_depth = w
+    lake_a.outlet_node_idx = a
+    lake_a.outlet_target_idx = b
+    lake_b.max_depth = w
+    lake_b.outlet_node_idx = b
+    lake_b.outlet_target_idx = a
+
+    merged = Lake(
+        lake_id=next_id,
+        members=np.concatenate([lake_a.members, lake_b.members]),
+        floor_elevation=min(lake_a.floor_elevation, lake_b.floor_elevation),
+        min_depth=w,
+        max_depth=None,
+        children=[lake_a, lake_b],
+        current_water_elevation=min(lake_a.floor_elevation, lake_b.floor_elevation),
+    )
+    next_id += 1
+    component_lake[rb] = merged
+    return next_id
+
+
+def _build_lake_hierarchy_python(
+    elevation: np.ndarray,
+    is_ocean: np.ndarray,
+    neighbor_idx: np.ndarray,
+    interface_pass_elevation: np.ndarray | None,
+) -> list["Lake"]:
+    n = len(elevation)
+    k = neighbor_idx.shape[1]
+    catchment_root = _catchment_roots(elevation, is_ocean, neighbor_idx)
+    elevation_list = elevation.tolist()
+    catchment_members, component_lake, next_id = _init_catchment_lakes(catchment_root, elevation_list)
 
     ocean_idx = n
     parent = list(range(n + 1))
@@ -1984,15 +2057,10 @@ def build_lake_hierarchy(  # noqa: C901
     # already same-root no-ops once the boundary-merge loop below runs), and separately
     # pre-merge every ocean-draining node -- true is_ocean nodes and any node whose chain
     # reaches one -- straight into one virtual OCEAN super-root.
-    elevation_list = elevation.tolist()
-    component_lake: dict[int, Lake] = {}
-    next_id = 0
     for root, members in catchment_members.items():
         for node in members:
             if node != root:
                 parent[find(node)] = find(root)
-        component_lake[root] = _make_leaf(next_id, members, elevation_list, sink_node_idx=root)
-        next_id += 1
     for node, root in enumerate(catchment_root):
         if root == _OCEAN_CATCHMENT:
             parent[find(node)] = find(ocean_idx)
@@ -2040,45 +2108,74 @@ def build_lake_hierarchy(  # noqa: C901
             land_root = rb if a_ocean else ra
             land_node = b if a_ocean else a
             ocean_node = a if a_ocean else b
-            lake = component_lake.pop(land_root, None)
-            if lake is not None:
-                lake.max_depth = w
-                lake.outlet_node_idx = land_node
-                lake.outlet_target_idx = ocean_node
-                roots.append(lake)
+            _apply_ocean_merge(component_lake, roots, land_root, land_node, ocean_node, w)
             parent[land_root] = ocean_root
             continue
 
-        # Both sides are real catchments (or already-merged parents) -- a genuine saddle.
-        # Every catchment was eagerly given a leaf above, so these should always be present;
-        # the fallback below is only a defensive no-op for an unreachable degenerate case
-        # (e.g. a node with no neighbors at all). `ra`/`rb` are themselves real node indices
-        # (union-find representatives that trace back to a literal catchment-root node -- see
-        # the pre-merge loop above), so they're valid sink_node_idx values for this fallback.
-        lake_a = component_lake.pop(ra, None) or _make_leaf(next_id, [ra], elevation_list, sink_node_idx=ra)
-        lake_b = component_lake.pop(rb, None) or _make_leaf(next_id + 1, [rb], elevation_list, sink_node_idx=rb)
-        next_id += 2
-
-        lake_a.max_depth = w
-        lake_a.outlet_node_idx = a
-        lake_a.outlet_target_idx = b
-        lake_b.max_depth = w
-        lake_b.outlet_node_idx = b
-        lake_b.outlet_target_idx = a
-
+        next_id = _apply_saddle_merge(component_lake, next_id, elevation_list, a, b, w, ra, rb)
         parent[ra] = rb  # simple path-compressed union, same style as hydrology._lake_component_sizes
-        new_root = rb
-        merged = Lake(
-            lake_id=next_id,
-            members=np.concatenate([lake_a.members, lake_b.members]),
-            floor_elevation=min(lake_a.floor_elevation, lake_b.floor_elevation),
-            min_depth=w,
-            max_depth=None,
-            children=[lake_a, lake_b],
-            current_water_elevation=min(lake_a.floor_elevation, lake_b.floor_elevation),
-        )
-        next_id += 1
-        component_lake[new_root] = merged
+
+    roots.extend(component_lake.values())
+    _mark_floor_drains(roots)
+    return roots
+
+
+def build_lake_hierarchy(
+    elevation: np.ndarray,
+    is_ocean: np.ndarray,
+    neighbor_idx: np.ndarray,
+    interface_pass_elevation: np.ndarray | None = None,
+) -> list["Lake"]:
+    """Returns the forest of top-level `Lake` roots: every lake that was either finalized by
+    reaching the ocean (`max_depth` set) or is left as an unresolved closed/endorheic basin
+    (`max_depth is None`, a legitimate "no known spill" case -- a real Caspian-Sea-style basin
+    that can fill to its own rim and hold indefinitely) once every catchment-boundary edge has
+    been processed. Every non-root `Lake` is still reachable by walking down through `children`.
+    Ocean nodes, and any node whose own steepest descent drains straight to the ocean without
+    passing through a land local minimum, never appear in any `Lake.members` -- see this
+    module's own docstring for the two-phase algorithm. ``interface_pass_elevation``, when
+    supplied, contains caller-validated effective passes aligned with ``neighbor_idx`` and
+    replaces the default endpoint-maximum edge weight. `hydrology.compute_hydrology` supplies
+    one built from `breaching.py`'s notched passage elevations (established channels plus this
+    step's breach notches). Without it, the endpoint maximum of bare centres is used."""
+    n = len(elevation)
+    if n == 0:
+        return []
+    k = neighbor_idx.shape[1] if neighbor_idx.ndim == 2 else 0
+    if k == 0:
+        return []
+    if interface_pass_elevation is not None:
+        interface_pass_elevation = np.asarray(interface_pass_elevation, dtype=float)
+        if interface_pass_elevation.shape != neighbor_idx.shape:
+            raise ValueError("interface_pass_elevation must match neighbor_idx")
+        if not np.all(np.isfinite(interface_pass_elevation)):
+            raise ValueError("interface_pass_elevation must be finite")
+
+    if not _lakes_rust.RUST_AVAILABLE:
+        return _build_lake_hierarchy_python(elevation, is_ocean, neighbor_idx, interface_pass_elevation)
+
+    catchment_root, ev_kind, ev_a, ev_b, ev_w, ev_ra, _ev_rb = _lakes_rust.lake_hierarchy_events(
+        elevation,
+        is_ocean,
+        neighbor_idx,
+        interface_pass_elevation,
+        _OCEAN_CATCHMENT,
+    )
+    elevation_list = elevation.tolist()
+    _, component_lake, next_id = _init_catchment_lakes(catchment_root.tolist(), elevation_list)
+    roots: list[Lake] = []
+    for kind, a, b, w, ra, rb in zip(
+        ev_kind.tolist(),
+        ev_a.tolist(),
+        ev_b.tolist(),
+        ev_w.tolist(),
+        ev_ra.tolist(),
+        _ev_rb.tolist(),
+    ):
+        if kind == 0:
+            _apply_ocean_merge(component_lake, roots, ra, a, b, w)
+        else:
+            next_id = _apply_saddle_merge(component_lake, next_id, elevation_list, a, b, w, ra, rb)
 
     roots.extend(component_lake.values())
     _mark_floor_drains(roots)

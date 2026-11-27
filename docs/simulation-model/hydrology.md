@@ -464,7 +464,10 @@ discovered incrementally, which is what actually fixes that runaway-growth failu
 
 The core data structure is `lakes.Lake`: an n-ary tree built by `build_lake_hierarchy`, a
 two-phase algorithm -- a "depression hierarchy" / "watershed by immersion" technique (Barnes et
-al.'s fill-spill-merge family), adapted from a regular grid to this codebase's k-NN graph:
+al.'s fill-spill-merge family), adapted from a regular grid to this codebase's k-NN graph
+(with `hydroclimate/_lakes_rust.py` accelerating component grouping, steepest-descent catchment
+roots, Kruskal merge-event ordering, and multi-member volume integration in Rust with a
+transparent pure-Python fallback controlled by `MANTLE_BLOOM_DISABLE_RUST=1`):
 
 - **Phase 1** assigns every node to the catchment of the true local minimum its own *pure*
   steepest descent (not `_compute_flow_direction`'s channel-biased version -- a routing
