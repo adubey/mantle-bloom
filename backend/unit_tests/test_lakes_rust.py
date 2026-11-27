@@ -202,3 +202,55 @@ def test_stale_rust_module_missing_lake_exports_falls_back_cleanly(caplog):
         resolved = _lakes_rust._resolve_rust_module(SimpleNamespace(step_ice=object()))
     assert resolved is None
     assert "bin/build_rust.py" in caplog.text
+
+
+@pytest.mark.skipif(not _lakes_rust.RUST_AVAILABLE, reason="mantle_bloom_rust lake exports unavailable")
+def test_native_entry_points_handle_fortran_and_strided_arrays():
+    import math
+
+    import mantle_bloom_rust
+
+    # Fortran-order neighbor_idx and interface_pass (Codex review finding)
+    nb_c = np.array([[1, 1], [0, 0], [2, 2]], dtype=np.int64)
+    nb_f = np.asfortranarray(nb_c)
+    is_lake = np.array([True, True, True], dtype=bool)
+    ip_c, mem_c = mantle_bloom_rust.lake_components_rs(is_lake, nb_c)
+    ip_f, mem_f = mantle_bloom_rust.lake_components_rs(is_lake, nb_f)
+    np.testing.assert_array_equal(ip_f, ip_c)
+    np.testing.assert_array_equal(mem_f, mem_c)
+
+    elev = np.array([-0.0, 5.0, 0.0, -10.0], dtype=np.float64)
+    is_ocean = np.array([False, False, False, True], dtype=bool)
+    nb2_c = np.array([[1, 2], [0, 2], [1, 3], [2, 2]], dtype=np.int64)
+    nb2_f = np.asfortranarray(nb2_c)
+    pass_c = np.array([[5.0, 2.0], [5.0, 3.0], [3.0, 1.0], [1.0, -10.0]], dtype=np.float64)
+    pass_f = np.asfortranarray(pass_c)
+
+    np.testing.assert_array_equal(
+        mantle_bloom_rust.catchment_roots_rs(elev, is_ocean, nb2_f, lakes._OCEAN_CATCHMENT),
+        mantle_bloom_rust.catchment_roots_rs(elev, is_ocean, nb2_c, lakes._OCEAN_CATCHMENT),
+    )
+
+    ev_c = mantle_bloom_rust.lake_hierarchy_events_rs(elev, is_ocean, nb2_c, pass_c, lakes._OCEAN_CATCHMENT)
+    ev_f = mantle_bloom_rust.lake_hierarchy_events_rs(elev, is_ocean, nb2_f, pass_f, lakes._OCEAN_CATCHMENT)
+    for a, b in zip(ev_c, ev_f):
+        np.testing.assert_array_equal(a, b)
+
+    # Signed-zero endpoint maximum matches np.maximum(-0.0, +0.0) -> +0.0
+    ev_z = mantle_bloom_rust.lake_hierarchy_events_rs(
+        np.array([-0.0, 0.0]), np.array([False, True]), np.array([[1], [0]], dtype=np.int64), None, -2,
+    )
+    assert math.copysign(1.0, float(ev_z[4][0])) == 1.0
+
+
+@pytest.mark.skipif(not _lakes_rust.RUST_AVAILABLE, reason="mantle_bloom_rust lake exports unavailable")
+def test_lake_components_skips_dry_row_neighbors(monkeypatch):
+    # Matches Python reference: dry rows' out-of-range neighbors are ignored when only wet rows matter.
+    is_lake = np.array([True, False], dtype=bool)
+    nb = np.array([[0], [-1]], dtype=np.int64)
+    rust_groups = hydrology.lake_components(is_lake, nb)
+    monkeypatch.setattr(_lakes_rust, "RUST_AVAILABLE", False)
+    py_groups = hydrology.lake_components(is_lake, nb)
+    monkeypatch.setattr(_lakes_rust, "RUST_AVAILABLE", True)
+    assert len(rust_groups) == len(py_groups) == 1
+    np.testing.assert_array_equal(rust_groups[0], py_groups[0])

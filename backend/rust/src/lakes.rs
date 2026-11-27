@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
+use numpy::{Element, PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -28,13 +28,36 @@ fn find_compress(parent: &mut [usize], mut x: usize) -> usize {
 }
 
 #[inline]
-fn resolve_neighbor(idx: i64, n: usize) -> PyResult<usize> {
-    if idx < 0 || (idx as usize) >= n {
-        return Err(PyValueError::new_err(format!(
-            "neighbor_idx entry {idx} out of range [0, {n})"
-        )));
+fn copy_1d<T: Copy + Element>(arr: &PyReadonlyArray1<'_, T>) -> PyResult<Vec<T>> {
+    if arr.is_c_contiguous() {
+        Ok(arr.as_slice()?.to_vec())
+    } else {
+        Ok(arr.as_array().iter().copied().collect())
     }
-    Ok(idx as usize)
+}
+
+#[inline]
+fn copy_2d_row_major<T: Copy + Element>(arr: &PyReadonlyArray2<'_, T>) -> PyResult<Vec<T>> {
+    if arr.is_c_contiguous() {
+        Ok(arr.as_slice()?.to_vec())
+    } else {
+        Ok(arr.as_array().iter().copied().collect())
+    }
+}
+
+#[inline]
+fn max_endpoint_elev(ea: f64, eb: f64) -> f64 {
+    if ea.is_nan() || eb.is_nan() {
+        f64::NAN
+    } else if ea > eb {
+        ea
+    } else if eb > ea {
+        eb
+    } else if ea.is_sign_positive() {
+        ea
+    } else {
+        eb
+    }
 }
 
 #[inline]
@@ -291,17 +314,7 @@ pub fn lake_hierarchy_events_core(
             if cr_i != catchment_root[j] {
                 let w = match interface_pass {
                     Some(pass) => pass[idx],
-                    None => {
-                        let ea = elevation[i];
-                        let eb = elevation[j];
-                        if ea.is_nan() || eb.is_nan() {
-                            f64::NAN
-                        } else if ea >= eb {
-                            ea
-                        } else {
-                            eb
-                        }
-                    }
+                    None => max_endpoint_elev(elevation[i], elevation[j]),
                 };
                 edges.push(BoundaryEdge {
                     a: i as u32,
@@ -385,15 +398,16 @@ pub fn lake_components_rs<'py>(
         )));
     }
     let k = nb_shape[1];
-    let lake_slice = is_lake.as_slice()?;
-    let nb_slice = neighbor_idx.as_slice()?;
-    if k > 0 && lake_slice.iter().any(|&b| b) {
-        for &nb in nb_slice {
-            let _ = resolve_neighbor(nb, n)?;
-        }
+    let lake_vec = copy_1d(&is_lake)?;
+    if !lake_vec.iter().any(|&b| b) {
+        return Ok((
+            PyArray1::from_vec(py, vec![0_i64]),
+            PyArray1::from_vec(py, Vec::<i64>::new()),
+        ));
     }
+    let nb_vec = copy_2d_row_major(&neighbor_idx)?;
     let (indptr, members) = py
-        .detach(|| lake_components_core(lake_slice, nb_slice, k))
+        .detach(|| lake_components_core(&lake_vec, &nb_vec, k))
         .map_err(PyValueError::new_err)?;
     Ok((
         PyArray1::from_vec(py, indptr),
@@ -424,11 +438,11 @@ pub fn catchment_roots_rs<'py>(
         )));
     }
     let k = nb_shape[1];
-    let elev_slice = elevation.as_slice()?;
-    let ocean_slice = is_ocean.as_slice()?;
-    let nb_slice = neighbor_idx.as_slice()?;
+    let elev_vec = copy_1d(&elevation)?;
+    let ocean_vec = copy_1d(&is_ocean)?;
+    let nb_vec = copy_2d_row_major(&neighbor_idx)?;
     let roots = py
-        .detach(|| catchment_roots_core(elev_slice, ocean_slice, nb_slice, k, ocean_catchment))
+        .detach(|| catchment_roots_core(&elev_vec, &ocean_vec, &nb_vec, k, ocean_catchment))
         .map_err(PyValueError::new_err)?;
     Ok(PyArray1::from_vec(py, roots))
 }
@@ -466,7 +480,7 @@ pub fn lake_hierarchy_events_rs<'py>(
         )));
     }
     let k = nb_shape[1];
-    let pass_slice = match &interface_pass {
+    let pass_vec = match &interface_pass {
         Some(p) => {
             let ps = p.shape();
             if ps != nb_shape {
@@ -474,22 +488,22 @@ pub fn lake_hierarchy_events_rs<'py>(
                     "interface_pass shape must match neighbor_idx",
                 ));
             }
-            Some(p.as_slice()?)
+            Some(copy_2d_row_major(p)?)
         }
         None => None,
     };
-    let elev_slice = elevation.as_slice()?;
-    let ocean_slice = is_ocean.as_slice()?;
-    let nb_slice = neighbor_idx.as_slice()?;
+    let elev_vec = copy_1d(&elevation)?;
+    let ocean_vec = copy_1d(&is_ocean)?;
+    let nb_vec = copy_2d_row_major(&neighbor_idx)?;
 
     let ev = py
         .detach(|| {
             lake_hierarchy_events_core(
-                elev_slice,
-                ocean_slice,
-                nb_slice,
+                &elev_vec,
+                &ocean_vec,
+                &nb_vec,
                 k,
-                pass_slice,
+                pass_vec.as_deref(),
                 ocean_catchment,
             )
         })
@@ -564,5 +578,15 @@ mod tests {
         assert_eq!(ev.ev_w, vec![12.0, 30.0]);
         assert_eq!(ev.ev_ra, vec![0, 3]);
         assert_eq!(ev.ev_rb, vec![3, 6]);
+    }
+
+    #[test]
+    fn test_signed_zero_endpoint_max_prefers_positive_zero() {
+        let elev = vec![-0.0, 0.0];
+        let is_ocean = vec![false, true];
+        let nb = vec![1, 0];
+        let ev = lake_hierarchy_events_core(&elev, &is_ocean, &nb, 1, None, -2).unwrap();
+        assert_eq!(ev.ev_w.len(), 1);
+        assert_eq!(ev.ev_w[0].to_bits(), 0.0_f64.to_bits());
     }
 }
