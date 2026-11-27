@@ -10,7 +10,8 @@
   `hydroclimate/_glacier_rust.py` for the glacier march, plastic ice-sheet sweeps, and
   connected-ocean sea-level flood/bisection, via `hydroclimate/_lakes_rust.py` for lake
   component grouping, catchment roots, depression hierarchy events, and multi-member volume
-  integration, and via `_render_rust.py` for `combined`, `biome`, `elevation`, and `globe`
+  integration, via `hydroclimate/_routing_rust.py` for flow-direction selection, and via
+  `_render_rust.py` for `combined`, `biome`, `elevation`, and `globe`
   rendering on a dedicated bounded `rayon` pool), Pillow
   (fallback and debug map rendering, see `render_image.py`), pytest.
 - **Frontend:** React + TypeScript via Vite, plain HTML `<canvas>` — no mapping/charting

@@ -2,6 +2,7 @@ mod climate;
 mod distance;
 mod eustasy;
 mod graph;
+mod hydrology;
 mod ice_step;
 mod lakes;
 mod plastic;
@@ -32,5 +33,6 @@ fn mantle_bloom_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lakes::catchment_roots_rs, m)?)?;
     m.add_function(wrap_pyfunction!(lakes::lake_hierarchy_events_rs, m)?)?;
     m.add_function(wrap_pyfunction!(lakes::integrate_body_volume_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(hydrology::flow_direction_rs, m)?)?;
     Ok(())
 }
