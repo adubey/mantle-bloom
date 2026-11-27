@@ -25,17 +25,25 @@ def _random_knn_graph(rng: np.random.Generator, n: int, k: int, *, asymmetric: b
     return nb
 
 
+def _same_float_or_none(a: float | None, b: float | None) -> bool:
+    if a is None or b is None:
+        return a is b
+    if np.isnan(a) and np.isnan(b):
+        return True
+    return a == b
+
+
 def _assert_lake_equal(rl: lakes.Lake, pl: lakes.Lake) -> None:
     assert rl.lake_id == pl.lake_id
     np.testing.assert_array_equal(rl.members, pl.members)
-    assert rl.floor_elevation == pl.floor_elevation
-    assert rl.min_depth == pl.min_depth
-    assert rl.max_depth == pl.max_depth
+    assert _same_float_or_none(rl.floor_elevation, pl.floor_elevation)
+    assert _same_float_or_none(rl.min_depth, pl.min_depth)
+    assert _same_float_or_none(rl.max_depth, pl.max_depth)
     assert rl.outlet_node_idx == pl.outlet_node_idx
     assert rl.outlet_target_idx == pl.outlet_target_idx
     assert rl.sink_node_idx == pl.sink_node_idx
     assert rl.drains_at_floor == pl.drains_at_floor
-    assert rl.current_water_elevation == pl.current_water_elevation
+    assert _same_float_or_none(rl.current_water_elevation, pl.current_water_elevation)
     assert len(rl.children) == len(pl.children)
     for rc, pc in zip(rl.children, pl.children):
         _assert_lake_equal(rc, pc)
@@ -254,3 +262,50 @@ def test_lake_components_skips_dry_row_neighbors(monkeypatch):
     monkeypatch.setattr(_lakes_rust, "RUST_AVAILABLE", True)
     assert len(rust_groups) == len(py_groups) == 1
     np.testing.assert_array_equal(rust_groups[0], py_groups[0])
+
+
+@pytest.mark.skipif(not _lakes_rust.RUST_AVAILABLE, reason="mantle_bloom_rust lake exports unavailable")
+def test_invalid_neighbor_indices_and_empty_columns_raise_value_error():
+    import mantle_bloom_rust
+
+    # Wet/land rows reject negative or >= n neighbor indices instead of wrapping like Python.
+    for bad_idx in (-1, 3):
+        with pytest.raises(ValueError, match="out of range"):
+            hydrology.lake_components(np.array([True, True, False]), np.array([[bad_idx], [0], [0]], dtype=np.int64))
+        with pytest.raises(ValueError, match="out of range"):
+            lakes.build_lake_hierarchy(
+                np.array([1.0, 2.0, -5.0]),
+                np.array([False, False, True]),
+                np.array([[bad_idx], [0], [0]], dtype=np.int64),
+            )
+
+    # Consistent k == 0, n > 0 error across both native hierarchy/catchment entry points.
+    elev = np.array([1.0, 2.0])
+    is_ocean = np.array([False, True])
+    nb_empty_k = np.zeros((2, 0), dtype=np.int64)
+    with pytest.raises(ValueError, match="at least one column"):
+        mantle_bloom_rust.catchment_roots_rs(elev, is_ocean, nb_empty_k, lakes._OCEAN_CATCHMENT)
+    with pytest.raises(ValueError, match="at least one column"):
+        mantle_bloom_rust.lake_hierarchy_events_rs(elev, is_ocean, nb_empty_k, None, lakes._OCEAN_CATCHMENT)
+
+
+@pytest.mark.skipif(not _lakes_rust.RUST_AVAILABLE, reason="mantle_bloom_rust lake exports unavailable")
+def test_nan_and_inf_elevations_match_python(monkeypatch):
+    rng = np.random.default_rng(777)
+    n, k = 300, 6
+    nb = _random_knn_graph(rng, n, k, asymmetric=True)
+    elev = rng.uniform(-200.0, 1000.0, size=n)
+    elev[rng.choice(n, size=15, replace=False)] = np.nan
+    elev[rng.choice(n, size=6, replace=False)] = np.inf
+    elev[rng.choice(n, size=6, replace=False)] = -np.inf
+    is_ocean = rng.random(n) < 0.25
+
+    rust_roots = lakes._catchment_roots(elev, is_ocean, nb)
+    rust_forest = lakes.build_lake_hierarchy(elev, is_ocean, nb)
+    monkeypatch.setattr(_lakes_rust, "RUST_AVAILABLE", False)
+    py_roots = lakes._catchment_roots(elev, is_ocean, nb)
+    py_forest = lakes.build_lake_hierarchy(elev, is_ocean, nb)
+    monkeypatch.setattr(_lakes_rust, "RUST_AVAILABLE", True)
+
+    assert rust_roots == py_roots
+    _assert_forest_equal(rust_forest, py_forest)

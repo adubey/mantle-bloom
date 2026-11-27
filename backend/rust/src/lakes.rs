@@ -268,7 +268,7 @@ pub fn lake_hierarchy_events_core(
             ));
         }
     }
-    if n == 0 || k == 0 {
+    if n == 0 {
         return Ok(HierarchyEvents {
             catchment_root: Vec::new(),
             ev_kind: Vec::new(),
@@ -278,6 +278,9 @@ pub fn lake_hierarchy_events_core(
             ev_ra: Vec::new(),
             ev_rb: Vec::new(),
         });
+    }
+    if k == 0 {
+        return Err("neighbor_idx must have at least one column when n > 0".to_string());
     }
 
     let catchment_root = catchment_roots_core(elevation, is_ocean, neighbor_idx, k, ocean_catchment)?;
