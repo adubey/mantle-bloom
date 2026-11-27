@@ -26,5 +26,6 @@ fn mantle_bloom_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(render::spill_path_rs, m)?)?;
     m.add_function(wrap_pyfunction!(render::render_biome_or_combined, m)?)?;
     m.add_function(wrap_pyfunction!(render::render_elevation, m)?)?;
+    m.add_function(wrap_pyfunction!(render::render_constants_rs, m)?)?;
     Ok(())
 }

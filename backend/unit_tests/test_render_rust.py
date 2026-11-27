@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+from types import SimpleNamespace
 
 import av
 import numpy as np
@@ -21,7 +22,7 @@ from PIL import Image
 from scipy.ndimage import distance_transform_edt
 
 from app import _render_rust, animation_job, checkpoint, geometry, main, persistence, plates, render_image
-from app.hydroclimate import biomes, climate, hydrology
+from app.hydroclimate import biomes, climate, hydrology, sea_ice
 from app.world import World, generate_world, step_world
 
 
@@ -607,5 +608,115 @@ def test_http_render_admission_bounded_by_semaphore(monkeypatch):
     finally:
         main._rust_render_semaphore = orig_sem
         main._registry.remove(session.world_id)
+
+
+def test_spill_path_and_render_entrypoints_validate_inputs_without_panicking():
+    rust = _render_rust._rust
+    assert rust is not None
+
+    indptr = np.array([0, 1, 2], dtype=np.int64)
+    indices = np.array([1, 0], dtype=np.int64)
+    elev = np.array([10.0, 5.0], dtype=np.float64)
+    ocean = np.array([False, True], dtype=np.bool_)
+
+    with pytest.raises(ValueError, match="out of bounds"):
+        rust.spill_path_rs(indptr, indices, elev, ocean, 99, 1, 50.0, 16)
+    with pytest.raises(ValueError, match="out of bounds"):
+        rust.spill_path_rs(indptr, indices, elev, ocean, 0, 99, 50.0, 16)
+    with pytest.raises(ValueError, match="shape mismatch"):
+        rust.spill_path_rs(np.array([0, 1], dtype=np.int64), indices, elev, ocean, 0, 1, 50.0, 16)
+    with pytest.raises(ValueError, match="neighbor index out of bounds"):
+        rust.spill_path_rs(indptr, np.array([5, 0], dtype=np.int64), elev, ocean, 0, 1, 50.0, 16)
+
+    w = _stepped_world(seed=7, steps=1)
+    climate.compute_climate_cached(w)
+    snap = _render_rust.build_render_snapshot(w, "behrmann", "combined", 120, 68, None)
+    assert snap is not None
+
+    with pytest.raises(ValueError, match="point array length mismatch"):
+        rust.render_biome_or_combined(
+            "combined", snap.projection, snap.width, snap.height, snap.view_rotation,
+            snap.grid_h, snap.grid_w, snap.sea_level_m, snap.axial_tilt_deg, snap.solar_multiplier,
+            snap.smooth_sea_ice, snap.soft_sea_ice_edge,
+            snap.points, snap.elevation[:-1], snap.lake_depth, snap.lake_ice, snap.glacier_depth,
+            snap.hillshade, snap.channel_depth, snap.channel_width,
+            snap.hydro_points_same, snap.hydro_points, snap.hydro_is_ocean, snap.hydro_is_sea,
+            snap.hydro_perennial_lake_ice,
+            snap.clim_air_temp, snap.clim_ocean_temp, snap.clim_precip, snap.clim_lat_deg,
+            snap.clim_elev_m, snap.clim_is_ocean, snap.clim_h, snap.clim_w,
+            snap.river_from_xyz, snap.river_to_xyz, snap.river_width_frac,
+            snap.river_color_alpha, snap.river_canyon_fill, True, False, snap.stroke_scale_override,
+        )
+
+    snap_elev = _render_rust.build_render_snapshot(w, "behrmann", "elevation", 120, 68, None)
+    assert snap_elev is not None
+    with pytest.raises(ValueError, match="render dimensions"):
+        rust.render_elevation(
+            snap_elev.projection, 0, 68, snap_elev.view_rotation,
+            snap_elev.grid_spacing_rad, snap_elev.sea_level_m, snap_elev.axial_tilt_deg,
+            snap_elev.solar_multiplier, snap_elev.smooth_sea_ice, snap_elev.soft_sea_ice_edge,
+            snap_elev.show_mountains, snap_elev.show_plains_plateaus, snap_elev.tectonics_bbox,
+            snap_elev.points, snap_elev.elevation, snap_elev.lake_depth, snap_elev.lake_ice,
+            snap_elev.glacier_depth, snap_elev.hillshade, snap_elev.channel_depth,
+            snap_elev.channel_width, snap_elev.terrain_relief,
+            snap_elev.hydro_points_same, snap_elev.hydro_points, snap_elev.hydro_is_ocean,
+            snap_elev.hydro_is_sea, snap_elev.hydro_perennial_lake_ice,
+            snap_elev.clim_air_temp, snap_elev.clim_ocean_temp, snap_elev.clim_lat_deg,
+            snap_elev.clim_elev_m, snap_elev.clim_is_ocean, snap_elev.clim_h, snap_elev.clim_w,
+            snap_elev.river_from_xyz, snap_elev.river_to_xyz, snap_elev.river_width_frac[:-1],
+            snap_elev.river_color_alpha, snap_elev.river_canyon_fill, True, False,
+            snap_elev.stroke_scale_override,
+        )
+
+
+def test_biome_relative_shade_factor_propagates_nan_like_python(monkeypatch):
+    # Bucket 5 has a single NaN (len == 1 -> 1.0); bucket 1 has a NaN in len == 3 -> all NaN;
+    # bucket 2 is finite (len == 2 -> 0.75, 1.25).
+    ids = np.array([1, 1, 1, 2, 2, 5], dtype=np.int64)
+    elev = np.array([10.0, np.nan, 20.0, 5.0, 15.0, np.nan], dtype=np.float64)
+    rs_out = biomes.biome_relative_shade_factor(ids, elev)
+    monkeypatch.setattr(_render_rust, "RUST_AVAILABLE", False)
+    py_out = biomes.biome_relative_shade_factor(ids, elev)
+    np.testing.assert_allclose(rs_out, py_out, rtol=0.0, atol=1e-12, equal_nan=True)
+
+
+def test_rust_render_constants_match_python_tables():
+    rust = _render_rust._rust
+    assert rust is not None
+    c = rust.render_constants_rs()
+
+    assert np.array_equal(np.asarray([list(row) for row in c["biome_colors"]], dtype=np.uint8), biomes.BIOME_COLORS)
+    np.testing.assert_allclose(c["elevation_stop_e"], render_image._ELEVATION_STOP_E)
+    np.testing.assert_allclose(c["elevation_stop_rgb"], render_image._ELEVATION_STOP_RGB)
+    assert tuple(c["background_rgb"]) == render_image.BACKGROUND_RGB
+    assert tuple(c["lake_color_rgb"]) == render_image.LAKE_COLOR_RGB
+    assert tuple(c["sea_color_rgb"]) == render_image.SEA_COLOR_RGB
+    assert tuple(c["glacier_color_rgb"]) == render_image.GLACIER_COLOR_RGB
+    assert tuple(c["river_color_rgb"]) == render_image.RIVER_COLOR_RGB
+    assert tuple(c["mountain_overlay_rgb"]) == render_image.MOUNTAIN_OVERLAY_RGB
+    assert tuple(c["plains_plateau_overlay_rgb"]) == render_image.PLAINS_PLATEAU_OVERLAY_RGB
+    assert c["terrain_overlay_alpha"] == pytest.approx(render_image.TERRAIN_OVERLAY_ALPHA)
+    assert c["cell_overlap_factor"] == pytest.approx(render_image.CELL_OVERLAP_FACTOR)
+    assert c["cell_blur_radius_px"] == pytest.approx(render_image.CELL_BLUR_RADIUS_PX)
+    assert c["biome_shade_amplitude"] == pytest.approx(biomes.BIOME_SHADE_AMPLITUDE)
+    assert c["continentality_saturation_rad"] == pytest.approx(biomes.CONTINENTALITY_SATURATION_RAD)
+    assert c["shelf_range_rad"] == pytest.approx(biomes.SHELF_RANGE_RAD)
+    assert c["seawater_freezing_c"] == pytest.approx(sea_ice.SEAWATER_FREEZING_C)
+    assert c["ocean_heat_flux_w_m2"] == pytest.approx(sea_ice.OCEAN_HEAT_FLUX_W_M2)
+    assert c["polar_sea_ice_fraction"] == pytest.approx(sea_ice.POLAR_SEA_ICE_FRACTION)
+    assert c["perennial_cover_low"] == pytest.approx(sea_ice.PERENNIAL_COVER_LOW)
+    assert c["perennial_cover_high"] == pytest.approx(sea_ice.PERENNIAL_COVER_HIGH)
+    assert c["combined_lake_id_code"] == render_image.COMBINED_LAKE_ID_CODE
+    assert c["combined_sea_id_code"] == render_image.COMBINED_SEA_ID_CODE
+
+
+def test_stale_rust_module_missing_render_exports_falls_back_cleanly(caplog):
+    assert _render_rust._resolve_rust_module(_render_rust._rust) is _render_rust._rust
+    with caplog.at_level("WARNING", logger=_render_rust.__name__):
+        resolved = _render_rust._resolve_rust_module(SimpleNamespace(step_ice=object()))
+    assert resolved is None
+    assert "bin/build_rust.py" in caplog.text
+
+
 
 
