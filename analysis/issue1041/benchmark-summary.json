@@ -1,0 +1,29 @@
+{
+  "control_commit": "334e1eeb",
+  "candidate_commit": "934dbd94",
+  "method": "profile_phases.py; one warmup, three measured steps, diagnostic wind; arms sequential",
+  "young": {
+    "seed": 0,
+    "density": "4/4/2",
+    "baseline_step_s": 14.263,
+    "candidate_step_s": 14.276,
+    "baseline_routing_order_s": 1.711,
+    "candidate_routing_order_s": 1.717,
+    "baseline_peak_rss_mb": 1051,
+    "candidate_peak_rss_mb": 941,
+    "flow_direction_cprofile_ms_per_call": [20.417, 4.567]
+  },
+  "mature": {
+    "save": "mantle-bloom-seed47235302-67900000y.bloom",
+    "age_myr": 67.9,
+    "runs": [
+      {"baseline_step_s": 16.757, "candidate_step_s": 15.966, "baseline_routing_order_s": 2.031, "candidate_routing_order_s": 1.833, "baseline_peak_rss_mb": 979, "candidate_peak_rss_mb": 1007},
+      {"baseline_step_s": 13.925, "candidate_step_s": 13.984, "baseline_routing_order_s": 1.463, "candidate_routing_order_s": 1.499, "baseline_peak_rss_mb": 1076, "candidate_peak_rss_mb": 1045}
+    ],
+    "mean_step_s": [15.341, 14.975],
+    "mean_routing_order_s": [1.747, 1.666],
+    "mean_peak_rss_mb": [1027, 1026],
+    "flow_direction_cprofile_ms_per_call": [22.635, 5.465]
+  },
+  "decision": "Kernel-level speedup; whole routing phase improvement below preregistered 10% threshold; step and RSS results inconclusive."
+}
