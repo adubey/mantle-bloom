@@ -1,0 +1,738 @@
+{
+ "args": {
+  "seed": "0",
+  "node_density": "4.0",
+  "climate_density": "4.0",
+  "fluid_density": "2.0",
+  "step_years": "100000.0",
+  "steps": "3",
+  "warmup": "1",
+  "generate_runs": "2",
+  "scenarios": "step",
+  "load": "None",
+  "cprofile": "None",
+  "json": "/Users/adubey/mantle-bloom-captures/issue1046/young-main.json",
+  "min_pct": "1.0",
+  "synthetic_relief": "False",
+  "wind_model": "diagnostic"
+ },
+ "world": {
+  "nodes": 124046,
+  "plates": 17,
+  "elapsed_years": 0.0,
+  "steps_taken": 0
+ },
+ "step_seconds": [
+  16.628382249968126,
+  17.33630650001578,
+  17.061136625008658
+ ],
+ "Stepping, mean of 3 steps (per step)": {
+  "total_s": 17.008608458330855,
+  "tree": [
+   {
+    "path": [
+     "Advancing the wind and ocean solver"
+    ],
+    "inclusive_s": 9.222344184915224e-06,
+    "exclusive_s": 9.222344184915224e-06,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Balancing sea level"
+    ],
+    "inclusive_s": 0.014438916385794679,
+    "exclusive_s": 0.0015607078094035387,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Balancing sea level",
+     "Solving connected-ocean sea level"
+    ],
+    "inclusive_s": 0.01287820857639114,
+    "exclusive_s": 0.01287820857639114,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Detecting collisions"
+    ],
+    "inclusive_s": 0.39084670785814524,
+    "exclusive_s": 0.1107243614581724,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Detecting collisions",
+     "Gathering boundary forces"
+    ],
+    "inclusive_s": 0.25740669504739344,
+    "exclusive_s": 0.25740669504739344,
+    "calls": 17.0
+   },
+   {
+    "path": [
+     "Detecting collisions",
+     "Looking up boundary neighbours"
+    ],
+    "inclusive_s": 0.022715651352579396,
+    "exclusive_s": 0.006681790109723806,
+    "calls": 17.0
+   },
+   {
+    "path": [
+     "Detecting collisions",
+     "Looking up boundary neighbours",
+     "Finding neighbouring plates"
+    ],
+    "inclusive_s": 0.01603386124285559,
+    "exclusive_s": 0.015892387911056478,
+    "calls": 17.0
+   },
+   {
+    "path": [
+     "Detecting collisions",
+     "Looking up boundary neighbours",
+     "Finding neighbouring plates",
+     "Outlining plate territory"
+    ],
+    "inclusive_s": 0.00014147333179910979,
+    "exclusive_s": 0.00014147333179910979,
+    "calls": 17.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment"
+    ],
+    "inclusive_s": 13.54825597233139,
+    "exclusive_s": 0.33205352995234233,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Applying ice load"
+    ],
+    "inclusive_s": 0.0016450833063572645,
+    "exclusive_s": 0.0016450833063572645,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Computing slopes"
+    ],
+    "inclusive_s": 0.04049380527188381,
+    "exclusive_s": 0.04049380527188381,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Depositing wind-blown sediment"
+    ],
+    "inclusive_s": 0.040681625017896295,
+    "exclusive_s": 0.040681625017896295,
+    "calls": 2.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Leveling coasts"
+    ],
+    "inclusive_s": 0.01633056967208783,
+    "exclusive_s": 0.01633056967208783,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Resolving climate"
+    ],
+    "inclusive_s": 0.4906232915818691,
+    "exclusive_s": 0.2860994996347775,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Resolving climate",
+     "Computing ocean currents"
+    ],
+    "inclusive_s": 0.15078043068448702,
+    "exclusive_s": 0.15078043068448702,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Resolving climate",
+     "Finding the humidity distribution"
+    ],
+    "inclusive_s": 0.05243898594441513,
+    "exclusive_s": 0.05243898594441513,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Resolving climate",
+     "Finding the rainfall distribution"
+    ],
+    "inclusive_s": 0.001304375318189462,
+    "exclusive_s": 0.001304375318189462,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Resolving rivers and lakes"
+    ],
+    "inclusive_s": 11.671047444610545,
+    "exclusive_s": 0.9023935389705002,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Resolving rivers and lakes",
+     "Building the glacier-march graph"
+    ],
+    "inclusive_s": 0.19111181935295463,
+    "exclusive_s": 0.19111181935295463,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Resolving rivers and lakes",
+     "Ordering the flow network"
+    ],
+    "inclusive_s": 0.12320273594620328,
+    "exclusive_s": 0.12320273594620328,
+    "calls": 2.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Resolving rivers and lakes",
+     "Re-solving march sea level"
+    ],
+    "inclusive_s": 1.4157052307079236,
+    "exclusive_s": 1.0153782330453396,
+    "calls": 234.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Resolving rivers and lakes",
+     "Re-solving march sea level",
+     "Solving connected-ocean sea level"
+    ],
+    "inclusive_s": 0.400326997662584,
+    "exclusive_s": 0.400326997662584,
+    "calls": 234.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Resolving rivers and lakes",
+     "Resolving lakes"
+    ],
+    "inclusive_s": 0.421173889345179,
+    "exclusive_s": 0.421173889345179,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Resolving rivers and lakes",
+     "Routing external water sources"
+    ],
+    "inclusive_s": 0.3653770003002137,
+    "exclusive_s": 0.00010144469949106376,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Resolving rivers and lakes",
+     "Routing external water sources",
+     "Routing flow downstream"
+    ],
+    "inclusive_s": 0.3652755556007226,
+    "exclusive_s": 0.20523622205170491,
+    "calls": 3.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Resolving rivers and lakes",
+     "Routing external water sources",
+     "Routing flow downstream",
+     "Ordering the flow network"
+    ],
+    "inclusive_s": 0.1600393335490177,
+    "exclusive_s": 0.1600393335490177,
+    "calls": 3.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Resolving rivers and lakes",
+     "Routing flow downstream"
+    ],
+    "inclusive_s": 0.35217205559213954,
+    "exclusive_s": 0.20172344458599886,
+    "calls": 2.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Resolving rivers and lakes",
+     "Routing flow downstream",
+     "Ordering the flow network"
+    ],
+    "inclusive_s": 0.1504486110061407,
+    "exclusive_s": 0.1504486110061407,
+    "calls": 2.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Resolving rivers and lakes",
+     "Solving march ice"
+    ],
+    "inclusive_s": 7.899911174395432,
+    "exclusive_s": 0.17029329024565718,
+    "calls": 235.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Resolving rivers and lakes",
+     "Solving march ice",
+     "Marching glaciers"
+    ],
+    "inclusive_s": 7.729617884149775,
+    "exclusive_s": 7.729617884149775,
+    "calls": 235.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Routing flow downstream"
+    ],
+    "inclusive_s": 0.7414474990218878,
+    "exclusive_s": 0.4398120545471708,
+    "calls": 6.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Routing flow downstream",
+     "Ordering the flow network"
+    ],
+    "inclusive_s": 0.30163544447471696,
+    "exclusive_s": 0.30163544447471696,
+    "calls": 6.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Routing mass wasting"
+    ],
+    "inclusive_s": 0.09349848570612569,
+    "exclusive_s": 0.09349848570612569,
+    "calls": 2.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Spreading beach sediment"
+    ],
+    "inclusive_s": 0.006104083498939872,
+    "exclusive_s": 0.006104083498939872,
+    "calls": 2.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Spreading lake sediment"
+    ],
+    "inclusive_s": 0.04700199972527722,
+    "exclusive_s": 0.04700199972527722,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Eroding and depositing sediment",
+     "Spreading marine sediment"
+    ],
+    "inclusive_s": 0.06732855496617655,
+    "exclusive_s": 0.06732855496617655,
+    "calls": 4.0
+   },
+   {
+    "path": [
+     "Filling seafloor gaps"
+    ],
+    "inclusive_s": 0.4911271526943892,
+    "exclusive_s": 0.026002097098777693,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Filling seafloor gaps",
+     "Finding gap points"
+    ],
+    "inclusive_s": 0.15136422232414284,
+    "exclusive_s": 0.15136422232414284,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Filling seafloor gaps",
+     "Growing neighbours into gaps"
+    ],
+    "inclusive_s": 0.3137608332714687,
+    "exclusive_s": 0.011579207455118498,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Filling seafloor gaps",
+     "Growing neighbours into gaps",
+     "Filling plate gaps (per plate)"
+    ],
+    "inclusive_s": 0.30218162581635016,
+    "exclusive_s": 0.0007980183387796084,
+    "calls": 17.0
+   },
+   {
+    "path": [
+     "Filling seafloor gaps",
+     "Growing neighbours into gaps",
+     "Filling plate gaps (per plate)",
+     "Finding neighbouring plates"
+    ],
+    "inclusive_s": 0.03415796998888254,
+    "exclusive_s": 0.020727303499976795,
+    "calls": 17.0
+   },
+   {
+    "path": [
+     "Filling seafloor gaps",
+     "Growing neighbours into gaps",
+     "Filling plate gaps (per plate)",
+     "Finding neighbouring plates",
+     "Outlining plate territory"
+    ],
+    "inclusive_s": 0.013430666488905748,
+    "exclusive_s": 0.013430666488905748,
+    "calls": 8.666666666666666
+   },
+   {
+    "path": [
+     "Filling seafloor gaps",
+     "Growing neighbours into gaps",
+     "Filling plate gaps (per plate)",
+     "Growing plate frontiers"
+    ],
+    "inclusive_s": 0.26722563748868805,
+    "exclusive_s": 0.26722563748868805,
+    "calls": 17.0
+   },
+   {
+    "path": [
+     "Finding gap points"
+    ],
+    "inclusive_s": 0.049415583334242306,
+    "exclusive_s": 0.049415583334242306,
+    "calls": 0.3333333333333333
+   },
+   {
+    "path": [
+     "Forming natural resources"
+    ],
+    "inclusive_s": 0.032961250049993396,
+    "exclusive_s": 0.032961250049993396,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Merging and splitting plates"
+    ],
+    "inclusive_s": 0.06092786129253606,
+    "exclusive_s": 0.06092786129253606,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Moving magma"
+    ],
+    "inclusive_s": 0.02106754171351592,
+    "exclusive_s": 0.02106754171351592,
+    "calls": 0.3333333333333333
+   },
+   {
+    "path": [
+     "Raising mantle plumes"
+    ],
+    "inclusive_s": 0.0032844030453513065,
+    "exclusive_s": 0.0032844030453513065,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Raising volcanoes"
+    ],
+    "inclusive_s": 0.017920999710137647,
+    "exclusive_s": 0.017920999710137647,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Recording stats"
+    ],
+    "inclusive_s": 0.0986569442320615,
+    "exclusive_s": 0.0986569442320615,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Reshaping plates"
+    ],
+    "inclusive_s": 0.45293058338575065,
+    "exclusive_s": 0.1932742917754998,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Reshaping plates",
+     "Finding neighbouring plates"
+    ],
+    "inclusive_s": 0.07302568030233185,
+    "exclusive_s": 0.014035624684765935,
+    "calls": 15.0
+   },
+   {
+    "path": [
+     "Reshaping plates",
+     "Finding neighbouring plates",
+     "Outlining plate territory"
+    ],
+    "inclusive_s": 0.05899005561756591,
+    "exclusive_s": 0.05899005561756591,
+    "calls": 7.333333333333333
+   },
+   {
+    "path": [
+     "Reshaping plates",
+     "Gathering boundary forces"
+    ],
+    "inclusive_s": 0.06905333239895602,
+    "exclusive_s": 0.06905333239895602,
+    "calls": 17.0
+   },
+   {
+    "path": [
+     "Reshaping plates",
+     "Growing plate frontiers"
+    ],
+    "inclusive_s": 0.09311712603084743,
+    "exclusive_s": 0.09311712603084743,
+    "calls": 15.0
+   },
+   {
+    "path": [
+     "Reshaping plates",
+     "Looking up boundary neighbours"
+    ],
+    "inclusive_s": 0.024460152878115576,
+    "exclusive_s": 0.006613444381703933,
+    "calls": 17.0
+   },
+   {
+    "path": [
+     "Reshaping plates",
+     "Looking up boundary neighbours",
+     "Finding neighbouring plates"
+    ],
+    "inclusive_s": 0.01784670849641164,
+    "exclusive_s": 0.004546069462473194,
+    "calls": 15.333333333333334
+   },
+   {
+    "path": [
+     "Reshaping plates",
+     "Looking up boundary neighbours",
+     "Finding neighbouring plates",
+     "Outlining plate territory"
+    ],
+    "inclusive_s": 0.013300639033938447,
+    "exclusive_s": 0.013300639033938447,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Solving mantle flow and plate motion"
+    ],
+    "inclusive_s": 0.6084449166276803,
+    "exclusive_s": 0.0038168059351543584,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Solving mantle flow and plate motion",
+     "Coupled plate solve"
+    ],
+    "inclusive_s": 0.6046281106925259,
+    "exclusive_s": 0.16311883352076015,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Solving mantle flow and plate motion",
+     "Coupled plate solve",
+     "Gathering boundary forces"
+    ],
+    "inclusive_s": 0.25427108351141214,
+    "exclusive_s": 0.25427108351141214,
+    "calls": 17.0
+   },
+   {
+    "path": [
+     "Solving mantle flow and plate motion",
+     "Coupled plate solve",
+     "Looking up boundary neighbours"
+    ],
+    "inclusive_s": 0.017533040993536513,
+    "exclusive_s": 0.0008426935722430547,
+    "calls": 17.0
+   },
+   {
+    "path": [
+     "Solving mantle flow and plate motion",
+     "Coupled plate solve",
+     "Looking up boundary neighbours",
+     "Finding neighbouring plates"
+    ],
+    "inclusive_s": 0.016690347421293456,
+    "exclusive_s": 0.015670277721559007,
+    "calls": 17.0
+   },
+   {
+    "path": [
+     "Solving mantle flow and plate motion",
+     "Coupled plate solve",
+     "Looking up boundary neighbours",
+     "Finding neighbouring plates",
+     "Outlining plate territory"
+    ],
+    "inclusive_s": 0.0010200696997344494,
+    "exclusive_s": 0.0010200696997344494,
+    "calls": 0.6666666666666666
+   },
+   {
+    "path": [
+     "Solving mantle flow and plate motion",
+     "Coupled plate solve",
+     "Resolving blocked contacts"
+    ],
+    "inclusive_s": 0.1697051526668171,
+    "exclusive_s": 0.1697051526668171,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Tracking stranded basins"
+    ],
+    "inclusive_s": 4.166636305550734e-05,
+    "exclusive_s": 4.166636305550734e-05,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Triggering ice-unloading earthquakes"
+    ],
+    "inclusive_s": 0.10181988899906476,
+    "exclusive_s": 0.10181988899906476,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Updating cratons"
+    ],
+    "inclusive_s": 0.018327778205275536,
+    "exclusive_s": 0.018327778205275536,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Updating faults"
+    ],
+    "inclusive_s": 1.0049045836397756,
+    "exclusive_s": 0.09942158140862982,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Updating faults",
+     "Applying fault relief"
+    ],
+    "inclusive_s": 0.27459747274406254,
+    "exclusive_s": 0.27459747274406254,
+    "calls": 17.0
+   },
+   {
+    "path": [
+     "Updating faults",
+     "Finding neighbouring plates"
+    ],
+    "inclusive_s": 0.026179832716782887,
+    "exclusive_s": 0.021386207702259224,
+    "calls": 17.0
+   },
+   {
+    "path": [
+     "Updating faults",
+     "Finding neighbouring plates",
+     "Outlining plate territory"
+    ],
+    "inclusive_s": 0.004793625014523665,
+    "exclusive_s": 0.004793625014523665,
+    "calls": 0.3333333333333333
+   },
+   {
+    "path": [
+     "Updating faults",
+     "Generating boundary faults"
+    ],
+    "inclusive_s": 0.1997625002016624,
+    "exclusive_s": 0.1997625002016624,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Updating faults",
+     "Generating earthquakes"
+    ],
+    "inclusive_s": 0.10747445871432622,
+    "exclusive_s": 0.10747445871432622,
+    "calls": 1.0
+   },
+   {
+    "path": [
+     "Updating faults",
+     "Shearing plates along faults"
+    ],
+    "inclusive_s": 0.2974687378543119,
+    "exclusive_s": 0.2974687378543119,
+    "calls": 17.0
+   }
+  ]
+ }
+}

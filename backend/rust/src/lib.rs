@@ -3,6 +3,7 @@ mod distance;
 mod eustasy;
 mod graph;
 mod ice_step;
+mod lakes;
 mod plastic;
 mod render;
 
@@ -27,5 +28,9 @@ fn mantle_bloom_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(render::render_biome_or_combined, m)?)?;
     m.add_function(wrap_pyfunction!(render::render_elevation, m)?)?;
     m.add_function(wrap_pyfunction!(render::render_constants_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(lakes::lake_components_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(lakes::catchment_roots_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(lakes::lake_hierarchy_events_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(lakes::integrate_body_volume_rs, m)?)?;
     Ok(())
 }
