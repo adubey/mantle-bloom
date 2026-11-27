@@ -1,0 +1,990 @@
+{
+  "save": "mantle-bloom-seed507012855-479000000y.bloom",
+  "heldout": true,
+  "save_digest": "a249a559fac44e3f2b9d2dc76a1a26ca2711b659",
+  "density": 4,
+  "candidate": "ridge_025",
+  "code_commit": "f0d902e779cff7d750921bf58f1d0929223c431d",
+  "capture_provenance": {
+    "results_sha256": "8786270fd1713b684f7504fb827a42bbf8ed198cc544a4cae6e243a30616ead4",
+    "capture_commit": "8ea19e3af229d48a9d9c7339780951ce23fb5932",
+    "capture_scripts": {
+      "rfc0019_g3_bounded_column.py": "653d1201923e7cd6807733cdfb625c4860d79313b412693fbb08314761ec818a",
+      "rfc0019_g3_compare.py": "aaa7bebf770f3f7365687b7078c0e41df2d043466c08c4d145d51068cc719140",
+      "rfc0019_g3_mixing.py": "a574c5a7c9c766db0b042ddd9c2dec0567cffd912d09815884939b6a2b3f216e",
+      "rfc0019_coarse_moisture.py": "c4532dd25667c077c4df618f50795ee063135973f48fda357ad4e63447197867"
+    }
+  },
+  "calibration_only": true,
+  "not_fresh_evaluation": true,
+  "results": {
+    "finite_volume": {
+      "diagnostic": {
+        "control_ridge_transects": {
+          "crossings": 1479,
+          "distinct_crests": 324,
+          "median_crest_rain_mm_yr": 43.50252529922061,
+          "median_lee_rain_mm_yr": 70.51183715490276,
+          "median_crest_minus_lee_mm_yr": -1.2531527365117587,
+          "median_contrast_gain_mm_yr": 0.0,
+          "median_lee_change_mm_yr": 0.0,
+          "crest_wetter_and_lee_drier_share": 0.0
+        },
+        "ridge_025_ridge_transects": {
+          "crossings": 1479,
+          "distinct_crests": 324,
+          "median_crest_rain_mm_yr": 89.99294270626659,
+          "median_lee_rain_mm_yr": 71.39400247280268,
+          "median_crest_minus_lee_mm_yr": 12.12617440623784,
+          "median_contrast_gain_mm_yr": 30.148513473518392,
+          "median_lee_change_mm_yr": -1.4532825989472329,
+          "crest_wetter_and_lee_drier_share": 0.9006085192697769
+        },
+        "ridge_025_inland_distance_means": {
+          "0_to_500": {
+            "rain_mm_yr": 696.2221864287475,
+            "fraction_of_land": 0.26753027875329294
+          },
+          "500_to_1500": {
+            "rain_mm_yr": 251.8334263783781,
+            "fraction_of_land": 0.3438291668497083
+          },
+          "1500_plus": {
+            "rain_mm_yr": 224.8966042689935,
+            "fraction_of_land": 0.38864055439699874
+          }
+        },
+        "ridge_025_ocean_belt_contrasts": {
+          "-60": {
+            "center_mm_yr": 1788.5103327838165,
+            "flank_mm_yr": 419.70287590694977,
+            "ratio": 4.261372593454276
+          },
+          "0": {
+            "center_mm_yr": 4086.1493127314525,
+            "flank_mm_yr": 624.5710262306225,
+            "ratio": 6.542329280613546
+          },
+          "60": {
+            "center_mm_yr": 1923.439262362129,
+            "flank_mm_yr": 428.7274279621156,
+            "ratio": 4.486391905236568
+          }
+        },
+        "native_profile_method": {
+          "crest_selection": "highest native land cell in each coarse transport crest cell",
+          "offsets_native_cells": [
+            -3,
+            -2,
+            -1,
+            0,
+            1,
+            2,
+            3
+          ],
+          "positive_offsets_follow_transport_downwind": true,
+          "north_south_rows_use_solver_order": true,
+          "distinct_profiles": 391,
+          "offset_summaries": [
+            {
+              "offset_native_cells": -3,
+              "valid_profiles": 386,
+              "candidate_rain": {
+                "median_mm_yr": 45.04625941683919,
+                "p10_mm_yr": 0.17124246760548306,
+                "p90_mm_yr": 681.9746787360452
+              },
+              "candidate_area_weighted_mean_mm_yr": 310.66326645038123,
+              "control_rain": {
+                "median_mm_yr": 39.88917853129291,
+                "p10_mm_yr": 0.17023517109557912,
+                "p90_mm_yr": 490.76816865365885
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": -0.0020221987755228658,
+                "p10_mm_yr": -11.859227860567412,
+                "p90_mm_yr": 54.14390825728229
+              }
+            },
+            {
+              "offset_native_cells": -2,
+              "valid_profiles": 385,
+              "candidate_rain": {
+                "median_mm_yr": 58.41638346222929,
+                "p10_mm_yr": 0.19716377908770263,
+                "p90_mm_yr": 736.2831705601051
+              },
+              "candidate_area_weighted_mean_mm_yr": 310.64723819628654,
+              "control_rain": {
+                "median_mm_yr": 41.530535520246296,
+                "p10_mm_yr": 0.16935813557514992,
+                "p90_mm_yr": 528.6628929573665
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 0.12894768659656364,
+                "p10_mm_yr": -6.123160111346203,
+                "p90_mm_yr": 205.39732757356003
+              }
+            },
+            {
+              "offset_native_cells": -1,
+              "valid_profiles": 387,
+              "candidate_rain": {
+                "median_mm_yr": 79.71295799252275,
+                "p10_mm_yr": 0.2774716898800688,
+                "p90_mm_yr": 942.9564554395489
+              },
+              "candidate_area_weighted_mean_mm_yr": 358.7346740043013,
+              "control_rain": {
+                "median_mm_yr": 42.649936664738895,
+                "p10_mm_yr": 0.15890697220991878,
+                "p90_mm_yr": 600.1365404454676
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 12.772787933973717,
+                "p10_mm_yr": -0.8409208202229004,
+                "p90_mm_yr": 316.102933351492
+              }
+            },
+            {
+              "offset_native_cells": 0,
+              "valid_profiles": 391,
+              "candidate_rain": {
+                "median_mm_yr": 98.10033938453904,
+                "p10_mm_yr": 0.3227969253398307,
+                "p90_mm_yr": 1094.8658243354503
+              },
+              "candidate_area_weighted_mean_mm_yr": 383.7904005326485,
+              "control_rain": {
+                "median_mm_yr": 47.464879977237814,
+                "p10_mm_yr": 0.13749603208276195,
+                "p90_mm_yr": 742.0083766432331
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 26.254953387277737,
+                "p10_mm_yr": 0.04046469395293401,
+                "p90_mm_yr": 376.58812169947316
+              }
+            },
+            {
+              "offset_native_cells": 1,
+              "valid_profiles": 386,
+              "candidate_rain": {
+                "median_mm_yr": 83.97853306050425,
+                "p10_mm_yr": 0.33978397057020704,
+                "p90_mm_yr": 989.4374460645965
+              },
+              "candidate_area_weighted_mean_mm_yr": 381.2981235751775,
+              "control_rain": {
+                "median_mm_yr": 46.85027290441679,
+                "p10_mm_yr": 0.14299423618370471,
+                "p90_mm_yr": 640.500803506218
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 13.111841499298954,
+                "p10_mm_yr": -2.0527407658043018,
+                "p90_mm_yr": 345.9452619583622
+              }
+            },
+            {
+              "offset_native_cells": 2,
+              "valid_profiles": 386,
+              "candidate_rain": {
+                "median_mm_yr": 77.90956412386322,
+                "p10_mm_yr": 0.34281044710099184,
+                "p90_mm_yr": 843.2846786129226
+              },
+              "candidate_area_weighted_mean_mm_yr": 317.14999881540297,
+              "control_rain": {
+                "median_mm_yr": 53.17096053536715,
+                "p10_mm_yr": 0.2412195175576089,
+                "p90_mm_yr": 639.14730889978
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": -0.00014398519322870833,
+                "p10_mm_yr": -12.015461142543131,
+                "p90_mm_yr": 259.05319865294905
+              }
+            },
+            {
+              "offset_native_cells": 3,
+              "valid_profiles": 383,
+              "candidate_rain": {
+                "median_mm_yr": 70.34821436626203,
+                "p10_mm_yr": 0.33443410588123695,
+                "p90_mm_yr": 728.5210055668584
+              },
+              "candidate_area_weighted_mean_mm_yr": 283.0977329759772,
+              "control_rain": {
+                "median_mm_yr": 61.44230888923368,
+                "p10_mm_yr": 0.25929933869139216,
+                "p90_mm_yr": 696.7551156046715
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": -0.47918733172779326,
+                "p10_mm_yr": -19.6121435046625,
+                "p90_mm_yr": 41.38751823959679
+              }
+            }
+          ],
+          "windward_minus_lee": {
+            "windward_offsets": [
+              -3,
+              -2,
+              -1
+            ],
+            "lee_offsets": [
+              1,
+              2,
+              3
+            ],
+            "minimum_valid_cells_per_side": 2,
+            "eligible_profiles": 383,
+            "candidate": {
+              "median_mm_yr": -0.07940603738881125,
+              "p10_mm_yr": -192.6068504735594,
+              "p90_mm_yr": 145.27958680041723
+            },
+            "control": {
+              "median_mm_yr": -0.20048066116780233,
+              "p10_mm_yr": -107.49463634649962,
+              "p90_mm_yr": 36.18149874552148
+            },
+            "candidate_minus_control": {
+              "median_mm_yr": 0.007777990182474964,
+              "p10_mm_yr": -111.43282162395168,
+              "p90_mm_yr": 106.9470860618947
+            },
+            "fraction_candidate_windward_wetter": 0.4516971279373368,
+            "fraction_positive_contrast_gain": 0.5326370757180157
+          }
+        }
+      },
+      "cfd": {
+        "control_ridge_transects": {
+          "crossings": 1467,
+          "distinct_crests": 324,
+          "median_crest_rain_mm_yr": 60.109320815829,
+          "median_lee_rain_mm_yr": 78.04543748771648,
+          "median_crest_minus_lee_mm_yr": -2.4877204493397898,
+          "median_contrast_gain_mm_yr": 0.0,
+          "median_lee_change_mm_yr": 0.0,
+          "crest_wetter_and_lee_drier_share": 0.0
+        },
+        "ridge_025_ridge_transects": {
+          "crossings": 1467,
+          "distinct_crests": 324,
+          "median_crest_rain_mm_yr": 176.82959028188625,
+          "median_lee_rain_mm_yr": 70.0587084322759,
+          "median_crest_minus_lee_mm_yr": 40.67158150057105,
+          "median_contrast_gain_mm_yr": 71.43725947114046,
+          "median_lee_change_mm_yr": -4.135727585968766,
+          "crest_wetter_and_lee_drier_share": 0.89093387866394
+        },
+        "ridge_025_inland_distance_means": {
+          "0_to_500": {
+            "rain_mm_yr": 416.4590573596623,
+            "fraction_of_land": 0.26753027875329294
+          },
+          "500_to_1500": {
+            "rain_mm_yr": 325.1708258035045,
+            "fraction_of_land": 0.3438291668497083
+          },
+          "1500_plus": {
+            "rain_mm_yr": 306.61424650935845,
+            "fraction_of_land": 0.38864055439699874
+          }
+        },
+        "ridge_025_ocean_belt_contrasts": {
+          "-60": {
+            "center_mm_yr": 1912.4797245294528,
+            "flank_mm_yr": 428.64349538872546,
+            "ratio": 4.461702428949903
+          },
+          "0": {
+            "center_mm_yr": 4135.095613117734,
+            "flank_mm_yr": 628.9528933876395,
+            "ratio": 6.574571254208652
+          },
+          "60": {
+            "center_mm_yr": 1998.9261349847045,
+            "flank_mm_yr": 416.5618363185363,
+            "ratio": 4.798630024897832
+          }
+        },
+        "native_profile_method": {
+          "crest_selection": "highest native land cell in each coarse transport crest cell",
+          "offsets_native_cells": [
+            -3,
+            -2,
+            -1,
+            0,
+            1,
+            2,
+            3
+          ],
+          "positive_offsets_follow_transport_downwind": true,
+          "north_south_rows_use_solver_order": true,
+          "distinct_profiles": 385,
+          "offset_summaries": [
+            {
+              "offset_native_cells": -3,
+              "valid_profiles": 379,
+              "candidate_rain": {
+                "median_mm_yr": 71.7535926948336,
+                "p10_mm_yr": 1.5400216369907678,
+                "p90_mm_yr": 720.0541941487871
+              },
+              "candidate_area_weighted_mean_mm_yr": 256.46029045059544,
+              "control_rain": {
+                "median_mm_yr": 47.483048687236575,
+                "p10_mm_yr": 1.5005087754105437,
+                "p90_mm_yr": 403.86832902963846
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": -0.031633898774913405,
+                "p10_mm_yr": -19.359643052719193,
+                "p90_mm_yr": 188.6361580998981
+              }
+            },
+            {
+              "offset_native_cells": -2,
+              "valid_profiles": 380,
+              "candidate_rain": {
+                "median_mm_yr": 87.02596492910138,
+                "p10_mm_yr": 2.918928645724204,
+                "p90_mm_yr": 891.5099566271755
+              },
+              "candidate_area_weighted_mean_mm_yr": 337.0829034949014,
+              "control_rain": {
+                "median_mm_yr": 54.86103924648965,
+                "p10_mm_yr": 1.604183451262214,
+                "p90_mm_yr": 379.68033873078895
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 0.5935999936606887,
+                "p10_mm_yr": -9.482248651380498,
+                "p90_mm_yr": 360.32546120827067
+              }
+            },
+            {
+              "offset_native_cells": -1,
+              "valid_profiles": 380,
+              "candidate_rain": {
+                "median_mm_yr": 125.87082426775854,
+                "p10_mm_yr": 3.123355557781712,
+                "p90_mm_yr": 1059.0281022691877
+              },
+              "candidate_area_weighted_mean_mm_yr": 439.37282677834156,
+              "control_rain": {
+                "median_mm_yr": 54.694421920413205,
+                "p10_mm_yr": 1.6232274829578748,
+                "p90_mm_yr": 444.604696663086
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 28.475181399888356,
+                "p10_mm_yr": -3.7910702001859056,
+                "p90_mm_yr": 577.0483060290102
+              }
+            },
+            {
+              "offset_native_cells": 0,
+              "valid_profiles": 385,
+              "candidate_rain": {
+                "median_mm_yr": 164.35281248971555,
+                "p10_mm_yr": 3.230115118004066,
+                "p90_mm_yr": 1253.7379905716875
+              },
+              "candidate_area_weighted_mean_mm_yr": 530.566618547093,
+              "control_rain": {
+                "median_mm_yr": 53.23653325434162,
+                "p10_mm_yr": 1.6629402121043988,
+                "p90_mm_yr": 559.9912015557443
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 56.5588354809032,
+                "p10_mm_yr": 0.30930648365764424,
+                "p90_mm_yr": 828.3491189020637
+              }
+            },
+            {
+              "offset_native_cells": 1,
+              "valid_profiles": 381,
+              "candidate_rain": {
+                "median_mm_yr": 139.8188972578636,
+                "p10_mm_yr": 3.1714147520479714,
+                "p90_mm_yr": 1223.0956178911138
+              },
+              "candidate_area_weighted_mean_mm_yr": 505.49686818932287,
+              "control_rain": {
+                "median_mm_yr": 60.109320815828994,
+                "p10_mm_yr": 1.7178365996693088,
+                "p90_mm_yr": 597.9737360141966
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 35.10250601191615,
+                "p10_mm_yr": -6.328620808353122,
+                "p90_mm_yr": 682.781814802358
+              }
+            },
+            {
+              "offset_native_cells": 2,
+              "valid_profiles": 379,
+              "candidate_rain": {
+                "median_mm_yr": 115.29104372167211,
+                "p10_mm_yr": 2.180049038151939,
+                "p90_mm_yr": 1156.2769648100473
+              },
+              "candidate_area_weighted_mean_mm_yr": 445.2530777045424,
+              "control_rain": {
+                "median_mm_yr": 64.71446463597836,
+                "p10_mm_yr": 1.8398568642019708,
+                "p90_mm_yr": 747.992179849018
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": -0.0002415366658798726,
+                "p10_mm_yr": -30.140668702283282,
+                "p90_mm_yr": 493.06495988540007
+              }
+            },
+            {
+              "offset_native_cells": 3,
+              "valid_profiles": 378,
+              "candidate_rain": {
+                "median_mm_yr": 79.09300697845805,
+                "p10_mm_yr": 1.9690359477985306,
+                "p90_mm_yr": 1048.995238542537
+              },
+              "candidate_area_weighted_mean_mm_yr": 359.74215844980415,
+              "control_rain": {
+                "median_mm_yr": 65.39031982625087,
+                "p10_mm_yr": 1.8339961200073112,
+                "p90_mm_yr": 831.6856012104378
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": -1.071356316256756,
+                "p10_mm_yr": -39.83143225580066,
+                "p90_mm_yr": 183.39404837950667
+              }
+            }
+          ],
+          "windward_minus_lee": {
+            "windward_offsets": [
+              -3,
+              -2,
+              -1
+            ],
+            "lee_offsets": [
+              1,
+              2,
+              3
+            ],
+            "minimum_valid_cells_per_side": 2,
+            "eligible_profiles": 377,
+            "candidate": {
+              "median_mm_yr": -6.411430439824817,
+              "p10_mm_yr": -537.1635493928495,
+              "p90_mm_yr": 230.7277037211397
+            },
+            "control": {
+              "median_mm_yr": -1.8397787614445278,
+              "p10_mm_yr": -144.99045202009975,
+              "p90_mm_yr": 25.392465883024578
+            },
+            "candidate_minus_control": {
+              "median_mm_yr": 0.17711022905009877,
+              "p10_mm_yr": -291.3364152361047,
+              "p90_mm_yr": 244.6098131565035
+            },
+            "fraction_candidate_windward_wetter": 0.41644562334217505,
+            "fraction_positive_contrast_gain": 0.5411140583554377
+          }
+        }
+      }
+    },
+    "wind_arrows": {
+      "diagnostic": {
+        "control_ridge_transects": {
+          "crossings": 357,
+          "distinct_crests": 309,
+          "median_crest_rain_mm_yr": 20.313728686601813,
+          "median_lee_rain_mm_yr": 27.451329865308022,
+          "median_crest_minus_lee_mm_yr": -0.03151224736814129,
+          "median_contrast_gain_mm_yr": 0.0,
+          "median_lee_change_mm_yr": 0.0,
+          "crest_wetter_and_lee_drier_share": 0.0
+        },
+        "ridge_025_ridge_transects": {
+          "crossings": 357,
+          "distinct_crests": 309,
+          "median_crest_rain_mm_yr": 48.91134857149877,
+          "median_lee_rain_mm_yr": 27.23746642551133,
+          "median_crest_minus_lee_mm_yr": 5.450304813035735,
+          "median_contrast_gain_mm_yr": 12.689545165072417,
+          "median_lee_change_mm_yr": -0.8110498320763124,
+          "crest_wetter_and_lee_drier_share": 0.896358543417367
+        },
+        "ridge_025_inland_distance_means": {
+          "0_to_500": {
+            "rain_mm_yr": 383.41584837855896,
+            "fraction_of_land": 0.26753027875329294
+          },
+          "500_to_1500": {
+            "rain_mm_yr": 211.13772592176971,
+            "fraction_of_land": 0.3438291668497083
+          },
+          "1500_plus": {
+            "rain_mm_yr": 200.7916315589506,
+            "fraction_of_land": 0.38864055439699874
+          }
+        },
+        "ridge_025_ocean_belt_contrasts": {
+          "-60": {
+            "center_mm_yr": 2183.6413128674185,
+            "flank_mm_yr": 484.57536066502286,
+            "ratio": 4.506298689786099
+          },
+          "0": {
+            "center_mm_yr": 4427.451494420922,
+            "flank_mm_yr": 507.02543718380105,
+            "ratio": 8.732207833619862
+          },
+          "60": {
+            "center_mm_yr": 2238.928902146472,
+            "flank_mm_yr": 458.7958023359993,
+            "ratio": 4.8800117410551005
+          }
+        },
+        "native_profile_method": {
+          "crest_selection": "highest native land cell in each coarse transport crest cell",
+          "offsets_native_cells": [
+            -3,
+            -2,
+            -1,
+            0,
+            1,
+            2,
+            3
+          ],
+          "positive_offsets_follow_transport_downwind": true,
+          "north_south_rows_use_solver_order": true,
+          "distinct_profiles": 357,
+          "offset_summaries": [
+            {
+              "offset_native_cells": -3,
+              "valid_profiles": 339,
+              "candidate_rain": {
+                "median_mm_yr": 22.517650211186087,
+                "p10_mm_yr": 0.2970580496498826,
+                "p90_mm_yr": 564.4019073312496
+              },
+              "candidate_area_weighted_mean_mm_yr": 270.46121344024164,
+              "control_rain": {
+                "median_mm_yr": 21.365845420240863,
+                "p10_mm_yr": 0.3512247053111136,
+                "p90_mm_yr": 473.41422515842174
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": -0.012579298421954377,
+                "p10_mm_yr": -4.662438816748101,
+                "p90_mm_yr": 13.543510966865293
+              }
+            },
+            {
+              "offset_native_cells": -2,
+              "valid_profiles": 340,
+              "candidate_rain": {
+                "median_mm_yr": 32.66806684378898,
+                "p10_mm_yr": 0.2966824806430225,
+                "p90_mm_yr": 658.3850523622159
+              },
+              "candidate_area_weighted_mean_mm_yr": 310.79909156489987,
+              "control_rain": {
+                "median_mm_yr": 22.630478520806435,
+                "p10_mm_yr": 0.293642680913035,
+                "p90_mm_yr": 544.9157187071697
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 0.02481596550074177,
+                "p10_mm_yr": -1.9584382016710293,
+                "p90_mm_yr": 101.28875969629505
+              }
+            },
+            {
+              "offset_native_cells": -1,
+              "valid_profiles": 347,
+              "candidate_rain": {
+                "median_mm_yr": 38.297777033755516,
+                "p10_mm_yr": 0.3836380688594165,
+                "p90_mm_yr": 801.1291995296529
+              },
+              "candidate_area_weighted_mean_mm_yr": 357.33916022714226,
+              "control_rain": {
+                "median_mm_yr": 20.839572742641586,
+                "p10_mm_yr": 0.2805879635469999,
+                "p90_mm_yr": 507.2611763733785
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 3.2001680840886157,
+                "p10_mm_yr": -1.1086846405377249,
+                "p90_mm_yr": 207.39602714585374
+              }
+            },
+            {
+              "offset_native_cells": 0,
+              "valid_profiles": 357,
+              "candidate_rain": {
+                "median_mm_yr": 51.64102421492294,
+                "p10_mm_yr": 0.46257407228401237,
+                "p90_mm_yr": 1008.3465179733631
+              },
+              "candidate_area_weighted_mean_mm_yr": 379.4599525359316,
+              "control_rain": {
+                "median_mm_yr": 20.313728686601813,
+                "p10_mm_yr": 0.30688091760434694,
+                "p90_mm_yr": 505.03054674492967
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 10.49098950722739,
+                "p10_mm_yr": 0.024858320543417717,
+                "p90_mm_yr": 290.7579777528965
+              }
+            },
+            {
+              "offset_native_cells": 1,
+              "valid_profiles": 341,
+              "candidate_rain": {
+                "median_mm_yr": 47.47299462490702,
+                "p10_mm_yr": 0.48133661024873986,
+                "p90_mm_yr": 970.6824422083447
+              },
+              "candidate_area_weighted_mean_mm_yr": 357.0116645633544,
+              "control_rain": {
+                "median_mm_yr": 18.957561424934617,
+                "p10_mm_yr": 0.312514203969797,
+                "p90_mm_yr": 519.2087281708971
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 3.200168084088615,
+                "p10_mm_yr": -2.0408838717261766,
+                "p90_mm_yr": 225.83848796798702
+              }
+            },
+            {
+              "offset_native_cells": 2,
+              "valid_profiles": 338,
+              "candidate_rain": {
+                "median_mm_yr": 31.422134826992966,
+                "p10_mm_yr": 0.786893327952004,
+                "p90_mm_yr": 606.067078013276
+              },
+              "candidate_area_weighted_mean_mm_yr": 282.03144791285985,
+              "control_rain": {
+                "median_mm_yr": 20.089320818075826,
+                "p10_mm_yr": 0.6378299054733818,
+                "p90_mm_yr": 355.1252130891606
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": -0.0019828181206437145,
+                "p10_mm_yr": -7.665648222335117,
+                "p90_mm_yr": 144.3289223505265
+              }
+            },
+            {
+              "offset_native_cells": 3,
+              "valid_profiles": 335,
+              "candidate_rain": {
+                "median_mm_yr": 22.81474118527263,
+                "p10_mm_yr": 0.4663726623578394,
+                "p90_mm_yr": 477.0423590776768
+              },
+              "candidate_area_weighted_mean_mm_yr": 245.03566691089117,
+              "control_rain": {
+                "median_mm_yr": 19.864912949549836,
+                "p10_mm_yr": 0.43927583718969027,
+                "p90_mm_yr": 357.20695287301686
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": -0.20623112375543862,
+                "p10_mm_yr": -9.299533041870461,
+                "p90_mm_yr": 32.655451113933516
+              }
+            }
+          ],
+          "windward_minus_lee": {
+            "windward_offsets": [
+              -3,
+              -2,
+              -1
+            ],
+            "lee_offsets": [
+              1,
+              2,
+              3
+            ],
+            "minimum_valid_cells_per_side": 2,
+            "eligible_profiles": 330,
+            "candidate": {
+              "median_mm_yr": -0.0722964647788259,
+              "p10_mm_yr": -158.25618823700856,
+              "p90_mm_yr": 134.42739591440147
+            },
+            "control": {
+              "median_mm_yr": -0.0032859265026019546,
+              "p10_mm_yr": -88.50778608080446,
+              "p90_mm_yr": 73.96542223002037
+            },
+            "candidate_minus_control": {
+              "median_mm_yr": 0.014055812862875095,
+              "p10_mm_yr": -64.96346664006565,
+              "p90_mm_yr": 53.77726503335747
+            },
+            "fraction_candidate_windward_wetter": 0.48787878787878786,
+            "fraction_positive_contrast_gain": 0.5363636363636364
+          }
+        }
+      },
+      "cfd": {
+        "control_ridge_transects": {
+          "crossings": 396,
+          "distinct_crests": 333,
+          "median_crest_rain_mm_yr": 36.88566531101792,
+          "median_lee_rain_mm_yr": 54.568436244760576,
+          "median_crest_minus_lee_mm_yr": -1.463520829511085,
+          "median_contrast_gain_mm_yr": 0.0,
+          "median_lee_change_mm_yr": 0.0,
+          "crest_wetter_and_lee_drier_share": 0.0
+        },
+        "ridge_025_ridge_transects": {
+          "crossings": 396,
+          "distinct_crests": 333,
+          "median_crest_rain_mm_yr": 93.66387898338462,
+          "median_lee_rain_mm_yr": 51.64301497556317,
+          "median_crest_minus_lee_mm_yr": 33.32520089354004,
+          "median_contrast_gain_mm_yr": 58.539925133489575,
+          "median_lee_change_mm_yr": -1.7214682270001518,
+          "crest_wetter_and_lee_drier_share": 0.9116161616161617
+        },
+        "ridge_025_inland_distance_means": {
+          "0_to_500": {
+            "rain_mm_yr": 317.35777726374357,
+            "fraction_of_land": 0.26753027875329294
+          },
+          "500_to_1500": {
+            "rain_mm_yr": 285.8869160031415,
+            "fraction_of_land": 0.3438291668497083
+          },
+          "1500_plus": {
+            "rain_mm_yr": 265.0294333361727,
+            "fraction_of_land": 0.38864055439699874
+          }
+        },
+        "ridge_025_ocean_belt_contrasts": {
+          "-60": {
+            "center_mm_yr": 2165.7167564991273,
+            "flank_mm_yr": 440.6375286554078,
+            "ratio": 4.9149621075348415
+          },
+          "0": {
+            "center_mm_yr": 4401.722854427141,
+            "flank_mm_yr": 508.3614999335145,
+            "ratio": 8.658647153655057
+          },
+          "60": {
+            "center_mm_yr": 2276.167899562814,
+            "flank_mm_yr": 427.89369557758516,
+            "ratio": 5.319470520570224
+          }
+        },
+        "native_profile_method": {
+          "crest_selection": "highest native land cell in each coarse transport crest cell",
+          "offsets_native_cells": [
+            -3,
+            -2,
+            -1,
+            0,
+            1,
+            2,
+            3
+          ],
+          "positive_offsets_follow_transport_downwind": true,
+          "north_south_rows_use_solver_order": true,
+          "distinct_profiles": 396,
+          "offset_summaries": [
+            {
+              "offset_native_cells": -3,
+              "valid_profiles": 378,
+              "candidate_rain": {
+                "median_mm_yr": 42.0246948560423,
+                "p10_mm_yr": 1.9484977947127462,
+                "p90_mm_yr": 486.68063697752046
+              },
+              "candidate_area_weighted_mean_mm_yr": 240.30305430709882,
+              "control_rain": {
+                "median_mm_yr": 32.40638254866785,
+                "p10_mm_yr": 1.8112228957759613,
+                "p90_mm_yr": 370.5707707080876
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": -0.010907933283521798,
+                "p10_mm_yr": -11.674505744722492,
+                "p90_mm_yr": 91.30822498070332
+              }
+            },
+            {
+              "offset_native_cells": -2,
+              "valid_profiles": 379,
+              "candidate_rain": {
+                "median_mm_yr": 54.985826388924096,
+                "p10_mm_yr": 2.1284848336181135,
+                "p90_mm_yr": 738.2162164734768
+              },
+              "candidate_area_weighted_mean_mm_yr": 295.35788852277886,
+              "control_rain": {
+                "median_mm_yr": 34.09591434615405,
+                "p10_mm_yr": 1.728114070003762,
+                "p90_mm_yr": 267.6448215434657
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 0.8270820834626127,
+                "p10_mm_yr": -5.149066490800109,
+                "p90_mm_yr": 275.79236685565184
+              }
+            },
+            {
+              "offset_native_cells": -1,
+              "valid_profiles": 386,
+              "candidate_rain": {
+                "median_mm_yr": 70.57460629326647,
+                "p10_mm_yr": 4.92314469343351,
+                "p90_mm_yr": 947.281830611576
+              },
+              "candidate_area_weighted_mean_mm_yr": 408.90851984653847,
+              "control_rain": {
+                "median_mm_yr": 33.233038682067715,
+                "p10_mm_yr": 1.7063049815948719,
+                "p90_mm_yr": 303.50050358390985
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 26.32122627331195,
+                "p10_mm_yr": -1.2399753381330783,
+                "p90_mm_yr": 512.5332616960143
+              }
+            },
+            {
+              "offset_native_cells": 0,
+              "valid_profiles": 396,
+              "candidate_rain": {
+                "median_mm_yr": 92.1988862772519,
+                "p10_mm_yr": 5.94955848693033,
+                "p90_mm_yr": 1053.2334215961748
+              },
+              "candidate_area_weighted_mean_mm_yr": 477.61284233317195,
+              "control_rain": {
+                "median_mm_yr": 34.571852074011794,
+                "p10_mm_yr": 1.8341165093994225,
+                "p90_mm_yr": 369.5729456449702
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 44.5568654752541,
+                "p10_mm_yr": 0.7889606021619064,
+                "p90_mm_yr": 646.056174937861
+              }
+            },
+            {
+              "offset_native_cells": 1,
+              "valid_profiles": 379,
+              "candidate_rain": {
+                "median_mm_yr": 82.15669020238488,
+                "p10_mm_yr": 3.788760986583234,
+                "p90_mm_yr": 1038.0680749233684
+              },
+              "candidate_area_weighted_mean_mm_yr": 459.4020023976461,
+              "control_rain": {
+                "median_mm_yr": 38.55939108529212,
+                "p10_mm_yr": 1.8098810786642852,
+                "p90_mm_yr": 532.6860923727139
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 29.240716489554018,
+                "p10_mm_yr": -3.418257949066741,
+                "p90_mm_yr": 600.6711931257004
+              }
+            },
+            {
+              "offset_native_cells": 2,
+              "valid_profiles": 376,
+              "candidate_rain": {
+                "median_mm_yr": 66.13765218503818,
+                "p10_mm_yr": 3.1712016956597897,
+                "p90_mm_yr": 928.2739896855835
+              },
+              "candidate_area_weighted_mean_mm_yr": 423.0446721612353,
+              "control_rain": {
+                "median_mm_yr": 44.37429404279048,
+                "p10_mm_yr": 1.7668935584327161,
+                "p90_mm_yr": 602.8714991343751
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": -0.0002453358768507996,
+                "p10_mm_yr": -16.551001038806604,
+                "p90_mm_yr": 343.2935610111926
+              }
+            },
+            {
+              "offset_native_cells": 3,
+              "valid_profiles": 373,
+              "candidate_rain": {
+                "median_mm_yr": 58.202075398141865,
+                "p10_mm_yr": 2.601615370330174,
+                "p90_mm_yr": 809.5498074351161
+              },
+              "candidate_area_weighted_mean_mm_yr": 391.0761772427741,
+              "control_rain": {
+                "median_mm_yr": 44.55450102632164,
+                "p10_mm_yr": 2.0912827949518253,
+                "p90_mm_yr": 622.5393595176149
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": -0.8223028159558137,
+                "p10_mm_yr": -24.347916439259247,
+                "p90_mm_yr": 120.57374228947697
+              }
+            }
+          ],
+          "windward_minus_lee": {
+            "windward_offsets": [
+              -3,
+              -2,
+              -1
+            ],
+            "lee_offsets": [
+              1,
+              2,
+              3
+            ],
+            "minimum_valid_cells_per_side": 2,
+            "eligible_profiles": 368,
+            "candidate": {
+              "median_mm_yr": -3.668688552257219,
+              "p10_mm_yr": -440.28177611568975,
+              "p90_mm_yr": 174.9019109841287
+            },
+            "control": {
+              "median_mm_yr": -1.536495804340047,
+              "p10_mm_yr": -189.85784528089732,
+              "p90_mm_yr": 12.259599043371036
+            },
+            "candidate_minus_control": {
+              "median_mm_yr": 0.08995992755317554,
+              "p10_mm_yr": -191.96357072953703,
+              "p90_mm_yr": 185.32739781766452
+            },
+            "fraction_candidate_windward_wetter": 0.42391304347826086,
+            "fraction_positive_contrast_gain": 0.532608695652174
+          }
+        }
+      }
+    }
+  }
+}
