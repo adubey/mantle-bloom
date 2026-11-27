@@ -309,3 +309,38 @@ def test_nan_and_inf_elevations_match_python(monkeypatch):
 
     assert rust_roots == py_roots
     _assert_forest_equal(rust_forest, py_forest)
+
+
+@pytest.mark.skipif(not _lakes_rust.RUST_AVAILABLE, reason="mantle_bloom_rust lake exports unavailable")
+@pytest.mark.parametrize("with_sublimation", [False, True])
+@pytest.mark.parametrize("cap_mode", ["finite", "inf", "surplus"])
+def test_integrate_body_volume_rust_matches_python(monkeypatch, with_sublimation: bool, cap_mode: str):
+    rng = np.random.default_rng(900 + int(with_sublimation) * 10 + len(cap_mode))
+    n = 120
+    elev = rng.uniform(50.0, 1200.0, size=n)
+    relief = np.where(rng.random(n) < 0.2, 0.0, rng.uniform(5.0, 80.0, size=n))
+    area = rng.uniform(1e9, 5e9, size=n)
+    evap = rng.uniform(0.1, 2.5, size=n)
+    sub = rng.uniform(-0.1, 0.8, size=n) if with_sublimation else None
+    hyps = lakes.CellHypsometry(elev, area, relief, float(area.mean()))
+
+    members = np.sort(rng.choice(n, size=24, replace=False)).astype(np.int64)
+    dry_level = hyps.dry_level(members)
+    if cap_mode == "inf":
+        cap_level = np.inf
+        available = float(area[members].sum()) * 18.0
+    elif cap_mode == "surplus":
+        cap_level = float(elev[members].mean() + 40.0)
+        available = float(area[members].sum()) * 500.0
+    else:
+        cap_level = float(elev[members].mean() + 30.0)
+        available = float(area[members].sum()) * 12.0
+
+    dt_step = 100_000.0
+    rust_res = lakes._integrate_body_volume(available, members, cap_level, dry_level, dt_step, evap, sub, hyps)
+    monkeypatch.setattr(_lakes_rust, "RUST_AVAILABLE", False)
+    py_res = lakes._integrate_body_volume(available, members, cap_level, dry_level, dt_step, evap, sub, hyps)
+    monkeypatch.setattr(_lakes_rust, "RUST_AVAILABLE", True)
+
+    for rv, pv in zip(rust_res, py_res):
+        assert rv == pytest.approx(pv, rel=1e-12, abs=1e-9)

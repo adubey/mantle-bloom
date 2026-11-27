@@ -14,6 +14,7 @@ _REQUIRED_RUST_EXPORTS = (
     "lake_components_rs",
     "catchment_roots_rs",
     "lake_hierarchy_events_rs",
+    "integrate_body_volume_rs",
 )
 
 
@@ -85,4 +86,40 @@ def lake_hierarchy_events(
         _i64(neighbor_idx),
         pass_arr,
         int(ocean_catchment),
+    )
+
+
+def integrate_body_volume(
+    available: float,
+    members: np.ndarray,
+    cap_level: float,
+    dry_level: float,
+    dt_step: float,
+    elevation: np.ndarray,
+    relief_m: np.ndarray,
+    area_m2: np.ndarray,
+    evaporation: np.ndarray,
+    sublimation: np.ndarray | None,
+    shallow_evaporation_boost: float,
+    max_iterations: int,
+    newton_iterations: int,
+    storage_tolerance: float,
+) -> tuple[float, float, float, float]:
+    """Multi-member implicit lake volume integration via Rust."""
+    sub_arr = None if sublimation is None else _f64(sublimation)
+    return _rust.integrate_body_volume_rs(
+        float(available),
+        _i64(members),
+        float(cap_level),
+        float(dry_level),
+        float(dt_step),
+        _f64(elevation),
+        _f64(relief_m),
+        _f64(area_m2),
+        _f64(evaporation),
+        sub_arr,
+        float(shallow_evaporation_boost),
+        int(max_iterations),
+        int(newton_iterations),
+        float(storage_tolerance),
     )

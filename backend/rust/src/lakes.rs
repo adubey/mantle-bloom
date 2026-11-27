@@ -523,6 +523,233 @@ pub fn lake_hierarchy_events_rs<'py>(
     ))
 }
 
+#[inline]
+fn max_zero_numpy(v: f64) -> f64 {
+    if v.is_nan() {
+        f64::NAN
+    } else if v > 0.0 {
+        v
+    } else {
+        0.0
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn integrate_body_volume_core(
+    available: f64,
+    members: &[i64],
+    cap_level: f64,
+    dry_level: f64,
+    dt_step: f64,
+    elevation: &[f64],
+    relief_m: &[f64],
+    area_m2: &[f64],
+    evaporation: &[f64],
+    sublimation: Option<&[f64]>,
+    shallow_evaporation_boost: f64,
+    max_iterations: usize,
+    newton_iterations: usize,
+    storage_tolerance: f64,
+) -> Result<(f64, f64, f64, f64), String> {
+    let n = elevation.len();
+    if relief_m.len() != n || area_m2.len() != n || evaporation.len() != n {
+        return Err("terrain/evaporation arrays must have equal length".to_string());
+    }
+    if let Some(sub) = sublimation {
+        if sub.len() != n {
+            return Err("sublimation length must match elevation length".to_string());
+        }
+    }
+    let m = members.len();
+    let mut z = Vec::with_capacity(m);
+    let mut r = Vec::with_capacity(m);
+    let mut a = Vec::with_capacity(m);
+    let mut ev = Vec::with_capacity(m);
+    let mut su = Vec::with_capacity(m);
+    let mut area_sum = 0.0_f64;
+
+    for &idx_raw in members {
+        if idx_raw < 0 || (idx_raw as usize) >= n {
+            return Err(format!("member index {idx_raw} out of range [0, {n})"));
+        }
+        let idx = idx_raw as usize;
+        z.push(elevation[idx]);
+        r.push(relief_m[idx]);
+        let area_i = area_m2[idx];
+        a.push(area_i);
+        area_sum += area_i;
+        ev.push(evaporation[idx]);
+        su.push(match sublimation {
+            Some(sub) => max_zero_numpy(sub[idx]),
+            None => 0.0,
+        });
+    }
+
+    let budget = |level: f64| -> (f64, f64, f64, f64) {
+        let mut volume = 0.0_f64;
+        let mut evap_rate_sum = 0.0_f64;
+        let mut wet_area = 0.0_f64;
+        let mut evap_slope = 0.0_f64;
+
+        for i in 0..m {
+            let zi = z[i];
+            let ri = r[i];
+            let ai = a[i];
+            let evi = ev[i];
+            let sui = su[i];
+            let full = level >= zi + ri;
+            let depth = if full {
+                max_zero_numpy(level - zi)
+            } else if ri > 0.0 {
+                let above_low = max_zero_numpy(level - (zi - ri));
+                (above_low * above_low) / (4.0 * ri)
+            } else {
+                0.0
+            };
+            let wet = if full {
+                if level > zi - ri { 1.0 } else { 0.0 }
+            } else if ri > 0.0 {
+                ((level - (zi - ri)) / (2.0 * ri)).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            volume += depth * ai;
+            evap_rate_sum += (ai * wet) * (evi * (1.0 + shallow_evaporation_boost * (1.0 - wet)) + sui);
+            wet_area += ai * wet;
+            if ri > 0.0 && wet > 0.0 && wet < 1.0 {
+                let d_wet = 1.0 / (2.0 * ri);
+                evap_slope += ai
+                    * (evi * (1.0 + shallow_evaporation_boost - 2.0 * shallow_evaporation_boost * wet) + sui)
+                    * d_wet;
+            }
+        }
+        (
+            volume,
+            evap_rate_sum * dt_step,
+            wet_area + evap_slope * dt_step,
+            wet_area,
+        )
+    };
+
+    let (cap_vol_raw, cap_evaporation, _, _) = budget(cap_level);
+    let cap_volume = if cap_level.is_finite() { cap_vol_raw } else { f64::INFINITY };
+    let surplus = available - cap_volume - cap_evaporation;
+    if surplus > 0.0 {
+        return Ok((cap_volume, cap_evaporation, surplus, cap_level));
+    }
+
+    let mut low = dry_level;
+    let mut high = cap_level;
+    let denom = if area_sum > 1.0 { area_sum } else { 1.0 };
+    let mut level = dry_level + available / denom;
+    if level < low {
+        level = low;
+    }
+    if level > high {
+        level = high;
+    }
+    let (mut volume, mut evaporated, mut slope, mut wet_area) = budget(level);
+
+    let max_abs = dry_level
+        .abs()
+        .max(if cap_level.is_finite() { cap_level.abs() } else { 0.0 })
+        .max(1.0);
+    let level_floor = 8.0 * f64::EPSILON * max_abs;
+
+    for iteration in 0..max_iterations {
+        let residual = volume + evaporated - available;
+        let level_error = if slope > 0.0 { residual.abs() / slope } else { f64::INFINITY };
+        let vol_scale = if volume > 1.0 { volume } else { 1.0 };
+        if level_error * wet_area <= storage_tolerance * vol_scale
+            || level_error <= level_floor
+            || high - low <= level_floor
+        {
+            break;
+        }
+        if residual > 0.0 {
+            high = level;
+        } else {
+            low = level;
+        }
+        let candidate = if slope > 0.0 && iteration < newton_iterations {
+            level - residual / slope
+        } else {
+            f64::NAN
+        };
+        level = if candidate > low && candidate < high {
+            candidate
+        } else {
+            0.5 * (low + high)
+        };
+        (volume, evaporated, slope, wet_area) = budget(level);
+    }
+
+    let loss = (available - volume).max(0.0).min(available);
+    Ok((volume, loss, 0.0, level))
+}
+
+#[pyfunction]
+#[pyo3(signature = (
+    available,
+    members,
+    cap_level,
+    dry_level,
+    dt_step,
+    elevation,
+    relief_m,
+    area_m2,
+    evaporation,
+    sublimation=None,
+    shallow_evaporation_boost=0.3,
+    max_iterations=80,
+    newton_iterations=12,
+    storage_tolerance=1e-13,
+))]
+#[allow(clippy::too_many_arguments)]
+pub fn integrate_body_volume_rs<'py>(
+    available: f64,
+    members: PyReadonlyArray1<'py, i64>,
+    cap_level: f64,
+    dry_level: f64,
+    dt_step: f64,
+    elevation: PyReadonlyArray1<'py, f64>,
+    relief_m: PyReadonlyArray1<'py, f64>,
+    area_m2: PyReadonlyArray1<'py, f64>,
+    evaporation: PyReadonlyArray1<'py, f64>,
+    sublimation: Option<PyReadonlyArray1<'py, f64>>,
+    shallow_evaporation_boost: f64,
+    max_iterations: usize,
+    newton_iterations: usize,
+    storage_tolerance: f64,
+) -> PyResult<(f64, f64, f64, f64)> {
+    let mem_vec = copy_1d(&members)?;
+    let elev_slice = elevation.as_slice()?;
+    let relief_slice = relief_m.as_slice()?;
+    let area_slice = area_m2.as_slice()?;
+    let evap_slice = evaporation.as_slice()?;
+    let sub_slice = match &sublimation {
+        Some(s) => Some(s.as_slice()?),
+        None => None,
+    };
+    integrate_body_volume_core(
+        available,
+        &mem_vec,
+        cap_level,
+        dry_level,
+        dt_step,
+        elev_slice,
+        relief_slice,
+        area_slice,
+        evap_slice,
+        sub_slice,
+        shallow_evaporation_boost,
+        max_iterations,
+        newton_iterations,
+        storage_tolerance,
+    )
+    .map_err(PyValueError::new_err)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

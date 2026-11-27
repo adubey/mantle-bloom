@@ -836,6 +836,24 @@ def _integrate_body_volume(available, members, cap_level, dry_level, dt_step, ev
         evaporated = area * wet * (evap * (1.0 + SHALLOW_EVAPORATION_BOOST * (1.0 - wet)) + sub) * dt_step
         return volume, min(evaporated, available), 0.0, level
 
+    if _lakes_rust.RUST_AVAILABLE:
+        return _lakes_rust.integrate_body_volume(
+            available,
+            members,
+            cap_level,
+            dry_level,
+            dt_step,
+            hypsometry.elevation,
+            hypsometry.relief_m,
+            hypsometry.area_m2,
+            evaporation,
+            sublimation,
+            SHALLOW_EVAPORATION_BOOST,
+            _LEVEL_SOLVE_MAX_ITERATIONS,
+            _NEWTON_ITERATIONS,
+            _LEVEL_SOLVE_STORAGE_TOLERANCE,
+        )
+
     cap_volume = hypsometry.volume(cap_level, members) if np.isfinite(cap_level) else np.inf
     z = hypsometry.elevation[members]
     relief = hypsometry.relief_m[members]
