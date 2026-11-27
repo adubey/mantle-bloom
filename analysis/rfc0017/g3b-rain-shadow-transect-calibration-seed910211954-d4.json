@@ -1,0 +1,3698 @@
+{
+  "save": "seed910211954-221.6myr.bloom",
+  "heldout": false,
+  "save_digest": "1f167a8d9e0edf06c3c52b23598dc2f776adc2927f843beb992b5193ad30fd67",
+  "density": 4,
+  "candidate": "default",
+  "baseline_reference": null,
+  "solvers": [
+    "finite_volume",
+    "wind_arrows"
+  ],
+  "code_commit": "f0d902e779cff7d750921bf58f1d0929223c431d",
+  "source_provenance": {
+    "commit": "f0d902e779cff7d750921bf58f1d0929223c431d",
+    "protocol_id": "g3-three-round-plan-2026-11-18-v2",
+    "worktree_dirty": true,
+    "files": {
+      "backend/app/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "backend/app/hydroclimate/__init__.py": "f95c48d19d3f60599ab5682e0cb8273aaef0b9ed1e52d48e04362c0ab448d62a",
+      "backend/app/hydroclimate/climate.py": "f0a949cf6551c438eb21158d116491140a00f4795b95575e6e63896022c7b1a6",
+      "backend/app/hydroclimate/hydrology.py": "5696a66b50699b32044fea626a76e586aa020a03ae65e00646f07488b5513553",
+      "backend/constraints.txt": "35d5e9c9b4763e521d6bb45e5f98132daf70b7f595bdfaa57b4e321d3ee425e3",
+      "bin/debug/rfc0019_coarse_moisture.py": "c4532dd25667c077c4df618f50795ee063135973f48fda357ad4e63447197867",
+      "bin/debug/rfc0019_g3_archive_cap.py": "732a835c92c6a4e7fd74e73b3c7703045c772d5df7da473518baea7bfc963916",
+      "bin/debug/rfc0019_g3_bounded_column.py": "653d1201923e7cd6807733cdfb625c4860d79313b412693fbb08314761ec818a",
+      "bin/debug/rfc0019_g3_compare.py": "73d4ea73aac31e399a7ac6c693c8fed09e4a0575da3cb70ce2c3310834d326a9",
+      "bin/debug/rfc0019_g3_mixing.py": "a574c5a7c9c766db0b042ddd9c2dec0567cffd912d09815884939b6a2b3f216e",
+      "bin/debug/rfc0019_g3_ridge_rainout.py": "3d1bd8024d1b27b525aba1a30104d458fded791cc649620095fce6da3693891d",
+      "bin/debug/score_rfc0019_g3_tuning_round.py": "892a362b0d4c586fb20e7634f9d9a16ca78f4b7dd245c87931db1b881e46608f",
+      "bin/debug/rfc0019_transport_prototypes.py": "7d7cb3ff8c139d5b724822ae1b2d369b130d005c078a1d9b24665008f26f3787"
+    },
+    "fingerprint": "782bcccf2954010a4ad2ac00479c2c6f9bfe3a1b96c8aca745166b0103a73fa2",
+    "runtime": {
+      "python": "3.14.6",
+      "numpy": "2.5.5",
+      "scipy": "1.18.1",
+      "pillow": "13.0.0"
+    }
+  },
+  "tuning_round": null,
+  "parameters": {
+    "ridge_interception_p_by_arm": {
+      "control": 0.0,
+      "ridge_010": 0.1,
+      "ridge_025": 0.25
+    },
+    "baseline_rainout_s_inv": 1.271876271876272e-06,
+    "coast_sink": null
+  },
+  "capture_provenance": {
+    "results_sha256": "43ac694d36876f79730be54cac4acd11970e23ec33f89d3e5093317b59d275b5",
+    "capture_commit": "f0d902e779cff7d750921bf58f1d0929223c431d",
+    "capture_scripts": {
+      "rfc0019_g3_bounded_column.py": "653d1201923e7cd6807733cdfb625c4860d79313b412693fbb08314761ec818a",
+      "rfc0019_g3_compare.py": "73d4ea73aac31e399a7ac6c693c8fed09e4a0575da3cb70ce2c3310834d326a9",
+      "rfc0019_g3_mixing.py": "a574c5a7c9c766db0b042ddd9c2dec0567cffd912d09815884939b6a2b3f216e",
+      "rfc0019_coarse_moisture.py": "c4532dd25667c077c4df618f50795ee063135973f48fda357ad4e63447197867"
+    }
+  },
+  "results": {
+    "finite_volume": {
+      "diagnostic": {
+        "control": {
+          "land_rain_by_distance_to_ocean_km": {
+            "0_to_500": {
+              "rain_mm_yr": 586.2569240743102,
+              "fraction_of_land": 0.27071920572127955
+            },
+            "500_to_1500": {
+              "rain_mm_yr": 313.6943438987986,
+              "fraction_of_land": 0.3263918224200511
+            },
+            "1500_plus": {
+              "rain_mm_yr": 104.89210291170485,
+              "fraction_of_land": 0.40288897185866934
+            }
+          },
+          "below_freezing_land_rain_mm_yr": 157.15665709164406,
+          "fraction_of_land_rain_below_freezing": 0.2973333204490307,
+          "cold_coast_rain_mm_yr": 371.29083727039415,
+          "cold_inland_rain_mm_yr": 124.49051336845787,
+          "ocean_belt_contrasts": {
+            "-60": {
+              "center_mm_yr": 2226.416550366986,
+              "flank_mm_yr": 437.9367809114472,
+              "ratio": 5.083876594547051
+            },
+            "0": {
+              "center_mm_yr": 3900.2979071937325,
+              "flank_mm_yr": 608.5771177155415,
+              "ratio": 6.408880310575189
+            },
+            "60": {
+              "center_mm_yr": 331.20694826050186,
+              "flank_mm_yr": 321.3728489048695,
+              "ratio": 1.0306002806059804
+            }
+          },
+          "ocean_belt_wettest_row_shares": {
+            "-60": 0.050399921339034134,
+            "0": 0.05254748599489631,
+            "60": 0.27855616223101004
+          },
+          "total_rain_kg_s": 14225533966.195694,
+          "global_mean_rain_mm_yr": 880.1313077359667,
+          "land_rain_share": 0.11928160474969712,
+          "ocean_rain_share": 0.8807183952503028,
+          "folded_latitude_bands": [
+            {
+              "absolute_latitude_deg": [
+                0,
+                15
+              ],
+              "land_mean_mm_yr": 1286.030811731988,
+              "ocean_mean_mm_yr": 2388.29476616814
+            },
+            {
+              "absolute_latitude_deg": [
+                15,
+                30
+              ],
+              "land_mean_mm_yr": 70.97360727255621,
+              "ocean_mean_mm_yr": 327.8827909467981
+            },
+            {
+              "absolute_latitude_deg": [
+                30,
+                45
+              ],
+              "land_mean_mm_yr": 72.51853591870814,
+              "ocean_mean_mm_yr": 284.73655914523556
+            },
+            {
+              "absolute_latitude_deg": [
+                45,
+                60
+              ],
+              "land_mean_mm_yr": 308.1493327413638,
+              "ocean_mean_mm_yr": 1484.8097633711006
+            },
+            {
+              "absolute_latitude_deg": [
+                60,
+                75
+              ],
+              "land_mean_mm_yr": 109.22834658629425,
+              "ocean_mean_mm_yr": 1256.3173664778544
+            },
+            {
+              "absolute_latitude_deg": [
+                75,
+                90
+              ],
+              "land_mean_mm_yr": 1.5789877026986288,
+              "ocean_mean_mm_yr": 64.21274757825286
+            }
+          ],
+          "ridge_transects": {
+            "crossings": 3142,
+            "distinct_crests": 720,
+            "median_crest_rain_mm_yr": 13.616895052504892,
+            "median_lee_rain_mm_yr": 23.673546903583258,
+            "median_crest_minus_lee_mm_yr": -0.3300820643539907,
+            "median_contrast_gain_mm_yr": 0.0,
+            "median_lee_change_mm_yr": 0.0,
+            "crest_wetter_and_lee_drier_share": 0.0
+          },
+          "ridge_native_cell_profiles": {
+            "offsets_native_cells": [
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3
+            ],
+            "profile_count": 828,
+            "crest_selection": "highest native land cell in each coarse transport crest cell",
+            "positive_offsets_follow_transport_downwind": true,
+            "north_south_rows_use_solver_order": true,
+            "summary": [
+              {
+                "offset_native_cells": -3,
+                "valid_profiles": 806,
+                "candidate_median_rain_mm_yr": 9.078865560276233,
+                "candidate_p10_rain_mm_yr": 0.05872868233205239,
+                "candidate_p90_rain_mm_yr": 505.4684284841744,
+                "candidate_area_weighted_mean_rain_mm_yr": 300.14489898060583,
+                "control_median_rain_mm_yr": 9.078865560276233,
+                "control_p10_rain_mm_yr": 0.05872868233205239,
+                "control_p90_rain_mm_yr": 505.4684284841744,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": -2,
+                "valid_profiles": 816,
+                "candidate_median_rain_mm_yr": 10.573709361540413,
+                "candidate_p10_rain_mm_yr": 0.06734432378058194,
+                "candidate_p90_rain_mm_yr": 505.58964072840433,
+                "candidate_area_weighted_mean_rain_mm_yr": 288.73559572869743,
+                "control_median_rain_mm_yr": 10.573709361540413,
+                "control_p10_rain_mm_yr": 0.06734432378058194,
+                "control_p90_rain_mm_yr": 505.58964072840433,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": -1,
+                "valid_profiles": 825,
+                "candidate_median_rain_mm_yr": 12.554520620615747,
+                "candidate_p10_rain_mm_yr": 0.07008955713468434,
+                "candidate_p90_rain_mm_yr": 568.024782716579,
+                "candidate_area_weighted_mean_rain_mm_yr": 306.46936735638207,
+                "control_median_rain_mm_yr": 12.554520620615747,
+                "control_p10_rain_mm_yr": 0.07008955713468434,
+                "control_p90_rain_mm_yr": 568.024782716579,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": 0,
+                "valid_profiles": 828,
+                "candidate_median_rain_mm_yr": 13.397041779390399,
+                "candidate_p10_rain_mm_yr": 0.06976128544193842,
+                "candidate_p90_rain_mm_yr": 577.2238534727835,
+                "candidate_area_weighted_mean_rain_mm_yr": 317.97522235200915,
+                "control_median_rain_mm_yr": 13.397041779390399,
+                "control_p10_rain_mm_yr": 0.06976128544193842,
+                "control_p90_rain_mm_yr": 577.2238534727835,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": 1,
+                "valid_profiles": 825,
+                "candidate_median_rain_mm_yr": 14.537674098249818,
+                "candidate_p10_rain_mm_yr": 0.09135756243586343,
+                "candidate_p90_rain_mm_yr": 588.7233341622035,
+                "candidate_area_weighted_mean_rain_mm_yr": 333.7147101919226,
+                "control_median_rain_mm_yr": 14.537674098249818,
+                "control_p10_rain_mm_yr": 0.09135756243586343,
+                "control_p90_rain_mm_yr": 588.7233341622035,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": 2,
+                "valid_profiles": 821,
+                "candidate_median_rain_mm_yr": 17.640140350059625,
+                "candidate_p10_rain_mm_yr": 0.11496806449611058,
+                "candidate_p90_rain_mm_yr": 623.9418206972326,
+                "candidate_area_weighted_mean_rain_mm_yr": 354.7121817190871,
+                "control_median_rain_mm_yr": 17.640140350059625,
+                "control_p10_rain_mm_yr": 0.11496806449611058,
+                "control_p90_rain_mm_yr": 623.9418206972326,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": 3,
+                "valid_profiles": 810,
+                "candidate_median_rain_mm_yr": 18.311416490755008,
+                "candidate_p10_rain_mm_yr": 0.1380435139435623,
+                "candidate_p90_rain_mm_yr": 638.8138884801577,
+                "candidate_area_weighted_mean_rain_mm_yr": 362.2563873549634,
+                "control_median_rain_mm_yr": 18.311416490755008,
+                "control_p10_rain_mm_yr": 0.1380435139435623,
+                "control_p90_rain_mm_yr": 638.8138884801577,
+                "median_candidate_minus_control_mm_yr": 0.0
+              }
+            ],
+            "multi_cell_windward_minus_lee": {
+              "side_offsets_native_cells": {
+                "windward": [
+                  -3,
+                  -2,
+                  -1
+                ],
+                "lee": [
+                  1,
+                  2,
+                  3
+                ]
+              },
+              "minimum_valid_cells_per_side": 2,
+              "eligible_profiles": 812,
+              "candidate": {
+                "median_mm_yr": -0.1919809108898281,
+                "p10_mm_yr": -89.20122192925874,
+                "p90_mm_yr": 35.41894259151164
+              },
+              "control": {
+                "median_mm_yr": -0.1919809108898281,
+                "p10_mm_yr": -89.20122192925874,
+                "p90_mm_yr": 35.41894259151164
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 0.0,
+                "p10_mm_yr": 0.0,
+                "p90_mm_yr": 0.0
+              },
+              "candidate_fraction_windward_wetter": 0.3583743842364532,
+              "fraction_with_positive_contrast_gain": 0.0
+            }
+          },
+          "geographic_metrics_present": true,
+          "cold_inland_budget": {
+            "inflow_kg_s": 449943355.96476734,
+            "outflow_kg_s": 170172235.7757631,
+            "net_inflow_kg_s": 279771120.18900424,
+            "local_source_kg_s": 33173900.73825904,
+            "atmospheric_rain_kg_s": 312945020.92726326,
+            "spread_contribution_kg_s": 33815284.1442579
+          },
+          "raw_rms_to_legacy": 0.6643749998747148,
+          "summed_cell_closure": 2.4591054259889202e-15,
+          "global_closure": 2.6815845891549023e-16,
+          "source_total_kg_s": 14225533966.195698,
+          "budget_rain_total_kg_s": 14225533966.195694,
+          "source_rain_relative_residual": 2.6815845891549023e-16,
+          "placed_rain_total_kg_s": 14225533966.195694,
+          "minimum_column_water_kg_m2": 4.278632040207467e-07,
+          "maximum_mass_cap_violation_kg": 0.0,
+          "overflow_total_kg_s": 7854241744.669052,
+          "overflow_max_kg_s": 24436872.02318819,
+          "condensate_placement_relative_residual": 3.4651100862986015e-15,
+          "intercepted_rain_fraction": 0.0,
+          "sink_rate_min_s_inv": 1.271876271876272e-06,
+          "sink_rate_max_s_inv": 1.271876271876272e-06,
+          "geographic_support": {
+            "area_fraction": {
+              "belt_center": 0.10983972886808446,
+              "belt_flanks": 0.1643005095074206,
+              "near_coast": 0.09368808125546887,
+              "inland": 0.1394282117216642,
+              "cold_coast": 0.026289594342294755
+            },
+            "minimum_region_area_fraction": 0.001,
+            "ridge_crossings": 3142,
+            "distinct_crests": 720,
+            "equatorial_belt": {
+              "evaluable": true
+            },
+            "inland_coast": {
+              "evaluable": true
+            },
+            "ridge_shadow": {
+              "evaluable": true,
+              "minimum_crossings": 100,
+              "minimum_distinct_crests": 25
+            },
+            "cold_coast": {
+              "evaluable": true
+            }
+          },
+          "hard_gates": {
+            "finite_nonnegative_mass": true,
+            "within_mass_cap": true,
+            "finite_nonnegative_overflow": true,
+            "finite_nonnegative_source": true,
+            "finite_nonnegative_budget_rain": true,
+            "finite_nonnegative_rain": true,
+            "global_closure": true,
+            "summed_cell_closure": true,
+            "source_equals_budget_rain": true,
+            "placement_closure": true
+          }
+        },
+        "ridge_010": {
+          "land_rain_by_distance_to_ocean_km": {
+            "0_to_500": {
+              "rain_mm_yr": 592.9760420108116,
+              "fraction_of_land": 0.27071920572127955
+            },
+            "500_to_1500": {
+              "rain_mm_yr": 312.7719181681469,
+              "fraction_of_land": 0.3263918224200511
+            },
+            "1500_plus": {
+              "rain_mm_yr": 103.29101525683006,
+              "fraction_of_land": 0.40288897185866934
+            }
+          },
+          "below_freezing_land_rain_mm_yr": 156.385406631173,
+          "fraction_of_land_rain_below_freezing": 0.29502526425976994,
+          "cold_coast_rain_mm_yr": 376.3393180525967,
+          "cold_inland_rain_mm_yr": 122.83146359895166,
+          "ocean_belt_contrasts": {
+            "-60": {
+              "center_mm_yr": 2226.406335438003,
+              "flank_mm_yr": 437.93310589157136,
+              "ratio": 5.08389593178928
+            },
+            "0": {
+              "center_mm_yr": 3898.6554608967003,
+              "flank_mm_yr": 607.98566696246,
+              "ratio": 6.412413437926363
+            },
+            "60": {
+              "center_mm_yr": 329.5512390166833,
+              "flank_mm_yr": 320.43169184263076,
+              "ratio": 1.0284601910679025
+            }
+          },
+          "ocean_belt_wettest_row_shares": {
+            "-60": 0.05039995882561719,
+            "0": 0.05255144823278998,
+            "60": 0.2789863643639293
+          },
+          "total_rain_kg_s": 14225533966.195692,
+          "global_mean_rain_mm_yr": 880.1313077359666,
+          "land_rain_share": 0.11962481728708603,
+          "ocean_rain_share": 0.880375182712914,
+          "folded_latitude_bands": [
+            {
+              "absolute_latitude_deg": [
+                0,
+                15
+              ],
+              "land_mean_mm_yr": 1285.2013129215343,
+              "ocean_mean_mm_yr": 2387.118181768072
+            },
+            {
+              "absolute_latitude_deg": [
+                15,
+                30
+              ],
+              "land_mean_mm_yr": 76.16879685686422,
+              "ocean_mean_mm_yr": 327.62619641917735
+            },
+            {
+              "absolute_latitude_deg": [
+                30,
+                45
+              ],
+              "land_mean_mm_yr": 76.35999077440391,
+              "ocean_mean_mm_yr": 284.7007861258439
+            },
+            {
+              "absolute_latitude_deg": [
+                45,
+                60
+              ],
+              "land_mean_mm_yr": 305.483624572835,
+              "ocean_mean_mm_yr": 1484.726447732335
+            },
+            {
+              "absolute_latitude_deg": [
+                60,
+                75
+              ],
+              "land_mean_mm_yr": 106.82079250129033,
+              "ocean_mean_mm_yr": 1256.3132271039087
+            },
+            {
+              "absolute_latitude_deg": [
+                75,
+                90
+              ],
+              "land_mean_mm_yr": 1.709543509623003,
+              "ocean_mean_mm_yr": 64.21274757825286
+            }
+          ],
+          "ridge_transects": {
+            "crossings": 3142,
+            "distinct_crests": 720,
+            "median_crest_rain_mm_yr": 22.108809042691366,
+            "median_lee_rain_mm_yr": 22.365173245157226,
+            "median_crest_minus_lee_mm_yr": 0.5534870682356391,
+            "median_contrast_gain_mm_yr": 5.882303162122128,
+            "median_lee_change_mm_yr": -0.4797640285931166,
+            "crest_wetter_and_lee_drier_share": 0.8828771483131763
+          },
+          "ridge_native_cell_profiles": {
+            "offsets_native_cells": [
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3
+            ],
+            "profile_count": 828,
+            "crest_selection": "highest native land cell in each coarse transport crest cell",
+            "positive_offsets_follow_transport_downwind": true,
+            "north_south_rows_use_solver_order": true,
+            "summary": [
+              {
+                "offset_native_cells": -3,
+                "valid_profiles": 806,
+                "candidate_median_rain_mm_yr": 11.639761079561758,
+                "candidate_p10_rain_mm_yr": 0.06954804918996454,
+                "candidate_p90_rain_mm_yr": 501.97552093577764,
+                "candidate_area_weighted_mean_rain_mm_yr": 305.18034565484436,
+                "control_median_rain_mm_yr": 9.078865560276233,
+                "control_p10_rain_mm_yr": 0.05872868233205239,
+                "control_p90_rain_mm_yr": 505.4684284841744,
+                "median_candidate_minus_control_mm_yr": -0.012673997623254163
+              },
+              {
+                "offset_native_cells": -2,
+                "valid_profiles": 816,
+                "candidate_median_rain_mm_yr": 16.586951740005958,
+                "candidate_p10_rain_mm_yr": 0.08926985335283395,
+                "candidate_p90_rain_mm_yr": 597.0031213758868,
+                "candidate_area_weighted_mean_rain_mm_yr": 313.61237659717784,
+                "control_median_rain_mm_yr": 10.573709361540413,
+                "control_p10_rain_mm_yr": 0.06734432378058194,
+                "control_p90_rain_mm_yr": 505.58964072840433,
+                "median_candidate_minus_control_mm_yr": 0.0006824518948794003
+              },
+              {
+                "offset_native_cells": -1,
+                "valid_profiles": 825,
+                "candidate_median_rain_mm_yr": 18.928812755056583,
+                "candidate_p10_rain_mm_yr": 0.10601382297369884,
+                "candidate_p90_rain_mm_yr": 659.3462593014077,
+                "candidate_area_weighted_mean_rain_mm_yr": 343.14788522451033,
+                "control_median_rain_mm_yr": 12.554520620615747,
+                "control_p10_rain_mm_yr": 0.07008955713468434,
+                "control_p90_rain_mm_yr": 568.024782716579,
+                "median_candidate_minus_control_mm_yr": 0.608837906554254
+              },
+              {
+                "offset_native_cells": 0,
+                "valid_profiles": 828,
+                "candidate_median_rain_mm_yr": 22.356112103357273,
+                "candidate_p10_rain_mm_yr": 0.1088312973408652,
+                "candidate_p90_rain_mm_yr": 738.1321848385433,
+                "candidate_area_weighted_mean_rain_mm_yr": 370.58174151550315,
+                "control_median_rain_mm_yr": 13.397041779390399,
+                "control_p10_rain_mm_yr": 0.06976128544193842,
+                "control_p90_rain_mm_yr": 577.2238534727835,
+                "median_candidate_minus_control_mm_yr": 4.413451696754009
+              },
+              {
+                "offset_native_cells": 1,
+                "valid_profiles": 825,
+                "candidate_median_rain_mm_yr": 20.73319622484243,
+                "candidate_p10_rain_mm_yr": 0.11473192415318959,
+                "candidate_p90_rain_mm_yr": 698.0210512276424,
+                "candidate_area_weighted_mean_rain_mm_yr": 374.6143239581149,
+                "control_median_rain_mm_yr": 14.537674098249818,
+                "control_p10_rain_mm_yr": 0.09135756243586343,
+                "control_p90_rain_mm_yr": 588.7233341622035,
+                "median_candidate_minus_control_mm_yr": 1.2543563163367732
+              },
+              {
+                "offset_native_cells": 2,
+                "valid_profiles": 821,
+                "candidate_median_rain_mm_yr": 20.73319622484243,
+                "candidate_p10_rain_mm_yr": 0.14358055802332184,
+                "candidate_p90_rain_mm_yr": 689.6673321923682,
+                "candidate_area_weighted_mean_rain_mm_yr": 374.55269712798736,
+                "control_median_rain_mm_yr": 17.640140350059625,
+                "control_p10_rain_mm_yr": 0.11496806449611058,
+                "control_p90_rain_mm_yr": 623.9418206972326,
+                "median_candidate_minus_control_mm_yr": 0.00029979584593387183
+              },
+              {
+                "offset_native_cells": 3,
+                "valid_profiles": 810,
+                "candidate_median_rain_mm_yr": 20.834873208447995,
+                "candidate_p10_rain_mm_yr": 0.1444946517190951,
+                "candidate_p90_rain_mm_yr": 678.0553157242549,
+                "candidate_area_weighted_mean_rain_mm_yr": 369.8988052218545,
+                "control_median_rain_mm_yr": 18.311416490755008,
+                "control_p10_rain_mm_yr": 0.1380435139435623,
+                "control_p90_rain_mm_yr": 638.8138884801577,
+                "median_candidate_minus_control_mm_yr": -0.05939744353541865
+              }
+            ],
+            "multi_cell_windward_minus_lee": {
+              "side_offsets_native_cells": {
+                "windward": [
+                  -3,
+                  -2,
+                  -1
+                ],
+                "lee": [
+                  1,
+                  2,
+                  3
+                ]
+              },
+              "minimum_valid_cells_per_side": 2,
+              "eligible_profiles": 812,
+              "candidate": {
+                "median_mm_yr": -0.26502657797616114,
+                "p10_mm_yr": -149.53723957635856,
+                "p90_mm_yr": 53.64842701879452
+              },
+              "control": {
+                "median_mm_yr": -0.1919809108898281,
+                "p10_mm_yr": -89.20122192925874,
+                "p90_mm_yr": 35.41894259151164
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 0.00018623106653770094,
+                "p10_mm_yr": -46.92711113946582,
+                "p90_mm_yr": 36.88917569151787
+              },
+              "candidate_fraction_windward_wetter": 0.3768472906403941,
+              "fraction_with_positive_contrast_gain": 0.5036945812807881
+            }
+          },
+          "geographic_metrics_present": true,
+          "cold_inland_budget": {
+            "inflow_kg_s": 442476680.0974597,
+            "outflow_kg_s": 166364942.9925999,
+            "net_inflow_kg_s": 276111737.1048597,
+            "local_source_kg_s": 33173900.73825904,
+            "atmospheric_rain_kg_s": 309285637.8431188,
+            "spread_contribution_kg_s": 32853490.9745934
+          },
+          "raw_rms_to_legacy": 0.664250497246204,
+          "summed_cell_closure": 2.4977758324464108e-15,
+          "global_closure": 2.6815845891549023e-16,
+          "source_total_kg_s": 14225533966.195698,
+          "budget_rain_total_kg_s": 14225533966.195694,
+          "source_rain_relative_residual": 2.6815845891549023e-16,
+          "placed_rain_total_kg_s": 14225533966.195692,
+          "minimum_column_water_kg_m2": 3.971464051511091e-07,
+          "maximum_mass_cap_violation_kg": 0.0,
+          "overflow_total_kg_s": 7821695494.266054,
+          "overflow_max_kg_s": 24436872.02318819,
+          "condensate_placement_relative_residual": 3.280751145794202e-15,
+          "intercepted_rain_fraction": 0.0029743980961208934,
+          "sink_rate_min_s_inv": 1.271876271876272e-06,
+          "sink_rate_max_s_inv": 1.271876271876272e-06,
+          "geographic_support": {
+            "area_fraction": {
+              "belt_center": 0.10983972886808446,
+              "belt_flanks": 0.1643005095074206,
+              "near_coast": 0.09368808125546887,
+              "inland": 0.1394282117216642,
+              "cold_coast": 0.026289594342294755
+            },
+            "minimum_region_area_fraction": 0.001,
+            "ridge_crossings": 3142,
+            "distinct_crests": 720,
+            "equatorial_belt": {
+              "evaluable": true
+            },
+            "inland_coast": {
+              "evaluable": true
+            },
+            "ridge_shadow": {
+              "evaluable": true,
+              "minimum_crossings": 100,
+              "minimum_distinct_crests": 25
+            },
+            "cold_coast": {
+              "evaluable": true
+            }
+          },
+          "hard_gates": {
+            "finite_nonnegative_mass": true,
+            "within_mass_cap": true,
+            "finite_nonnegative_overflow": true,
+            "finite_nonnegative_source": true,
+            "finite_nonnegative_budget_rain": true,
+            "finite_nonnegative_rain": true,
+            "global_closure": true,
+            "summed_cell_closure": true,
+            "source_equals_budget_rain": true,
+            "placement_closure": true
+          }
+        },
+        "ridge_025": {
+          "land_rain_by_distance_to_ocean_km": {
+            "0_to_500": {
+              "rain_mm_yr": 603.3719382918953,
+              "fraction_of_land": 0.27071920572127955
+            },
+            "500_to_1500": {
+              "rain_mm_yr": 311.0198969755183,
+              "fraction_of_land": 0.3263918224200511
+            },
+            "1500_plus": {
+              "rain_mm_yr": 100.92062005560962,
+              "fraction_of_land": 0.40288897185866934
+            }
+          },
+          "below_freezing_land_rain_mm_yr": 155.30517370614717,
+          "fraction_of_land_rain_below_freezing": 0.29175266739011074,
+          "cold_coast_rain_mm_yr": 384.8308584824445,
+          "cold_inland_rain_mm_yr": 120.29105778683669,
+          "ocean_belt_contrasts": {
+            "-60": {
+              "center_mm_yr": 2226.391161572978,
+              "flank_mm_yr": 437.9276455790562,
+              "ratio": 5.0839246712298785
+            },
+            "0": {
+              "center_mm_yr": 3896.235908011231,
+              "flank_mm_yr": 607.1137849962722,
+              "ratio": 6.41763702999291
+            },
+            "60": {
+              "center_mm_yr": 326.96803156182074,
+              "flank_mm_yr": 318.98988900063796,
+              "ratio": 1.0250106440244156
+            }
+          },
+          "ocean_belt_wettest_row_shares": {
+            "-60": 0.050400014511194045,
+            "0": 0.05255731463715772,
+            "60": 0.27972891314985865
+          },
+          "total_rain_kg_s": 14225533966.195692,
+          "global_mean_rain_mm_yr": 880.1313077359667,
+          "land_rain_share": 0.12013107410347544,
+          "ocean_rain_share": 0.8798689258965247,
+          "folded_latitude_bands": [
+            {
+              "absolute_latitude_deg": [
+                0,
+                15
+              ],
+              "land_mean_mm_yr": 1283.9621503619485,
+              "ocean_mean_mm_yr": 2385.384854713436
+            },
+            {
+              "absolute_latitude_deg": [
+                15,
+                30
+              ],
+              "land_mean_mm_yr": 83.83526733942078,
+              "ocean_mean_mm_yr": 327.2483042383204
+            },
+            {
+              "absolute_latitude_deg": [
+                30,
+                45
+              ],
+              "land_mean_mm_yr": 82.61437022928978,
+              "ocean_mean_mm_yr": 284.6471652106002
+            },
+            {
+              "absolute_latitude_deg": [
+                45,
+                60
+              ],
+              "land_mean_mm_yr": 300.7469719659528,
+              "ocean_mean_mm_yr": 1484.5979223288139
+            },
+            {
+              "absolute_latitude_deg": [
+                60,
+                75
+              ],
+              "land_mean_mm_yr": 103.49014837579418,
+              "ocean_mean_mm_yr": 1256.3070782337327
+            },
+            {
+              "absolute_latitude_deg": [
+                75,
+                90
+              ],
+              "land_mean_mm_yr": 1.897998467394259,
+              "ocean_mean_mm_yr": 64.21274757825286
+            }
+          ],
+          "ridge_transects": {
+            "crossings": 3142,
+            "distinct_crests": 720,
+            "median_crest_rain_mm_yr": 35.05547713601313,
+            "median_lee_rain_mm_yr": 19.023578770987392,
+            "median_crest_minus_lee_mm_yr": 5.048743421357212,
+            "median_contrast_gain_mm_yr": 15.056740465248968,
+            "median_lee_change_mm_yr": -1.1730564654359679,
+            "crest_wetter_and_lee_drier_share": 0.8819223424570337
+          },
+          "ridge_native_cell_profiles": {
+            "offsets_native_cells": [
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3
+            ],
+            "profile_count": 828,
+            "crest_selection": "highest native land cell in each coarse transport crest cell",
+            "positive_offsets_follow_transport_downwind": true,
+            "north_south_rows_use_solver_order": true,
+            "summary": [
+              {
+                "offset_native_cells": -3,
+                "valid_profiles": 806,
+                "candidate_median_rain_mm_yr": 14.140994880875635,
+                "candidate_p10_rain_mm_yr": 0.07157149244069302,
+                "candidate_p90_rain_mm_yr": 522.1611377592967,
+                "candidate_area_weighted_mean_rain_mm_yr": 313.85180173870515,
+                "control_median_rain_mm_yr": 9.078865560276233,
+                "control_p10_rain_mm_yr": 0.05872868233205239,
+                "control_p90_rain_mm_yr": 505.4684284841744,
+                "median_candidate_minus_control_mm_yr": -0.03153396291105248
+              },
+              {
+                "offset_native_cells": -2,
+                "valid_profiles": 816,
+                "candidate_median_rain_mm_yr": 20.005531244571884,
+                "candidate_p10_rain_mm_yr": 0.09542585456990539,
+                "candidate_p90_rain_mm_yr": 673.6037968280082,
+                "candidate_area_weighted_mean_rain_mm_yr": 350.91243724635825,
+                "control_median_rain_mm_yr": 10.573709361540413,
+                "control_p10_rain_mm_yr": 0.06734432378058194,
+                "control_p90_rain_mm_yr": 505.58964072840433,
+                "median_candidate_minus_control_mm_yr": 0.0010354844126221141
+              },
+              {
+                "offset_native_cells": -1,
+                "valid_profiles": 825,
+                "candidate_median_rain_mm_yr": 28.187548973016156,
+                "candidate_p10_rain_mm_yr": 0.1274524316077907,
+                "candidate_p90_rain_mm_yr": 830.4265248655128,
+                "candidate_area_weighted_mean_rain_mm_yr": 397.73849700712844,
+                "control_median_rain_mm_yr": 12.554520620615747,
+                "control_p10_rain_mm_yr": 0.07008955713468434,
+                "control_p90_rain_mm_yr": 568.024782716579,
+                "median_candidate_minus_control_mm_yr": 1.4750865026366942
+              },
+              {
+                "offset_native_cells": 0,
+                "valid_profiles": 828,
+                "candidate_median_rain_mm_yr": 35.25800669716703,
+                "candidate_p10_rain_mm_yr": 0.1620839383982692,
+                "candidate_p90_rain_mm_yr": 960.0609652497773,
+                "candidate_area_weighted_mean_rain_mm_yr": 448.2448415107998,
+                "control_median_rain_mm_yr": 13.397041779390399,
+                "control_p10_rain_mm_yr": 0.06976128544193842,
+                "control_p90_rain_mm_yr": 577.2238534727835,
+                "median_candidate_minus_control_mm_yr": 9.797517922683218
+              },
+              {
+                "offset_native_cells": 1,
+                "valid_profiles": 825,
+                "candidate_median_rain_mm_yr": 29.879910484612342,
+                "candidate_p10_rain_mm_yr": 0.15850517934732297,
+                "candidate_p90_rain_mm_yr": 892.6697901468872,
+                "candidate_area_weighted_mean_rain_mm_yr": 435.22366118043954,
+                "control_median_rain_mm_yr": 14.537674098249818,
+                "control_p10_rain_mm_yr": 0.09135756243586343,
+                "control_p90_rain_mm_yr": 588.7233341622035,
+                "median_candidate_minus_control_mm_yr": 2.8123420438265363
+              },
+              {
+                "offset_native_cells": 2,
+                "valid_profiles": 821,
+                "candidate_median_rain_mm_yr": 25.060578090909388,
+                "candidate_p10_rain_mm_yr": 0.1546235619809331,
+                "candidate_p90_rain_mm_yr": 775.7678295372865,
+                "candidate_area_weighted_mean_rain_mm_yr": 405.2436067108876,
+                "control_median_rain_mm_yr": 17.640140350059625,
+                "control_p10_rain_mm_yr": 0.11496806449611058,
+                "control_p90_rain_mm_yr": 623.9418206972326,
+                "median_candidate_minus_control_mm_yr": 0.00037405826855162725
+              },
+              {
+                "offset_native_cells": 3,
+                "valid_profiles": 810,
+                "candidate_median_rain_mm_yr": 21.80812176664366,
+                "candidate_p10_rain_mm_yr": 0.14672255292538638,
+                "candidate_p90_rain_mm_yr": 719.7402073119116,
+                "candidate_area_weighted_mean_rain_mm_yr": 382.7139502189559,
+                "control_median_rain_mm_yr": 18.311416490755008,
+                "control_p10_rain_mm_yr": 0.1380435139435623,
+                "control_p90_rain_mm_yr": 638.8138884801577,
+                "median_candidate_minus_control_mm_yr": -0.1393941230935537
+              }
+            ],
+            "multi_cell_windward_minus_lee": {
+              "side_offsets_native_cells": {
+                "windward": [
+                  -3,
+                  -2,
+                  -1
+                ],
+                "lee": [
+                  1,
+                  2,
+                  3
+                ]
+              },
+              "minimum_valid_cells_per_side": 2,
+              "eligible_profiles": 812,
+              "candidate": {
+                "median_mm_yr": -0.38729743851927956,
+                "p10_mm_yr": -225.61969393355352,
+                "p90_mm_yr": 88.78522968102457
+              },
+              "control": {
+                "median_mm_yr": -0.1919809108898281,
+                "p10_mm_yr": -89.20122192925874,
+                "p90_mm_yr": 35.41894259151164
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 0.003261793863559583,
+                "p10_mm_yr": -111.14488648516709,
+                "p90_mm_yr": 88.77620385885687
+              },
+              "candidate_fraction_windward_wetter": 0.3768472906403941,
+              "fraction_with_positive_contrast_gain": 0.5086206896551724
+            }
+          },
+          "geographic_metrics_present": true,
+          "cold_inland_budget": {
+            "inflow_kg_s": 429981841.43945944,
+            "outflow_kg_s": 159496945.5461219,
+            "net_inflow_kg_s": 270484895.8933375,
+            "local_source_kg_s": 33173900.73825904,
+            "atmospheric_rain_kg_s": 303658796.63159657,
+            "spread_contribution_kg_s": 31404195.45425725
+          },
+          "raw_rms_to_legacy": 0.6647507912659432,
+          "summed_cell_closure": 2.4883940087019983e-15,
+          "global_closure": 1.3407922945774512e-16,
+          "source_total_kg_s": 14225533966.195698,
+          "budget_rain_total_kg_s": 14225533966.195696,
+          "source_rain_relative_residual": 1.3407922945774512e-16,
+          "placed_rain_total_kg_s": 14225533966.195692,
+          "minimum_column_water_kg_m2": 3.5133726143304304e-07,
+          "maximum_mass_cap_violation_kg": 0.0,
+          "overflow_total_kg_s": 7776397530.3566475,
+          "overflow_max_kg_s": 24436872.02318819,
+          "condensate_placement_relative_residual": 5.430208793038678e-15,
+          "intercepted_rain_fraction": 0.007269021310362144,
+          "sink_rate_min_s_inv": 1.271876271876272e-06,
+          "sink_rate_max_s_inv": 1.271876271876272e-06,
+          "geographic_support": {
+            "area_fraction": {
+              "belt_center": 0.10983972886808446,
+              "belt_flanks": 0.1643005095074206,
+              "near_coast": 0.09368808125546887,
+              "inland": 0.1394282117216642,
+              "cold_coast": 0.026289594342294755
+            },
+            "minimum_region_area_fraction": 0.001,
+            "ridge_crossings": 3142,
+            "distinct_crests": 720,
+            "equatorial_belt": {
+              "evaluable": true
+            },
+            "inland_coast": {
+              "evaluable": true
+            },
+            "ridge_shadow": {
+              "evaluable": true,
+              "minimum_crossings": 100,
+              "minimum_distinct_crests": 25
+            },
+            "cold_coast": {
+              "evaluable": true
+            }
+          },
+          "hard_gates": {
+            "finite_nonnegative_mass": true,
+            "within_mass_cap": true,
+            "finite_nonnegative_overflow": true,
+            "finite_nonnegative_source": true,
+            "finite_nonnegative_budget_rain": true,
+            "finite_nonnegative_rain": true,
+            "global_closure": true,
+            "summed_cell_closure": true,
+            "source_equals_budget_rain": true,
+            "placement_closure": true
+          }
+        }
+      },
+      "cfd": {
+        "control": {
+          "land_rain_by_distance_to_ocean_km": {
+            "0_to_500": {
+              "rain_mm_yr": 456.69554344138896,
+              "fraction_of_land": 0.27071920572127955
+            },
+            "500_to_1500": {
+              "rain_mm_yr": 347.68665537029995,
+              "fraction_of_land": 0.3263918224200511
+            },
+            "1500_plus": {
+              "rain_mm_yr": 213.95918756052905,
+              "fraction_of_land": 0.40288897185866934
+            }
+          },
+          "below_freezing_land_rain_mm_yr": 149.47263686427152,
+          "fraction_of_land_rain_below_freezing": 0.022433481994750256,
+          "cold_coast_rain_mm_yr": 755.4361795450804,
+          "cold_inland_rain_mm_yr": 108.94131242672694,
+          "ocean_belt_contrasts": {
+            "-60": {
+              "center_mm_yr": 2199.522151315895,
+              "flank_mm_yr": 486.4689832084965,
+              "ratio": 4.521402653071508
+            },
+            "0": {
+              "center_mm_yr": 3967.1172803899417,
+              "flank_mm_yr": 609.5805408021865,
+              "ratio": 6.507946062663606
+            },
+            "60": {
+              "center_mm_yr": 175.0065250708066,
+              "flank_mm_yr": 304.8942593574,
+              "ratio": 0.5739908827396525
+            }
+          },
+          "ocean_belt_wettest_row_shares": {
+            "-60": 0.04961183009489564,
+            "0": 0.0534085203708181,
+            "60": 0.30336981258703616
+          },
+          "total_rain_kg_s": 14484856703.419258,
+          "global_mean_rain_mm_yr": 896.1755603018537,
+          "land_rain_share": 0.12485470996527012,
+          "ocean_rain_share": 0.87514529003473,
+          "folded_latitude_bands": [
+            {
+              "absolute_latitude_deg": [
+                0,
+                15
+              ],
+              "land_mean_mm_yr": 1123.4592784298961,
+              "ocean_mean_mm_yr": 2425.3440091938514
+            },
+            {
+              "absolute_latitude_deg": [
+                15,
+                30
+              ],
+              "land_mean_mm_yr": 79.17233705084523,
+              "ocean_mean_mm_yr": 318.0301509714021
+            },
+            {
+              "absolute_latitude_deg": [
+                30,
+                45
+              ],
+              "land_mean_mm_yr": 79.49930438342129,
+              "ocean_mean_mm_yr": 293.2423101727571
+            },
+            {
+              "absolute_latitude_deg": [
+                45,
+                60
+              ],
+              "land_mean_mm_yr": 402.52076760377173,
+              "ocean_mean_mm_yr": 1603.2712828647104
+            },
+            {
+              "absolute_latitude_deg": [
+                60,
+                75
+              ],
+              "land_mean_mm_yr": 241.29343697421263,
+              "ocean_mean_mm_yr": 1105.354633427102
+            },
+            {
+              "absolute_latitude_deg": [
+                75,
+                90
+              ],
+              "land_mean_mm_yr": 6.933508262772309,
+              "ocean_mean_mm_yr": 64.36509256223836
+            }
+          ],
+          "ridge_transects": {
+            "crossings": 3231,
+            "distinct_crests": 736,
+            "median_crest_rain_mm_yr": 49.16302168109148,
+            "median_lee_rain_mm_yr": 61.223045152519596,
+            "median_crest_minus_lee_mm_yr": -4.042006812376518,
+            "median_contrast_gain_mm_yr": 0.0,
+            "median_lee_change_mm_yr": 0.0,
+            "crest_wetter_and_lee_drier_share": 0.0
+          },
+          "ridge_native_cell_profiles": {
+            "offsets_native_cells": [
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3
+            ],
+            "profile_count": 849,
+            "crest_selection": "highest native land cell in each coarse transport crest cell",
+            "positive_offsets_follow_transport_downwind": true,
+            "north_south_rows_use_solver_order": true,
+            "summary": [
+              {
+                "offset_native_cells": -3,
+                "valid_profiles": 826,
+                "candidate_median_rain_mm_yr": 36.31348939891939,
+                "candidate_p10_rain_mm_yr": 1.5380387241849602,
+                "candidate_p90_rain_mm_yr": 373.39101649306406,
+                "candidate_area_weighted_mean_rain_mm_yr": 220.3492308837173,
+                "control_median_rain_mm_yr": 36.31348939891939,
+                "control_p10_rain_mm_yr": 1.5380387241849602,
+                "control_p90_rain_mm_yr": 373.39101649306406,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": -2,
+                "valid_profiles": 837,
+                "candidate_median_rain_mm_yr": 39.74023678405814,
+                "candidate_p10_rain_mm_yr": 1.6205143670427065,
+                "candidate_p90_rain_mm_yr": 408.6309993347934,
+                "candidate_area_weighted_mean_rain_mm_yr": 228.1592091908813,
+                "control_median_rain_mm_yr": 39.74023678405814,
+                "control_p10_rain_mm_yr": 1.6205143670427065,
+                "control_p90_rain_mm_yr": 408.6309993347934,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": -1,
+                "valid_profiles": 846,
+                "candidate_median_rain_mm_yr": 41.92444394603341,
+                "candidate_p10_rain_mm_yr": 2.6093485660991553,
+                "candidate_p90_rain_mm_yr": 447.318945704811,
+                "candidate_area_weighted_mean_rain_mm_yr": 241.29880340171198,
+                "control_median_rain_mm_yr": 41.92444394603341,
+                "control_p10_rain_mm_yr": 2.6093485660991553,
+                "control_p90_rain_mm_yr": 447.318945704811,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": 0,
+                "valid_profiles": 849,
+                "candidate_median_rain_mm_yr": 47.28240003585099,
+                "candidate_p10_rain_mm_yr": 2.71732293926726,
+                "candidate_p90_rain_mm_yr": 498.9050223872683,
+                "candidate_area_weighted_mean_rain_mm_yr": 251.98278858440162,
+                "control_median_rain_mm_yr": 47.28240003585099,
+                "control_p10_rain_mm_yr": 2.71732293926726,
+                "control_p90_rain_mm_yr": 498.9050223872683,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": 1,
+                "valid_profiles": 846,
+                "candidate_median_rain_mm_yr": 50.752566405860364,
+                "candidate_p10_rain_mm_yr": 3.613250042592317,
+                "candidate_p90_rain_mm_yr": 523.9579263310052,
+                "candidate_area_weighted_mean_rain_mm_yr": 266.6484740417096,
+                "control_median_rain_mm_yr": 50.752566405860364,
+                "control_p10_rain_mm_yr": 3.613250042592317,
+                "control_p90_rain_mm_yr": 523.9579263310052,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": 2,
+                "valid_profiles": 841,
+                "candidate_median_rain_mm_yr": 55.531841616061406,
+                "candidate_p10_rain_mm_yr": 3.772327482422224,
+                "candidate_p90_rain_mm_yr": 575.5040635570591,
+                "candidate_area_weighted_mean_rain_mm_yr": 284.5901415799596,
+                "control_median_rain_mm_yr": 55.531841616061406,
+                "control_p10_rain_mm_yr": 3.772327482422224,
+                "control_p90_rain_mm_yr": 575.5040635570591,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": 3,
+                "valid_profiles": 831,
+                "candidate_median_rain_mm_yr": 56.436913072756965,
+                "candidate_p10_rain_mm_yr": 4.02961829665049,
+                "candidate_p90_rain_mm_yr": 623.3670275160066,
+                "candidate_area_weighted_mean_rain_mm_yr": 301.6630754185996,
+                "control_median_rain_mm_yr": 56.436913072756965,
+                "control_p10_rain_mm_yr": 4.02961829665049,
+                "control_p90_rain_mm_yr": 623.3670275160066,
+                "median_candidate_minus_control_mm_yr": 0.0
+              }
+            ],
+            "multi_cell_windward_minus_lee": {
+              "side_offsets_native_cells": {
+                "windward": [
+                  -3,
+                  -2,
+                  -1
+                ],
+                "lee": [
+                  1,
+                  2,
+                  3
+                ]
+              },
+              "minimum_valid_cells_per_side": 2,
+              "eligible_profiles": 832,
+              "candidate": {
+                "median_mm_yr": -2.7219786221181077,
+                "p10_mm_yr": -149.36459694249052,
+                "p90_mm_yr": 15.797464415320407
+              },
+              "control": {
+                "median_mm_yr": -2.7219786221181077,
+                "p10_mm_yr": -149.36459694249052,
+                "p90_mm_yr": 15.797464415320407
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 0.0,
+                "p10_mm_yr": 0.0,
+                "p90_mm_yr": 0.0
+              },
+              "candidate_fraction_windward_wetter": 0.2956730769230769,
+              "fraction_with_positive_contrast_gain": 0.0
+            }
+          },
+          "geographic_metrics_present": true,
+          "cold_inland_budget": {
+            "inflow_kg_s": 79429001.03805606,
+            "outflow_kg_s": 54707725.389678985,
+            "net_inflow_kg_s": 24721275.648377072,
+            "local_source_kg_s": 2966143.806378525,
+            "atmospheric_rain_kg_s": 27687419.454755604,
+            "spread_contribution_kg_s": 28426.735157884657
+          },
+          "raw_rms_to_legacy": 0.6662291307528728,
+          "summed_cell_closure": 2.670957527861092e-15,
+          "global_closure": 1.3167880579462383e-16,
+          "source_total_kg_s": 14484856703.419262,
+          "budget_rain_total_kg_s": 14484856703.41926,
+          "source_rain_relative_residual": 1.3167880579462383e-16,
+          "placed_rain_total_kg_s": 14484856703.419258,
+          "minimum_column_water_kg_m2": 0.00020464770531256155,
+          "maximum_mass_cap_violation_kg": 0.0,
+          "overflow_total_kg_s": 7881966298.187302,
+          "overflow_max_kg_s": 33525895.537706546,
+          "condensate_placement_relative_residual": 1.68139947000686e-14,
+          "intercepted_rain_fraction": 0.0,
+          "sink_rate_min_s_inv": 1.271876271876272e-06,
+          "sink_rate_max_s_inv": 1.271876271876272e-06,
+          "geographic_support": {
+            "area_fraction": {
+              "belt_center": 0.10983972886808446,
+              "belt_flanks": 0.1643005095074206,
+              "near_coast": 0.09368808125546887,
+              "inland": 0.1394282117216642,
+              "cold_coast": 0.0010528311645276772
+            },
+            "minimum_region_area_fraction": 0.001,
+            "ridge_crossings": 3231,
+            "distinct_crests": 736,
+            "equatorial_belt": {
+              "evaluable": true
+            },
+            "inland_coast": {
+              "evaluable": true
+            },
+            "ridge_shadow": {
+              "evaluable": true,
+              "minimum_crossings": 100,
+              "minimum_distinct_crests": 25
+            },
+            "cold_coast": {
+              "evaluable": true
+            }
+          },
+          "hard_gates": {
+            "finite_nonnegative_mass": true,
+            "within_mass_cap": true,
+            "finite_nonnegative_overflow": true,
+            "finite_nonnegative_source": true,
+            "finite_nonnegative_budget_rain": true,
+            "finite_nonnegative_rain": true,
+            "global_closure": true,
+            "summed_cell_closure": true,
+            "source_equals_budget_rain": true,
+            "placement_closure": true
+          }
+        },
+        "ridge_010": {
+          "land_rain_by_distance_to_ocean_km": {
+            "0_to_500": {
+              "rain_mm_yr": 469.70908404538534,
+              "fraction_of_land": 0.27071920572127955
+            },
+            "500_to_1500": {
+              "rain_mm_yr": 347.8470812539087,
+              "fraction_of_land": 0.3263918224200511
+            },
+            "1500_plus": {
+              "rain_mm_yr": 209.23028882549062,
+              "fraction_of_land": 0.40288897185866934
+            }
+          },
+          "below_freezing_land_rain_mm_yr": 148.46577768460432,
+          "fraction_of_land_rain_below_freezing": 0.022167857129829292,
+          "cold_coast_rain_mm_yr": 753.3280485038938,
+          "cold_inland_rain_mm_yr": 108.00811445597617,
+          "ocean_belt_contrasts": {
+            "-60": {
+              "center_mm_yr": 2199.506535580221,
+              "flank_mm_yr": 486.46265884057345,
+              "ratio": 4.521429334005793
+            },
+            "0": {
+              "center_mm_yr": 3963.639035260338,
+              "flank_mm_yr": 608.7700000090996,
+              "ratio": 6.510897441071491
+            },
+            "60": {
+              "center_mm_yr": 167.5032407054558,
+              "flank_mm_yr": 301.40946908108236,
+              "ratio": 0.5557331732680092
+            }
+          },
+          "ocean_belt_wettest_row_shares": {
+            "-60": 0.049611756781661055,
+            "0": 0.05341308733645508,
+            "60": 0.30639003142657334
+          },
+          "total_rain_kg_s": 14484856703.419258,
+          "global_mean_rain_mm_yr": 896.1755603018536,
+          "land_rain_share": 0.1254996646467755,
+          "ocean_rain_share": 0.8745003353532245,
+          "folded_latitude_bands": [
+            {
+              "absolute_latitude_deg": [
+                0,
+                15
+              ],
+              "land_mean_mm_yr": 1124.43545683287,
+              "ocean_mean_mm_yr": 2423.0797635771
+            },
+            {
+              "absolute_latitude_deg": [
+                15,
+                30
+              ],
+              "land_mean_mm_yr": 86.88483564690752,
+              "ocean_mean_mm_yr": 317.6535458700359
+            },
+            {
+              "absolute_latitude_deg": [
+                30,
+                45
+              ],
+              "land_mean_mm_yr": 91.51749687690966,
+              "ocean_mean_mm_yr": 293.1377664316866
+            },
+            {
+              "absolute_latitude_deg": [
+                45,
+                60
+              ],
+              "land_mean_mm_yr": 398.469402268166,
+              "ocean_mean_mm_yr": 1602.9477678965177
+            },
+            {
+              "absolute_latitude_deg": [
+                60,
+                75
+              ],
+              "land_mean_mm_yr": 226.9891095473869,
+              "ocean_mean_mm_yr": 1105.3486416802948
+            },
+            {
+              "absolute_latitude_deg": [
+                75,
+                90
+              ],
+              "land_mean_mm_yr": 7.505440524046813,
+              "ocean_mean_mm_yr": 64.36509256223836
+            }
+          ],
+          "ridge_transects": {
+            "crossings": 3231,
+            "distinct_crests": 736,
+            "median_crest_rain_mm_yr": 115.2448020857444,
+            "median_lee_rain_mm_yr": 57.86440263529113,
+            "median_crest_minus_lee_mm_yr": 17.3038612792152,
+            "median_contrast_gain_mm_yr": 48.8371499435399,
+            "median_lee_change_mm_yr": -2.7946733897836786,
+            "crest_wetter_and_lee_drier_share": 0.8867223769730733
+          },
+          "ridge_native_cell_profiles": {
+            "offsets_native_cells": [
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3
+            ],
+            "profile_count": 849,
+            "crest_selection": "highest native land cell in each coarse transport crest cell",
+            "positive_offsets_follow_transport_downwind": true,
+            "north_south_rows_use_solver_order": true,
+            "summary": [
+              {
+                "offset_native_cells": -3,
+                "valid_profiles": 826,
+                "candidate_median_rain_mm_yr": 41.69662877731672,
+                "candidate_p10_rain_mm_yr": 1.6992395730654475,
+                "candidate_p90_rain_mm_yr": 445.7760479499984,
+                "candidate_area_weighted_mean_rain_mm_yr": 240.86874437997963,
+                "control_median_rain_mm_yr": 36.31348939891939,
+                "control_p10_rain_mm_yr": 1.5380387241849602,
+                "control_p90_rain_mm_yr": 373.39101649306406,
+                "median_candidate_minus_control_mm_yr": -0.2631816398576259
+              },
+              {
+                "offset_native_cells": -2,
+                "valid_profiles": 837,
+                "candidate_median_rain_mm_yr": 63.036750374967816,
+                "candidate_p10_rain_mm_yr": 2.8956196178631624,
+                "candidate_p90_rain_mm_yr": 555.5692663946456,
+                "candidate_area_weighted_mean_rain_mm_yr": 292.5162777691359,
+                "control_median_rain_mm_yr": 39.74023678405814,
+                "control_p10_rain_mm_yr": 1.6205143670427065,
+                "control_p90_rain_mm_yr": 408.6309993347934,
+                "median_candidate_minus_control_mm_yr": 0.020266141893892448
+              },
+              {
+                "offset_native_cells": -1,
+                "valid_profiles": 846,
+                "candidate_median_rain_mm_yr": 86.88512916063237,
+                "candidate_p10_rain_mm_yr": 3.83486862700467,
+                "candidate_p90_rain_mm_yr": 673.9604248830216,
+                "candidate_area_weighted_mean_rain_mm_yr": 340.3273504805647,
+                "control_median_rain_mm_yr": 41.92444394603341,
+                "control_p10_rain_mm_yr": 2.6093485660991553,
+                "control_p90_rain_mm_yr": 447.318945704811,
+                "median_candidate_minus_control_mm_yr": 10.25671934277181
+              },
+              {
+                "offset_native_cells": 0,
+                "valid_profiles": 849,
+                "candidate_median_rain_mm_yr": 111.90604671472947,
+                "candidate_p10_rain_mm_yr": 4.744089510280488,
+                "candidate_p90_rain_mm_yr": 813.1526194096152,
+                "candidate_area_weighted_mean_rain_mm_yr": 401.1987311305916,
+                "control_median_rain_mm_yr": 47.28240003585099,
+                "control_p10_rain_mm_yr": 2.71732293926726,
+                "control_p90_rain_mm_yr": 498.9050223872683,
+                "median_candidate_minus_control_mm_yr": 34.21191251208679
+              },
+              {
+                "offset_native_cells": 1,
+                "valid_profiles": 846,
+                "candidate_median_rain_mm_yr": 98.84991343853399,
+                "candidate_p10_rain_mm_yr": 4.303836000136236,
+                "candidate_p90_rain_mm_yr": 808.8235309857055,
+                "candidate_area_weighted_mean_rain_mm_yr": 390.50094696954903,
+                "control_median_rain_mm_yr": 50.752566405860364,
+                "control_p10_rain_mm_yr": 3.613250042592317,
+                "control_p90_rain_mm_yr": 523.9579263310052,
+                "median_candidate_minus_control_mm_yr": 13.181116739212591
+              },
+              {
+                "offset_native_cells": 2,
+                "valid_profiles": 841,
+                "candidate_median_rain_mm_yr": 87.89453987203896,
+                "candidate_p10_rain_mm_yr": 4.315561552908844,
+                "candidate_p90_rain_mm_yr": 747.8583765601795,
+                "candidate_area_weighted_mean_rain_mm_yr": 361.0082358440756,
+                "control_median_rain_mm_yr": 55.531841616061406,
+                "control_p10_rain_mm_yr": 3.772327482422224,
+                "control_p90_rain_mm_yr": 575.5040635570591,
+                "median_candidate_minus_control_mm_yr": 0.0252624693436182
+              },
+              {
+                "offset_native_cells": 3,
+                "valid_profiles": 831,
+                "candidate_median_rain_mm_yr": 70.57951115125105,
+                "candidate_p10_rain_mm_yr": 4.4547013322590905,
+                "candidate_p90_rain_mm_yr": 671.606098463823,
+                "candidate_area_weighted_mean_rain_mm_yr": 340.77583895037293,
+                "control_median_rain_mm_yr": 56.436913072756965,
+                "control_p10_rain_mm_yr": 4.02961829665049,
+                "control_p90_rain_mm_yr": 623.3670275160066,
+                "median_candidate_minus_control_mm_yr": -0.5786363354708914
+              }
+            ],
+            "multi_cell_windward_minus_lee": {
+              "side_offsets_native_cells": {
+                "windward": [
+                  -3,
+                  -2,
+                  -1
+                ],
+                "lee": [
+                  1,
+                  2,
+                  3
+                ]
+              },
+              "minimum_valid_cells_per_side": 2,
+              "eligible_profiles": 832,
+              "candidate": {
+                "median_mm_yr": -5.555349394024626,
+                "p10_mm_yr": -288.2067477816259,
+                "p90_mm_yr": 89.9325379069343
+              },
+              "control": {
+                "median_mm_yr": -2.7219786221181077,
+                "p10_mm_yr": -149.36459694249052,
+                "p90_mm_yr": 15.797464415320407
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 0.030376933110115828,
+                "p10_mm_yr": -149.9420208159345,
+                "p90_mm_yr": 106.02035642828629
+              },
+              "candidate_fraction_windward_wetter": 0.33774038461538464,
+              "fraction_with_positive_contrast_gain": 0.5192307692307693
+            }
+          },
+          "geographic_metrics_present": true,
+          "cold_inland_budget": {
+            "inflow_kg_s": 78472467.19604075,
+            "outflow_kg_s": 53988577.90321925,
+            "net_inflow_kg_s": 24483889.29282148,
+            "local_source_kg_s": 2966143.806378525,
+            "atmospheric_rain_kg_s": 27450033.099200018,
+            "spread_contribution_kg_s": 28397.450623191893
+          },
+          "raw_rms_to_legacy": 0.6670143410299058,
+          "summed_cell_closure": 2.673094633431376e-15,
+          "global_closure": 2.6335761158924765e-16,
+          "source_total_kg_s": 14484856703.419262,
+          "budget_rain_total_kg_s": 14484856703.419258,
+          "source_rain_relative_residual": 2.6335761158924765e-16,
+          "placed_rain_total_kg_s": 14484856703.419258,
+          "minimum_column_water_kg_m2": 0.00020464770531256155,
+          "maximum_mass_cap_violation_kg": 0.0,
+          "overflow_total_kg_s": 7812570313.054965,
+          "overflow_max_kg_s": 33524034.08505548,
+          "condensate_placement_relative_residual": 7.045844850682647e-15,
+          "intercepted_rain_fraction": 0.0073395603415710095,
+          "sink_rate_min_s_inv": 1.271876271876272e-06,
+          "sink_rate_max_s_inv": 1.271876271876272e-06,
+          "geographic_support": {
+            "area_fraction": {
+              "belt_center": 0.10983972886808446,
+              "belt_flanks": 0.1643005095074206,
+              "near_coast": 0.09368808125546887,
+              "inland": 0.1394282117216642,
+              "cold_coast": 0.0010528311645276772
+            },
+            "minimum_region_area_fraction": 0.001,
+            "ridge_crossings": 3231,
+            "distinct_crests": 736,
+            "equatorial_belt": {
+              "evaluable": true
+            },
+            "inland_coast": {
+              "evaluable": true
+            },
+            "ridge_shadow": {
+              "evaluable": true,
+              "minimum_crossings": 100,
+              "minimum_distinct_crests": 25
+            },
+            "cold_coast": {
+              "evaluable": true
+            }
+          },
+          "hard_gates": {
+            "finite_nonnegative_mass": true,
+            "within_mass_cap": true,
+            "finite_nonnegative_overflow": true,
+            "finite_nonnegative_source": true,
+            "finite_nonnegative_budget_rain": true,
+            "finite_nonnegative_rain": true,
+            "global_closure": true,
+            "summed_cell_closure": true,
+            "source_equals_budget_rain": true,
+            "placement_closure": true
+          }
+        },
+        "ridge_025": {
+          "land_rain_by_distance_to_ocean_km": {
+            "0_to_500": {
+              "rain_mm_yr": 488.94245359053895,
+              "fraction_of_land": 0.27071920572127955
+            },
+            "500_to_1500": {
+              "rain_mm_yr": 347.0624655429834,
+              "fraction_of_land": 0.3263918224200511
+            },
+            "1500_plus": {
+              "rain_mm_yr": 203.20627748039357,
+              "fraction_of_land": 0.40288897185866934
+            }
+          },
+          "below_freezing_land_rain_mm_yr": 147.29596980583307,
+          "fraction_of_land_rain_below_freezing": 0.021823715597745045,
+          "cold_coast_rain_mm_yr": 751.4809745473149,
+          "cold_inland_rain_mm_yr": 106.88360714266257,
+          "ocean_belt_contrasts": {
+            "-60": {
+              "center_mm_yr": 2199.4836257269353,
+              "flank_mm_yr": 486.4533845674675,
+              "ratio": 4.521468439740875
+            },
+            "0": {
+              "center_mm_yr": 3958.263774979025,
+              "flank_mm_yr": 607.576428054723,
+              "ratio": 6.514840919112341
+            },
+            "60": {
+              "center_mm_yr": 158.45714578412492,
+              "flank_mm_yr": 296.75342443163777,
+              "ratio": 0.5339690555807831
+            }
+          },
+          "ocean_belt_wettest_row_shares": {
+            "-60": 0.04961164921311015,
+            "0": 0.053417929352280326,
+            "60": 0.3101647847680791
+          },
+          "total_rain_kg_s": 14484856703.41926,
+          "global_mean_rain_mm_yr": 896.1755603018536,
+          "land_rain_share": 0.12647424408963376,
+          "ocean_rain_share": 0.8735257559103661,
+          "folded_latitude_bands": [
+            {
+              "absolute_latitude_deg": [
+                0,
+                15
+              ],
+              "land_mean_mm_yr": 1126.4300585348076,
+              "ocean_mean_mm_yr": 2419.611996324123
+            },
+            {
+              "absolute_latitude_deg": [
+                15,
+                30
+              ],
+              "land_mean_mm_yr": 98.23525814907374,
+              "ocean_mean_mm_yr": 317.10021581428657
+            },
+            {
+              "absolute_latitude_deg": [
+                30,
+                45
+              ],
+              "land_mean_mm_yr": 108.28326661927181,
+              "ocean_mean_mm_yr": 292.98864022278855
+            },
+            {
+              "absolute_latitude_deg": [
+                45,
+                60
+              ],
+              "land_mean_mm_yr": 390.0202543895519,
+              "ocean_mean_mm_yr": 1602.529638444997
+            },
+            {
+              "absolute_latitude_deg": [
+                60,
+                75
+              ],
+              "land_mean_mm_yr": 211.29550629540518,
+              "ocean_mean_mm_yr": 1105.3398503976503
+            },
+            {
+              "absolute_latitude_deg": [
+                75,
+                90
+              ],
+              "land_mean_mm_yr": 8.331908583123614,
+              "ocean_mean_mm_yr": 64.36509256223836
+            }
+          ],
+          "ridge_transects": {
+            "crossings": 3231,
+            "distinct_crests": 736,
+            "median_crest_rain_mm_yr": 170.5195245789614,
+            "median_lee_rain_mm_yr": 50.26455049001057,
+            "median_crest_minus_lee_mm_yr": 65.17923924682229,
+            "median_contrast_gain_mm_yr": 111.86119591778068,
+            "median_lee_change_mm_yr": -6.6256315378198,
+            "crest_wetter_and_lee_drier_share": 0.889817393995667
+          },
+          "ridge_native_cell_profiles": {
+            "offsets_native_cells": [
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3
+            ],
+            "profile_count": 849,
+            "crest_selection": "highest native land cell in each coarse transport crest cell",
+            "positive_offsets_follow_transport_downwind": true,
+            "north_south_rows_use_solver_order": true,
+            "summary": [
+              {
+                "offset_native_cells": -3,
+                "valid_profiles": 826,
+                "candidate_median_rain_mm_yr": 40.31615026422378,
+                "candidate_p10_rain_mm_yr": 2.334868155362708,
+                "candidate_p90_rain_mm_yr": 534.5690395444872,
+                "candidate_area_weighted_mean_rain_mm_yr": 270.12355230958656,
+                "control_median_rain_mm_yr": 36.31348939891939,
+                "control_p10_rain_mm_yr": 1.5380387241849602,
+                "control_p90_rain_mm_yr": 373.39101649306406,
+                "median_candidate_minus_control_mm_yr": -0.6504423291891381
+              },
+              {
+                "offset_native_cells": -2,
+                "valid_profiles": 837,
+                "candidate_median_rain_mm_yr": 73.04683367095043,
+                "candidate_p10_rain_mm_yr": 2.9627999421375413,
+                "candidate_p90_rain_mm_yr": 784.2896002028184,
+                "candidate_area_weighted_mean_rain_mm_yr": 379.5610769164549,
+                "control_median_rain_mm_yr": 39.74023678405814,
+                "control_p10_rain_mm_yr": 1.6205143670427065,
+                "control_p90_rain_mm_yr": 408.6309993347934,
+                "median_candidate_minus_control_mm_yr": 0.04854098765679271
+              },
+              {
+                "offset_native_cells": -1,
+                "valid_profiles": 846,
+                "candidate_median_rain_mm_yr": 109.66973353501801,
+                "candidate_p10_rain_mm_yr": 4.238020684393883,
+                "candidate_p90_rain_mm_yr": 1009.2608227529823,
+                "candidate_area_weighted_mean_rain_mm_yr": 468.89225168158185,
+                "control_median_rain_mm_yr": 41.92444394603341,
+                "control_p10_rain_mm_yr": 2.6093485660991553,
+                "control_p90_rain_mm_yr": 447.318945704811,
+                "median_candidate_minus_control_mm_yr": 23.618639374740017
+              },
+              {
+                "offset_native_cells": 0,
+                "valid_profiles": 849,
+                "candidate_median_rain_mm_yr": 170.5195245789614,
+                "candidate_p10_rain_mm_yr": 7.1416853050015465,
+                "candidate_p90_rain_mm_yr": 1290.1959423698506,
+                "candidate_area_weighted_mean_rain_mm_yr": 590.6673071007962,
+                "control_median_rain_mm_yr": 47.28240003585099,
+                "control_p10_rain_mm_yr": 2.71732293926726,
+                "control_p90_rain_mm_yr": 498.9050223872683,
+                "median_candidate_minus_control_mm_yr": 80.81155331359638
+              },
+              {
+                "offset_native_cells": 1,
+                "valid_profiles": 846,
+                "candidate_median_rain_mm_yr": 133.70688405614177,
+                "candidate_p10_rain_mm_yr": 5.512475784089394,
+                "candidate_p90_rain_mm_yr": 1260.5660920052921,
+                "candidate_area_weighted_mean_rain_mm_yr": 545.8586876588535,
+                "control_median_rain_mm_yr": 50.752566405860364,
+                "control_p10_rain_mm_yr": 3.613250042592317,
+                "control_p90_rain_mm_yr": 523.9579263310052,
+                "median_candidate_minus_control_mm_yr": 31.287400200920338
+              },
+              {
+                "offset_native_cells": 2,
+                "valid_profiles": 841,
+                "candidate_median_rain_mm_yr": 95.30648448297973,
+                "candidate_p10_rain_mm_yr": 5.246206201306184,
+                "candidate_p90_rain_mm_yr": 955.4282280722746,
+                "candidate_area_weighted_mean_rain_mm_yr": 454.19147467227396,
+                "control_median_rain_mm_yr": 55.531841616061406,
+                "control_p10_rain_mm_yr": 3.772327482422224,
+                "control_p90_rain_mm_yr": 575.5040635570591,
+                "median_candidate_minus_control_mm_yr": 0.055002078751645256
+              },
+              {
+                "offset_native_cells": 3,
+                "valid_profiles": 831,
+                "candidate_median_rain_mm_yr": 74.41568512339742,
+                "candidate_p10_rain_mm_yr": 4.660625204965923,
+                "candidate_p90_rain_mm_yr": 795.7708561326659,
+                "candidate_area_weighted_mean_rain_mm_yr": 389.50128024200507,
+                "control_median_rain_mm_yr": 56.436913072756965,
+                "control_p10_rain_mm_yr": 4.02961829665049,
+                "control_p90_rain_mm_yr": 623.3670275160066,
+                "median_candidate_minus_control_mm_yr": -1.281237358293481
+              }
+            ],
+            "multi_cell_windward_minus_lee": {
+              "side_offsets_native_cells": {
+                "windward": [
+                  -3,
+                  -2,
+                  -1
+                ],
+                "lee": [
+                  1,
+                  2,
+                  3
+                ]
+              },
+              "minimum_valid_cells_per_side": 2,
+              "eligible_profiles": 832,
+              "candidate": {
+                "median_mm_yr": -5.54590931106557,
+                "p10_mm_yr": -453.5499401680681,
+                "p90_mm_yr": 204.98624041197982
+              },
+              "control": {
+                "median_mm_yr": -2.7219786221181077,
+                "p10_mm_yr": -149.36459694249052,
+                "p90_mm_yr": 15.797464415320407
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 0.07556378414770323,
+                "p10_mm_yr": -330.880800256136,
+                "p90_mm_yr": 239.73746656431106
+              },
+              "candidate_fraction_windward_wetter": 0.375,
+              "fraction_with_positive_contrast_gain": 0.5240384615384616
+            }
+          },
+          "geographic_metrics_present": true,
+          "cold_inland_budget": {
+            "inflow_kg_s": 76807085.67601797,
+            "outflow_kg_s": 52609283.17070748,
+            "net_inflow_kg_s": 24197802.505310476,
+            "local_source_kg_s": 2966143.806378525,
+            "atmospheric_rain_kg_s": 27163946.31168901,
+            "spread_contribution_kg_s": 28397.43560742587
+          },
+          "raw_rms_to_legacy": 0.6722090703285867,
+          "summed_cell_closure": 2.604145305563714e-15,
+          "global_closure": 2.6335761158924765e-16,
+          "source_total_kg_s": 14484856703.419262,
+          "budget_rain_total_kg_s": 14484856703.419258,
+          "source_rain_relative_residual": 2.6335761158924765e-16,
+          "placed_rain_total_kg_s": 14484856703.41926,
+          "minimum_column_water_kg_m2": 0.00020464770531256174,
+          "maximum_mass_cap_violation_kg": 0.0,
+          "overflow_total_kg_s": 7730233341.581009,
+          "overflow_max_kg_s": 33521371.973233912,
+          "condensate_placement_relative_residual": 1.729055881557141e-15,
+          "intercepted_rain_fraction": 0.01665343713300584,
+          "sink_rate_min_s_inv": 1.271876271876272e-06,
+          "sink_rate_max_s_inv": 1.271876271876272e-06,
+          "geographic_support": {
+            "area_fraction": {
+              "belt_center": 0.10983972886808446,
+              "belt_flanks": 0.1643005095074206,
+              "near_coast": 0.09368808125546887,
+              "inland": 0.1394282117216642,
+              "cold_coast": 0.0010528311645276772
+            },
+            "minimum_region_area_fraction": 0.001,
+            "ridge_crossings": 3231,
+            "distinct_crests": 736,
+            "equatorial_belt": {
+              "evaluable": true
+            },
+            "inland_coast": {
+              "evaluable": true
+            },
+            "ridge_shadow": {
+              "evaluable": true,
+              "minimum_crossings": 100,
+              "minimum_distinct_crests": 25
+            },
+            "cold_coast": {
+              "evaluable": true
+            }
+          },
+          "hard_gates": {
+            "finite_nonnegative_mass": true,
+            "within_mass_cap": true,
+            "finite_nonnegative_overflow": true,
+            "finite_nonnegative_source": true,
+            "finite_nonnegative_budget_rain": true,
+            "finite_nonnegative_rain": true,
+            "global_closure": true,
+            "summed_cell_closure": true,
+            "source_equals_budget_rain": true,
+            "placement_closure": true
+          }
+        }
+      }
+    },
+    "wind_arrows": {
+      "diagnostic": {
+        "control": {
+          "land_rain_by_distance_to_ocean_km": {
+            "0_to_500": {
+              "rain_mm_yr": 473.58935953975714,
+              "fraction_of_land": 0.27071920572127955
+            },
+            "500_to_1500": {
+              "rain_mm_yr": 317.8253299380244,
+              "fraction_of_land": 0.3263918224200511
+            },
+            "1500_plus": {
+              "rain_mm_yr": 76.6977466498235,
+              "fraction_of_land": 0.40288897185866934
+            }
+          },
+          "below_freezing_land_rain_mm_yr": 142.16619064676217,
+          "fraction_of_land_rain_below_freezing": 0.31042837977697096,
+          "cold_coast_rain_mm_yr": 343.8719234190315,
+          "cold_inland_rain_mm_yr": 111.39600509754545,
+          "ocean_belt_contrasts": {
+            "-60": {
+              "center_mm_yr": 2375.780315956014,
+              "flank_mm_yr": 378.42397135062487,
+              "ratio": 6.278091494776791
+            },
+            "0": {
+              "center_mm_yr": 4182.829191194715,
+              "flank_mm_yr": 496.6764912895254,
+              "ratio": 8.42163715124668
+            },
+            "60": {
+              "center_mm_yr": 500.42836947638796,
+              "flank_mm_yr": 814.2739234793236,
+              "ratio": 0.6145700544334023
+            }
+          },
+          "ocean_belt_wettest_row_shares": {
+            "-60": 0.052259677228452865,
+            "0": 0.05504775610978676,
+            "60": 0.536432696983862
+          },
+          "total_rain_kg_s": 14225533966.195694,
+          "global_mean_rain_mm_yr": 880.1313077359669,
+          "land_rain_share": 0.10335207020738199,
+          "ocean_rain_share": 0.8966479297926181,
+          "folded_latitude_bands": [
+            {
+              "absolute_latitude_deg": [
+                0,
+                15
+              ],
+              "land_mean_mm_yr": 1077.651311822555,
+              "ocean_mean_mm_yr": 2482.639452201237
+            },
+            {
+              "absolute_latitude_deg": [
+                15,
+                30
+              ],
+              "land_mean_mm_yr": 63.99144066559405,
+              "ocean_mean_mm_yr": 254.20851679693342
+            },
+            {
+              "absolute_latitude_deg": [
+                30,
+                45
+              ],
+              "land_mean_mm_yr": 140.4743411076794,
+              "ocean_mean_mm_yr": 262.1200294982243
+            },
+            {
+              "absolute_latitude_deg": [
+                45,
+                60
+              ],
+              "land_mean_mm_yr": 217.89809459850966,
+              "ocean_mean_mm_yr": 1556.0331692639625
+            },
+            {
+              "absolute_latitude_deg": [
+                60,
+                75
+              ],
+              "land_mean_mm_yr": 67.36132945325184,
+              "ocean_mean_mm_yr": 1336.4301313284438
+            },
+            {
+              "absolute_latitude_deg": [
+                75,
+                90
+              ],
+              "land_mean_mm_yr": 2.1962968575063373,
+              "ocean_mean_mm_yr": 83.13414535086163
+            }
+          ],
+          "ridge_transects": {
+            "crossings": 752,
+            "distinct_crests": 665,
+            "median_crest_rain_mm_yr": 10.142730114418425,
+            "median_lee_rain_mm_yr": 8.681669567711177,
+            "median_crest_minus_lee_mm_yr": -0.023923035419756867,
+            "median_contrast_gain_mm_yr": 0.0,
+            "median_lee_change_mm_yr": 0.0,
+            "crest_wetter_and_lee_drier_share": 0.0
+          },
+          "ridge_native_cell_profiles": {
+            "offsets_native_cells": [
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3
+            ],
+            "profile_count": 752,
+            "crest_selection": "highest native land cell in each coarse transport crest cell",
+            "positive_offsets_follow_transport_downwind": true,
+            "north_south_rows_use_solver_order": true,
+            "summary": [
+              {
+                "offset_native_cells": -3,
+                "valid_profiles": 727,
+                "candidate_median_rain_mm_yr": 8.7580520267968,
+                "candidate_p10_rain_mm_yr": 0.08109265085120773,
+                "candidate_p90_rain_mm_yr": 496.1880259645328,
+                "candidate_area_weighted_mean_rain_mm_yr": 255.78325747143506,
+                "control_median_rain_mm_yr": 8.7580520267968,
+                "control_p10_rain_mm_yr": 0.08109265085120773,
+                "control_p90_rain_mm_yr": 496.1880259645328,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": -2,
+                "valid_profiles": 740,
+                "candidate_median_rain_mm_yr": 9.751866768118507,
+                "candidate_p10_rain_mm_yr": 0.09797841116710729,
+                "candidate_p90_rain_mm_yr": 630.2320788952948,
+                "candidate_area_weighted_mean_rain_mm_yr": 272.3059912456253,
+                "control_median_rain_mm_yr": 9.751866768118507,
+                "control_p10_rain_mm_yr": 0.09797841116710729,
+                "control_p90_rain_mm_yr": 630.2320788952948,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": -1,
+                "valid_profiles": 744,
+                "candidate_median_rain_mm_yr": 9.78508544464073,
+                "candidate_p10_rain_mm_yr": 0.11216981366490719,
+                "candidate_p90_rain_mm_yr": 625.1834495913962,
+                "candidate_area_weighted_mean_rain_mm_yr": 301.2724797617559,
+                "control_median_rain_mm_yr": 9.78508544464073,
+                "control_p10_rain_mm_yr": 0.11216981366490719,
+                "control_p90_rain_mm_yr": 625.1834495913962,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": 0,
+                "valid_profiles": 752,
+                "candidate_median_rain_mm_yr": 9.522797202330402,
+                "candidate_p10_rain_mm_yr": 0.13341427993463478,
+                "candidate_p90_rain_mm_yr": 644.1089531466646,
+                "candidate_area_weighted_mean_rain_mm_yr": 273.3834438220644,
+                "control_median_rain_mm_yr": 9.522797202330402,
+                "control_p10_rain_mm_yr": 0.13341427993463478,
+                "control_p90_rain_mm_yr": 644.1089531466646,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": 1,
+                "valid_profiles": 746,
+                "candidate_median_rain_mm_yr": 8.860686802813245,
+                "candidate_p10_rain_mm_yr": 0.13979563613459323,
+                "candidate_p90_rain_mm_yr": 578.5947840627133,
+                "candidate_area_weighted_mean_rain_mm_yr": 268.0567406127481,
+                "control_median_rain_mm_yr": 8.860686802813245,
+                "control_p10_rain_mm_yr": 0.13979563613459323,
+                "control_p90_rain_mm_yr": 578.5947840627133,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": 2,
+                "valid_profiles": 738,
+                "candidate_median_rain_mm_yr": 8.334117710206959,
+                "candidate_p10_rain_mm_yr": 0.1725798564280498,
+                "candidate_p90_rain_mm_yr": 590.4868130686001,
+                "candidate_area_weighted_mean_rain_mm_yr": 277.92248615908113,
+                "control_median_rain_mm_yr": 8.334117710206959,
+                "control_p10_rain_mm_yr": 0.1725798564280498,
+                "control_p90_rain_mm_yr": 590.4868130686001,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": 3,
+                "valid_profiles": 725,
+                "candidate_median_rain_mm_yr": 7.987785707505064,
+                "candidate_p10_rain_mm_yr": 0.22143351973948927,
+                "candidate_p90_rain_mm_yr": 591.0059465728973,
+                "candidate_area_weighted_mean_rain_mm_yr": 288.3809096344337,
+                "control_median_rain_mm_yr": 7.987785707505064,
+                "control_p10_rain_mm_yr": 0.22143351973948927,
+                "control_p90_rain_mm_yr": 591.0059465728973,
+                "median_candidate_minus_control_mm_yr": 0.0
+              }
+            ],
+            "multi_cell_windward_minus_lee": {
+              "side_offsets_native_cells": {
+                "windward": [
+                  -3,
+                  -2,
+                  -1
+                ],
+                "lee": [
+                  1,
+                  2,
+                  3
+                ]
+              },
+              "minimum_valid_cells_per_side": 2,
+              "eligible_profiles": 729,
+              "candidate": {
+                "median_mm_yr": -0.010710063111503298,
+                "p10_mm_yr": -87.66170023650277,
+                "p90_mm_yr": 80.7890300051432
+              },
+              "control": {
+                "median_mm_yr": -0.010710063111503298,
+                "p10_mm_yr": -87.66170023650277,
+                "p90_mm_yr": 80.7890300051432
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 0.0,
+                "p10_mm_yr": 0.0,
+                "p90_mm_yr": 0.0
+              },
+              "candidate_fraction_windward_wetter": 0.47599451303155005,
+              "fraction_with_positive_contrast_gain": 0.0
+            }
+          },
+          "geographic_metrics_present": true,
+          "cold_inland_budget": {
+            "inflow_kg_s": 361849821.37783796,
+            "outflow_kg_s": 110094964.88436997,
+            "net_inflow_kg_s": 251754856.49346793,
+            "local_source_kg_s": 33173900.73825904,
+            "atmospheric_rain_kg_s": 284928757.23172694,
+            "spread_contribution_kg_s": 25357638.624366343
+          },
+          "raw_rms_to_legacy": 0.7714624359492535,
+          "summed_cell_closure": 1.7231936953756933e-15,
+          "global_closure": 1.3407922945774512e-16,
+          "source_total_kg_s": 14225533966.195698,
+          "budget_rain_total_kg_s": 14225533966.195696,
+          "source_rain_relative_residual": 1.3407922945774512e-16,
+          "placed_rain_total_kg_s": 14225533966.195694,
+          "minimum_column_water_kg_m2": 0.0,
+          "maximum_mass_cap_violation_kg": 0.0,
+          "overflow_total_kg_s": 8992299402.197628,
+          "overflow_max_kg_s": 39124029.090969235,
+          "condensate_placement_relative_residual": 1.16397531073005e-14,
+          "intercepted_rain_fraction": 0.0,
+          "sink_rate_min_s_inv": 1.271876271876272e-06,
+          "sink_rate_max_s_inv": 1.271876271876272e-06,
+          "geographic_support": {
+            "area_fraction": {
+              "belt_center": 0.10983972886808446,
+              "belt_flanks": 0.1643005095074206,
+              "near_coast": 0.09368808125546887,
+              "inland": 0.1394282117216642,
+              "cold_coast": 0.026289594342294755
+            },
+            "minimum_region_area_fraction": 0.001,
+            "ridge_crossings": 752,
+            "distinct_crests": 665,
+            "equatorial_belt": {
+              "evaluable": true
+            },
+            "inland_coast": {
+              "evaluable": true
+            },
+            "ridge_shadow": {
+              "evaluable": true,
+              "minimum_crossings": 100,
+              "minimum_distinct_crests": 25
+            },
+            "cold_coast": {
+              "evaluable": true
+            }
+          },
+          "hard_gates": {
+            "finite_nonnegative_mass": true,
+            "within_mass_cap": true,
+            "finite_nonnegative_overflow": true,
+            "finite_nonnegative_source": true,
+            "finite_nonnegative_budget_rain": true,
+            "finite_nonnegative_rain": true,
+            "global_closure": true,
+            "summed_cell_closure": true,
+            "source_equals_budget_rain": true,
+            "placement_closure": true
+          }
+        },
+        "ridge_010": {
+          "land_rain_by_distance_to_ocean_km": {
+            "0_to_500": {
+              "rain_mm_yr": 476.6651122493496,
+              "fraction_of_land": 0.27071920572127955
+            },
+            "500_to_1500": {
+              "rain_mm_yr": 317.3653908959536,
+              "fraction_of_land": 0.3263918224200511
+            },
+            "1500_plus": {
+              "rain_mm_yr": 75.8841166984935,
+              "fraction_of_land": 0.40288897185866934
+            }
+          },
+          "below_freezing_land_rain_mm_yr": 141.566345821466,
+          "fraction_of_land_rain_below_freezing": 0.30870195212148527,
+          "cold_coast_rain_mm_yr": 345.7929729590093,
+          "cold_inland_rain_mm_yr": 110.41159813659081,
+          "ocean_belt_contrasts": {
+            "-60": {
+              "center_mm_yr": 2375.7656966281725,
+              "flank_mm_yr": 378.4206329539521,
+              "ratio": 6.27810824711893
+            },
+            "0": {
+              "center_mm_yr": 4182.075323563928,
+              "flank_mm_yr": 496.505502698159,
+              "ratio": 8.423019082038936
+            },
+            "60": {
+              "center_mm_yr": 499.91736986117326,
+              "flank_mm_yr": 813.6976968421834,
+              "ratio": 0.6143772703318001
+            }
+          },
+          "ocean_belt_wettest_row_shares": {
+            "-60": 0.05225972259279523,
+            "0": 0.055048761347561634,
+            "60": 0.5365931016824301
+          },
+          "total_rain_kg_s": 14225533966.195692,
+          "global_mean_rain_mm_yr": 880.1313077359669,
+          "land_rain_share": 0.10349155632079617,
+          "ocean_rain_share": 0.896508443679204,
+          "folded_latitude_bands": [
+            {
+              "absolute_latitude_deg": [
+                0,
+                15
+              ],
+              "land_mean_mm_yr": 1077.422032919083,
+              "ocean_mean_mm_yr": 2482.1489127769364
+            },
+            {
+              "absolute_latitude_deg": [
+                15,
+                30
+              ],
+              "land_mean_mm_yr": 65.96276784550008,
+              "ocean_mean_mm_yr": 254.1442068183626
+            },
+            {
+              "absolute_latitude_deg": [
+                30,
+                45
+              ],
+              "land_mean_mm_yr": 142.48676992184124,
+              "ocean_mean_mm_yr": 262.0804646811682
+            },
+            {
+              "absolute_latitude_deg": [
+                45,
+                60
+              ],
+              "land_mean_mm_yr": 216.06021402380884,
+              "ocean_mean_mm_yr": 1555.9835462167312
+            },
+            {
+              "absolute_latitude_deg": [
+                60,
+                75
+              ],
+              "land_mean_mm_yr": 66.79042569901588,
+              "ocean_mean_mm_yr": 1336.4233775160164
+            },
+            {
+              "absolute_latitude_deg": [
+                75,
+                90
+              ],
+              "land_mean_mm_yr": 2.344622618572473,
+              "ocean_mean_mm_yr": 83.13405766116144
+            }
+          ],
+          "ridge_transects": {
+            "crossings": 752,
+            "distinct_crests": 665,
+            "median_crest_rain_mm_yr": 16.359011217065422,
+            "median_lee_rain_mm_yr": 8.403352042274424,
+            "median_crest_minus_lee_mm_yr": 0.9018443694477931,
+            "median_contrast_gain_mm_yr": 2.9474325591788735,
+            "median_lee_change_mm_yr": -0.209681054949305,
+            "crest_wetter_and_lee_drier_share": 0.8590425531914894
+          },
+          "ridge_native_cell_profiles": {
+            "offsets_native_cells": [
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3
+            ],
+            "profile_count": 752,
+            "crest_selection": "highest native land cell in each coarse transport crest cell",
+            "positive_offsets_follow_transport_downwind": true,
+            "north_south_rows_use_solver_order": true,
+            "summary": [
+              {
+                "offset_native_cells": -3,
+                "valid_profiles": 727,
+                "candidate_median_rain_mm_yr": 9.948662282103024,
+                "candidate_p10_rain_mm_yr": 0.08134651648937531,
+                "candidate_p90_rain_mm_yr": 530.3318265486382,
+                "candidate_area_weighted_mean_rain_mm_yr": 259.4580233713732,
+                "control_median_rain_mm_yr": 8.7580520267968,
+                "control_p10_rain_mm_yr": 0.08109265085120773,
+                "control_p90_rain_mm_yr": 496.1880259645328,
+                "median_candidate_minus_control_mm_yr": -0.009196771359415656
+              },
+              {
+                "offset_native_cells": -2,
+                "valid_profiles": 740,
+                "candidate_median_rain_mm_yr": 11.936347592049033,
+                "candidate_p10_rain_mm_yr": 0.11011491723878014,
+                "candidate_p90_rain_mm_yr": 650.8291576600069,
+                "candidate_area_weighted_mean_rain_mm_yr": 290.8124759767359,
+                "control_median_rain_mm_yr": 9.751866768118507,
+                "control_p10_rain_mm_yr": 0.09797841116710729,
+                "control_p90_rain_mm_yr": 630.2320788952948,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": -1,
+                "valid_profiles": 744,
+                "candidate_median_rain_mm_yr": 13.93948539426573,
+                "candidate_p10_rain_mm_yr": 0.1297433036627806,
+                "candidate_p90_rain_mm_yr": 726.9682904830037,
+                "candidate_area_weighted_mean_rain_mm_yr": 327.98621861646643,
+                "control_median_rain_mm_yr": 9.78508544464073,
+                "control_p10_rain_mm_yr": 0.11216981366490719,
+                "control_p90_rain_mm_yr": 625.1834495913962,
+                "median_candidate_minus_control_mm_yr": 0.29992276478471824
+              },
+              {
+                "offset_native_cells": 0,
+                "valid_profiles": 752,
+                "candidate_median_rain_mm_yr": 14.548400846070226,
+                "candidate_p10_rain_mm_yr": 0.17870231674172415,
+                "candidate_p90_rain_mm_yr": 764.2925019194009,
+                "candidate_area_weighted_mean_rain_mm_yr": 310.90940386630535,
+                "control_median_rain_mm_yr": 9.522797202330402,
+                "control_p10_rain_mm_yr": 0.13341427993463478,
+                "control_p90_rain_mm_yr": 644.1089531466646,
+                "median_candidate_minus_control_mm_yr": 2.09004931102347
+              },
+              {
+                "offset_native_cells": 1,
+                "valid_profiles": 746,
+                "candidate_median_rain_mm_yr": 11.49049490251101,
+                "candidate_p10_rain_mm_yr": 0.1823785502953274,
+                "candidate_p90_rain_mm_yr": 682.5531718962425,
+                "candidate_area_weighted_mean_rain_mm_yr": 295.4589961930653,
+                "control_median_rain_mm_yr": 8.860686802813245,
+                "control_p10_rain_mm_yr": 0.13979563613459323,
+                "control_p90_rain_mm_yr": 578.5947840627133,
+                "median_candidate_minus_control_mm_yr": 0.458052925750974
+              },
+              {
+                "offset_native_cells": 2,
+                "valid_profiles": 738,
+                "candidate_median_rain_mm_yr": 10.22564156567719,
+                "candidate_p10_rain_mm_yr": 0.19070631002849645,
+                "candidate_p90_rain_mm_yr": 673.9499700575267,
+                "candidate_area_weighted_mean_rain_mm_yr": 289.3204603816889,
+                "control_median_rain_mm_yr": 8.334117710206959,
+                "control_p10_rain_mm_yr": 0.1725798564280498,
+                "control_p90_rain_mm_yr": 590.4868130686001,
+                "median_candidate_minus_control_mm_yr": -4.531723003671354e-05
+              },
+              {
+                "offset_native_cells": 3,
+                "valid_profiles": 725,
+                "candidate_median_rain_mm_yr": 8.768396948556092,
+                "candidate_p10_rain_mm_yr": 0.23247849094119527,
+                "candidate_p90_rain_mm_yr": 617.3363616776072,
+                "candidate_area_weighted_mean_rain_mm_yr": 292.4811440890821,
+                "control_median_rain_mm_yr": 7.987785707505064,
+                "control_p10_rain_mm_yr": 0.22143351973948927,
+                "control_p90_rain_mm_yr": 591.0059465728973,
+                "median_candidate_minus_control_mm_yr": -0.02448783521461184
+              }
+            ],
+            "multi_cell_windward_minus_lee": {
+              "side_offsets_native_cells": {
+                "windward": [
+                  -3,
+                  -2,
+                  -1
+                ],
+                "lee": [
+                  1,
+                  2,
+                  3
+                ]
+              },
+              "minimum_valid_cells_per_side": 2,
+              "eligible_profiles": 729,
+              "candidate": {
+                "median_mm_yr": -0.03783962832032506,
+                "p10_mm_yr": -97.6605949650686,
+                "p90_mm_yr": 93.14105418947693
+              },
+              "control": {
+                "median_mm_yr": -0.010710063111503298,
+                "p10_mm_yr": -87.66170023650277,
+                "p90_mm_yr": 80.7890300051432
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 0.00031203707722131575,
+                "p10_mm_yr": -16.86429059293891,
+                "p90_mm_yr": 19.040715742536367
+              },
+              "candidate_fraction_windward_wetter": 0.46776406035665297,
+              "fraction_with_positive_contrast_gain": 0.5061728395061729
+            }
+          },
+          "geographic_metrics_present": true,
+          "cold_inland_budget": {
+            "inflow_kg_s": 357254172.31332767,
+            "outflow_kg_s": 108001373.21994123,
+            "net_inflow_kg_s": 249252799.09338638,
+            "local_source_kg_s": 33173900.73825904,
+            "atmospheric_rain_kg_s": 282426699.83164537,
+            "spread_contribution_kg_s": 25117693.85208279
+          },
+          "raw_rms_to_legacy": 0.771226540213032,
+          "summed_cell_closure": 1.7288023031275246e-15,
+          "global_closure": 1.3407922945774512e-16,
+          "source_total_kg_s": 14225533966.195698,
+          "budget_rain_total_kg_s": 14225533966.195696,
+          "source_rain_relative_residual": 1.3407922945774512e-16,
+          "placed_rain_total_kg_s": 14225533966.195692,
+          "minimum_column_water_kg_m2": 0.0,
+          "maximum_mass_cap_violation_kg": 0.0,
+          "overflow_total_kg_s": 8972378909.966843,
+          "overflow_max_kg_s": 39113859.585391015,
+          "condensate_placement_relative_residual": 5.467918576323669e-15,
+          "intercepted_rain_fraction": 0.0017897163682440106,
+          "sink_rate_min_s_inv": 1.271876271876272e-06,
+          "sink_rate_max_s_inv": 1.271876271876272e-06,
+          "geographic_support": {
+            "area_fraction": {
+              "belt_center": 0.10983972886808446,
+              "belt_flanks": 0.1643005095074206,
+              "near_coast": 0.09368808125546887,
+              "inland": 0.1394282117216642,
+              "cold_coast": 0.026289594342294755
+            },
+            "minimum_region_area_fraction": 0.001,
+            "ridge_crossings": 752,
+            "distinct_crests": 665,
+            "equatorial_belt": {
+              "evaluable": true
+            },
+            "inland_coast": {
+              "evaluable": true
+            },
+            "ridge_shadow": {
+              "evaluable": true,
+              "minimum_crossings": 100,
+              "minimum_distinct_crests": 25
+            },
+            "cold_coast": {
+              "evaluable": true
+            }
+          },
+          "hard_gates": {
+            "finite_nonnegative_mass": true,
+            "within_mass_cap": true,
+            "finite_nonnegative_overflow": true,
+            "finite_nonnegative_source": true,
+            "finite_nonnegative_budget_rain": true,
+            "finite_nonnegative_rain": true,
+            "global_closure": true,
+            "summed_cell_closure": true,
+            "source_equals_budget_rain": true,
+            "placement_closure": true
+          }
+        },
+        "ridge_025": {
+          "land_rain_by_distance_to_ocean_km": {
+            "0_to_500": {
+              "rain_mm_yr": 481.38013580143337,
+              "fraction_of_land": 0.27071920572127955
+            },
+            "500_to_1500": {
+              "rain_mm_yr": 316.61367673134635,
+              "fraction_of_land": 0.3263918224200511
+            },
+            "1500_plus": {
+              "rain_mm_yr": 74.71597043926482,
+              "fraction_of_land": 0.40288897185866934
+            }
+          },
+          "below_freezing_land_rain_mm_yr": 140.70979179140852,
+          "fraction_of_land_rain_below_freezing": 0.30618215038290186,
+          "cold_coast_rain_mm_yr": 348.6682232614797,
+          "cold_inland_rain_mm_yr": 108.98575779936182,
+          "ocean_belt_contrasts": {
+            "-60": {
+              "center_mm_yr": 2375.7438308680457,
+              "flank_mm_yr": 378.41563976502607,
+              "ratio": 6.278133304276862
+            },
+            "0": {
+              "center_mm_yr": 4180.874043937994,
+              "flank_mm_yr": 496.234229811992,
+              "ratio": 8.425202843266172
+            },
+            "60": {
+              "center_mm_yr": 499.19662152194326,
+              "flank_mm_yr": 812.8550310595717,
+              "ratio": 0.6141274919234136
+            }
+          },
+          "ocean_belt_wettest_row_shares": {
+            "-60": 0.05225979044913607,
+            "0": 0.05505057361865192,
+            "60": 0.5368193888023771
+          },
+          "total_rain_kg_s": 14225533966.195694,
+          "global_mean_rain_mm_yr": 880.1313077359669,
+          "land_rain_share": 0.10371193170012581,
+          "ocean_rain_share": 0.8962880682998743,
+          "folded_latitude_bands": [
+            {
+              "absolute_latitude_deg": [
+                0,
+                15
+              ],
+              "land_mean_mm_yr": 1077.1621436827168,
+              "ocean_mean_mm_yr": 2481.3634935937284
+            },
+            {
+              "absolute_latitude_deg": [
+                15,
+                30
+              ],
+              "land_mean_mm_yr": 69.01152428125344,
+              "ocean_mean_mm_yr": 254.04928687855653
+            },
+            {
+              "absolute_latitude_deg": [
+                30,
+                45
+              ],
+              "land_mean_mm_yr": 145.45347668168995,
+              "ocean_mean_mm_yr": 262.021716988105
+            },
+            {
+              "absolute_latitude_deg": [
+                45,
+                60
+              ],
+              "land_mean_mm_yr": 213.27543156309898,
+              "ocean_mean_mm_yr": 1555.911326523113
+            },
+            {
+              "absolute_latitude_deg": [
+                60,
+                75
+              ],
+              "land_mean_mm_yr": 66.06728518802608,
+              "ocean_mean_mm_yr": 1336.4132741473074
+            },
+            {
+              "absolute_latitude_deg": [
+                75,
+                90
+              ],
+              "land_mean_mm_yr": 2.5561469807956967,
+              "ocean_mean_mm_yr": 83.13392612661114
+            }
+          ],
+          "ridge_transects": {
+            "crossings": 752,
+            "distinct_crests": 665,
+            "median_crest_rain_mm_yr": 23.025554365682098,
+            "median_lee_rain_mm_yr": 7.82566374087229,
+            "median_crest_minus_lee_mm_yr": 3.459379120855644,
+            "median_contrast_gain_mm_yr": 7.363013128282337,
+            "median_lee_change_mm_yr": -0.5186074980631341,
+            "crest_wetter_and_lee_drier_share": 0.8577127659574468
+          },
+          "ridge_native_cell_profiles": {
+            "offsets_native_cells": [
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3
+            ],
+            "profile_count": 752,
+            "crest_selection": "highest native land cell in each coarse transport crest cell",
+            "positive_offsets_follow_transport_downwind": true,
+            "north_south_rows_use_solver_order": true,
+            "summary": [
+              {
+                "offset_native_cells": -3,
+                "valid_profiles": 727,
+                "candidate_median_rain_mm_yr": 10.612704925386137,
+                "candidate_p10_rain_mm_yr": 0.0807124068428573,
+                "candidate_p90_rain_mm_yr": 540.1731964454883,
+                "candidate_area_weighted_mean_rain_mm_yr": 264.56684309060256,
+                "control_median_rain_mm_yr": 8.7580520267968,
+                "control_p10_rain_mm_yr": 0.08109265085120773,
+                "control_p90_rain_mm_yr": 496.1880259645328,
+                "median_candidate_minus_control_mm_yr": -0.02354845509519521
+              },
+              {
+                "offset_native_cells": -2,
+                "valid_profiles": 740,
+                "candidate_median_rain_mm_yr": 14.160587502176345,
+                "candidate_p10_rain_mm_yr": 0.1077277971389586,
+                "candidate_p90_rain_mm_yr": 711.9756512685485,
+                "candidate_area_weighted_mean_rain_mm_yr": 317.4431045025954,
+                "control_median_rain_mm_yr": 9.751866768118507,
+                "control_p10_rain_mm_yr": 0.09797841116710729,
+                "control_p90_rain_mm_yr": 630.2320788952948,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": -1,
+                "valid_profiles": 744,
+                "candidate_median_rain_mm_yr": 18.406566451765833,
+                "candidate_p10_rain_mm_yr": 0.14762825831925058,
+                "candidate_p90_rain_mm_yr": 825.2392603492469,
+                "candidate_area_weighted_mean_rain_mm_yr": 366.3010652380123,
+                "control_median_rain_mm_yr": 9.78508544464073,
+                "control_p10_rain_mm_yr": 0.11216981366490719,
+                "control_p90_rain_mm_yr": 625.1834495913962,
+                "median_candidate_minus_control_mm_yr": 0.7487248990401272
+              },
+              {
+                "offset_native_cells": 0,
+                "valid_profiles": 752,
+                "candidate_median_rain_mm_yr": 20.898881363973977,
+                "candidate_p10_rain_mm_yr": 0.2221673885615697,
+                "candidate_p90_rain_mm_yr": 891.5420208976612,
+                "candidate_area_weighted_mean_rain_mm_yr": 365.1719628804483,
+                "control_median_rain_mm_yr": 9.522797202330402,
+                "control_p10_rain_mm_yr": 0.13341427993463478,
+                "control_p90_rain_mm_yr": 644.1089531466646,
+                "median_candidate_minus_control_mm_yr": 4.877330171221705
+              },
+              {
+                "offset_native_cells": 1,
+                "valid_profiles": 746,
+                "candidate_median_rain_mm_yr": 16.746523970636815,
+                "candidate_p10_rain_mm_yr": 0.21839670653562387,
+                "candidate_p90_rain_mm_yr": 730.7093896542403,
+                "candidate_area_weighted_mean_rain_mm_yr": 334.64261454985143,
+                "control_median_rain_mm_yr": 8.860686802813245,
+                "control_p10_rain_mm_yr": 0.13979563613459323,
+                "control_p90_rain_mm_yr": 578.5947840627133,
+                "median_candidate_minus_control_mm_yr": 1.107574011888256
+              },
+              {
+                "offset_native_cells": 2,
+                "valid_profiles": 738,
+                "candidate_median_rain_mm_yr": 11.804031233137625,
+                "candidate_p10_rain_mm_yr": 0.21932524682209176,
+                "candidate_p90_rain_mm_yr": 703.1332599884471,
+                "candidate_area_weighted_mean_rain_mm_yr": 305.37163677857455,
+                "control_median_rain_mm_yr": 8.334117710206959,
+                "control_p10_rain_mm_yr": 0.1725798564280498,
+                "control_p90_rain_mm_yr": 590.4868130686001,
+                "median_candidate_minus_control_mm_yr": -7.086486984630991e-05
+              },
+              {
+                "offset_native_cells": 3,
+                "valid_profiles": 725,
+                "candidate_median_rain_mm_yr": 9.353596141677777,
+                "candidate_p10_rain_mm_yr": 0.24288978986714632,
+                "candidate_p90_rain_mm_yr": 658.5191181423658,
+                "candidate_area_weighted_mean_rain_mm_yr": 298.1724000625449,
+                "control_median_rain_mm_yr": 7.987785707505064,
+                "control_p10_rain_mm_yr": 0.22143351973948927,
+                "control_p90_rain_mm_yr": 591.0059465728973,
+                "median_candidate_minus_control_mm_yr": -0.058679997592498534
+              }
+            ],
+            "multi_cell_windward_minus_lee": {
+              "side_offsets_native_cells": {
+                "windward": [
+                  -3,
+                  -2,
+                  -1
+                ],
+                "lee": [
+                  1,
+                  2,
+                  3
+                ]
+              },
+              "minimum_valid_cells_per_side": 2,
+              "eligible_profiles": 729,
+              "candidate": {
+                "median_mm_yr": -0.08161030097678715,
+                "p10_mm_yr": -152.62077253307345,
+                "p90_mm_yr": 131.37911898062725
+              },
+              "control": {
+                "median_mm_yr": -0.010710063111503298,
+                "p10_mm_yr": -87.66170023650277,
+                "p90_mm_yr": 80.7890300051432
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 0.0006071722317591011,
+                "p10_mm_yr": -38.08900228928103,
+                "p90_mm_yr": 45.15496299922428
+              },
+              "candidate_fraction_windward_wetter": 0.45816186556927296,
+              "fraction_with_positive_contrast_gain": 0.5034293552812071
+            }
+          },
+          "geographic_metrics_present": true,
+          "cold_inland_budget": {
+            "inflow_kg_s": 350624940.557702,
+            "outflow_kg_s": 104979988.38751028,
+            "net_inflow_kg_s": 245644952.1701917,
+            "local_source_kg_s": 33173900.73825904,
+            "atmospheric_rain_kg_s": 278818852.9084506,
+            "spread_contribution_kg_s": 24753954.371280372
+          },
+          "raw_rms_to_legacy": 0.7712363759363061,
+          "summed_cell_closure": 1.7113720642645072e-15,
+          "global_closure": 1.3407922945774512e-16,
+          "source_total_kg_s": 14225533966.195698,
+          "budget_rain_total_kg_s": 14225533966.195696,
+          "source_rain_relative_residual": 1.3407922945774512e-16,
+          "placed_rain_total_kg_s": 14225533966.195694,
+          "minimum_column_water_kg_m2": 0.0,
+          "maximum_mass_cap_violation_kg": 0.0,
+          "overflow_total_kg_s": 8944029848.937057,
+          "overflow_max_kg_s": 39098730.10517307,
+          "condensate_placement_relative_residual": 5.845016409173577e-15,
+          "intercepted_rain_fraction": 0.004376393040538603,
+          "sink_rate_min_s_inv": 1.271876271876272e-06,
+          "sink_rate_max_s_inv": 1.271876271876272e-06,
+          "geographic_support": {
+            "area_fraction": {
+              "belt_center": 0.10983972886808446,
+              "belt_flanks": 0.1643005095074206,
+              "near_coast": 0.09368808125546887,
+              "inland": 0.1394282117216642,
+              "cold_coast": 0.026289594342294755
+            },
+            "minimum_region_area_fraction": 0.001,
+            "ridge_crossings": 752,
+            "distinct_crests": 665,
+            "equatorial_belt": {
+              "evaluable": true
+            },
+            "inland_coast": {
+              "evaluable": true
+            },
+            "ridge_shadow": {
+              "evaluable": true,
+              "minimum_crossings": 100,
+              "minimum_distinct_crests": 25
+            },
+            "cold_coast": {
+              "evaluable": true
+            }
+          },
+          "hard_gates": {
+            "finite_nonnegative_mass": true,
+            "within_mass_cap": true,
+            "finite_nonnegative_overflow": true,
+            "finite_nonnegative_source": true,
+            "finite_nonnegative_budget_rain": true,
+            "finite_nonnegative_rain": true,
+            "global_closure": true,
+            "summed_cell_closure": true,
+            "source_equals_budget_rain": true,
+            "placement_closure": true
+          }
+        }
+      },
+      "cfd": {
+        "control": {
+          "land_rain_by_distance_to_ocean_km": {
+            "0_to_500": {
+              "rain_mm_yr": 428.33447296554164,
+              "fraction_of_land": 0.27071920572127955
+            },
+            "500_to_1500": {
+              "rain_mm_yr": 338.0580454175061,
+              "fraction_of_land": 0.3263918224200511
+            },
+            "1500_plus": {
+              "rain_mm_yr": 213.7870581591432,
+              "fraction_of_land": 0.40288897185866934
+            }
+          },
+          "below_freezing_land_rain_mm_yr": 104.90529777415846,
+          "fraction_of_land_rain_below_freezing": 0.016293416418386348,
+          "cold_coast_rain_mm_yr": 222.14924195978256,
+          "cold_inland_rain_mm_yr": 97.06315545796956,
+          "ocean_belt_contrasts": {
+            "-60": {
+              "center_mm_yr": 2366.9044288445525,
+              "flank_mm_yr": 383.84036075039364,
+              "ratio": 6.166377147565572
+            },
+            "0": {
+              "center_mm_yr": 4214.965162541851,
+              "flank_mm_yr": 493.7178859052099,
+              "ratio": 8.537193573236461
+            },
+            "60": {
+              "center_mm_yr": 659.4167119065235,
+              "flank_mm_yr": 880.04191743969,
+              "ratio": 0.7493014808032866
+            }
+          },
+          "ocean_belt_wettest_row_shares": {
+            "-60": 0.05086418196145512,
+            "0": 0.055973285748516406,
+            "60": 0.5127026273796039
+          },
+          "total_rain_kg_s": 14484856703.419262,
+          "global_mean_rain_mm_yr": 896.1755603018536,
+          "land_rain_share": 0.12064940523817147,
+          "ocean_rain_share": 0.8793505947618284,
+          "folded_latitude_bands": [
+            {
+              "absolute_latitude_deg": [
+                0,
+                15
+              ],
+              "land_mean_mm_yr": 1174.7129494307828,
+              "ocean_mean_mm_yr": 2499.40805077562
+            },
+            {
+              "absolute_latitude_deg": [
+                15,
+                30
+              ],
+              "land_mean_mm_yr": 39.834163009888634,
+              "ocean_mean_mm_yr": 239.66586239955978
+            },
+            {
+              "absolute_latitude_deg": [
+                30,
+                45
+              ],
+              "land_mean_mm_yr": 60.92812950161219,
+              "ocean_mean_mm_yr": 237.54870266407886
+            },
+            {
+              "absolute_latitude_deg": [
+                45,
+                60
+              ],
+              "land_mean_mm_yr": 342.7768976972984,
+              "ocean_mean_mm_yr": 1589.720229684665
+            },
+            {
+              "absolute_latitude_deg": [
+                60,
+                75
+              ],
+              "land_mean_mm_yr": 289.7508861583742,
+              "ocean_mean_mm_yr": 1310.639271218282
+            },
+            {
+              "absolute_latitude_deg": [
+                75,
+                90
+              ],
+              "land_mean_mm_yr": 4.9031818108742,
+              "ocean_mean_mm_yr": 49.85476196871175
+            }
+          ],
+          "ridge_transects": {
+            "crossings": 842,
+            "distinct_crests": 730,
+            "median_crest_rain_mm_yr": 33.095814420490264,
+            "median_lee_rain_mm_yr": 41.45945366082245,
+            "median_crest_minus_lee_mm_yr": -2.447311000468382,
+            "median_contrast_gain_mm_yr": 0.0,
+            "median_lee_change_mm_yr": 0.0,
+            "crest_wetter_and_lee_drier_share": 0.0
+          },
+          "ridge_native_cell_profiles": {
+            "offsets_native_cells": [
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3
+            ],
+            "profile_count": 842,
+            "crest_selection": "highest native land cell in each coarse transport crest cell",
+            "positive_offsets_follow_transport_downwind": true,
+            "north_south_rows_use_solver_order": true,
+            "summary": [
+              {
+                "offset_native_cells": -3,
+                "valid_profiles": 815,
+                "candidate_median_rain_mm_yr": 26.802836043110137,
+                "candidate_p10_rain_mm_yr": 0.8090459731372849,
+                "candidate_p90_rain_mm_yr": 358.57300542267205,
+                "candidate_area_weighted_mean_rain_mm_yr": 260.5430862894052,
+                "control_median_rain_mm_yr": 26.802836043110137,
+                "control_p10_rain_mm_yr": 0.8090459731372849,
+                "control_p90_rain_mm_yr": 358.57300542267205,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": -2,
+                "valid_profiles": 828,
+                "candidate_median_rain_mm_yr": 27.900265030080114,
+                "candidate_p10_rain_mm_yr": 1.4974716506104864,
+                "candidate_p90_rain_mm_yr": 376.65473068917686,
+                "candidate_area_weighted_mean_rain_mm_yr": 254.79266366988827,
+                "control_median_rain_mm_yr": 27.900265030080114,
+                "control_p10_rain_mm_yr": 1.4974716506104864,
+                "control_p90_rain_mm_yr": 376.65473068917686,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": -1,
+                "valid_profiles": 835,
+                "candidate_median_rain_mm_yr": 29.53855956168416,
+                "candidate_p10_rain_mm_yr": 1.8221366006934723,
+                "candidate_p90_rain_mm_yr": 462.91358283458106,
+                "candidate_area_weighted_mean_rain_mm_yr": 268.6583685353942,
+                "control_median_rain_mm_yr": 29.53855956168416,
+                "control_p10_rain_mm_yr": 1.8221366006934723,
+                "control_p90_rain_mm_yr": 462.91358283458106,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": 0,
+                "valid_profiles": 842,
+                "candidate_median_rain_mm_yr": 33.070362866289194,
+                "candidate_p10_rain_mm_yr": 2.2108714862829633,
+                "candidate_p90_rain_mm_yr": 556.8113843023767,
+                "candidate_area_weighted_mean_rain_mm_yr": 285.6729830583808,
+                "control_median_rain_mm_yr": 33.070362866289194,
+                "control_p10_rain_mm_yr": 2.2108714862829633,
+                "control_p90_rain_mm_yr": 556.8113843023767,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": 1,
+                "valid_profiles": 837,
+                "candidate_median_rain_mm_yr": 34.39955154963498,
+                "candidate_p10_rain_mm_yr": 2.4656288701565496,
+                "candidate_p90_rain_mm_yr": 619.1014610357556,
+                "candidate_area_weighted_mean_rain_mm_yr": 302.91547809760334,
+                "control_median_rain_mm_yr": 34.39955154963498,
+                "control_p10_rain_mm_yr": 2.4656288701565496,
+                "control_p90_rain_mm_yr": 619.1014610357556,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": 2,
+                "valid_profiles": 828,
+                "candidate_median_rain_mm_yr": 36.20551673150911,
+                "candidate_p10_rain_mm_yr": 2.4972654461500077,
+                "candidate_p90_rain_mm_yr": 675.1465757422422,
+                "candidate_area_weighted_mean_rain_mm_yr": 351.0497639716133,
+                "control_median_rain_mm_yr": 36.20551673150911,
+                "control_p10_rain_mm_yr": 2.4972654461500077,
+                "control_p90_rain_mm_yr": 675.1465757422422,
+                "median_candidate_minus_control_mm_yr": 0.0
+              },
+              {
+                "offset_native_cells": 3,
+                "valid_profiles": 815,
+                "candidate_median_rain_mm_yr": 36.706273229470696,
+                "candidate_p10_rain_mm_yr": 3.0762479958291262,
+                "candidate_p90_rain_mm_yr": 682.3694687353726,
+                "candidate_area_weighted_mean_rain_mm_yr": 375.5807833327109,
+                "control_median_rain_mm_yr": 36.706273229470696,
+                "control_p10_rain_mm_yr": 3.0762479958291262,
+                "control_p90_rain_mm_yr": 682.3694687353726,
+                "median_candidate_minus_control_mm_yr": 0.0
+              }
+            ],
+            "multi_cell_windward_minus_lee": {
+              "side_offsets_native_cells": {
+                "windward": [
+                  -3,
+                  -2,
+                  -1
+                ],
+                "lee": [
+                  1,
+                  2,
+                  3
+                ]
+              },
+              "minimum_valid_cells_per_side": 2,
+              "eligible_profiles": 817,
+              "candidate": {
+                "median_mm_yr": -2.0411611312802913,
+                "p10_mm_yr": -224.50562188375852,
+                "p90_mm_yr": 12.073023872140304
+              },
+              "control": {
+                "median_mm_yr": -2.0411611312802913,
+                "p10_mm_yr": -224.50562188375852,
+                "p90_mm_yr": 12.073023872140304
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 0.0,
+                "p10_mm_yr": 0.0,
+                "p90_mm_yr": 0.0
+              },
+              "candidate_fraction_windward_wetter": 0.26438188494492043,
+              "fraction_with_positive_contrast_gain": 0.0
+            }
+          },
+          "geographic_metrics_present": true,
+          "cold_inland_budget": {
+            "inflow_kg_s": 70291926.6570303,
+            "outflow_kg_s": 48547977.49099324,
+            "net_inflow_kg_s": 21743949.166037053,
+            "local_source_kg_s": 2966143.806378525,
+            "atmospheric_rain_kg_s": 24710092.97241557,
+            "spread_contribution_kg_s": -16178.17136022821
+          },
+          "raw_rms_to_legacy": 0.8187804200111378,
+          "summed_cell_closure": 1.8621113742448948e-15,
+          "global_closure": 0.0,
+          "source_total_kg_s": 14484856703.419262,
+          "budget_rain_total_kg_s": 14484856703.419262,
+          "source_rain_relative_residual": 0.0,
+          "placed_rain_total_kg_s": 14484856703.419262,
+          "minimum_column_water_kg_m2": 9.021155105577777e-05,
+          "maximum_mass_cap_violation_kg": 0.0,
+          "overflow_total_kg_s": 9258191831.882883,
+          "overflow_max_kg_s": 51598255.7294355,
+          "condensate_placement_relative_residual": 1.2396067891591941e-14,
+          "intercepted_rain_fraction": 0.0,
+          "sink_rate_min_s_inv": 1.271876271876272e-06,
+          "sink_rate_max_s_inv": 1.271876271876272e-06,
+          "geographic_support": {
+            "area_fraction": {
+              "belt_center": 0.10983972886808446,
+              "belt_flanks": 0.1643005095074206,
+              "near_coast": 0.09368808125546887,
+              "inland": 0.1394282117216642,
+              "cold_coast": 0.0010528311645276772
+            },
+            "minimum_region_area_fraction": 0.001,
+            "ridge_crossings": 842,
+            "distinct_crests": 730,
+            "equatorial_belt": {
+              "evaluable": true
+            },
+            "inland_coast": {
+              "evaluable": true
+            },
+            "ridge_shadow": {
+              "evaluable": true,
+              "minimum_crossings": 100,
+              "minimum_distinct_crests": 25
+            },
+            "cold_coast": {
+              "evaluable": true
+            }
+          },
+          "hard_gates": {
+            "finite_nonnegative_mass": true,
+            "within_mass_cap": true,
+            "finite_nonnegative_overflow": true,
+            "finite_nonnegative_source": true,
+            "finite_nonnegative_budget_rain": true,
+            "finite_nonnegative_rain": true,
+            "global_closure": true,
+            "summed_cell_closure": true,
+            "source_equals_budget_rain": true,
+            "placement_closure": true
+          }
+        },
+        "ridge_010": {
+          "land_rain_by_distance_to_ocean_km": {
+            "0_to_500": {
+              "rain_mm_yr": 435.7322874965006,
+              "fraction_of_land": 0.27071920572127955
+            },
+            "500_to_1500": {
+              "rain_mm_yr": 340.907720687286,
+              "fraction_of_land": 0.3263918224200511
+            },
+            "1500_plus": {
+              "rain_mm_yr": 208.7002885649241,
+              "fraction_of_land": 0.40288897185866934
+            }
+          },
+          "below_freezing_land_rain_mm_yr": 103.35442499544914,
+          "fraction_of_land_rain_below_freezing": 0.01600727916808842,
+          "cold_coast_rain_mm_yr": 220.74763653041384,
+          "cold_inland_rain_mm_yr": 95.5022985747095,
+          "ocean_belt_contrasts": {
+            "-60": {
+              "center_mm_yr": 2366.8989331260955,
+              "flank_mm_yr": 383.83488309245786,
+              "ratio": 6.166450829212306
+            },
+            "0": {
+              "center_mm_yr": 4213.19109554054,
+              "flank_mm_yr": 493.4428822848365,
+              "ratio": 8.53835620453535
+            },
+            "60": {
+              "center_mm_yr": 645.4630579495873,
+              "flank_mm_yr": 873.9521174541364,
+              "ratio": 0.7385565468161477
+            }
+          },
+          "ocean_belt_wettest_row_shares": {
+            "-60": 0.050864204882702484,
+            "0": 0.05597410521530346,
+            "60": 0.5156865864401137
+          },
+          "total_rain_kg_s": 14484856703.41926,
+          "global_mean_rain_mm_yr": 896.1755603018537,
+          "land_rain_share": 0.12099055742720993,
+          "ocean_rain_share": 0.87900944257279,
+          "folded_latitude_bands": [
+            {
+              "absolute_latitude_deg": [
+                0,
+                15
+              ],
+              "land_mean_mm_yr": 1175.165287754618,
+              "ocean_mean_mm_yr": 2498.3208557620283
+            },
+            {
+              "absolute_latitude_deg": [
+                15,
+                30
+              ],
+              "land_mean_mm_yr": 43.32290002648707,
+              "ocean_mean_mm_yr": 239.56566761333949
+            },
+            {
+              "absolute_latitude_deg": [
+                30,
+                45
+              ],
+              "land_mean_mm_yr": 70.36312869771818,
+              "ocean_mean_mm_yr": 237.4621276714536
+            },
+            {
+              "absolute_latitude_deg": [
+                45,
+                60
+              ],
+              "land_mean_mm_yr": 342.0302997497856,
+              "ocean_mean_mm_yr": 1589.0978805877623
+            },
+            {
+              "absolute_latitude_deg": [
+                60,
+                75
+              ],
+              "land_mean_mm_yr": 275.35487621252315,
+              "ocean_mean_mm_yr": 1310.6362898272819
+            },
+            {
+              "absolute_latitude_deg": [
+                75,
+                90
+              ],
+              "land_mean_mm_yr": 5.422265944199535,
+              "ocean_mean_mm_yr": 49.854677952510414
+            }
+          ],
+          "ridge_transects": {
+            "crossings": 842,
+            "distinct_crests": 730,
+            "median_crest_rain_mm_yr": 86.68576751340814,
+            "median_lee_rain_mm_yr": 42.21142000311259,
+            "median_crest_minus_lee_mm_yr": 14.244878758931954,
+            "median_contrast_gain_mm_yr": 29.39669151601162,
+            "median_lee_change_mm_yr": -1.1933049384436423,
+            "crest_wetter_and_lee_drier_share": 0.8954869358669834
+          },
+          "ridge_native_cell_profiles": {
+            "offsets_native_cells": [
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3
+            ],
+            "profile_count": 842,
+            "crest_selection": "highest native land cell in each coarse transport crest cell",
+            "positive_offsets_follow_transport_downwind": true,
+            "north_south_rows_use_solver_order": true,
+            "summary": [
+              {
+                "offset_native_cells": -3,
+                "valid_profiles": 815,
+                "candidate_median_rain_mm_yr": 33.62977959277287,
+                "candidate_p10_rain_mm_yr": 1.257188210828956,
+                "candidate_p90_rain_mm_yr": 406.8943490442932,
+                "candidate_area_weighted_mean_rain_mm_yr": 277.71714488151,
+                "control_median_rain_mm_yr": 26.802836043110137,
+                "control_p10_rain_mm_yr": 0.8090459731372849,
+                "control_p90_rain_mm_yr": 358.57300542267205,
+                "median_candidate_minus_control_mm_yr": -0.0992043192728227
+              },
+              {
+                "offset_native_cells": -2,
+                "valid_profiles": 828,
+                "candidate_median_rain_mm_yr": 43.76925865184582,
+                "candidate_p10_rain_mm_yr": 1.8353475186309351,
+                "candidate_p90_rain_mm_yr": 532.2416660560987,
+                "candidate_area_weighted_mean_rain_mm_yr": 313.7609197395457,
+                "control_median_rain_mm_yr": 27.900265030080114,
+                "control_p10_rain_mm_yr": 1.4974716506104864,
+                "control_p90_rain_mm_yr": 376.65473068917686,
+                "median_candidate_minus_control_mm_yr": 0.02525899511451682
+              },
+              {
+                "offset_native_cells": -1,
+                "valid_profiles": 835,
+                "candidate_median_rain_mm_yr": 62.91602932574644,
+                "candidate_p10_rain_mm_yr": 3.040982530325075,
+                "candidate_p90_rain_mm_yr": 629.5147203571637,
+                "candidate_area_weighted_mean_rain_mm_yr": 355.8898324603165,
+                "control_median_rain_mm_yr": 29.53855956168416,
+                "control_p10_rain_mm_yr": 1.8221366006934723,
+                "control_p90_rain_mm_yr": 462.91358283458106,
+                "median_candidate_minus_control_mm_yr": 10.27781667059475
+              },
+              {
+                "offset_native_cells": 0,
+                "valid_profiles": 842,
+                "candidate_median_rain_mm_yr": 84.83285080883546,
+                "candidate_p10_rain_mm_yr": 3.9811614927400694,
+                "candidate_p90_rain_mm_yr": 853.7708278460261,
+                "candidate_area_weighted_mean_rain_mm_yr": 415.2691301546626,
+                "control_median_rain_mm_yr": 33.070362866289194,
+                "control_p10_rain_mm_yr": 2.2108714862829633,
+                "control_p90_rain_mm_yr": 556.8113843023767,
+                "median_candidate_minus_control_mm_yr": 24.993874124696568
+              },
+              {
+                "offset_native_cells": 1,
+                "valid_profiles": 837,
+                "candidate_median_rain_mm_yr": 76.86783503286476,
+                "candidate_p10_rain_mm_yr": 3.0681844263145064,
+                "candidate_p90_rain_mm_yr": 807.4688767649254,
+                "candidate_area_weighted_mean_rain_mm_yr": 408.2797713227051,
+                "control_median_rain_mm_yr": 34.39955154963498,
+                "control_p10_rain_mm_yr": 2.4656288701565496,
+                "control_p90_rain_mm_yr": 619.1014610357556,
+                "median_candidate_minus_control_mm_yr": 15.217017944144665
+              },
+              {
+                "offset_native_cells": 2,
+                "valid_profiles": 828,
+                "candidate_median_rain_mm_yr": 66.78153877992361,
+                "candidate_p10_rain_mm_yr": 3.0476831986079316,
+                "candidate_p90_rain_mm_yr": 753.1059638144311,
+                "candidate_area_weighted_mean_rain_mm_yr": 411.2132477566497,
+                "control_median_rain_mm_yr": 36.20551673150911,
+                "control_p10_rain_mm_yr": 2.4972654461500077,
+                "control_p90_rain_mm_yr": 675.1465757422422,
+                "median_candidate_minus_control_mm_yr": 0.06879807415909071
+              },
+              {
+                "offset_native_cells": 3,
+                "valid_profiles": 815,
+                "candidate_median_rain_mm_yr": 52.75553404854669,
+                "candidate_p10_rain_mm_yr": 3.128368456012003,
+                "candidate_p90_rain_mm_yr": 674.4299693240818,
+                "candidate_area_weighted_mean_rain_mm_yr": 406.1304687169188,
+                "control_median_rain_mm_yr": 36.706273229470696,
+                "control_p10_rain_mm_yr": 3.0762479958291262,
+                "control_p90_rain_mm_yr": 682.3694687353726,
+                "median_candidate_minus_control_mm_yr": -0.32414563394274865
+              }
+            ],
+            "multi_cell_windward_minus_lee": {
+              "side_offsets_native_cells": {
+                "windward": [
+                  -3,
+                  -2,
+                  -1
+                ],
+                "lee": [
+                  1,
+                  2,
+                  3
+                ]
+              },
+              "minimum_valid_cells_per_side": 2,
+              "eligible_profiles": 817,
+              "candidate": {
+                "median_mm_yr": -5.797461139398236,
+                "p10_mm_yr": -337.33611722559226,
+                "p90_mm_yr": 71.04413798765601
+              },
+              "control": {
+                "median_mm_yr": -2.0411611312802913,
+                "p10_mm_yr": -224.50562188375852,
+                "p90_mm_yr": 12.073023872140304
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 0.012640233274888724,
+                "p10_mm_yr": -117.86647075569086,
+                "p90_mm_yr": 100.37118398161384
+              },
+              "candidate_fraction_windward_wetter": 0.32558139534883723,
+              "fraction_with_positive_contrast_gain": 0.5128518971848225
+            }
+          },
+          "geographic_metrics_present": true,
+          "cold_inland_budget": {
+            "inflow_kg_s": 69463649.99119794,
+            "outflow_kg_s": 48116727.10097949,
+            "net_inflow_kg_s": 21346922.890218448,
+            "local_source_kg_s": 2966143.806378525,
+            "atmospheric_rain_kg_s": 24313066.696596973,
+            "spread_contribution_kg_s": -16250.74020627141
+          },
+          "raw_rms_to_legacy": 0.8183461807210689,
+          "summed_cell_closure": 1.8743609342659036e-15,
+          "global_closure": 1.3167880579462383e-16,
+          "source_total_kg_s": 14484856703.419262,
+          "budget_rain_total_kg_s": 14484856703.41926,
+          "source_rain_relative_residual": 1.3167880579462383e-16,
+          "placed_rain_total_kg_s": 14484856703.41926,
+          "minimum_column_water_kg_m2": 9.021155105577777e-05,
+          "maximum_mass_cap_violation_kg": 0.0,
+          "overflow_total_kg_s": 9193333870.449154,
+          "overflow_max_kg_s": 51598255.72517069,
+          "condensate_placement_relative_residual": 2.3200673966275423e-14,
+          "intercepted_rain_fraction": 0.006099480597571401,
+          "sink_rate_min_s_inv": 1.271876271876272e-06,
+          "sink_rate_max_s_inv": 1.271876271876272e-06,
+          "geographic_support": {
+            "area_fraction": {
+              "belt_center": 0.10983972886808446,
+              "belt_flanks": 0.1643005095074206,
+              "near_coast": 0.09368808125546887,
+              "inland": 0.1394282117216642,
+              "cold_coast": 0.0010528311645276772
+            },
+            "minimum_region_area_fraction": 0.001,
+            "ridge_crossings": 842,
+            "distinct_crests": 730,
+            "equatorial_belt": {
+              "evaluable": true
+            },
+            "inland_coast": {
+              "evaluable": true
+            },
+            "ridge_shadow": {
+              "evaluable": true,
+              "minimum_crossings": 100,
+              "minimum_distinct_crests": 25
+            },
+            "cold_coast": {
+              "evaluable": true
+            }
+          },
+          "hard_gates": {
+            "finite_nonnegative_mass": true,
+            "within_mass_cap": true,
+            "finite_nonnegative_overflow": true,
+            "finite_nonnegative_source": true,
+            "finite_nonnegative_budget_rain": true,
+            "finite_nonnegative_rain": true,
+            "global_closure": true,
+            "summed_cell_closure": true,
+            "source_equals_budget_rain": true,
+            "placement_closure": true
+          }
+        },
+        "ridge_025": {
+          "land_rain_by_distance_to_ocean_km": {
+            "0_to_500": {
+              "rain_mm_yr": 447.42939846138273,
+              "fraction_of_land": 0.27071920572127955
+            },
+            "500_to_1500": {
+              "rain_mm_yr": 344.21719956860983,
+              "fraction_of_land": 0.3263918224200511
+            },
+            "1500_plus": {
+              "rain_mm_yr": 201.35265725405756,
+              "fraction_of_land": 0.40288897185866934
+            }
+          },
+          "below_freezing_land_rain_mm_yr": 102.19032998714391,
+          "fraction_of_land_rain_below_freezing": 0.0157622634185791,
+          "cold_coast_rain_mm_yr": 220.6200961770141,
+          "cold_inland_rain_mm_yr": 94.26887112302106,
+          "ocean_belt_contrasts": {
+            "-60": {
+              "center_mm_yr": 2366.890714636008,
+              "flank_mm_yr": 383.826694257512,
+              "ratio": 6.166560976730932
+            },
+            "0": {
+              "center_mm_yr": 4210.567763960138,
+              "flank_mm_yr": 493.0361736530179,
+              "ratio": 8.540078779135165
+            },
+            "60": {
+              "center_mm_yr": 627.106200341769,
+              "flank_mm_yr": 865.6154863400886,
+              "ratio": 0.7244627784944543
+            }
+          },
+          "ocean_belt_wettest_row_shares": {
+            "-60": 0.050864239171089815,
+            "0": 0.0559753046402642,
+            "60": 0.5197807349763679
+          },
+          "total_rain_kg_s": 14484856703.41926,
+          "global_mean_rain_mm_yr": 896.1755603018538,
+          "land_rain_share": 0.12148737324003804,
+          "ocean_rain_share": 0.8785126267599619,
+          "folded_latitude_bands": [
+            {
+              "absolute_latitude_deg": [
+                0,
+                15
+              ],
+              "land_mean_mm_yr": 1175.8282653214617,
+              "ocean_mean_mm_yr": 2496.7130389542713
+            },
+            {
+              "absolute_latitude_deg": [
+                15,
+                30
+              ],
+              "land_mean_mm_yr": 48.48551530876358,
+              "ocean_mean_mm_yr": 239.41802763703188
+            },
+            {
+              "absolute_latitude_deg": [
+                30,
+                45
+              ],
+              "land_mean_mm_yr": 83.80215543753522,
+              "ocean_mean_mm_yr": 237.33639931929721
+            },
+            {
+              "absolute_latitude_deg": [
+                45,
+                60
+              ],
+              "land_mean_mm_yr": 338.566065627339,
+              "ocean_mean_mm_yr": 1588.2574382806354
+            },
+            {
+              "absolute_latitude_deg": [
+                60,
+                75
+              ],
+              "land_mean_mm_yr": 258.4822586094685,
+              "ocean_mean_mm_yr": 1310.631827980707
+            },
+            {
+              "absolute_latitude_deg": [
+                75,
+                90
+              ],
+              "land_mean_mm_yr": 6.174537326176056,
+              "ocean_mean_mm_yr": 49.85455192820841
+            }
+          ],
+          "ridge_transects": {
+            "crossings": 842,
+            "distinct_crests": 730,
+            "median_crest_rain_mm_yr": 140.1251571667301,
+            "median_lee_rain_mm_yr": 38.29051050187615,
+            "median_crest_minus_lee_mm_yr": 46.08166864674351,
+            "median_contrast_gain_mm_yr": 68.71908871798178,
+            "median_lee_change_mm_yr": -2.8452219800429264,
+            "crest_wetter_and_lee_drier_share": 0.8871733966745843
+          },
+          "ridge_native_cell_profiles": {
+            "offsets_native_cells": [
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3
+            ],
+            "profile_count": 842,
+            "crest_selection": "highest native land cell in each coarse transport crest cell",
+            "positive_offsets_follow_transport_downwind": true,
+            "north_south_rows_use_solver_order": true,
+            "summary": [
+              {
+                "offset_native_cells": -3,
+                "valid_profiles": 815,
+                "candidate_median_rain_mm_yr": 32.88120670111961,
+                "candidate_p10_rain_mm_yr": 1.5226054243650313,
+                "candidate_p90_rain_mm_yr": 467.21434432385325,
+                "candidate_area_weighted_mean_rain_mm_yr": 303.5418549998998,
+                "control_median_rain_mm_yr": 26.802836043110137,
+                "control_p10_rain_mm_yr": 0.8090459731372849,
+                "control_p90_rain_mm_yr": 358.57300542267205,
+                "median_candidate_minus_control_mm_yr": -0.2559441000929894
+              },
+              {
+                "offset_native_cells": -2,
+                "valid_profiles": 828,
+                "candidate_median_rain_mm_yr": 55.352062936831345,
+                "candidate_p10_rain_mm_yr": 2.6747645355629674,
+                "candidate_p90_rain_mm_yr": 761.4545084298802,
+                "candidate_area_weighted_mean_rain_mm_yr": 392.0954614388741,
+                "control_median_rain_mm_yr": 27.900265030080114,
+                "control_p10_rain_mm_yr": 1.4974716506104864,
+                "control_p90_rain_mm_yr": 376.65473068917686,
+                "median_candidate_minus_control_mm_yr": 0.058959919403857995
+              },
+              {
+                "offset_native_cells": -1,
+                "valid_profiles": 835,
+                "candidate_median_rain_mm_yr": 87.90674342066956,
+                "candidate_p10_rain_mm_yr": 3.387403511056506,
+                "candidate_p90_rain_mm_yr": 1015.4091726752548,
+                "candidate_area_weighted_mean_rain_mm_yr": 469.0642327747214,
+                "control_median_rain_mm_yr": 29.53855956168416,
+                "control_p10_rain_mm_yr": 1.8221366006934723,
+                "control_p90_rain_mm_yr": 462.91358283458106,
+                "median_candidate_minus_control_mm_yr": 23.48898090257009
+              },
+              {
+                "offset_native_cells": 0,
+                "valid_profiles": 842,
+                "candidate_median_rain_mm_yr": 140.12515716673008,
+                "candidate_p10_rain_mm_yr": 6.2686983133836245,
+                "candidate_p90_rain_mm_yr": 1187.6587761115084,
+                "candidate_area_weighted_mean_rain_mm_yr": 581.7673521432341,
+                "control_median_rain_mm_yr": 33.070362866289194,
+                "control_p10_rain_mm_yr": 2.2108714862829633,
+                "control_p90_rain_mm_yr": 556.8113843023767,
+                "median_candidate_minus_control_mm_yr": 57.7376114632939
+              },
+              {
+                "offset_native_cells": 1,
+                "valid_profiles": 837,
+                "candidate_median_rain_mm_yr": 111.83240880812663,
+                "candidate_p10_rain_mm_yr": 3.173462252268171,
+                "candidate_p90_rain_mm_yr": 1119.6471926597915,
+                "candidate_area_weighted_mean_rain_mm_yr": 539.2176720803848,
+                "control_median_rain_mm_yr": 34.39955154963498,
+                "control_p10_rain_mm_yr": 2.4656288701565496,
+                "control_p90_rain_mm_yr": 619.1014610357556,
+                "median_candidate_minus_control_mm_yr": 36.01570580844866
+              },
+              {
+                "offset_native_cells": 2,
+                "valid_profiles": 828,
+                "candidate_median_rain_mm_yr": 83.08503215708696,
+                "candidate_p10_rain_mm_yr": 3.1309504049233197,
+                "candidate_p90_rain_mm_yr": 957.180130519531,
+                "candidate_area_weighted_mean_rain_mm_yr": 485.0677401798908,
+                "control_median_rain_mm_yr": 36.20551673150911,
+                "control_p10_rain_mm_yr": 2.4972654461500077,
+                "control_p90_rain_mm_yr": 675.1465757422422,
+                "median_candidate_minus_control_mm_yr": 0.11428753783501287
+              },
+              {
+                "offset_native_cells": 3,
+                "valid_profiles": 815,
+                "candidate_median_rain_mm_yr": 56.38847512553547,
+                "candidate_p10_rain_mm_yr": 3.074490386429068,
+                "candidate_p90_rain_mm_yr": 812.4648987337047,
+                "candidate_area_weighted_mean_rain_mm_yr": 444.42464635190566,
+                "control_median_rain_mm_yr": 36.706273229470696,
+                "control_p10_rain_mm_yr": 3.0762479958291262,
+                "control_p90_rain_mm_yr": 682.3694687353726,
+                "median_candidate_minus_control_mm_yr": -0.7969975891038086
+              }
+            ],
+            "multi_cell_windward_minus_lee": {
+              "side_offsets_native_cells": {
+                "windward": [
+                  -3,
+                  -2,
+                  -1
+                ],
+                "lee": [
+                  1,
+                  2,
+                  3
+                ]
+              },
+              "minimum_valid_cells_per_side": 2,
+              "eligible_profiles": 817,
+              "candidate": {
+                "median_mm_yr": -8.5386317882747,
+                "p10_mm_yr": -439.0110434683141,
+                "p90_mm_yr": 161.21019926169444
+              },
+              "control": {
+                "median_mm_yr": -2.0411611312802913,
+                "p10_mm_yr": -224.50562188375852,
+                "p90_mm_yr": 12.073023872140304
+              },
+              "candidate_minus_control": {
+                "median_mm_yr": 0.03606821011132885,
+                "p10_mm_yr": -273.51618134083196,
+                "p90_mm_yr": 221.7395056058511
+              },
+              "candidate_fraction_windward_wetter": 0.3659730722154223,
+              "fraction_with_positive_contrast_gain": 0.5177478580171359
+            }
+          },
+          "geographic_metrics_present": true,
+          "cold_inland_budget": {
+            "inflow_kg_s": 67924771.95186104,
+            "outflow_kg_s": 46891627.288281,
+            "net_inflow_kg_s": 21033144.66358003,
+            "local_source_kg_s": 2966143.806378525,
+            "atmospheric_rain_kg_s": 23999288.46995856,
+            "spread_contribution_kg_s": -16269.775377117097
+          },
+          "raw_rms_to_legacy": 0.8213810485641478,
+          "summed_cell_closure": 1.8563323352209397e-15,
+          "global_closure": 0.0,
+          "source_total_kg_s": 14484856703.419262,
+          "budget_rain_total_kg_s": 14484856703.419262,
+          "source_rain_relative_residual": 0.0,
+          "placed_rain_total_kg_s": 14484856703.41926,
+          "minimum_column_water_kg_m2": 9.021155105577777e-05,
+          "maximum_mass_cap_violation_kg": 0.0,
+          "overflow_total_kg_s": 9110595090.340338,
+          "overflow_max_kg_s": 51598255.71890994,
+          "condensate_placement_relative_residual": 5.491932068239057e-15,
+          "intercepted_rain_fraction": 0.013980314022429014,
+          "sink_rate_min_s_inv": 1.271876271876272e-06,
+          "sink_rate_max_s_inv": 1.271876271876272e-06,
+          "geographic_support": {
+            "area_fraction": {
+              "belt_center": 0.10983972886808446,
+              "belt_flanks": 0.1643005095074206,
+              "near_coast": 0.09368808125546887,
+              "inland": 0.1394282117216642,
+              "cold_coast": 0.0010528311645276772
+            },
+            "minimum_region_area_fraction": 0.001,
+            "ridge_crossings": 842,
+            "distinct_crests": 730,
+            "equatorial_belt": {
+              "evaluable": true
+            },
+            "inland_coast": {
+              "evaluable": true
+            },
+            "ridge_shadow": {
+              "evaluable": true,
+              "minimum_crossings": 100,
+              "minimum_distinct_crests": 25
+            },
+            "cold_coast": {
+              "evaluable": true
+            }
+          },
+          "hard_gates": {
+            "finite_nonnegative_mass": true,
+            "within_mass_cap": true,
+            "finite_nonnegative_overflow": true,
+            "finite_nonnegative_source": true,
+            "finite_nonnegative_budget_rain": true,
+            "finite_nonnegative_rain": true,
+            "global_closure": true,
+            "summed_cell_closure": true,
+            "source_equals_budget_rain": true,
+            "placement_closure": true
+          }
+        }
+      }
+    }
+  }
+}
