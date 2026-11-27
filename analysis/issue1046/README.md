@@ -103,3 +103,10 @@ change below 10% or total-step change below 2% is inconclusive; replicate noisy 
 Exact routing-order, flux, and ledger parity are the principal invariants, with tight numerical
 parity for reservoir arithmetic. Any observed model-output change requires a saved-world
 replay comparison before claiming end-to-end parity.
+
+For an end-to-end parity check, replay the same mature save for 1 Myr in ten 100,000-year
+steps on each arm. Expect identical or numerically negligible differences in land area, sea
+level, crust/mantle volumes and conservation ledgers. Compare the final values and their
+trajectory at each 0.1 Myr checkpoint; investigate any model-output movement before drawing a
+parity conclusion. Use `attribute_hm_ratchet.py` with `--myr 1 --checkpoint-myr 0.1` and run
+the arms sequentially on an otherwise idle machine.
