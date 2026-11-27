@@ -98,7 +98,7 @@ from scipy.sparse import coo_matrix
 from scipy.spatial import cKDTree
 
 from .. import cratons, geometry, healpix_grid, trace
-from . import _glacier_rust, breaching, lakes, river_substeps
+from . import _glacier_rust, _lakes_rust, breaching, lakes, river_substeps
 from ..elevation_lines import DEFAULT_NODE_DENSITY, PLANET_RADIUS_KM, line_spacing_rad
 from ..plates import (
     Plate,
@@ -1042,6 +1042,11 @@ def lake_components(is_lake: np.ndarray, neighbor_idx: np.ndarray) -> list[np.nd
     n = len(is_lake)
     if not np.any(is_lake):
         return []
+    if _lakes_rust.RUST_AVAILABLE:
+        indptr, members = _lakes_rust.lake_components(is_lake, neighbor_idx)
+        if len(members) == 0:
+            return []
+        return np.split(members, indptr[1:-1])
 
     parent = list(range(n))
 
