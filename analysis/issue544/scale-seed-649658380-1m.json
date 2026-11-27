@@ -1,0 +1,523 @@
+{
+  "backend": "backend",
+  "checkpoints": [
+    {
+      "elapsed_myr": 6.4,
+      "grounded_ice_as_share_of_lgm_52m_km3": 0.0684956556923817,
+      "grounded_ice_flat_ocean_sea_level_equivalent_m": 9.294812660788764,
+      "grounded_ice_volume_km3": 3561774.096003848,
+      "ice_volume_km3": 3562778.292401626,
+      "ocean_area_km2": 351394585.9085621,
+      "sea_level_equivalent_as_share_of_lgm_134m": 0.06936427358797585,
+      "sea_level_m": -100.53741930035383,
+      "sliding_speed": {
+        "all_visible_ice": {
+          "area_km2": 4239686.461260707,
+          "area_weighted_speed_m_per_yr": {
+            "max": 43.4695936015515,
+            "p50": 0.0,
+            "p90": 0.07537686580002442,
+            "p95": 0.16626157021466084
+          },
+          "node_count": 1077
+        },
+        "interior": {
+          "area_km2": 2741209.1285788273,
+          "area_weighted_speed_m_per_yr": {
+            "max": 2.0181562894382283,
+            "p50": 0.0,
+            "p90": 0.0904527657905438,
+            "p95": 0.15473584065055263
+          },
+          "node_count": 694
+        },
+        "margin": {
+          "area_km2": 1498477.3326818794,
+          "area_weighted_speed_m_per_yr": {
+            "max": 43.4695936015515,
+            "p50": 0.0,
+            "p90": 0.013252613514992167,
+            "p95": 0.8155322357353316
+          },
+          "node_count": 383
+        }
+      },
+      "state_available": true,
+      "visible_ice_area_km2": 4239686.461260707,
+      "visible_ice_margin_area_share": 0.35344060141567507
+    },
+    {
+      "elapsed_myr": 7.4,
+      "grounded_ice_as_share_of_lgm_52m_km3": 0.05987210991242871,
+      "grounded_ice_flat_ocean_sea_level_equivalent_m": 8.127846519498704,
+      "grounded_ice_volume_km3": 3113349.715446293,
+      "ice_volume_km3": 3113377.0247013965,
+      "ocean_area_km2": 351254379.89204717,
+      "peak_rss_mb": 850.771968,
+      "sea_level_equivalent_as_share_of_lgm_134m": 0.060655571041035104,
+      "sea_level_m": -104.3090718742364,
+      "sliding_speed": {
+        "all_visible_ice": {
+          "area_km2": 3693829.8392090304,
+          "area_weighted_speed_m_per_yr": {
+            "max": 1082.2674497462904,
+            "p50": 0.8427133760294303,
+            "p90": 19.08703091699472,
+            "p95": 44.01574306491556
+          },
+          "node_count": 934
+        },
+        "interior": {
+          "area_km2": 2496837.315711618,
+          "area_weighted_speed_m_per_yr": {
+            "max": 411.9501301534252,
+            "p50": 2.5241291718699648,
+            "p90": 23.754983059205315,
+            "p95": 51.95021402033813
+          },
+          "node_count": 631
+        },
+        "margin": {
+          "area_km2": 1196992.523497412,
+          "area_weighted_speed_m_per_yr": {
+            "max": 1082.2674497462904,
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 7.516884251773125
+          },
+          "node_count": 303
+        }
+      },
+      "state_available": true,
+      "visible_ice_area_km2": 3693829.8392090304,
+      "visible_ice_margin_area_share": 0.32405188533365875
+    },
+    {
+      "elapsed_myr": 8.4,
+      "grounded_ice_as_share_of_lgm_52m_km3": 0.046840989410542974,
+      "grounded_ice_flat_ocean_sea_level_equivalent_m": 6.384825431552583,
+      "grounded_ice_volume_km3": 2435731.4493482346,
+      "ice_volume_km3": 2435731.4493482346,
+      "ocean_area_km2": 349824088.8489257,
+      "peak_rss_mb": 850.771968,
+      "sea_level_equivalent_as_share_of_lgm_134m": 0.047647950981735694,
+      "sea_level_m": -109.67201268045915,
+      "sliding_speed": {
+        "all_visible_ice": {
+          "area_km2": 3553163.0362874186,
+          "area_weighted_speed_m_per_yr": {
+            "max": 1146.0829576749127,
+            "p50": 0.0,
+            "p90": 61.00646067404942,
+            "p95": 133.8324479065193
+          },
+          "node_count": 899
+        },
+        "interior": {
+          "area_km2": 2308981.5126822605,
+          "area_weighted_speed_m_per_yr": {
+            "max": 1146.0829576749127,
+            "p50": 0.0,
+            "p90": 90.27497496598635,
+            "p95": 183.365492283077
+          },
+          "node_count": 585
+        },
+        "margin": {
+          "area_km2": 1244181.523605158,
+          "area_weighted_speed_m_per_yr": {
+            "max": 521.5910318464192,
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0
+          },
+          "node_count": 314
+        }
+      },
+      "state_available": true,
+      "visible_ice_area_km2": 3553163.0362874186,
+      "visible_ice_margin_area_share": 0.35016167592049535
+    },
+    {
+      "elapsed_myr": 9.4,
+      "grounded_ice_as_share_of_lgm_52m_km3": 0.04146949236693928,
+      "grounded_ice_flat_ocean_sea_level_equivalent_m": 5.664569198780709,
+      "grounded_ice_volume_km3": 2156413.6030808426,
+      "ice_volume_km3": 2156413.6030808426,
+      "ocean_area_km2": 349087671.91877043,
+      "peak_rss_mb": 857.030656,
+      "sea_level_equivalent_as_share_of_lgm_134m": 0.042272904468512756,
+      "sea_level_m": -114.5614076292035,
+      "sliding_speed": {
+        "all_visible_ice": {
+          "area_km2": 3339188.6564503685,
+          "area_weighted_speed_m_per_yr": {
+            "max": 2903.5103216119705,
+            "p50": 0.0,
+            "p90": 34.796298752504114,
+            "p95": 75.8647827608632
+          },
+          "node_count": 847
+        },
+        "interior": {
+          "area_km2": 2131379.5974008627,
+          "area_weighted_speed_m_per_yr": {
+            "max": 434.4146826596112,
+            "p50": 0.0,
+            "p90": 48.12808026046515,
+            "p95": 91.5779675188347
+          },
+          "node_count": 541
+        },
+        "margin": {
+          "area_km2": 1207809.0590495062,
+          "area_weighted_speed_m_per_yr": {
+            "max": 2903.5103216119705,
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 6.59834522121061
+          },
+          "node_count": 306
+        }
+      },
+      "state_available": true,
+      "visible_ice_area_km2": 3339188.6564503685,
+      "visible_ice_margin_area_share": 0.3617073437034953
+    },
+    {
+      "elapsed_myr": 10.4,
+      "grounded_ice_as_share_of_lgm_52m_km3": 0.044222596714465094,
+      "grounded_ice_flat_ocean_sea_level_equivalent_m": 6.044405268214327,
+      "grounded_ice_volume_km3": 2299575.029152185,
+      "ice_volume_km3": 2299575.029152185,
+      "ocean_area_km2": 348869774.30544144,
+      "peak_rss_mb": 917.864448,
+      "sea_level_equivalent_as_share_of_lgm_134m": 0.04510750200159946,
+      "sea_level_m": -115.99728275465857,
+      "sliding_speed": {
+        "all_visible_ice": {
+          "area_km2": 3320821.486218967,
+          "area_weighted_speed_m_per_yr": {
+            "max": 359.3801891541158,
+            "p50": 0.0,
+            "p90": 16.352358879212485,
+            "p95": 41.429651163711426
+          },
+          "node_count": 843
+        },
+        "interior": {
+          "area_km2": 2168665.5431279135,
+          "area_weighted_speed_m_per_yr": {
+            "max": 199.38742276139328,
+            "p50": 0.0,
+            "p90": 28.859623832589705,
+            "p95": 59.84324096506385
+          },
+          "node_count": 551
+        },
+        "margin": {
+          "area_km2": 1152155.9430910533,
+          "area_weighted_speed_m_per_yr": {
+            "max": 359.3801891541158,
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0
+          },
+          "node_count": 292
+        }
+      },
+      "state_available": true,
+      "visible_ice_area_km2": 3320821.486218967,
+      "visible_ice_margin_area_share": 0.3469490750624115
+    },
+    {
+      "elapsed_myr": 11.4,
+      "grounded_ice_as_share_of_lgm_52m_km3": 0.04208369322671704,
+      "grounded_ice_flat_ocean_sea_level_equivalent_m": 5.754335184989381,
+      "grounded_ice_volume_km3": 2188352.047789286,
+      "ice_volume_km3": 2188740.372973178,
+      "ocean_area_km2": 348731654.18960184,
+      "peak_rss_mb": 917.864448,
+      "sea_level_equivalent_as_share_of_lgm_134m": 0.04294279988798046,
+      "sea_level_m": -112.52137141366636,
+      "sliding_speed": {
+        "all_visible_ice": {
+          "area_km2": 3168795.9240403674,
+          "area_weighted_speed_m_per_yr": {
+            "max": 240.33727636304488,
+            "p50": 0.0,
+            "p90": 19.407531602278848,
+            "p95": 50.48858966923398
+          },
+          "node_count": 806
+        },
+        "interior": {
+          "area_km2": 1968629.5656657838,
+          "area_weighted_speed_m_per_yr": {
+            "max": 182.0685413509602,
+            "p50": 0.0,
+            "p90": 30.93877496323712,
+            "p95": 71.60972112946345
+          },
+          "node_count": 502
+        },
+        "margin": {
+          "area_km2": 1200166.358374583,
+          "area_weighted_speed_m_per_yr": {
+            "max": 240.33727636304488,
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 3.322047957053713
+          },
+          "node_count": 304
+        }
+      },
+      "state_available": true,
+      "visible_ice_area_km2": 3168795.9240403674,
+      "visible_ice_margin_area_share": 0.3787452354597557
+    },
+    {
+      "elapsed_myr": 12.4,
+      "grounded_ice_as_share_of_lgm_52m_km3": 0.04082523879915409,
+      "grounded_ice_flat_ocean_sea_level_equivalent_m": 5.577238091806752,
+      "grounded_ice_volume_km3": 2122912.4175560125,
+      "ice_volume_km3": 2122912.4175560125,
+      "ocean_area_km2": 349045648.55473554,
+      "peak_rss_mb": 917.864448,
+      "sea_level_equivalent_as_share_of_lgm_134m": 0.04162117978960263,
+      "sea_level_m": -107.64476193423145,
+      "sliding_speed": {
+        "all_visible_ice": {
+          "area_km2": 3207838.083909461,
+          "area_weighted_speed_m_per_yr": {
+            "max": 143.75663417374753,
+            "p50": 0.0,
+            "p90": 15.876629832748092,
+            "p95": 40.578353497462906
+          },
+          "node_count": 815
+        },
+        "interior": {
+          "area_km2": 2022769.678119915,
+          "area_weighted_speed_m_per_yr": {
+            "max": 143.75663417374753,
+            "p50": 0.0,
+            "p90": 30.653959583486206,
+            "p95": 62.05567557454365
+          },
+          "node_count": 515
+        },
+        "margin": {
+          "area_km2": 1185068.405789546,
+          "area_weighted_speed_m_per_yr": {
+            "max": 135.69414741366796,
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0
+          },
+          "node_count": 300
+        }
+      },
+      "state_available": true,
+      "visible_ice_area_km2": 3207838.083909461,
+      "visible_ice_margin_area_share": 0.3694289969727143
+    },
+    {
+      "elapsed_myr": 13.4,
+      "grounded_ice_as_share_of_lgm_52m_km3": 0.04278470297381225,
+      "grounded_ice_flat_ocean_sea_level_equivalent_m": 5.834389134706233,
+      "grounded_ice_volume_km3": 2224804.554638237,
+      "ice_volume_km3": 2224804.554638237,
+      "ocean_area_km2": 349675986.55141586,
+      "peak_rss_mb": 917.864448,
+      "sea_level_equivalent_as_share_of_lgm_134m": 0.043540217423180844,
+      "sea_level_m": -108.9407661456099,
+      "sliding_speed": {
+        "all_visible_ice": {
+          "area_km2": 3128195.7534921407,
+          "area_weighted_speed_m_per_yr": {
+            "max": 653.980376189123,
+            "p50": 0.0,
+            "p90": 14.798481019396819,
+            "p95": 43.984454963167344
+          },
+          "node_count": 795
+        },
+        "interior": {
+          "area_km2": 1982155.2279846545,
+          "area_weighted_speed_m_per_yr": {
+            "max": 165.80809226890736,
+            "p50": 0.0,
+            "p90": 23.305465191303014,
+            "p95": 60.88699131633188
+          },
+          "node_count": 504
+        },
+        "margin": {
+          "area_km2": 1146040.5255074857,
+          "area_weighted_speed_m_per_yr": {
+            "max": 653.980376189123,
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0
+          },
+          "node_count": 291
+        }
+      },
+      "state_available": true,
+      "visible_ice_area_km2": 3128195.7534921407,
+      "visible_ice_margin_area_share": 0.36635831508565636
+    },
+    {
+      "elapsed_myr": 14.4,
+      "grounded_ice_as_share_of_lgm_52m_km3": 0.041069490602355624,
+      "grounded_ice_flat_ocean_sea_level_equivalent_m": 5.613788281233245,
+      "grounded_ice_volume_km3": 2135613.5113224923,
+      "ice_volume_km3": 2135649.791444565,
+      "ocean_area_km2": 348847781.88544565,
+      "peak_rss_mb": 917.864448,
+      "sea_level_equivalent_as_share_of_lgm_134m": 0.041893942397263025,
+      "sea_level_m": -104.99179908153246,
+      "sliding_speed": {
+        "all_visible_ice": {
+          "area_km2": 2958929.581779388,
+          "area_weighted_speed_m_per_yr": {
+            "max": 298.72014787516275,
+            "p50": 0.0,
+            "p90": 34.40045641123703,
+            "p95": 61.27975642336817
+          },
+          "node_count": 755
+        },
+        "interior": {
+          "area_km2": 1902928.4508571862,
+          "area_weighted_speed_m_per_yr": {
+            "max": 219.41853513299128,
+            "p50": 0.0,
+            "p90": 49.67105263170712,
+            "p95": 80.80755010636017
+          },
+          "node_count": 486
+        },
+        "margin": {
+          "area_km2": 1056001.130922201,
+          "area_weighted_speed_m_per_yr": {
+            "max": 298.72014787516275,
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0
+          },
+          "node_count": 269
+        }
+      },
+      "state_available": true,
+      "visible_ice_area_km2": 2958929.581779388,
+      "visible_ice_margin_area_share": 0.35688619878786104
+    },
+    {
+      "elapsed_myr": 15.4,
+      "grounded_ice_as_share_of_lgm_52m_km3": 0.04225952350661777,
+      "grounded_ice_flat_ocean_sea_level_equivalent_m": 5.761934492867514,
+      "grounded_ice_volume_km3": 2197495.222344124,
+      "ice_volume_km3": 2197495.222344124,
+      "ocean_area_km2": 349726835.90623665,
+      "peak_rss_mb": 917.864448,
+      "sea_level_equivalent_as_share_of_lgm_134m": 0.042999511140802346,
+      "sea_level_m": -106.75752759682663,
+      "sliding_speed": {
+        "all_visible_ice": {
+          "area_km2": 3100651.4401043095,
+          "area_weighted_speed_m_per_yr": {
+            "max": 184.34853837905115,
+            "p50": 0.0,
+            "p90": 20.102151367554367,
+            "p95": 46.57906159102387
+          },
+          "node_count": 789
+        },
+        "interior": {
+          "area_km2": 1985737.2240002726,
+          "area_weighted_speed_m_per_yr": {
+            "max": 184.34853837905115,
+            "p50": 0.0,
+            "p90": 33.432606036530586,
+            "p95": 67.21809732939592
+          },
+          "node_count": 506
+        },
+        "margin": {
+          "area_km2": 1114914.2161040374,
+          "area_weighted_speed_m_per_yr": {
+            "max": 51.61415895124593,
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0
+          },
+          "node_count": 283
+        }
+      },
+      "state_available": true,
+      "visible_ice_area_km2": 3100651.4401043095,
+      "visible_ice_margin_area_share": 0.35957418550294395
+    },
+    {
+      "elapsed_myr": 16.4,
+      "grounded_ice_as_share_of_lgm_52m_km3": 0.040739345008468306,
+      "grounded_ice_flat_ocean_sea_level_equivalent_m": 5.5712640168060705,
+      "grounded_ice_volume_km3": 2118445.940440352,
+      "ice_volume_km3": 2118688.7023727386,
+      "ocean_area_km2": 348684772.70575976,
+      "peak_rss_mb": 917.864448,
+      "sea_level_equivalent_as_share_of_lgm_134m": 0.04157659714034381,
+      "sea_level_m": -103.97171963113561,
+      "sliding_speed": {
+        "all_visible_ice": {
+          "area_km2": 3004354.5804732684,
+          "area_weighted_speed_m_per_yr": {
+            "max": 447.9197647808214,
+            "p50": 0.0,
+            "p90": 42.361916659520304,
+            "p95": 96.06971426331712
+          },
+          "node_count": 765
+        },
+        "interior": {
+          "area_km2": 1917721.2035011703,
+          "area_weighted_speed_m_per_yr": {
+            "max": 447.9197647808214,
+            "p50": 0.0,
+            "p90": 57.860179287846066,
+            "p95": 120.18633791588884
+          },
+          "node_count": 489
+        },
+        "margin": {
+          "area_km2": 1086633.3769720984,
+          "area_weighted_speed_m_per_yr": {
+            "max": 317.9787003659305,
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0
+          },
+          "node_count": 276
+        }
+      },
+      "state_available": true,
+      "visible_ice_area_km2": 3004354.5804732684,
+      "visible_ice_margin_area_share": 0.361686128539769
+    }
+  ],
+  "commit": "c4584b20b42b353272bd958ad90c37565a680c49",
+  "glacier_solver_backend": "rust",
+  "glacier_step_years": 250.0,
+  "glacier_stop_mode": "exhaust",
+  "ice_age_period_years": 0.0,
+  "issue": 544,
+  "lgm_grounded_ice_reference_km3": 52000000.0,
+  "lgm_sea_level_reference_m": 134.0,
+  "purpose": "RFC 0015 scale check",
+  "save": "mantle-bloom-seed649658380-6400000y.bloom",
+  "save_sha256": "06167cb4e45fac7141e98df2cf091999ffc40b36be4c0da3bd94703b6b31131f",
+  "simulate_glacier_march": true,
+  "step_years": 1000000.0
+}
