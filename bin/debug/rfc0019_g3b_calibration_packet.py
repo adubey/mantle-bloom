@@ -102,19 +102,23 @@ def rain_colors(rain, maximum):
     return color.astype(np.uint8)
 
 
+def terrain_colors(ocean, elevation):
+    land_height = np.clip(elevation / 4000, 0, 1)
+    terrain = np.empty((*ocean.shape, 3), dtype=np.uint8)
+    terrain[:] = (180, 210, 232)
+    terrain[~ocean] = np.stack((110 + 140 * land_height, 135 + 100 * land_height,
+                                 85 + 130 * land_height), axis=-1)[~ocean].astype(np.uint8)
+    return terrain
+
+
 def draw_map(path, rain, ocean, elevation, u, v, maximum, label):
     h, w = ocean.shape
     panel_h, panel_w = h, w
     image = Image.new('RGB', (2 * panel_w + 30, panel_h + 90), 'white')
     draw = ImageDraw.Draw(image)
     image.paste(Image.fromarray(rain_colors(rain, maximum)), (10, 35))
-    land_height = np.clip(elevation / 4000, 0, 1)
-    terrain = np.empty((h, w, 3), dtype=np.uint8)
-    terrain[:] = (180, 210, 232)
-    terrain[~ocean] = np.stack((110 + 140 * land_height, 135 + 100 * land_height,
-                                 85 + 130 * land_height), axis=-1)[~ocean].astype(np.uint8)
     x0 = panel_w + 20
-    image.paste(Image.fromarray(terrain), (x0, 35))
+    image.paste(Image.fromarray(terrain_colors(ocean, elevation)), (x0, 35))
     for row in range(15, h, 30):
         for col in range(15, w, 30):
             speed = np.hypot(u[row, col], v[row, col])
@@ -183,12 +187,7 @@ def write_strata(path, comparisons, area):
 
 def write_ridge_profiles(path, map_path, profiles, elevation, ocean):
     h, w = ocean.shape
-    land_height = np.clip(elevation / 4000, 0, 1)
-    terrain = np.empty((h, w, 3), dtype=np.uint8)
-    terrain[:] = (180, 210, 232)
-    terrain[~ocean] = np.stack((110 + 140 * land_height, 135 + 100 * land_height,
-                               85 + 130 * land_height), axis=-1)[~ocean].astype(np.uint8)
-    image = Image.fromarray(terrain).resize((w * 2, h * 2), Image.Resampling.NEAREST)
+    image = Image.fromarray(terrain_colors(ocean, elevation)).resize((w * 2, h * 2), Image.Resampling.NEAREST)
     draw = ImageDraw.Draw(image)
     with path.open('w', newline='') as stream:
         names = ['latitude_deg', 'longitude_deg', 'axis', 'downwind_step_solver_order',

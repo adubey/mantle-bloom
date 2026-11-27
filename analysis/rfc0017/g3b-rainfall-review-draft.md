@@ -188,10 +188,10 @@ contrast relative to control:
 
 | Solver and wind | Eligible profiles | Median candidate windward-minus-lee (mm/yr) | Profiles where windward-side mean exceeds lee-side mean | Profiles with positive contrast gain vs control |
 |---|---:|---:|---:|---:|
-| Finite volume, diagnostic | 828 | -0.39 | 37.7% | 50.9% |
-| Finite volume, CFD | 849 | -5.55 | 37.5% | 52.4% |
-| Wind arrows, diagnostic | 752 | -0.08 | 45.8% | 50.3% |
-| Wind arrows, CFD | 842 | -8.54 | 36.6% | 51.8% |
+| Finite volume, diagnostic | 812 | -0.39 | 37.7% | 50.9% |
+| Finite volume, CFD | 832 | -5.55 | 37.5% | 52.4% |
+| Wind arrows, diagnostic | 729 | -0.08 | 45.8% | 50.3% |
+| Wind arrows, CFD | 817 | -8.54 | 36.6% | 51.8% |
 
 The pooled median rainfall by native-cell offset for `ridge_025` peaks at the selected crest
 (offset 0) in each combination: `35.3 mm/yr` for finite-volume diagnostic winds,
