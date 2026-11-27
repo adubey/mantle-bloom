@@ -28,13 +28,13 @@ pub fn flow_direction_rs<'py>(
         return Err(PyValueError::new_err("incompatible flow direction shapes"));
     }
     let k = shape[1];
-    let elev: Vec<_> = elevation.as_array().iter().copied().collect();
-    let ocean: Vec<_> = ocean.as_array().iter().copied().collect();
-    let nb: Vec<_> = neighbors.as_array().iter().copied().collect();
-    let offset: Vec<_> = offset.as_array().iter().copied().collect();
-    let filled: Vec<_> = filled.as_array().iter().copied().collect();
-    let spill: Vec<_> = spill.as_array().iter().copied().collect();
-    let channel: Vec<_> = channel.as_array().iter().copied().collect();
+    let elev = elevation.as_slice()?;
+    let ocean = ocean.as_slice()?;
+    let nb = neighbors.as_slice()?;
+    let offset = offset.as_slice()?;
+    let filled = filled.as_slice()?;
+    let spill = spill.as_slice()?;
+    let channel = channel.as_slice()?;
     if nb.iter().any(|&j| j < -(n as i64) || j >= n as i64) {
         return Err(PyValueError::new_err("neighbor index out of range"));
     }
@@ -42,6 +42,9 @@ pub fn flow_direction_rs<'py>(
         let mut targets = vec![-1_i64; n];
         let mut spills = vec![false; n];
         for i in 0..n {
+            if ocean[i] {
+                continue;
+            }
             let mut lowest = f64::INFINITY;
             let mut best_col = 0;
             let mut deepest = f64::NEG_INFINITY;
