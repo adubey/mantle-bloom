@@ -1809,8 +1809,13 @@ def _meltwater_source_ledger(
     lake_owned: np.ndarray,
     *,
     ocean_source_m3_per_yr: float = 0.0,
+    input_m3_per_yr: float | None = None,
 ) -> MeltwaterSourceLedger:
-    """Attribute this interval's source through the linear river reservoirs (#1019)."""
+    """Attribute this interval's source through the linear river reservoirs (#1019).
+
+    `input_m3_per_yr` may retain the pre-routing input so the glacier ledger also checks
+    the mass transferred from the ice drainage graph to ground routing.
+    """
     zeros = np.zeros(len(source_m3_per_yr))
     routed = route_river_reservoirs(
         points, elevation, is_ocean, targets, river_reach, zeros, source_m3_per_yr,
@@ -1818,7 +1823,10 @@ def _meltwater_source_ledger(
     )
     settled = routed.settled_meltwater_m3
     return MeltwaterSourceLedger(
-        input_m3=routed.ledger.input_m3 + ocean_source_m3_per_yr * years,
+        input_m3=(
+            routed.ledger.input_m3 + ocean_source_m3_per_yr * years
+            if input_m3_per_yr is None else input_m3_per_yr * years
+        ),
         lake_supply_m3=float(settled[~is_ocean & lake_owned].sum()),
         land_settlement_m3=float(settled[~is_ocean & ~lake_owned].sum()),
         ocean_export_m3=routed.ledger.ocean_export_m3 + ocean_source_m3_per_yr * years,
@@ -2098,6 +2106,7 @@ def _glacier_water_targets(
     neighbor_idx: np.ndarray,
     ground_target: np.ndarray,
     is_ocean: np.ndarray | None = None,
+    points: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Find acyclic routes to an ice margin and filled hydraulic potential in metres.
 
@@ -2128,6 +2137,7 @@ def _glacier_water_targets(
     ).tocsr()
     targets = np.full(n, -1, dtype=np.int64)
     levels = np.full(n, np.inf)
+    settled_order = np.full(n, -1, dtype=np.int64)
     heap = []
     off_ice_bed = np.where(~on_ice[neighbor_idx], bed[neighbor_idx], np.inf)
     exit_col = np.argmin(off_ice_bed, axis=1)
@@ -2140,25 +2150,64 @@ def _glacier_water_targets(
     )
     for node in np.flatnonzero(warm_exit | cold_exit):
         if warm_exit[node]:
-            targets[node] = neighbor_idx[node, exit_col[node]]
             levels[node] = max(head[node], exit_bed[node])
         else:
             targets[node] = cold_targets[node]
             levels[node] = head[node]
         heapq.heappush(heap, (float(levels[node]), int(node)))
 
+    settled = np.zeros(n, dtype=bool)
+    next_order = 0
     while heap:
         level, node = heapq.heappop(heap)
-        if level != levels[node]:
+        if level != levels[node] or settled[node]:
             continue
+        settled[node] = True
+        settled_order[node] = next_order
+        next_order += 1
         for upstream in reverse.indices[reverse.indptr[node]:reverse.indptr[node + 1]]:
             if not on_ice[upstream] or (not warm[upstream] and cold_targets[upstream] != node):
                 continue
             candidate = max(level, head[upstream])
             if candidate < levels[upstream]:
                 levels[upstream] = candidate
-                targets[upstream] = node
+                if not warm[upstream]:
+                    targets[upstream] = node
                 heapq.heappush(heap, (float(candidate), int(upstream)))
+
+    # The minimax flood decides which water level can reach an outlet. Choose the actual
+    # D8 edge afterward on that filled surface: the first margin seed need not be the
+    # steepest exit for a higher-head cell when another filled route is lower (#1019).
+    if points is None:
+        edge_length_m = np.ones((n, k), dtype=float)
+    else:
+        edge_length_m = np.maximum(
+            geometry.angular_distance(np.asarray(points)[:, None, :], np.asarray(points)[neighbor_idx])
+            * PLANET_RADIUS_KM * 1000.0,
+            1.0,
+        )
+    candidate_surface = np.where(on_ice[neighbor_idx], levels[neighbor_idx], bed[neighbor_idx])
+    candidate_order = np.where(on_ice[neighbor_idx], settled_order[neighbor_idx], -1)
+    lower = candidate_surface < levels[:, None]
+    flat_toward_outlet = (candidate_surface == levels[:, None]) & (
+        ~on_ice[neighbor_idx]
+        | ((candidate_order >= 0) & (candidate_order < settled_order[:, None]))
+    )
+    usable = (
+        (neighbor_idx != np.arange(n)[:, None]) & (lower | flat_toward_outlet)
+        & np.isfinite(candidate_surface) & warm[:, None] & settled[:, None]
+    )
+    slope = np.full((n, k), -np.inf)
+    drop = np.zeros((n, k), dtype=float)
+    np.subtract(levels[:, None], candidate_surface, out=drop, where=usable)
+    np.divide(drop, edge_length_m, out=slope, where=usable)
+    best_slope = np.max(slope, axis=1)
+    tied = usable & (slope == best_slope[:, None])
+    rank = np.where(tied, candidate_order, np.iinfo(np.int64).max)
+    best_col = np.argmin(rank, axis=1)
+    has_target = np.any(usable, axis=1)
+    rows_with_target = np.flatnonzero(has_target)
+    targets[rows_with_target] = neighbor_idx[rows_with_target, best_col[rows_with_target]]
     return targets, levels
 
 
@@ -2841,6 +2890,7 @@ def _march_glacier(
     # dt. Most suite fixtures are iceless, which is most of the suite slowdown.
     if not _snow_can_start_ice(depth, dry_precip_mm, bed_frozen_snow_mm, temperature_at_nodes, seasonal_amplitude):
         new_depth, melt, ice = solve_once(float(years), depth, heat)
+        _initialize_melt_diagnostics(ice, n)
         ice.abrasion_depth_m = np.zeros(n)
         ice.raw_abrasion_depth_m = np.zeros(n)
         ice_sheet.warn_if_capped(ice.ledger)
@@ -3414,7 +3464,7 @@ def compute_hydrology(
     on_ice = new_glacier_depth >= GLACIER_VISIBLE_DEPTH_M
     ice_water_targets, ice_water_head = _glacier_water_targets(
         elevation, ice.thickness, new_glacier_depth, ice.warm_based,
-        neighbor_idx, flow_target, is_ocean,
+        neighbor_idx, flow_target, is_ocean, points,
     )
     meltwater_source_m3 = _route_glacier_water_to_margin(
         ice_release_source_m3 + ice_rain_m3, on_ice, ice_water_targets, ice_water_head,
@@ -3479,6 +3529,7 @@ def compute_hydrology(
             meltwater_source_m3, transit_loss, points, lake_elevation, is_ocean, source_targets,
             river_reach, runoff_q_m3_s, interval_years, lake_owned,
             ocean_source_m3_per_yr=float(meltwater_source_m3[is_ocean].sum()),
+            input_m3_per_yr=float((ice_release_source_m3 + ice_rain_m3).sum()),
         )
         bare_snowmelt_ledger = _meltwater_source_ledger(
             bare_snowmelt_source_m3, dry_transit_loss, points, lake_elevation, is_ocean, source_targets,

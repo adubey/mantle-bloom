@@ -111,6 +111,13 @@ def test_meltwater_source_ledgers_close_with_storage_loss_and_distinct_destinati
     assert glacier.lake_supply_m3 + snow.lake_supply_m3 == pytest.approx(total.ledger.land_settlement_m3)
     assert glacier.ocean_export_m3 + snow.ocean_export_m3 == pytest.approx(total.ledger.ocean_export_m3)
 
+    lost_at_ice_handoff = hydrology._meltwater_source_ledger(
+        np.zeros(4), losses, points, elevation, ocean, targets, reaches, discharge, years, lake_owned,
+        input_m3_per_yr=100.0,
+    )
+    assert lost_at_ice_handoff.input_m3 == pytest.approx(100.0 * years)
+    assert lost_at_ice_handoff.residual_m3 == pytest.approx(100.0 * years)
+
 
 def test_glacier_water_fills_a_hydraulic_pit_and_reaches_the_margin():
     bed = np.array([5.0, 0.0, 4.0, 3.0])
@@ -189,6 +196,27 @@ def test_warm_margin_avoids_an_uphill_nunatak():
     assert targets[:2].tolist() == [1, 3]
     routed = hydrology._route_glacier_water_to_margin(np.array([5.0, 0.0, 0.0, 0.0]), ice, targets, levels)
     np.testing.assert_allclose(routed, [0.0, 0.0, 0.0, 5.0])
+
+
+def test_warm_margin_chooses_steeper_filled_route_past_an_exposed_neighbor():
+    # Node 0 has two valid exits. Its exposed neighbor is at 90 m, while the warm
+    # neighbor at 10 m drains to a 0 m margin. The flood level at node 0 is 100 m
+    # either way; outlet selection must use the filled downhill surface (#1019).
+    bed = np.array([91.0, 90.0, 1.0, 0.0])
+    thickness = np.array([10.0, 0.0, 10.0, 0.0])
+    neighbors = np.array([[1, 2], [0, 0], [0, 3], [2, 2]])
+    angles = np.array([0.0, 0.01, -0.01, -0.02])
+    points = np.column_stack((np.cos(angles), np.sin(angles), np.zeros(4)))
+    on_ice = thickness >= hydrology.GLACIER_VISIBLE_DEPTH_M
+    targets, levels = hydrology._glacier_water_targets(
+        bed, thickness, thickness, on_ice, neighbors, np.full(4, -1), points=points,
+    )
+
+    assert targets[0] == 2
+    routed = hydrology._route_glacier_water_to_margin(
+        np.array([7.0, 0.0, 0.0, 0.0]), on_ice, targets, levels,
+    )
+    np.testing.assert_allclose(routed, [0.0, 0.0, 0.0, 7.0])
 
 
 def test_interior_cold_sink_is_not_a_glacier_exit():
@@ -2915,6 +2943,21 @@ def test_grounded_marine_glacier_melt_is_accounted_for():
 
 
 @pytest.mark.usefixtures("march_glaciers")
+def test_glacier_source_ledger_covers_loss_before_the_river_handoff(monkeypatch):
+    monkeypatch.setattr(
+        hydrology, "_route_glacier_water_to_margin", lambda source, *args: np.zeros_like(source),
+    )
+    _, (fields,) = _glacier_ledger_run(
+        np.zeros(12), np.full(12, 8.0), np.full(12, 15.0), steps=1,
+        glacier_depth=np.full(12, 500.0),
+    )
+
+    ledger = fields.glacier_meltwater_ledger
+    assert ledger.input_m3 > 0.0
+    assert ledger.residual_m3 == pytest.approx(ledger.input_m3)
+
+
+@pytest.mark.usefixtures("march_glaciers")
 def test_melting_ice_releases_its_account_outward_and_leaves_control_ice_to_the_solve():
     temperature = np.full(12, 8.0)
     amplitude = np.full(12, 15.0)
@@ -3405,6 +3448,9 @@ def test_march_takes_the_fast_path_with_no_ice_and_no_snow():
         assert entry["settled"] is True
         assert np.all(fields.glacier_depth == 0.0)
         assert fields.ice.ledger.accumulation_m3 == 0.0
+        assert fields.ice.ice_release_depth_m is not None
+        assert fields.ice.bare_snowmelt_depth_m is not None
+        assert fields.ice.surface_melt_depth_m is not None
 
 
 def test_march_sea_level_resolve_uses_the_seeded_mask(monkeypatch):

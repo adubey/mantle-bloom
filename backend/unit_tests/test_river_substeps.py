@@ -160,6 +160,24 @@ def test_march_reroute_uses_glacier_aware_lake_terrain(monkeypatch):
     assert seen["glacier_mask"][land[0]]
 
 
+def test_march_reroute_preserves_direct_marine_discharge():
+    world = _small_world()
+    step_world(world, 100_000)
+    hydro = world.hydrology_cache
+    ocean_node = int(np.flatnonzero(hydro.is_ocean)[0])
+    sources = np.zeros(len(hydro.points))
+    sources[ocean_node] = 7.0
+    hydro.river_source_m3_per_yr = sources
+    flow_target, discharge, _ = river_substeps._reroute(
+        world, hydro, hydro.elevation, np.zeros_like(hydro.elevation), np.zeros_like(hydro.elevation),
+        np.zeros_like(hydro.elevation), 100_000.0, hydro.lake_depth + hydro.lake_ice_m,
+        hydro.hypsometry.area_m2,
+    )
+
+    assert flow_target[ocean_node] == -1
+    assert discharge[ocean_node] == pytest.approx(7.0 / hydrology.SECONDS_PER_YEAR)
+
+
 def test_a_one_slice_march_is_the_baseline_bit_for_bit():
     baseline = surface_parity.state_hash(_run("off"))
     assert surface_parity.state_hash(_run("march:1")) == baseline

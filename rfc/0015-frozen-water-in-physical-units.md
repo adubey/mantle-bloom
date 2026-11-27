@@ -923,7 +923,10 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
    held-out set for the D8 ledger and meltwater-river criteria and report the results
    with the D8 PR. Apply the existing falsification rule if delivery is below one fifth.
    If G6 findings lead to a routing change, replay G6 on the revised candidate before
-   using the held-out set. Record ice-age runs separately under the existing scope.
+   using the held-out set. Record ice-age runs separately under the existing scope. The
+   D8 diagnosis, held-out measurements and per-step evidence are recorded in
+   [`analysis/issue1019/`](../analysis/issue1019/README.md); later routing-fix runs supersede
+   earlier candidate results there.
 
 | Work or result | Impact of this revision |
 |---|---|

@@ -42,7 +42,8 @@ value. No variability estimate is available for these measures before the replay
 fixed candidate on held-out seeds 628977350 and 295569319 with the same 10 Myr and two-step
 schedule. The RFC requires each source budget to close to round-off and at least half of the
 ice-derived source to reach a lake or ocean. Below one fifth on a held-out save falsifies the
-routing premise. Both held-out seeds passed at both step sizes. Seed 447276134 is a separate
+routing premise. The prior candidate passed both held-out seeds at both step sizes; those
+results are historical after the outlet fix described below. Seed 447276134 is a separate
 report-only ice-age arm; it is not part of the gate.
 
 Example for each arm, substituting the pinned backend and local save:
@@ -52,11 +53,32 @@ backend/.venv/bin/python bin/debug/replay_d8_meltwater.py <save> --backend <back
   --myr 10 --step-years 250000 --checkpoint-myr 1 --out <output.json>
 ```
 
+## Review-fix replay preregistration
+
+The Codex review found that a warm cell could keep a higher outlet seed instead of the
+steepest route on the filled hydraulic surface. This changes D8 routing, so the prior D8
+diagnosis and held-out candidate measurements are not evidence for the revised code. The
+revised D8 arm will be replayed on diagnosis seeds 649658380 and 997271774 and held-out
+seeds 628977350 and 295569319, each for 10 Myr at 0.25 and 1 Myr steps. The pinned baseline
+remains `57651bf2425d8d8b71a2a3230a8814ae74f7d7bd`; its existing paired records are retained.
+Use the same converted saves and controls listed above, and record each revised candidate
+commit, save checksum, and glacier solver backend (`rust` or `python`). Run one arm at a time.
+
+The primary criterion remains at least 50% of glacier-source input delivered to a lake or
+ocean for each held-out seed at both step sizes; below 20% falsifies the routing premise.
+Both glacier and bare-snow source residuals must close to round-off at every step. The
+glacier ledger now starts from ice release plus rain on ice before margin routing, so its
+residual also measures loss or duplication in the ice-to-margin handoff. No numeric change
+in delivery is assumed after correcting outlet selection. Report unresolved drainage
+separately because water in this category may later be delivered by ground routing.
+
 ## Results
 
-**G6 gate complete.** Seeds 628977350 and 295569319 both exceeded the 50% glacier-source
-delivery criterion at 0.25 and 1 Myr steps, with source-ledger residuals at round-off. The
-separate report-only ice-age held-out seed 447276134 is also recorded at both step sizes.
+**Prior candidate only; superseded by the review-fix reruns below.** Seeds 628977350 and
+295569319 exceeded the 50% glacier-source delivery criterion at both step sizes on the
+earlier candidate. That evidence remains useful historically but does not close G6 for the
+revised routing. The separate report-only ice-age held-out seed 447276134 was also recorded
+at both step sizes on the earlier candidate.
 
 The reviewed D8 head `0cf10cd596a63d3db5dc1703271d90c941620064` and the pinned baseline
 were replayed sequentially from the converted seed 649658380 save for 10 Myr at 0.25 Myr

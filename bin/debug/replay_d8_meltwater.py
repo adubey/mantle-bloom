@@ -50,7 +50,9 @@ def main() -> None:
     args = parse_replay_args(__doc__, _arguments)
     world, result = load_replay(args, issue=1019)
     from app.hydroclimate import hydrology  # noqa: E402
+    from app.hydroclimate import _glacier_rust  # noqa: E402
 
+    result["glacier_solver_backend"] = "rust" if _glacier_rust.RUST_AVAILABLE else "python"
     world.ice_age_period_years = args.ice_age_period_years
     result["ice_age_period_years"] = world.ice_age_period_years
     world.simulate_glacier_march = True
