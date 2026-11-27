@@ -1,8 +1,36 @@
 # RFC 0015: Frozen water in physical units: glacier mass balance, ice flow and meltwater, freezing lakes and rivers, ocean ice and polar snow
 
-- **Status:** Accepted (revised 2026-11-22 to sequence D8 before G6, #1017; revised 2026-11-13 and 2026-11-15 for the trend-adaptive march, #842, round 3 passes only under post-hoc amendments; ice ages out of scope since 2026-11-15; revised 2026-10-31 after G0's drifting-noise runs)
-- **Date:** 2026-10-23
+- **Status:** Implemented (2026-11-27)
+- **Date:** 2026-10-23; completed 2026-11-27
 - **Related:** #544 (tracking); #822 and #842 (march cost, trend-adaptive default); #368 (evidence), #353 and #359 (ice-sheet model, decision B), #355 (water units), #503 and #504 (lake freezing at `WATER_TO_ICE`), #297 (balanced lakes), RFC [0014](abandoned/0014-lake-water-volume-and-freezing.md) (lake water volume and seasonal lake ice; its D2(b) and D2(c) are prerequisites here), RFC [0012](0012-physics-first-simulation.md) (physics-first simulation); superseded on acceptance: #197, #203, #358 item 4, #313 Stage E (see "Open issues this RFC supersedes"); design principles 3, 5, 6 and 8
+
+## Outcome
+
+RFC 0015 is implemented. The accepted physical-unit ice design, balance march, sea-level
+debit, sea ice and ice-aware maps landed through PRs [#806](https://github.com/adubey/mantle-bloom/pull/806),
+[#870](https://github.com/adubey/mantle-bloom/pull/870), [#906](https://github.com/adubey/mantle-bloom/pull/906),
+[#973](https://github.com/adubey/mantle-bloom/pull/973), [#992](https://github.com/adubey/mantle-bloom/pull/992),
+[#1011](https://github.com/adubey/mantle-bloom/pull/1011), [#1015](https://github.com/adubey/mantle-bloom/pull/1015),
+and [#1032](https://github.com/adubey/mantle-bloom/pull/1032). Their current behavior is described in
+[`docs/simulation-model/hydrology.md`](../docs/simulation-model/hydrology.md),
+[`climate.md`](../docs/simulation-model/climate.md),
+[`surface-processes.md`](../docs/simulation-model/surface-processes.md), and
+[`rendering-and-inspectors.md`](../docs/simulation-model/rendering-and-inspectors.md).
+
+The gates and the 16 acceptance items are recorded in this RFC and tracking issue [#544](https://github.com/adubey/mantle-bloom/issues/544).
+G3's partial result was accepted by the owner on 2026-11-20; strict timestep insensitivity
+is not claimed. The report-only scale check and its limits are in
+[`analysis/issue544/README.md`](../analysis/issue544/README.md). The held-out scale runs
+reach 55.2% and 123.8% of the LGM extra-grounded-ice reference at their endpoints, with the
+highest checkpoint at 1.27× that reference. The >3× falsification threshold was not reached.
+The two high-ice trajectories hit the 5 km glacier-depth guard and reported drainage-route
+warnings; those results are scale context, not a claim of LGM climate or ice-sheet dynamics.
+
+The D1–D8 behavior remains in production and its current description in `docs/` is the source
+of truth. Ice-age forcing remains outside this RFC's acceptance scope by the owner's
+2026-11-15 decision. The long-step per-step glacier-ledger residual is separate follow-up
+[#852](https://github.com/adubey/mantle-bloom/issues/852); the accepted averaged ledger
+criterion is met, and #852 is not a child issue of this RFC.
 
 ## Revision note
 
