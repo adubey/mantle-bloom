@@ -283,6 +283,20 @@ def test_direct_wet_supply_stays_lossless_across_chained_pits():
     assert result.breached_pits.tolist() == [14, 16]
 
 
+def test_extra_runoff_in_breach_gate_pays_transit_loss():
+    elevation = np.array([60.0, 40.0, 20.0, 0.0, 15.0, -50.0])
+    ocean = np.array([False] * 5 + [True])
+    args = (elevation, ocean, _chain(6), np.zeros(6), _ordinary_rate(6))
+    source = np.array([1e13, 0.0, 0.0, 0.0, 0.0, 0.0])
+    common = dict(loss_fraction=np.full(6, 0.99), dry_fraction=np.zeros(6))
+    direct = breaching.WaterBalance(np.zeros(6), np.full(6, 5.0), np.full(6, 1e10),
+                                    direct_supply_m3_per_yr=source, **common)
+    runoff = breaching.WaterBalance(np.zeros(6), np.full(6, 5.0), np.full(6, 1e10),
+                                    extra_runoff_m3_per_yr=source, **common)
+    assert breaching.breach_depressions(*args, years=100_000, water=direct).breached_pits.tolist() == [3]
+    assert breaching.breach_depressions(*args, years=100_000, water=runoff).breached_pits.tolist() == []
+
+
 def test_a_pit_passes_its_surplus_to_a_receiver_with_a_costlier_way_out():
     # Pit U (node 3) spills over node 2 (30 m), whose steepest descent runs into pit D (node 4).
     # D's own way to the sea climbs 15 m, U's only 5 m (U's path turns off before D), so D sits

@@ -95,6 +95,7 @@ if TYPE_CHECKING:
 import numpy as np
 from numba import njit
 from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 from .. import cratons, geometry, healpix_grid, trace
@@ -486,6 +487,10 @@ class HydrologyFields:
     river_water_evaporation_m3: np.ndarray | None = None
     river_water_residual_m3: np.ndarray | None = None
     river_water_initial_m3: np.ndarray | None = None
+    glacier_meltwater_ledger: "MeltwaterSourceLedger | None" = None
+    bare_snowmelt_ledger: "MeltwaterSourceLedger | None" = None
+    warm_thick_surface_melt_m3: float | None = None
+    glacier_drainage: "GlacierDrainageDiagnostics | None" = None
     # Not fields: `compute_hydrology` also sets the `_MARCH_READOUTS` attributes (the step's
     # steady land water sources, their transit loss, the breach gate's water balance and
     # bedrock rates) for the #867 river march (`river_substeps.march_rivers`), which re-routes
@@ -537,6 +542,40 @@ class RiverWaterLedger:
 
 
 @dataclass
+class MeltwaterSourceLedger:
+    """Destinations of one step's new meltwater input, in m³ (#1019).
+
+    River storage is the share of this step's input retained in reaches. Water already
+    in a reach at the start is accounted for by the river ledger, independently of these
+    source budgets.
+    """
+
+    input_m3: float
+    lake_supply_m3: float
+    land_settlement_m3: float
+    ocean_export_m3: float
+    transit_loss_m3: float
+    river_storage_m3: float
+
+    @property
+    def residual_m3(self) -> float:
+        return (
+            self.input_m3 - self.lake_supply_m3 - self.land_settlement_m3
+            - self.ocean_export_m3 - self.transit_loss_m3 - self.river_storage_m3
+        )
+
+
+@dataclass
+class GlacierDrainageDiagnostics:
+    """Filled hydraulic pits, connected filled regions and interval throughput (#1019)."""
+
+    filled_pit_count: int
+    filled_region_count: int
+    filled_pit_throughput_m3: float
+    unresolved_m3: float
+
+
+@dataclass
 class RiverRoutingResult:
     """Reservoir update and routed interval volumes aligned to HydrologyFields nodes."""
 
@@ -564,7 +603,8 @@ class LandWaterLedger:
     """RFC 0016 G0 rain-only land budget for one step, in m^3 (#725). This is an interim
     boundary: snow accumulation and ice storage are outside it, and `meltwater_m3` now enters
     in physical water (RFC 0015 D1, #789: ice converts by mass), so its closure is not the
-    full G0 gate (see `full_land_water_residual_m3`).
+    full G0 gate (see `full_land_water_residual_m3`). Rain and melt on grounded marine
+    ice are included in the inputs and ocean export.
     `stranded_overflow_m3` is lake overflow that could not be delivered to the ocean, for
     example because a world has no ocean node. With a receiving ocean, terminal sink and cycle
     settlements from exported overflow are transferred there (#731). `residual_m3` is what
@@ -1761,6 +1801,45 @@ def route_river_reservoirs(
     )
 
 
+def _meltwater_source_ledger(
+    source_m3_per_yr: np.ndarray,
+    source_loss: np.ndarray,
+    points: np.ndarray,
+    elevation: np.ndarray,
+    is_ocean: np.ndarray,
+    targets: np.ndarray,
+    river_reach: np.ndarray,
+    discharge_m3_s: np.ndarray,
+    years: float,
+    lake_owned: np.ndarray,
+    *,
+    ocean_source_m3_per_yr: float = 0.0,
+    input_m3_per_yr: float | None = None,
+) -> MeltwaterSourceLedger:
+    """Attribute this interval's source through the linear river reservoirs (#1019).
+
+    `input_m3_per_yr` may retain the pre-routing input so the glacier ledger also checks
+    the mass transferred from the ice drainage graph to ground routing.
+    """
+    zeros = np.zeros(len(source_m3_per_yr))
+    routed = route_river_reservoirs(
+        points, elevation, is_ocean, targets, river_reach, zeros, source_m3_per_yr,
+        zeros, discharge_m3_s, years, source_loss, source_loss,
+    )
+    settled = routed.settled_meltwater_m3
+    return MeltwaterSourceLedger(
+        input_m3=(
+            routed.ledger.input_m3 + ocean_source_m3_per_yr * years
+            if input_m3_per_yr is None else input_m3_per_yr * years
+        ),
+        lake_supply_m3=float(settled[~is_ocean & lake_owned].sum()),
+        land_settlement_m3=float(settled[~is_ocean & ~lake_owned].sum()),
+        ocean_export_m3=routed.ledger.ocean_export_m3 + ocean_source_m3_per_yr * years,
+        transit_loss_m3=routed.ledger.evaporation_m3,
+        river_storage_m3=routed.ledger.final_storage_m3,
+    )
+
+
 def _merge_river_passes(runoff: RiverRoutingResult, overflow: RiverRoutingResult) -> RiverWaterLedger:
     """One network budget for the runoff pass and the exported-overflow pass that follows it.
     The overflow pass's input is water the lake ledger already debited as it left."""
@@ -2022,6 +2101,189 @@ def _ice_surface_flow_target(
     rows = np.arange(len(ice_surface))
     has_lower = np.isfinite(lower[rows, col])
     return np.where(on_ice & has_lower, neighbor_idx[rows, col], ground_target).astype(np.int64)
+
+
+def _glacier_water_targets(
+    bed: np.ndarray,
+    thickness: np.ndarray,
+    glacier_depth: np.ndarray,
+    warm_based: np.ndarray,
+    neighbor_idx: np.ndarray,
+    ground_target: np.ndarray,
+    is_ocean: np.ndarray | None = None,
+    points: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Find acyclic routes to an ice margin and filled hydraulic potential in metres.
+
+    Warm ice uses a minimax flood of hydraulic head. Cold ice contributes only its
+    ice-surface edge to the reverse search. A node without a route to a margin stays a
+    terminal, so its water remains accounted for in ground routing (#1019).
+    """
+    from . import ice_sheet
+
+    n, k = neighbor_idx.shape
+    if k == 0:
+        return np.full(n, -1, dtype=np.int64), np.full(n, np.inf)
+    on_ice = glacier_depth >= GLACIER_VISIBLE_DEPTH_M
+    if not np.any(on_ice):
+        return np.full(n, -1, dtype=np.int64), np.full(n, np.inf)
+    warm = on_ice & warm_based
+    # Cold ice follows surface edges; head there only orders the shared flood.
+    head = bed + (ice_sheet.RHO_ICE / ice_sheet.RHO_WATER) * thickness
+    cold_targets = _ice_surface_flow_target(bed + thickness, neighbor_idx, glacier_depth, ground_target)
+    rows = np.repeat(np.arange(n), k)
+    cold_nodes = np.flatnonzero(on_ice & ~warm & (cold_targets >= 0))
+    reverse = coo_matrix(
+        (
+            np.ones(len(rows) + len(cold_nodes), dtype=np.int8),
+            (np.concatenate((neighbor_idx.ravel(), cold_targets[cold_nodes])), np.concatenate((rows, cold_nodes))),
+        ),
+        shape=(n, n),
+    ).tocsr()
+    targets = np.full(n, -1, dtype=np.int64)
+    levels = np.full(n, np.inf)
+    settled_order = np.full(n, -1, dtype=np.int64)
+    heap = []
+    off_ice_bed = np.where(~on_ice[neighbor_idx], bed[neighbor_idx], np.inf)
+    exit_col = np.argmin(off_ice_bed, axis=1)
+    exit_bed = off_ice_bed[np.arange(n), exit_col]
+    warm_exit = warm & np.isfinite(exit_bed)
+    ocean = np.zeros(n, dtype=bool) if is_ocean is None else is_ocean
+    cold_exit = on_ice & ~warm & (
+        ((cold_targets >= 0) & ~on_ice[np.maximum(cold_targets, 0)])
+        | ((cold_targets < 0) & ocean)
+    )
+    for node in np.flatnonzero(warm_exit | cold_exit):
+        if warm_exit[node]:
+            levels[node] = max(head[node], exit_bed[node])
+        else:
+            targets[node] = cold_targets[node]
+            levels[node] = head[node]
+        heapq.heappush(heap, (float(levels[node]), int(node)))
+
+    settled = np.zeros(n, dtype=bool)
+    next_order = 0
+    while heap:
+        level, node = heapq.heappop(heap)
+        if level != levels[node] or settled[node]:
+            continue
+        settled[node] = True
+        settled_order[node] = next_order
+        next_order += 1
+        for upstream in reverse.indices[reverse.indptr[node]:reverse.indptr[node + 1]]:
+            if not on_ice[upstream] or (not warm[upstream] and cold_targets[upstream] != node):
+                continue
+            candidate = max(level, head[upstream])
+            if candidate < levels[upstream]:
+                levels[upstream] = candidate
+                if not warm[upstream]:
+                    targets[upstream] = node
+                heapq.heappush(heap, (float(candidate), int(upstream)))
+
+    # The minimax flood decides which water level can reach an outlet. Choose the actual
+    # D8 edge afterward on that filled surface: the first margin seed need not be the
+    # steepest exit for a higher-head cell when another filled route is lower (#1019).
+    if points is None:
+        edge_length_m = np.ones((n, k), dtype=float)
+    else:
+        edge_length_m = np.maximum(
+            geometry.angular_distance(np.asarray(points)[:, None, :], np.asarray(points)[neighbor_idx])
+            * PLANET_RADIUS_KM * 1000.0,
+            1.0,
+        )
+    candidate_surface = np.where(on_ice[neighbor_idx], levels[neighbor_idx], bed[neighbor_idx])
+    candidate_order = np.where(on_ice[neighbor_idx], settled_order[neighbor_idx], -1)
+    lower = candidate_surface < levels[:, None]
+    flat_toward_outlet = (candidate_surface == levels[:, None]) & (
+        ~on_ice[neighbor_idx]
+        | ((candidate_order >= 0) & (candidate_order < settled_order[:, None]))
+    )
+    usable = (
+        (neighbor_idx != np.arange(n)[:, None]) & (lower | flat_toward_outlet)
+        & np.isfinite(candidate_surface) & warm[:, None] & settled[:, None]
+    )
+    slope = np.full((n, k), -np.inf)
+    drop = np.zeros((n, k), dtype=float)
+    np.subtract(levels[:, None], candidate_surface, out=drop, where=usable)
+    np.divide(drop, edge_length_m, out=slope, where=usable)
+    best_slope = np.max(slope, axis=1)
+    tied = usable & (slope == best_slope[:, None])
+    rank = np.where(tied, candidate_order, np.iinfo(np.int64).max)
+    best_col = np.argmin(rank, axis=1)
+    has_target = np.any(usable, axis=1)
+    rows_with_target = np.flatnonzero(has_target)
+    targets[rows_with_target] = neighbor_idx[rows_with_target, best_col[rows_with_target]]
+    return targets, levels
+
+
+def _route_glacier_water_to_margin(
+    source: np.ndarray, on_ice: np.ndarray, targets: np.ndarray, head: np.ndarray,
+) -> np.ndarray:
+    """Move ice-derived water to margin nodes; leave off-ice sources where they fell."""
+    if not np.any(on_ice):
+        return source.copy()
+    unresolved = on_ice & ~np.isfinite(head) & (source > 0.0)
+    if np.any(unresolved):
+        _logger.warning(
+            "Glacier drainage has no route to a margin at %d source nodes (%.6g m^3/yr)",
+            np.count_nonzero(unresolved), float(source[unresolved].sum()),
+        )
+    routed = route_downstream(head, ~on_ice, targets, source)
+    return np.where(on_ice, 0.0, source) + routed.deposited
+
+
+def _glacier_drainage_diagnostics(
+    source: np.ndarray,
+    on_ice: np.ndarray,
+    warm_based: np.ndarray,
+    bed: np.ndarray,
+    thickness: np.ndarray,
+    neighbor_idx: np.ndarray,
+    targets: np.ndarray,
+    levels: np.ndarray,
+    years: float,
+) -> GlacierDrainageDiagnostics:
+    """Count filled local minima and water entering connected filled regions (#1019)."""
+    from . import ice_sheet
+
+    head = bed + (ice_sheet.RHO_ICE / ice_sheet.RHO_WATER) * thickness
+    filled = on_ice & warm_based & np.isfinite(levels) & (levels > head)
+    unresolved = float(source[on_ice & ~np.isfinite(levels)].sum()) * years
+    nodes = np.flatnonzero(filled)
+    if not len(nodes):
+        return GlacierDrainageDiagnostics(0, 0, 0.0, unresolved)
+
+    n, k = neighbor_idx.shape
+    rows = np.repeat(np.arange(n), k)
+    adjacency = coo_matrix(
+        (np.ones(len(rows), dtype=np.int8), (rows, neighbor_idx.ravel())), shape=(n, n),
+    ).tocsr()
+    region_count, _ = connected_components(adjacency[nodes][:, nodes], directed=False)
+    pit_count = _filled_hydraulic_pit_count(head, filled, on_ice & warm_based, neighbor_idx)
+    through = route_downstream(levels, ~on_ice, targets, source).through_flux
+    safe_targets = np.maximum(targets, 0)
+    enters = on_ice & ~filled & (targets >= 0) & filled[safe_targets]
+    throughput = float(source[filled].sum() + through[enters].sum()) * years
+    return GlacierDrainageDiagnostics(pit_count, int(region_count), throughput, unresolved)
+
+
+def _filled_hydraulic_pit_count(
+    head: np.ndarray, filled: np.ndarray, warm: np.ndarray, neighbor_idx: np.ndarray,
+) -> int:
+    """Count filled local-minimum plateaus, including each pit in a shared region."""
+    nodes = np.flatnonzero(warm)
+    n, k = neighbor_idx.shape
+    rows = np.repeat(np.arange(n), k)
+    cols = neighbor_idx.ravel()
+    equal = warm[rows] & warm[cols] & (head[rows] == head[cols])
+    plateaus = coo_matrix(
+        (np.ones(int(equal.sum()), dtype=np.int8), (rows[equal], cols[equal])), shape=(n, n),
+    ).tocsr()
+    count, labels = connected_components(plateaus[nodes][:, nodes], directed=False)
+    lower_neighbor = np.any(warm[neighbor_idx[nodes]] & (head[neighbor_idx[nodes]] < head[nodes, None]), axis=1)
+    has_lower = np.bincount(labels, weights=lower_neighbor.astype(int), minlength=count) > 0
+    has_unfilled = np.bincount(labels, weights=(~filled[nodes]).astype(int), minlength=count) > 0
+    return int(np.count_nonzero(~has_lower & ~has_unfilled))
 
 
 def glacier_rain_partition_mm(
@@ -2337,23 +2599,23 @@ def _hold_remainder(
     recent: list[tuple],
     remaining: float,
     ledger_total,
-    areas: np.ndarray,
     frozen: list[float],
-):
-    """The held share of a settled glacier march in 'resolve' mode (#999): scales the
-    recent window's flows over `remaining` years while enforcing exact steady-state ice
-    balance for the fixed closing stock (`hold_acc == hold_ice_loss`) and keeping
-    bare-ground snowmelt independent, so both `ledger_total.residual_m3` and routed-vs-
-    ledger meltwater close exactly."""
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Extrapolate the settled window over the remaining years. Scale glacial losses
+    to balance the fixed closing stock, and extrapolate bare-ground snowmelt at its own
+    rate (#1019). Return glacier release, surface melt, bare-ground snowmelt, and calving."""
     span = sum(r[0] for r in recent)
     scale = remaining / span
-    n = len(areas)
-    hold_melt = np.zeros(n)
-    hold_calved = np.zeros(n)
+    hold_ice_melt = np.zeros_like(recent[0][1])
+    hold_surface_melt = np.zeros_like(hold_ice_melt)
+    hold_bare_snowmelt = np.zeros_like(hold_ice_melt)
+    hold_calved = np.zeros_like(hold_ice_melt)
     hold_flows: dict[str, float] = {}
-    for _, sub_melt, sub_calved, sub_ledger, sub_frozen in recent:
-        hold_melt = hold_melt + np.asarray(sub_melt, dtype=float) * scale
-        hold_calved = hold_calved + np.asarray(sub_calved, dtype=float) * scale
+    for _, ice_release, sub_surface_melt, sub_bare_snowmelt, sub_calved, sub_ledger, sub_frozen in recent:
+        hold_ice_melt += ice_release * scale
+        hold_surface_melt += sub_surface_melt * scale
+        hold_bare_snowmelt += sub_bare_snowmelt * scale
+        hold_calved += sub_calved * scale
         for key in ("accumulation_m3", "surface_melt_m3", "basal_melt_m3", "calved_m3", "overflow_m3", "snow_melted_m3", "capped_m3"):
             hold_flows[key] = hold_flows.get(key, 0.0) + getattr(sub_ledger, key) * scale
         frozen[0] += sub_frozen.land_m3 * scale
@@ -2362,32 +2624,22 @@ def _hold_remainder(
         frozen[3] += sub_frozen.bare_melted_m3 * scale
 
     ice_loss_keys = ("surface_melt_m3", "basal_melt_m3", "calved_m3", "overflow_m3", "capped_m3")
-    ice_melt_keys = ("surface_melt_m3", "basal_melt_m3", "overflow_m3", "capped_m3")
     hold_acc = hold_flows.get("accumulation_m3", 0.0)
-    hold_snow = hold_flows.get("snow_melted_m3", 0.0)
     hold_ice_loss = sum(hold_flows.get(key, 0.0) for key in ice_loss_keys)
-    hold_ice_melt = sum(hold_flows.get(key, 0.0) for key in ice_melt_keys)
 
     if hold_ice_loss > 0.0:
         loss_factor = hold_acc / hold_ice_loss
         for key in ice_loss_keys:
             hold_flows[key] = hold_flows.get(key, 0.0) * loss_factor
-        hold_calved = hold_calved * loss_factor
-        new_hold_ice_melt = hold_ice_melt * loss_factor
+        hold_calved *= loss_factor
+        hold_ice_melt *= loss_factor
+        hold_surface_melt *= loss_factor
     else:
         hold_flows["accumulation_m3"] = 0.0
-        new_hold_ice_melt = 0.0
-
-    raw_melt_total = float(np.dot(hold_melt, areas))
-    target_melt_total = new_hold_ice_melt + hold_snow
-    if raw_melt_total > 0.0:
-        hold_melt = hold_melt * (target_melt_total / raw_melt_total)
-    else:
-        hold_melt = np.zeros(n)
 
     for key, value in hold_flows.items():
         setattr(ledger_total, key, getattr(ledger_total, key) + value)
-    return hold_melt, hold_calved
+    return hold_ice_melt, hold_surface_melt, hold_bare_snowmelt, hold_calved
 
 
 def _apply_march_abrasion(
@@ -2469,6 +2721,13 @@ def _march_substep_climate(
         frozen, np.asarray(ref_heat, dtype=float),
         dry_snow_mm=dry_snow_mm, bed_frozen_snow_mm=bed_frozen_snow_mm,
     )
+
+
+def _initialize_melt_diagnostics(ice, node_count: int) -> None:
+    """Keep zero-march ice sources as arrays for downstream accounting (#1019)."""
+    for name in ("ice_release_depth_m", "bare_snowmelt_depth_m", "surface_melt_depth_m"):
+        if getattr(ice, name) is None:
+            setattr(ice, name, np.zeros(node_count))
 
 
 def _march_glacier(
@@ -2618,6 +2877,7 @@ def _march_glacier(
 
     if years <= 1e-6:
         new_depth, melt, ice = solve_once(0.0, depth, heat)
+        _initialize_melt_diagnostics(ice, n)
         ice.abrasion_depth_m = np.zeros(n)
         ice.raw_abrasion_depth_m = np.zeros(n)
         ice_sheet.warn_if_capped(ice.ledger)
@@ -2635,6 +2895,7 @@ def _march_glacier(
     # dt. Most suite fixtures are iceless, which is most of the suite slowdown.
     if not _snow_can_start_ice(depth, dry_precip_mm, bed_frozen_snow_mm, temperature_at_nodes, seasonal_amplitude):
         new_depth, melt, ice = solve_once(float(years), depth, heat)
+        _initialize_melt_diagnostics(ice, n)
         ice.abrasion_depth_m = np.zeros(n)
         ice.raw_abrasion_depth_m = np.zeros(n)
         ice_sheet.warn_if_capped(ice.ledger)
@@ -2645,7 +2906,9 @@ def _march_glacier(
         })
         return new_depth, melt, ice
 
-    melt_total = np.zeros(n)
+    ice_release_total = np.zeros(n)
+    surface_melt_total = np.zeros(n)
+    bare_snowmelt_total = np.zeros(n)
     calved_total = np.zeros(n)
     ledger_total = ice_sheet.IceLedger(opening_m3=float(np.dot(depth, areas)))
     volumes = [ledger_total.opening_m3]
@@ -2694,7 +2957,8 @@ def _march_glacier(
             # Each body's margin barely moves in a substep, so the last solve's margins
             # tell this one where to look for its opening extent (#147, same answer).
             hints = None if ice is None else ice_sheet.margin_hints(n, ice.bodies)
-            new_depth, melt, ice = solve_once(dt, ref_depth, ref_heat, hints)
+            new_depth, _, ice = solve_once(dt, ref_depth, ref_heat, hints)
+        _initialize_melt_diagnostics(ice, n)
         max_bed_cut_m = _apply_march_abrasion(
             ice.sliding_speed_m_per_yr, dt, world.glacier_erosion_multiplier,
             ocean_mask, cover_remaining, substrate_headroom, craton_keep,
@@ -2702,7 +2966,9 @@ def _march_glacier(
         )
         substeps += 1
         elapsed += dt
-        melt_total += melt
+        ice_release_total += ice.ice_release_depth_m
+        surface_melt_total += ice.surface_melt_depth_m
+        bare_snowmelt_total += ice.bare_snowmelt_depth_m
         calved_total += ice.calved_m3
         frozen_land_total += ice.frozen_precipitation.land_m3
         frozen_ocean_retained_total += ice.frozen_precipitation.ocean_retained_m3
@@ -2713,7 +2979,10 @@ def _march_glacier(
                 setattr(ledger_total, key, getattr(ledger_total, key) + value)
         ledger_total.capped_nodes = max(ledger_total.capped_nodes, ice.ledger.capped_nodes)
         if stop_on_settle:
-            recent.append((dt, melt, ice.calved_m3, ice.ledger, ice.frozen_precipitation))
+            recent.append((
+                dt, ice.ice_release_depth_m, ice.surface_melt_depth_m, ice.bare_snowmelt_depth_m,
+                ice.calved_m3, ice.ledger, ice.frozen_precipitation,
+            ))
         prev_depth, depth = depth, new_depth
         prev_heat, heat = heat, ice_sheet.frictional_heat_w_m2(
             ice_sheet.yield_stress_pa(np.asarray(mobile_cover_m, dtype=float), ice.warm_based),
@@ -2777,9 +3046,13 @@ def _march_glacier(
     remaining = max(years - elapsed, 0.0)
     if stop_on_settle and remaining > 1e-6 and recent:
         frozen = [frozen_land_total, frozen_ocean_retained_total, frozen_retained_total, frozen_bare_melted_total]
-        hold_melt, hold_calved = _hold_remainder(list(recent)[-watch.hold_window:], remaining, ledger_total, areas, frozen)
+        hold_ice_release, hold_surface_melt, hold_bare_snowmelt, hold_calved = _hold_remainder(
+            list(recent)[-watch.hold_window:], remaining, ledger_total, frozen,
+        )
         frozen_land_total, frozen_ocean_retained_total, frozen_retained_total, frozen_bare_melted_total = frozen
-        melt_total += hold_melt
+        ice_release_total += hold_ice_release
+        surface_melt_total += hold_surface_melt
+        bare_snowmelt_total += hold_bare_snowmelt
         calved_total += hold_calved
         _apply_march_abrasion(
             ice.sliding_speed_m_per_yr, remaining, world.glacier_erosion_multiplier,
@@ -2824,13 +3097,16 @@ def _march_glacier(
         settle_diagnostic_fired, last_change,
     )
     ice.calved_m3 = calved_total
+    ice.ice_release_depth_m = ice_release_total
+    ice.surface_melt_depth_m = surface_melt_total
+    ice.bare_snowmelt_depth_m = bare_snowmelt_total
     ice.ledger = ledger_total
     ice.abrasion_depth_m = abrasion_depth
     ice.raw_abrasion_depth_m = raw_abrasion_depth
     # One cap warning per step on the summed ledger, not one per substep (#806 review).
     ice_sheet.warn_if_capped(ledger_total)
     ice.frozen_precipitation = frozen_precipitation
-    return depth, melt_total, ice
+    return depth, ice_release_total + bare_snowmelt_total, ice
 
 
 def _lake_terrain(
@@ -2894,6 +3170,9 @@ def _transfer_lake_cap(lake_ice_m, handoff, glacier_depth, ice, areas, melt=None
             raise RuntimeError("Post-routing lake cap handoff would shed unrouted meltwater")
     else:
         melt[handoff] += excess
+        if ice.ice_release_depth_m is None:
+            ice.ice_release_depth_m = np.zeros_like(glacier_depth)
+        ice.ice_release_depth_m[handoff] += excess
     glacier_depth[handoff] = new_depth - excess
     ice.thickness[handoff] = np.minimum(
         np.maximum(ice.thickness[handoff] + added_ice, glacier_depth[handoff]), GLACIER_MAX_DEPTH_M,
@@ -3070,7 +3349,6 @@ def compute_hydrology(
     wet_precip_mm = wet_precip_mm - bed_frozen_snow_mm
     frozen_wet_snow_mm = frozen_wet_snow_mm - bed_frozen_snow_mm
     dry_share = np.clip(1.0 - np.asarray(wet_fraction, dtype=float), 0.0, 1.0)
-    dry_rain_intensity_mm = np.where(dry_share > 0.0, dry_rain_mm / np.maximum(dry_share, 1e-12), 0.0)
     dry_precip_mm = dry_fraction * precipitation_at_nodes
     open_season_temperature_c = seasonal_open_mean_c(lake_temperature_c, seasonal_amplitude, FREEZE_POINT_C)
     lake_open_evaporation_m_per_yr = (
@@ -3082,11 +3360,18 @@ def compute_hydrology(
     # water for `f_free` and ice for the rest, so neither counts the other's season.
     lake_sublimation_m_per_yr = LAKE_ICE_SUBLIMATION_M_PER_YR * (1.0 - ice_free_fraction)
     evaporation_mm = breaching.open_water_evaporation_mm(temperature_at_nodes)
-    _, dry_runoff_m3, dry_et_m3 = _partition_precipitation_sources(
-        dry_rain_intensity_mm, evaporation_mm, areas, np.zeros(n)
+    # Rain falling on ice enters glacier drainage in full (#1019). Budyko's land
+    # evapotranspiration applies to the exposed dry ground, not the ice-covered share.
+    bare_share = dry_share * (1.0 - ice_cover_open)
+    bare_rain_intensity_mm = np.divide(
+        bare_rain_mm, bare_share, out=np.zeros(n), where=bare_share > 0.0,
     )
-    dry_runoff_m3 = dry_runoff_m3 * dry_share
-    dry_et_m3 = dry_et_m3 * dry_share
+    _, bare_runoff_m3, bare_et_m3 = _partition_precipitation_sources(
+        bare_rain_intensity_mm, evaporation_mm, areas, np.zeros(n)
+    )
+    ice_rain_m3 = ice_rain_mm / 1000.0 * areas
+    dry_runoff_m3 = bare_runoff_m3 * bare_share
+    dry_et_m3 = bare_et_m3 * bare_share
     wet_precip_m3 = wet_precip_mm / 1000.0 * areas
     breach = None
     interface_pass = None
@@ -3098,11 +3383,12 @@ def compute_hydrology(
         # The gate sees the same water budget the lakes are balanced with below, as far as it
         # can before routing: liquid precipitation, and the same per-node river losses.
         breach_water = breaching.WaterBalance(
-            dry_rain_intensity_mm, temperature_at_nodes, areas,
-            loss_fraction=dry_transit_loss, dry_fraction=dry_fraction,
+            bare_rain_intensity_mm, temperature_at_nodes, areas,
+            loss_fraction=dry_transit_loss, dry_fraction=bare_share,
             direct_supply_m3_per_yr=wet_precip_m3,
             lake_evaporation_m_per_yr=lake_open_evaporation_m_per_yr,
             lake_sublimation_m_per_yr=lake_sublimation_m_per_yr,
+            extra_runoff_m3_per_yr=ice_rain_m3,
         )
         breach_carve_rate = breaching.bedrock_carve_rate_m_per_myr(craton_strength)
         # The #867 bound arms (off by default) widen the carving allowance of threatened
@@ -3177,7 +3463,17 @@ def compute_hydrology(
     # meltwater keeps the existing full per-node loss. Their
     # through-flow is river discharge; settled external sources feed the lakes below at any
     # temperature.
-    meltwater_source_m3 = meltwater_m3_per_yr(melt, areas, years)
+    bare_snowmelt_source_m3 = meltwater_m3_per_yr(ice.bare_snowmelt_depth_m, areas, years)
+    ice_release_source_m3 = meltwater_m3_per_yr(ice.ice_release_depth_m, areas, years)
+    dry_runoff_m3 += bare_snowmelt_source_m3
+    on_ice = new_glacier_depth >= GLACIER_VISIBLE_DEPTH_M
+    ice_water_targets, ice_water_head = _glacier_water_targets(
+        elevation, ice.thickness, new_glacier_depth, ice.warm_based,
+        neighbor_idx, flow_target, is_ocean, points,
+    )
+    meltwater_source_m3 = _route_glacier_water_to_margin(
+        ice_release_source_m3 + ice_rain_m3, on_ice, ice_water_targets, ice_water_head,
+    )
     # External sources must reach their natural leaf sinks before the prognostic solve. A
     # previously full lake can redirect its sink along the outlet edge in `flow_target`; make
     # each hierarchy leaf sink terminal for this source pass so persisted spill state cannot
@@ -3231,6 +3527,19 @@ def compute_hydrology(
     lake_owned = np.zeros(n, dtype=bool)
     for body in lakes.governing_bodies(forest, lake_elevation, lake_opening_column, hypsometry):
         lake_owned[body.members] = True
+    glacier_meltwater_ledger = None
+    bare_snowmelt_ledger = None
+    if has_interval:
+        glacier_meltwater_ledger = _meltwater_source_ledger(
+            meltwater_source_m3, transit_loss, points, lake_elevation, is_ocean, source_targets,
+            river_reach, runoff_q_m3_s, interval_years, lake_owned,
+            ocean_source_m3_per_yr=float(meltwater_source_m3[is_ocean].sum()),
+            input_m3_per_yr=float((ice_release_source_m3 + ice_rain_m3).sum()),
+        )
+        bare_snowmelt_ledger = _meltwater_source_ledger(
+            bare_snowmelt_source_m3, dry_transit_loss, points, lake_elevation, is_ocean, source_targets,
+            river_reach, runoff_q_m3_s, interval_years, lake_owned,
+        )
 
     lake_climate = lakes.LakeClimate(
         inflow_m3_per_yr=external_supply,
@@ -3369,18 +3678,26 @@ def compute_hydrology(
     lake_water_ledger = replace(phase_ledger, residual_m3=liquid_residual_m3 + ice_residual_m3)
     through_m3 = (river_route.routed_m3 + overflow_route.routed_m3) / interval_years + wet_through
     settled_m3 = river_route.settled_m3 / interval_years + wet_settled + overflow_settled
+    settled_m3 += np.where(is_ocean, meltwater_source_m3, 0.0)
     river_water_m = (
         np.divide(river_route.storage_m3 + overflow_route.storage_m3, areas, out=np.zeros(n), where=areas > 0.0)
         if has_interval else prev_river_water_m
     )
     river_ledger = _merge_river_passes(river_route, overflow_route)
     land = ~is_ocean
-    rain_m3 = float((wet_precip_m3 + dry_runoff_m3 + dry_et_m3)[land].sum()) * interval_years
-    meltwater_m3 = float(meltwater_source_m3[land].sum()) * interval_years
+    rain_m3 = (
+        float((wet_precip_m3 + dry_runoff_m3 - bare_snowmelt_source_m3 + dry_et_m3)[land].sum())
+        + float(ice_rain_m3.sum())
+    ) * interval_years
+    meltwater_m3 = (
+        float(meltwater_m3_per_yr(melt, areas, years)[land].sum())
+        + float(ice_release_source_m3[is_ocean].sum())
+    ) * interval_years
     dry_et_total_m3 = float(dry_et_m3[land].sum()) * interval_years
     ocean_export_m3 = (
         river_route.ledger.ocean_export_m3 + phase_ledger.overflow_to_ocean_m3
         + float(wet_settled[is_ocean].sum()) * interval_years
+        + float(meltwater_source_m3[is_ocean].sum()) * interval_years
     )
     land_water_ledger = None if not has_interval else LandWaterLedger(
         rain_m3=rain_m3,
@@ -3419,6 +3736,19 @@ def compute_hydrology(
         river_water_ledger=river_ledger,
         land_water_ledger=land_water_ledger,
         glacier_water_ledger=glacier_water_ledger,
+        glacier_meltwater_ledger=glacier_meltwater_ledger,
+        bare_snowmelt_ledger=bare_snowmelt_ledger,
+        warm_thick_surface_melt_m3=(
+            float(meltwater_m3_per_yr(ice.surface_melt_depth_m, areas, years)[
+                on_ice & ice.warm_based & (ice.thickness > 1000.0) & np.isfinite(ice_water_head)
+            ].sum()) * interval_years if has_interval else None
+        ),
+        glacier_drainage=(
+            _glacier_drainage_diagnostics(
+                ice_release_source_m3 + ice_rain_m3, on_ice, ice.warm_based, elevation,
+                ice.thickness, neighbor_idx, ice_water_targets, ice_water_head, interval_years,
+            ) if has_interval else None
+        ),
         river_water_inflow_m3=river_route.inflow_m3 + overflow_route.inflow_m3,
         river_water_outflow_m3=river_route.outflow_m3 + overflow_route.outflow_m3,
         river_water_routed_m3=river_route.routed_m3 + overflow_route.routed_m3,

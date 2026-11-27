@@ -137,7 +137,9 @@ class WaterBalance:
     Budyko runoff and transit loss only over the dry share of a partly flooded cell;
     `direct_supply_m3_per_yr` is the wet-cell precipitation that joins the lake directly and
     bypasses land runoff and transit loss, including when chained pits hand its surplus on
-    (#587). Glacier melt isn't included:
+    (#587). `extra_runoff_m3_per_yr` supplies ice rain without Budyko partitioning;
+    it follows the gate's ground paths and transit losses because ice routing runs later.
+    Glacier melt isn't included:
     it's computed after breaching, from the ice routing that breaching feeds. Optional
     `lake_evaporation_m_per_yr` and `lake_sublimation_m_per_yr` are the seasonal lake losses
     already used by the lake resolver; when omitted, the gate keeps its annual-mean evaporation
@@ -151,6 +153,7 @@ class WaterBalance:
     direct_supply_m3_per_yr: np.ndarray | None = None
     lake_evaporation_m_per_yr: np.ndarray | None = None
     lake_sublimation_m_per_yr: np.ndarray | None = None
+    extra_runoff_m3_per_yr: np.ndarray | None = None
 
 
 @dataclass
@@ -594,6 +597,8 @@ def _overflows(
     evaporation_mm = open_water_evaporation_mm(water.temperature_c)
     dry = np.ones(n) if water.dry_fraction is None else np.clip(np.asarray(water.dry_fraction), 0.0, 1.0)
     runoff_m3 = runoff_mm(water.precipitation_mm, evaporation_mm) / 1000.0 * area * dry
+    if water.extra_runoff_m3_per_yr is not None:
+        runoff_m3 += np.asarray(water.extra_runoff_m3_per_yr)
     direct = np.zeros(n) if water.direct_supply_m3_per_yr is None else np.asarray(water.direct_supply_m3_per_yr)
     # Direct lake rain is associated with its drainage leaf, but does not cross dry land or
     # incur transit loss on its way there.

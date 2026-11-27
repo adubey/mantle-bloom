@@ -33,6 +33,9 @@ struct BodyOut {
     dom_depth: Vec<f64>,
     dom_surface: Vec<f64>,
     dom_melt_m3: Vec<f64>,
+    dom_ice_release_m3: Vec<f64>,
+    dom_surface_melt_m3: Vec<f64>,
+    dom_bare_snowmelt_m3: Vec<f64>,
     dom_retained_snow: Vec<f64>,
     excess_calved: Vec<(usize, f64)>,
     excess_melt: Vec<(usize, f64)>,
@@ -142,6 +145,9 @@ fn solve_one_uniform_body(
     let mut dom_depth = vec![0.0; m];
     let mut dom_surface = vec![f64::NAN; m];
     let mut dom_melt_m3 = vec![0.0; m];
+    let mut dom_ice_release_m3 = vec![0.0; m];
+    let mut dom_surface_melt_m3 = vec![0.0; m];
+    let mut dom_bare_snowmelt_m3 = vec![0.0; m];
     let mut dom_retained_snow = vec![0.0; m];
     let mut extra_bare_snow_melted = NeumaierSum::default();
 
@@ -152,12 +158,18 @@ fn solve_one_uniform_body(
             dom_depth[idx] = h;
             dom_retained_snow[idx] = 1.0;
             dom_surface[idx] = if h > 0.0 { bed[u] + h } else { f64::NAN };
-            dom_melt_m3[idx] = (sm + bm) * area[u] / body_area_sum;
+            dom_ice_release_m3[idx] = (sm + bm) * area[u] / body_area_sum;
+            dom_surface_melt_m3[idx] = sm * area[u] / body_area_sum;
         } else {
-            let w = bare_acc[u] * area[u] * dt_myr;
-            dom_melt_m3[idx] = w;
+            let w = if is_ocean[u] {
+                0.0
+            } else {
+                bare_acc[u] * area[u] * dt_myr
+            };
+            dom_bare_snowmelt_m3[idx] = w;
             extra_bare_snow_melted.add(w);
         }
+        dom_melt_m3[idx] = dom_ice_release_m3[idx] + dom_bare_snowmelt_m3[idx];
     }
 
     BodyOut {
@@ -178,6 +190,9 @@ fn solve_one_uniform_body(
         dom_depth,
         dom_surface,
         dom_melt_m3,
+        dom_ice_release_m3,
+        dom_surface_melt_m3,
+        dom_bare_snowmelt_m3,
         dom_retained_snow,
         excess_calved,
         excess_melt,
@@ -202,8 +217,10 @@ fn solve_one_plastic_body(
     let dom_thickness = shape.thickness;
     let mut dom_covered = Vec::with_capacity(m);
     let mut dom_surface = Vec::with_capacity(m);
-    let mut where_melt = Vec::with_capacity(m);
-    let mut where_melt_acc = NeumaierSum::default();
+    let mut where_surface = Vec::with_capacity(m);
+    let mut where_basal = Vec::with_capacity(m);
+    let mut where_surface_acc = NeumaierSum::default();
+    let mut where_basal_acc = NeumaierSum::default();
 
     for i in 0..m {
         let cov = shape.cover[i].min(1.0);
@@ -214,17 +231,26 @@ fn solve_one_plastic_body(
             f64::NAN
         });
         let feeds = (dom.bare_acc[i] - dom.bare_sm[i]) > 0.0;
-        let wm = shape.cover[i] * dom.area[i] * (shape.rate_sm[i] + shape.rate_bm[i])
+        let ws = shape.cover[i] * dom.area[i] * shape.rate_sm[i]
             + (1.0 - cov) * dom.area[i] * if feeds { dom.bare_sm[i] } else { 0.0 };
-        where_melt.push(wm);
-        where_melt_acc.add(wm);
+        let wb = shape.cover[i] * dom.area[i] * shape.rate_bm[i];
+        where_surface.push(ws);
+        where_basal.push(wb);
+        where_surface_acc.add(ws);
+        where_basal_acc.add(wb);
     }
-    let where_melt_sum = where_melt_acc.finish();
+    let where_surface_sum = where_surface_acc.finish();
+    let where_basal_sum = where_basal_acc.finish();
 
     let mut dom_melt_m3 = vec![0.0_f64; m];
-    if where_melt_sum > 0.0 {
+    let mut dom_ice_release_m3 = vec![0.0_f64; m];
+    let mut dom_surface_melt_m3 = vec![0.0_f64; m];
+    let mut dom_bare_snowmelt_m3 = vec![0.0_f64; m];
+    if where_surface_sum > 0.0 {
         for i in 0..m {
-            dom_melt_m3[i] += (sm + bm) * where_melt[i] / where_melt_sum;
+            let surface_melt = sm * where_surface[i] / where_surface_sum;
+            dom_surface_melt_m3[i] += surface_melt;
+            dom_ice_release_m3[i] += surface_melt;
         }
     } else if sm + bm > 0.0 {
         let mut body_area_acc = NeumaierSum::default();
@@ -234,7 +260,25 @@ fn solve_one_plastic_body(
         let body_area_sum = body_area_acc.finish();
         for (i, &u) in dom.nodes.iter().enumerate() {
             if body_nodes.binary_search(&u).is_ok() {
-                dom_melt_m3[i] += (sm + bm) * area[u] / body_area_sum;
+                let surface_melt = sm * area[u] / body_area_sum;
+                dom_surface_melt_m3[i] += surface_melt;
+                dom_ice_release_m3[i] += surface_melt;
+            }
+        }
+    }
+    if where_basal_sum > 0.0 {
+        for i in 0..m {
+            dom_ice_release_m3[i] += bm * where_basal[i] / where_basal_sum;
+        }
+    } else if bm > 0.0 {
+        let mut body_area_acc = NeumaierSum::default();
+        for &u in body_nodes {
+            body_area_acc.add(area[u]);
+        }
+        let body_area_sum = body_area_acc.finish();
+        for (i, &u) in dom.nodes.iter().enumerate() {
+            if body_nodes.binary_search(&u).is_ok() {
+                dom_ice_release_m3[i] += bm * area[u] / body_area_sum;
             }
         }
     }
@@ -244,10 +288,15 @@ fn solve_one_plastic_body(
     for i in 0..m {
         let cov = dom_covered[i];
         let feeds = (dom.bare_acc[i] - dom.bare_sm[i]) > 0.0;
-        let bare_snow = (1.0 - cov) * dom.area[i] * if feeds { 0.0 } else { dom.bare_acc[i] } * dt_myr;
-        dom_melt_m3[i] += bare_snow;
+        let bare_snow = if dom.ocean[i] {
+            0.0
+        } else {
+            (1.0 - cov) * dom.area[i] * if feeds { 0.0 } else { dom.bare_acc[i] } * dt_myr
+        };
+        dom_bare_snowmelt_m3[i] += bare_snow;
         extra_bare_snow_melted.add(bare_snow);
         dom_retained_snow.push(if feeds { 1.0 } else { cov });
+        dom_melt_m3[i] = dom_ice_release_m3[i] + dom_bare_snowmelt_m3[i];
     }
 
     let mut frontier_nodes = Vec::new();
@@ -293,6 +342,9 @@ fn solve_one_plastic_body(
         dom_depth: shape.depth,
         dom_surface,
         dom_melt_m3,
+        dom_ice_release_m3,
+        dom_surface_melt_m3,
+        dom_bare_snowmelt_m3,
         dom_retained_snow,
         excess_calved,
         excess_melt,
@@ -393,14 +445,19 @@ pub fn step_ice<'py>(
             };
             let elig = FLOTATION_RATIO * wd <= GLACIER_MAX_DEPTH_M;
             let stray = od > 0.0 && (!elig || !is_grounded_scalar(od, b, sea_level_m, ocean[i]));
-            let (calv, h_val) = if stray { (od * area[i], 0.0) } else { (0.0, od) };
+            let (calv, h_val) = if stray {
+                (od * area[i], 0.0)
+            } else {
+                (0.0, od)
+            };
             let fric_i = fric.map_or(0.0, |v| v[i]);
             let bfs_i = bfs.map(|v| v[i]);
             let (ba, bs) = bare_rates_scalar(temp[i], amp[i], precip[i], bfs_i);
             let rb_net = if h_val == 0.0 {
                 ba - bs
             } else {
-                let (ra, rs, rb) = node_rates_scalar(h_val, temp[i], amp[i], precip[i], fric_i, bfs_i);
+                let (ra, rs, rb) =
+                    node_rates_scalar(h_val, temp[i], amp[i], precip[i], fric_i, bfs_i);
                 ra - rs - rb
             };
             let pos = elig && (rb_net > 0.0) && (!ocean[i] || h_val > 0.0);
@@ -432,26 +489,32 @@ pub fn step_ice<'py>(
             )
                 .into_par_iter()
                 .enumerate()
-                .map(|(chunk_idx, ((b_c, od_c, h0_c, el_c, cv_c, ba_c), (bs_c, rb_c, pos_c, mem_c, cc_c)))| {
-                    let base = chunk_idx * chunk;
-                    let mut local_any = false;
-                    for j in 0..b_c.len() {
-                        let (b, od, hv, el, cv, ba, bs, rbn, pos, mem, cc) = setup_node(base + j);
-                        b_c[j] = b;
-                        od_c[j] = od;
-                        h0_c[j] = hv;
-                        el_c[j] = el;
-                        cv_c[j] = cv;
-                        ba_c[j] = ba;
-                        bs_c[j] = bs;
-                        rb_c[j] = rbn;
-                        pos_c[j] = pos;
-                        mem_c[j] = mem;
-                        cc_c[j] = cc;
-                        local_any |= mem;
-                    }
-                    local_any
-                })
+                .map(
+                    |(
+                        chunk_idx,
+                        ((b_c, od_c, h0_c, el_c, cv_c, ba_c), (bs_c, rb_c, pos_c, mem_c, cc_c)),
+                    )| {
+                        let base = chunk_idx * chunk;
+                        let mut local_any = false;
+                        for j in 0..b_c.len() {
+                            let (b, od, hv, el, cv, ba, bs, rbn, pos, mem, cc) =
+                                setup_node(base + j);
+                            b_c[j] = b;
+                            od_c[j] = od;
+                            h0_c[j] = hv;
+                            el_c[j] = el;
+                            cv_c[j] = cv;
+                            ba_c[j] = ba;
+                            bs_c[j] = bs;
+                            rb_c[j] = rbn;
+                            pos_c[j] = pos;
+                            mem_c[j] = mem;
+                            cc_c[j] = cc;
+                            local_any |= mem;
+                        }
+                        local_any
+                    },
+                )
                 .reduce(|| false, |a, b| a || b)
         } else {
             let mut local_any = false;
@@ -477,6 +540,9 @@ pub fn step_ice<'py>(
 
         let mut depth = vec![0.0_f64; n];
         let mut melt_m3 = vec![0.0_f64; n];
+        let mut ice_release_m3 = vec![0.0_f64; n];
+        let mut surface_melt_by_node_m3 = vec![0.0_f64; n];
+        let mut bare_snowmelt_m3 = vec![0.0_f64; n];
         let mut thickness = vec![0.0_f64; n];
         let mut covered = vec![0.0_f64; n];
         let mut surface = vec![f64::NAN; n];
@@ -629,59 +695,48 @@ pub fn step_ice<'py>(
                 let d_nodes = &dom_nodes_all[b];
                 let opening = compensated_dot_indexed(b_nodes, &h0, area);
                 let out_b = solve_one_uniform_body(
-                    b_nodes,
-                    d_nodes,
-                    opening,
-                    area,
-                    &bed,
-                    ocean,
-                    precip,
-                    temp,
-                    amp,
-                    fric,
-                    bfs,
-                    &bare_acc,
-                    dt_myr,
-                    &members,
+                    b_nodes, d_nodes, opening, area, &bed, ocean, precip, temp, amp, fric, bfs,
+                    &bare_acc, dt_myr, &members,
                 );
                 ordered_outs[b] = Some(out_b);
             }
 
-            let plastic_results: Vec<(usize, BodyOut)> = if plastic_specs.len() >= 2 && total_dom_nodes >= 256 {
-                plastic_specs
-                    .into_par_iter()
-                    .map(|(b, dom, opening, hint)| {
-                        let out_b = solve_one_plastic_body(
-                            &body_nodes_all[b],
-                            &dom,
-                            opening,
-                            area,
-                            dt_myr,
-                            sea_level_m,
-                            rust_graph.step_m,
-                            hint,
-                        );
-                        (b, out_b)
-                    })
-                    .collect()
-            } else {
-                plastic_specs
-                    .into_iter()
-                    .map(|(b, dom, opening, hint)| {
-                        let out_b = solve_one_plastic_body(
-                            &body_nodes_all[b],
-                            &dom,
-                            opening,
-                            area,
-                            dt_myr,
-                            sea_level_m,
-                            rust_graph.step_m,
-                            hint,
-                        );
-                        (b, out_b)
-                    })
-                    .collect()
-            };
+            let plastic_results: Vec<(usize, BodyOut)> =
+                if plastic_specs.len() >= 2 && total_dom_nodes >= 256 {
+                    plastic_specs
+                        .into_par_iter()
+                        .map(|(b, dom, opening, hint)| {
+                            let out_b = solve_one_plastic_body(
+                                &body_nodes_all[b],
+                                &dom,
+                                opening,
+                                area,
+                                dt_myr,
+                                sea_level_m,
+                                rust_graph.step_m,
+                                hint,
+                            );
+                            (b, out_b)
+                        })
+                        .collect()
+                } else {
+                    plastic_specs
+                        .into_iter()
+                        .map(|(b, dom, opening, hint)| {
+                            let out_b = solve_one_plastic_body(
+                                &body_nodes_all[b],
+                                &dom,
+                                opening,
+                                area,
+                                dt_myr,
+                                sea_level_m,
+                                rust_graph.step_m,
+                                hint,
+                            );
+                            (b, out_b)
+                        })
+                        .collect()
+                };
 
             for (b, out_b) in plastic_results {
                 ordered_outs[b] = Some(out_b);
@@ -696,6 +751,9 @@ pub fn step_ice<'py>(
                     depth[u] = out_b.dom_depth[i];
                     surface[u] = out_b.dom_surface[i];
                     melt_m3[u] += out_b.dom_melt_m3[i];
+                    ice_release_m3[u] += out_b.dom_ice_release_m3[i];
+                    surface_melt_by_node_m3[u] += out_b.dom_surface_melt_m3[i];
+                    bare_snowmelt_m3[u] += out_b.dom_bare_snowmelt_m3[i];
                     retained_snow[u] = out_b.dom_retained_snow[i];
                 }
                 for (u, v) in &out_b.excess_calved {
@@ -703,6 +761,7 @@ pub fn step_ice<'py>(
                 }
                 for (u, v) in &out_b.excess_melt {
                     melt_m3[*u] += *v;
+                    ice_release_m3[*u] += *v;
                 }
                 snow_melted_acc.add(out_b.extra_bare_snow_melted);
 
@@ -719,9 +778,12 @@ pub fn step_ice<'py>(
                         }
                         depth[u] = kept;
                         melt_m3[u] += over * area[u];
+                        ice_release_m3[u] += over * area[u];
                         capped_here += over * area[u];
                     }
-                    if depth[u] > 0.0 && !is_grounded_scalar(depth[u], bed[u], sea_level_m, ocean[u]) {
+                    if depth[u] > 0.0
+                        && !is_grounded_scalar(depth[u], bed[u], sea_level_m, ocean[u])
+                    {
                         let dv = depth[u] * area[u];
                         calved[u] += dv;
                         calved_guard += dv;
@@ -743,6 +805,7 @@ pub fn step_ice<'py>(
             if !in_domain[i] && !ocean[i] {
                 let water = bare_acc[i] * area[i] * dt_myr;
                 melt_m3[i] += water;
+                bare_snowmelt_m3[i] += water;
                 snow_melted_acc.add(water);
             }
         }
@@ -822,12 +885,19 @@ pub fn step_ice<'py>(
         }
 
         let mut melt_m = Vec::with_capacity(n);
+        let mut ice_release_m = Vec::with_capacity(n);
+        let mut surface_melt_by_node_m = Vec::with_capacity(n);
+        let mut bare_snowmelt_m = Vec::with_capacity(n);
         let mut land_acc = NeumaierSum::default();
         let mut ocean_retained_acc = NeumaierSum::default();
         let mut retained_acc = NeumaierSum::default();
         let mut bare_melted_acc = NeumaierSum::default();
         for i in 0..n {
             melt_m.push(melt_m3[i] / if area[i] > 0.0 { area[i] } else { 1.0 });
+            ice_release_m.push(ice_release_m3[i] / if area[i] > 0.0 { area[i] } else { 1.0 });
+            surface_melt_by_node_m
+                .push(surface_melt_by_node_m3[i] / if area[i] > 0.0 { area[i] } else { 1.0 });
+            bare_snowmelt_m.push(bare_snowmelt_m3[i] / if area[i] > 0.0 { area[i] } else { 1.0 });
             let mut smm = match dry_snow {
                 Some(ds) => ds[i],
                 None => snow_fraction_scalar(temp[i], amp[i], 1.0) * precip[i],
@@ -853,6 +923,9 @@ pub fn step_ice<'py>(
         (
             depth,
             melt_m,
+            ice_release_m,
+            surface_melt_by_node_m,
+            bare_snowmelt_m,
             thickness,
             covered,
             is_warm,
@@ -879,6 +952,9 @@ pub fn step_ice<'py>(
     let (
         depth,
         melt_m,
+        ice_release_m,
+        surface_melt_by_node_m,
+        bare_snowmelt_m,
         thickness,
         covered,
         is_warm,
@@ -917,6 +993,9 @@ pub fn step_ice<'py>(
         &[
             PyArray1::from_vec(py, depth).into_any(),
             PyArray1::from_vec(py, melt_m).into_any(),
+            PyArray1::from_vec(py, ice_release_m).into_any(),
+            PyArray1::from_vec(py, surface_melt_by_node_m).into_any(),
+            PyArray1::from_vec(py, bare_snowmelt_m).into_any(),
             PyArray1::from_vec(py, thickness).into_any(),
             PyArray1::from_vec(py, covered).into_any(),
             PyArray1::from_vec(py, is_warm).into_any(),

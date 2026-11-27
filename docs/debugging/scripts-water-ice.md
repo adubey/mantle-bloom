@@ -232,6 +232,19 @@ backend/.venv/bin/python bin/debug/measure_breaching.py --seeds 1 2 --steps 50 -
 
 ## Ice
 
+### `replay_d8_meltwater.py`
+
+Replays a diagnosis or held-out save for RFC 0015 G6. Every step records each meltwater
+source budget, filled hydraulic minima, connected filled regions and their throughput, unresolved
+drainage, surface melt on thick warm-based ice, and the count and largest discharges of
+networks with a headwater within one cell of ice. The baseline reports unavailable D8
+diagnostics as null. Set `--ice-age-period-years` for the report-only ice-age arm.
+
+```bash
+backend/.venv/bin/python bin/debug/replay_d8_meltwater.py <save> --backend <backend> \
+  --myr 10 --step-years 250000 --checkpoint-myr 1 --out <output.json>
+```
+
 ### `measure_ice_sheet.py`
 
 Measures glacier ice on a save (#353). At each checkpoint: land fraction; the visible ice cap
