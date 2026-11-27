@@ -179,7 +179,9 @@ def test_volume_contract_closes_per_body_and_across_the_world():
         assert np.all((bare_snowmelt >= 0.0) & (bare_snowmelt <= melt))
         assert np.dot(bare_snowmelt, area) == pytest.approx(ledger.snow_melted_m3)
         ice_release = ice.ice_release_depth_m
-        np.testing.assert_array_equal(melt, ice_release + bare_snowmelt)
+        # Rust keeps each source in its own array; their sum can differ by a few ulps
+        # from the combined accumulation while preserving the D8 source budget (#1019).
+        np.testing.assert_allclose(melt, ice_release + bare_snowmelt, rtol=2e-15, atol=1e-12)
         assert np.dot(ice_release, area) == pytest.approx(ledger.meltwater_m3 - ledger.snow_melted_m3)
         assert np.dot(ice.surface_melt_depth_m, area) == pytest.approx(ledger.surface_melt_m3)
         assert np.all(ice.surface_melt_depth_m <= ice_release)

@@ -1739,6 +1739,30 @@ def test_wet_snow_cannot_make_a_cap_without_any_frozen_surface_time(monkeypatch)
     assert fields.lake_ice_m[29] == 0.0
 
 
+def test_lake_cap_handoff_initializes_melt_diagnostics_when_march_is_disabled():
+    step = ice_sheet.IceStep(
+        thickness=np.array([20.0]),
+        covered=np.array([1.0]),
+        warm_based=np.array([False]),
+        balance_flux_m3_per_yr=np.zeros(1),
+        sliding_speed_m_per_yr=np.zeros(1),
+        calved_m3=np.zeros(1),
+        ledger=ice_sheet.IceLedger(),
+    )
+    lake_ice = np.array([1.0])
+    glacier_depth = np.array([20.0])
+    handoff = np.array([True])
+    melt = np.zeros(1)
+
+    hydrology._transfer_lake_cap(lake_ice, handoff, glacier_depth, step, np.ones(1), melt)
+
+    assert step.ice_release_depth_m is not None
+    assert step.ice_release_depth_m[0] == 0.0
+    assert glacier_depth[0] > 20.0
+    assert melt[0] == 0.0
+    assert lake_ice[0] == 0.0
+
+
 def test_lake_terrain_margin_relief_comes_from_rock_not_neighboring_glacier():
     bed = np.array([0.0, 100.0, 0.0])
     glacier = np.array([0.0, 2000.0, 0.0])

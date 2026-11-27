@@ -2669,6 +2669,13 @@ def _march_substep_climate(
     )
 
 
+def _initialize_melt_diagnostics(ice, node_count: int) -> None:
+    """Keep zero-march ice sources as arrays for downstream accounting (#1019)."""
+    for name in ("ice_release_depth_m", "bare_snowmelt_depth_m", "surface_melt_depth_m"):
+        if getattr(ice, name) is None:
+            setattr(ice, name, np.zeros(node_count))
+
+
 def _march_glacier(
     world: "World",
     points: np.ndarray,
@@ -2816,6 +2823,7 @@ def _march_glacier(
 
     if years <= 1e-6:
         new_depth, melt, ice = solve_once(0.0, depth, heat)
+        _initialize_melt_diagnostics(ice, n)
         ice.abrasion_depth_m = np.zeros(n)
         ice.raw_abrasion_depth_m = np.zeros(n)
         ice_sheet.warn_if_capped(ice.ledger)
@@ -2895,6 +2903,7 @@ def _march_glacier(
             # tell this one where to look for its opening extent (#147, same answer).
             hints = None if ice is None else ice_sheet.margin_hints(n, ice.bodies)
             new_depth, _, ice = solve_once(dt, ref_depth, ref_heat, hints)
+        _initialize_melt_diagnostics(ice, n)
         max_bed_cut_m = _apply_march_abrasion(
             ice.sliding_speed_m_per_yr, dt, world.glacier_erosion_multiplier,
             ocean_mask, cover_remaining, substrate_headroom, craton_keep,
@@ -3106,6 +3115,8 @@ def _transfer_lake_cap(lake_ice_m, handoff, glacier_depth, ice, areas, melt=None
             raise RuntimeError("Post-routing lake cap handoff would shed unrouted meltwater")
     else:
         melt[handoff] += excess
+        if ice.ice_release_depth_m is None:
+            ice.ice_release_depth_m = np.zeros_like(glacier_depth)
         ice.ice_release_depth_m[handoff] += excess
     glacier_depth[handoff] = new_depth - excess
     ice.thickness[handoff] = np.minimum(
