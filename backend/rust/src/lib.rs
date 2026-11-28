@@ -2,6 +2,7 @@ mod climate;
 mod distance;
 mod generation;
 mod eustasy;
+mod faults;
 mod graph;
 mod hydrology;
 mod ice_step;
@@ -14,6 +15,19 @@ use pyo3::prelude::*;
 
 #[pymodule]
 fn mantle_bloom_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(faults::nearest_trace_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(faults::boundary_strands_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(faults::resample_boundary_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(faults::boundary_regime_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(faults::moment_magnitude_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(faults::quake_magnitude_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(faults::unloading_stress_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(faults::boundary_runs_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(faults::relief_transfer_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(faults::relief_contrib_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(faults::foreign_nearest_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(faults::influence_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(faults::shear_backtrace_rs, m)?)?;
     m.add_class::<graph::MarchGraph>()?;
     m.add_class::<spatial::KdIndex>()?;
     m.add_function(wrap_pyfunction!(ice_step::step_ice, m)?)?;
