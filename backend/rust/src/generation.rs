@@ -55,6 +55,12 @@ pub fn priority_flood_rs<'py>(
         return Err(PyValueError::new_err("incompatible flood shapes"));
     }
     let indptr = indptr.as_slice()?.to_vec();
+    if indptr[0] != 0
+        || indptr.windows(2).any(|w| w[1] < w[0])
+        || indptr[n] as usize != indices.len()
+    {
+        return Err(PyValueError::new_err("indptr is not a valid CSR pointer array"));
+    }
     let indices = indices.as_slice()?.to_vec();
     let rise: Vec<f64> = match &rise {
         Some(r) => {
@@ -118,6 +124,9 @@ pub fn nearest_distance_rs<'py>(
     let (m, n) = (s_shape[0], p_shape[0]);
     let sources = sources.as_slice()?.to_vec();
     let points = points.as_slice()?.to_vec();
+    if sources.iter().chain(points.iter()).any(|v| v.is_nan()) {
+        return Err(PyValueError::new_err("nearest inputs must not be NaN"));
+    }
     let (dist, index) = py.detach(move || {
         if m == 0 {
             return (vec![f64::INFINITY; n], vec![0_i64; n]);
@@ -169,6 +178,9 @@ pub fn nearest_seed_labels_rs<'py>(
     }
     let xyz = xyz.as_slice()?.to_vec();
     let seeds = seeds.as_slice()?.to_vec();
+    if xyz.iter().chain(seeds.iter()).any(|v| v.is_nan()) {
+        return Err(PyValueError::new_err("seed-label inputs must not be NaN"));
+    }
     let owners = seed_owner.as_slice()?.to_vec();
     let labels = py.detach(move || {
         let seed_pts: Vec<[f64; 3]> = (0..m).map(|s| [seeds[s * 3], seeds[s * 3 + 1], seeds[s * 3 + 2]]).collect();
@@ -194,6 +206,12 @@ pub fn label_component_count_rs(
         return Err(PyValueError::new_err("incompatible component shapes"));
     }
     let offsets = offsets.as_slice()?;
+    if offsets[0] != 0
+        || offsets.windows(2).any(|w| w[1] < w[0])
+        || offsets[n] as usize != neighbours.len()
+    {
+        return Err(PyValueError::new_err("offsets is not a valid CSR pointer array"));
+    }
     let neighbours = neighbours.as_slice()?;
     let labels = labels.as_slice()?;
     if neighbours.iter().any(|&j| j < 0 || j as usize >= n) {

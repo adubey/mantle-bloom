@@ -183,7 +183,10 @@ def _seed_labels_python(xyz: np.ndarray, seed_xyz: np.ndarray, seed_owner: np.nd
     dist, nearest = cKDTree(seed_xyz).query(xyz, k=2, workers=-1)
     labels = seed_owner[nearest[:, 0]]
     tied = np.flatnonzero(dist[:, 0] == dist[:, 1])
-    for start in range(0, len(tied), 1024):
+    # Small chunks: the (cells, seeds, 3) distance broadcast stays bounded
+    # however many cells tie (26 measured at density 4, but a symmetric seed
+    # set could tie thousands).
+    for start in range(0, len(tied), 128):
         cells = tied[start : start + 1024]
         d2 = ((xyz[cells, None, :] - seed_xyz[None, :, :]) ** 2).sum(axis=2)
         lowest_tied = np.where(d2 == d2.min(axis=1, keepdims=True), np.arange(len(seed_xyz)), len(seed_xyz)).min(axis=1)

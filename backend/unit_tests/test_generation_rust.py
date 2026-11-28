@@ -170,6 +170,18 @@ def test_priority_flood_rejects_nan():
 
 
 @pytest.mark.skipif(not _generation_rust.RUST_AVAILABLE, reason="Rust extension unavailable")
+def test_kernels_reject_malformed_csr_and_nan():
+    with pytest.raises(ValueError, match="CSR"):
+        _generation_rust.priority_flood([0, 2, 1], [0], None, [0.0, 0.0], [0.0, 0.0])
+    with pytest.raises(ValueError, match="CSR"):
+        _generation_rust.label_component_count([1, 1], [0], [0])
+    with pytest.raises(ValueError, match="NaN"):
+        _generation_rust.nearest_distance([[np.nan, 0.0, 0.0]], [[1.0, 0.0, 0.0]])
+    with pytest.raises(ValueError, match="NaN"):
+        _generation_rust.nearest_seed_labels([[1.0, 0.0, 0.0]], [[np.nan, 0.0, 0.0]], [0])
+
+
+@pytest.mark.skipif(not _generation_rust.RUST_AVAILABLE, reason="Rust extension unavailable")
 def test_build_geography_matches_reference(monkeypatch):
     from app import continent_layout
     from app.elevation_lines import line_spacing_rad
