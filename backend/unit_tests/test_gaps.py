@@ -252,3 +252,15 @@ def test_rust_gap_coverage_matches_adaptive_cells_and_edges(monkeypatch):
         patch.setattr(gaps, "_rust", None)
         fallback = gaps._covered_by_plates(points, [plate])
     np.testing.assert_array_equal(native, fallback)
+
+
+def test_rust_gap_edge_guard_scales_to_fine_cells():
+    import pytest
+    from app.sparse_quad_patch import lattice_points
+
+    if gaps._rust is None or not hasattr(gaps._rust, "gap_contains_rs"):
+        pytest.skip("Rust gap kernel unavailable")
+    n = 1 << 20
+    point = lattice_points(np.array([0]), np.array([n // 2 + 1.0]), np.array([n // 2 + 0.5]), n)
+    _, uncertain = gaps._rust.gap_contains_rs(point, np.array([0], dtype=np.int64), n, 0)
+    assert uncertain[0]

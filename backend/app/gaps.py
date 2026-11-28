@@ -162,6 +162,7 @@ def _covered_by_plates(points: np.ndarray, plates: list[Plate]) -> np.ndarray:
         return _contested_by_any(points, plates)
     covered = np.zeros(len(points), dtype=bool)
     for plate in plates:
+        # Subclasses may override containment, so only the exact built-in type takes this shortcut.
         if type(plate) is not PlateWithSparseQuadPatch:
             covered |= plate.contains_batch(points)
         elif plate.node_count():

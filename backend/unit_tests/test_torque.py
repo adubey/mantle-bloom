@@ -1248,7 +1248,7 @@ def test_rust_boundary_nearest_preserves_ties_and_missing_neighbours():
         pytest.skip("Rust boundary kernel unavailable")
     distances = np.array([[1.0, np.inf, 2.0, np.inf], [1.0, 3.0, 1.0, np.inf]])
     indices = np.array([[4, -1, 5, -1], [8, 9, 10, -1]], dtype=np.int64)
-    d, owner, index = torque._rust.boundary_nearest_rs(distances, indices)
+    d, owner, index = torque._rust.boundary_nearest_rs(list(distances), list(indices))
     np.testing.assert_array_equal(d, [1.0, 3.0, 1.0, np.inf])
     np.testing.assert_array_equal(owner, [0, 1, 1, -1])
     np.testing.assert_array_equal(index, [4, 9, 10, -1])

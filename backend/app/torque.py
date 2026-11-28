@@ -391,9 +391,7 @@ def gather_boundary_force_inputs(
     # shift and deform pass, so one cached tree per plate is built once per step instead of
     # the ~24 fresh builds this used to do. The argmin over neighbours reproduces the single
     # global-nearest the combined tree returned -- `neighbours` is in the same order the old
-    # concatenation used, so distance ties break identically. scipy's compiled batch query
-    # beats a pure-Python spherical-BVH recursion badly at this node count (tens of thousands
-    # of points per plate at real density), so there's no accelerator worth swapping in here.
+    # concatenation used, so distance ties break identically.
     workers = query_workers(n)
     own_tree = plate.get_node_kdtree() if cache is not None else None
     trees, distances, indices = [], [], []
@@ -413,7 +411,7 @@ def gather_boundary_force_inputs(
 
     kernel = getattr(_rust, "boundary_nearest_rs", None)
     if kernel is not None and spatial_index.RUST_AVAILABLE:
-        best_dist, best_owner, best_index = kernel(np.asarray(distances), np.asarray(indices, dtype=np.int64))
+        best_dist, best_owner, best_index = kernel(distances, indices)
     else:
         best_dist = np.full(n, np.inf)
         best_owner = np.full(n, -1, dtype=np.int64)

@@ -248,7 +248,7 @@ def test_rust_destination_pairs_match_python(monkeypatch):
     python = magma_transport._weighted_destination_pairs(origins, index, _range_rad())
     np.testing.assert_array_equal(native[0], python[0])
     np.testing.assert_array_equal(native[1], python[1])
-    np.testing.assert_allclose(native[2], python[2], rtol=1e-14, atol=0.0)
+    np.testing.assert_array_equal(native[2], python[2])
 
 
 def test_rust_allocation_matches_python_with_shared_caps(monkeypatch):
@@ -269,3 +269,32 @@ def test_rust_allocation_matches_python_with_shared_caps(monkeypatch):
             fallback = magma_transport._allocate_magma(parcels, dest, weights, volumes, index, banked)
         for got, expected in zip(native, fallback):
             np.testing.assert_array_equal(got, expected)
+
+
+def test_native_destination_search_does_not_build_scipy_tree(monkeypatch):
+    if not magma_transport.spatial_index.RUST_AVAILABLE or not hasattr(magma_transport._rust, "magma_destination_pairs_rs"):
+        import pytest
+        pytest.skip("Rust magma kernel unavailable")
+    def fail_tree(*args, **kwargs):
+        raise AssertionError("the native path should not build a scipy tree")
+    monkeypatch.setattr(magma_transport, "cKDTree", fail_tree)
+    index = _dest_index(np.array([[1.0, 0.0, 0.0]]), [20_000.0])
+    _, destinations, _ = magma_transport._weighted_destination_pairs(np.array([[1.0, 0.0, 0.0]]), index, _range_rad())
+    np.testing.assert_array_equal(destinations, [0])
+
+
+def test_invalid_magma_inputs_use_numpy_nan_semantics(monkeypatch):
+    from types import SimpleNamespace
+
+    def fail_native(*args, **kwargs):
+        raise AssertionError("nonfinite values must use the Python path")
+
+    monkeypatch.setattr(magma_transport, "_rust", SimpleNamespace(magma_allocate_rs=fail_native))
+    monkeypatch.setattr(magma_transport.spatial_index, "RUST_AVAILABLE", True)
+    index = _dest_index(np.array([[1.0, 0.0, 0.0]]), [np.nan])
+    with np.errstate(invalid="ignore"):
+        placed, realized = magma_transport._allocate_magma(
+            np.array([0]), np.array([0]), np.array([1.0]), np.array([1.0]), index, 1.0
+        )
+    assert np.isnan(placed[0])
+    assert np.isnan(realized[0])

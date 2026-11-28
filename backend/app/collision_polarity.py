@@ -65,9 +65,14 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from . import geometry, lithosphere, torque, trace
+from . import geometry, lithosphere, spatial_index, torque, trace
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from .lithosphere_plate import CONTINENTAL_CONTESTED_RETREAT_MIN_RUN, continental_arc_band
+
+try:
+    import mantle_bloom_rust as _rust
+except ImportError:
+    _rust = None
 
 if TYPE_CHECKING:
     from .world import World
@@ -608,9 +613,9 @@ def _observe(world: "World", by_id: dict, c: _Contact, mask: np.ndarray, source:
 
 
 def _front_component_labels(points: np.ndarray, link: float) -> np.ndarray:
-    kernel = getattr(torque._rust, "collision_front_labels_rs", None)
-    if kernel is not None and torque.spatial_index.RUST_AVAILABLE:
-        return kernel(np.ascontiguousarray(points, dtype=np.float64), link, torque.spatial_index.FUSED)
+    kernel = getattr(_rust, "collision_front_labels_rs", None)
+    if kernel is not None and spatial_index.RUST_AVAILABLE:
+        return kernel(np.ascontiguousarray(points, dtype=np.float64), link, spatial_index.FUSED)
     links = cKDTree(points).query_pairs(link, output_type="ndarray")
     n = len(points)
     graph = coo_matrix((np.ones(len(links)), (links[:, 0], links[:, 1])), shape=(n, n)) if len(links) else coo_matrix((n, n))

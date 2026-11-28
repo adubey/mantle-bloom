@@ -103,29 +103,41 @@ pub fn magma_destination_pairs_rs<'py>(
 #[pyfunction]
 pub fn boundary_nearest_rs<'py>(
     py: Python<'py>,
-    distances: PyReadonlyArray2<'py, f64>,
-    indices: PyReadonlyArray2<'py, i64>,
+    distances: Vec<PyReadonlyArray1<'py, f64>>,
+    indices: Vec<PyReadonlyArray1<'py, i64>>,
 ) -> PyResult<(
     Bound<'py, PyArray1<f64>>,
     Bound<'py, PyArray1<i64>>,
     Bound<'py, PyArray1<i64>>,
 )> {
-    if distances.shape() != indices.shape() {
+    let n = distances.first().map_or(0, |a| a.len());
+    if distances.len() != indices.len()
+        || distances.iter().any(|a| a.len() != n)
+        || indices.iter().any(|a| a.len() != n)
+    {
         return Err(PyValueError::new_err("distance and index shapes differ"));
     }
-    let (n_neighbours, n) = (distances.shape()[0], distances.shape()[1]);
-    let (ds, ids) = (distances.as_slice()?, indices.as_slice()?);
-    let (mut best, mut owner, mut index) = (vec![f64::INFINITY; n], vec![-1; n], vec![-1; n]);
-    for neighbour in 0..n_neighbours {
-        for i in 0..n {
-            let pos = neighbour * n + i;
-            if ds[pos] < best[i] {
-                best[i] = ds[pos];
-                owner[i] = neighbour as i64;
-                index[i] = ids[pos];
+    let ds = distances
+        .iter()
+        .map(|a| a.as_slice())
+        .collect::<Result<Vec<_>, _>>()?;
+    let ids = indices
+        .iter()
+        .map(|a| a.as_slice())
+        .collect::<Result<Vec<_>, _>>()?;
+    let (best, owner, index) = py.detach(|| {
+        let (mut best, mut owner, mut index) = (vec![f64::INFINITY; n], vec![-1; n], vec![-1; n]);
+        for neighbour in 0..ds.len() {
+            for i in 0..n {
+                if ds[neighbour][i] < best[i] {
+                    best[i] = ds[neighbour][i];
+                    owner[i] = neighbour as i64;
+                    index[i] = ids[neighbour][i];
+                }
             }
         }
-    }
+        (best, owner, index)
+    });
     Ok((
         PyArray1::from_vec(py, best),
         PyArray1::from_vec(py, owner),
@@ -259,7 +271,10 @@ pub fn gap_contains_rs<'py>(
                 let step = std::f64::consts::FRAC_PI_2 / n as f64;
                 let a = (alpha + std::f64::consts::FRAC_PI_4) / step;
                 let b = (beta + std::f64::consts::FRAC_PI_4) / step;
-                if (a - a.round()).abs() < 1e-10 || (b - b.round()).abs() < 1e-10 {
+                // At fine levels, scaling the angular calculation by n magnifies
+                // atan and division rounding; defer every near-edge point to NumPy (#1042).
+                let tolerance = 1e-10_f64.max(32.0 * n as f64 * f64::EPSILON);
+                if (a - a.round()).abs() < tolerance || (b - b.round()).abs() < tolerance {
                     uncertain[row] = true;
                 }
                 let i = (a.floor() as i64).clamp(0, n as i64 - 1);

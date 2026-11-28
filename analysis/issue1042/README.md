@@ -208,3 +208,35 @@ quiet machine and capture peak RSS. The primary measures are `Gathering boundary
 secondary. A change under 10% in a phase or 2% in total step time is inconclusive without
 replicates. A regression beyond those thresholds requires investigation rather than a speedup
 claim. No model metric is expected to move.
+
+### Tectonic phase profile results
+
+The preregistered profiles ran sequentially on the same 16 GB host, with no other heavy
+runs reported by the compute-budget check at the start of each arm. One warmup and three
+measured 100,000-year steps used diagnostic wind. Values below are seconds per measured step;
+the compact individual step samples and peak RSS are in `tectonic-phase-comparison.json`.
+Boundary gathering is summed across motion, collision and deform phases.
+
+| Measure | Young main | Young branch | Mature main | Mature branch |
+|---|---:|---:|---:|---:|
+| Gathering boundary forces | 0.1106 | 0.0982 | 0.1371 | 0.1202 |
+| Detecting collisions | 0.1555 | 0.1491 | 0.2123 | 0.2041 |
+| Finding gap points | 0.1625 | 0.0617 | 0.1955 | 0.0661 |
+| Moving magma | 0.0166 | 0.0075 | not observed | not observed |
+| Whole step, mean | 11.187 | 11.107 | 12.295 | 11.895 |
+| Peak RSS (MB) | 1,070.6 | 1,056.1 | 1,068.7 | 1,078.9 |
+
+Gap finding fell 62% young and 66% mature; boundary gathering fell 11% and 12%.
+The collision change and young total-step change are below the preregistered thresholds.
+Magma ran in the young sample only, so its mature performance remains unmeasured. These
+are single three-step profiles, not replicated timing estimates. The mature total-step
+reduction of 3.2% differs in direction from the earlier 1 Myr replay's 5.0% increase;
+shared-host variation and the diagnostic replay's different instrumentation prevent treating
+either result as a stable whole-step estimate without replication.
+
+These profiles measured the original kernel implementation at `7d19f71c`. Following peer
+review, the branch scales the gap edge guard with resolution, orders fallback magma pairs,
+constructs the scipy magma tree only when needed, falls back for non-finite allocation inputs,
+and passes cached boundary arrays to Rust without stacking copies. Repeat the mature replay
+and the young and mature candidate profiles after these fixes against the same recorded
+baselines before drawing conclusions about the revised code.
