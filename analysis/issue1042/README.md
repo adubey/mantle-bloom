@@ -174,3 +174,37 @@ additional control if the baseline and candidate diverge. Runtime and peak RSS a
 and a single run cannot establish small speed changes on a shared host. The kernels are
 expected to reduce their own time without a material increase in total step time or memory;
 changes under 2% of step time are inconclusive without replicates.
+
+### Tectonic replay result
+
+The baseline (`069d1d38`) and candidate (`c2f47644`) replayed the preregistered save
+for ten 100,000-year steps with `attribute_hm_ratchet.py <local-save> --myr 1
+--checkpoint-myr 0.1 --out <capture>`. All recorded non-timing checkpoint metrics,
+inventories, per-plate values, phase budgets and crust accounts, and step ledgers matched
+exactly. This checks the recorded quantities, not every byte of world state. Compact checkpoint
+values are in `tectonic-replay-comparison.json`.
+
+| At 68.9 Myr | Baseline | Candidate |
+|---|---:|---:|
+| Sea level (m) | -60.9579430402 | -60.9579430402 |
+| Land area (km²) | 171,941,407.993 | 171,941,407.993 |
+| Emergent continental area (km²) | 171,462,060.775 | 171,462,060.775 |
+| Mantle lithosphere volume (km³) | 40,616,446,488.161 | 40,616,446,488.161 |
+| Replay time (s) | 128.0 | 134.4 |
+| Peak RSS (MB) | 938.8 | 978.9 |
+
+The single candidate run was 5.0% slower and used 40.1 MB more peak RSS. This is not a
+controlled performance conclusion: lint and quality checks overlapped the baseline, and
+shared-host load was not constant. Profile the individual phases on both young and mature
+worlds, sequentially on an idle host, before claiming a speedup or accepting the regression.
+
+### Tectonic phase profiling plan
+
+Before collecting phase timings, compare `profile_phases.py --scenarios step --steps 3
+--warmup 1 --wind-model diagnostic` on baseline `069d1d38` and the candidate on both
+seed 0 at densities 4/4/2 and the mature save above. Run the four arms sequentially on a
+quiet machine and capture peak RSS. The primary measures are `Gathering boundary forces`,
+`Detecting collisions`, `Finding gap points`, and `Moving magma`; mean whole-step time is
+secondary. A change under 10% in a phase or 2% in total step time is inconclusive without
+replicates. A regression beyond those thresholds requires investigation rather than a speedup
+claim. No model metric is expected to move.
