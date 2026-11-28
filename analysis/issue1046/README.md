@@ -298,3 +298,24 @@ was 1,074 MB. The run overlapped another simulation under an explicit one-run co
 so its timing and RSS are descriptive and should not be compared directly with the idle
 baseline's 12.342 s total, 0.351 s climate and 960 MB RSS. The same candidate's mature profile
 above also overlapped other work. CI was cancelled at the owner's request before this profile.
+
+## Step 6 fault kernels: comparison plan
+
+Principle #2 (keep the planet moving at a useful pace) motivates replacing repeated fault
+geometry and transfer work with native kernels. The primary performance metric is the
+`Updating faults` phase, with total step time and peak RSS secondary. The baseline is the
+current `origin/main` and the candidate is this issue branch. Profile seed 0 and the same
+67.9 Myr mature save (SHA-256 `eff1f6d7abdfe46c7af5b45ab23f136f3fac591f4d95f3457017c1e7d933216b`)
+with diagnostic wind, one warmup and three measured 100,000-year steps. Run arms sequentially;
+record overlapping workloads and avoid interpreting overlapped timings as comparable. A
+change below 10% in the fault phase or 2% in total step time is inconclusive without
+replication.
+
+The conservation invariant is equal crust and continental-material volume by crust type for
+individual fault transfers. Numerical parity tests cover neighborhood ties and event order;
+the native transfer sums terms in a different order from NumPy's dot product, so model-output
+parity additionally requires a 1 Myr mature-save replay against the task-specific baseline,
+with 0.1 Myr checkpoints. Compare land area, sea level, crust and mantle inventories, and
+ledger closure at every checkpoint. Expect identical or numerically negligible differences;
+report any divergence rather than assuming bitwise parity. Timing and RSS are descriptive
+when other work overlaps.
