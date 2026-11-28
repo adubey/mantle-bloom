@@ -171,3 +171,23 @@ including glacier graphs with infinite off-ice values, and avoid unused erosion 
 These are single runs per arm; the differences are too small or variable to attribute a
 further speed or memory change to the review fixes. The large original routing improvement
 remains evident relative to the `f1b75db6` baseline above.
+
+## Step 4 climate kernels: comparison plan
+
+Principle #2 calls for reducing diagnostic climate time while preserving humidity, wind,
+current and precipitation fields. Compare baseline `31094ae7` with the climate branch on
+seed 0 and the same 67.9 Myr save (SHA-256 above), diagnostic wind, one warmup and three
+measured 100,000-year steps. Run each arm sequentially, recording climate phase time, total
+step time, and peak RSS. The kernel parity tests compare both wind directions, land and
+open-water cells, and periodic boundaries against the Python path. If model outputs differ,
+compare the mature save over 1 Myr at 0.1 Myr checkpoints before claiming parity. A single
+profile per arm is descriptive; replicate if the change is too small to distinguish from noise.
+
+For the 1 Myr replay, the primary invariants are land area, sea level, material volumes,
+and conservation-ledger values at each 0.1 Myr checkpoint. Expect zero or roundoff-level
+movement from the port; the test is deterministic, so repeatability rather than the ±2%
+inter-seed variation is the relevant reference. Any nonzero change will be reported and
+investigated, with differences greater than 1e-10 relative in continuous global metrics or
+any changed discrete area counted as a failed tight-parity expectation. This is a single-save
+numerical check, not evidence across seeds. If differences are near the threshold, repeat
+both arms to distinguish run variability from the port.
