@@ -159,3 +159,18 @@ rounds it, then index. With that fix (`942e56c3`):
 `combined`, `biome`, `elevation` (plain, and with the mountain and plains toggles) in Eckert IV,
 `combined` on the globe and `elevation` in Behrmann, rendered at 1100×611 from the loaded save
 in each tree: all six PNGs are byte-identical between `origin/main` and the branch.
+
+## Tectonic kernel comparison preregistration
+
+Principle 2 calls for reducing repeated boundary searches and numerical passes while preserving
+plate ownership and material budgets. Compare `origin/main` at `069d1d38` with the tectonic
+kernel branch on the mature seed 47235302 save at 67.9 Myr (SHA-256
+`eff1f6d7abdfe46c7af5b45ab23f136f3fac591f4d95f3457017c1e7d933216b`). Run ten
+100,000-year steps, sequentially, using `attribute_hm_ratchet.py --myr 1 --checkpoint-myr 0.1`.
+The primary invariant is matching land area, sea level, crust and mantle inventories, and
+material ledgers at each checkpoint; the target is bit-identical results, with any deviation
+investigated before accepting the port. The Python-fallback path on the candidate is an
+additional control if the baseline and candidate diverge. Runtime and peak RSS are secondary
+and a single run cannot establish small speed changes on a shared host. The kernels are
+expected to reduce their own time without a material increase in total step time or memory;
+changes under 2% of step time are inconclusive without replicates.
