@@ -1,5 +1,6 @@
 mod climate;
 mod distance;
+mod generation;
 mod eustasy;
 mod graph;
 mod hydrology;
@@ -37,5 +38,8 @@ fn mantle_bloom_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(hydrology::route_downstream_rs, m)?)?;
     m.add_function(wrap_pyfunction!(hydrology::routing_order_rs, m)?)?;
     m.add_function(wrap_pyfunction!(hydrology::sweep_river_reaches_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(generation::priority_flood_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(generation::nearest_distance_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(generation::label_component_count_rs, m)?)?;
     Ok(())
 }

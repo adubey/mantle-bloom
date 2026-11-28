@@ -44,7 +44,7 @@ from dataclasses import dataclass, fields
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import trace
+from . import _generation_rust, trace
 from .elevation_lines import PLANET_RADIUS_KM
 from .layout_lattice import Lattice, arc_km, cap_area_km2, lattice, poisson_disc
 from .noise import SphereNoise
@@ -471,7 +471,7 @@ def _continents(
     for k in range(n_c):
         in_core = (core >= 0) & (owners[np.maximum(core, 0)] == k)
         if np.any(in_core):
-            distance[:, k] = arc_km(cKDTree(lat.xyz[in_core]).query(lat.xyz, workers=-1)[0])
+            distance[:, k] = _nearest_km(lat.xyz[in_core], lat.xyz)
         else:
             distance[:, k] = np.arccos(np.clip(lat.xyz @ centres[k], -1.0, 1.0)) * PLANET_RADIUS_KM
     to_centre = np.arccos(np.clip(lat.xyz @ centres.T, -1.0, 1.0)) * PLANET_RADIUS_KM
@@ -495,6 +495,13 @@ def _continents(
     return continent
 
 
+def _nearest_km(sources: np.ndarray, points: np.ndarray) -> np.ndarray:
+    """Great-circle km to the nearest of `sources` for each of `points`."""
+    if _generation_rust.use_nearest(sources):
+        return _generation_rust.nearest_distance(sources, points)[0]
+    return arc_km(cKDTree(sources).query(points, workers=-1)[0])
+
+
 def _belts(lat: Lattice, core: np.ndarray, craton_continent: np.ndarray) -> np.ndarray:
     """Continent id of each belt point (-1 elsewhere): the non-craton points in the closure of
     a continent's cratons, or in the lens between two of them. Computed before the continent
@@ -508,13 +515,13 @@ def _belts(lat: Lattice, core: np.ndarray, craton_continent: np.ndarray) -> np.n
         mine = has_core & (craton_continent[np.maximum(core, 0)] == k)
         if not np.any(mine):
             continue
-        dilated = arc_km(cKDTree(lat.xyz[mine]).query(lat.xyz, workers=-1)[0]) <= BELT_CLOSURE_KM
+        dilated = _nearest_km(lat.xyz[mine], lat.xyz) <= BELT_CLOSURE_KM
         candidates = np.flatnonzero(dilated & ~has_core & (belt < 0))
         if len(candidates) == 0:
             continue
         inside = _lens(lat, core, np.unique(core[mine]), candidates)
         if not np.all(dilated):
-            inside |= arc_km(cKDTree(lat.xyz[~dilated]).query(lat.xyz[candidates], workers=-1)[0]) > BELT_CLOSURE_KM
+            inside |= _nearest_km(lat.xyz[~dilated], lat.xyz[candidates]) > BELT_CLOSURE_KM
         belt[candidates[inside]] = k
     return belt
 
@@ -529,8 +536,12 @@ def _lens(lat: Lattice, core: np.ndarray, cratons: np.ndarray, points: np.ndarra
     d1 = np.full(len(points), np.inf)
     d2 = np.full(len(points), np.inf)
     for craton in cratons:
-        chord = cKDTree(lat.xyz[core == craton]).query(lat.xyz[points], distance_upper_bound=bound, workers=-1)[0]
-        d = np.where(np.isfinite(chord), arc_km(np.where(np.isfinite(chord), chord, 0.0)), np.inf)
+        if _generation_rust.use_nearest(lat.xyz[core == craton]):
+            d = _generation_rust.nearest_distance(lat.xyz[core == craton], lat.xyz[points])[0]
+            d = np.where(d <= lens_km, d, np.inf)
+        else:
+            chord = cKDTree(lat.xyz[core == craton]).query(lat.xyz[points], distance_upper_bound=bound, workers=-1)[0]
+            d = np.where(np.isfinite(chord), arc_km(np.where(np.isfinite(chord), chord, 0.0)), np.inf)
         d2 = np.where(d < d1, d1, np.minimum(d2, d))
         d1 = np.minimum(d1, d)
     return d1 + d2 <= lens_km

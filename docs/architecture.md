@@ -11,7 +11,9 @@
   connected-ocean sea-level flood/bisection, via `hydroclimate/_lakes_rust.py` for lake
   component grouping, catchment roots, depression hierarchy events, and multi-member volume
   integration, via `hydroclimate/_routing_rust.py` for flow direction, DAG ordering, downstream
-  accumulation, and river-reservoir sweeps, and via
+  accumulation, and river-reservoir sweeps, via
+  `_generation_rust.py` for world generation's priority flood, small-source
+  nearest distances, and plate-label component counts (#1042), and via
   `_render_rust.py` for `combined`, `biome`, `elevation`, and `globe`
   rendering on a dedicated bounded `rayon` pool), Pillow
   (fallback and debug map rendering, see `render_image.py`), pytest.

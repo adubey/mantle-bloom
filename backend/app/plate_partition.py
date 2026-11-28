@@ -38,7 +38,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from . import trace
+from . import _generation_rust, trace
 from .layout_lattice import Lattice
 
 # Boundary-link costs: an ocean link is free; a belt link costs 1; a continental margin or
@@ -112,6 +112,8 @@ def boundary_cost(lat: Lattice, labels: np.ndarray, cost: np.ndarray, land: np.n
 
 def label_components(lat: Lattice, labels: np.ndarray) -> int:
     """Connected components of the 4-connected lattice with links cut between labels."""
+    if _generation_rust.has_kernel("label_component_count_rs"):
+        return _generation_rust.label_component_count(lat.adj_offsets, lat.adj_neighbours, labels)
     rows = lat.adj_rows
     same = labels[rows] == labels[lat.adj_neighbours]
     graph = coo_matrix((np.ones(int(same.sum())), (rows[same], lat.adj_neighbours[same])), shape=(lat.size, lat.size))
