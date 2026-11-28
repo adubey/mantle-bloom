@@ -409,7 +409,7 @@ def gather_boundary_force_inputs(
         distances.append(dist)
         indices.append(idx)
 
-    kernel = getattr(_rust, "boundary_nearest_rs", None)
+    kernel = getattr(_rust, "boundary_nearest_lists_rs", None)
     if kernel is not None and spatial_index.RUST_AVAILABLE:
         best_dist, best_owner, best_index = kernel(distances, indices)
     else:

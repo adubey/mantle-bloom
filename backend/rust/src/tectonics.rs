@@ -101,7 +101,7 @@ pub fn magma_destination_pairs_rs<'py>(
 
 /// Pick the first neighbour with the minimum distance, as NumPy's strict `<` update does.
 #[pyfunction]
-pub fn boundary_nearest_rs<'py>(
+pub fn boundary_nearest_lists_rs<'py>(
     py: Python<'py>,
     distances: Vec<PyReadonlyArray1<'py, f64>>,
     indices: Vec<PyReadonlyArray1<'py, i64>>,

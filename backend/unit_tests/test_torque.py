@@ -976,7 +976,13 @@ def test_the_neighbour_side_of_a_contact_is_its_nearest_nodes_own_crust(monkeypa
     inputs = torque.gather_boundary_force_inputs(Own(own), [land, sea], spacing, 3 * spacing)
     np.testing.assert_array_equal(inputs.neighbor_plate_id, [2, 2, 3, 3])
     np.testing.assert_array_equal(inputs.neighbor_is_oceanic, [True, False, False, True])
-    monkeypatch.setattr(torque, "_rust", None)
+    from types import SimpleNamespace
+
+    # A stale draft extension has the old matrix signature, so it must not be called.
+    def old_kernel(*args):
+        raise AssertionError("stale boundary kernel should not be used")
+
+    monkeypatch.setattr(torque, "_rust", SimpleNamespace(boundary_nearest_rs=old_kernel))
     fallback = torque.gather_boundary_force_inputs(Own(own), [land, sea], spacing, 3 * spacing)
     for name in ("dist_to_neighbor", "direction_to_neighbor", "neighbor_is_oceanic", "neighbor_omega", "neighbor_plate_id", "neighbor_node_index"):
         np.testing.assert_array_equal(getattr(inputs, name), getattr(fallback, name))
@@ -1243,12 +1249,12 @@ def test_world_without_the_force_form_fields_loads_with_todays_forms():
 
 
 def test_rust_boundary_nearest_preserves_ties_and_missing_neighbours():
-    if torque._rust is None or not hasattr(torque._rust, "boundary_nearest_rs"):
+    if torque._rust is None or not hasattr(torque._rust, "boundary_nearest_lists_rs"):
         import pytest
         pytest.skip("Rust boundary kernel unavailable")
     distances = np.array([[1.0, np.inf, 2.0, np.inf], [1.0, 3.0, 1.0, np.inf]])
     indices = np.array([[4, -1, 5, -1], [8, 9, 10, -1]], dtype=np.int64)
-    d, owner, index = torque._rust.boundary_nearest_rs(list(distances), list(indices))
+    d, owner, index = torque._rust.boundary_nearest_lists_rs(list(distances), list(indices))
     np.testing.assert_array_equal(d, [1.0, 3.0, 1.0, np.inf])
     np.testing.assert_array_equal(owner, [0, 1, 1, -1])
     np.testing.assert_array_equal(index, [4, 9, 10, -1])

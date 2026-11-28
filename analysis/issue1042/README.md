@@ -240,3 +240,13 @@ constructs the scipy magma tree only when needed, falls back for non-finite allo
 and passes cached boundary arrays to Rust without stacking copies. Repeat the mature replay
 and the young and mature candidate profiles after these fixes against the same recorded
 baselines before drawing conclusions about the revised code.
+
+### Replay after review fixes
+
+The same 1 Myr replay was repeated on `82905131` after the review fixes. All recorded
+non-timing checkpoint metrics, inventories and ledgers again matched the `069d1d38` baseline
+exactly. The replay took 128.8 s and peaked at 1,060.4 MB RSS, versus 128.0 s and 938.8 MB
+for baseline; these single shared-host measurements do not establish a runtime or memory
+trend. Compact checkpoint values are in `tectonic-review-fixed-replay.json`. The subsequent
+boundary export rename changes only the stale-build dispatch name, not the numerical kernel;
+the matching and missing-export paths have targeted tests.
