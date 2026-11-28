@@ -422,7 +422,11 @@ pub fn step_ice<'py>(
     let n = area.len();
     let dt_myr = years / 1_000_000.0;
 
+    // Opt-in per-section timing for march profiling (#1041); off by default and
+    // read once per call so a probe run can toggle it between steps.
+    let probe = std::env::var_os("MANTLE_BLOOM_ICE_PROFILE").is_some();
     let result = py.detach(|| {
+        let t0 = std::time::Instant::now();
         let mut bed = vec![0.0_f64; n];
         let mut opening_depth = vec![0.0_f64; n];
         let mut h0 = vec![0.0_f64; n];
@@ -536,6 +540,7 @@ pub fn step_ice<'py>(
             local_any
         };
 
+        let t_setup = t0.elapsed();
         let opening_m3 = compensated_dot(&opening_depth, area);
 
         let mut depth = vec![0.0_f64; n];
@@ -565,17 +570,41 @@ pub fn step_ice<'py>(
 
             let mut seeds = positive.clone();
             let mut touches_out = vec![false; n];
-            for i in 0..n {
-                let start = rust_graph.indptr[i] as usize;
-                let end = rust_graph.indptr[i + 1] as usize;
-                let mut sum_out = 0.0_f64;
-                for e in start..end {
-                    if !positive[rust_graph.indices[e] as usize] {
-                        sum_out += rust_graph.lengths[e];
+            // Per-node independent edge scan (#1041): chunked in parallel on
+            // large clouds, identical result to the serial scan.
+            if n >= 4096 {
+                let chunk = 4096;
+                touches_out
+                    .par_chunks_mut(chunk)
+                    .enumerate()
+                    .for_each(|(chunk_idx, t_c)| {
+                        let base = chunk_idx * chunk;
+                        for (j, t) in t_c.iter_mut().enumerate() {
+                            let i = base + j;
+                            let start = rust_graph.indptr[i] as usize;
+                            let end = rust_graph.indptr[i + 1] as usize;
+                            let mut sum_out = 0.0_f64;
+                            for e in start..end {
+                                if !positive[rust_graph.indices[e] as usize] {
+                                    sum_out += rust_graph.lengths[e];
+                                }
+                            }
+                            *t = sum_out > 0.0;
+                        }
+                    });
+            } else {
+                for i in 0..n {
+                    let start = rust_graph.indptr[i] as usize;
+                    let end = rust_graph.indptr[i + 1] as usize;
+                    let mut sum_out = 0.0_f64;
+                    for e in start..end {
+                        if !positive[rust_graph.indices[e] as usize] {
+                            sum_out += rust_graph.lengths[e];
+                        }
                     }
-                }
-                if sum_out > 0.0 {
-                    touches_out[i] = true;
+                    if sum_out > 0.0 {
+                        touches_out[i] = true;
+                    }
                 }
             }
 
@@ -618,6 +647,7 @@ pub fn step_ice<'py>(
                 }
             }
 
+            let t_comp = t0.elapsed();
             let (phi, sources) = signed_distance(
                 n,
                 &rust_graph.indptr,
@@ -629,6 +659,7 @@ pub fn step_ice<'py>(
                 dijkstra_limit_m,
             );
 
+            let t_dist = t0.elapsed();
             let mut dom_nodes_all: Vec<Vec<usize>> = vec![Vec::new(); num_bodies];
             for i in 0..n {
                 let lbl = if members[i] {
@@ -688,6 +719,7 @@ pub fn step_ice<'py>(
                 }
             }
 
+            let t_dom = t0.elapsed();
             let mut ordered_outs: Vec<Option<BodyOut>> = (0..num_bodies).map(|_| None).collect();
 
             for &b in &uniform_indices {
@@ -799,6 +831,18 @@ pub fn step_ice<'py>(
                 out_b.closing_m3 = closing_acc.finish();
                 body_outs.push(out_b);
             }
+            if probe {
+                eprintln!(
+                    "MANTLE_BLOOM_ICE_PROFILE setup_us={} comp_us={} dist_us={} dom_us={} solve_scatter_us={} nbodies={} dom_nodes={}",
+                    t_setup.as_micros(),
+                    (t_comp - t_setup).as_micros(),
+                    (t_dist - t_comp).as_micros(),
+                    (t_dom - t_dist).as_micros(),
+                    (t0.elapsed() - t_dom).as_micros(),
+                    num_bodies,
+                    total_dom_nodes
+                );
+            }
         }
 
         for i in 0..n {
@@ -808,6 +852,12 @@ pub fn step_ice<'py>(
                 bare_snowmelt_m3[i] += water;
                 snow_melted_acc.add(water);
             }
+        }
+        if probe {
+            eprintln!(
+                "MANTLE_BLOOM_ICE_PROFILE total_us={} bodies_done",
+                t0.elapsed().as_micros()
+            );
         }
         let snow_melted_m3 = snow_melted_acc.finish();
 
@@ -919,6 +969,12 @@ pub fn step_ice<'py>(
         let ocean_retained_m3 = ocean_retained_acc.finish();
         let retained_m3 = retained_acc.finish();
         let bare_melted_m3 = bare_melted_acc.finish();
+        if probe {
+            eprintln!(
+                "MANTLE_BLOOM_ICE_PROFILE final_us={}",
+                t0.elapsed().as_micros()
+            );
+        }
 
         (
             depth,

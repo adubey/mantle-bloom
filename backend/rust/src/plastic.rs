@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use rayon::prelude::*;
+
 use crate::climate::{
     clip_min, compensated_dot, floating_water_depth_scalar, is_grounded_scalar, node_rates_scalar,
     NeumaierSum, FLOTATION_RATIO, GLACIER_MAX_DEPTH_M, ICE_FLOTATION_PASSES,
@@ -796,7 +798,124 @@ pub fn build_local_domain(
     let mut total_edges = 0usize;
     for &u in dom_nodes {
         total_edges += (indptr[u + 1] - indptr[u]) as usize;
+        sub_indptr.push(total_edges as u32);
     }
+
+    // The gathers below are per-node independent and dominate the march's domain
+    // build on large bodies (#1041): collect each node's edges and fields in
+    // parallel, then concatenate in node order, so the result is identical to
+    // the serial build. Small domains stay serial to avoid rayon overhead.
+    let edge_part = |&u: &usize| {
+        let phi_u = phi[u];
+        let start = indptr[u] as usize;
+        let end = indptr[u + 1] as usize;
+        let deg = end - start;
+        let mut p_nbr = Vec::with_capacity(deg);
+        let mut p_len = Vec::with_capacity(deg);
+        let mut p_phi = Vec::with_capacity(deg);
+        let mut p_bed = Vec::with_capacity(deg);
+        let mut p_cap = Vec::with_capacity(deg);
+        let mut p_ocean = Vec::with_capacity(deg);
+        let mut wall = false;
+        for e in start..end {
+            let v = indices[e] as usize;
+            let lv = global_to_local[v];
+            let len_e = lengths[e];
+            p_nbr.push(lv);
+            p_len.push(len_e);
+            if lv < 0 {
+                wall = true;
+                p_phi.push(phi_u + len_e);
+                p_cap.push(0.5);
+            } else {
+                p_phi.push(phi[v]);
+                p_cap.push(1.0);
+            }
+            p_bed.push(bed[v]);
+            p_ocean.push(is_ocean[v]);
+        }
+        (p_nbr, p_len, p_phi, p_bed, p_cap, p_ocean, wall)
+    };
+    let node_part = |&u: &usize| {
+        (
+            phi[u],
+            bed[u],
+            c[u],
+            area[u],
+            floating_water_depth_scalar(bed[u], sea_level_m, is_ocean[u]),
+            is_ocean[u],
+            precip[u],
+            temp_c[u],
+            amp_c[u],
+            frictional.map(|f| f[u]),
+            bed_frozen_snow.map(|b| b[u]),
+            bare_acc_global[u],
+            bare_sm_global[u],
+        )
+    };
+    // Chunked parallel gather: one task per block of nodes (each block builds
+    // its parts serially), so task and allocation overhead stay amortized.
+    let (edge_parts, node_parts) = if m >= 4096 {
+        let block = 2048;
+        let blocks: Vec<(usize, usize)> = (0..m)
+            .step_by(block)
+            .map(|s| (s, (s + block).min(m)))
+            .collect();
+        rayon::join(
+            || {
+                blocks
+                    .par_iter()
+                    .map(|&(s, e)| {
+                        let cap = (sub_indptr[e] - sub_indptr[s]) as usize;
+                        let mut b_nbr = Vec::with_capacity(cap);
+                        let mut b_len = Vec::with_capacity(cap);
+                        let mut b_phi = Vec::with_capacity(cap);
+                        let mut b_bed = Vec::with_capacity(cap);
+                        let mut b_cap = Vec::with_capacity(cap);
+                        let mut b_ocean = Vec::with_capacity(cap);
+                        let mut wall = false;
+                        for &u in &dom_nodes[s..e] {
+                            let phi_u = phi[u];
+                            let start = indptr[u] as usize;
+                            let end = indptr[u + 1] as usize;
+                            for e in start..end {
+                                let v = indices[e] as usize;
+                                let lv = global_to_local[v];
+                                let len_e = lengths[e];
+                                b_nbr.push(lv);
+                                b_len.push(len_e);
+                                if lv < 0 {
+                                    wall = true;
+                                    b_phi.push(phi_u + len_e);
+                                    b_cap.push(0.5);
+                                } else {
+                                    b_phi.push(phi[v]);
+                                    b_cap.push(1.0);
+                                }
+                                b_bed.push(bed[v]);
+                                b_ocean.push(is_ocean[v]);
+                            }
+                        }
+                        (b_nbr, b_len, b_phi, b_bed, b_cap, b_ocean, wall)
+                    })
+                    .collect::<Vec<_>>()
+            },
+            || {
+                blocks
+                    .par_iter()
+                    .map(|&(s, e)| dom_nodes[s..e].iter().map(node_part).collect::<Vec<_>>())
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>()
+            },
+        )
+    } else {
+        (
+            dom_nodes.iter().map(edge_part).collect::<Vec<_>>(),
+            dom_nodes.iter().map(node_part).collect::<Vec<_>>(),
+        )
+    };
 
     let mut nbr = Vec::with_capacity(total_edges);
     let mut length = Vec::with_capacity(total_edges);
@@ -805,29 +924,14 @@ pub fn build_local_domain(
     let mut nbr_cap = Vec::with_capacity(total_edges);
     let mut nbr_ocean = Vec::with_capacity(total_edges);
     let mut has_wall = false;
-
-    for &u in dom_nodes {
-        let phi_u = phi[u];
-        let start = indptr[u] as usize;
-        let end = indptr[u + 1] as usize;
-        for e in start..end {
-            let v = indices[e] as usize;
-            let lv = global_to_local[v];
-            let len_e = lengths[e];
-            nbr.push(lv);
-            length.push(len_e);
-            if lv < 0 {
-                has_wall = true;
-                nbr_phi.push(phi_u + len_e);
-                nbr_cap.push(0.5);
-            } else {
-                nbr_phi.push(phi[v]);
-                nbr_cap.push(1.0);
-            }
-            nbr_bed.push(bed[v]);
-            nbr_ocean.push(is_ocean[v]);
-        }
-        sub_indptr.push(nbr.len() as u32);
+    for (p_nbr, p_len, p_phi, p_bed, p_cap, p_ocean, wall) in edge_parts {
+        nbr.extend(p_nbr);
+        length.extend(p_len);
+        nbr_phi.extend(p_phi);
+        nbr_bed.extend(p_bed);
+        nbr_cap.extend(p_cap);
+        nbr_ocean.extend(p_ocean);
+        has_wall |= wall;
     }
 
     let mut l_phi = Vec::with_capacity(m);
@@ -847,8 +951,7 @@ pub fn build_local_domain(
     let mut phi_min = f64::INFINITY;
     let mut phi_max = f64::NEG_INFINITY;
 
-    for &u in dom_nodes {
-        let pu = phi[u];
+    for (pu, bd, cc, ar, wd, oc, pr, te, am, fr, bf, ba, bs) in node_parts {
         if pu < phi_min {
             phi_min = pu;
         }
@@ -856,22 +959,22 @@ pub fn build_local_domain(
             phi_max = pu;
         }
         l_phi.push(pu);
-        l_bed.push(bed[u]);
-        l_c.push(c[u]);
-        l_area.push(area[u]);
-        l_wd.push(floating_water_depth_scalar(bed[u], sea_level_m, is_ocean[u]));
-        l_ocean.push(is_ocean[u]);
-        l_precip.push(precip[u]);
-        l_temp.push(temp_c[u]);
-        l_amp.push(amp_c[u]);
-        if let (Some(ref mut vf), Some(f)) = (&mut l_fric, frictional) {
-            vf.push(f[u]);
+        l_bed.push(bd);
+        l_c.push(cc);
+        l_area.push(ar);
+        l_wd.push(wd);
+        l_ocean.push(oc);
+        l_precip.push(pr);
+        l_temp.push(te);
+        l_amp.push(am);
+        if let (Some(ref mut vf), Some(f)) = (&mut l_fric, fr) {
+            vf.push(f);
         }
-        if let (Some(ref mut vb), Some(b)) = (&mut l_bfs, bed_frozen_snow) {
-            vb.push(b[u]);
+        if let (Some(ref mut vb), Some(b)) = (&mut l_bfs, bf) {
+            vb.push(b);
         }
-        bare_acc.push(bare_acc_global[u]);
-        bare_sm.push(bare_sm_global[u]);
+        bare_acc.push(ba);
+        bare_sm.push(bs);
     }
 
     LocalDomain {
