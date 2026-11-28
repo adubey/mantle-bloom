@@ -886,3 +886,8 @@ def test_margin_hints_leave_a_marched_ice_step_bit_identical(monkeypatch):
         np.testing.assert_array_equal(t1, t0)
         assert g1 == g0
     assert len(built) < plain_built
+
+
+def test_stable_glacier_dot_preserves_small_volume_terms():
+    terms = np.array([1e16, 1.0, -1e16])
+    assert ice_sheet._stable_dot(terms, np.ones(3)) == 1.0
