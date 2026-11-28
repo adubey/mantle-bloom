@@ -2112,3 +2112,22 @@ def test_audit_world_holds_tracers_to_columns_and_books_phase():
     assert _buoyant_live(ocean) + _buoyant_live(continent) == pytest.approx(
         float(np.dot(np.full(ocean.node_count(), 2_000.0), ocean_areas)), rel=1e-9
     )
+
+
+def test_nearest_node_over_matches_one_concatenated_index():
+    """`_nearest_node_over` across per-plate indexes equals one index over their concatenated
+    nodes, exact cross-plate ties included (#1042)."""
+    from app.spatial_index import SpatialIndex
+
+    rng = np.random.default_rng(1042)
+    clouds = [rng.normal(size=(n, 3)) for n in (40, 1, 75)]
+    clouds = [c / np.linalg.norm(c, axis=1)[:, None] for c in clouds]
+    clouds[2][5] = clouds[0][7]  # a node two plates share exactly
+    queries = rng.normal(size=(200, 3))
+    queries = np.vstack([queries / np.linalg.norm(queries, axis=1)[:, None], clouds[0][7]])
+    dist, where = quad_tectonics._nearest_node_over([SpatialIndex(c) for c in clouds], queries)
+    joined = np.concatenate(clouds)
+    want_dist, want_idx = SpatialIndex(joined).query(queries)
+    np.testing.assert_array_equal(dist, want_dist)
+    np.testing.assert_array_equal(where, joined[want_idx])
+    assert dist[-1] == 0.0

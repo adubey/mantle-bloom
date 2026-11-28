@@ -91,7 +91,7 @@ shared storage.
 
 **Terrain-derived; wind/currents/temperature CFD-sourced, humidity/precipitation diagnostic.**
 Elevation/is_ocean are resampled from scratch on every call, from whatever the *current* plate
-elevation/crust_type happens to be (the same `cKDTree` nearest-neighbor sampling
+elevation/crust_type happens to be (the same `SpatialIndex` nearest-neighbor sampling
 `_render_grid_arrays` already uses) -- there's no persistent terrain field of climate's own to
 keep in sync, since terrain itself already persists incrementally on the plates. `is_ocean`
 comes from last step's hydrology cache (`hydrology.sample_is_ocean`), so an enclosed lake below
@@ -171,7 +171,7 @@ first and closing the loop only for the final consumer-facing fields:
    (real boundary currents have a Coriolis-preferred circulation direction), then smoothed
    along the coast (land-excluding Jacobi averaging, re-deflected each pass, so the effect
    propagates along a coastline rather than staying a single cell deep). **Land swirl**:
-   every ocean cell gets a tangential contribution from its *nearest land cell* (`cKDTree`,
+   every ocean cell gets a tangential contribution from its *nearest land cell* (`SpatialIndex`,
    nearest-cell-based rather than landmass-grouped), ramping from 0 at the coast to a peak then
    decaying with distance, direction matching the coastal deflection's hemisphere sense so
    the two agree. **Circumglobal boost**: a speedup on any row with zero land cells anywhere
@@ -189,7 +189,7 @@ first and closing the loop only for the final consumer-facing fields:
 8. **Air temperature** -- the land baseline's own solar-heating formula, pulled toward the
    *nearest ocean cell's* final temperature by a distance-based (`exp` e-folding) falloff:
    "moderating effect of oceans," literally, right down to the "nearest ocean and its
-   temperature" query being a `cKDTree` chord-distance search -- true 3D distance, so no
+   temperature" query being a `SpatialIndex` chord-distance search -- true 3D distance, so no
    pole/antimeridian special-casing is needed the way a lat/lon-tangent-plane BFS search would
    require. Land temperature itself is never moderated -- only air temperature is.
 9. **Humidity** -- near-surface specific humidity in g/kg (`ClimateFields.humidity_g_kg`). Over

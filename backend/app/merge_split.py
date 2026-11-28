@@ -32,7 +32,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.cluster.vq import kmeans2
-from scipy.spatial import cKDTree
 
 from . import (
     collision_polarity,
@@ -53,6 +52,7 @@ from .elevation_lines import (
     line_spacing_rad,
 )
 from .plates import Plate, query_workers
+from .spatial_index import SpatialIndex
 
 if TYPE_CHECKING:
     from .world import World
@@ -318,7 +318,7 @@ class _ContactIndex:
         self.plates = plates
         self._points: dict[int, np.ndarray] = {}
         self._spheres: dict[int, tuple[np.ndarray, float]] = {}
-        self._trees: dict[int, cKDTree] = {}
+        self._trees: dict[int, SpatialIndex] = {}
 
     def invalidate(self, plate: Plate) -> None:
         for cache in (self._points, self._spheres, self._trees):
@@ -341,7 +341,7 @@ class _ContactIndex:
             if float(geometry.angular_distance(centre, other_centre)) - spread - other_spread > radius_rad:
                 continue
             if key not in self._trees:
-                self._trees[key] = cKDTree(self._points[key])
+                self._trees[key] = SpatialIndex(self._points[key])
             # Chord distance; angles this small make it the arc to well within tolerance.
             dist, _ = self._trees[key].query(points)
             found.append((plate, int(np.count_nonzero(dist <= radius_rad)), float(dist.min())))
@@ -424,7 +424,7 @@ def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
                 points[p.plate_id] = p.all_points_and_elevation()[0][mask]
     continental = [p for p in world.plates if p.plate_id in points]
     spheres = {pid: geometry.bounding_sphere(pts) for pid, pts in points.items()}
-    trees: dict[int, cKDTree] = {}
+    trees: dict[int, SpatialIndex] = {}
 
     pairs = []
     for i, a in enumerate(continental):
@@ -440,7 +440,7 @@ def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
                 continue  # no point in either cloud can possibly be within contact distance
 
             if b.plate_id not in trees:
-                trees[b.plate_id] = cKDTree(pb)
+                trees[b.plate_id] = SpatialIndex(pb)
 
             # Same triangle-inequality reasoning as the pair-level bounding-sphere prune
             # above, just applied per point: a point of `pa` farther than rb +

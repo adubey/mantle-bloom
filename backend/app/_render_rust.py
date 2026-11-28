@@ -8,11 +8,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.spatial import cKDTree
 
 from . import geometry, plates, projections
 from .elevation_lines import line_spacing_rad
 from .hydroclimate import hydrology, ice_sheet
+from .spatial_index import SpatialIndex
 
 if TYPE_CHECKING:
     from .world import World
@@ -391,7 +391,7 @@ def build_render_snapshot(
             if shared is not None and shared[0].shape[0] == all_points.shape[0]:
                 tree = shared[1]
             else:
-                tree = cKDTree(all_points)
+                tree = SpatialIndex(all_points)
         terrain_relief = np.ascontiguousarray(
             render_image._classify_terrain_relief(all_points, all_elevation, tree, world.sea_level_m),
             dtype=np.uint8,

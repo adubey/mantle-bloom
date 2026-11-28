@@ -1,5 +1,4 @@
 pub mod biomes;
-pub mod kdtree;
 pub mod projection;
 pub mod raster;
 
@@ -25,7 +24,6 @@ use crate::render::biomes::{
     PERENNIAL_COVER_HIGH, PERENNIAL_COVER_LOW, POLAR_SEA_ICE_FRACTION, SEAWATER_FREEZING_C,
     SHELF_RANGE_RAD,
 };
-use crate::render::kdtree::KdTree;
 use crate::render::projection::{
     build_elevation_lattice, fit_view, latlon_to_xyz, project_offset, project_point,
     projected_climate_grid, rotate_point, to_pixel, xyz_to_latlon, BEHRMANN_STANDARD_PARALLEL,
@@ -41,6 +39,7 @@ use crate::render::raster::{
     RELIEF_BLEND_MAX, RELIEF_ELEVATION_RANGE_M, RIVER_COLOR_RGB, SEA_COLOR_RGB, TERRAIN_MOUNTAIN,
     TERRAIN_OVERLAY_ALPHA, TERRAIN_PLAINS_PLATEAU,
 };
+use crate::spatial::kdtree::KdTree;
 
 const GLACIER_VISIBLE_DEPTH_M: f64 = 10.0;
 const LAKE_MIN_VISIBLE_DEPTH_M: f64 = 1.0;

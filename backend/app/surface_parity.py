@@ -68,6 +68,7 @@ from . import (
 from .hydroclimate import erosion, eustasy, geology, hydrology, stranded_basins, volcanism
 from .elevation_lines import PLANET_RADIUS_KM, line_spacing_rad
 from .plates import Plate
+from .spatial_index import SpatialIndex
 from .sparse_quad_patch import (
     PlateWithSparseQuadPatch,
     _corner_coordinates,
@@ -430,8 +431,8 @@ def derived_equal(a, b) -> bool:
     (by indexed data), and plain objects (by attributes)."""
     if a is None or b is None:
         return a is b
-    if isinstance(a, cKDTree):
-        return isinstance(b, cKDTree) and np.array_equal(a.data, b.data)
+    if isinstance(a, (cKDTree, SpatialIndex)):
+        return type(a) is type(b) and np.array_equal(a.data, b.data)
     if isinstance(a, np.ndarray) or isinstance(b, np.ndarray):
         a, b = np.asarray(a), np.asarray(b)
         return a.shape == b.shape and np.array_equal(a, b, equal_nan=a.dtype.kind == "f")
@@ -479,7 +480,7 @@ def stale_world_caches(world) -> list[str]:
         tree = render[3]
         if not np.array_equal(render[0], points):
             stale.append("node_kdtree_cache")
-        elif isinstance(tree, cKDTree) and not np.array_equal(tree.data, points):
+        elif isinstance(tree, (cKDTree, SpatialIndex)) and not np.array_equal(tree.data, points):
             stale.append("node_kdtree_cache")
     index = world.node_healpix_index_cache
     if index is not None and len(points):

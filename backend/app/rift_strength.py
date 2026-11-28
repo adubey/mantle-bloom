@@ -20,9 +20,9 @@ from pathlib import Path
 import numpy as np
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import dijkstra
-from scipy.spatial import cKDTree
 
 from . import lithosphere, rheology, thin_shell
+from .spatial_index import SpatialIndex
 
 RADIUS_M = lithosphere.PLANET_RADIUS_M
 YEAR_PER_MYR = 1.0e6
@@ -250,9 +250,8 @@ def disk_average_matrix(points, areas, radius_m) -> csr_matrix:
     """Row-stochastic area-weighted average over the cells within `radius_m` (inclusive of itself). Softening is
     averaged over it so a band cannot localize below the disk's width, whatever the cell spacing."""
     chord = 2.0 * np.sin(0.5 * radius_m / RADIUS_M)
-    neighbours = cKDTree(points).query_ball_point(points, chord * (1.0 + 1e-6))
-    rows = np.repeat(np.arange(len(points)), [len(v) for v in neighbours])
-    cols = np.concatenate([np.asarray(v, dtype=np.int64) for v in neighbours])
+    indptr, cols = SpatialIndex(points).query_ball_point_csr(points, chord * (1.0 + 1e-6))
+    rows = np.repeat(np.arange(len(points)), np.diff(indptr))
     weights = areas[cols]
     totals = np.bincount(rows, weights=weights, minlength=len(points))
     return csr_matrix((weights / totals[rows], (rows, cols)), shape=(len(points), len(points)))

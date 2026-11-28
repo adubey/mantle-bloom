@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 import time
 
 import numpy as np
-from scipy.spatial import ConvexHull, QhullError, cKDTree
+from scipy.spatial import ConvexHull, QhullError
 
 from . import (
     collision_polarity,
@@ -44,6 +44,7 @@ from . import lithosphere_plate
 from . import synthetic_relief as synthetic_relief_mod
 from .lithosphere_plate import generate_plates
 from .plates import Plate, gather_node_positions, query_workers
+from .spatial_index import SpatialIndex
 
 DEFAULT_MANTLE_CENTERS = 8
 DEFAULT_AXIAL_TILT_DEG = 23.5
@@ -387,7 +388,7 @@ class World:
     # world positions and elevations can both have changed since the last build) and rebuilt
     # lazily on first use after that. None means "not built yet this step," not "no land" --
     # distance_from_land_approx itself is what tells those two cases apart.
-    land_kdtree_cache: cKDTree | None = None
+    land_kdtree_cache: SpatialIndex | None = None
     # The render path's full node-cloud k-d tree (a cKDTree over plates.collect_all_points'
     # concatenated node positions -- ~131 K at node_density 4), paired with the concatenated
     # (points, elevation, owner) arrays it indexes into -- see render_image._node_cloud_and_tree.
@@ -404,7 +405,7 @@ class World:
     # The 4th slot is a `cKDTree` under the default "kdtree" node_cloud_resample_mode, or a
     # `healpix_grid.NodePixelIndex` under "healpix" -- both expose the same `.query()` shape
     # every caller here actually uses (see render_image._node_cloud_and_tree).
-    node_kdtree_cache: tuple[np.ndarray, np.ndarray, np.ndarray, cKDTree | healpix_grid.NodePixelIndex] | None = None
+    node_kdtree_cache: tuple[np.ndarray, np.ndarray, np.ndarray, SpatialIndex | healpix_grid.NodePixelIndex] | None = None
     # The *positions-only* half of the cache above -- (all_points, cKDTree over them), no
     # elevation/owner -- shared between climate.py's own per-step resample
     # (`_sample_elevation_and_crust`, which runs early in a step, before erosion has finished
@@ -416,7 +417,7 @@ class World:
     # still about to change when climate.py builds this. Reset alongside node_kdtree_cache
     # (same invalidation event: a node moved). Persisted like the other caches but dropped on
     # load (persistence._drop_derived_caches).
-    node_position_tree_cache: tuple[np.ndarray, cKDTree] | None = None
+    node_position_tree_cache: tuple[np.ndarray, SpatialIndex] | None = None
     # "healpix" node_cloud_resample_mode's own caches, same invalidation event (a node moved)
     # as node_kdtree_cache/node_position_tree_cache above, reset alongside them. Split into two
     # because they vary on different things: the `HealpixGrid` itself (keyed by nside, which
@@ -436,7 +437,7 @@ class World:
     # 4th slot. `query_ball_point` has no HEALPix-pixel-index equivalent (issue #133 excludes
     # this call from scope), so this is a real `cKDTree`, built lazily only when the Elevation
     # view's relief toggles are on. Reset alongside the caches above.
-    node_kdtree_relief_cache: cKDTree | None = None
+    node_kdtree_relief_cache: SpatialIndex | None = None
     # Per-node display hillshade from the terrain and grounded glacier surface, reused by
     # Elevation and Combined. Reset on a terrain step or a sea-level control change that
     # can change grounding (render_image._hillshade_for_world, #1014).
@@ -715,7 +716,7 @@ class World:
         return dist
 
 
-def _build_land_kdtree(world: World) -> cKDTree | None:
+def _build_land_kdtree(world: World) -> SpatialIndex | None:
     """Every land node's (elevation > world.sea_level_m) world position, across every
     plate, gathered via Plate's own public all_points_and_elevation() (a bulk per-plate
     array read, not a per-node point object) and indexed for World.distance_from_land_approx.
@@ -729,12 +730,10 @@ def _build_land_kdtree(world: World) -> cKDTree | None:
     land_points = np.concatenate(chunks, axis=0) if chunks else np.zeros((0, 3))
     if len(land_points) == 0:
         return None
-    # balanced_tree=False/compact_nodes=False -- same build-time speedup hydrology.py's/
-    # plates.py's own per-plate cKDTrees use: land_points forms contiguous coastal blobs
-    # rather than uniformly-scattered points, and the default (True/True) construction
-    # degrades badly on that kind of clustered data (benchmarked ~8x slower query for a
-    # ~45k-point land tree of this shape).
-    return cKDTree(land_points, balanced_tree=False, compact_nodes=False)
+    # land_points forms contiguous coastal blobs rather than uniformly-scattered points: a
+    # cKDTree's default (balanced, compact) build degraded ~8x on that shape, which is why
+    # this used balanced_tree=False. The shared index's tree is unaffected (#1042).
+    return SpatialIndex(land_points)
 
 
 # Longest a streamed generate/step/animation run goes without yielding a line while one
@@ -821,7 +820,7 @@ def _least_polar_land_axis(land_xyz: np.ndarray, preferred_axis: np.ndarray) -> 
 
     # For an axis n, land within either cap is land or antipodal land within 10° of n.
     cap_chord = 2.0 * np.sin(np.deg2rad(POLAR_LAND_CLEARANCE_DEG) / 2.0)
-    land_tree = cKDTree(np.concatenate((land_xyz, -land_xyz), axis=0))
+    land_tree = SpatialIndex(np.concatenate((land_xyz, -land_xyz), axis=0))
     cap_counts = land_tree.query_ball_point(axes, r=cap_chord, return_length=True)
     best = np.flatnonzero(cap_counts == np.min(cap_counts))
     return axes[best[int(np.argmax(axes[best, 2]))]]

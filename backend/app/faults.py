@@ -59,7 +59,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.spatial import cKDTree
 
 from . import boundary, cratons, geometry, lithosphere, trace
 from .hydroclimate import mobile_cover
@@ -74,6 +73,7 @@ from .elevation_lines import (
 )
 from .surface_fields import CRATON_UNFORMED_YEARS, SURFACE_FIELDS, RemapClass
 from .plates import OVERLAP_TOLERANCE_MULT, Plate, cached_node_position_tree, collect_all_points, query_workers
+from .spatial_index import SpatialIndex
 
 if TYPE_CHECKING:
     from .world import World
@@ -630,7 +630,7 @@ def generate_boundary_faults(world: "World") -> None:
         return
     all_pts = np.concatenate(all_pts_list, axis=0)
     all_owner = np.concatenate(all_owner_list, axis=0)
-    global_tree = cKDTree(all_pts, balanced_tree=False, compact_nodes=False)
+    global_tree = SpatialIndex(all_pts)
 
     for plate in world.plates:
         outline = plate.get_bounding_polygon()
@@ -640,7 +640,7 @@ def generate_boundary_faults(world: "World") -> None:
             continue
 
         m = len(outline)
-        candidate_lists = global_tree.query_ball_point(outline, reach_rad, workers=query_workers(m))
+        indptr, flat = global_tree.query_ball_point_csr(outline, reach_rad)
 
         # Far-point placeholders (self point / self plate / self omega) are never read: with
         # neighbor_points == points, boundary.closing_rate's own zero-normal guard zeroes the
@@ -649,10 +649,10 @@ def generate_boundary_faults(world: "World") -> None:
         d = np.full(m, np.inf)
         nn_owner = np.full(m, plate.plate_id)
         nn_pt = outline.copy()
-        for i, candidates in enumerate(candidate_lists):
-            if not candidates:
+        for i in range(m):
+            candidates = flat[indptr[i] : indptr[i + 1]]
+            if not len(candidates):
                 continue
-            candidates = np.asarray(candidates)
             foreign = candidates[all_owner[candidates] != plate.plate_id]
             if len(foreign) == 0:
                 continue
@@ -777,7 +777,7 @@ def reconcile_faults(world: "World") -> None:
         world.fault_systems = []
         return
     points, _, owner = collected
-    tree = cKDTree(points)
+    tree = SpatialIndex(points)
 
     kept: list[Fault] = []
     for fault in world.faults:
@@ -884,14 +884,9 @@ def _plate_stress(world: "World", plate: Plate):
     )
     if len(nb_pts) == 0:
         return None
-    # leafsize=64: this tree is rebuilt from scratch every call (a fresh combined-neighbour
-    # point set each time, so nothing to cache across calls) -- a larger leaf cuts short the
-    # recursive split earlier, trading a bit of query-side brute-force scanning for
-    # meaningfully less build-side bookkeeping. Bit-exact vs the default leafsize (KD-tree
-    # nearest-neighbour results don't depend on leaf size), ~12% faster on this workload
-    # (14 plates, ~0.4k-8k nodes each) -- benchmarked via interleaved shuffled trials over
-    # leafsize in [16, 32, 48, 64, 80, 96], which plateaus at 48-64.
-    tree = cKDTree(nb_pts, balanced_tree=False, compact_nodes=False, leafsize=64)
+    # Rebuilt from scratch every call: a fresh combined-neighbour point set each time, so
+    # nothing to cache across calls.
+    tree = SpatialIndex(nb_pts)
     dist, idx = tree.query(own_points, workers=query_workers(len(own_points)))
     return own_points, dist, nb_omega[idx], nb_pts[idx]
 
@@ -1289,19 +1284,19 @@ def fault_influence(
         return np.ones(len(own_points))
     reach_rad = reach_km / PLANET_RADIUS_KM
     trace_points = np.concatenate(traces, axis=0)
-    d, _ = cKDTree(trace_points).query(own_points, workers=query_workers(len(own_points)))
+    d, _ = SpatialIndex(trace_points).query(own_points, workers=query_workers(len(own_points)))
     return np.clip(1.0 - d / reach_rad, floor, 1.0)
 
 
-def _own_points_and_tree(plate: Plate, cache: dict | None) -> tuple[np.ndarray, cKDTree | None]:
-    """`plate.all_points_and_elevation()`'s points plus a `cKDTree` over them, memoized in
+def _own_points_and_tree(plate: Plate, cache: dict | None) -> tuple[np.ndarray, SpatialIndex | None]:
+    """`plate.all_points_and_elevation()`'s points plus a `SpatialIndex` over them, memoized in
     `cache` so `_apply_plate_fault_shear` and `_apply_plate_fault_relief` -- called back to
     back on the same plate every step -- share one tree instead of each rebuilding its own
     over identical points."""
     if cache is not None and "tree" in cache:
         return cache["own_points"], cache["tree"]
     own_points = plate.all_points_and_elevation()[0]
-    tree = cKDTree(own_points, balanced_tree=False, compact_nodes=False) if len(own_points) else None
+    tree = SpatialIndex(own_points) if len(own_points) else None
     if cache is not None:
         cache["own_points"], cache["tree"] = own_points, tree
     return own_points, tree
@@ -1527,11 +1522,9 @@ def _apply_plate_fault_shear(world: "World", plate: Plate, years_myr: float, _ca
 
     for fault in active:
         trace = fault_world_points(fault, plate)
-        neighbours = tree.query_ball_point(trace, reach_rad)
-        affected = sorted({i for sub in neighbours for i in sub})
-        if not affected:
+        affected = np.unique(tree.query_ball_point_csr(trace, reach_rad)[1])
+        if not len(affected):
             continue
-        affected = np.array(affected)
         pts = own_points[affected]
 
         # Nearest trace point per affected node (brute-force, same rationale as
@@ -1616,11 +1609,9 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float, _c
     reason = np.zeros(len(own_points), dtype=float)
     for fault in active:
         trace = fault_world_points(fault, plate)
-        neighbours = tree.query_ball_point(trace, reach_rad)
-        affected = sorted({i for sub in neighbours for i in sub})
-        if not affected:
+        affected = np.unique(tree.query_ball_point_csr(trace, reach_rad)[1])
+        if not len(affected):
             continue
-        affected = np.array(affected)
         pts = own_points[affected]
         # Brute-force nearest-trace-point distance, not a cKDTree: a fault's own trace is
         # hard-capped at FAULT_NODES_MIN..FAULT_NODES_MAX (4..14) points (see _build_fault),

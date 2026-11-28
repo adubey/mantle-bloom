@@ -48,7 +48,7 @@ ice sheet) and **seismic erosion** (earthquake-triggered landsliding) are also
 mantle-bloom-original additions -- see below.
 
 **The mapping problem, and why it's easier in this direction than the reverse.** climate.py
-already solves node-cloud -> grid (`_sample_elevation_and_crust`'s cKDTree nearest-neighbor
+already solves node-cloud -> grid (`_sample_elevation_and_crust`'s `SpatialIndex` nearest-neighbor
 resample) to build its grid from the current plate state. This module needs the reverse,
 grid -> node-cloud: a node's world position converts straight to (lat, lon)
 (`geometry.xyz_to_latlon`) and then to a climate-grid (row, col) by direct arithmetic --
@@ -58,7 +58,7 @@ lattice.
 
 **Slope is the one genuinely new piece of math.** climate.py's grid gets slope for free
 from neighbor-index differences; an irregular node cloud has no such structure. This reuses
-the same whole-world cKDTree pattern (build once, query `SLOPE_NEIGHBOR_COUNT=4`
+the same whole-world point-index pattern (build once, query `SLOPE_NEIGHBOR_COUNT=4`
 nearest neighbors per node) the tectonic engine uses for its own per-plate distance
 queries: for each node, the elevation drop to the *lowest* of
 its nearest neighbors (0 if the node is already a local minimum -- the "slope to lowest
@@ -201,7 +201,7 @@ saw only half the checkerboard (b7df00a).
   nodes within `COASTAL_OPENNESS_RANGE_KM` (~150 km, a coarse fetch scale) that are open
   ocean (`hydrology`'s connectivity-aware `is_ocean`, so an inland-lake or enclosed-pit
   shore reads as fully sheltered). Two radius counts
-  (`cKDTree.query_ball_point(..., return_length=True)`), density-independent.
+  (`SpatialIndex.query_ball_point(..., return_length=True)`), density-independent.
 - **Datum.** `leveling_datum_m` is `sea_level - LEVELING_PLATFORM_UNDERCUT_M * exposure +
   LEVELING_MARSH_CREST_M * shelter`: an exposed coast targets a wave-cut platform a few
   metres below the waterline, a sheltered one (`shelter = 1 - openness / INFILL_SHELTER_REF`)

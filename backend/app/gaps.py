@@ -36,7 +36,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.spatial import cKDTree
 
 from . import geometry, mantle, quad_tectonics, trace
 from .elevation_lines import (
@@ -47,6 +46,7 @@ from .elevation_lines import (
 )
 from .lithosphere_plate import new_plate
 from .plates import Plate, _contested_by_any, node_components
+from .spatial_index import SpatialIndex
 
 if TYPE_CHECKING:
     from .world import World
@@ -122,7 +122,7 @@ class _ExistingNodeContext:
     """Every currently-live node's position plus enough context to decide a newly-upwelled
     gap point's own crust type by what actually borders it -- see `_spawn_plate_from_gap`."""
 
-    def __init__(self, tree: cKDTree, is_continental: np.ndarray, elevation: np.ndarray) -> None:
+    def __init__(self, tree: SpatialIndex, is_continental: np.ndarray, elevation: np.ndarray) -> None:
         self.tree = tree
         self.is_continental = is_continental
         self.elevation = elevation
@@ -142,7 +142,7 @@ def _existing_node_tree(world: "World") -> _ExistingNodeContext | None:
     if not point_chunks:
         return None
     return _ExistingNodeContext(
-        cKDTree(np.concatenate(point_chunks, axis=0)),
+        SpatialIndex(np.concatenate(point_chunks, axis=0)),
         np.concatenate(continental_chunks, axis=0),
         np.concatenate(elevation_chunks, axis=0),
     )
@@ -168,7 +168,7 @@ def _spawn_plate_from_gap(
 ) -> Plate:
     centroid = geometry.normalize(cluster_points.mean(axis=0))
     frame = geometry.plate_frame_from_seed(centroid)
-    cluster_tree = cKDTree(cluster_points)
+    cluster_tree = SpatialIndex(cluster_points)
     coverage_radius_rad = COVERAGE_RADIUS_MULT * spacing_rad
     land_adoption_radius_rad = GAP_LAND_ADOPTION_RADIUS_MULT * spacing_rad
 

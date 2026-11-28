@@ -37,11 +37,11 @@ import av
 import numpy as np
 from numba import njit
 from PIL import Image, ImageDraw, ImageFilter
-from scipy.spatial import cKDTree
 
 from . import _render_rust, cratons, flow_arrows, geometry, healpix_grid, lithosphere, mantle, plates, plumes, projections, trace
 from .hydroclimate import biomes, climate, coastline, geology, hydrology, ice_sheet, sea_ice, volcanism
 from .elevation_lines import DEFAULT_NODE_DENSITY, PLANET_RADIUS_KM, effective_is_continental_from_codes, line_spacing_rad
+from .spatial_index import SpatialIndex
 from .world import PROGRESS_HEARTBEAT_INTERVAL_S, HeartbeatClock, World, step_world
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
@@ -762,7 +762,7 @@ def _node_cloud_and_tree(world: World):
         if shared_tree is not None and shared_tree[0].shape[0] == all_points.shape[0]:
             tree = shared_tree[1]
         else:
-            tree = cKDTree(all_points)
+            tree = SpatialIndex(all_points)
     result = (all_points, all_elevation, all_owner, tree)
     world.node_kdtree_cache = result
     return result
@@ -784,7 +784,7 @@ _TERRAIN_MOUNTAIN = 1
 _TERRAIN_PLAINS_PLATEAU = 2
 
 
-def _relief_kdtree(world: World, all_points: np.ndarray) -> cKDTree:
+def _relief_kdtree(world: World, all_points: np.ndarray) -> SpatialIndex:
     """A real `cKDTree` for `_classify_terrain_relief`'s `query_ball_point` radius search and
     `_hillshade_for_world`'s own k-nearest-neighbor query, both used only under "healpix"
     `World.node_cloud_resample_mode` -- a `healpix_grid.NodePixelIndex` has neither a
@@ -796,12 +796,12 @@ def _relief_kdtree(world: World, all_points: np.ndarray) -> cKDTree:
     cached = world.node_kdtree_relief_cache
     if cached is not None and cached.n == all_points.shape[0]:
         return cached
-    tree = cKDTree(all_points)
+    tree = SpatialIndex(all_points)
     world.node_kdtree_relief_cache = tree
     return tree
 
 
-def _classify_terrain_relief(all_points: np.ndarray, all_elevation: np.ndarray, tree: cKDTree, sea_level_m: float) -> np.ndarray:
+def _classify_terrain_relief(all_points: np.ndarray, all_elevation: np.ndarray, tree: SpatialIndex, sea_level_m: float) -> np.ndarray:
     """Per-node terrain class for the Elevation view's "Mountains" / "Plains & Plateaus"
     legend toggles: `_TERRAIN_MOUNTAIN` or `_TERRAIN_PLAINS_PLATEAU` for every land node
     (mutually exclusive, together covering all of it -- matching the toggles' own "the rest of
@@ -818,10 +818,11 @@ def _classify_terrain_relief(all_points: np.ndarray, all_elevation: np.ndarray, 
     if n == 0:
         return np.zeros(0, dtype=np.uint8)
     radius_rad = TERRAIN_RELIEF_RADIUS_KM / plates.PLANET_RADIUS_KM
-    neighbours = tree.query_ball_point(all_points, radius_rad, workers=plates.query_workers(n))
-    relief = np.fromiter(
-        (float(all_elevation[nb].max() - all_elevation[nb].min()) for nb in neighbours), dtype=np.float64, count=n
-    )
+    # Flat CSR rows rather than a Python list per node (#1042). Every row holds at least the
+    # node itself, so no `reduceat` segment is empty.
+    indptr, indices = tree.query_ball_point_csr(all_points, radius_rad)
+    near = np.asarray(all_elevation, dtype=np.float64)[indices]
+    relief = np.maximum.reduceat(near, indptr[:-1]) - np.minimum.reduceat(near, indptr[:-1])
     is_land = all_elevation > sea_level_m
     codes = np.full(n, _TERRAIN_NONE, dtype=np.uint8)
     codes[is_land] = np.where(relief[is_land] >= MOUNTAIN_RELIEF_THRESHOLD_M, _TERRAIN_MOUNTAIN, _TERRAIN_PLAINS_PLATEAU)
@@ -2372,7 +2373,7 @@ def coastal_dither_fraction(
     if k < 2 or not np.any(near):
         return fraction, near
 
-    _, idx = cKDTree(points).query(points[near], k=k)
+    _, idx = SpatialIndex(points).query(points[near], k=k)
     idx = np.atleast_2d(idx)[:, 1:]  # drop the self column
     fraction[near] = np.mean(is_land[idx] != is_land[near][:, None], axis=1)
     return fraction, near
@@ -2598,7 +2599,7 @@ def _render_geomorph_view(world: World, projection: str, width: int, height: int
         if result is None or len(result.points) == 0:
             net_change = np.zeros(len(flat_xyz))
         else:
-            _, idx = cKDTree(result.points).query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
+            _, idx = SpatialIndex(result.points).query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
             net_change = result.net_elevation_change_m[idx]
         return geomorph_colors(net_change)
 

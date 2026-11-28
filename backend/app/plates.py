@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING, Callable, Iterator, Mapping, Protocol
 import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
-from scipy.spatial import cKDTree
 
 from . import ellipse, geometry, healpix_grid
 from . import elevation_lines
@@ -26,6 +25,7 @@ from .elevation_lines import (
     ElevationPoint,
     iter_local_lattice,
 )
+from .spatial_index import SpatialIndex
 from .surface_fields import SURFACE_FIELDS, SurfaceField
 
 if TYPE_CHECKING:
@@ -223,7 +223,7 @@ def node_components(points_xyz: np.ndarray, connect_radius_rad: float) -> np.nda
     n = len(points_xyz)
     if n == 0:
         return np.zeros(0, dtype=int)
-    pairs = cKDTree(points_xyz).query_pairs(connect_radius_rad, output_type="ndarray")
+    pairs = SpatialIndex(points_xyz).query_pairs(connect_radius_rad, output_type="ndarray")
     if len(pairs) == 0:
         return np.arange(n)
     graph = coo_matrix((np.ones(len(pairs)), (pairs[:, 0], pairs[:, 1])), shape=(n, n))
@@ -274,14 +274,14 @@ class Plate(PlateSurface, abc.ABC):
         # get_neighbours pass considers it a candidate neighbour, so without this a busy
         # plate's outline got re-treed from scratch on every one of those incoming checks
         # this step, not just once.
-        self._bounding_polygon_tree_cache: cKDTree | None = None
+        self._bounding_polygon_tree_cache: SpatialIndex | None = None
         # A cKDTree over this plate's full node cloud (all_points_and_elevation()[0]), built
         # lazily by get_node_kdtree() and invalidated in lockstep with the two caches above --
         # node *positions*, like the outline, only change via rotate() or a node-set mutation,
         # never an elevation-only edit. torque.gather_boundary_force_inputs queries every
         # neighbour's tree once per plate per pass; sharing one cached tree per plate turns
         # ~24 fresh per-call tree builds a step into one build per plate.
-        self._node_kdtree_cache: cKDTree | None = None
+        self._node_kdtree_cache: SpatialIndex | None = None
 
     @property
     def plate_id(self) -> int:
@@ -469,21 +469,21 @@ class Plate(PlateSurface, abc.ABC):
             self._bounding_polygon_cache = self.outline_world()
         return self._bounding_polygon_cache
 
-    def get_bounding_polygon_tree(self) -> cKDTree | None:
-        """A `cKDTree` over `get_bounding_polygon()`, cached the same way -- `None` if this
+    def get_bounding_polygon_tree(self) -> SpatialIndex | None:
+        """A `SpatialIndex` over `get_bounding_polygon()`, cached the same way -- `None` if this
         plate currently has no outline (mirrors `get_bounding_polygon()`'s own empty-array
-        case; a cKDTree can't be built over zero points). See `_plates_within`, the one
+        case). See `_plates_within`, the one
         caller: without this, every *other* plate's `get_neighbours` pass that considers this
         plate a candidate neighbour re-treed the same unchanged outline from scratch."""
         if self._bounding_polygon_tree_cache is None:
             polygon = self.get_bounding_polygon()
             if len(polygon) == 0:
                 return None
-            self._bounding_polygon_tree_cache = cKDTree(polygon)
+            self._bounding_polygon_tree_cache = SpatialIndex(polygon)
         return self._bounding_polygon_tree_cache
 
-    def get_node_kdtree(self) -> cKDTree | None:
-        """A `cKDTree` over `all_points_and_elevation()[0]`, cached and invalidated the same
+    def get_node_kdtree(self) -> SpatialIndex | None:
+        """A `SpatialIndex` over `all_points_and_elevation()[0]`, cached and invalidated the same
         way `get_bounding_polygon_tree()` is -- `None` if this plate currently has no nodes.
         Shared across `torque.gather_boundary_force_inputs`' per-neighbour nearest-node
         queries (one plate is a neighbour of several others, and is queried in both the shift
@@ -492,7 +492,7 @@ class Plate(PlateSurface, abc.ABC):
             points = self.all_points_and_elevation()[0]
             if len(points) == 0:
                 return None
-            self._node_kdtree_cache = cKDTree(points, balanced_tree=False, compact_nodes=False)
+            self._node_kdtree_cache = SpatialIndex(points)
         return self._node_kdtree_cache
 
     def _invalidate_bounding_polygon(self) -> None:
@@ -651,8 +651,8 @@ def gather_node_positions(plate_list: list[Plate]) -> tuple[np.ndarray, list[Pla
     return points, plates_in_order
 
 
-def cached_node_position_tree(world: "World | None", points: np.ndarray) -> cKDTree:  # noqa: F821
-    """A `cKDTree` over `points` -- this step's full node cloud, as returned by
+def cached_node_position_tree(world: "World | None", points: np.ndarray) -> SpatialIndex:  # noqa: F821
+    """A `SpatialIndex` over `points` -- this step's full node cloud, as returned by
     `gather_node_positions` -- shared via `World.node_position_tree_cache` across every
     caller that runs after this step's shift/deform/topology changes have already settled
     (see that field's own docstring on `World` for exactly which window that is -- climate.py's
@@ -665,11 +665,11 @@ def cached_node_position_tree(world: "World | None", points: np.ndarray) -> cKDT
     always builds fresh instead of risking a stale hit against some other test's leftover
     cache."""
     if world is None:
-        return cKDTree(points)
+        return SpatialIndex(points)
     cached = world.node_position_tree_cache
     if cached is not None:
         return cached[1]
-    tree = cKDTree(points)
+    tree = SpatialIndex(points)
     world.node_position_tree_cache = (points, tree)
     return tree
 
@@ -996,7 +996,7 @@ def nearest_plate_id(plate_list: list[Plate], query_xyz: np.ndarray) -> int | No
     if collected is None:
         return None
     points, _, owner = collected
-    _, idx = cKDTree(points).query(query_xyz)
+    _, idx = SpatialIndex(points).query(query_xyz)
     return int(owner[idx])
 
 
@@ -1013,7 +1013,7 @@ def nearest_node_index(plate_list: list[Plate], query_xyz: np.ndarray) -> int | 
     if collected is None:
         return None
     points, _, _owner = collected
-    _, idx = cKDTree(points).query(query_xyz)
+    _, idx = SpatialIndex(points).query(query_xyz)
     return int(idx)
 
 
@@ -1026,7 +1026,7 @@ def noise_amplitude(crust_type: str) -> float:
 
 
 def _land_noise_threshold(
-    owner_tree: cKDTree,
+    owner_tree: SpatialIndex,
     crust_types: list[str],
     noise: "terrain_noise.ReliefField",
     land_fraction: float,

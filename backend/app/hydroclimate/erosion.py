@@ -71,7 +71,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.spatial import cKDTree
 
 from .. import continental_ledger, cratons, faults, geometry, lithosphere, trace
 from . import biomes, climate, glacier_erosion, hydrology, mobile_cover, river_substeps
@@ -110,6 +109,7 @@ from ..plates import (
     gather_node_positions,
     query_workers,
 )
+from ..spatial_index import SpatialIndex
 from ..surface_fields import CHANNEL_REFERENCE_VALID_BELOW_M
 
 if TYPE_CHECKING:
@@ -754,15 +754,18 @@ def _earthquake_erosion_multiplier(world: "World", points: np.ndarray) -> np.nda
     retain_years = faults.EARTHQUAKE_RETAIN_MYR * 1_000_000.0
     epicentres = np.array([q.epicenter_world for q in quakes])
     tree = cached_node_position_tree(world, points)
-    for q, epi in zip(quakes, epicentres):
+    # Every quake's neighbourhood in one radius query rather than one call per quake: a mature
+    # world keeps thousands of recent quakes (#1042). Each row is applied in quake order, as before.
+    reach = np.array([EARTHQUAKE_EROSION_REACH_KM_PER_MW * q.magnitude / PLANET_RADIUS_KM for q in quakes])
+    indptr, indices = tree.query_ball_point_csr(epicentres, reach)
+    for row, (q, epi) in enumerate(zip(quakes, epicentres)):
         recency = np.clip(1.0 - (world.elapsed_years - q.birth_years) / max(retain_years, 1.0), 0.0, 1.0)
         if recency <= 0.0:
             continue
-        reach_rad = EARTHQUAKE_EROSION_REACH_KM_PER_MW * q.magnitude / PLANET_RADIUS_KM
-        near = tree.query_ball_point(epi, reach_rad)
-        if not near:
+        reach_rad = reach[row]
+        near = indices[indptr[row] : indptr[row + 1]]
+        if not len(near):
             continue
-        near = np.asarray(near)
         d = geometry.angular_distance(points[near], epi)
         taper = np.clip(1.0 - d / reach_rad, 0.0, 1.0)
         peak = EARTHQUAKE_EROSION_PEAK_BOOST * 10.0 ** (q.magnitude - EARTHQUAKE_EROSION_MW_REF)
@@ -1095,7 +1098,7 @@ def _spread_beach_sediment(points: np.ndarray, elevation: np.ndarray, is_ocean: 
         result[source_idx] = ocean_terminal_deposit[source_idx]
         return result
 
-    tree = cKDTree(points[shallow_idx], balanced_tree=False, compact_nodes=False)
+    tree = SpatialIndex(points[shallow_idx])
     k = min(BEACH_SPREAD_NEIGHBOR_COUNT, len(shallow_idx))
     dist, nearby = tree.query(points[source_idx], k=k, workers=query_workers(len(source_idx)))
     if k == 1:
@@ -1143,7 +1146,7 @@ def _spread_marine_sediment(
         result[source_idx] = source_amount[source_idx]
         return result
 
-    tree = cKDTree(points[ocean_idx], balanced_tree=False, compact_nodes=False)
+    tree = SpatialIndex(points[ocean_idx])
     k = min(MARINE_SPREAD_NEIGHBOR_COUNT, len(ocean_idx))
     dist, nearby = tree.query(points[source_idx], k=k, workers=query_workers(len(source_idx)))
     if k == 1:
@@ -1403,7 +1406,7 @@ def _carry_overflow(  # noqa: C901
     lake_of: np.ndarray | None = None
     lakes: list[np.ndarray] = []
     ocean_idx: np.ndarray | None = None
-    ocean_tree: cKDTree | None = None
+    ocean_tree: SpatialIndex | None = None
     moved_idx: list[np.ndarray] = []
     moved_load: list[np.ndarray] = []
     stuck_idx: list[np.ndarray] = []
@@ -1452,7 +1455,7 @@ def _carry_overflow(  # noqa: C901
             if np.any(go):
                 if ocean_tree is None:
                     ocean_idx = np.nonzero(is_ocean)[0]
-                    ocean_tree = cKDTree(points[ocean_idx], balanced_tree=False, compact_nodes=False)
+                    ocean_tree = SpatialIndex(points[ocean_idx])
                 at, rest, rest_volume = at[go], rest[go], rest_volume[go]
                 k = min(MARINE_SPREAD_NEIGHBOR_COUNT + 1, len(ocean_idx))
                 dist, near = ocean_tree.query(points[at], k=k, workers=query_workers(len(at)))
@@ -1586,7 +1589,7 @@ def _carry_overflow(  # noqa: C901
             share = stuck / stuck_volume[:, None]
             # Only nodes that still have room are worth finding: inside a saturated plateau the
             # nearest nodes of any kind are all full. This also reaches room under the ice.
-            tree = cKDTree(points[open_idx], balanced_tree=False, compact_nodes=False)
+            tree = SpatialIndex(points[open_idx])
             k = min(OVERFLOW_SEARCH_NEIGHBOR_COUNT, len(open_idx))
             dist, near = tree.query(points[at], k=k, workers=query_workers(len(at)))
             dist, near = dist.reshape(len(at), k), open_idx[near.reshape(len(at), k)]
@@ -1617,14 +1620,14 @@ def _coastal_openness(points: np.ndarray, is_ocean: np.ndarray) -> np.ndarray:
     if n <= SLOPE_NEIGHBOR_COUNT:
         return np.zeros(n)
     workers = query_workers(n)
-    tree = cKDTree(points, balanced_tree=False, compact_nodes=False)
+    tree = SpatialIndex(points)
     total = tree.query_ball_point(points, COASTAL_OPENNESS_RANGE_RAD, workers=workers, return_length=True)
     if not np.any(is_ocean):
         return np.zeros(n)
     non_open_idx = np.nonzero(~np.asarray(is_ocean, dtype=bool))[0]
     if len(non_open_idx) == 0:
         return total / np.maximum(total, 1)
-    non_open_tree = cKDTree(points[non_open_idx], balanced_tree=False, compact_nodes=False)
+    non_open_tree = SpatialIndex(points[non_open_idx])
     non_open_count = non_open_tree.query_ball_point(points, COASTAL_OPENNESS_RANGE_RAD, workers=workers, return_length=True)
     ocean_count = total - non_open_count
     return ocean_count / np.maximum(total, 1)
@@ -1757,7 +1760,7 @@ def _spread_coastal_leveling(
     # k-NN query below from ~10^5 source points to a few thousand. Every excluded source keeps
     # its full amount -- bit-identical to the `any_reachable is False` branch that would
     # otherwise handle it once its k nearest sinks all came back beyond the range.
-    sink_tree = cKDTree(points[sink_idx], balanced_tree=False, compact_nodes=False)
+    sink_tree = SpatialIndex(points[sink_idx])
     near_sink_count = sink_tree.query_ball_point(
         points[source_idx], INFILL_RANGE_RAD, workers=query_workers(len(source_idx)), return_length=True
     )
