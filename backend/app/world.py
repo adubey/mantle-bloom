@@ -309,7 +309,7 @@ class World:
     #     every render query through an `ang2pix` lookup instead of a tree query
     #     (healpix_grid.build_node_pixel_index / NodePixelIndex). `_classify_terrain_relief`'s
     #     radius search is excluded (see its own call site in render_image.py) and still uses a
-    #     real `cKDTree` regardless of this flag -- out of scope for issue #133's phase 1.
+    #     real `SpatialIndex` regardless of this flag -- out of scope for issue #133's phase 1.
     node_cloud_resample_mode: str = "kdtree"
     # Human-readable log for the UI's event console, each entry (elapsed_years, message).
     events: list[tuple[float, str]] = field(default_factory=list)
@@ -433,9 +433,9 @@ class World:
     node_healpix_index_cache: healpix_grid.NodePixelIndex | None = None
     # `_classify_terrain_relief`'s own radius-search tree (see its call site in
     # render_image._render_grid_arrays) -- only ever built under "healpix" node_cloud_resample_
-    # mode, since the default "kdtree" mode already has a real cKDTree in node_kdtree_cache's
+    # mode, since the default "kdtree" mode already has a real SpatialIndex in node_kdtree_cache's
     # 4th slot. `query_ball_point` has no HEALPix-pixel-index equivalent (issue #133 excludes
-    # this call from scope), so this is a real `cKDTree`, built lazily only when the Elevation
+    # this call from scope), so this is a real `SpatialIndex`, built lazily only when the Elevation
     # view's relief toggles are on. Reset alongside the caches above.
     node_kdtree_relief_cache: SpatialIndex | None = None
     # Per-node display hillshade from the terrain and grounded glacier surface, reused by

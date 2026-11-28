@@ -718,7 +718,7 @@ def _node_cloud_and_tree(world: World):
     `.query(points, workers=...) -> (_, idx)` shape every caller here actually uses; none of
     them consume the discarded distance. The one exception is `_classify_terrain_relief`'s
     `query_ball_point` radius search, which a `NodePixelIndex` can't serve at all -- see its own
-    call site in `_render_grid_arrays`, which builds a real `cKDTree` on demand for that case
+    call site in `_render_grid_arrays`, which builds a real `SpatialIndex` on demand for that case
     instead of getting it from here.
 
     The tree (a `cKDTree` over ~131 K nodes at node_density 4) costs ~20 ms to build -- not
@@ -785,13 +785,13 @@ _TERRAIN_PLAINS_PLATEAU = 2
 
 
 def _relief_kdtree(world: World, all_points: np.ndarray) -> SpatialIndex:
-    """A real `cKDTree` for `_classify_terrain_relief`'s `query_ball_point` radius search and
+    """A real `SpatialIndex` for `_classify_terrain_relief`'s `query_ball_point` radius search and
     `_hillshade_for_world`'s own k-nearest-neighbor query, both used only under "healpix"
     `World.node_cloud_resample_mode` -- a `healpix_grid.NodePixelIndex` has neither a
     radius-search nor a k-NN equivalent (issue #133 excludes both from its scope; see
     `_node_cloud_and_tree`'s own docstring). Cached separately (`World.node_kdtree_relief_cache`,
     reset alongside the other node-cloud caches in `step_world`) so this cost never falls on the
-    common render path under the default "kdtree" mode, which already has a real `cKDTree` in
+    common render path under the default "kdtree" mode, which already has a real `SpatialIndex` in
     `_node_cloud_and_tree`'s own 4th element."""
     cached = world.node_kdtree_relief_cache
     if cached is not None and cached.n == all_points.shape[0]:
@@ -810,7 +810,7 @@ def _classify_terrain_relief(all_points: np.ndarray, all_elevation: np.ndarray, 
     a plain, the same distinction real geomorphology uses. Under the default "kdtree"
     `node_cloud_resample_mode`, `all_points`/`all_elevation`/`tree` are `_node_cloud_and_tree`'s
     own (already cached on `World.node_kdtree_cache`), so this builds no second tree; under
-    "healpix", `tree` is `_relief_kdtree`'s real `cKDTree` instead (see that function). Only
+    "healpix", `tree` is `_relief_kdtree`'s real `SpatialIndex` instead (see that function). Only
     ever called from the Elevation view's own render path, and only when at least one of the
     two toggles is on -- see render_png's `view == "elevation"` branch -- so an ordinary render
     (or any other view) never pays this cost."""
