@@ -9,6 +9,7 @@ mod lakes;
 mod plastic;
 mod render;
 mod spatial;
+mod tectonics;
 
 use pyo3::prelude::*;
 
@@ -44,5 +45,10 @@ fn mantle_bloom_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(generation::nearest_distance_rs, m)?)?;
     m.add_function(wrap_pyfunction!(generation::nearest_seed_labels_rs, m)?)?;
     m.add_function(wrap_pyfunction!(generation::label_component_count_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(tectonics::magma_destination_pairs_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(tectonics::boundary_nearest_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(tectonics::collision_front_labels_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(tectonics::gap_contains_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(tectonics::magma_allocate_rs, m)?)?;
     Ok(())
 }
