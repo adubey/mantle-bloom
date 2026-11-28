@@ -171,3 +171,130 @@ including glacier graphs with infinite off-ice values, and avoid unused erosion 
 These are single runs per arm; the differences are too small or variable to attribute a
 further speed or memory change to the review fixes. The large original routing improvement
 remains evident relative to the `f1b75db6` baseline above.
+
+## Step 4 climate kernels: comparison plan
+
+Principle #2 calls for reducing diagnostic climate time while preserving humidity, wind,
+current and precipitation fields. Compare baseline `31094ae7` with the climate branch on
+seed 0 and the same 67.9 Myr save (SHA-256 above), diagnostic wind, one warmup and three
+measured 100,000-year steps. Run each arm sequentially, recording climate phase time, total
+step time, and peak RSS. The kernel parity tests compare both wind directions, land and
+open-water cells, and periodic boundaries against the Python path. If model outputs differ,
+compare the mature save over 1 Myr at 0.1 Myr checkpoints before claiming parity. A single
+profile per arm is descriptive; replicate if the change is too small to distinguish from noise.
+
+For the 1 Myr replay, the primary invariants are land area, sea level, material volumes,
+and conservation-ledger values at each 0.1 Myr checkpoint. Expect zero or roundoff-level
+movement from the port; the test is deterministic, so repeatability rather than the ±2%
+inter-seed variation is the relevant reference. Any nonzero change will be reported and
+investigated, with differences greater than 1e-10 relative in continuous global metrics or
+any changed discrete area counted as a failed tight-parity expectation. This is a single-save
+numerical check, not evidence across seeds. If differences are near the threshold, repeat
+both arms to distinguish run variability from the port.
+
+### Initial zonal humidity and coastal-smoothing slice
+
+A first comparison covers only these two kernels, with the commands and controls above.
+The candidate was the working tree based on `31094ae7`; it included the humidity and
+coastal kernels and dtype-preserving fallback. Peak RSS is decimal MB. A mature candidate
+run overlapping a climate unit test was discarded and repeated after the test stopped.
+
+| Case | Mean step, baseline → candidate | Climate phase, baseline → candidate | Peak RSS, baseline → candidate |
+|---|---:|---:|---:|
+| Young | 12.342 → 12.257 s | 0.351 → 0.312 s | 960 → 1,036 MB |
+| Mature | 13.282 → 13.141 s | 0.368 → 0.291 s | 1,070 → 1,093 MB |
+
+These single-run results are descriptive. The other climate targets and saved-world parity
+remain to be checked before the step is complete.
+
+The first two kernels' 1 Myr mature replay compared `31094ae7` with `73131aa7` using
+`attribute_hm_ratchet.py <local-save> --myr 1 --checkpoint-myr 0.1 --out <capture>`,
+sequentially with no other tracked heavy run. Every recorded non-timing checkpoint,
+inventory, material account, and closure value was exactly equal. At 68.9 Myr, land area
+was 171,862,737.117 km² and sea level −60.8954356473 m in both arms. Runtime was 138.7 →
+139.5 s and peak RSS 1,020.9 → 980.3 MiB; single-run timings are descriptive. Compact
+checkpoint values are in `climate-slice-replay-comparison.json`. This result covers only
+the first two kernels, one save and 1 Myr, not the remaining Step 4 work.
+
+### All four climate paths: phase profiles
+
+The complete candidate `7c53a46a` adds native offset indices and spherical moisture
+flux divergence. The pre-registered profile commands ran sequentially on the same host;
+peak RSS is decimal MB. Baseline is `31094ae7`. The final candidate used the same initial
+worlds and diagnostic wind. The first mature candidate of the earlier two-kernel slice
+was discarded due to overlap with a unit test, as noted above.
+
+| Case | Mean step, baseline → candidate | Climate phase, baseline → candidate | Peak RSS, baseline → candidate |
+|---|---:|---:|---:|
+| Young | 12.342 → 12.371 s | 0.351 → 0.305 s | 960 → 849 MB |
+| Mature | 13.282 → 13.651 s | 0.368 → 0.318 s | 1,070 → 946 MB |
+
+The climate phase fell by 13.1% and 13.6%, respectively. These are single runs. Total-step
+and peak-RSS changes are noisy and are not evidence that the port caused those changes.
+
+The complete candidate's 1 Myr replay (`7c53a46a`) used the same saved world, command,
+checkpoint schedule, and baseline as the first slice. Every recorded non-timing checkpoint,
+inventory, material account and closure value was exactly equal. End-point land area and sea
+level were 171,862,737.117 km² and −60.8954356473 m in both arms; see
+`climate-final-replay-comparison.json` for compact checkpoints. Runtime was 138.7 → 146.7 s
+and peak RSS 1,020.9 → 876.9 MiB. Each arm ran once, sequentially, with no other tracked
+heavy runs; the timings are descriptive. This tests one save for 1 Myr, not all worlds.
+
+A repeat of the complete mature candidate measured 13.963 s per step, 0.339 s for the
+climate phase, and 949 MB peak RSS. Against the original baseline, the largest exclusive
+phase increase was glacier marching (6.371 → 6.684 s); ocean currents and humidity fell
+by 0.024 s and 0.023 s. A repeat of the baseline is needed before comparing total-step
+runtime because other phases and host load varied.
+
+The mature baseline repeat measured 14.065 s per step, 0.393 s for climate and 953 MB peak
+RSS. Across two runs per arm, baseline/candidate climate times were 0.368–0.393 / 0.318–0.339 s,
+while total-step times were 13.282–14.065 / 13.651–13.963 s. The climate phase is consistently
+lower in this small sample, while the overlapping total-step ranges do not establish an
+end-to-end speedup. Baseline and candidate repeats were not interleaved, and host load varied.
+
+
+### Review fixes and glacier stress failure
+
+The stopped full stress run reported 9 passes and one failure: the existing seed-1 glacier
+parity case measured a 0.01009711276609293 m sea-level gap against a 0.01 m limit. With the
+same opening world, ordinary NumPy summation produced 2.46298727874449 m, while the
+high-precision Python reference and Rust each produced 2.4528901659783973 m; closing ice
+volume and melt also matched between those latter paths. The Python glacier fallback now uses
+accurate area-weighted summation in its volume and balance calculations, rather than relaxing
+the parity threshold. Both seed-0 and seed-1 glacier stress cases passed against the real
+fallback. This changes fallback numerical behavior near extent thresholds; it does not change
+the default native glacier equations.
+
+Review fixes also eliminate repeated coastal-smoothing allocations, reduce offset-guard
+scans, return owned contiguous native output arrays, release the interpreter lock during the
+native loops, and add stale-extension, disable-override and invalid-input coverage. The
+four-neighbor smoothing used by moisture convergence and mountain deflection has a native
+path with NumPy addition-order and periodic-boundary tests. In an exploratory 360×720,
+48-pass microbenchmark, warm runs were 0.0124–0.0131 s native and 0.0177–0.0181 s NumPy;
+these are local measurements, not whole-step results. The full stress suite was stopped at
+user request after the reported failure and was not restarted.
+
+The review-fix candidate `434761e5` was profiled on the mature save with the same warmup and
+three measured steps. It measured 14.084 s per step, 0.308 s for climate and 1,087 MB peak
+RSS. This run overlapped another unit worker and simulation under an explicit one-run compute
+override, so its wall times and memory cannot be compared directly with the idle baseline
+runs above. The prior replay and phase tables describe `7c53a46a`, before these review fixes;
+the optimized smoother has exact unit parity and its revised-candidate replay is reported below.
+
+
+The review-fix candidate `434761e5` was replayed for the same 1 Myr and 0.1 Myr
+checkpoints against `31094ae7`. Every recorded non-timing checkpoint, inventory, material
+account and closure value matched exactly. End-point land area and sea level remained
+171,862,737.117 km² and −60.8954356473 m in both arms; compact checkpoint values are in
+`climate-review-replay-comparison.json`. The candidate overlapped another simulation, so its
+132.0 s runtime and 1,054.5 MiB peak RSS are descriptive and not comparable to the baseline
+run. The comparison covers one save and interval; the glacier summation change affects the
+Python fallback and is separately checked by the seed-0 and seed-1 glacier parity cases.
+
+The reviewed candidate was also profiled on the young seed-0 world at `c778ed71` with the
+same diagnostic-wind, one-warmup and three-step schedule. Mean total step time was 12.250 s
+(individual steps: 13.181, 12.058, 11.512 s), the climate phase was 0.306 s/step, and peak RSS
+was 1,074 MB. The run overlapped another simulation under an explicit one-run compute override,
+so its timing and RSS are descriptive and should not be compared directly with the idle
+baseline's 12.342 s total, 0.351 s climate and 960 MB RSS. The same candidate's mature profile
+above also overlapped other work. CI was cancelled at the owner's request before this profile.

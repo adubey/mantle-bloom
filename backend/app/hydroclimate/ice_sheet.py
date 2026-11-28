@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import heapq
 import logging
+import math
 from collections import deque
 from dataclasses import dataclass, field
 
@@ -49,6 +50,16 @@ from . import _glacier_rust, hydrology
 from .climate import air_temperature_at_elevation
 
 _logger = logging.getLogger(__name__)
+
+
+def _stable_dot(a: np.ndarray, b: np.ndarray) -> float:
+    """Sum glacier volume terms accurately across Python and Rust paths (#1046)."""
+    products = np.asarray(a, dtype=float) * np.asarray(b, dtype=float)
+    try:
+        return math.fsum(products.tolist())
+    except (OverflowError, ValueError):
+        # Keep NumPy's NaN result for mixed positive and negative infinities.
+        return float(np.dot(a, b))
 
 # Basal yield stress (Pa) of the plastic profile. A frozen bed, or a thawed one on bare rock,
 # holds about 100 kPa (Nye's classic value, and the upper range ice-sheet reconstructions use);
@@ -867,9 +878,9 @@ class _Shape:
         covered = self.cover * dom.area
         bare = (1.0 - np.minimum(self.cover, 1.0)) * dom.area * ((acc0 - sm0) > 0.0)
         return (
-            float(np.dot(covered, acc) + np.dot(bare, acc0)),
-            float(np.dot(covered, sm) + np.dot(bare, sm0)),
-            float(np.dot(covered, bm)),
+            float(_stable_dot(covered, acc) + _stable_dot(bare, acc0)),
+            float(_stable_dot(covered, sm) + _stable_dot(bare, sm0)),
+            float(_stable_dot(covered, bm)),
         )
 
 
@@ -906,7 +917,7 @@ def _shape(dom: _Domain, d: float, sea_level_m: float) -> _Shape:
     mean_thickness = np.divide(depth, cover, out=np.zeros_like(depth), where=cover > 0.0)
     thickness = np.where(active, np.clip(surface - dom.bed, 0.0, None), mean_thickness)
     surface = np.where(active, surface, np.nan)
-    volume = float(np.dot(depth, dom.area))
+    volume = float(_stable_dot(depth, dom.area))
     return _Shape(d, active, surface, thickness, depth, cover, volume, dom.climate.rates(mean_thickness))
 
 
@@ -1136,7 +1147,7 @@ def _solve_uniform_body(nodes, opening_m3, area, climate: SurfaceClimate, dt_myr
 
     def budget(h: float):
         acc, sm, bm = climate.rates(np.full(len(nodes), h))
-        return dt_myr * float(np.dot(area, acc)), dt_myr * float(np.dot(area, sm)), dt_myr * float(np.dot(area, bm))
+        return dt_myr * float(_stable_dot(area, acc)), dt_myr * float(_stable_dot(area, sm)), dt_myr * float(_stable_dot(area, bm))
 
     def g(h: float) -> float:
         acc, sm, bm = budget(h)
@@ -1279,7 +1290,7 @@ def step_ice(
     dt_myr = years / 1_000_000.0
     bed = elevation - prior_deflection_m
     opening_depth = np.clip(prev_depth, 0.0, None)
-    ledger = IceLedger(opening_m3=float(np.dot(opening_depth, area)))
+    ledger = IceLedger(opening_m3=float(_stable_dot(opening_depth, area)))
     h0 = opening_depth
     out = _Output(n)
 
@@ -1340,7 +1351,7 @@ def step_ice(
             trace.check_cancelled()
             body_nodes = np.flatnonzero(comp == b)
             in_domain[dom_nodes] = True
-            opening = float(np.dot(h0[body_nodes], area[body_nodes]))
+            opening = float(_stable_dot(h0[body_nodes], area[body_nodes]))
             if len(dom_nodes) < ICE_BODY_MIN_NODES:
                 body = _uniform_body(out, body_nodes, opening, area, bed, climate, is_ocean, dt_myr)
                 rest = np.setdiff1d(dom_nodes, body_nodes)
@@ -1364,7 +1375,7 @@ def step_ice(
         ledger.overflow_m3 += body.overflow_m3
         ledger.capped_m3 += body.capped_m3
     ledger.calved_m3 = float(out.calved.sum())
-    ledger.closing_m3 = float(np.dot(out.depth, area))
+    ledger.closing_m3 = float(_stable_dot(out.depth, area))
     # Body nodes at the depth guard, whether shed there or flattened by the profile's cap.
     at_cap = (out.depth > 0.0) & (out.thickness >= hydrology.GLACIER_MAX_DEPTH_M * (1.0 - 1e-9))
     ledger.capped_nodes += int(np.count_nonzero(at_cap))
@@ -1526,17 +1537,17 @@ def _guard_body(out: _Output, body: BodyBalance, bed, area, sea_level_m, is_ocea
         out.thickness[nodes] *= np.divide(kept, out.depth[nodes], out=np.ones_like(kept), where=out.depth[nodes] > 0.0)
         out.depth[nodes] = kept
         out.ice_release_m3[nodes] += over * area[nodes]
-        body.capped_m3 += float(np.dot(over, area[nodes]))
+        body.capped_m3 += float(_stable_dot(over, area[nodes]))
     afloat = (out.depth[nodes] > 0.0) & ~is_grounded(out.depth[nodes], bed[nodes], sea_level_m, is_ocean[nodes])
     if np.any(afloat):
         idx = nodes[afloat]
         out.calved[idx] += out.depth[idx] * area[idx]
-        body.calved_m3 += float(np.dot(out.depth[idx], area[idx]))
+        body.calved_m3 += float(_stable_dot(out.depth[idx], area[idx]))
         out.depth[idx] = 0.0
         out.thickness[idx] = 0.0
         out.covered[idx] = 0.0
         out.surface[idx] = np.nan
-    body.closing_m3 = float(np.dot(out.depth[nodes], area[nodes]))
+    body.closing_m3 = float(_stable_dot(out.depth[nodes], area[nodes]))
 
 
 def _melt_bare_snow(out: _Output, idx: np.ndarray, bare_acc: np.ndarray, area: np.ndarray, dt_myr: float) -> float:

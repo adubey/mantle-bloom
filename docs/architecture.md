@@ -16,7 +16,9 @@
   accumulation, and river-reservoir sweeps, via
   `_generation_rust.py` for world generation's priority flood, small-source
   nearest distances, and plate-label component counts (#1042), and via
-  `_render_rust.py` for `combined`, `biome`, `elevation`, and `globe`
+  `hydroclimate/_climate_rust.py` for zonal humidity, coastal smoothing, offset sampling,
+  moisture divergence and periodic field smoothing, and via `_render_rust.py` for
+  `combined`, `biome`, `elevation`, and `globe`
   rendering on a dedicated bounded `rayon` pool), Pillow
   (fallback and debug map rendering, see `render_image.py`), pytest.
 - **Frontend:** React + TypeScript via Vite, plain HTML `<canvas>` — no mapping/charting
