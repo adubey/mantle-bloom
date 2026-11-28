@@ -85,3 +85,89 @@ Because `integrate_body_volume_rs` sums float64 terms sequentially rather than v
 | `craton_balance_error_km3` | 1.024e-06 | 0.0 | -1.024e-06 |
 | Runtime | 156.9 s | 159.2 s | +2.3 s (noisy shared host) |
 | Peak RSS | 984.6 MB | 908.3 MB | -7.8% |
+
+## Step 3 routing comparison: preregistration
+
+Principle #2 calls for compiled work where per-node routing limits simulation pace. This
+comparison tests whether native accumulation and uphill DAG ordering reduce routing time while
+preserving flow destinations, ledgers, and reservoir state. The baseline is `f1b75db6`;
+the candidate is the issue branch. Both use diagnostic wind, one warmup and three measured
+100,000-year steps, sequentially on the same host. The young world uses seed 0 and densities
+4/4/2. The mature world is `mantle-bloom-seed47235302-67900000y.bloom`, SHA-256
+`eff1f6d7abdfe46c7af5b45ab23f136f3fac591f4d95f3457017c1e7d933216b`.
+
+The primary performance measure is the sum of `Ordering the flow network` and `Routing flow
+downstream` phase times; total step time and peak RSS are secondary. Expect a reduction in
+routing time, with no material increase in RSS. As in the preceding routing slice, a phase
+change below 10% or total-step change below 2% is inconclusive; replicate noisy results.
+Exact routing-order, flux, and ledger parity are the principal invariants, with tight numerical
+parity for reservoir arithmetic. Any observed model-output change requires a saved-world
+replay comparison before claiming end-to-end parity.
+
+For an end-to-end parity check, replay the same mature save for 1 Myr in ten 100,000-year
+steps on each arm. Expect identical or numerically negligible differences in land area, sea
+level, crust/mantle volumes and conservation ledgers. Compare the final values and their
+trajectory at each 0.1 Myr checkpoint; investigate any model-output movement before drawing a
+parity conclusion. Use `attribute_hm_ratchet.py` with `--myr 1 --checkpoint-myr 0.1` and run
+the arms sequentially on an otherwise idle machine.
+
+### Step 3 phase profiles
+
+`profile_phases.py --scenarios step --steps 3 --warmup 1 --wind-model diagnostic`, wrapped
+in `/usr/bin/time -l`, ran sequentially on the same 16 GB host with no other tracked heavy
+runs. Routing and ordering are exclusive phase times summed across traced call sites; RSS is
+maximum resident set size in decimal MB. The candidate was `105385b6`.
+
+| Case | Mean step, baseline → candidate | Routing + ordering, baseline → candidate | Peak RSS, baseline → candidate |
+|---|---:|---:|---:|
+| Young, seed 0 | 12.935 → 12.196 s | 0.975 → 0.170 s (−82.6%) | 978 → 975 MB |
+| Mature, 67.9 Myr | 14.246 → 13.312 s | 1.120 → 0.209 s (−81.3%) | 987 → 1,020 MB |
+
+Each row is one run per arm; total-step and RSS changes should not be treated as replicated
+estimates. The routing result exceeds the preregistered 10% threshold on both worlds. An
+initial young baseline produced 13.638 s/step and 0.992 s routing plus ordering, but the
+sandbox blocked `time` from obtaining RSS; it was repeated outside the sandbox and is excluded
+from the table. The report's timing figures are not model-output parity evidence.
+
+### Step 3 mature replay A/B
+
+The preregistered 1 Myr replay used `attribute_hm_ratchet.py <local-save> --myr 1
+--checkpoint-myr 0.1 --out <capture>` on baseline `f1b75db6` and candidate `96319a09`,
+sequentially with no other tracked heavy runs. The measured metrics, inventories, mantle
+budgets, shortening and mantle closure were exactly equal at every checkpoint; timing fields
+varied as expected. The compact checkpoint comparison is in `routing-replay-comparison.json`.
+
+| At 68.9 Myr | Baseline | Candidate |
+|---|---:|---:|
+| Land area (km²) | 171,862,737.117 | 171,862,737.117 |
+| Continental area (km²) | 354,249,271.179 | 354,249,271.179 |
+| Sea level (m) | −60.8954356473 | −60.8954356473 |
+| Mantle volume (km³) | 40,616,446,488.168 | 40,616,446,488.168 |
+| Runtime (s) | 142.845 | 134.946 |
+| Peak RSS (MiB) | 1,037.1 | 1,051.0 |
+
+This confirms parity for the reported diagnostics on this save and interval, not for every
+possible world. The single-run replay timings are descriptive, not a replicated performance
+estimate.
+
+The affected suite passed 2,605 tests, and both 300,000-node routing and river-reservoir stress parity tests passed.
+The full stress run was interrupted after 9 passed and one failure: the glacier seed-1 parity
+case measured a sea-level difference of `0.01009711276609293 m` against its `0.01 m` limit.
+The same test on the unchanged baseline failed with the identical values, confirming that
+failure predates this routing port. Remaining full-suite stress cases were not run.
+
+### Gemini review-fix profiles
+
+After the review fixes, the same profile command, worlds, warmup and three-step schedule were
+run sequentially on the same host with no other tracked heavy runs. The earlier candidate is
+`105385b6`; the revised measurements include native ordering for non-NaN land elevations,
+including glacier graphs with infinite off-ice values, and avoid unused erosion buffers.
+
+| Case | Mean step, previous → revised | Routing + ordering, previous → revised | Peak RSS, previous → revised |
+|---|---:|---:|---:|
+| Young, seed 0 | 12.196 → 12.290 s | 0.170 → 0.172 s | 975 → 904 MB |
+| Mature, 67.9 Myr | 13.312 → 13.352 s | 0.209 → 0.195 s | 1,020 → 1,048 MB |
+
+These are single runs per arm; the differences are too small or variable to attribute a
+further speed or memory change to the review fixes. The large original routing improvement
+remains evident relative to the `f1b75db6` baseline above.
