@@ -48,7 +48,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from . import cratons, lithosphere, orogeny, rheology, torque, trace
+from . import _generation_rust, cratons, lithosphere, orogeny, rheology, torque, trace
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from .hydroclimate.hydrology import FLOW_NEIGHBOR_COUNT, connected_ocean_mask
 from .noise import IsotropicSphereNoise
@@ -186,6 +186,8 @@ def _distance_km(sources: np.ndarray, points: np.ndarray) -> tuple[np.ndarray, n
     """Great-circle distance from each of `points` to the nearest of `sources`, and its index."""
     if len(sources) == 0:
         return np.full(len(points), np.inf), np.zeros(len(points), dtype=int)
+    if _generation_rust.use_nearest(sources):
+        return _generation_rust.nearest_distance(sources, points)
     chord, index = cKDTree(sources).query(points, workers=-1)
     return 2.0 * np.arcsin(np.clip(chord / 2.0, 0.0, 1.0)) * PLANET_RADIUS_KM, index
 
@@ -308,6 +310,8 @@ def _flood(order_edges, seeds_level: np.ndarray, elevation: np.ndarray, gradient
     """Priority flood from every node with a finite `seeds_level`: the lowest level each node
     can drain at, rising by `gradient` (m per edge, per entry of `order_edges`'s data) along
     each step. `order_edges` lists, for each node, the nodes that hold it as a neighbour."""
+    if _generation_rust.has_kernel("priority_flood_rs"):
+        return _generation_rust.priority_flood(order_edges.indptr, order_edges.indices, gradient, seeds_level, elevation)
     indptr, indices = order_edges.indptr.tolist(), order_edges.indices.tolist()
     rise = [0.0] * len(indices) if gradient is None else gradient.tolist()
     level = seeds_level.tolist()

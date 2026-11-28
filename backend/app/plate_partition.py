@@ -38,7 +38,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from . import trace
+from . import _generation_rust, trace
 from .layout_lattice import Lattice
 
 # Boundary-link costs: an ocean link is free; a belt link costs 1; a continental margin or
@@ -112,6 +112,8 @@ def boundary_cost(lat: Lattice, labels: np.ndarray, cost: np.ndarray, land: np.n
 
 def label_components(lat: Lattice, labels: np.ndarray) -> int:
     """Connected components of the 4-connected lattice with links cut between labels."""
+    if _generation_rust.has_kernel("label_component_count_rs"):
+        return _generation_rust.label_component_count(lat.adj_offsets, lat.adj_neighbours, labels)
     rows = lat.adj_rows
     same = labels[rows] == labels[lat.adj_neighbours]
     graph = coo_matrix((np.ones(int(same.sum())), (rows[same], lat.adj_neighbours[same])), shape=(lat.size, lat.size))
@@ -162,8 +164,34 @@ def _polygon_seed_partition(
 
     seed_xyz = np.concatenate([point_xyz, core_xyz])
     seed_owner = np.concatenate([point_owner, core_owner])
-    _, nearest = cKDTree(seed_xyz).query(lat.xyz, workers=-1)
-    return seed_owner[nearest], primary_xyz
+    if _generation_rust.has_kernel("nearest_seed_labels_rs"):
+        return _generation_rust.nearest_seed_labels(lat.xyz, seed_xyz, seed_owner), primary_xyz
+    return _seed_labels_python(lat.xyz, seed_xyz, seed_owner), primary_xyz
+
+
+def _seed_labels_python(xyz: np.ndarray, seed_xyz: np.ndarray, seed_owner: np.ndarray) -> np.ndarray:
+    """Nearest-seed labels via `cKDTree`, with the native path's tie contract.
+
+    Both paths resolve a cell exactly equidistant from several seeds to the
+    lowest seed index (#1042 review); `cKDTree` alone promises no tie order,
+    which would make a seeded world depend on whether the extension is
+    installed. Non-tied cells keep the tree's answer untouched; only the rare
+    tied cells are re-resolved against every seed.
+    """
+    if len(seed_xyz) == 1:
+        return seed_owner[np.zeros(len(xyz), dtype=np.int64)]
+    dist, nearest = cKDTree(seed_xyz).query(xyz, k=2, workers=-1)
+    labels = seed_owner[nearest[:, 0]]
+    tied = np.flatnonzero(dist[:, 0] == dist[:, 1])
+    # Small chunks: the (cells, seeds, 3) distance broadcast stays bounded
+    # however many cells tie (26 measured at density 4, but a symmetric seed
+    # set could tie thousands).
+    for start in range(0, len(tied), 128):
+        cells = tied[start : start + 1024]
+        d2 = ((xyz[cells, None, :] - seed_xyz[None, :, :]) ** 2).sum(axis=2)
+        lowest_tied = np.where(d2 == d2.min(axis=1, keepdims=True), np.arange(len(seed_xyz)), len(seed_xyz)).min(axis=1)
+        labels[cells] = seed_owner[lowest_tied]
+    return labels
 
 
 @njit(cache=True)
