@@ -319,3 +319,50 @@ with 0.1 Myr checkpoints. Compare land area, sea level, crust and mantle invento
 ledger closure at every checkpoint. Expect identical or numerically negligible differences;
 report any divergence rather than assuming bitwise parity. Timing and RSS are descriptive
 when other work overlaps.
+
+### Step 6 profiles and replay
+
+On `origin/main` `069d1d38` and candidate `49ba239c`, `profile_phases.py --scenarios
+step --steps 3 --warmup 1 --wind-model diagnostic` ran sequentially with no tracked heavy
+runs at each capacity check. Young used seed 0; mature used the preregistered 67.9 Myr save.
+Peak RSS is `/usr/bin/time -l` maximum resident set size in decimal MB. Each entry is a
+single run per arm; total-step and RSS differences are susceptible to noise.
+
+| World | Fault updates, baseline → candidate | Total step, baseline → candidate | Peak RSS, baseline → candidate |
+|---|---:|---:|---:|
+| Young | 0.754 → 0.515 s (−31.7%) | 11.558 → 11.165 s (−3.4%) | 1,076 → 1,136 MB |
+| Mature | 1.174 → 0.771 s (−34.3%) | 12.092 → 11.695 s (−3.3%) | 1,153 → 1,102 MB |
+
+A provisional young candidate run before the final boundary geometry changes measured
+12.63 s/step, 0.55 s/step in fault updates and 962 MB RSS. It overlapped other work and
+baseline setup, and is excluded from the paired table.
+
+The 1 Myr replay used `attribute_hm_ratchet.py <local-save> --myr 1 --checkpoint-myr 0.1
+--out <capture>`, sequentially on the same save and commits. A baseline repeat and a candidate
+repeat reproduced their respective reported checkpoint values exactly. A fifth isolation run
+used the candidate with only `app._faults_rust._rust` set to `None` before invoking the replay;
+its land area, sea level, continental area and mantle volume exactly matched the baseline at
+all checkpoints. Other native components remained enabled. The compact checkpoint data are in
+[fault-kernel-comparison.json](fault-kernel-comparison.json).
+
+| At 68.9 Myr | Baseline | Candidate | Candidate − baseline |
+|---|---:|---:|---:|
+| Land area (km²) | 171,941,407.993 | 171,801,473.873 | −139,934.120 (−0.081%) |
+| Sea level (m) | −60.957943 | −60.990533 | −0.032590 |
+| Continental area (km²) | 354,249,271.179 | 354,249,271.179 | 0 |
+| Mantle volume (km³) | 40,616,446,488.161 | 40,616,446,488.166 | +0.0046 |
+| Live continental material (km³) | 11,487,261,723.187 | 11,487,261,732.348 | +9.161 |
+| Continental ledger error (km³) | −704.079204 | −695.127374 | +8.951831 |
+| Craton ledger error (km³) | 0.000001024 | 0 | −0.000001024 |
+| Mobile-cover ledger error (km³) | 0.000002496 | 0.000002944 | +0.000000448 |
+
+The two repeats show no spread in these selected metrics on this save, not a general estimate
+of simulation variability. The isolation run ties the observed divergence to enabling the new
+fault kernels but does not identify a specific operation. The sequential native transfer sums
+can differ from NumPy dot-product order by a few floating-point units; the replay does not
+establish whether those differences are the sole cause. Land area first differs at the
+68.6 Myr checkpoint and varies in sign and size afterward. Do not claim bitwise model parity.
+The isolation control covers one save and interval only.
+
+The affected suite passed 2,695 tests. The stress suite was stopped at the owner's request
+after 9 passed; remaining stress cases were not run.
