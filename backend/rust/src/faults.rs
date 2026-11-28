@@ -176,7 +176,8 @@ pub fn foreign_nearest_rs<'py>(
             }
             let q = &pts[3 * j..][..3];
             let d = ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2)).sqrt();
-            if d < distances[row] || best_ids[row] == -1 {
+            if d < distances[row] || best_ids[row] == -1 || (d.is_nan() && !distances[row].is_nan())
+            {
                 distances[row] = d;
                 best_ids[row] = id;
             }

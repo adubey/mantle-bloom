@@ -335,3 +335,26 @@ def test_boundary_strands_match_fallback(monkeypatch):
     monkeypatch.setattr(_faults_rust, "_rust", None)
     for a, b in zip(native, _faults_rust.boundary_strands(*args), strict=True):
         np.testing.assert_array_equal(a, b)
+
+
+def test_shear_nonfinite_sense_uses_numpy_semantics(monkeypatch):
+    if _faults_rust._rust is None or not hasattr(_faults_rust._rust, "shear_backtrace_rs"):
+        pytest.skip("Rust extension unavailable")
+    points = np.array([[1., 0., 0.]])
+    trace = np.array([[1., 0., 0.], [0., 1., 0.]])
+    args = (points, trace, np.array([0., 0., 1.]), 1., 0.1, np.nan)
+    native = _faults_rust.shear_backtrace(*args)
+    monkeypatch.setattr(_faults_rust, "_rust", None)
+    for actual, expected in zip(native, _faults_rust.shear_backtrace(*args), strict=True):
+        np.testing.assert_array_equal(actual, expected)
+
+
+def test_foreign_nearest_later_nan_matches_numpy(monkeypatch):
+    if _faults_rust._rust is None or not hasattr(_faults_rust._rust, "foreign_nearest_rs"):
+        pytest.skip("Rust extension unavailable")
+    args = (np.array([[1., 0., 0.], [np.nan, 0., 0.]]), np.zeros((1, 3)),
+            np.ones(2, dtype=np.int64), np.array([0, 2]), np.array([0, 1]), 0)
+    native = _faults_rust.foreign_nearest(*args)
+    monkeypatch.setattr(_faults_rust, "_rust", None)
+    for actual, expected in zip(native, _faults_rust.foreign_nearest(*args), strict=True):
+        np.testing.assert_array_equal(actual, expected)

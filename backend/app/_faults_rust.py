@@ -29,7 +29,8 @@ def shear_backtrace(points, trace, dip, reach, slip, sense):
     if (_rust is not None and hasattr(_rust, "shear_backtrace_rs")
             and points.dtype == trace.dtype == dip.dtype == np.float64
             and np.isfinite(points).all() and np.isfinite(trace).all()
-            and np.isfinite(dip).all() and np.isfinite(reach) and reach > 0 and np.isfinite(slip)):
+            and np.isfinite(dip).all() and np.isfinite(reach) and reach > 0
+            and np.isfinite(slip) and np.isfinite(sense)):
         return _rust.shear_backtrace_rs(
             np.ascontiguousarray(points), np.ascontiguousarray(trace),
             np.ascontiguousarray(dip), reach, slip, float(sense),
