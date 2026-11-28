@@ -295,6 +295,9 @@ def _sample_elevation_and_crust(
 
 def _smooth_field(field: np.ndarray, iterations: int) -> np.ndarray:
     """Plain 4-neighbor Jacobi box blur, longitude-wrapping, no masking."""
+    if (isinstance(field, np.ndarray) and isinstance(iterations, (int, np.integer)) and iterations > 0
+        and _climate_rust.has_kernel("smooth_field_rs") and _climate_rust.supports_float_grid(field)):
+        return _climate_rust.smooth_field(field, iterations)
     smoothed = field
     for _ in range(iterations):
         smoothed = 0.25 * (
@@ -330,7 +333,9 @@ def _sample_at_offset(field: np.ndarray, dir_u: np.ndarray, dir_v: np.ndarray, d
     lookback, current advection)."""
     height, width = field.shape
     if _climate_rust.can_sample_offset(field, dir_u, dir_v, dist_deg, lat_deg):
-        return _climate_rust.sample_at_offset(field, dir_u, dir_v, dist_deg, lat_deg)
+        sampled = _climate_rust.sample_at_offset(field, dir_u, dir_v, dist_deg, lat_deg)
+        if sampled is not None:
+            return sampled
     lat_grid = np.repeat(lat_deg[:, None], width, axis=1)
     lon_deg = -180.0 + (np.arange(width) + 0.5) * (360.0 / width)
     cos_lat = np.clip(np.cos(np.radians(lat_grid)), 0.15, 1.0)
@@ -866,7 +871,7 @@ def _smooth_along_coast(u: np.ndarray, v: np.ndarray, is_ocean: np.ndarray, lat_
     reach along a coast is real but bounded, not an unbounded diffusion of the whole basin."""
     if (_climate_rust.has_kernel("smooth_along_coast_rs")
         and _climate_rust.supports_grid(is_ocean, u, v, ambient_u, ambient_v)
-        and lat_deg.shape == (is_ocean.shape[0],) and lat_deg.dtype == np.float64):
+        and _climate_rust.supports_lat(lat_deg, is_ocean.shape[0])):
         return _climate_rust.smooth_along_coast(
             u, v, is_ocean, lat_deg, ambient_u, ambient_v,
             COASTAL_SMOOTHING_ITERATIONS, COASTAL_SMOOTHING_WEIGHT,
@@ -1447,9 +1452,9 @@ def _humidity_zonal_sweep(
     land_source: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
     height, width = is_ocean.shape
-    if (_climate_rust.available()
+    if (_climate_rust.has_kernel("humidity_zonal_sweep_rs")
         and _climate_rust.supports_grid(is_ocean, elevation_m, evap_ceiling, elevation_factor, land_source)
-        and lat_deg.shape == (height,) and lat_deg.dtype == np.float64):
+        and _climate_rust.supports_lat(lat_deg, height)):
         return _climate_rust.humidity_zonal_sweep(
             is_ocean, elevation_m, evap_ceiling, elevation_factor, land_source,
             zonal_direction_for_lat(lat_deg), _zonal_base_retention(width, lat_deg),
@@ -1693,13 +1698,13 @@ def compute_moisture_flux_convergence(
     reproduces the earlier deterministic field -- for tests exercising the divergence pattern
     in isolation."""
     height, width = humidity.shape
-    lat_grid = np.radians(np.repeat(lat_deg[:, None], width, axis=1))
-    cos_lat = np.clip(np.cos(lat_grid), 0.15, 1.0)
+    cos_lat = np.clip(np.cos(np.radians(lat_deg)), 0.15, 1.0)[:, None]
 
     if (_climate_rust.has_kernel("moisture_divergence_rs")
-        and _climate_rust.supports_float_grid(humidity, wind_u, wind_v, cos_lat)):
+        and _climate_rust.supports_float_grid(humidity, wind_u, wind_v)
+        and cos_lat.dtype == np.float64 and cos_lat.shape == (height, 1)):
         divergence_per_km = _climate_rust.moisture_divergence(
-            humidity, wind_u, wind_v, cos_lat, plates.PLANET_RADIUS_KM,
+            humidity, wind_u, wind_v, cos_lat[:, 0], plates.PLANET_RADIUS_KM,
         )
     else:
         qu = humidity * wind_u

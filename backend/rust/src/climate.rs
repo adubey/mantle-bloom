@@ -435,7 +435,9 @@ pub fn humidity_zonal_sweep_rs<'py>(
     let direction = direction.as_array();
     let retention = retention.as_array();
     let (height, width) = ocean.dim();
-    if elevation.dim() != (height, width)
+    if height == 0
+        || width == 0
+        || elevation.dim() != (height, width)
         || ceiling.dim() != (height, width)
         || factor.dim() != (height, width)
         || source.dim() != (height, width)
@@ -446,57 +448,60 @@ pub fn humidity_zonal_sweep_rs<'py>(
             "climate sweep shape mismatch",
         ));
     }
-    let mut humidity = vec![vec![0.0; width]; height];
-    let mut orographic = vec![vec![0.0; width]; height];
-    for row in 0..height {
-        let mut moisture = 0.0;
-        let mut previous = 0.0;
-        for lap in 0..2 {
-            for i in 0..width {
-                let col = if direction[row] == 1.0 {
-                    i
-                } else {
-                    width - 1 - i
-                };
-                let elev = elevation[[row, col]];
-                let wind_factor = min_wind + (1.0 - min_wind) * factor[[row, col]];
-                let land = min_nan(
-                    moisture * (retention[row] * wind_factor) + source[[row, col]],
-                    max_humidity,
-                );
-                let after_source = if ocean[[row, col]] {
-                    ceiling[[row, col]]
-                } else {
-                    land
-                };
-                let gain = elev - previous;
-                let retained = if gain > 0.0 {
-                    let saturation = 1.0 - (-gain / lift_scale).exp();
-                    1.0 - saturation * (1.0 - shadow_factor)
-                } else {
-                    1.0
-                };
-                let next = if ocean[[row, col]] {
-                    after_source
-                } else {
-                    after_source * retained
-                };
-                if lap == 1 {
-                    humidity[row][col] = next;
-                    orographic[row][col] = if ocean[[row, col]] {
-                        0.0
+    let (humidity, orographic) = py.detach(|| {
+        let mut humidity = numpy::ndarray::Array2::<f64>::zeros((height, width));
+        let mut orographic = numpy::ndarray::Array2::<f64>::zeros((height, width));
+        for row in 0..height {
+            let mut moisture = 0.0;
+            let mut previous = 0.0;
+            for lap in 0..2 {
+                for i in 0..width {
+                    let col = if direction[row] == 1.0 {
+                        i
                     } else {
-                        after_source - next
+                        width - 1 - i
                     };
+                    let elev = elevation[[row, col]];
+                    let wind_factor = min_wind + (1.0 - min_wind) * factor[[row, col]];
+                    let land = min_nan(
+                        moisture * (retention[row] * wind_factor) + source[[row, col]],
+                        max_humidity,
+                    );
+                    let after_source = if ocean[[row, col]] {
+                        ceiling[[row, col]]
+                    } else {
+                        land
+                    };
+                    let gain = elev - previous;
+                    let retained = if gain > 0.0 {
+                        let saturation = 1.0 - (-gain / lift_scale).exp();
+                        1.0 - saturation * (1.0 - shadow_factor)
+                    } else {
+                        1.0
+                    };
+                    let next = if ocean[[row, col]] {
+                        after_source
+                    } else {
+                        after_source * retained
+                    };
+                    if lap == 1 {
+                        humidity[[row, col]] = next;
+                        orographic[[row, col]] = if ocean[[row, col]] {
+                            0.0
+                        } else {
+                            after_source - next
+                        };
+                    }
+                    moisture = next;
+                    previous = elev;
                 }
-                moisture = next;
-                previous = elev;
             }
         }
-    }
+        (humidity, orographic)
+    });
     Ok((
-        PyArray2::from_vec2(py, &humidity)?,
-        PyArray2::from_vec2(py, &orographic)?,
+        PyArray2::from_owned_array(py, humidity),
+        PyArray2::from_owned_array(py, orographic),
     ))
 }
 
@@ -536,53 +541,56 @@ pub fn smooth_along_coast_rs<'py>(
             "coast smoothing shape mismatch",
         ));
     }
-    let mut u = u_in.to_owned();
-    let mut v = v_in.to_owned();
-    for _ in 0..iterations {
-        let mut next_u = u.clone();
-        let mut next_v = v.clone();
-        for r in 0..h {
-            let north = (r + h - 1) % h;
-            let south = (r + 1) % h;
-            for c in 0..w {
-                let east = (c + 1) % w;
-                let west = (c + w - 1) % w;
-                let neighbors = [(r, east), (r, west), (south, c), (north, c)];
-                let mut count = 0.0;
-                let mut total_u = 0.0;
-                let mut total_v = 0.0;
-                for &(nr, nc) in &neighbors {
-                    let mask = if ocean[[nr, nc]] { 1.0 } else { 0.0 };
-                    count += mask;
-                    total_u += u[[nr, nc]] * mask;
-                    total_v += v[[nr, nc]] * mask;
-                }
-                let avg_u = if count > 0.0 { total_u / count } else { 0.0 };
-                let avg_v = if count > 0.0 { total_v / count } else { 0.0 };
-                let mut uu = u[[r, c]] + weight * (avg_u - u[[r, c]]);
-                let mut vv = v[[r, c]] + weight * (avg_v - v[[r, c]]);
-                uu += restore * (ambient_u[[r, c]] - uu);
-                vv += restore * (ambient_v[[r, c]] - vv);
-                let nx = (!ocean[[r, west]]) as i32 - (!ocean[[r, east]]) as i32;
-                let ny = (!ocean[[south, c]]) as i32 - (!ocean[[north, c]]) as i32;
-                let mag = (nx as f64).hypot(ny as f64);
-                if ocean[[r, c]] && mag > eps {
-                    let nx = nx as f64 / mag;
-                    let ny = ny as f64 / mag;
-                    let hemisphere = if lat[r] >= 0.0 { 1.0 } else { -1.0 };
-                    let into = max_nan(-(uu * nx + vv * ny), 0.0);
-                    let redirected = into * speedup;
-                    next_u[[r, c]] = uu + into * nx + redirected * (-hemisphere * ny);
-                    next_v[[r, c]] = vv + into * ny + redirected * (hemisphere * nx);
-                } else {
-                    next_u[[r, c]] = uu;
-                    next_v[[r, c]] = vv;
+    let (u, v) = py.detach(|| {
+        let mut u = u_in.to_owned();
+        let mut v = v_in.to_owned();
+        let mut next_u = numpy::ndarray::Array2::<f64>::zeros((h, w));
+        let mut next_v = numpy::ndarray::Array2::<f64>::zeros((h, w));
+        for _ in 0..iterations {
+            for r in 0..h {
+                let north = (r + h - 1) % h;
+                let south = (r + 1) % h;
+                for c in 0..w {
+                    let east = (c + 1) % w;
+                    let west = (c + w - 1) % w;
+                    let neighbors = [(r, east), (r, west), (south, c), (north, c)];
+                    let mut count = 0.0;
+                    let mut total_u = 0.0;
+                    let mut total_v = 0.0;
+                    for &(nr, nc) in &neighbors {
+                        let mask = if ocean[[nr, nc]] { 1.0 } else { 0.0 };
+                        count += mask;
+                        total_u += u[[nr, nc]] * mask;
+                        total_v += v[[nr, nc]] * mask;
+                    }
+                    let avg_u = if count > 0.0 { total_u / count } else { 0.0 };
+                    let avg_v = if count > 0.0 { total_v / count } else { 0.0 };
+                    let mut uu = u[[r, c]] + weight * (avg_u - u[[r, c]]);
+                    let mut vv = v[[r, c]] + weight * (avg_v - v[[r, c]]);
+                    uu += restore * (ambient_u[[r, c]] - uu);
+                    vv += restore * (ambient_v[[r, c]] - vv);
+                    let nx = (!ocean[[r, west]]) as i32 - (!ocean[[r, east]]) as i32;
+                    let ny = (!ocean[[south, c]]) as i32 - (!ocean[[north, c]]) as i32;
+                    let mag = (nx as f64).hypot(ny as f64);
+                    if ocean[[r, c]] && mag > eps {
+                        let nx = nx as f64 / mag;
+                        let ny = ny as f64 / mag;
+                        let hemisphere = if lat[r] >= 0.0 { 1.0 } else { -1.0 };
+                        let into = max_nan(-(uu * nx + vv * ny), 0.0);
+                        let redirected = into * speedup;
+                        next_u[[r, c]] = uu + into * nx + redirected * (-hemisphere * ny);
+                        next_v[[r, c]] = vv + into * ny + redirected * (hemisphere * nx);
+                    } else {
+                        next_u[[r, c]] = uu;
+                        next_v[[r, c]] = vv;
+                    }
                 }
             }
+            std::mem::swap(&mut u, &mut next_u);
+            std::mem::swap(&mut v, &mut next_v);
         }
-        u = next_u;
-        v = next_v;
-    }
+        (u, v)
+    });
     Ok((
         PyArray2::from_owned_array(py, u),
         PyArray2::from_owned_array(py, v),
@@ -599,7 +607,7 @@ pub fn offset_indices_rs<'py>(
     cos_lat: PyReadonlyArray1<'py, f64>,
     lon: PyReadonlyArray1<'py, f64>,
     distance: f64,
-) -> PyResult<(Bound<'py, PyArray2<i64>>, Bound<'py, PyArray2<i64>>)> {
+) -> PyResult<Option<(Bound<'py, PyArray2<i64>>, Bound<'py, PyArray2<i64>>)>> {
     let u = u.as_array();
     let v = v.as_array();
     let lat = lat.as_array();
@@ -617,22 +625,32 @@ pub fn offset_indices_rs<'py>(
             "offset shape mismatch",
         ));
     }
-    let mut rows = vec![vec![0i64; w]; h];
-    let mut cols = vec![vec![0i64; w]; h];
-    for r in 0..h {
-        for c in 0..w {
-            let dst_lat = lat[r] + v[[r, c]] * distance;
-            let dst_lon = lon[c] + u[[r, c]] * distance / cos_lat[r];
-            let row = ((90.0 - dst_lat) / (180.0 / h as f64) - 0.5).round_ties_even() as i64;
-            let col = ((dst_lon + 180.0) / (360.0 / w as f64) - 0.5).round_ties_even() as i64;
-            rows[r][c] = row.clamp(0, h as i64 - 1);
-            cols[r][c] = col.rem_euclid(w as i64);
+    let indices = py.detach(|| {
+        let mut rows = numpy::ndarray::Array2::<i64>::zeros((h, w));
+        let mut cols = numpy::ndarray::Array2::<i64>::zeros((h, w));
+        for r in 0..h {
+            for c in 0..w {
+                let du = u[[r, c]];
+                let dv = v[[r, c]];
+                if !du.is_finite() || !dv.is_finite() || du.abs() > 1000.0 || dv.abs() > 1000.0 {
+                    return None;
+                }
+                let dst_lat = lat[r] + dv * distance;
+                let dst_lon = lon[c] + du * distance / cos_lat[r];
+                let row = ((90.0 - dst_lat) / (180.0 / h as f64) - 0.5).round_ties_even() as i64;
+                let col = ((dst_lon + 180.0) / (360.0 / w as f64) - 0.5).round_ties_even() as i64;
+                rows[[r, c]] = row.clamp(0, h as i64 - 1);
+                cols[[r, c]] = col.rem_euclid(w as i64);
+            }
         }
-    }
-    Ok((
-        PyArray2::from_vec2(py, &rows)?,
-        PyArray2::from_vec2(py, &cols)?,
-    ))
+        Some((rows, cols))
+    });
+    Ok(indices.map(|(rows, cols)| {
+        (
+            PyArray2::from_owned_array(py, rows),
+            PyArray2::from_owned_array(py, cols),
+        )
+    }))
 }
 
 /// Spherical centered moisture divergence before smoothing (#1046).
@@ -642,7 +660,7 @@ pub fn moisture_divergence_rs<'py>(
     humidity: PyReadonlyArray2<'py, f64>,
     u: PyReadonlyArray2<'py, f64>,
     v: PyReadonlyArray2<'py, f64>,
-    cos_lat: PyReadonlyArray2<'py, f64>,
+    cos_lat: PyReadonlyArray1<'py, f64>,
     radius: f64,
 ) -> PyResult<Bound<'py, PyArray2<f64>>> {
     let q = humidity.as_array();
@@ -650,26 +668,67 @@ pub fn moisture_divergence_rs<'py>(
     let v = v.as_array();
     let cos = cos_lat.as_array();
     let (h, w) = q.dim();
-    if h == 0 || w == 0 || u.dim() != (h, w) || v.dim() != (h, w) || cos.dim() != (h, w) {
+    if h == 0 || w == 0 || u.dim() != (h, w) || v.dim() != (h, w) || cos.len() != h {
         return Err(pyo3::exceptions::PyValueError::new_err(
             "moisture divergence shape mismatch",
         ));
     }
     let dlon = 2.0 * std::f64::consts::PI / w as f64;
     let dlat = std::f64::consts::PI / h as f64;
-    let mut result = vec![vec![0.0; w]; h];
-    for r in 0..h {
-        let n = (r + h - 1) % h;
-        let s = (r + 1) % h;
-        for c in 0..w {
-            let e = (c + 1) % w;
-            let west = (c + w - 1) % w;
-            let dqu = (q[[r, e]] * u[[r, e]] - q[[r, west]] * u[[r, west]]) / 2.0;
-            let dqv = ((q[[n, c]] * v[[n, c]]) * cos[[n, c]]
-                - (q[[s, c]] * v[[s, c]]) * cos[[s, c]])
-                / 2.0;
-            result[r][c] = (dqu / dlon + dqv / dlat) / (cos[[r, c]] * radius);
+    let result = py.detach(|| {
+        let mut result = numpy::ndarray::Array2::<f64>::zeros((h, w));
+        for r in 0..h {
+            let n = (r + h - 1) % h;
+            let s = (r + 1) % h;
+            for c in 0..w {
+                let e = (c + 1) % w;
+                let west = (c + w - 1) % w;
+                let dqu = (q[[r, e]] * u[[r, e]] - q[[r, west]] * u[[r, west]]) / 2.0;
+                let dqv =
+                    ((q[[n, c]] * v[[n, c]]) * cos[n] - (q[[s, c]] * v[[s, c]]) * cos[s]) / 2.0;
+                result[[r, c]] = (dqu / dlon + dqv / dlat) / (cos[r] * radius);
+            }
         }
+        result
+    });
+    Ok(PyArray2::from_owned_array(py, result))
+}
+
+/// Periodic Jacobi smoothing, preserving NumPy's neighbor addition order (#1046).
+#[pyfunction]
+pub fn smooth_field_rs<'py>(
+    py: Python<'py>,
+    field: PyReadonlyArray2<'py, f64>,
+    iterations: usize,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let (h, w) = field.as_array().dim();
+    if h == 0 || w == 0 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "smoothing shape mismatch",
+        ));
     }
-    Ok(PyArray2::from_vec2(py, &result)?)
+    let mut values = field.as_slice()?.to_vec();
+    let values = py.detach(|| {
+        let mut scratch = vec![0.0; h * w];
+        for _ in 0..iterations {
+            for r in 0..h {
+                let north = if r == 0 { h - 1 } else { r - 1 };
+                let south = if r + 1 == h { 0 } else { r + 1 };
+                for c in 0..w {
+                    let east = if c + 1 == w { 0 } else { c + 1 };
+                    let west = if c == 0 { w - 1 } else { c - 1 };
+                    scratch[r * w + c] = 0.25
+                        * (values[r * w + east]
+                            + values[r * w + west]
+                            + values[south * w + c]
+                            + values[north * w + c]);
+                }
+            }
+            std::mem::swap(&mut values, &mut scratch);
+        }
+        values
+    });
+    let out = numpy::ndarray::Array2::from_shape_vec((h, w), values)
+        .expect("smoothing output has the validated grid shape");
+    Ok(PyArray2::from_owned_array(py, out))
 }

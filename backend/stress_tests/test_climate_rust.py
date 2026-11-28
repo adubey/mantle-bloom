@@ -7,7 +7,7 @@ from app.hydroclimate import _climate_rust, climate
 
 
 def test_diagnostic_climate_kernels_match_numpy_at_density_four(monkeypatch):
-    exports = ("humidity_zonal_sweep_rs", "smooth_along_coast_rs", "offset_indices_rs", "moisture_divergence_rs")
+    exports = ("humidity_zonal_sweep_rs", "smooth_along_coast_rs", "offset_indices_rs", "moisture_divergence_rs", "smooth_field_rs")
     if not all(_climate_rust.has_kernel(name) for name in exports):
         pytest.skip("Rust climate kernels unavailable")
     rng = np.random.default_rng(1046)

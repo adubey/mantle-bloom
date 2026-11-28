@@ -1,5 +1,6 @@
 """Optional native diagnostic climate kernels (#1046)."""
 
+import logging
 import os
 
 import numpy as np
@@ -11,10 +12,23 @@ try:
 except ImportError:
     _rust = None
 
+_REQUIRED_EXPORTS = (
+    "humidity_zonal_sweep_rs", "smooth_along_coast_rs", "offset_indices_rs",
+    "moisture_divergence_rs", "smooth_field_rs",
+)
 
-def available():
-    """Allow old extension builds to fall back until rebuilt."""
-    return has_kernel("humidity_zonal_sweep_rs")
+
+def _warn_missing_exports(module):
+    if module is not None:
+        missing = [name for name in _REQUIRED_EXPORTS if not hasattr(module, name)]
+        if missing:
+            logging.getLogger(__name__).warning(
+                "mantle_bloom_rust is missing climate exports %s (stale build?); affected kernels "
+                "fall back to Python. Rebuild with `backend/.venv/bin/python bin/build_rust.py`.", missing,
+            )
+
+
+_warn_missing_exports(_rust)
 
 
 def humidity_zonal_sweep(ocean, elevation, ceiling, factor, source, direction, retention, *constants):
@@ -50,6 +64,11 @@ def supports_grid(ocean, *fields):
     )
 
 
+def supports_lat(lat, height):
+    """Keep NumPy behavior for nonstandard latitude grids."""
+    return lat.shape == (height,) and lat.dtype == np.float64
+
+
 def can_sample_offset(field, dir_u, dir_v, distance, lat):
     """Keep NumPy's casting behavior for unusual or non-finite inputs."""
     return (
@@ -57,9 +76,7 @@ def can_sample_offset(field, dir_u, dir_v, distance, lat):
         and dir_u.shape == dir_v.shape == field.shape
         and dir_u.dtype == dir_v.dtype == lat.dtype == np.float64
         and lat.shape == (field.shape[0],) and np.isfinite(distance) and abs(distance) <= 3600
-        and np.all(np.isfinite(lat)) and np.all(np.abs(lat) <= 3600)
-        and np.all(np.isfinite(dir_u)) and np.all(np.abs(dir_u) <= 1000)
-        and np.all(np.isfinite(dir_v)) and np.all(np.abs(dir_v) <= 1000)
+        and np.max(np.abs(lat)) <= 3600
     )
 
 
@@ -68,10 +85,13 @@ def sample_at_offset(field, dir_u, dir_v, distance, lat):
     height, width = field.shape
     lon = -180.0 + (np.arange(width) + 0.5) * (360.0 / width)
     cos_lat = np.clip(np.cos(np.radians(lat)), 0.15, 1.0)
-    rows, cols = _rust.offset_indices_rs(
+    indices = _rust.offset_indices_rs(
         np.ascontiguousarray(dir_u), np.ascontiguousarray(dir_v),
         np.ascontiguousarray(lat), np.ascontiguousarray(cos_lat), lon, float(distance),
     )
+    if indices is None:
+        return None
+    rows, cols = indices
     return field[rows, cols]
 
 
@@ -86,3 +106,8 @@ def moisture_divergence(humidity, u, v, cos_lat, radius):
     return _rust.moisture_divergence_rs(
         *(np.ascontiguousarray(a) for a in (humidity, u, v, cos_lat)), float(radius),
     )
+
+
+def smooth_field(field, iterations):
+    """Apply periodic four-neighbor Jacobi smoothing."""
+    return _rust.smooth_field_rs(np.ascontiguousarray(field), int(iterations))

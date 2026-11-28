@@ -251,3 +251,25 @@ RSS. Across two runs per arm, baseline/candidate climate times were 0.368–0.39
 while total-step times were 13.282–14.065 / 13.651–13.963 s. The climate phase is consistently
 lower in this small sample, while the overlapping total-step ranges do not establish an
 end-to-end speedup. Baseline and candidate repeats were not interleaved, and host load varied.
+
+
+### Review fixes and glacier stress failure
+
+The stopped full stress run reported 9 passes and one failure: the existing seed-1 glacier
+parity case measured a 0.01009711276609293 m sea-level gap against a 0.01 m limit. With the
+same opening world, ordinary NumPy summation produced 2.46298727874449 m, while the
+high-precision Python reference and Rust each produced 2.4528901659783973 m; closing ice
+volume and melt also matched between those latter paths. The Python glacier fallback now uses
+accurate area-weighted summation in its volume and balance calculations, rather than relaxing
+the parity threshold. Both seed-0 and seed-1 glacier stress cases passed against the real
+fallback. This changes fallback numerical behavior near extent thresholds; it does not change
+the default native glacier equations.
+
+Review fixes also eliminate repeated coastal-smoothing allocations, reduce offset-guard
+scans, return owned contiguous native output arrays, release the interpreter lock during the
+native loops, and add stale-extension, disable-override and invalid-input coverage. The
+four-neighbor smoothing used by moisture convergence and mountain deflection has a native
+path with NumPy addition-order and periodic-boundary tests. In an exploratory 360×720,
+48-pass microbenchmark, warm runs were 0.0124–0.0131 s native and 0.0177–0.0181 s NumPy;
+these are local measurements, not whole-step results. The full stress suite was stopped at
+user request after the reported failure and was not restarted.

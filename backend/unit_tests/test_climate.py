@@ -857,7 +857,7 @@ def test_compute_climate_runs_end_to_end_under_healpix_mode():
 def test_zonal_sweep_rust_matches_python_for_wrapped_land_and_ocean(monkeypatch):
     from app.hydroclimate import _climate_rust
 
-    if not _climate_rust.available():
+    if not _climate_rust.has_kernel("humidity_zonal_sweep_rs"):
         pytest.skip("Rust climate sweep unavailable")
     rng = np.random.default_rng(1046)
     shape = (7, 31)
@@ -869,7 +869,7 @@ def test_zonal_sweep_rust_matches_python_for_wrapped_land_and_ocean(monkeypatch)
     lat = np.array([-80., -50., -20., 0., 20., 50., 80.])
     args = (ocean, elevation, ceiling, factor, lat, source)
     actual = climate._humidity_zonal_sweep(*args)
-    monkeypatch.setattr(_climate_rust, "available", lambda: False)
+    monkeypatch.setattr(_climate_rust, "has_kernel", lambda _name: False)
     expected = climate._humidity_zonal_sweep(*args)
     for got, want in zip(actual, expected, strict=True):
         np.testing.assert_allclose(got, want, rtol=2e-14, atol=2e-14)
@@ -899,7 +899,7 @@ def test_climate_native_dispatch_preserves_float32_numpy_path(monkeypatch):
     def unexpected(*_args):
         raise AssertionError("float32 inputs must use the NumPy path")
 
-    monkeypatch.setattr(_climate_rust, "available", lambda: True)
+    monkeypatch.setattr(_climate_rust, "has_kernel", lambda _name: True)
     monkeypatch.setattr(_climate_rust, "humidity_zonal_sweep", unexpected)
     shape = (2, 4)
     floats = np.ones(shape, dtype=np.float32)
@@ -915,7 +915,7 @@ def test_climate_native_dispatch_preserves_float32_numpy_path(monkeypatch):
 def test_climate_native_degenerate_grids_match_numpy(monkeypatch, shape, ocean_value):
     from app.hydroclimate import _climate_rust
 
-    if not _climate_rust.available() or not _climate_rust.has_kernel("smooth_along_coast_rs"):
+    if not _climate_rust.has_kernel("humidity_zonal_sweep_rs") or not _climate_rust.has_kernel("smooth_along_coast_rs"):
         pytest.skip("Rust climate kernels unavailable")
     ocean = np.full(shape, ocean_value, dtype=bool)
     elevation = np.full(shape, 1000.0)
@@ -968,3 +968,137 @@ def test_moisture_flux_rust_matches_numpy_with_and_without_noise(monkeypatch):
             patch.setattr(_climate_rust, "has_kernel", lambda _name: False)
             expected = climate.compute_moisture_flux_convergence(humidity, u, v, lat, white_noise)
         np.testing.assert_allclose(got, expected, rtol=2e-14, atol=2e-14)
+
+
+def test_climate_rust_disable_environment():
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    env = {**os.environ, "MANTLE_BLOOM_DISABLE_RUST": "1"}
+    code = (
+        "from app.hydroclimate import _climate_rust as r; "
+        "assert all(not r.has_kernel(k) for k in "
+        "('humidity_zonal_sweep_rs', 'smooth_along_coast_rs', "
+        "'offset_indices_rs', 'moisture_divergence_rs', 'smooth_field_rs'))"
+    )
+    subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1], env=env, check=True)
+
+
+@pytest.mark.parametrize("bad", [np.nan, np.inf, 1001.0])
+def test_offset_sampler_falls_back_for_nonfinite_and_out_of_range_directions(monkeypatch, bad):
+    from app.hydroclimate import _climate_rust
+
+    if not _climate_rust.has_kernel("offset_indices_rs"):
+        pytest.skip("Rust offset kernel unavailable")
+    field = np.arange(8).reshape(2, 4)
+    u = np.zeros((2, 4))
+    u[0, 0] = bad
+    lat = np.array([45., -45.])
+    with np.errstate(invalid="ignore"):
+        result = climate._sample_at_offset(field, u, np.zeros_like(u), 1.0, lat)
+        monkeypatch.setattr(_climate_rust, "has_kernel", lambda _name: False)
+        expected = climate._sample_at_offset(field, u, np.zeros_like(u), 1.0, lat)
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_native_humidity_rejects_empty_grid():
+    from app.hydroclimate import _climate_rust
+
+    if not _climate_rust.has_kernel("humidity_zonal_sweep_rs"):
+        pytest.skip("Rust humidity kernel unavailable")
+    grid = np.empty((0, 5), dtype=float)
+    with pytest.raises(ValueError, match="shape mismatch"):
+        _climate_rust.humidity_zonal_sweep(
+            np.empty((0, 5), dtype=bool), grid, grid, grid, grid,
+            np.empty(0), np.empty(0), 0.5, 18.8, 600.0, 0.6,
+        )
+
+
+@pytest.mark.parametrize("shape", [(1, 1), (1, 9), (9, 1), (9, 17)])
+@pytest.mark.parametrize("iterations", [1, 3, 48])
+def test_native_smoothing_matches_numpy_addition_order(monkeypatch, shape, iterations):
+    from app.hydroclimate import _climate_rust
+
+    if not _climate_rust.has_kernel("smooth_field_rs"):
+        pytest.skip("Rust smoothing unavailable")
+    rng = np.random.default_rng(10463)
+    field = rng.normal(size=shape)
+    actual = climate._smooth_field(field, iterations)
+    monkeypatch.setattr(_climate_rust, "has_kernel", lambda _name: False)
+    expected = climate._smooth_field(field, iterations)
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_zero_pass_smoothing_preserves_input_identity():
+    field = np.ones((2, 4))
+    assert climate._smooth_field(field, 0) is field
+
+
+def test_climate_stale_extension_warns_and_individual_kernels_fall_back(monkeypatch, caplog):
+    from app.hydroclimate import _climate_rust
+
+    class OldExtension:
+        humidity_zonal_sweep_rs = object()
+
+    extension = OldExtension()
+    monkeypatch.setattr(_climate_rust, "_rust", extension)
+    _climate_rust._warn_missing_exports(extension)
+    assert _climate_rust.has_kernel("humidity_zonal_sweep_rs")
+    assert not _climate_rust.has_kernel("smooth_field_rs")
+    assert "stale build" in caplog.text
+
+
+def test_climate_native_float32_guards_use_numpy(monkeypatch):
+    from app.hydroclimate import _climate_rust
+
+    def unexpected(*_args):
+        raise AssertionError("float32 inputs must use NumPy")
+
+    monkeypatch.setattr(_climate_rust, "has_kernel", lambda name: name != "smooth_field_rs")
+    monkeypatch.setattr(_climate_rust, "smooth_along_coast", unexpected)
+    monkeypatch.setattr(_climate_rust, "moisture_divergence", unexpected)
+    monkeypatch.setattr(_climate_rust, "sample_at_offset", unexpected)
+    field = np.ones((2, 4), dtype=np.float32)
+    ocean = np.ones(field.shape, dtype=bool)
+    lat = np.array([45., -45.], dtype=np.float64)
+    climate._smooth_along_coast(field, field, ocean, lat, field, field)
+    climate.compute_moisture_flux_convergence(field, field, field, lat)
+    climate._sample_at_offset(field, field, field, 1.0, lat.astype(np.float32))
+
+
+def test_moisture_convergence_matches_original_two_dimensional_latitude_formula(monkeypatch):
+    from app.hydroclimate import _climate_rust
+
+    rng = np.random.default_rng(10464)
+    height, width = 19, 37
+    shape = (height, width)
+    humidity = rng.uniform(0, 18, shape)
+    u, v = (rng.normal(size=shape) for _ in range(2))
+    lat = np.linspace(89., -89., height)
+    got = climate.compute_moisture_flux_convergence(humidity, u, v, lat)
+    monkeypatch.setattr(_climate_rust, "has_kernel", lambda _name: False)
+    cos_lat = np.clip(np.cos(np.radians(np.repeat(lat[:, None], width, axis=1))), 0.15, 1.0)
+    dqu, _ = climate._centered_gradient(humidity * u)
+    _, dqv = climate._centered_gradient(humidity * v * cos_lat)
+    divergence = (dqu / (2.0 * np.pi / width) + dqv / (np.pi / height)) / (cos_lat * plates.PLANET_RADIUS_KM)
+    convergence = climate._smooth_field(
+        -divergence * climate.MFC_COLLECTION_LENGTH_KM / climate.MFC_REFERENCE_WIND_SPEED_M_S,
+        climate._mfc_smoothing_passes(width),
+    )
+    expected = ((1.0 - climate.MFC_ZONAL_COHERENCE) * convergence
+                + climate.MFC_ZONAL_COHERENCE * convergence.mean(axis=1, keepdims=True))
+    np.testing.assert_allclose(got, expected, rtol=2e-14, atol=2e-14)
+
+
+def test_smoothing_float32_uses_numpy_fallback(monkeypatch):
+    from app.hydroclimate import _climate_rust
+
+    def unexpected(*_args):
+        raise AssertionError("float32 input must use NumPy")
+
+    monkeypatch.setattr(_climate_rust, "has_kernel", lambda _name: True)
+    monkeypatch.setattr(_climate_rust, "smooth_field", unexpected)
+    field = np.arange(8, dtype=np.float32).reshape(2, 4)
+    assert climate._smooth_field(field, 2).dtype == np.float32

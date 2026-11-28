@@ -887,7 +887,8 @@ since climate.py runs *before* this module each step).
   conserved: its opening volume, `sum(glacier_depth * area)`, changes by exactly the step's
   accumulation less surface and basal melt, less calving and overflow. The ledger
   (`HydrologyFields.ice.ledger`, per body in `.bodies`) closes to round-off, and ice is never
-  created.
+  created. The Python fallback uses accurate summation for area-weighted glacier volumes and
+  balance terms, reducing sensitivity to summation order near extent-solver thresholds.
 - **Backward-Euler extent.** Each body's candidate extents form a nested family: `phi` is the
   signed graph distance from the edge of its positive-balance area S (negative inside, two
   scipy Dijkstra passes), and the extent at margin position `d` is every node with
