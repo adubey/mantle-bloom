@@ -357,12 +357,19 @@ all checkpoints. Other native components remained enabled. The compact checkpoin
 | Mobile-cover ledger error (km³) | 0.000002496 | 0.000002944 | +0.000000448 |
 
 The two repeats show no spread in these selected metrics on this save, not a general estimate
-of simulation variability. The isolation run ties the observed divergence to enabling the new
-fault kernels but does not identify a specific operation. The sequential native transfer sums
-can differ from NumPy dot-product order by a few floating-point units; the replay does not
-establish whether those differences are the sole cause. Land area first differs at the
+of simulation variability. A further exploratory isolation replay on review-fix commit `26b0a298` kept all native kernels
+except `relief_transfer` enabled. It also matched baseline land area, sea level, continental
+area and mantle volume exactly at every checkpoint. On this save, restoring only the Python
+transfer removes the observed divergence in those metrics. Native transfer sums can differ from
+NumPy dot-product order by a few floating-point units; this control supports their role but
+does not prove every intermediate field is identical. Land area first differs at the
 68.6 Myr checkpoint and varies in sign and size afterward. Do not claim bitwise model parity.
 The isolation control covers one save and interval only.
 
 The affected suite passed 2,695 tests. The stress suite was stopped at the owner's request
 after 9 passed; remaining stress cases were not run.
+
+Muse's review prompted two non-finite input parity fixes after the profiled candidate: a
+non-finite shear sense takes the Python path and foreign-neighbor selection preserves NumPy's
+first-NaN ordering. These guards do not alter finite model inputs. The paired profile table
+above measures `49ba239c`; the transfer-only control includes those review fixes.
