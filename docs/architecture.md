@@ -8,7 +8,8 @@
   `scipy.sparse.csgraph.connected_components` for plate defragmentation), a compiled PyO3
   Rust extension (`backend/rust/`, imported as `mantle_bloom_rust` via
   `spatial_index.py` for the shared 3D point index behind the per-plate, node-cloud and
-  hot-path nearest-neighbour and radius queries, via
+  hot-path nearest-neighbour and radius queries, via `torque.py`, `collision_polarity.py`,
+  `gaps.py` and `magma_transport.py` for native tectonic kernels, via
   `hydroclimate/_glacier_rust.py` for the glacier march, plastic ice-sheet sweeps, and
   connected-ocean sea-level flood/bisection, via `hydroclimate/_lakes_rust.py` for lake
   component grouping, catchment roots, depression hierarchy events, and multi-member volume
@@ -595,6 +596,9 @@ spatial_index.py   SpatialIndex, the shared 3D point index (#1042): `cKDTree`'s 
                    `Plate.get_node_kdtree`, `Plate.get_bounding_polygon_tree`,
                    `plates.cached_node_position_tree` and the climate, hydrology, erosion,
                    gap-fill, frontier-growth, merge and render point queries
+rust/src/tectonics.rs  native boundary selection, collision-front grouping, adaptive-cell gap
+                   coverage, and magma destination and allocation kernels; the Python modules
+                   retain fallbacks and own plate state and material bookkeeping (#1042)
 plates.py          PlateSurface / Plate (ABC) -- node iteration and bulk field access, plate
                     identity and territory, `shift()` (per-turn Euler-pole refit + rotation),
                     the live per-plate outline used by the "Plates" map view, whole-world
