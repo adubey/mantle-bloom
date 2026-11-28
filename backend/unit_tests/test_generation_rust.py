@@ -73,6 +73,38 @@ def test_nearest_seed_labels_ties_take_lowest_seed():
 
 
 @pytest.mark.skipif(not _generation_rust.RUST_AVAILABLE, reason="Rust extension unavailable")
+def test_seed_labels_tie_contract_matches_rust():
+    # Exact ties (duplicated seeds, symmetric points) must resolve to the
+    # lowest seed index in the Python fallback just as in the native tree, so
+    # a seeded partition does not depend on the extension being installed.
+    seeds = np.array([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]])
+    owners = np.array([5, 7, 9, 11])
+    points = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 0.0]])
+    expected = _generation_rust.nearest_seed_labels(points, seeds, owners)
+    np.testing.assert_array_equal(plate_partition._seed_labels_python(points, seeds, owners), expected)
+
+
+@pytest.mark.skipif(not _generation_rust.RUST_AVAILABLE, reason="Rust extension unavailable")
+def test_polygon_seed_partition_matches_reference(monkeypatch):
+    from app.elevation_lines import line_spacing_rad
+    from app.layout_lattice import lattice
+
+    lat = lattice(line_spacing_rad(0.25))
+    core = np.full(lat.size, -1, dtype=np.int64)
+    core[::37] = 0  # a thin spread of craton cells, so polygon seeds join in
+
+    def run():
+        return plate_partition._polygon_seed_partition(np.random.default_rng(1042), lat, 9, core)
+
+    actual_labels, actual_sites = run()
+    monkeypatch.setattr(_generation_rust, "RUST_AVAILABLE", False)
+    expected_labels, expected_sites = run()
+    monkeypatch.setattr(_generation_rust, "RUST_AVAILABLE", True)
+    np.testing.assert_array_equal(actual_labels, expected_labels)
+    np.testing.assert_array_equal(actual_sites, expected_sites)
+
+
+@pytest.mark.skipif(not _generation_rust.RUST_AVAILABLE, reason="Rust extension unavailable")
 def test_label_components_matches_reference(monkeypatch):
     from app.elevation_lines import line_spacing_rad
     from app.layout_lattice import lattice
@@ -123,10 +155,11 @@ def test_nearest_gate_handover(monkeypatch):
     monkeypatch.setattr(_generation_rust, "NEAREST_RUST_MAX_SOURCES", 8)
     assert not _generation_rust.use_nearest(sources)
     points = _unit(np.random.default_rng(7), 300)
-    gated = synthetic_relief._distance_km(sources, points)
-    monkeypatch.setattr(_generation_rust, "RUST_AVAILABLE", False)
-    tree = synthetic_relief._distance_km(sources, points)
-    np.testing.assert_array_equal(gated[0], tree[0])
+    gated = synthetic_relief._distance_km(sources, points)  # gate open: native path
+    monkeypatch.setattr(_generation_rust, "NEAREST_RUST_MAX_SOURCES", 8)
+    tree = synthetic_relief._distance_km(sources, points)  # gate closed: cKDTree
+    monkeypatch.setattr(_generation_rust, "NEAREST_RUST_MAX_SOURCES", 512)
+    np.testing.assert_allclose(gated[0], tree[0], rtol=0.0, atol=1e-11)
     np.testing.assert_array_equal(gated[1], tree[1])
 
 

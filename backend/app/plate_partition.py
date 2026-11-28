@@ -166,8 +166,29 @@ def _polygon_seed_partition(
     seed_owner = np.concatenate([point_owner, core_owner])
     if _generation_rust.has_kernel("nearest_seed_labels_rs"):
         return _generation_rust.nearest_seed_labels(lat.xyz, seed_xyz, seed_owner), primary_xyz
-    _, nearest = cKDTree(seed_xyz).query(lat.xyz, workers=-1)
-    return seed_owner[nearest], primary_xyz
+    return _seed_labels_python(lat.xyz, seed_xyz, seed_owner), primary_xyz
+
+
+def _seed_labels_python(xyz: np.ndarray, seed_xyz: np.ndarray, seed_owner: np.ndarray) -> np.ndarray:
+    """Nearest-seed labels via `cKDTree`, with the native path's tie contract.
+
+    Both paths resolve a cell exactly equidistant from several seeds to the
+    lowest seed index (#1042 review); `cKDTree` alone promises no tie order,
+    which would make a seeded world depend on whether the extension is
+    installed. Non-tied cells keep the tree's answer untouched; only the rare
+    tied cells are re-resolved against every seed.
+    """
+    if len(seed_xyz) == 1:
+        return seed_owner[np.zeros(len(xyz), dtype=np.int64)]
+    dist, nearest = cKDTree(seed_xyz).query(xyz, k=2, workers=-1)
+    labels = seed_owner[nearest[:, 0]]
+    tied = np.flatnonzero(dist[:, 0] == dist[:, 1])
+    for start in range(0, len(tied), 1024):
+        cells = tied[start : start + 1024]
+        d2 = ((xyz[cells, None, :] - seed_xyz[None, :, :]) ** 2).sum(axis=2)
+        lowest_tied = np.where(d2 == d2.min(axis=1, keepdims=True), np.arange(len(seed_xyz)), len(seed_xyz)).min(axis=1)
+        labels[cells] = seed_owner[lowest_tied]
+    return labels
 
 
 @njit(cache=True)
