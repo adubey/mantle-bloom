@@ -112,7 +112,7 @@ from scipy.special import ndtr
 
 from .. import geometry, plates, trace
 from ..spatial_index import SpatialIndex
-from . import biomes, hydrology
+from . import _climate_rust, biomes, hydrology
 
 if TYPE_CHECKING:
     from ..world import World
@@ -862,6 +862,14 @@ def _smooth_along_coast(u: np.ndarray, v: np.ndarray, is_ocean: np.ndarray, lat_
     """Jacobi neighbor-average (ocean-only), re-deflected each pass, leaking a small
     fraction back toward the ambient (pre-deflection) value each pass so the deflection's
     reach along a coast is real but bounded, not an unbounded diffusion of the whole basin."""
+    if (_climate_rust.has_kernel("smooth_along_coast_rs")
+        and _climate_rust.supports_grid(is_ocean, u, v, ambient_u, ambient_v)
+        and lat_deg.shape == (is_ocean.shape[0],) and lat_deg.dtype == np.float64):
+        return _climate_rust.smooth_along_coast(
+            u, v, is_ocean, lat_deg, ambient_u, ambient_v,
+            COASTAL_SMOOTHING_ITERATIONS, COASTAL_SMOOTHING_WEIGHT,
+            COASTAL_RESTORE_FRACTION, DEFLECTION_SPEEDUP_FACTOR, _EPS,
+        )
     ocean_f = is_ocean.astype(float)
 
     def neighbor_average(field: np.ndarray) -> np.ndarray:
@@ -1437,6 +1445,15 @@ def _humidity_zonal_sweep(
     land_source: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
     height, width = is_ocean.shape
+    if (_climate_rust.available()
+        and _climate_rust.supports_grid(is_ocean, elevation_m, evap_ceiling, elevation_factor, land_source)
+        and lat_deg.shape == (height,) and lat_deg.dtype == np.float64):
+        return _climate_rust.humidity_zonal_sweep(
+            is_ocean, elevation_m, evap_ceiling, elevation_factor, land_source,
+            zonal_direction_for_lat(lat_deg), _zonal_base_retention(width, lat_deg),
+            MIN_WIND_RETENTION_FACTOR, MAX_HUMIDITY_G_KG,
+            OROGRAPHIC_LIFT_SCALE_M, OROGRAPHIC_RAIN_SHADOW_FACTOR,
+        )
     zonal_dir = zonal_direction_for_lat(lat_deg)
     rows = np.arange(height)
     base_retention = _zonal_base_retention(width, lat_deg)

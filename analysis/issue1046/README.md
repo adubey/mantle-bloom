@@ -191,3 +191,18 @@ investigated, with differences greater than 1e-10 relative in continuous global 
 any changed discrete area counted as a failed tight-parity expectation. This is a single-save
 numerical check, not evidence across seeds. If differences are near the threshold, repeat
 both arms to distinguish run variability from the port.
+
+### Initial zonal humidity and coastal-smoothing slice
+
+A first comparison covers only these two kernels, with the commands and controls above.
+The candidate was the working tree based on `31094ae7`; it included the humidity and
+coastal kernels and dtype-preserving fallback. Peak RSS is decimal MB. A mature candidate
+run overlapping a climate unit test was discarded and repeated after the test stopped.
+
+| Case | Mean step, baseline → candidate | Climate phase, baseline → candidate | Peak RSS, baseline → candidate |
+|---|---:|---:|---:|
+| Young | 12.342 → 12.257 s | 0.351 → 0.312 s | 960 → 1,036 MB |
+| Mature | 13.282 → 13.141 s | 0.368 → 0.291 s | 1,070 → 1,093 MB |
+
+These single-run results are descriptive. The other climate targets and saved-world parity
+remain to be checked before the step is complete.

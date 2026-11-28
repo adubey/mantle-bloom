@@ -852,3 +852,81 @@ def test_compute_climate_runs_end_to_end_under_healpix_mode():
     fields = climate.compute_climate(world, height=30, width=60)
     assert np.all(np.isfinite(fields.humidity_g_kg))
     assert np.all(np.isfinite(fields.precipitation_mm))
+
+
+def test_zonal_sweep_rust_matches_python_for_wrapped_land_and_ocean(monkeypatch):
+    from app.hydroclimate import _climate_rust
+
+    if not _climate_rust.available():
+        pytest.skip("Rust climate sweep unavailable")
+    rng = np.random.default_rng(1046)
+    shape = (7, 31)
+    ocean = rng.random(shape) < 0.3
+    elevation = rng.uniform(-1000, 5000, shape)
+    ceiling = rng.uniform(0, 18, shape)
+    factor = rng.uniform(0, 1, shape)
+    source = rng.uniform(0, 3, shape)
+    lat = np.array([-80., -50., -20., 0., 20., 50., 80.])
+    args = (ocean, elevation, ceiling, factor, lat, source)
+    actual = climate._humidity_zonal_sweep(*args)
+    monkeypatch.setattr(_climate_rust, "available", lambda: False)
+    expected = climate._humidity_zonal_sweep(*args)
+    for got, want in zip(actual, expected, strict=True):
+        np.testing.assert_allclose(got, want, rtol=2e-14, atol=2e-14)
+
+
+def test_coastal_smoothing_rust_matches_python(monkeypatch):
+    from app.hydroclimate import _climate_rust
+
+    if not _climate_rust.has_kernel("smooth_along_coast_rs"):
+        pytest.skip("Rust coastal smoothing unavailable")
+    rng = np.random.default_rng(10460)
+    shape = (9, 17)
+    ocean = rng.random(shape) < 0.6
+    fields = [rng.normal(size=shape) for _ in range(4)]
+    lat = np.linspace(-80, 80, shape[0])
+    args = (fields[0], fields[1], ocean, lat, fields[2], fields[3])
+    actual = climate._smooth_along_coast(*args)
+    monkeypatch.setattr(_climate_rust, "has_kernel", lambda _name: False)
+    expected = climate._smooth_along_coast(*args)
+    for got, want in zip(actual, expected, strict=True):
+        np.testing.assert_allclose(got, want, rtol=2e-14, atol=2e-14)
+
+
+def test_climate_native_dispatch_preserves_float32_numpy_path(monkeypatch):
+    from app.hydroclimate import _climate_rust
+
+    def unexpected(*_args):
+        raise AssertionError("float32 inputs must use the NumPy path")
+
+    monkeypatch.setattr(_climate_rust, "available", lambda: True)
+    monkeypatch.setattr(_climate_rust, "humidity_zonal_sweep", unexpected)
+    shape = (2, 4)
+    floats = np.ones(shape, dtype=np.float32)
+    humidity, dump = climate._humidity_zonal_sweep(
+        np.zeros(shape, dtype=bool), floats, floats, floats,
+        np.array([-45.0, 45.0], dtype=np.float64), floats,
+    )
+    assert humidity.shape == dump.shape == shape
+
+
+@pytest.mark.parametrize("shape", [(1, 1), (1, 7), (7, 1)])
+@pytest.mark.parametrize("ocean_value", [True, False])
+def test_climate_native_degenerate_grids_match_numpy(monkeypatch, shape, ocean_value):
+    from app.hydroclimate import _climate_rust
+
+    if not _climate_rust.available() or not _climate_rust.has_kernel("smooth_along_coast_rs"):
+        pytest.skip("Rust climate kernels unavailable")
+    ocean = np.full(shape, ocean_value, dtype=bool)
+    elevation = np.full(shape, 1000.0)
+    lat = np.linspace(-60.0, 60.0, shape[0])
+    source = np.full(shape, 50.0)
+    args = (ocean, elevation, elevation / 100.0, elevation / 2000.0, lat, source)
+    got_humidity = climate._humidity_zonal_sweep(*args)
+    coast_args = (elevation / 10, -elevation / 10, ocean, lat, elevation / 100, elevation / 200)
+    got_coast = climate._smooth_along_coast(*coast_args)
+    monkeypatch.setattr(_climate_rust, "has_kernel", lambda _name: False)
+    expected_humidity = climate._humidity_zonal_sweep(*args)
+    expected_coast = climate._smooth_along_coast(*coast_args)
+    for got, expected in zip((*got_humidity, *got_coast), (*expected_humidity, *expected_coast), strict=True):
+        np.testing.assert_allclose(got, expected, rtol=2e-14, atol=2e-14)

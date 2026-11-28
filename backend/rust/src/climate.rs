@@ -1,4 +1,4 @@
-use numpy::{PyArray1, PyReadonlyArray1, PyReadwriteArray1};
+use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyReadwriteArray1};
 use pyo3::prelude::*;
 
 pub const GRAVITY_M_S2: f64 = 9.81;
@@ -408,4 +408,183 @@ mod tests {
         assert_eq!(sm1, 0.0);
         assert!(bm1 > 0.0);
     }
+}
+
+/// Two periodic laps of the diagnostic zonal moisture recurrence (#1046).
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+pub fn humidity_zonal_sweep_rs<'py>(
+    py: Python<'py>,
+    ocean: PyReadonlyArray2<'py, bool>,
+    elevation: PyReadonlyArray2<'py, f64>,
+    ceiling: PyReadonlyArray2<'py, f64>,
+    factor: PyReadonlyArray2<'py, f64>,
+    source: PyReadonlyArray2<'py, f64>,
+    direction: PyReadonlyArray1<'py, f64>,
+    retention: PyReadonlyArray1<'py, f64>,
+    min_wind: f64,
+    max_humidity: f64,
+    lift_scale: f64,
+    shadow_factor: f64,
+) -> PyResult<(Bound<'py, PyArray2<f64>>, Bound<'py, PyArray2<f64>>)> {
+    let ocean = ocean.as_array();
+    let elevation = elevation.as_array();
+    let ceiling = ceiling.as_array();
+    let factor = factor.as_array();
+    let source = source.as_array();
+    let direction = direction.as_array();
+    let retention = retention.as_array();
+    let (height, width) = ocean.dim();
+    if elevation.dim() != (height, width)
+        || ceiling.dim() != (height, width)
+        || factor.dim() != (height, width)
+        || source.dim() != (height, width)
+        || direction.len() != height
+        || retention.len() != height
+    {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "climate sweep shape mismatch",
+        ));
+    }
+    let mut humidity = vec![vec![0.0; width]; height];
+    let mut orographic = vec![vec![0.0; width]; height];
+    for row in 0..height {
+        let mut moisture = 0.0;
+        let mut previous = 0.0;
+        for lap in 0..2 {
+            for i in 0..width {
+                let col = if direction[row] == 1.0 {
+                    i
+                } else {
+                    width - 1 - i
+                };
+                let elev = elevation[[row, col]];
+                let wind_factor = min_wind + (1.0 - min_wind) * factor[[row, col]];
+                let land = min_nan(
+                    moisture * (retention[row] * wind_factor) + source[[row, col]],
+                    max_humidity,
+                );
+                let after_source = if ocean[[row, col]] {
+                    ceiling[[row, col]]
+                } else {
+                    land
+                };
+                let gain = elev - previous;
+                let retained = if gain > 0.0 {
+                    let saturation = 1.0 - (-gain / lift_scale).exp();
+                    1.0 - saturation * (1.0 - shadow_factor)
+                } else {
+                    1.0
+                };
+                let next = if ocean[[row, col]] {
+                    after_source
+                } else {
+                    after_source * retained
+                };
+                if lap == 1 {
+                    humidity[row][col] = next;
+                    orographic[row][col] = if ocean[[row, col]] {
+                        0.0
+                    } else {
+                        after_source - next
+                    };
+                }
+                moisture = next;
+                previous = elev;
+            }
+        }
+    }
+    Ok((
+        PyArray2::from_vec2(py, &humidity)?,
+        PyArray2::from_vec2(py, &orographic)?,
+    ))
+}
+
+/// Ocean-only Jacobi smoothing and coastal redirection (#1046).
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+pub fn smooth_along_coast_rs<'py>(
+    py: Python<'py>,
+    u: PyReadonlyArray2<'py, f64>,
+    v: PyReadonlyArray2<'py, f64>,
+    ocean: PyReadonlyArray2<'py, bool>,
+    lat: PyReadonlyArray1<'py, f64>,
+    ambient_u: PyReadonlyArray2<'py, f64>,
+    ambient_v: PyReadonlyArray2<'py, f64>,
+    iterations: usize,
+    weight: f64,
+    restore: f64,
+    speedup: f64,
+    eps: f64,
+) -> PyResult<(Bound<'py, PyArray2<f64>>, Bound<'py, PyArray2<f64>>)> {
+    let ocean = ocean.as_array();
+    let lat = lat.as_array();
+    let ambient_u = ambient_u.as_array();
+    let ambient_v = ambient_v.as_array();
+    let u_in = u.as_array();
+    let v_in = v.as_array();
+    let (h, w) = ocean.dim();
+    if u_in.dim() != (h, w)
+        || v_in.dim() != (h, w)
+        || ambient_u.dim() != (h, w)
+        || ambient_v.dim() != (h, w)
+        || lat.len() != h
+        || h == 0
+        || w == 0
+    {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "coast smoothing shape mismatch",
+        ));
+    }
+    let mut u = u_in.to_owned();
+    let mut v = v_in.to_owned();
+    for _ in 0..iterations {
+        let mut next_u = u.clone();
+        let mut next_v = v.clone();
+        for r in 0..h {
+            let north = (r + h - 1) % h;
+            let south = (r + 1) % h;
+            for c in 0..w {
+                let east = (c + 1) % w;
+                let west = (c + w - 1) % w;
+                let neighbors = [(r, east), (r, west), (south, c), (north, c)];
+                let mut count = 0.0;
+                let mut total_u = 0.0;
+                let mut total_v = 0.0;
+                for &(nr, nc) in &neighbors {
+                    let mask = if ocean[[nr, nc]] { 1.0 } else { 0.0 };
+                    count += mask;
+                    total_u += u[[nr, nc]] * mask;
+                    total_v += v[[nr, nc]] * mask;
+                }
+                let avg_u = if count > 0.0 { total_u / count } else { 0.0 };
+                let avg_v = if count > 0.0 { total_v / count } else { 0.0 };
+                let mut uu = u[[r, c]] + weight * (avg_u - u[[r, c]]);
+                let mut vv = v[[r, c]] + weight * (avg_v - v[[r, c]]);
+                uu += restore * (ambient_u[[r, c]] - uu);
+                vv += restore * (ambient_v[[r, c]] - vv);
+                let nx = (!ocean[[r, west]]) as i32 - (!ocean[[r, east]]) as i32;
+                let ny = (!ocean[[south, c]]) as i32 - (!ocean[[north, c]]) as i32;
+                let mag = (nx as f64).hypot(ny as f64);
+                if ocean[[r, c]] && mag > eps {
+                    let nx = nx as f64 / mag;
+                    let ny = ny as f64 / mag;
+                    let hemisphere = if lat[r] >= 0.0 { 1.0 } else { -1.0 };
+                    let into = max_nan(-(uu * nx + vv * ny), 0.0);
+                    let redirected = into * speedup;
+                    next_u[[r, c]] = uu + into * nx + redirected * (-hemisphere * ny);
+                    next_v[[r, c]] = vv + into * ny + redirected * (hemisphere * nx);
+                } else {
+                    next_u[[r, c]] = uu;
+                    next_v[[r, c]] = vv;
+                }
+            }
+        }
+        u = next_u;
+        v = next_v;
+    }
+    Ok((
+        PyArray2::from_owned_array(py, u),
+        PyArray2::from_owned_array(py, v),
+    ))
 }
