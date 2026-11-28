@@ -13,8 +13,10 @@ use rayon::prelude::*;
 
 pub const PLANET_RADIUS_KM: f64 = 6371.0;
 
-/// Total-order wrapper so heap entries order exactly like Python's
-/// `(level, node)` tuples for the finite levels a flood produces.
+/// Total-order wrapper for heap entries. Pop order need not match Python's
+/// `(level, node)` tuples (and `total_cmp` separates `-0.0` from `0.0`, where
+/// Python falls through to the node index): with non-negative rises the flood
+/// is a monotone Dijkstra whose fixpoint is independent of pop order.
 #[derive(Clone, Copy, PartialEq)]
 struct OrdF64(f64);
 
@@ -63,6 +65,11 @@ pub fn priority_flood_rs<'py>(
     };
     let seeds = seeds_level.as_slice()?.to_vec();
     let z = elevation.as_slice()?.to_vec();
+    // Python's `max(z, reach)` keeps a NaN elevation; Rust's `f64::max` drops
+    // it. Reject NaN instead of diverging (cf. `route_downstream_rs`).
+    if seeds.iter().chain(z.iter()).any(|v| v.is_nan()) {
+        return Err(PyValueError::new_err("flood levels must not be NaN"));
+    }
     if indices.iter().any(|&j| j < 0 || j as usize >= n) {
         return Err(PyValueError::new_err("flood index out of range"));
     }
@@ -103,7 +110,7 @@ pub fn nearest_distance_rs<'py>(
 ) -> PyResult<(Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<i64>>)> {
     let s_shape = sources.shape();
     let p_shape = points.shape();
-    if s_shape.len() != 2 || s_shape[1] != 3 || p_shape.len() != 2 || p_shape[1] != 3 {
+    if s_shape[1] != 3 || p_shape[1] != 3 {
         return Err(PyValueError::new_err("sources and points must be (m, 3) and (n, 3)"));
     }
     let (m, n) = (s_shape[0], p_shape[0]);
@@ -113,10 +120,9 @@ pub fn nearest_distance_rs<'py>(
         if m == 0 {
             return (vec![f64::INFINITY; n], vec![0_i64; n]);
         }
-        let rows: Vec<usize> = (0..n).collect();
-        let computed: Vec<(f64, i64)> = rows
-            .par_iter()
-            .map(|&i| {
+        let (dist, index): (Vec<f64>, Vec<i64>) = (0..n)
+            .into_par_iter()
+            .map(|i| {
                 let (px, pz) = (points[i * 3], points[i * 3 + 2]);
                 let py_ = points[i * 3 + 1];
                 let mut best_chord2 = f64::INFINITY;
@@ -133,9 +139,7 @@ pub fn nearest_distance_rs<'py>(
                 }
                 (chord_to_arc_km(best_chord2.sqrt()), best as i64)
             })
-            .collect();
-        let dist: Vec<f64> = computed.iter().map(|c| c.0).collect();
-        let index: Vec<i64> = computed.iter().map(|c| c.1).collect();
+            .unzip();
         (dist, index)
     });
     Ok((PyArray1::from_vec(py, dist), PyArray1::from_vec(py, index)))

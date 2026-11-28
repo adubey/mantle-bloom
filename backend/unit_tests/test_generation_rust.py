@@ -44,7 +44,10 @@ def test_nearest_distance_matches_reference(monkeypatch):
     expected_dist, expected_idx = synthetic_relief._distance_km(sources, points)
     monkeypatch.setattr(_generation_rust, "RUST_AVAILABLE", True)
     np.testing.assert_array_equal(actual_idx, expected_idx)
-    np.testing.assert_allclose(actual_dist, expected_dist, rtol=0.0, atol=1e-9)
+    # Distances agree to the last ulp: scipy accumulates the chord in a
+    # different order, so a few entries differ by ~2e-12 km (measured max).
+    # Indices are exact; a comparison can only flip within that distance.
+    np.testing.assert_allclose(actual_dist, expected_dist, rtol=0.0, atol=1e-11)
 
 
 @pytest.mark.skipif(not _generation_rust.RUST_AVAILABLE, reason="Rust extension unavailable")
@@ -73,7 +76,59 @@ def test_drain_land_matches_reference(monkeypatch):
     monkeypatch.setattr(_generation_rust, "RUST_AVAILABLE", False)
     expected = synthetic_relief.drain_land(points, elevation.copy(), land, area, seed=7)
     monkeypatch.setattr(_generation_rust, "RUST_AVAILABLE", True)
-    np.testing.assert_allclose(actual, expected, rtol=0.0, atol=1e-9)
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.skipif(not _generation_rust.RUST_AVAILABLE, reason="Rust extension unavailable")
+def test_nearest_distance_empty_single_and_ties():
+    points = np.eye(3)
+    dist, index = _generation_rust.nearest_distance(np.zeros((0, 3)), points)
+    assert np.all(np.isinf(dist)) and not index.any()
+    dist, index = _generation_rust.nearest_distance(np.array([[0.0, 1.0, 0.0]]), points)
+    np.testing.assert_array_equal(index, [0, 0, 0])
+    assert dist[1] == 0.0
+    # Exact ties (duplicated sources) resolve to the lowest source index;
+    # `cKDTree` promises no tie order, so this pins the native contract.
+    sources = np.array([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    _, index = _generation_rust.nearest_distance(sources, points)
+    np.testing.assert_array_equal(index, [0, 2, 0])
+
+
+@pytest.mark.skipif(not _generation_rust.RUST_AVAILABLE, reason="Rust extension unavailable")
+def test_nearest_gate_handover(monkeypatch):
+    sources = _unit(np.random.default_rng(1042), 40)
+    assert _generation_rust.use_nearest(sources)
+    monkeypatch.setattr(_generation_rust, "NEAREST_RUST_MAX_SOURCES", 8)
+    assert not _generation_rust.use_nearest(sources)
+    points = _unit(np.random.default_rng(7), 300)
+    gated = synthetic_relief._distance_km(sources, points)
+    monkeypatch.setattr(_generation_rust, "RUST_AVAILABLE", False)
+    tree = synthetic_relief._distance_km(sources, points)
+    np.testing.assert_array_equal(gated[0], tree[0])
+    np.testing.assert_array_equal(gated[1], tree[1])
+
+
+@pytest.mark.skipif(not _generation_rust.RUST_AVAILABLE, reason="Rust extension unavailable")
+def test_priority_flood_rejects_nan():
+    with pytest.raises(ValueError, match="NaN"):
+        _generation_rust.priority_flood([0, 0], [], None, [np.nan], [0.0])
+
+
+@pytest.mark.skipif(not _generation_rust.RUST_AVAILABLE, reason="Rust extension unavailable")
+def test_build_geography_matches_reference(monkeypatch):
+    from app import continent_layout
+    from app.elevation_lines import line_spacing_rad
+
+    def run():
+        geo = continent_layout.build_geography(np.random.default_rng(1042), line_spacing_rad(0.25), 0.3)
+        return geo.continent, geo.core, geo.belt, geo.margin, geo.nuclei, geo.nucleus_craton
+
+    actual = run()
+    monkeypatch.setattr(_generation_rust, "RUST_AVAILABLE", False)
+    expected = run()
+    monkeypatch.setattr(_generation_rust, "RUST_AVAILABLE", True)
+    for left, right in zip(actual, expected, strict=True):
+        np.testing.assert_array_equal(left, right)
 
 
 def test_disable_rust_environment():

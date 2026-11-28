@@ -16,7 +16,11 @@ _REQUIRED_RUST_EXPORTS = ("priority_flood_rs", "nearest_distance_rs", "label_com
 
 # Brute-force nearest in Rust beats a `cKDTree` build plus query only while the
 # source set is small (measured crossover near 500 sources at lattice scale,
-# #1042); larger source sets keep the tree.
+# #1042); larger source sets keep the tree. Raising this constant changes
+# which call sites take the native path, and the native path resolves exact
+# distance ties by lowest source index where `cKDTree` promises nothing --
+# so it can change generated output (e.g. `synthetic_relief.leading_edge`'s
+# nearest-ocean source), not just speed. Treat changes as model changes.
 NEAREST_RUST_MAX_SOURCES = 512
 
 

@@ -536,11 +536,12 @@ def _lens(lat: Lattice, core: np.ndarray, cratons: np.ndarray, points: np.ndarra
     d1 = np.full(len(points), np.inf)
     d2 = np.full(len(points), np.inf)
     for craton in cratons:
-        if _generation_rust.use_nearest(lat.xyz[core == craton]):
-            d = _generation_rust.nearest_distance(lat.xyz[core == craton], lat.xyz[points])[0]
+        sources = lat.xyz[core == craton]
+        if _generation_rust.use_nearest(sources):
+            d = _generation_rust.nearest_distance(sources, lat.xyz[points])[0]
             d = np.where(d <= lens_km, d, np.inf)
         else:
-            chord = cKDTree(lat.xyz[core == craton]).query(lat.xyz[points], distance_upper_bound=bound, workers=-1)[0]
+            chord = cKDTree(sources).query(lat.xyz[points], distance_upper_bound=bound, workers=-1)[0]
             d = np.where(np.isfinite(chord), arc_km(np.where(np.isfinite(chord), chord, 0.0)), np.inf)
         d2 = np.where(d < d1, d1, np.minimum(d2, d))
         d1 = np.minimum(d1, d)
