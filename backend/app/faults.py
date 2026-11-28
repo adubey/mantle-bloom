@@ -60,7 +60,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from . import boundary, cratons, geometry, lithosphere, trace
+from . import _faults_rust, boundary, cratons, geometry, lithosphere, trace
 from .hydroclimate import mobile_cover
 from .elevation_lines import (
     ELEV_CHANGE_FAULT_NORMAL,
@@ -513,11 +513,7 @@ def _resample_polyline(pts: np.ndarray, n: int) -> np.ndarray:
     """Down-sample an ordered (m, 3) unit polyline to `n` points, evenly spaced by index."""
     if len(pts) <= n:
         return pts
-    idx = np.linspace(0.0, len(pts) - 1, n)
-    lo = np.floor(idx).astype(int)
-    hi = np.minimum(lo + 1, len(pts) - 1)
-    frac = (idx - lo)[:, None]
-    return geometry.normalize(pts[lo] * (1.0 - frac) + pts[hi] * frac)
+    return _faults_rust.resample_boundary(pts, np.linspace(0.0, len(pts) - 1, n))
 
 
 def _make_boundary_fault(
@@ -579,14 +575,13 @@ def _emit_boundary_fault_run(
         master = _resample_polyline(chunk, n_nodes)
         # `inward`: unit tangent-plane vector at each node pointing toward the plate centroid
         # -- strands step off the boundary into the plate interior along it.
-        to_c = centroid[None, :] - master
-        inward = geometry.normalize(to_c - np.sum(to_c * master, axis=-1, keepdims=True) * master)
+        inward, strands = _faults_rust.boundary_strands(master, centroid, BOUNDARY_FAULT_STRAND_COUNT, strand_off_rad)
         mid = len(master) // 2
         world.boundary_faults.append(
             _make_boundary_fault(world, plate, master, kind, slip_rate, dip_deg, 1, inward[mid])
         )
         for k in range(BOUNDARY_FAULT_STRAND_COUNT):
-            strand = geometry.normalize(master + (k + 1) * strand_off_rad * inward)
+            strand = strands[k]
             sense = 1 if k % 2 == 0 else -1
             world.boundary_faults.append(
                 _make_boundary_fault(world, plate, strand, kind, slip_rate, dip_deg, sense, sense * inward[mid])
@@ -646,46 +641,26 @@ def generate_boundary_faults(world: "World") -> None:
         # neighbor_points == points, boundary.closing_rate's own zero-normal guard zeroes the
         # result, and `near` (False here) gates every place regime/nn_owner would otherwise
         # matter -- see this function's own docstring note above.
-        d = np.full(m, np.inf)
+        d, best = _faults_rust.foreign_nearest(all_pts, outline, all_owner, indptr, flat, plate.plate_id)
+        found = best >= 0
         nn_owner = np.full(m, plate.plate_id)
         nn_pt = outline.copy()
-        for i in range(m):
-            candidates = flat[indptr[i] : indptr[i + 1]]
-            if not len(candidates):
-                continue
-            foreign = candidates[all_owner[candidates] != plate.plate_id]
-            if len(foreign) == 0:
-                continue
-            dists = np.linalg.norm(all_pts[foreign] - outline[i], axis=1)
-            best = foreign[np.argmin(dists)]
-            d[i] = dists.min()
-            nn_owner[i] = all_owner[best]
-            nn_pt[i] = all_pts[best]
+        nn_owner[found] = all_owner[best[found]]
+        nn_pt[found] = all_pts[best[found]]
 
-        near = d <= reach_rad
         nn_omega = np.stack([omega_by_id[int(o)] for o in nn_owner], axis=0)
         closing = boundary.closing_rate(outline, omega_by_id[plate.plate_id], nn_omega, nn_pt)
 
-        regime = np.zeros(len(outline), dtype=np.int8)
-        regime[near & (closing > thr)] = 1
-        regime[near & (closing < -thr)] = 2
-        regime[near & (np.abs(closing) <= thr)] = 3
+        regime = _faults_rust.boundary_regime(d, closing, reach_rad, thr)
 
         centroid = geometry.normalize(outline.mean(axis=0))
 
-        m = len(outline)
-        i = 0
-        while i < m:
-            if regime[i] == 0:
-                i += 1
-                continue
-            j = i
-            while j + 1 < m and regime[j + 1] == regime[i] and nn_owner[j + 1] == nn_owner[i]:
-                j += 1
-            run = outline[i : j + 1]
-            run_closing = float(np.mean(np.abs(closing[i : j + 1])))
+        starts, ends = _faults_rust.boundary_runs(regime, nn_owner)
+        for i, end in zip(starts, ends, strict=True):
+            run = outline[i:end]
+            run_closing = float(np.mean(np.abs(closing[i:end])))
             _emit_boundary_fault_run(world, plate, run, int(regime[i]), run_closing, centroid)
-            i = j + 1
+
 
 
 # --------------------------------------------------------------------------- step entry point
@@ -1285,7 +1260,7 @@ def fault_influence(
     reach_rad = reach_km / PLANET_RADIUS_KM
     trace_points = np.concatenate(traces, axis=0)
     d, _ = SpatialIndex(trace_points).query(own_points, workers=query_workers(len(own_points)))
-    return np.clip(1.0 - d / reach_rad, floor, 1.0)
+    return _faults_rust.influence(d, reach_rad, floor)
 
 
 def _own_points_and_tree(plate: Plate, cache: dict | None) -> tuple[np.ndarray, SpatialIndex | None]:
@@ -1527,39 +1502,12 @@ def _apply_plate_fault_shear(world: "World", plate: Plate, years_myr: float, _ca
             continue
         pts = own_points[affected]
 
-        # Nearest trace point per affected node (brute-force, same rationale as
-        # _apply_plate_fault_relief: a trace is capped at FAULT_NODES_MIN..MAX points), used
-        # both for the relief-style distance taper and to pick the local along-strike tangent
-        # (the bracketing trace points either side of the nearest one).
-        dists = np.linalg.norm(pts[:, None, :] - trace[None, :, :], axis=-1)
-        nearest = np.argmin(dists, axis=1)
-        d = dists[np.arange(len(pts)), nearest]
-        taper = np.clip(1.0 - d / reach_rad, 0.0, 1.0)
-
-        lo = np.clip(nearest - 1, 0, len(trace) - 1)
-        hi = np.clip(nearest + 1, 0, len(trace) - 1)
-        tangent = trace[hi] - trace[lo]
-        # Project onto each affected node's own tangent plane (the trace's raw chord isn't
-        # exactly tangent to a node sitting reach_km away, but reach is tiny next to the
-        # planet radius, so this small-angle correction is enough).
-        tangent = tangent - np.sum(tangent * pts, axis=-1, keepdims=True) * pts
-        tangent_norm = np.linalg.norm(tangent, axis=-1, keepdims=True)
-        valid = tangent_norm[:, 0] > 1e-12
-        tangent = np.divide(tangent, tangent_norm, out=np.zeros_like(tangent), where=tangent_norm > 1e-12)
-
         dip_dir_world = geometry.to_world(plate.frame, fault.dip_dir_local)
-        mid = trace[len(trace) // 2]
-        side_sign = np.sign((pts - mid) @ dip_dir_world)
-        side_sign[side_sign == 0.0] = 1.0
-
-        slip_step_km = fault.slip_rate_m_per_myr * years_myr / 1000.0
-        shift_rad = taper * side_sign * fault.strike_sense * (slip_step_km / PLANET_RADIUS_KM)
-        shift_rad[~valid] = 0.0
-
-        moved = np.abs(shift_rad) > 1e-12
-        if not np.any(moved):
+        slip_rad = (fault.slip_rate_m_per_myr * years_myr / 1000.0
+                    / PLANET_RADIUS_KM)
+        moved, upstream = _faults_rust.shear_backtrace(pts, trace, dip_dir_world, reach_rad, slip_rad, fault.strike_sense)
+        if not len(moved):
             continue
-        upstream = geometry.normalize(pts[moved] - shift_rad[moved, None] * tangent[moved])
         _, source_idx = tree.query(upstream, workers=query_workers(len(upstream)))
 
         idx_dest = affected[moved]
@@ -1619,32 +1567,22 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float, _c
         # ordinary) -- building a tree over a handful of points every time was pure
         # overhead, never a real algorithmic win. Identical result to
         # `cKDTree(trace).query(pts)`'s single nearest-neighbour distance.
-        d = np.min(np.linalg.norm(pts[:, None, :] - trace[None, :, :], axis=-1), axis=1)
-        taper = np.clip(1.0 - d / reach_rad, 0.0, 1.0)
-        slip_norm = float(np.clip(fault.slip_rate_m_per_myr / SLIP_RATE_REF_M_PER_MYR, 0.2, 3.0))
-        # Boundary faults carry only a fraction of the intraplate relief rate: the
-        # fault_influence-gated deform() bands already do the bulk of boundary uplift, so a
-        # full-rate layer on top double-counts it (see BOUNDARY_FAULT_RELIEF_SCALE).
-        fault_scale = BOUNDARY_FAULT_RELIEF_SCALE if fault.boundary else 1.0
-        mag = taper * slip_norm * years_myr * rate_scale * fault_scale
-
+        d, _ = _faults_rust.nearest_trace(pts, trace)
         if fault.kind == _KIND_REVERSE:
             # Boundary shortening is already localized by fault_influence in deform().
-            # An intraplate reverse trace has no realized shortening budget here.
             continue
-        elif fault.kind == _KIND_NORMAL:
-            dip_dir_world = geometry.to_world(plate.frame, fault.dip_dir_local)
-            mid = trace[len(trace) // 2]
-            hanging = (pts - mid) @ dip_dir_world > 0.0
-            contrib = np.where(hanging, -NORMAL_THROW_M_PER_MYR, NORMAL_SHOULDER_UPLIFT_M_PER_MYR) * mag
-        else:  # strike-slip
-            # Pure shear supplies no new crust. Put the restraining/releasing side
-            # opposite a compensating side within the same trace reach.
-            dip_dir_world = geometry.to_world(plate.frame, fault.dip_dir_local)
-            mid = trace[len(trace) // 2]
-            side = (pts - mid) @ dip_dir_world > 0.0
+        slip_norm = float(np.clip(fault.slip_rate_m_per_myr / SLIP_RATE_REF_M_PER_MYR, 0.2, 3.0))
+        fault_scale = BOUNDARY_FAULT_RELIEF_SCALE if fault.boundary else 1.0
+        dip_dir_world = geometry.to_world(plate.frame, fault.dip_dir_local)
+        if fault.kind == _KIND_NORMAL:
+            positive, negative, bend = -NORMAL_THROW_M_PER_MYR, NORMAL_SHOULDER_UPLIFT_M_PER_MYR, 1.0
+        else:
             sign = 1.0 if fault.strike_sense >= 0 else -1.0
-            contrib = np.where(side, sign, -sign) * STRIKE_SLIP_BEND_M_PER_MYR * mag
+            positive, negative, bend = sign, -sign, STRIKE_SLIP_BEND_M_PER_MYR
+        contrib = _faults_rust.relief_contrib(
+            pts, d, trace[len(trace) // 2], dip_dir_world,
+            (reach_rad, slip_norm, years_myr, rate_scale, fault_scale, positive, negative, bend),
+        )
 
         # Solve the requested isostatic thickness change, then match actual donor
         # supply and recipient headroom by crust type. Sequential updates share the
@@ -1652,25 +1590,10 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float, _c
         equilibrium = lithosphere.isostatic_elevation(hc[affected], hm[affected], rho[affected])
         target = lithosphere.crustal_thickness_for_elevation(equilibrium + contrib, hm[affected], rho[affected])
         requested = target - hc[affected]
-        for kind in np.unique(crust_type[affected]):
-            group = crust_type[affected] == kind
-            donor = group & (requested < 0) & (hc[affected] > lithosphere.MIN_CRUSTAL_THICKNESS_M)
-            receiver = group & (requested > 0) & (hc[affected] < lithosphere.MAX_CRUSTAL_THICKNESS_M)
-            donor_idx, receiver_idx = affected[donor], affected[receiver]
-            debit = np.minimum(-requested[donor], hc[donor_idx] - lithosphere.MIN_CRUSTAL_THICKNESS_M)
-            credit = np.minimum(requested[receiver], lithosphere.MAX_CRUSTAL_THICKNESS_M - hc[receiver_idx])
-            debit_volume = float(debit @ areas[donor_idx])
-            credit_volume = float(credit @ areas[receiver_idx])
-            amount = min(debit_volume, credit_volume)
-            if amount <= 0:
-                continue
-            taken = debit * (amount / debit_volume)
-            given = credit * (amount / credit_volume)
-            moved = taken / hc[donor_idx] * material[donor_idx]
-            material[donor_idx] -= moved
-            material[receiver_idx] += float(moved @ areas[donor_idx]) * given / amount
-            hc[donor_idx] -= taken
-            hc[receiver_idx] += given
+        hc[affected], material[affected] = _faults_rust.relief_transfer(
+            hc[affected], material[affected], areas[affected], crust_type[affected], requested,
+            lithosphere.MIN_CRUSTAL_THICKNESS_M, lithosphere.MAX_CRUSTAL_THICKNESS_M,
+        )
         # A boundary *reverse* fault sits exactly on a collision / subduction front, where
         # deform() already stamps the richer ELEV_CHANGE_COLLISION / _SUBDUCTION_ARC / _TRENCH
         # code (which also carries the oceanic-vs-continental distinction) -- relabelling it
@@ -1710,14 +1633,11 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float, _c
 def _earthquake_magnitude(length_km: float, slip_rate_m_per_myr: float, born_in_overlap: bool, jitter: float) -> float:
     """Moment magnitude from trace length and slip rate (see QUAKE_MW_* constants), plus an
     overlap bonus and a per-event jitter."""
-    mw = (
-        QUAKE_MW_BASE
-        + QUAKE_MW_LENGTH_COEFF * np.log10(max(length_km, 1.0))
-        + QUAKE_MW_SLIP_COEFF * np.log10(max(slip_rate_m_per_myr, 1.0))
-        + (OVERLAP_QUAKE_MW_BONUS if born_in_overlap else 0.0)
-        + jitter
+    return _faults_rust.quake_magnitude(
+        length_km, slip_rate_m_per_myr, born_in_overlap, jitter,
+        (QUAKE_MW_BASE, QUAKE_MW_LENGTH_COEFF, QUAKE_MW_SLIP_COEFF,
+         OVERLAP_QUAKE_MW_BONUS, QUAKE_MW_MIN, QUAKE_MW_MAX),
     )
-    return float(np.clip(mw, QUAKE_MW_MIN, QUAKE_MW_MAX))
 
 
 def _generate_earthquakes(world: "World", years_myr: float) -> None:
@@ -1809,16 +1729,15 @@ def unloading_coulomb_stress_pa(kind: str, dip_deg: float, vertical_stress_chang
     dip = np.radians(dip_deg)
     s, c = np.sin(dip), np.cos(dip)
     sense = {_KIND_NORMAL: 1.0, _KIND_REVERSE: -1.0}.get(kind, 0.0)
-    d_tau = sense * (1.0 - k) * dsv * s * c
-    d_sigma_n = dsv * (c * c + k * s * s)
-    return d_tau - COULOMB_EFFECTIVE_FRICTION * d_sigma_n
+    return _faults_rust.unloading_stress(dsv, sense, k, s, c, COULOMB_EFFECTIVE_FRICTION)
 
 
 def _moment_magnitude(rupture_length_m: float, slip_m: float) -> float:
     """Mw from M0 = G * L * W * slip, with W the seismogenic width (or L, if shorter)."""
-    width_m = min(SEISMOGENIC_WIDTH_M, rupture_length_m)
-    moment = max(CRUST_SHEAR_MODULUS_PA * rupture_length_m * width_m * slip_m, 1.0)
-    return float(np.clip((2.0 / 3.0) * (np.log10(moment) - 9.1), QUAKE_MW_MIN, QUAKE_MW_MAX))
+    return _faults_rust.moment_magnitude(
+        rupture_length_m, slip_m, SEISMOGENIC_WIDTH_M, CRUST_SHEAR_MODULUS_PA,
+        QUAKE_MW_MIN, QUAKE_MW_MAX,
+    )
 
 
 def trigger_unloading_earthquakes(

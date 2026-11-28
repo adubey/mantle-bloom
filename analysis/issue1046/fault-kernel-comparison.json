@@ -1,0 +1,812 @@
+{
+  "baseline_commit": "069d1d383092053f662aca3d4d1fb8c536c4f9b3",
+  "candidate_commit": "49ba239cfe06618a2a7a1934ee4c9ca3e6698c18",
+  "save_sha256": "eff1f6d7abdfe46c7af5b45ab23f136f3fac591f4d95f3457017c1e7d933216b",
+  "profiles": {
+    "young-baseline": {
+      "step_seconds": [
+        11.554000791860744,
+        11.713939166162163,
+        11.406604625051841
+      ],
+      "mean_step_s": 11.558181527691582,
+      "fault_update_s": 0.7541929724005362,
+      "peak_rss_bytes": 1075609600
+    },
+    "young-final": {
+      "step_seconds": [
+        11.350236083148047,
+        11.170793708181009,
+        10.973481625085697
+      ],
+      "mean_step_s": 11.164837138804918,
+      "fault_update_s": 0.5152593060241392,
+      "peak_rss_bytes": 1135951872
+    },
+    "mature-baseline": {
+      "step_seconds": [
+        12.62341362494044,
+        11.937496000202373,
+        11.714822791982442
+      ],
+      "mean_step_s": 12.091910805708418,
+      "fault_update_s": 1.1736790277063847,
+      "peak_rss_bytes": 1152974848
+    },
+    "mature-final": {
+      "step_seconds": [
+        12.259398582857102,
+        11.575202083215117,
+        11.249700041022152
+      ],
+      "mean_step_s": 11.69476690236479,
+      "fault_update_s": 0.7713175693837305,
+      "peak_rss_bytes": 1102249984
+    }
+  },
+  "replays": {
+    "baseline": {
+      "runtime_seconds": 125.94809889793396,
+      "peak_memory_mb": 1068.328125,
+      "checkpoints": [
+        {
+          "elapsed_myr": 67.9,
+          "land_area_km2": 170467113.11897877,
+          "sea_level_m": -47.303418709282774,
+          "continental_area_km2": 354404844.746434,
+          "hm_volume_all_km3": 40624303187.077065,
+          "continental_material_live_km3": 11486543391.02272,
+          "continental_balance_error_km3": 0.0,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.328e-06
+        },
+        {
+          "elapsed_myr": 68.0,
+          "land_area_km2": 173877365.51842427,
+          "sea_level_m": -66.82439977283354,
+          "continental_area_km2": 354386421.52645385,
+          "hm_volume_all_km3": 40622323926.53702,
+          "continental_material_live_km3": 11486583059.600512,
+          "continental_balance_error_km3": -5.681457152,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.584e-06
+        },
+        {
+          "elapsed_myr": 68.1,
+          "land_area_km2": 171621849.61571857,
+          "sea_level_m": -59.18397057417097,
+          "continental_area_km2": 354366534.33198845,
+          "hm_volume_all_km3": 40621779895.6162,
+          "continental_material_live_km3": 11486668612.14269,
+          "continental_balance_error_km3": -5.681455104,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.264e-06
+        },
+        {
+          "elapsed_myr": 68.2,
+          "land_area_km2": 172510091.7953192,
+          "sea_level_m": -60.56346555718352,
+          "continental_area_km2": 354325038.65244424,
+          "hm_volume_all_km3": 40621388782.418724,
+          "continental_material_live_km3": 11486722806.517746,
+          "continental_balance_error_km3": -51.905685504,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.712e-06
+        },
+        {
+          "elapsed_myr": 68.3,
+          "land_area_km2": 172451574.2564379,
+          "sea_level_m": -60.54769537151222,
+          "continental_area_km2": 354323448.07599646,
+          "hm_volume_all_km3": 40621835926.44998,
+          "continental_material_live_km3": 11486840541.357433,
+          "continental_balance_error_km3": -51.905685504,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 2.752e-06
+        },
+        {
+          "elapsed_myr": 68.4,
+          "land_area_km2": 171949879.83505562,
+          "sea_level_m": -61.656180136771226,
+          "continental_area_km2": 354303681.3157875,
+          "hm_volume_all_km3": 40620142726.576836,
+          "continental_material_live_km3": 11486931017.748478,
+          "continental_balance_error_km3": -695.127392256,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 3.584e-06
+        },
+        {
+          "elapsed_myr": 68.5,
+          "land_area_km2": 171713760.47482052,
+          "sea_level_m": -61.51864112098842,
+          "continental_area_km2": 354279922.18517035,
+          "hm_volume_all_km3": 40618212641.0579,
+          "continental_material_live_km3": 11487021007.956427,
+          "continental_balance_error_km3": -695.127392256,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 4.032e-06
+        },
+        {
+          "elapsed_myr": 68.6,
+          "land_area_km2": 171847996.15548134,
+          "sea_level_m": -59.44264350749512,
+          "continental_area_km2": 354238221.50219876,
+          "hm_volume_all_km3": 40615074179.27488,
+          "continental_material_live_km3": 11487077728.455076,
+          "continental_balance_error_km3": -695.127392256,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.008e-06
+        },
+        {
+          "elapsed_myr": 68.7,
+          "land_area_km2": 172163330.9267963,
+          "sea_level_m": -58.95538182104805,
+          "continental_area_km2": 354245723.8955849,
+          "hm_volume_all_km3": 40615801485.74898,
+          "continental_material_live_km3": 11487138870.957972,
+          "continental_balance_error_km3": -695.127392256,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 2.88e-06
+        },
+        {
+          "elapsed_myr": 68.8,
+          "land_area_km2": 171849866.86529344,
+          "sea_level_m": -60.2628730536356,
+          "continental_area_km2": 354245723.8955849,
+          "hm_volume_all_km3": 40616323379.75186,
+          "continental_material_live_km3": 11487190205.188997,
+          "continental_balance_error_km3": -704.0792064,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 3.2e-06
+        },
+        {
+          "elapsed_myr": 68.9,
+          "land_area_km2": 171941407.99309587,
+          "sea_level_m": -60.95794304015155,
+          "continental_area_km2": 354249271.1792942,
+          "hm_volume_all_km3": 40616446488.16106,
+          "continental_material_live_km3": 11487261723.18745,
+          "continental_balance_error_km3": -704.079204352,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 2.496e-06
+        }
+      ]
+    },
+    "baseline-repeat": {
+      "runtime_seconds": 125.51168203353882,
+      "peak_memory_mb": 1070.953125,
+      "checkpoints": [
+        {
+          "elapsed_myr": 67.9,
+          "land_area_km2": 170467113.11897877,
+          "sea_level_m": -47.303418709282774,
+          "continental_area_km2": 354404844.746434,
+          "hm_volume_all_km3": 40624303187.077065,
+          "continental_material_live_km3": 11486543391.02272,
+          "continental_balance_error_km3": 0.0,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.328e-06
+        },
+        {
+          "elapsed_myr": 68.0,
+          "land_area_km2": 173877365.51842427,
+          "sea_level_m": -66.82439977283354,
+          "continental_area_km2": 354386421.52645385,
+          "hm_volume_all_km3": 40622323926.53702,
+          "continental_material_live_km3": 11486583059.600512,
+          "continental_balance_error_km3": -5.681457152,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.584e-06
+        },
+        {
+          "elapsed_myr": 68.1,
+          "land_area_km2": 171621849.61571857,
+          "sea_level_m": -59.18397057417097,
+          "continental_area_km2": 354366534.33198845,
+          "hm_volume_all_km3": 40621779895.6162,
+          "continental_material_live_km3": 11486668612.14269,
+          "continental_balance_error_km3": -5.681455104,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.264e-06
+        },
+        {
+          "elapsed_myr": 68.2,
+          "land_area_km2": 172510091.7953192,
+          "sea_level_m": -60.56346555718352,
+          "continental_area_km2": 354325038.65244424,
+          "hm_volume_all_km3": 40621388782.418724,
+          "continental_material_live_km3": 11486722806.517746,
+          "continental_balance_error_km3": -51.905685504,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.712e-06
+        },
+        {
+          "elapsed_myr": 68.3,
+          "land_area_km2": 172451574.2564379,
+          "sea_level_m": -60.54769537151222,
+          "continental_area_km2": 354323448.07599646,
+          "hm_volume_all_km3": 40621835926.44998,
+          "continental_material_live_km3": 11486840541.357433,
+          "continental_balance_error_km3": -51.905685504,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 2.752e-06
+        },
+        {
+          "elapsed_myr": 68.4,
+          "land_area_km2": 171949879.83505562,
+          "sea_level_m": -61.656180136771226,
+          "continental_area_km2": 354303681.3157875,
+          "hm_volume_all_km3": 40620142726.576836,
+          "continental_material_live_km3": 11486931017.748478,
+          "continental_balance_error_km3": -695.127392256,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 3.584e-06
+        },
+        {
+          "elapsed_myr": 68.5,
+          "land_area_km2": 171713760.47482052,
+          "sea_level_m": -61.51864112098842,
+          "continental_area_km2": 354279922.18517035,
+          "hm_volume_all_km3": 40618212641.0579,
+          "continental_material_live_km3": 11487021007.956427,
+          "continental_balance_error_km3": -695.127392256,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 4.032e-06
+        },
+        {
+          "elapsed_myr": 68.6,
+          "land_area_km2": 171847996.15548134,
+          "sea_level_m": -59.44264350749512,
+          "continental_area_km2": 354238221.50219876,
+          "hm_volume_all_km3": 40615074179.27488,
+          "continental_material_live_km3": 11487077728.455076,
+          "continental_balance_error_km3": -695.127392256,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.008e-06
+        },
+        {
+          "elapsed_myr": 68.7,
+          "land_area_km2": 172163330.9267963,
+          "sea_level_m": -58.95538182104805,
+          "continental_area_km2": 354245723.8955849,
+          "hm_volume_all_km3": 40615801485.74898,
+          "continental_material_live_km3": 11487138870.957972,
+          "continental_balance_error_km3": -695.127392256,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 2.88e-06
+        },
+        {
+          "elapsed_myr": 68.8,
+          "land_area_km2": 171849866.86529344,
+          "sea_level_m": -60.2628730536356,
+          "continental_area_km2": 354245723.8955849,
+          "hm_volume_all_km3": 40616323379.75186,
+          "continental_material_live_km3": 11487190205.188997,
+          "continental_balance_error_km3": -704.0792064,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 3.2e-06
+        },
+        {
+          "elapsed_myr": 68.9,
+          "land_area_km2": 171941407.99309587,
+          "sea_level_m": -60.95794304015155,
+          "continental_area_km2": 354249271.1792942,
+          "hm_volume_all_km3": 40616446488.16106,
+          "continental_material_live_km3": 11487261723.18745,
+          "continental_balance_error_km3": -704.079204352,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 2.496e-06
+        }
+      ]
+    },
+    "final": {
+      "runtime_seconds": 122.32516598701477,
+      "peak_memory_mb": 1065.125,
+      "checkpoints": [
+        {
+          "elapsed_myr": 67.9,
+          "land_area_km2": 170467113.11897877,
+          "sea_level_m": -47.303418709282774,
+          "continental_area_km2": 354404844.746434,
+          "hm_volume_all_km3": 40624303187.077065,
+          "continental_material_live_km3": 11486543391.02272,
+          "continental_balance_error_km3": 0.0,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.328e-06
+        },
+        {
+          "elapsed_myr": 68.0,
+          "land_area_km2": 173877365.51842427,
+          "sea_level_m": -66.82439977283354,
+          "continental_area_km2": 354386421.52645385,
+          "hm_volume_all_km3": 40622323926.53702,
+          "continental_material_live_km3": 11486583059.600512,
+          "continental_balance_error_km3": -5.681457152,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.584e-06
+        },
+        {
+          "elapsed_myr": 68.1,
+          "land_area_km2": 171621849.61571857,
+          "sea_level_m": -59.18397057417097,
+          "continental_area_km2": 354366534.33198845,
+          "hm_volume_all_km3": 40621779895.6162,
+          "continental_material_live_km3": 11486668612.14269,
+          "continental_balance_error_km3": -5.681455104,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.264e-06
+        },
+        {
+          "elapsed_myr": 68.2,
+          "land_area_km2": 172510091.7953192,
+          "sea_level_m": -60.56346555718352,
+          "continental_area_km2": 354325038.65244424,
+          "hm_volume_all_km3": 40621388782.418724,
+          "continental_material_live_km3": 11486722806.517746,
+          "continental_balance_error_km3": -51.905685504,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.712e-06
+        },
+        {
+          "elapsed_myr": 68.3,
+          "land_area_km2": 172451574.2564379,
+          "sea_level_m": -60.54727281432114,
+          "continental_area_km2": 354323448.07599646,
+          "hm_volume_all_km3": 40621835926.44998,
+          "continental_material_live_km3": 11486840541.357433,
+          "continental_balance_error_km3": -51.905685504,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 2.944e-06
+        },
+        {
+          "elapsed_myr": 68.4,
+          "land_area_km2": 171949879.83505562,
+          "sea_level_m": -61.6562198493909,
+          "continental_area_km2": 354303681.3157875,
+          "hm_volume_all_km3": 40620142726.576836,
+          "continental_material_live_km3": 11486931017.748499,
+          "continental_balance_error_km3": -695.127371776,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 3.648e-06
+        },
+        {
+          "elapsed_myr": 68.5,
+          "land_area_km2": 171718266.40835458,
+          "sea_level_m": -61.51842767901082,
+          "continental_area_km2": 354279922.18517035,
+          "hm_volume_all_km3": 40618212641.05782,
+          "continental_material_live_km3": 11487021007.935135,
+          "continental_balance_error_km3": -695.127369728,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 3.136e-06
+        },
+        {
+          "elapsed_myr": 68.6,
+          "land_area_km2": 171950002.54921624,
+          "sea_level_m": -59.57363001338655,
+          "continental_area_km2": 354238221.50219876,
+          "hm_volume_all_km3": 40615074179.275,
+          "continental_material_live_km3": 11487077728.44786,
+          "continental_balance_error_km3": -695.127373824,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.392e-06
+        },
+        {
+          "elapsed_myr": 68.7,
+          "land_area_km2": 172193740.61622974,
+          "sea_level_m": -59.024995226675216,
+          "continental_area_km2": 354245723.8955849,
+          "hm_volume_all_km3": 40615801485.7488,
+          "continental_material_live_km3": 11487138870.989504,
+          "continental_balance_error_km3": -695.127373824,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 3.008e-06
+        },
+        {
+          "elapsed_myr": 68.8,
+          "land_area_km2": 171864347.95087975,
+          "sea_level_m": -60.59660751263767,
+          "continental_area_km2": 354245723.8955849,
+          "hm_volume_all_km3": 40616323379.75047,
+          "continental_material_live_km3": 11487190214.254742,
+          "continental_balance_error_km3": -695.127373824,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 2.944e-06
+        },
+        {
+          "elapsed_myr": 68.9,
+          "land_area_km2": 171801473.8726867,
+          "sea_level_m": -60.9905331855056,
+          "continental_area_km2": 354249271.1792942,
+          "hm_volume_all_km3": 40616446488.16562,
+          "continental_material_live_km3": 11487261732.348162,
+          "continental_balance_error_km3": -695.127373824,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 2.944e-06
+        }
+      ]
+    },
+    "final-repeat": {
+      "runtime_seconds": 122.47622990608215,
+      "peak_memory_mb": 1057.53125,
+      "checkpoints": [
+        {
+          "elapsed_myr": 67.9,
+          "land_area_km2": 170467113.11897877,
+          "sea_level_m": -47.303418709282774,
+          "continental_area_km2": 354404844.746434,
+          "hm_volume_all_km3": 40624303187.077065,
+          "continental_material_live_km3": 11486543391.02272,
+          "continental_balance_error_km3": 0.0,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.328e-06
+        },
+        {
+          "elapsed_myr": 68.0,
+          "land_area_km2": 173877365.51842427,
+          "sea_level_m": -66.82439977283354,
+          "continental_area_km2": 354386421.52645385,
+          "hm_volume_all_km3": 40622323926.53702,
+          "continental_material_live_km3": 11486583059.600512,
+          "continental_balance_error_km3": -5.681457152,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.584e-06
+        },
+        {
+          "elapsed_myr": 68.1,
+          "land_area_km2": 171621849.61571857,
+          "sea_level_m": -59.18397057417097,
+          "continental_area_km2": 354366534.33198845,
+          "hm_volume_all_km3": 40621779895.6162,
+          "continental_material_live_km3": 11486668612.14269,
+          "continental_balance_error_km3": -5.681455104,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.264e-06
+        },
+        {
+          "elapsed_myr": 68.2,
+          "land_area_km2": 172510091.7953192,
+          "sea_level_m": -60.56346555718352,
+          "continental_area_km2": 354325038.65244424,
+          "hm_volume_all_km3": 40621388782.418724,
+          "continental_material_live_km3": 11486722806.517746,
+          "continental_balance_error_km3": -51.905685504,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.712e-06
+        },
+        {
+          "elapsed_myr": 68.3,
+          "land_area_km2": 172451574.2564379,
+          "sea_level_m": -60.54727281432114,
+          "continental_area_km2": 354323448.07599646,
+          "hm_volume_all_km3": 40621835926.44998,
+          "continental_material_live_km3": 11486840541.357433,
+          "continental_balance_error_km3": -51.905685504,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 2.944e-06
+        },
+        {
+          "elapsed_myr": 68.4,
+          "land_area_km2": 171949879.83505562,
+          "sea_level_m": -61.6562198493909,
+          "continental_area_km2": 354303681.3157875,
+          "hm_volume_all_km3": 40620142726.576836,
+          "continental_material_live_km3": 11486931017.748499,
+          "continental_balance_error_km3": -695.127371776,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 3.648e-06
+        },
+        {
+          "elapsed_myr": 68.5,
+          "land_area_km2": 171718266.40835458,
+          "sea_level_m": -61.51842767901082,
+          "continental_area_km2": 354279922.18517035,
+          "hm_volume_all_km3": 40618212641.05782,
+          "continental_material_live_km3": 11487021007.935135,
+          "continental_balance_error_km3": -695.127369728,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 3.136e-06
+        },
+        {
+          "elapsed_myr": 68.6,
+          "land_area_km2": 171950002.54921624,
+          "sea_level_m": -59.57363001338655,
+          "continental_area_km2": 354238221.50219876,
+          "hm_volume_all_km3": 40615074179.275,
+          "continental_material_live_km3": 11487077728.44786,
+          "continental_balance_error_km3": -695.127373824,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.392e-06
+        },
+        {
+          "elapsed_myr": 68.7,
+          "land_area_km2": 172193740.61622974,
+          "sea_level_m": -59.024995226675216,
+          "continental_area_km2": 354245723.8955849,
+          "hm_volume_all_km3": 40615801485.7488,
+          "continental_material_live_km3": 11487138870.989504,
+          "continental_balance_error_km3": -695.127373824,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 3.008e-06
+        },
+        {
+          "elapsed_myr": 68.8,
+          "land_area_km2": 171864347.95087975,
+          "sea_level_m": -60.59660751263767,
+          "continental_area_km2": 354245723.8955849,
+          "hm_volume_all_km3": 40616323379.75047,
+          "continental_material_live_km3": 11487190214.254742,
+          "continental_balance_error_km3": -695.127373824,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 2.944e-06
+        },
+        {
+          "elapsed_myr": 68.9,
+          "land_area_km2": 171801473.8726867,
+          "sea_level_m": -60.9905331855056,
+          "continental_area_km2": 354249271.1792942,
+          "hm_volume_all_km3": 40616446488.16562,
+          "continental_material_live_km3": 11487261732.348162,
+          "continental_balance_error_km3": -695.127373824,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 2.944e-06
+        }
+      ]
+    },
+    "faults-python": {
+      "runtime_seconds": 126.293527841568,
+      "peak_memory_mb": 1086.109375,
+      "checkpoints": [
+        {
+          "elapsed_myr": 67.9,
+          "land_area_km2": 170467113.11897877,
+          "sea_level_m": -47.303418709282774,
+          "continental_area_km2": 354404844.746434,
+          "hm_volume_all_km3": 40624303187.077065,
+          "continental_material_live_km3": 11486543391.02272,
+          "continental_balance_error_km3": 0.0,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.328e-06
+        },
+        {
+          "elapsed_myr": 68.0,
+          "land_area_km2": 173877365.51842427,
+          "sea_level_m": -66.82439977283354,
+          "continental_area_km2": 354386421.52645385,
+          "hm_volume_all_km3": 40622323926.53702,
+          "continental_material_live_km3": 11486583059.600512,
+          "continental_balance_error_km3": -5.681457152,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.584e-06
+        },
+        {
+          "elapsed_myr": 68.1,
+          "land_area_km2": 171621849.61571857,
+          "sea_level_m": -59.18397057417097,
+          "continental_area_km2": 354366534.33198845,
+          "hm_volume_all_km3": 40621779895.6162,
+          "continental_material_live_km3": 11486668612.14269,
+          "continental_balance_error_km3": -5.681455104,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.264e-06
+        },
+        {
+          "elapsed_myr": 68.2,
+          "land_area_km2": 172510091.7953192,
+          "sea_level_m": -60.56346555718352,
+          "continental_area_km2": 354325038.65244424,
+          "hm_volume_all_km3": 40621388782.418724,
+          "continental_material_live_km3": 11486722806.517746,
+          "continental_balance_error_km3": -51.905685504,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.712e-06
+        },
+        {
+          "elapsed_myr": 68.3,
+          "land_area_km2": 172451574.2564379,
+          "sea_level_m": -60.54769537151222,
+          "continental_area_km2": 354323448.07599646,
+          "hm_volume_all_km3": 40621835926.44998,
+          "continental_material_live_km3": 11486840541.357433,
+          "continental_balance_error_km3": -51.905685504,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 2.752e-06
+        },
+        {
+          "elapsed_myr": 68.4,
+          "land_area_km2": 171949879.83505562,
+          "sea_level_m": -61.656180136771226,
+          "continental_area_km2": 354303681.3157875,
+          "hm_volume_all_km3": 40620142726.576836,
+          "continental_material_live_km3": 11486931017.748478,
+          "continental_balance_error_km3": -695.127392256,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 3.584e-06
+        },
+        {
+          "elapsed_myr": 68.5,
+          "land_area_km2": 171713760.47482052,
+          "sea_level_m": -61.51864112098842,
+          "continental_area_km2": 354279922.18517035,
+          "hm_volume_all_km3": 40618212641.0579,
+          "continental_material_live_km3": 11487021007.956427,
+          "continental_balance_error_km3": -695.127392256,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 4.032e-06
+        },
+        {
+          "elapsed_myr": 68.6,
+          "land_area_km2": 171847996.15548134,
+          "sea_level_m": -59.44264350749512,
+          "continental_area_km2": 354238221.50219876,
+          "hm_volume_all_km3": 40615074179.27488,
+          "continental_material_live_km3": 11487077728.455076,
+          "continental_balance_error_km3": -695.127392256,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.008e-06
+        },
+        {
+          "elapsed_myr": 68.7,
+          "land_area_km2": 172163330.9267963,
+          "sea_level_m": -58.95538182104805,
+          "continental_area_km2": 354245723.8955849,
+          "hm_volume_all_km3": 40615801485.74898,
+          "continental_material_live_km3": 11487138870.957972,
+          "continental_balance_error_km3": -695.127392256,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 2.88e-06
+        },
+        {
+          "elapsed_myr": 68.8,
+          "land_area_km2": 171849866.86529344,
+          "sea_level_m": -60.2628730536356,
+          "continental_area_km2": 354245723.8955849,
+          "hm_volume_all_km3": 40616323379.75186,
+          "continental_material_live_km3": 11487190205.188997,
+          "continental_balance_error_km3": -704.0792064,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 3.2e-06
+        },
+        {
+          "elapsed_myr": 68.9,
+          "land_area_km2": 171941407.99309587,
+          "sea_level_m": -60.95794304015155,
+          "continental_area_km2": 354249271.1792942,
+          "hm_volume_all_km3": 40616446488.16106,
+          "continental_material_live_km3": 11487261723.18745,
+          "continental_balance_error_km3": -704.079204352,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 2.496e-06
+        }
+      ]
+    },
+    "transfer-python": {
+      "runtime_seconds": 121.90310096740723,
+      "peak_memory_mb": 1096.703125,
+      "checkpoints": [
+        {
+          "elapsed_myr": 67.9,
+          "land_area_km2": 170467113.11897877,
+          "sea_level_m": -47.303418709282774,
+          "continental_area_km2": 354404844.746434,
+          "hm_volume_all_km3": 40624303187.077065,
+          "continental_material_live_km3": 11486543391.02272,
+          "continental_balance_error_km3": 0.0,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.328e-06
+        },
+        {
+          "elapsed_myr": 68.0,
+          "land_area_km2": 173877365.51842427,
+          "sea_level_m": -66.82439977283354,
+          "continental_area_km2": 354386421.52645385,
+          "hm_volume_all_km3": 40622323926.53702,
+          "continental_material_live_km3": 11486583059.600512,
+          "continental_balance_error_km3": -5.681457152,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.584e-06
+        },
+        {
+          "elapsed_myr": 68.1,
+          "land_area_km2": 171621849.61571857,
+          "sea_level_m": -59.18397057417097,
+          "continental_area_km2": 354366534.33198845,
+          "hm_volume_all_km3": 40621779895.6162,
+          "continental_material_live_km3": 11486668612.14269,
+          "continental_balance_error_km3": -5.681455104,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.264e-06
+        },
+        {
+          "elapsed_myr": 68.2,
+          "land_area_km2": 172510091.7953192,
+          "sea_level_m": -60.56346555718352,
+          "continental_area_km2": 354325038.65244424,
+          "hm_volume_all_km3": 40621388782.418724,
+          "continental_material_live_km3": 11486722806.517746,
+          "continental_balance_error_km3": -51.905685504,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.712e-06
+        },
+        {
+          "elapsed_myr": 68.3,
+          "land_area_km2": 172451574.2564379,
+          "sea_level_m": -60.54769537151222,
+          "continental_area_km2": 354323448.07599646,
+          "hm_volume_all_km3": 40621835926.44998,
+          "continental_material_live_km3": 11486840541.357433,
+          "continental_balance_error_km3": -51.905685504,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 2.752e-06
+        },
+        {
+          "elapsed_myr": 68.4,
+          "land_area_km2": 171949879.83505562,
+          "sea_level_m": -61.656180136771226,
+          "continental_area_km2": 354303681.3157875,
+          "hm_volume_all_km3": 40620142726.576836,
+          "continental_material_live_km3": 11486931017.748478,
+          "continental_balance_error_km3": -695.127392256,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 3.584e-06
+        },
+        {
+          "elapsed_myr": 68.5,
+          "land_area_km2": 171713760.47482052,
+          "sea_level_m": -61.51864112098842,
+          "continental_area_km2": 354279922.18517035,
+          "hm_volume_all_km3": 40618212641.0579,
+          "continental_material_live_km3": 11487021007.956427,
+          "continental_balance_error_km3": -695.127392256,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 4.032e-06
+        },
+        {
+          "elapsed_myr": 68.6,
+          "land_area_km2": 171847996.15548134,
+          "sea_level_m": -59.44264350749512,
+          "continental_area_km2": 354238221.50219876,
+          "hm_volume_all_km3": 40615074179.27488,
+          "continental_material_live_km3": 11487077728.455076,
+          "continental_balance_error_km3": -695.127392256,
+          "craton_balance_error_km3": 0.0,
+          "mobile_cover_balance_error_km3": 3.008e-06
+        },
+        {
+          "elapsed_myr": 68.7,
+          "land_area_km2": 172163330.9267963,
+          "sea_level_m": -58.95538182104805,
+          "continental_area_km2": 354245723.8955849,
+          "hm_volume_all_km3": 40615801485.74898,
+          "continental_material_live_km3": 11487138870.957972,
+          "continental_balance_error_km3": -695.127392256,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 2.88e-06
+        },
+        {
+          "elapsed_myr": 68.8,
+          "land_area_km2": 171849866.86529344,
+          "sea_level_m": -60.2628730536356,
+          "continental_area_km2": 354245723.8955849,
+          "hm_volume_all_km3": 40616323379.75186,
+          "continental_material_live_km3": 11487190205.188997,
+          "continental_balance_error_km3": -704.0792064,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 3.2e-06
+        },
+        {
+          "elapsed_myr": 68.9,
+          "land_area_km2": 171941407.99309587,
+          "sea_level_m": -60.95794304015155,
+          "continental_area_km2": 354249271.1792942,
+          "hm_volume_all_km3": 40616446488.16106,
+          "continental_material_live_km3": 11487261723.18745,
+          "continental_balance_error_km3": -704.079204352,
+          "craton_balance_error_km3": 1.024e-06,
+          "mobile_cover_balance_error_km3": 2.496e-06
+        }
+      ],
+      "commit": "26b0a29810060b8f7e546eeabbd10d597b910a44"
+    }
+  }
+}

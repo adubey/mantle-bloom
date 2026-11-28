@@ -298,3 +298,78 @@ was 1,074 MB. The run overlapped another simulation under an explicit one-run co
 so its timing and RSS are descriptive and should not be compared directly with the idle
 baseline's 12.342 s total, 0.351 s climate and 960 MB RSS. The same candidate's mature profile
 above also overlapped other work. CI was cancelled at the owner's request before this profile.
+
+## Step 6 fault kernels: comparison plan
+
+Principle #2 (keep the planet moving at a useful pace) motivates replacing repeated fault
+geometry and transfer work with native kernels. The primary performance metric is the
+`Updating faults` phase, with total step time and peak RSS secondary. The baseline is the
+current `origin/main` and the candidate is this issue branch. Profile seed 0 and the same
+67.9 Myr mature save (SHA-256 `eff1f6d7abdfe46c7af5b45ab23f136f3fac591f4d95f3457017c1e7d933216b`)
+with diagnostic wind, one warmup and three measured 100,000-year steps. Run arms sequentially;
+record overlapping workloads and avoid interpreting overlapped timings as comparable. A
+change below 10% in the fault phase or 2% in total step time is inconclusive without
+replication.
+
+The conservation invariant is equal crust and continental-material volume by crust type for
+individual fault transfers. Numerical parity tests cover neighborhood ties and event order;
+the native transfer sums terms in a different order from NumPy's dot product, so model-output
+parity additionally requires a 1 Myr mature-save replay against the task-specific baseline,
+with 0.1 Myr checkpoints. Compare land area, sea level, crust and mantle inventories, and
+ledger closure at every checkpoint. Expect identical or numerically negligible differences;
+report any divergence rather than assuming bitwise parity. Timing and RSS are descriptive
+when other work overlaps.
+
+### Step 6 profiles and replay
+
+On `origin/main` `069d1d38` and candidate `49ba239c`, `profile_phases.py --scenarios
+step --steps 3 --warmup 1 --wind-model diagnostic` ran sequentially with no tracked heavy
+runs at each capacity check. Young used seed 0; mature used the preregistered 67.9 Myr save.
+Peak RSS is `/usr/bin/time -l` maximum resident set size in decimal MB. Each entry is a
+single run per arm; total-step and RSS differences are susceptible to noise.
+
+| World | Fault updates, baseline → candidate | Total step, baseline → candidate | Peak RSS, baseline → candidate |
+|---|---:|---:|---:|
+| Young | 0.754 → 0.515 s (−31.7%) | 11.558 → 11.165 s (−3.4%) | 1,076 → 1,136 MB |
+| Mature | 1.174 → 0.771 s (−34.3%) | 12.092 → 11.695 s (−3.3%) | 1,153 → 1,102 MB |
+
+A provisional young candidate run before the final boundary geometry changes measured
+12.63 s/step, 0.55 s/step in fault updates and 962 MB RSS. It overlapped other work and
+baseline setup, and is excluded from the paired table.
+
+The 1 Myr replay used `attribute_hm_ratchet.py <local-save> --myr 1 --checkpoint-myr 0.1
+--out <capture>`, sequentially on the same save and commits. A baseline repeat and a candidate
+repeat reproduced their respective reported checkpoint values exactly. A fifth isolation run
+used the candidate with only `app._faults_rust._rust` set to `None` before invoking the replay;
+its land area, sea level, continental area and mantle volume exactly matched the baseline at
+all checkpoints. Other native components remained enabled. The compact checkpoint data are in
+[fault-kernel-comparison.json](fault-kernel-comparison.json).
+
+| At 68.9 Myr | Baseline | Candidate | Candidate − baseline |
+|---|---:|---:|---:|
+| Land area (km²) | 171,941,407.993 | 171,801,473.873 | −139,934.120 (−0.081%) |
+| Sea level (m) | −60.957943 | −60.990533 | −0.032590 |
+| Continental area (km²) | 354,249,271.179 | 354,249,271.179 | 0 |
+| Mantle volume (km³) | 40,616,446,488.161 | 40,616,446,488.166 | +0.0046 |
+| Live continental material (km³) | 11,487,261,723.187 | 11,487,261,732.348 | +9.161 |
+| Continental ledger error (km³) | −704.079204 | −695.127374 | +8.951831 |
+| Craton ledger error (km³) | 0.000001024 | 0 | −0.000001024 |
+| Mobile-cover ledger error (km³) | 0.000002496 | 0.000002944 | +0.000000448 |
+
+The two repeats show no spread in these selected metrics on this save, not a general estimate
+of simulation variability. A further exploratory isolation replay on review-fix commit `26b0a298` kept all native kernels
+except `relief_transfer` enabled. It also matched baseline land area, sea level, continental
+area and mantle volume exactly at every checkpoint. On this save, restoring only the Python
+transfer removes the observed divergence in those metrics. Native transfer sums can differ from
+NumPy dot-product order by a few floating-point units; this control supports their role but
+does not prove every intermediate field is identical. Land area first differs at the
+68.6 Myr checkpoint and varies in sign and size afterward. Do not claim bitwise model parity.
+The isolation control covers one save and interval only.
+
+The affected suite passed 2,695 tests. The stress suite was stopped at the owner's request
+after 9 passed; remaining stress cases were not run.
+
+Muse's review prompted two non-finite input parity fixes after the profiled candidate: a
+non-finite shear sense takes the Python path and foreign-neighbor selection preserves NumPy's
+first-NaN ordering. These guards do not alter finite model inputs. The paired profile table
+above measures `49ba239c`; the transfer-only control includes those review fixes.

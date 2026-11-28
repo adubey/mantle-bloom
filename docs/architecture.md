@@ -679,6 +679,9 @@ faults.py            every-step intraplate fault-line lifecycle (stress-weighted
                      boundary classification; re-homed across merges/splits by
                      reconcile_faults from world.step_world; backs the "Plates & Faults" map
                      view (GET /worlds/{world_id}/faults, /worlds/{world_id}/fault_at) -- see simulation-model/tectonics.md#faults
+_faults_rust.py      optional native fault geometry, conservative crust transfer, boundary
+                     classification and earthquake calculations (`backend/rust/src/faults.rs`);
+                     keeps NumPy fallbacks and seeded random draws in Python (#1046)
 worldsketch.py       parses a drawn/loaded coastline image (Generate World's "Human-made" tab)
                      into land/mountain/river masks + plate seed sites -- see
                      simulation-model/foundations.md#worldsketch. Consumed by lithosphere_plate.py's
