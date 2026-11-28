@@ -67,7 +67,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import continental_ledger, lithosphere, rheology, trace
+from . import continental_ledger, lithosphere, rheology, spatial_index, trace
 from .elevation_lines import (
     ELEV_CHANGE_LATERAL_MAGMA,
     ELEV_CHANGE_MIN_DELTA_M,
@@ -75,6 +75,12 @@ from .elevation_lines import (
     effective_is_continental_from_codes,
     line_spacing_rad,
 )
+
+try:
+    import mantle_bloom_rust as _rust
+except ImportError:
+    _rust = None
+
 
 if TYPE_CHECKING:
     from .world import World
@@ -130,7 +136,7 @@ class _ContinentalNodeIndex:
         hc_m: np.ndarray,
         area_m2: np.ndarray,
     ) -> None:
-        self.tree = cKDTree(xyz) if len(xyz) > 0 else None
+        self._tree = None
         self.xyz = xyz
         self.plate_id = plate_id
         self.flat_index = flat_index
@@ -139,6 +145,13 @@ class _ContinentalNodeIndex:
 
     def __len__(self) -> int:
         return len(self.xyz)
+
+    @property
+    def tree(self):
+        """Build the scipy tree only for the Python fallback (#1042)."""
+        if self._tree is None and len(self.xyz):
+            self._tree = cKDTree(self.xyz)
+        return self._tree
 
 
 def _build_continental_node_index(world: "World") -> _ContinentalNodeIndex:
@@ -182,6 +195,18 @@ def _weighted_destination_pairs(
     zero at `MAGMA_TRANSPORT_RANGE_KM`. Distance is the plain cKDTree chord distance over
     unit-sphere points, times `PLANET_RADIUS_KM`; at this regional scale the chord/arc error is
     well under 1%."""
+    # Use the same scipy distance rounding probed by the shared index. If Rust is
+    # disabled, absent, or stale, retain the original scipy implementation (#1042).
+    kernel = getattr(_rust, "magma_destination_pairs_rs", None)
+    if kernel is not None and spatial_index.RUST_AVAILABLE:
+        return kernel(
+            np.ascontiguousarray(parcel_origins_xyz, dtype=np.float64),
+            np.ascontiguousarray(dest_index.xyz, dtype=np.float64),
+            np.ascontiguousarray(dest_index.hc_m, dtype=np.float64),
+            range_rad, PLANET_RADIUS_KM, MAGMA_TRANSPORT_RANGE_KM,
+            lithosphere.REFERENCE_HC_CONTINENTAL_M, spatial_index.FUSED,
+        )
+
     origin_tree = cKDTree(parcel_origins_xyz)
     candidates = origin_tree.query_ball_tree(dest_index.tree, range_rad)
 
@@ -189,7 +214,9 @@ def _weighted_destination_pairs(
     for p, dest_candidates in enumerate(candidates):
         if not dest_candidates:
             continue
-        dest_candidates = np.array(dest_candidates)
+        # The native radius query returns ascending indices; use that same order for
+        # the sequential parcel and destination reductions on both paths (#1042).
+        dest_candidates = np.sort(np.asarray(dest_candidates))
         dist_km = np.linalg.norm(parcel_origins_xyz[p] - dest_index.xyz[dest_candidates], axis=1) * PLANET_RADIUS_KM
         thinness = np.clip(lithosphere.REFERENCE_HC_CONTINENTAL_M - dest_index.hc_m[dest_candidates], 0.0, None)
         falloff = np.clip(1.0 - dist_km / MAGMA_TRANSPORT_RANGE_KM, 0.0, 1.0)
@@ -206,6 +233,45 @@ def _weighted_destination_pairs(
     return np.concatenate(parcel_idx_chunks), np.concatenate(dest_idx_chunks), np.concatenate(weight_chunks)
 
 
+def _allocate_magma(parcel_idx, dest_idx, weight, parcel_volume, dest_index, banked_myr):
+    """Allocate melt in pair order, enforcing each destination's shared cap and headroom.
+
+    Bound the promised placement by the same crust ceiling used by the actual write, so
+    unplaceable melt stays in the parcel instead of disappearing from its mass account (#205).
+    """
+    cap_hc = max(MAGMA_DEPOSIT_RATE_M_PER_MYR * banked_myr, 0.0)
+    kernel = getattr(_rust, "magma_allocate_rs", None)
+    # NumPy propagates NaNs through clipping and minimum; Rust's f64 min/max do not.
+    # Keep malformed inputs on the authoritative Python path (#1042).
+    valid = (
+        np.isfinite(cap_hc)
+        and all(np.isfinite(a).all() for a in (weight, parcel_volume, dest_index.area_m2, dest_index.hc_m))
+        and np.all(weight > 0.0)
+        and np.all(parcel_volume >= 0.0)
+        and np.all(dest_index.area_m2 > 0.0)
+    )
+    if kernel is not None and spatial_index.RUST_AVAILABLE and valid:
+        return kernel(
+            np.ascontiguousarray(parcel_idx, dtype=np.int64), np.ascontiguousarray(dest_idx, dtype=np.int64),
+            np.ascontiguousarray(weight, dtype=np.float64), np.ascontiguousarray(parcel_volume, dtype=np.float64),
+            np.ascontiguousarray(dest_index.area_m2, dtype=np.float64), np.ascontiguousarray(dest_index.hc_m, dtype=np.float64),
+            cap=cap_hc, max_hc=lithosphere.MAX_CRUSTAL_THICKNESS_M,
+        )
+    sums = np.zeros(len(parcel_volume))
+    np.add.at(sums, parcel_idx, weight)
+    area = dest_index.area_m2[dest_idx]
+    requested = parcel_volume[parcel_idx] * (weight / sums[parcel_idx]) / area
+    totals = np.zeros(len(dest_index))
+    np.add.at(totals, dest_idx, requested)
+    headroom = np.clip(lithosphere.MAX_CRUSTAL_THICKNESS_M - dest_index.hc_m, 0.0, None)
+    realized = np.minimum(np.minimum(totals, cap_hc), headroom)
+    safe_total = np.where(totals > 0.0, totals, 1.0)
+    ratio = np.where(totals > 0.0, realized / safe_total, 0.0)
+    placed = np.zeros(len(parcel_volume))
+    np.add.at(placed, parcel_idx, (requested * ratio[dest_idx]) * area)
+    return placed, realized
+
+
 @trace.traced("Moving magma", trace.PLATES, user=True)
 def run_magma_transport(world: "World", banked_myr: float) -> list[str]:
     """Resolve every banked `world.pending_magma_parcels` entry against the current whole-sphere
@@ -220,7 +286,7 @@ def run_magma_transport(world: "World", banked_myr: float) -> list[str]:
         return []
 
     dest_index = _build_continental_node_index(world)
-    if len(dest_index) == 0 or dest_index.tree is None:
+    if len(dest_index) == 0:
         # Nothing to deposit onto at all -- every parcel just ages a cycle.
         for parcel in parcels:
             parcel.unplaced_cycles += 1
@@ -238,32 +304,11 @@ def run_magma_transport(world: "World", banked_myr: float) -> list[str]:
     total_deposited_m = 0.0
 
     if len(parcel_idx) > 0:
-        sum_weight_per_parcel = np.zeros(len(parcels))
-        np.add.at(sum_weight_per_parcel, parcel_idx, weight)
-        share = weight / sum_weight_per_parcel[parcel_idx]
-        pair_area_m2 = dest_index.area_m2[dest_idx]
-        requested_hc = parcel_volume[parcel_idx] * share / pair_area_m2
-
-        total_requested_hc = np.zeros(len(dest_index))
-        np.add.at(total_requested_hc, dest_idx, requested_hc)
-        cap_hc = max(MAGMA_DEPOSIT_RATE_M_PER_MYR * banked_myr, 0.0)
-        # Also bounded by each destination's own headroom to MAX_CRUSTAL_THICKNESS_M (the same
-        # ceiling `_scatter_write_deposits` clips its actual Hc write to). Ordinary weighting
-        # already keeps destinations well under this -- weight goes to 0 at
-        # REFERENCE_HC_CONTINENTAL_M, far below the ceiling -- but an unusually large
-        # `banked_myr` (an outsized step's own `years`) could otherwise make `cap_hc` promise
-        # more than a near-ceiling destination has room for; without this, the promised amount
-        # (used below for `placed_per_parcel` and the logged deposited total) would silently
-        # drift from what `_scatter_write_deposits` actually writes, losing mass without
-        # accounting for it -- every bounded-rate melt path must reflect "can't be placed" in
-        # what the caller is told was placed.
-        headroom_hc = np.clip(lithosphere.MAX_CRUSTAL_THICKNESS_M - dest_index.hc_m, 0.0, None)
-        realized_at_dest = np.minimum(np.minimum(total_requested_hc, cap_hc), headroom_hc)
-        safe_total = np.where(total_requested_hc > 0.0, total_requested_hc, 1.0)
-        ratio_at_dest = np.where(total_requested_hc > 0.0, realized_at_dest / safe_total, 0.0)
-
-        realized_hc_per_pair = requested_hc * ratio_at_dest[dest_idx]
-        np.add.at(placed_per_parcel, parcel_idx, realized_hc_per_pair * pair_area_m2)
+        # A destination has one cap across all parcels, bounded by its remaining crust
+        # headroom so reported placement always matches the actual write (#205).
+        placed_per_parcel, realized_at_dest = _allocate_magma(
+            parcel_idx, dest_idx, weight, parcel_volume, dest_index, banked_myr
+        )
 
         deposit_mask = realized_at_dest > 0.0
         n_deposited = int(np.count_nonzero(deposit_mask))

@@ -159,3 +159,140 @@ rounds it, then index. With that fix (`942e56c3`):
 `combined`, `biome`, `elevation` (plain, and with the mountain and plains toggles) in Eckert IV,
 `combined` on the globe and `elevation` in Behrmann, rendered at 1100×611 from the loaded save
 in each tree: all six PNGs are byte-identical between `origin/main` and the branch.
+
+## Tectonic kernel comparison preregistration
+
+Principle 2 calls for reducing repeated boundary searches and numerical passes while preserving
+plate ownership and material budgets. Compare `origin/main` at `069d1d38` with the tectonic
+kernel branch on the mature seed 47235302 save at 67.9 Myr (SHA-256
+`eff1f6d7abdfe46c7af5b45ab23f136f3fac591f4d95f3457017c1e7d933216b`). Run ten
+100,000-year steps, sequentially, using `attribute_hm_ratchet.py --myr 1 --checkpoint-myr 0.1`.
+The primary invariant is matching land area, sea level, crust and mantle inventories, and
+material ledgers at each checkpoint; the target is bit-identical results, with any deviation
+investigated before accepting the port. The Python-fallback path on the candidate is an
+additional control if the baseline and candidate diverge. Runtime and peak RSS are secondary
+and a single run cannot establish small speed changes on a shared host. The kernels are
+expected to reduce their own time without a material increase in total step time or memory;
+changes under 2% of step time are inconclusive without replicates.
+
+### Tectonic replay result
+
+The baseline (`069d1d38`) and candidate (`c2f47644`) replayed the preregistered save
+for ten 100,000-year steps with `attribute_hm_ratchet.py <local-save> --myr 1
+--checkpoint-myr 0.1 --out <capture>`. All recorded non-timing checkpoint metrics,
+inventories, per-plate values, phase budgets and crust accounts, and step ledgers matched
+exactly. This checks the recorded quantities, not every byte of world state. Compact checkpoint
+values are in `tectonic-replay-comparison.json`.
+
+| At 68.9 Myr | Baseline | Candidate |
+|---|---:|---:|
+| Sea level (m) | -60.9579430402 | -60.9579430402 |
+| Land area (km²) | 171,941,407.993 | 171,941,407.993 |
+| Emergent continental area (km²) | 171,462,060.775 | 171,462,060.775 |
+| Mantle lithosphere volume (km³) | 40,616,446,488.161 | 40,616,446,488.161 |
+| Replay time (s) | 128.0 | 134.4 |
+| Peak RSS (MB) | 938.8 | 978.9 |
+
+The single candidate run was 5.0% slower and used 40.1 MB more peak RSS. This is not a
+controlled performance conclusion: lint and quality checks overlapped the baseline, and
+shared-host load was not constant. Profile the individual phases on both young and mature
+worlds, sequentially on an idle host, before claiming a speedup or accepting the regression.
+
+### Tectonic phase profiling plan
+
+Before collecting phase timings, compare `profile_phases.py --scenarios step --steps 3
+--warmup 1 --wind-model diagnostic` on baseline `069d1d38` and the candidate on both
+seed 0 at densities 4/4/2 and the mature save above. Run the four arms sequentially on a
+quiet machine and capture peak RSS. The primary measures are `Gathering boundary forces`,
+`Detecting collisions`, `Finding gap points`, and `Moving magma`; mean whole-step time is
+secondary. A change under 10% in a phase or 2% in total step time is inconclusive without
+replicates. A regression beyond those thresholds requires investigation rather than a speedup
+claim. No model metric is expected to move.
+
+### Tectonic phase profile results
+
+The preregistered profiles ran sequentially on the same 16 GB host, with no other heavy
+runs reported by the compute-budget check at the start of each arm. One warmup and three
+measured 100,000-year steps used diagnostic wind. Values below are seconds per measured step;
+the compact individual step samples and peak RSS are in `tectonic-phase-comparison.json`.
+Boundary gathering is summed across motion, collision and deform phases.
+
+| Measure | Young main | Young branch | Mature main | Mature branch |
+|---|---:|---:|---:|---:|
+| Gathering boundary forces | 0.1106 | 0.0982 | 0.1371 | 0.1202 |
+| Detecting collisions | 0.1555 | 0.1491 | 0.2123 | 0.2041 |
+| Finding gap points | 0.1625 | 0.0617 | 0.1955 | 0.0661 |
+| Moving magma | 0.0166 | 0.0075 | not observed | not observed |
+| Whole step, mean | 11.187 | 11.107 | 12.295 | 11.895 |
+| Peak RSS (MB) | 1,070.6 | 1,056.1 | 1,068.7 | 1,078.9 |
+
+Gap finding fell 62% young and 66% mature; boundary gathering fell 11% and 12%.
+The collision change and young total-step change are below the preregistered thresholds.
+Magma ran in the young sample only, so its mature performance remains unmeasured. These
+are single three-step profiles, not replicated timing estimates. The mature total-step
+reduction of 3.2% differs in direction from the earlier 1 Myr replay's 5.0% increase;
+shared-host variation and the diagnostic replay's different instrumentation prevent treating
+either result as a stable whole-step estimate without replication.
+
+These profiles measured the original kernel implementation at `7d19f71c`. Following peer
+review, the branch scales the gap edge guard with resolution, orders fallback magma pairs,
+constructs the scipy magma tree only when needed, falls back for non-finite allocation inputs,
+and passes cached boundary arrays to Rust without stacking copies. Repeat the mature replay
+and the young and mature candidate profiles after these fixes against the same recorded
+baselines before drawing conclusions about the revised code.
+
+### Replay after review fixes
+
+The same 1 Myr replay was repeated on `82905131` after the review fixes. All recorded
+non-timing checkpoint metrics, inventories and ledgers again matched the `069d1d38` baseline
+exactly. The replay took 128.8 s and peaked at 1,060.4 MB RSS, versus 128.0 s and 938.8 MB
+for baseline; these single shared-host measurements do not establish a runtime or memory
+trend. Compact checkpoint values are in `tectonic-review-fixed-replay.json`. The subsequent
+boundary export rename changes only the stale-build dispatch name, not the numerical kernel;
+the matching and missing-export paths have targeted tests.
+
+### Review-fixed candidate profiles
+
+The review-fixed candidate at `b02afbf4` was measured with the same settings as above. Peak
+RSS covers the entire profile process, including generation on the young arm.
+
+| Measure | Young main | Young final | Mature main | Mature final |
+|---|---:|---:|---:|---:|
+| Gathering boundary forces (s/step) | 0.1106 | 0.1686 | 0.1371 | 0.1264 |
+| Detecting collisions (s/step) | 0.1555 | 0.2014 | 0.2123 | 0.2195 |
+| Finding gap points (s/step) | 0.1625 | 0.0689 | 0.1955 | 0.0663 |
+| Moving magma (s/step) | 0.0166 | 0.0058 | not observed | not observed |
+| Whole step, mean (s) | 11.187 | 13.965 | 12.295 | 12.587 |
+| Peak RSS (MB) | 1,070.6 | 882.6 | 1,068.7 | 1,023.0 |
+
+The final young run's erosion phase rose from 9.08 to 11.56 s/step, accounting for most of
+its 2.78 s total-step difference; the original candidate profile was 11.11 s/step. This
+variation also limits conclusions about the shorter boundary and collision phases. The
+preregistered young baseline and candidate replicates are needed before attributing the
+regression to the kernels. Mature magma was not observed, so its performance remains unmeasured.
+The full stress suite passed on the final code: 68 tests with one worker in 4 h 4 min 30 s;
+another agent's unit worker overlapped part of the run, so that runtime is not a benchmark.
+
+### Young timing replicates
+
+The preregistered young replicate repeated the same seed, densities, warmup and three-step
+settings. At the user's request, the baseline started alongside another stress worker (its
+budget check allowed the run); a different simulation and then unit workers ran before the
+candidate, which started when the budget check listed no other heavy runs. The arms therefore
+are not an idle-host matched comparison. Individual samples and peak RSS are in
+`tectonic-young-replicate.json`.
+
+| Measure | Baseline original | Baseline repeat | Final original | Final repeat |
+|---|---:|---:|---:|---:|
+| Whole step, mean (s) | 11.187 | 12.773 | 13.965 | 11.411 |
+| Gathering boundary forces (s/step) | 0.1106 | 0.1423 | 0.1686 | 0.1018 |
+| Detecting collisions (s/step) | 0.1555 | 0.1802 | 0.2014 | 0.1509 |
+| Finding gap points (s/step) | 0.1625 | 0.1816 | 0.0689 | 0.0598 |
+| Moving magma (s/step) | 0.0166 | 0.0209 | 0.0058 | 0.0051 |
+| Eroding and depositing sediment (s/step) | 9.084 | 10.422 | 11.558 | 9.417 |
+| Peak RSS (MB) | 1,070.6 | 947.0 | 882.6 | 923.2 |
+
+Gap finding is faster in both samples, while the spread in unrelated erosion time tracks much
+of the total-step spread. Because the measured ranges overlap and the repeat arms had different
+competing workloads, the whole-step and shorter boundary/collision changes remain inconclusive;
+these runs do not establish a whole-step speedup. The mature magma phase was not observed.

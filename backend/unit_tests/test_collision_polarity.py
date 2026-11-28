@@ -944,3 +944,16 @@ def test_retreat_runs_follow_each_nodes_crust_not_the_majority_type():
         plate = quad_plate(1, crust_type, columns=range(8))
         frame = SimpleNamespace(masks={1: SimpleNamespace(continental=continental)}, polarity={})
         np.testing.assert_array_equal(cp.retreat_candidates(frame, plate, contested), contested & ~continental)
+
+
+def test_rust_front_components_match_scipy(monkeypatch):
+    if cp._rust is None or not hasattr(cp._rust, "collision_front_labels_rs"):
+        pytest.skip("Rust collision kernel unavailable")
+    rng = np.random.default_rng(1042)
+    points = np.vstack((rng.normal(size=(100, 3)), np.zeros((2, 3)), [[10.0, 0.0, 0.0]]))
+    for radius in (0.0, 0.5, 1.0, 20.0):
+        native = cp._front_component_labels(points, radius)
+        with monkeypatch.context() as patch:
+            patch.setattr(cp, "_rust", None)
+            fallback = cp._front_component_labels(points, radius)
+        np.testing.assert_array_equal(native, fallback)

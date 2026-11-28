@@ -231,3 +231,70 @@ def test_fully_placed_parcel_is_removed_in_one_firing():
     magma_transport.run_magma_transport(world, banked_myr=4.0)
 
     assert world.pending_magma_parcels == []
+
+
+def test_rust_destination_pairs_match_python(monkeypatch):
+    """Candidate order and weights must preserve the deposit reductions (#1042)."""
+    if not magma_transport.spatial_index.RUST_AVAILABLE or not hasattr(magma_transport._rust, "magma_destination_pairs_rs"):
+        import pytest
+        pytest.skip("Rust magma kernel unavailable")
+    rng = np.random.default_rng(1042)
+    points = geometry.normalize(rng.normal(size=(300, 3)))
+    origins = np.vstack((points[:12], [[1.0, 0.0, 0.0]]))
+    hc = rng.uniform(10_000.0, 50_000.0, len(points))
+    index = _dest_index(points, hc)
+    native = magma_transport._weighted_destination_pairs(origins, index, _range_rad())
+    monkeypatch.setattr(magma_transport, "_rust", None)
+    python = magma_transport._weighted_destination_pairs(origins, index, _range_rad())
+    np.testing.assert_array_equal(native[0], python[0])
+    np.testing.assert_array_equal(native[1], python[1])
+    np.testing.assert_array_equal(native[2], python[2])
+
+
+def test_rust_allocation_matches_python_with_shared_caps(monkeypatch):
+    if magma_transport._rust is None or not hasattr(magma_transport._rust, "magma_allocate_rs"):
+        import pytest
+        pytest.skip("Rust magma allocation unavailable")
+    rng = np.random.default_rng(2042)
+    points = geometry.normalize(rng.normal(size=(20, 3)))
+    index = _dest_index(points, rng.uniform(10_000, 50_000, 20))
+    parcels = np.repeat(np.arange(8, dtype=np.int64), 20)
+    dest = np.tile(np.arange(20, dtype=np.int64), 8)
+    weights = rng.uniform(1, 100, len(parcels))
+    volumes = rng.uniform(1e12, 1e14, 8)
+    for banked in (0.0, 0.1, 1e6):
+        native = magma_transport._allocate_magma(parcels, dest, weights, volumes, index, banked)
+        with monkeypatch.context() as patch:
+            patch.setattr(magma_transport, "_rust", None)
+            fallback = magma_transport._allocate_magma(parcels, dest, weights, volumes, index, banked)
+        for got, expected in zip(native, fallback):
+            np.testing.assert_array_equal(got, expected)
+
+
+def test_native_destination_search_does_not_build_scipy_tree(monkeypatch):
+    if not magma_transport.spatial_index.RUST_AVAILABLE or not hasattr(magma_transport._rust, "magma_destination_pairs_rs"):
+        import pytest
+        pytest.skip("Rust magma kernel unavailable")
+    def fail_tree(*args, **kwargs):
+        raise AssertionError("the native path should not build a scipy tree")
+    monkeypatch.setattr(magma_transport, "cKDTree", fail_tree)
+    index = _dest_index(np.array([[1.0, 0.0, 0.0]]), [20_000.0])
+    _, destinations, _ = magma_transport._weighted_destination_pairs(np.array([[1.0, 0.0, 0.0]]), index, _range_rad())
+    np.testing.assert_array_equal(destinations, [0])
+
+
+def test_invalid_magma_inputs_use_numpy_nan_semantics(monkeypatch):
+    from types import SimpleNamespace
+
+    def fail_native(*args, **kwargs):
+        raise AssertionError("nonfinite values must use the Python path")
+
+    monkeypatch.setattr(magma_transport, "_rust", SimpleNamespace(magma_allocate_rs=fail_native))
+    monkeypatch.setattr(magma_transport.spatial_index, "RUST_AVAILABLE", True)
+    index = _dest_index(np.array([[1.0, 0.0, 0.0]]), [np.nan])
+    with np.errstate(invalid="ignore"):
+        placed, realized = magma_transport._allocate_magma(
+            np.array([0]), np.array([0]), np.array([1.0]), np.array([1.0]), index, 1.0
+        )
+    assert np.isnan(placed[0])
+    assert np.isnan(realized[0])

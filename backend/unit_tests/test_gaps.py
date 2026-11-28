@@ -229,3 +229,38 @@ def test_fill_gaps_by_growing_neighbours_ignores_a_gap_smaller_than_the_minimum(
     events = gaps.fill_gaps_by_growing_neighbours(world)
     assert events == []
     assert len(world.plates) == 3
+
+
+def test_rust_gap_coverage_matches_adaptive_cells_and_edges(monkeypatch):
+    import pytest
+    from app.sparse_quad_patch import lattice_points
+
+    if gaps._rust is None or not hasattr(gaps._rust, "gap_contains_rs"):
+        pytest.skip("Rust gap kernel unavailable")
+    world, _ = _lone_continental_island()
+    plate = world.plates[0]
+    plate.refine_cells(plate.cell_keys[:1])
+    rng = np.random.default_rng(1042)
+    random_points = geometry.normalize(rng.normal(size=(1000, 3)))
+    n = plate.cells_per_edge
+    grid = np.arange(n + 1, dtype=float)
+    face = np.repeat(np.arange(6), len(grid))
+    edge_points = lattice_points(face, np.tile(grid, 6), np.full(len(face), n / 2), n)
+    points = np.vstack((random_points, edge_points))
+    native = gaps._covered_by_plates(points, [plate])
+    with monkeypatch.context() as patch:
+        patch.setattr(gaps, "_rust", None)
+        fallback = gaps._covered_by_plates(points, [plate])
+    np.testing.assert_array_equal(native, fallback)
+
+
+def test_rust_gap_edge_guard_scales_to_fine_cells():
+    import pytest
+    from app.sparse_quad_patch import lattice_points
+
+    if gaps._rust is None or not hasattr(gaps._rust, "gap_contains_rs"):
+        pytest.skip("Rust gap kernel unavailable")
+    n = 1 << 20
+    point = lattice_points(np.array([0]), np.array([n // 2 + 1.0]), np.array([n // 2 + 0.5]), n)
+    _, uncertain = gaps._rust.gap_contains_rs(point, np.array([0], dtype=np.int64), n, 0)
+    assert uncertain[0]

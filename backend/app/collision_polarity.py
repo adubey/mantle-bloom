@@ -65,9 +65,14 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from . import geometry, lithosphere, torque, trace
+from . import geometry, lithosphere, spatial_index, torque, trace
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from .lithosphere_plate import CONTINENTAL_CONTESTED_RETREAT_MIN_RUN, continental_arc_band
+
+try:
+    import mantle_bloom_rust as _rust
+except ImportError:
+    _rust = None
 
 if TYPE_CHECKING:
     from .world import World
@@ -607,6 +612,16 @@ def _observe(world: "World", by_id: dict, c: _Contact, mask: np.ndarray, source:
         add_evidence(world, neighbour, points, source, -role, c.plate.plate_id)
 
 
+def _front_component_labels(points: np.ndarray, link: float) -> np.ndarray:
+    kernel = getattr(_rust, "collision_front_labels_rs", None)
+    if kernel is not None and spatial_index.RUST_AVAILABLE:
+        return kernel(np.ascontiguousarray(points, dtype=np.float64), link, spatial_index.FUSED)
+    links = cKDTree(points).query_pairs(link, output_type="ndarray")
+    n = len(points)
+    graph = coo_matrix((np.ones(len(links)), (links[:, 0], links[:, 1])), shape=(n, n)) if len(links) else coo_matrix((n, n))
+    return connected_components(graph, directed=False)[1]
+
+
 def _detect_fronts(contacts: dict[int, _Contact], spacing_rad: float) -> dict[tuple[int, int], list[dict[int, np.ndarray]]]:
     """Every pair's connected continental contact fronts, each as {plate id: node indices}.
     Pairs and fronts come out in a fixed order: pairs ascending, fronts by first node."""
@@ -633,9 +648,7 @@ def _detect_fronts(contacts: dict[int, _Contact], spacing_rad: float) -> dict[tu
         n = len(points)
         if n < FRONT_MIN_NODES:
             continue
-        links = cKDTree(points).query_pairs(link, output_type="ndarray")
-        graph = coo_matrix((np.ones(len(links)), (links[:, 0], links[:, 1])), shape=(n, n)) if len(links) else coo_matrix((n, n))
-        _, labels = connected_components(graph, directed=False)
+        labels = _front_component_labels(points, link)
         _, first = np.unique(labels, return_index=True)
         fronts = []
         for label in labels[np.sort(first)]:

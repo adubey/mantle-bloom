@@ -1,0 +1,30 @@
+{
+  "young": {
+    "step_seconds": [
+      13.988001208053902,
+      13.456761208828539,
+      14.449172749882564
+    ],
+    "peak_rss_mb": 882.5625,
+    "phases_seconds": {
+      "Gathering boundary forces": 0.16858322507080933,
+      "Detecting collisions": 0.20137952764829,
+      "Finding gap points": 0.06891493087944885,
+      "Moving magma": 0.005747138988226652
+    }
+  },
+  "mature": {
+    "step_seconds": [
+      12.76645633415319,
+      12.418731334153563,
+      12.57493883301504
+    ],
+    "peak_rss_mb": 1022.984375,
+    "phases_seconds": {
+      "Gathering boundary forces": 0.1264098733663559,
+      "Detecting collisions": 0.21952269474665323,
+      "Finding gap points": 0.06626129165912668,
+      "Moving magma": 0
+    }
+  }
+}

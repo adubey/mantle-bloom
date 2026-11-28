@@ -938,7 +938,7 @@ def test_contact_drag_acts_on_continent_continent_nodes_whatever_either_plates_m
     np.testing.assert_array_equal(torque.continental_contact_mask(plate, inputs, contested), [True, True, False])
 
 
-def test_the_neighbour_side_of_a_contact_is_its_nearest_nodes_own_crust():
+def test_the_neighbour_side_of_a_contact_is_its_nearest_nodes_own_crust(monkeypatch):
     """#447: an ocean margin on a continental-majority neighbour reads as oceanic, and a
     continent on an oceanic-majority neighbour as continental."""
     from scipy.spatial import cKDTree
@@ -976,6 +976,16 @@ def test_the_neighbour_side_of_a_contact_is_its_nearest_nodes_own_crust():
     inputs = torque.gather_boundary_force_inputs(Own(own), [land, sea], spacing, 3 * spacing)
     np.testing.assert_array_equal(inputs.neighbor_plate_id, [2, 2, 3, 3])
     np.testing.assert_array_equal(inputs.neighbor_is_oceanic, [True, False, False, True])
+    from types import SimpleNamespace
+
+    # A stale draft extension has the old matrix signature, so it must not be called.
+    def old_kernel(*args):
+        raise AssertionError("stale boundary kernel should not be used")
+
+    monkeypatch.setattr(torque, "_rust", SimpleNamespace(boundary_nearest_rs=old_kernel))
+    fallback = torque.gather_boundary_force_inputs(Own(own), [land, sea], spacing, 3 * spacing)
+    for name in ("dist_to_neighbor", "direction_to_neighbor", "neighbor_is_oceanic", "neighbor_omega", "neighbor_plate_id", "neighbor_node_index"):
+        np.testing.assert_array_equal(getattr(inputs, name), getattr(fallback, name))
 
 
 def test_both_sides_of_a_jammed_contact_feel_the_lower_sides_jam():
@@ -1236,3 +1246,15 @@ def test_world_without_the_force_form_fields_loads_with_todays_forms():
         world.__dict__.pop(name, None)
     loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
     assert torque.force_forms(loaded) == torque.ForceForms(elapsed_years=loaded.elapsed_years)
+
+
+def test_rust_boundary_nearest_preserves_ties_and_missing_neighbours():
+    if torque._rust is None or not hasattr(torque._rust, "boundary_nearest_lists_rs"):
+        import pytest
+        pytest.skip("Rust boundary kernel unavailable")
+    distances = np.array([[1.0, np.inf, 2.0, np.inf], [1.0, 3.0, 1.0, np.inf]])
+    indices = np.array([[4, -1, 5, -1], [8, 9, 10, -1]], dtype=np.int64)
+    d, owner, index = torque._rust.boundary_nearest_lists_rs(list(distances), list(indices))
+    np.testing.assert_array_equal(d, [1.0, 3.0, 1.0, np.inf])
+    np.testing.assert_array_equal(owner, [0, 1, 1, -1])
+    np.testing.assert_array_equal(index, [4, 9, 10, -1])

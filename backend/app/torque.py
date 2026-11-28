@@ -24,12 +24,17 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
-from . import cratons, geometry, mantle, plates as plate_geometry, trace
+from . import cratons, geometry, mantle, plates as plate_geometry, spatial_index, trace
 from .boundary import TRANSFORM_RATE_THRESHOLD
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from . import lithosphere, rift_strength
 from .plates import query_workers
 from .surface_fields import SURFACE_FIELDS
+
+try:
+    import mantle_bloom_rust as _rust
+except ImportError:
+    _rust = None
 
 logger = logging.getLogger(__name__)
 
@@ -386,28 +391,42 @@ def gather_boundary_force_inputs(
     # shift and deform pass, so one cached tree per plate is built once per step instead of
     # the ~24 fresh builds this used to do. The argmin over neighbours reproduces the single
     # global-nearest the combined tree returned -- `neighbours` is in the same order the old
-    # concatenation used, so distance ties break identically. scipy's compiled batch query
-    # beats a pure-Python spherical-BVH recursion badly at this node count (tens of thousands
-    # of points per plate at real density), so there's no accelerator worth swapping in here.
+    # concatenation used, so distance ties break identically.
     workers = query_workers(n)
-    best_dist = np.full(n, np.inf)
-    best_point = np.zeros((n, 3))
-    best_owner = np.full(n, -1)
-    best_index = np.full(n, -1, dtype=np.int64)
     own_tree = plate.get_node_kdtree() if cache is not None else None
-    for i, neighbour in enumerate(neighbours):
+    trees, distances, indices = [], [], []
+    for neighbour in neighbours:
         tree = neighbour.get_node_kdtree()
+        trees.append(tree)
         if tree is None:
+            distances.append(np.full(n, np.inf))
+            indices.append(np.full(n, -1, dtype=np.int64))
             continue
         if cache is None:
             dist, idx = tree.query(own_points, workers=workers)
         else:
             dist, idx = cache.nearest(plate, own_tree, neighbour, tree, own_points, workers)
-        closer = dist < best_dist
-        best_dist[closer] = dist[closer]
-        best_point[closer] = tree.data[idx[closer]]
-        best_owner[closer] = i
-        best_index[closer] = idx[closer]
+        distances.append(dist)
+        indices.append(idx)
+
+    kernel = getattr(_rust, "boundary_nearest_lists_rs", None)
+    if kernel is not None and spatial_index.RUST_AVAILABLE:
+        best_dist, best_owner, best_index = kernel(distances, indices)
+    else:
+        best_dist = np.full(n, np.inf)
+        best_owner = np.full(n, -1, dtype=np.int64)
+        best_index = np.full(n, -1, dtype=np.int64)
+        for i, (dist, idx) in enumerate(zip(distances, indices)):
+            closer = dist < best_dist
+            best_dist[closer] = dist[closer]
+            best_owner[closer] = i
+            best_index[closer] = idx[closer]
+
+    best_point = np.zeros((n, 3))
+    for i, tree in enumerate(trees):
+        owned = best_owner == i
+        if tree is not None and np.any(owned):
+            best_point[owned] = tree.data[best_index[owned]]
 
     if not np.any(best_owner >= 0):
         return no_neighbour

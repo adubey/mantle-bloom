@@ -1,0 +1,62 @@
+{
+  "young": {
+    "baseline": {
+      "step_seconds": [
+        11.406255041016266,
+        11.305456000147387,
+        10.848849582951516
+      ],
+      "peak_rss_mb": 1070.625,
+      "phases_seconds": {
+        "Gathering boundary forces": 0.11054790151926377,
+        "Detecting collisions": 0.15546502793828645,
+        "Finding gap points": 0.16254127809467417,
+        "Moving magma": 0.016585499979555607
+      }
+    },
+    "candidate": {
+      "step_seconds": [
+        11.352784208022058,
+        11.41317066596821,
+        10.554147916147485
+      ],
+      "peak_rss_mb": 1056.140625,
+      "phases_seconds": {
+        "Gathering boundary forces": 0.09818711007634799,
+        "Detecting collisions": 0.1490955417199681,
+        "Finding gap points": 0.06174273625947535,
+        "Moving magma": 0.007499847328290343
+      }
+    }
+  },
+  "mature": {
+    "baseline": {
+      "step_seconds": [
+        12.76605945895426,
+        12.412065291078761,
+        11.705907708965242
+      ],
+      "peak_rss_mb": 1068.671875,
+      "phases_seconds": {
+        "Gathering boundary forces": 0.13705257217710215,
+        "Detecting collisions": 0.2123094863103082,
+        "Finding gap points": 0.19549045874737203,
+        "Moving magma": 0
+      }
+    },
+    "candidate": {
+      "step_seconds": [
+        12.442332749953493,
+        11.832164083840325,
+        11.410662415903062
+      ],
+      "peak_rss_mb": 1078.875,
+      "phases_seconds": {
+        "Gathering boundary forces": 0.12022940084959069,
+        "Detecting collisions": 0.20407938895126185,
+        "Finding gap points": 0.06607911091608305,
+        "Moving magma": 0
+      }
+    }
+  }
+}

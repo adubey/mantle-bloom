@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from . import geometry, mantle, quad_tectonics, trace
+from . import geometry, mantle, quad_tectonics, spatial_index, trace
 from .elevation_lines import (
     COVERAGE_RADIUS_MULT as _SHARED_COVERAGE_RADIUS_MULT,
     effective_is_continental_from_codes,
@@ -47,6 +47,11 @@ from .elevation_lines import (
 from .lithosphere_plate import new_plate
 from .plates import Plate, _contested_by_any, node_components
 from .spatial_index import SpatialIndex
+
+try:
+    import mantle_bloom_rust as _rust
+except ImportError:
+    _rust = None
 
 if TYPE_CHECKING:
     from .world import World
@@ -148,6 +153,31 @@ def _existing_node_tree(world: "World") -> _ExistingNodeContext | None:
     )
 
 
+def _covered_by_plates(points: np.ndarray, plates: list[Plate]) -> np.ndarray:
+    """Exact adaptive-cell coverage; resolve numerically ambiguous edges in Python (#1042)."""
+    from .sparse_quad_patch import PlateWithSparseQuadPatch, unpack_cell_keys
+
+    kernel = getattr(_rust, "gap_contains_rs", None)
+    if kernel is None or not spatial_index.RUST_AVAILABLE:
+        return _contested_by_any(points, plates)
+    covered = np.zeros(len(points), dtype=bool)
+    for plate in plates:
+        # Subclasses may override containment, so only the exact built-in type takes this shortcut.
+        if type(plate) is not PlateWithSparseQuadPatch:
+            covered |= plate.contains_batch(points)
+        elif plate.node_count():
+            keys = plate.cell_keys
+            level = int(unpack_cell_keys(keys)[1].max(initial=0))
+            local = np.ascontiguousarray(geometry.to_local(plate.frame, points))
+            inside, uncertain = kernel(local, keys, plate.cells_per_edge, level)
+            if np.any(uncertain):
+                inside[uncertain] = plate.contains_batch(points[uncertain])
+            covered |= inside
+        if np.all(covered):
+            break
+    return covered
+
+
 def _find_gap_points(existing_tree: _ExistingNodeContext, spacing_rad: float, plates: list[Plate] | None = None) -> np.ndarray:
     """Sweep points no plate covers. With `plates` given, a point is uncovered when no plate
     contains it: a plate's cells are its territory, and a node-distance test would hide the
@@ -158,7 +188,7 @@ def _find_gap_points(existing_tree: _ExistingNodeContext, spacing_rad: float, pl
         return np.zeros((0, 3))
     points = np.concatenate(sweep, axis=0)
     if plates:
-        return points[~_contested_by_any(points, plates)]
+        return points[~_covered_by_plates(points, plates)]
     dist, _ = existing_tree.tree.query(points)
     return points[dist > COVERAGE_RADIUS_MULT * spacing_rad]
 
