@@ -109,32 +109,32 @@ def _close_points(n: int, step_km: float = 5.0):
 
 
 def test_classify_terrain_relief_flat_land_is_plains_plateau_not_mountain():
-    from scipy.spatial import cKDTree
+    from app.spatial_index import SpatialIndex
 
     points = _close_points(10)
     elevation = np.full(10, 300.0)  # flat, well above sea level, no relief anywhere
-    codes = render_image._classify_terrain_relief(points, elevation, cKDTree(points), sea_level_m=0.0)
+    codes = render_image._classify_terrain_relief(points, elevation, SpatialIndex(points), sea_level_m=0.0)
     assert np.all(codes == render_image._TERRAIN_PLAINS_PLATEAU)
 
 
 def test_classify_terrain_relief_sharp_step_is_mountain_not_plains_plateau():
-    from scipy.spatial import cKDTree
+    from app.spatial_index import SpatialIndex
 
     points = _close_points(10)
     # Alternating land/deep-ocean elevation: every land node's neighbourhood spans ~2300 m,
     # well past MOUNTAIN_RELIEF_THRESHOLD_M -- a real cliff/escarmpent, not a gentle plain.
     elevation = np.where(np.arange(10) % 2 == 0, 300.0, -2000.0)
-    codes = render_image._classify_terrain_relief(points, elevation, cKDTree(points), sea_level_m=0.0)
+    codes = render_image._classify_terrain_relief(points, elevation, SpatialIndex(points), sea_level_m=0.0)
     is_land = elevation > 0.0
     assert np.all(codes[is_land] == render_image._TERRAIN_MOUNTAIN)
     assert np.all(codes[~is_land] == render_image._TERRAIN_NONE)
 
 
 def test_classify_terrain_relief_empty_world_returns_empty():
-    from scipy.spatial import cKDTree
+    from app.spatial_index import SpatialIndex
 
     empty = np.zeros((0, 3))
-    codes = render_image._classify_terrain_relief(empty, np.zeros(0), cKDTree(_close_points(1)), sea_level_m=0.0)
+    codes = render_image._classify_terrain_relief(empty, np.zeros(0), SpatialIndex(_close_points(1)), sea_level_m=0.0)
     assert codes.shape == (0,)
 
 

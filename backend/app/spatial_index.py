@@ -153,22 +153,27 @@ class SpatialIndex:
         return self
 
     def query(self, x, k=1, eps=0, p=2, distance_upper_bound=np.inf, workers=1):
-        """`cKDTree.query` for an integer `k`: distances and indices of the `k` nearest points,
-        exact ties to the lowest index."""
+        """`cKDTree.query`: distances and indices of the `k` nearest points (`k` an integer, or a
+        sequence of 1-based ranks as in scipy), exact ties to the lowest index."""
         _check_supported(p, eps)
-        if not isinstance(k, (int, np.integer)) or k < 1:
-            raise ValueError("k must be a positive integer")
-        k = int(k)
+        ranks = None if isinstance(k, (int, np.integer)) else [int(r) for r in k]
+        kmax = int(k) if ranks is None else max(ranks, default=0)
+        if kmax < 1 or (ranks is not None and min(ranks) < 1):
+            raise ValueError("k must be a positive integer or a sequence of positive ranks")
         rows, lead, single = _as_queries(x)
         if self._native is not None:
-            dist, idx = self._native.query(rows, k, float(distance_upper_bound))
+            dist, idx = self._native.query(rows, kmax, float(distance_upper_bound))
         else:
-            dist, idx = self._scipy_query(rows, k, distance_upper_bound, workers)
-        if k == 1:
+            dist, idx = self._scipy_query(rows, kmax, distance_upper_bound, workers)
+        if ranks is not None:
+            cols = np.asarray(ranks) - 1
+            shape = lead + (len(ranks),)
+            return dist.reshape(-1, kmax)[:, cols].reshape(shape), idx.reshape(-1, kmax)[:, cols].reshape(shape)
+        if kmax == 1:
             if single:
                 return float(dist[0]), int(idx[0])
             return dist.reshape(lead), idx.reshape(lead)
-        return dist.reshape(lead + (k,)), idx.reshape(lead + (k,))
+        return dist.reshape(lead + (kmax,)), idx.reshape(lead + (kmax,))
 
     def _scipy_query(self, rows: np.ndarray, k: int, bound: float, workers: int) -> tuple[np.ndarray, np.ndarray]:
         """The Rust backend's `query` answer from `cKDTree`: ask for one more neighbour than

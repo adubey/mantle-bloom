@@ -77,6 +77,16 @@ def test_query_shapes_and_scalars(backend, cloud):
             np.testing.assert_array_equal(got, want)
 
 
+def test_query_rank_lists_match_ckdtree(backend, cloud):
+    points, queries = cloud
+    tree, index = cKDTree(points), SpatialIndex(points)
+    for ranks in ([1], [1, 2, 3], [2, 5], [3, 1]):
+        for x in (queries, queries[0]):
+            for got, want in zip(index.query(x, k=ranks), tree.query(x, k=ranks), strict=True):
+                assert got.shape == want.shape
+                np.testing.assert_array_equal(got, want)
+
+
 def test_query_misses_are_inf_and_n(backend, cloud):
     points, queries = cloud
     d, i = SpatialIndex(points).query(queries, distance_upper_bound=1e-9)
