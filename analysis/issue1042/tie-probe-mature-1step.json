@@ -1,0 +1,332 @@
+[
+ {
+  "site": "app/plates.py:193:_plates_within",
+  "kind": "query",
+  "calls": 1180,
+  "rows": 529208,
+  "bad_calls": 85,
+  "tie_rows": 162,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/hydroclimate/climate.py:905:_land_swirl_current",
+  "kind": "query",
+  "calls": 1,
+  "rows": 259200,
+  "bad_calls": 1,
+  "tie_rows": 54,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/hydroclimate/erosion.py:1151:_spread_marine_sediment",
+  "kind": "query",
+  "calls": 4,
+  "rows": 178436,
+  "bad_calls": 2,
+  "tie_rows": 16,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/faults.py:1287:fault_influence",
+  "kind": "query",
+  "calls": 28,
+  "rows": 125497,
+  "bad_calls": 8,
+  "tie_rows": 13,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/hydroclimate/hydrology.py:721:_build_neighbor_graph",
+  "kind": "query",
+  "calls": 1,
+  "rows": 125493,
+  "bad_calls": 1,
+  "tie_rows": 12,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/hydroclimate/erosion.py:795:compute_slope",
+  "kind": "query",
+  "calls": 1,
+  "rows": 125493,
+  "bad_calls": 1,
+  "tie_rows": 9,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/hydroclimate/erosion.py:1792:_spread_coastal_leveling",
+  "kind": "query",
+  "calls": 1,
+  "rows": 5864,
+  "bad_calls": 1,
+  "tie_rows": 2,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/world.py:715:distance_from_land_approx",
+  "kind": "query",
+  "calls": 2,
+  "rows": 250986,
+  "bad_calls": 2,
+  "tie_rows": 2,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/faults.py:1525:_apply_plate_fault_shear",
+  "kind": "query_ball_point_csr",
+  "calls": 6364,
+  "rows": 35625,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/faults.py:1563:_apply_plate_fault_shear",
+  "kind": "query",
+  "calls": 6364,
+  "rows": 130171,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/faults.py:1612:_apply_plate_fault_relief",
+  "kind": "query_ball_point_csr",
+  "calls": 6497,
+  "rows": 36205,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/faults.py:1861:trigger_unloading_earthquakes",
+  "kind": "query",
+  "calls": 6761,
+  "rows": 37835,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/faults.py:643:generate_boundary_faults",
+  "kind": "query_ball_point_csr",
+  "calls": 28,
+  "rows": 12304,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/faults.py:791:reconcile_faults",
+  "kind": "query",
+  "calls": 371,
+  "rows": 371,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/faults.py:821:reconcile_faults",
+  "kind": "query",
+  "calls": 15,
+  "rows": 15,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/faults.py:890:_plate_stress",
+  "kind": "query",
+  "calls": 28,
+  "rows": 125478,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/gaps.py:218:_adjacent_plates_to_cluster",
+  "kind": "query",
+  "calls": 28,
+  "rows": 16800,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/gaps.py:295:_grow_adjacent_into_gap",
+  "kind": "query",
+  "calls": 28,
+  "rows": 16800,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/hydroclimate/climate.py:278:_sample_elevation_and_crust",
+  "kind": "query",
+  "calls": 1,
+  "rows": 259200,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/hydroclimate/erosion.py:1076:_route_wind_deposit",
+  "kind": "query",
+  "calls": 2,
+  "rows": 83337,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/hydroclimate/erosion.py:1103:_spread_beach_sediment",
+  "kind": "query",
+  "calls": 2,
+  "rows": 5699,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/hydroclimate/erosion.py:1624:_coastal_openness",
+  "kind": "query_ball_point",
+  "calls": 1,
+  "rows": 125493,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/hydroclimate/erosion.py:1631:_coastal_openness",
+  "kind": "query_ball_point",
+  "calls": 1,
+  "rows": 125493,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/hydroclimate/erosion.py:1764:_spread_coastal_leveling",
+  "kind": "query_ball_point",
+  "calls": 1,
+  "rows": 87121,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/hydroclimate/erosion.py:760:_earthquake_erosion_multiplier",
+  "kind": "query_ball_point_csr",
+  "calls": 1,
+  "rows": 9786,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/hydroclimate/hydrology.py:1020:_nearest_hydro_node_idx",
+  "kind": "query",
+  "calls": 3,
+  "rows": 510186,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/merge_split.py:457:find_continental_collision_pairs",
+  "kind": "query",
+  "calls": 65,
+  "rows": 50486,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/plates.py:226:node_components",
+  "kind": "query_pairs",
+  "calls": 30,
+  "rows": 0,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/plates.py:811:_contained_node_overlap",
+  "kind": "query",
+  "calls": 179,
+  "rows": 2875,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/quad_tectonics.py:1561:_overrider_seed",
+  "kind": "query",
+  "calls": 1,
+  "rows": 3,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/quad_tectonics.py:1911:_nearest_node_over",
+  "kind": "query",
+  "calls": 389,
+  "rows": 61676,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/quad_tectonics.py:2434:claimable",
+  "kind": "query",
+  "calls": 36,
+  "rows": 8820,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ },
+ {
+  "site": "app/torque.py:329:nearest",
+  "kind": "query",
+  "calls": 349,
+  "rows": 1615609,
+  "bad_calls": 0,
+  "tie_rows": 0,
+  "distance_rows": 0,
+  "set_rows": 0
+ }
+]

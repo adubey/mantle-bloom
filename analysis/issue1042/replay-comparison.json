@@ -1,0 +1,280 @@
+{
+ "save_sha256": "eff1f6d7abdfe46c7af5b45ab23f136f3fac591f4d95f3457017c1e7d933216b",
+ "baseline_commit": "31094ae7787f8bd67e1ee9aa27c68d70049887c5",
+ "candidate_commit": "fffa09b3fc8c2d0646d696800256a65f2b9acc23",
+ "step_years": 100000.0,
+ "checkpoints": [
+  {
+   "baseline": {
+    "elapsed_myr": 67.9,
+    "sea_level_m": -47.303418709282774,
+    "land_area_km2": 170467113.11897877,
+    "emergent_continental_area_km2": 170006728.01712883,
+    "continental_hc_above_50km_area_km2": 9617420.94051725,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40624303187.077065
+   },
+   "candidate": {
+    "elapsed_myr": 67.9,
+    "sea_level_m": -47.303418709282774,
+    "land_area_km2": 170467113.11897877,
+    "emergent_continental_area_km2": 170006728.01712883,
+    "continental_hc_above_50km_area_km2": 9617420.94051725,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40624303187.077065
+   },
+   "inventory_all_km3": {
+    "baseline": 40624303187.077065,
+    "candidate": 40624303187.077065
+   }
+  },
+  {
+   "baseline": {
+    "elapsed_myr": 68.0,
+    "sea_level_m": -66.82439978428181,
+    "land_area_km2": 173877365.51842427,
+    "emergent_continental_area_km2": 173357120.23364505,
+    "continental_hc_above_50km_area_km2": 9599211.463028934,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40622323926.53702
+   },
+   "candidate": {
+    "elapsed_myr": 68.0,
+    "sea_level_m": -66.82439977283354,
+    "land_area_km2": 173877365.51842427,
+    "emergent_continental_area_km2": 173357120.23364505,
+    "continental_hc_above_50km_area_km2": 9599211.463028934,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40622323926.53702
+   },
+   "inventory_all_km3": {
+    "baseline": 40622323926.537025,
+    "candidate": 40622323926.537025
+   }
+  },
+  {
+   "baseline": {
+    "elapsed_myr": 68.1,
+    "sea_level_m": -59.1840498749185,
+    "land_area_km2": 171621849.61571857,
+    "emergent_continental_area_km2": 171138183.29570395,
+    "continental_hc_above_50km_area_km2": 9620567.055576386,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40621779895.6162
+   },
+   "candidate": {
+    "elapsed_myr": 68.1,
+    "sea_level_m": -59.18397057417097,
+    "land_area_km2": 171621849.61571857,
+    "emergent_continental_area_km2": 171138183.29570395,
+    "continental_hc_above_50km_area_km2": 9620567.055576386,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40621779895.6162
+   },
+   "inventory_all_km3": {
+    "baseline": 40621779895.616196,
+    "candidate": 40621779895.616196
+   }
+  },
+  {
+   "baseline": {
+    "elapsed_myr": 68.2,
+    "sea_level_m": -60.57137061492044,
+    "land_area_km2": 172518696.4359338,
+    "emergent_continental_area_km2": 172041694.58093932,
+    "continental_hc_above_50km_area_km2": 9625402.999105442,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40621388782.41905
+   },
+   "candidate": {
+    "elapsed_myr": 68.2,
+    "sea_level_m": -60.56346555718352,
+    "land_area_km2": 172510091.7953192,
+    "emergent_continental_area_km2": 172033089.9403247,
+    "continental_hc_above_50km_area_km2": 9625402.999105442,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40621388782.418724
+   },
+   "inventory_all_km3": {
+    "baseline": 40621388782.41905,
+    "candidate": 40621388782.41872
+   }
+  },
+  {
+   "baseline": {
+    "elapsed_myr": 68.3,
+    "sea_level_m": -60.56021544530531,
+    "land_area_km2": 172455647.86810097,
+    "emergent_continental_area_km2": 171972573.21277294,
+    "continental_hc_above_50km_area_km2": 9637510.047707226,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40621835926.451904
+   },
+   "candidate": {
+    "elapsed_myr": 68.3,
+    "sea_level_m": -60.54769537151222,
+    "land_area_km2": 172451574.2564379,
+    "emergent_continental_area_km2": 171968499.60110986,
+    "continental_hc_above_50km_area_km2": 9637510.047707226,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40621835926.44998
+   },
+   "inventory_all_km3": {
+    "baseline": 40621835926.451904,
+    "candidate": 40621835926.44998
+   }
+  },
+  {
+   "baseline": {
+    "elapsed_myr": 68.4,
+    "sea_level_m": -61.648325357573356,
+    "land_area_km2": 171946098.09728646,
+    "emergent_continental_area_km2": 171464018.95758197,
+    "continental_hc_above_50km_area_km2": 9669747.999842305,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40620142726.578705
+   },
+   "candidate": {
+    "elapsed_myr": 68.4,
+    "sea_level_m": -61.656180136771226,
+    "land_area_km2": 171949879.83505562,
+    "emergent_continental_area_km2": 171467800.69535112,
+    "continental_hc_above_50km_area_km2": 9669747.999842305,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40620142726.576836
+   },
+   "inventory_all_km3": {
+    "baseline": 40620142726.57871,
+    "candidate": 40620142726.57684
+   }
+  },
+  {
+   "baseline": {
+    "elapsed_myr": 68.5,
+    "sea_level_m": -61.494347890256904,
+    "land_area_km2": 171718432.41932863,
+    "emergent_continental_area_km2": 171217562.6028976,
+    "continental_hc_above_50km_area_km2": 9696032.455752881,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40618212641.061386
+   },
+   "candidate": {
+    "elapsed_myr": 68.5,
+    "sea_level_m": -61.51864112098842,
+    "land_area_km2": 171713760.47482052,
+    "emergent_continental_area_km2": 171212890.65838957,
+    "continental_hc_above_50km_area_km2": 9696032.455752881,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40618212641.0579
+   },
+   "inventory_all_km3": {
+    "baseline": 40618212641.06139,
+    "candidate": 40618212641.0579
+   }
+  },
+  {
+   "baseline": {
+    "elapsed_myr": 68.6,
+    "sea_level_m": -59.47625099331687,
+    "land_area_km2": 171845999.45269123,
+    "emergent_continental_area_km2": 171374674.16891196,
+    "continental_hc_above_50km_area_km2": 9724039.949748822,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40615074179.274536
+   },
+   "candidate": {
+    "elapsed_myr": 68.6,
+    "sea_level_m": -59.44264350749512,
+    "land_area_km2": 171847996.15548134,
+    "emergent_continental_area_km2": 171376670.8717021,
+    "continental_hc_above_50km_area_km2": 9724014.58465231,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40615074179.27488
+   },
+   "inventory_all_km3": {
+    "baseline": 40615074179.274536,
+    "candidate": 40615074179.27488
+   }
+  },
+  {
+   "baseline": {
+    "elapsed_myr": 68.7,
+    "sea_level_m": -59.14563487619333,
+    "land_area_km2": 172285067.17920932,
+    "emergent_continental_area_km2": 171810948.4195289,
+    "continental_hc_above_50km_area_km2": 9725475.233606305,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40615801485.750435
+   },
+   "candidate": {
+    "elapsed_myr": 68.7,
+    "sea_level_m": -58.95538182104805,
+    "land_area_km2": 172163330.9267963,
+    "emergent_continental_area_km2": 171696895.42962137,
+    "continental_hc_above_50km_area_km2": 9725449.868509794,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40615801485.74898
+   },
+   "inventory_all_km3": {
+    "baseline": 40615801485.75043,
+    "candidate": 40615801485.74896
+   }
+  },
+  {
+   "baseline": {
+    "elapsed_myr": 68.8,
+    "sea_level_m": -60.31695664428159,
+    "land_area_km2": 171890570.32880455,
+    "emergent_continental_area_km2": 171402464.51012594,
+    "continental_hc_above_50km_area_km2": 9716406.737260476,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40616323379.7525
+   },
+   "candidate": {
+    "elapsed_myr": 68.8,
+    "sea_level_m": -60.2628730536356,
+    "land_area_km2": 171849866.86529344,
+    "emergent_continental_area_km2": 171361761.04661483,
+    "continental_hc_above_50km_area_km2": 9725050.78109003,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40616323379.75186
+   },
+   "inventory_all_km3": {
+    "baseline": 40616323379.75251,
+    "candidate": 40616323379.751854
+   }
+  },
+  {
+   "baseline": {
+    "elapsed_myr": 68.9,
+    "sea_level_m": -60.8954356472959,
+    "land_area_km2": 171862737.1168655,
+    "emergent_continental_area_km2": 171386807.56174988,
+    "continental_hc_above_50km_area_km2": 9689858.053638311,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40616446488.16783
+   },
+   "candidate": {
+    "elapsed_myr": 68.9,
+    "sea_level_m": -60.95794304015155,
+    "land_area_km2": 171941407.99309587,
+    "emergent_continental_area_km2": 171462060.7752505,
+    "continental_hc_above_50km_area_km2": 9695107.437928315,
+    "hm_cap_area_km2": 542048.2603127728,
+    "hm_volume_all_km3": 40616446488.16106
+   },
+   "inventory_all_km3": {
+    "baseline": 40616446488.16784,
+    "candidate": 40616446488.16106
+   }
+  }
+ ],
+ "runtime_seconds": {
+  "baseline": 146.60754776000977,
+  "candidate": 139.92291808128357
+ },
+ "peak_memory_mb": {
+  "baseline": 1102.84375,
+  "candidate": 1065.578125
+ }
+}
