@@ -273,3 +273,10 @@ path with NumPy addition-order and periodic-boundary tests. In an exploratory 36
 48-pass microbenchmark, warm runs were 0.0124–0.0131 s native and 0.0177–0.0181 s NumPy;
 these are local measurements, not whole-step results. The full stress suite was stopped at
 user request after the reported failure and was not restarted.
+
+The review-fix candidate `434761e5` was profiled on the mature save with the same warmup and
+three measured steps. It measured 14.084 s per step, 0.308 s for climate and 1,087 MB peak
+RSS. This run overlapped another unit worker and simulation under an explicit one-run compute
+override, so its wall times and memory cannot be compared directly with the idle baseline
+runs above. The prior replay and phase tables describe `7c53a46a`, before these review fixes;
+the optimized smoother has exact unit parity but the revised candidate needs its own replay.
