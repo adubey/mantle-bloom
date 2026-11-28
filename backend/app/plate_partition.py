@@ -164,6 +164,8 @@ def _polygon_seed_partition(
 
     seed_xyz = np.concatenate([point_xyz, core_xyz])
     seed_owner = np.concatenate([point_owner, core_owner])
+    if _generation_rust.has_kernel("nearest_seed_labels_rs"):
+        return _generation_rust.nearest_seed_labels(lat.xyz, seed_xyz, seed_owner), primary_xyz
     _, nearest = cKDTree(seed_xyz).query(lat.xyz, workers=-1)
     return seed_owner[nearest], primary_xyz
 

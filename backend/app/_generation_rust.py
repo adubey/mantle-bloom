@@ -12,7 +12,7 @@ try:
 except ImportError:
     _rust = None
 
-_REQUIRED_RUST_EXPORTS = ("priority_flood_rs", "nearest_distance_rs", "label_component_count_rs")
+_REQUIRED_RUST_EXPORTS = ("priority_flood_rs", "nearest_distance_rs", "nearest_seed_labels_rs", "label_component_count_rs")
 
 # Brute-force nearest in Rust beats a `cKDTree` build plus query only while the
 # source set is small (measured crossover near 500 sources at lattice scale,
@@ -72,6 +72,11 @@ def nearest_distance(sources, points):
     """(distance km, source index) of the nearest source per point."""
     dist, index = _rust.nearest_distance_rs(_xyz(sources), _xyz(points))
     return dist, index
+
+
+def nearest_seed_labels(xyz, seeds, seed_owner):
+    """Owner label of the nearest seed per point, from a Rust k-d tree."""
+    return _rust.nearest_seed_labels_rs(_xyz(xyz), _xyz(seeds), _i64(seed_owner))
 
 
 def label_component_count(offsets, neighbours, labels):

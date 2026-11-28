@@ -40,6 +40,7 @@ fn mantle_bloom_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(hydrology::sweep_river_reaches_rs, m)?)?;
     m.add_function(wrap_pyfunction!(generation::priority_flood_rs, m)?)?;
     m.add_function(wrap_pyfunction!(generation::nearest_distance_rs, m)?)?;
+    m.add_function(wrap_pyfunction!(generation::nearest_seed_labels_rs, m)?)?;
     m.add_function(wrap_pyfunction!(generation::label_component_count_rs, m)?)?;
     Ok(())
 }

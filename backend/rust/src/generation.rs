@@ -11,6 +11,8 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
 
+use crate::render::kdtree::KdTree;
+
 pub const PLANET_RADIUS_KM: f64 = 6371.0;
 
 /// Total-order wrapper for heap entries. Pop order need not match Python's
@@ -143,6 +145,40 @@ pub fn nearest_distance_rs<'py>(
         (dist, index)
     });
     Ok((PyArray1::from_vec(py, dist), PyArray1::from_vec(py, index)))
+}
+
+/// Seed assignment (`plate_partition`'s Voronoi step): the owner label of the
+/// nearest seed for every lattice cell, from a balanced k-d tree over the
+/// seeds (`render::kdtree::KdTree`, the renderer's tree). Exact ties resolve
+/// to the lowest seed index; `cKDTree` promises no tie order.
+#[pyfunction]
+pub fn nearest_seed_labels_rs<'py>(
+    py: Python<'py>,
+    xyz: PyReadonlyArray2<'py, f64>,
+    seeds: PyReadonlyArray2<'py, f64>,
+    seed_owner: PyReadonlyArray1<'py, i64>,
+) -> PyResult<Bound<'py, PyArray1<i64>>> {
+    let x_shape = xyz.shape();
+    let s_shape = seeds.shape();
+    if x_shape[1] != 3 || s_shape[1] != 3 || seed_owner.len() != s_shape[0] {
+        return Err(PyValueError::new_err("incompatible seed-label shapes"));
+    }
+    let (n, m) = (x_shape[0], s_shape[0]);
+    if m == 0 {
+        return Err(PyValueError::new_err("at least one seed is required"));
+    }
+    let xyz = xyz.as_slice()?.to_vec();
+    let seeds = seeds.as_slice()?.to_vec();
+    let owners = seed_owner.as_slice()?.to_vec();
+    let labels = py.detach(move || {
+        let seed_pts: Vec<[f64; 3]> = (0..m).map(|s| [seeds[s * 3], seeds[s * 3 + 1], seeds[s * 3 + 2]]).collect();
+        let tree = KdTree::build(&seed_pts);
+        (0..n)
+            .into_par_iter()
+            .map(|i| owners[tree.query_nearest([xyz[i * 3], xyz[i * 3 + 1], xyz[i * 3 + 2]])])
+            .collect::<Vec<i64>>()
+    });
+    Ok(PyArray1::from_vec(py, labels))
 }
 
 /// Connected components of the lattice graph with links cut between labels

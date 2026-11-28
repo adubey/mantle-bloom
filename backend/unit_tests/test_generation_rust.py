@@ -51,6 +51,28 @@ def test_nearest_distance_matches_reference(monkeypatch):
 
 
 @pytest.mark.skipif(not _generation_rust.RUST_AVAILABLE, reason="Rust extension unavailable")
+def test_nearest_seed_labels_matches_kdtree():
+    from scipy.spatial import cKDTree
+
+    rng = np.random.default_rng(1042)
+    for n_seeds, n_points in ((1, 50), (37, 800), (900, 5000)):
+        xyz, seeds = _unit(rng, n_points), _unit(rng, n_seeds)
+        owners = rng.integers(0, 9, n_seeds)
+        _, nearest = cKDTree(seeds).query(xyz, workers=-1)
+        np.testing.assert_array_equal(_generation_rust.nearest_seed_labels(xyz, seeds, owners), owners[nearest])
+
+
+@pytest.mark.skipif(not _generation_rust.RUST_AVAILABLE, reason="Rust extension unavailable")
+def test_nearest_seed_labels_ties_take_lowest_seed():
+    # Duplicated seeds are exact ties: the native tree resolves them to the
+    # lowest seed index (`cKDTree` promises no tie order).
+    seeds = np.array([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    owners = np.array([5, 7, 9])
+    labels = _generation_rust.nearest_seed_labels(np.eye(3), seeds, owners)
+    np.testing.assert_array_equal(labels, [5, 9, 5])
+
+
+@pytest.mark.skipif(not _generation_rust.RUST_AVAILABLE, reason="Rust extension unavailable")
 def test_label_components_matches_reference(monkeypatch):
     from app.elevation_lines import line_spacing_rad
     from app.layout_lattice import lattice
