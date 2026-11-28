@@ -424,7 +424,7 @@ pub fn step_ice<'py>(
 
     // Opt-in per-section timing for march profiling (#1041); off by default and
     // read once per call so a probe run can toggle it between steps.
-    let probe = std::env::var_os("MANTLE_BLOOM_ICE_PROFILE").is_some();
+    let probe = std::env::var_os("MANTLE_BLOOM_ICE_PROFILE").is_some_and(|v| v == "1");
     let result = py.detach(|| {
         let t0 = std::time::Instant::now();
         let mut bed = vec![0.0_f64; n];
@@ -569,59 +569,33 @@ pub fn step_ice<'py>(
             }
 
             let mut seeds = positive.clone();
-            let mut touches_out = vec![false; n];
-            // Per-node independent edge scan (#1041): chunked in parallel on
-            // large clouds, identical result to the serial scan.
-            if n >= 4096 {
-                let chunk = 4096;
-                touches_out
-                    .par_chunks_mut(chunk)
-                    .enumerate()
-                    .for_each(|(chunk_idx, t_c)| {
-                        let base = chunk_idx * chunk;
-                        for (j, t) in t_c.iter_mut().enumerate() {
-                            let i = base + j;
-                            let start = rust_graph.indptr[i] as usize;
-                            let end = rust_graph.indptr[i + 1] as usize;
-                            let mut sum_out = 0.0_f64;
-                            for e in start..end {
-                                if !positive[rust_graph.indices[e] as usize] {
-                                    sum_out += rust_graph.lengths[e];
-                                }
-                            }
-                            *t = sum_out > 0.0;
-                        }
-                    });
-            } else {
-                for i in 0..n {
-                    let start = rust_graph.indptr[i] as usize;
-                    let end = rust_graph.indptr[i + 1] as usize;
-                    let mut sum_out = 0.0_f64;
-                    for e in start..end {
-                        if !positive[rust_graph.indices[e] as usize] {
-                            sum_out += rust_graph.lengths[e];
-                        }
-                    }
-                    if sum_out > 0.0 {
-                        touches_out[i] = true;
-                    }
-                }
-            }
 
             for b_nodes in &body_nodes_all {
                 let mut any_pos = false;
                 let mut all_pos = true;
-                let mut any_touch = false;
                 for &u in b_nodes {
                     if positive[u] {
                         any_pos = true;
                     } else {
                         all_pos = false;
                     }
-                    if touches_out[u] {
-                        any_touch = true;
-                    }
                 }
+                // Only an all-positive body reads whether its nodes touch a
+                // non-positive neighbour, so that scan runs lazily here over
+                // the body's own nodes instead of the whole cloud (PR #1062
+                // review); same per-node edge sum, same result.
+                let any_touch = all_pos
+                    && b_nodes.iter().any(|&u| {
+                        let start = rust_graph.indptr[u] as usize;
+                        let end = rust_graph.indptr[u + 1] as usize;
+                        let mut sum_out = 0.0_f64;
+                        for e in start..end {
+                            if !positive[rust_graph.indices[e] as usize] {
+                                sum_out += rust_graph.lengths[e];
+                            }
+                        }
+                        sum_out > 0.0
+                    });
                 if !any_pos {
                     let mut best_u = b_nodes[0];
                     let mut best_val = ref_balance[best_u];

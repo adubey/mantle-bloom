@@ -791,6 +791,50 @@ pub fn build_local_domain(
     bare_acc_global: &[f64],
     bare_sm_global: &[f64],
 ) -> LocalDomain {
+    build_local_domain_impl(
+        dom_nodes,
+        global_to_local,
+        indptr,
+        indices,
+        lengths,
+        phi,
+        bed,
+        c,
+        area,
+        sea_level_m,
+        is_ocean,
+        precip,
+        temp_c,
+        amp_c,
+        frictional,
+        bed_frozen_snow,
+        bare_acc_global,
+        bare_sm_global,
+        dom_nodes.len() >= 4096,
+    )
+}
+
+fn build_local_domain_impl(
+    dom_nodes: &[usize],
+    global_to_local: &[i32],
+    indptr: &[u32],
+    indices: &[u32],
+    lengths: &[f64],
+    phi: &[f64],
+    bed: &[f64],
+    c: &[f64],
+    area: &[f64],
+    sea_level_m: f64,
+    is_ocean: &[bool],
+    precip: &[f64],
+    temp_c: &[f64],
+    amp_c: &[f64],
+    frictional: Option<&[f64]>,
+    bed_frozen_snow: Option<&[f64]>,
+    bare_acc_global: &[f64],
+    bare_sm_global: &[f64],
+    use_parallel: bool,
+) -> LocalDomain {
     let m = dom_nodes.len();
     let mut sub_indptr = Vec::with_capacity(m + 1);
     sub_indptr.push(0_u32);
@@ -805,37 +849,6 @@ pub fn build_local_domain(
     // build on large bodies (#1041): collect each node's edges and fields in
     // parallel, then concatenate in node order, so the result is identical to
     // the serial build. Small domains stay serial to avoid rayon overhead.
-    let edge_part = |&u: &usize| {
-        let phi_u = phi[u];
-        let start = indptr[u] as usize;
-        let end = indptr[u + 1] as usize;
-        let deg = end - start;
-        let mut p_nbr = Vec::with_capacity(deg);
-        let mut p_len = Vec::with_capacity(deg);
-        let mut p_phi = Vec::with_capacity(deg);
-        let mut p_bed = Vec::with_capacity(deg);
-        let mut p_cap = Vec::with_capacity(deg);
-        let mut p_ocean = Vec::with_capacity(deg);
-        let mut wall = false;
-        for e in start..end {
-            let v = indices[e] as usize;
-            let lv = global_to_local[v];
-            let len_e = lengths[e];
-            p_nbr.push(lv);
-            p_len.push(len_e);
-            if lv < 0 {
-                wall = true;
-                p_phi.push(phi_u + len_e);
-                p_cap.push(0.5);
-            } else {
-                p_phi.push(phi[v]);
-                p_cap.push(1.0);
-            }
-            p_bed.push(bed[v]);
-            p_ocean.push(is_ocean[v]);
-        }
-        (p_nbr, p_len, p_phi, p_bed, p_cap, p_ocean, wall)
-    };
     let node_part = |&u: &usize| {
         (
             phi[u],
@@ -855,13 +868,15 @@ pub fn build_local_domain(
     };
     // Chunked parallel gather: one task per block of nodes (each block builds
     // its parts serially), so task and allocation overhead stay amortized.
-    let (edge_parts, node_parts) = if m >= 4096 {
+    // Below the threshold the serial build writes directly into the final
+    // vectors in one pass, as it always did (peer review, PR #1062).
+    let (nbr, length, nbr_phi, nbr_bed, nbr_cap, nbr_ocean, has_wall, node_parts) = if use_parallel {
         let block = 2048;
         let blocks: Vec<(usize, usize)> = (0..m)
             .step_by(block)
             .map(|s| (s, (s + block).min(m)))
             .collect();
-        rayon::join(
+        let (edge_parts, node_parts) = rayon::join(
             || {
                 blocks
                     .par_iter()
@@ -909,30 +924,57 @@ pub fn build_local_domain(
                     .flatten()
                     .collect::<Vec<_>>()
             },
-        )
+        );
+        let mut nbr = Vec::with_capacity(total_edges);
+        let mut length = Vec::with_capacity(total_edges);
+        let mut nbr_phi = Vec::with_capacity(total_edges);
+        let mut nbr_bed = Vec::with_capacity(total_edges);
+        let mut nbr_cap = Vec::with_capacity(total_edges);
+        let mut nbr_ocean = Vec::with_capacity(total_edges);
+        let mut has_wall = false;
+        for (p_nbr, p_len, p_phi, p_bed, p_cap, p_ocean, wall) in edge_parts {
+            nbr.extend(p_nbr);
+            length.extend(p_len);
+            nbr_phi.extend(p_phi);
+            nbr_bed.extend(p_bed);
+            nbr_cap.extend(p_cap);
+            nbr_ocean.extend(p_ocean);
+            has_wall |= wall;
+        }
+        (nbr, length, nbr_phi, nbr_bed, nbr_cap, nbr_ocean, has_wall, node_parts)
     } else {
-        (
-            dom_nodes.iter().map(edge_part).collect::<Vec<_>>(),
-            dom_nodes.iter().map(node_part).collect::<Vec<_>>(),
-        )
+        let mut nbr = Vec::with_capacity(total_edges);
+        let mut length = Vec::with_capacity(total_edges);
+        let mut nbr_phi = Vec::with_capacity(total_edges);
+        let mut nbr_bed = Vec::with_capacity(total_edges);
+        let mut nbr_cap = Vec::with_capacity(total_edges);
+        let mut nbr_ocean = Vec::with_capacity(total_edges);
+        let mut has_wall = false;
+        for &u in dom_nodes {
+            let phi_u = phi[u];
+            let start = indptr[u] as usize;
+            let end = indptr[u + 1] as usize;
+            for e in start..end {
+                let v = indices[e] as usize;
+                let lv = global_to_local[v];
+                let len_e = lengths[e];
+                nbr.push(lv);
+                length.push(len_e);
+                if lv < 0 {
+                    has_wall = true;
+                    nbr_phi.push(phi_u + len_e);
+                    nbr_cap.push(0.5);
+                } else {
+                    nbr_phi.push(phi[v]);
+                    nbr_cap.push(1.0);
+                }
+                nbr_bed.push(bed[v]);
+                nbr_ocean.push(is_ocean[v]);
+            }
+        }
+        let node_parts = dom_nodes.iter().map(node_part).collect::<Vec<_>>();
+        (nbr, length, nbr_phi, nbr_bed, nbr_cap, nbr_ocean, has_wall, node_parts)
     };
-
-    let mut nbr = Vec::with_capacity(total_edges);
-    let mut length = Vec::with_capacity(total_edges);
-    let mut nbr_phi = Vec::with_capacity(total_edges);
-    let mut nbr_bed = Vec::with_capacity(total_edges);
-    let mut nbr_cap = Vec::with_capacity(total_edges);
-    let mut nbr_ocean = Vec::with_capacity(total_edges);
-    let mut has_wall = false;
-    for (p_nbr, p_len, p_phi, p_bed, p_cap, p_ocean, wall) in edge_parts {
-        nbr.extend(p_nbr);
-        length.extend(p_len);
-        nbr_phi.extend(p_phi);
-        nbr_bed.extend(p_bed);
-        nbr_cap.extend(p_cap);
-        nbr_ocean.extend(p_ocean);
-        has_wall |= wall;
-    }
 
     let mut l_phi = Vec::with_capacity(m);
     let mut l_bed = Vec::with_capacity(m);
@@ -1002,5 +1044,97 @@ pub fn build_local_domain(
         has_wall,
         phi_min,
         phi_max,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Line graph over `n_global` nodes; the domain is every interior node, so
+    // the first and last domain nodes have wall edges to the excluded ends.
+    fn build_line_domain(n_global: usize, use_parallel: bool) -> LocalDomain {
+        let dom_nodes: Vec<usize> = (1..n_global - 1).collect();
+        let mut global_to_local = vec![-1_i32; n_global];
+        for (i, &u) in dom_nodes.iter().enumerate() {
+            global_to_local[u] = i as i32;
+        }
+        let mut indptr: Vec<u32> = vec![0];
+        let mut indices: Vec<u32> = Vec::new();
+        for u in 0..n_global {
+            if u > 0 {
+                indices.push((u - 1) as u32);
+            }
+            if u + 1 < n_global {
+                indices.push((u + 1) as u32);
+            }
+            indptr.push(indices.len() as u32);
+        }
+        let lengths: Vec<f64> = (0..indices.len()).map(|e| 10.0 + (e % 5) as f64).collect();
+        let phi: Vec<f64> = (0..n_global).map(|i| -100.0 + 3.0 * i as f64).collect();
+        let bed: Vec<f64> = (0..n_global).map(|i| 50.0 + (i % 7) as f64).collect();
+        let c: Vec<f64> = (0..n_global).map(|i| 0.1 + 0.01 * (i % 9) as f64).collect();
+        let area: Vec<f64> = (0..n_global).map(|i| 1.0e6 + 100.0 * i as f64).collect();
+        let ocean: Vec<bool> = (0..n_global).map(|i| i % 7 == 0).collect();
+        let precip: Vec<f64> = (0..n_global).map(|i| 700.0 + (i % 11) as f64).collect();
+        let temp: Vec<f64> = (0..n_global).map(|i| -8.0 + 0.001 * i as f64).collect();
+        let amp: Vec<f64> = (0..n_global).map(|i| 9.0 + (i % 4) as f64).collect();
+        let fric: Vec<f64> = (0..n_global).map(|i| 0.01 * (i % 3) as f64).collect();
+        let bfs: Vec<f64> = (0..n_global).map(|i| 5.0 + (i % 6) as f64).collect();
+        let bare: Vec<f64> = (0..n_global).map(|i| 0.05 + 0.001 * (i % 8) as f64).collect();
+        build_local_domain_impl(
+            &dom_nodes,
+            &global_to_local,
+            &indptr,
+            &indices,
+            &lengths,
+            &phi,
+            &bed,
+            &c,
+            &area,
+            0.0,
+            &ocean,
+            &precip,
+            &temp,
+            &amp,
+            Some(&fric),
+            Some(&bfs),
+            &bare,
+            &bare,
+            use_parallel,
+        )
+    }
+
+    #[test]
+    fn parallel_domain_build_matches_serial_above_threshold() {
+        // 5,002 domain nodes: above the 4,096 threshold, with a partial last
+        // 2,048-node block (5,002 = 2 * 2,048 + 906).
+        let serial = build_line_domain(5004, false);
+        let parallel = build_line_domain(5004, true);
+        assert!(serial.has_wall);
+        assert_eq!(serial.nodes, parallel.nodes);
+        assert_eq!(serial.indptr, parallel.indptr);
+        assert_eq!(serial.nbr, parallel.nbr);
+        assert_eq!(serial.length, parallel.length);
+        assert_eq!(serial.nbr_phi, parallel.nbr_phi);
+        assert_eq!(serial.nbr_bed, parallel.nbr_bed);
+        assert_eq!(serial.nbr_cap, parallel.nbr_cap);
+        assert_eq!(serial.nbr_ocean, parallel.nbr_ocean);
+        assert_eq!(serial.phi, parallel.phi);
+        assert_eq!(serial.bed, parallel.bed);
+        assert_eq!(serial.c, parallel.c);
+        assert_eq!(serial.area, parallel.area);
+        assert_eq!(serial.water_depth, parallel.water_depth);
+        assert_eq!(serial.ocean, parallel.ocean);
+        assert_eq!(serial.precip, parallel.precip);
+        assert_eq!(serial.temp_c, parallel.temp_c);
+        assert_eq!(serial.amp_c, parallel.amp_c);
+        assert_eq!(serial.frictional, parallel.frictional);
+        assert_eq!(serial.bed_frozen_snow, parallel.bed_frozen_snow);
+        assert_eq!(serial.bare_acc, parallel.bare_acc);
+        assert_eq!(serial.bare_sm, parallel.bare_sm);
+        assert_eq!(serial.has_wall, parallel.has_wall);
+        assert_eq!(serial.phi_min, parallel.phi_min);
+        assert_eq!(serial.phi_max, parallel.phi_max);
     }
 }
