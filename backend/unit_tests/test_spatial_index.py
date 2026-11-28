@@ -54,6 +54,18 @@ def test_query_matches_ckdtree(backend, cloud, k, bound):
         np.testing.assert_array_equal(got, want)
 
 
+def test_clustered_cloud_queried_from_the_whole_sphere(backend):
+    """A plate- or land-shaped cluster queried from everywhere, the shape whose far queries a
+    split-plane-only bound could not prune: answers still match `cKDTree` exactly."""
+    rng = np.random.default_rng(5)
+    sphere = _sphere(rng, 6000)
+    cluster = sphere[sphere @ np.array([0.0, 0.0, 1.0]) > 0.9]
+    queries = _sphere(rng, 3000)
+    for k in (1, 4):
+        for got, want in zip(SpatialIndex(cluster).query(queries, k=k), cKDTree(cluster).query(queries, k=k), strict=True):
+            np.testing.assert_array_equal(got, want)
+
+
 def test_query_shapes_and_scalars(backend, cloud):
     points, queries = cloud
     tree, index = cKDTree(points), SpatialIndex(points)
@@ -118,8 +130,35 @@ def test_empty_index(backend):
     assert index.query_pairs(1.0) == set()
 
 
-@needs_rust
-def test_exact_ties_take_the_lowest_index():
+def _brute_knn(points, queries, k):
+    """Reference answer: `cKDTree`'s own distances, rows ordered by `(distance, index)`."""
+    d = np.stack([cKDTree(points[j : j + 1]).query(queries)[0] for j in range(len(points))], axis=1)
+    order = np.lexsort((np.broadcast_to(np.arange(len(points)), d.shape), d), axis=1)[:, :k]
+    return np.take_along_axis(d, order, axis=1), order
+
+
+def test_symmetric_ties_take_the_lowest_index(backend):
+    """Distinct points bit-identically equidistant from the query, the ties lattice symmetry
+    makes: both backends keep the lowest-index ones, including where a tie straddles the k-th
+    slot."""
+    ring = np.array([[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, -1.0]])
+    points = np.concatenate([ring * 0.5, ring * 0.25, ring[:3] * 0.75])
+    order = np.random.default_rng(9).permutation(len(points))
+    points = points[order]
+    queries = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0001], [0.3, 0.0, 0.0]])
+    index = SpatialIndex(points)
+    for k in (1, 2, 3, 5, 7, 13, len(points) + 2):
+        want_d, want_i = _brute_knn(points, queries, min(k, len(points)))
+        got_d, got_i = index.query(queries, k=k)
+        got_d, got_i = got_d.reshape(len(queries), -1), got_i.reshape(len(queries), -1)
+        np.testing.assert_array_equal(got_d[:, : want_d.shape[1]], want_d)
+        np.testing.assert_array_equal(got_i[:, : want_i.shape[1]], want_i)
+        assert np.all(np.isinf(got_d[:, want_d.shape[1] :])) and np.all(got_i[:, want_i.shape[1] :] == len(points))
+    bounded_d, bounded_i = index.query(queries, k=4, distance_upper_bound=0.5)
+    assert np.all(bounded_d[0] == 0.25) and list(bounded_i[0]) == sorted(np.flatnonzero(np.isclose(np.linalg.norm(points, axis=1), 0.25)))[:4]
+
+
+def test_exact_ties_take_the_lowest_index(backend):
     rng = np.random.default_rng(3)
     base = _sphere(rng, 400)
     order = rng.permutation(800)

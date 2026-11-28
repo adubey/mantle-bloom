@@ -17,10 +17,13 @@ What both backends guarantee, so either can stand in for the other or for a bare
 * `query` rows are sorted by distance; `query_ball_point` rows are ascending, single-point
   queries included (scipy leaves those in traversal order); `query_pairs(output_type="ndarray")`
   is in lexicographic order (scipy's is traversal order).
-* Exact distance ties go to the lowest index in the Rust backend. `cKDTree` keeps whichever tied
-  point its traversal meets first, which depends on its leaf size and build options. The two
-  agree on every query without an exact tie; on the node clouds the simulation queries, exact
-  ties need coincident points.
+* Exact distance ties go to the lowest index, on both backends: `query` rows are ordered by
+  `(distance, index)`, and when tied points straddle the `k`-th slot the lowest-index ones are
+  kept. A bare `cKDTree` keeps whichever tied point its traversal meets first, which depends on
+  its leaf size and build options, so its rows can differ from these exactly where two distinct
+  points are equidistant from the query. That is not rare: lattice and grid symmetry makes
+  neighbours bit-identically equidistant somewhere in every step (see
+  `bin/debug/compare_spatial_backends.py` and `analysis/issue1042/README.md`).
 
 Only Euclidean (`p=2`), exact (`eps=0`) queries on `(n, 3)` points are supported. `workers` is
 accepted for drop-in compatibility; the Rust backend picks its own parallelism from the batch
@@ -99,6 +102,12 @@ def _radii(r, lead: tuple[int, ...]) -> np.ndarray:
     return np.ascontiguousarray(np.broadcast_to(radii, lead).reshape(-1))
 
 
+def _tie_reaches_end(dist: np.ndarray, k: int) -> np.ndarray:
+    """Rows whose last returned neighbour is a finite tie with the `k`-th: more tied points may
+    lie beyond what was asked for."""
+    return np.isfinite(dist[:, k - 1]) & (dist[:, -1] == dist[:, k - 1])
+
+
 def _rows_to_lists(indptr: np.ndarray, indices: np.ndarray, lead: tuple[int, ...]):
     flat = indices.tolist()
     bounds = indptr.tolist()
@@ -144,19 +153,48 @@ class SpatialIndex:
         return self
 
     def query(self, x, k=1, eps=0, p=2, distance_upper_bound=np.inf, workers=1):
-        """`cKDTree.query` for an integer `k`: distances and indices of the `k` nearest points."""
+        """`cKDTree.query` for an integer `k`: distances and indices of the `k` nearest points,
+        exact ties to the lowest index."""
         _check_supported(p, eps)
         if not isinstance(k, (int, np.integer)) or k < 1:
             raise ValueError("k must be a positive integer")
-        if self._native is None:
-            return self._tree.query(x, k=k, distance_upper_bound=distance_upper_bound, workers=workers)
+        k = int(k)
         rows, lead, single = _as_queries(x)
-        dist, idx = self._native.query(rows, int(k), float(distance_upper_bound))
+        if self._native is not None:
+            dist, idx = self._native.query(rows, k, float(distance_upper_bound))
+        else:
+            dist, idx = self._scipy_query(rows, k, distance_upper_bound, workers)
         if k == 1:
             if single:
                 return float(dist[0]), int(idx[0])
             return dist.reshape(lead), idx.reshape(lead)
-        return dist.reshape(lead + (int(k),)), idx.reshape(lead + (int(k),))
+        return dist.reshape(lead + (k,)), idx.reshape(lead + (k,))
+
+    def _scipy_query(self, rows: np.ndarray, k: int, bound: float, workers: int) -> tuple[np.ndarray, np.ndarray]:
+        """The Rust backend's `query` answer from `cKDTree`: ask for one more neighbour than
+        needed, and more again for rows where a tie still reaches the last slot asked for, so
+        every point tied with the `k`-th is among the candidates; then order each row by
+        `(distance, index)` and keep `k`. Distances are `cKDTree`'s own, so only tied rows move."""
+        m = len(rows)
+        if m == 0:
+            return np.zeros(0), np.zeros(0, dtype=np.int64)
+        extra = min(k + 1, self.n) if self.n else 1
+        dist, idx = (a.reshape(m, -1) for a in self._tree.query(rows, k=extra, distance_upper_bound=bound, workers=workers))
+        open_rows = np.flatnonzero(_tie_reaches_end(dist, k)) if extra > k else np.zeros(0, dtype=np.intp)
+        while len(open_rows) and extra < self.n:
+            extra = min(2 * extra, self.n)
+            more_d, more_i = (a.reshape(len(open_rows), -1) for a in self._tree.query(rows[open_rows], k=extra, distance_upper_bound=bound, workers=workers))
+            dist = np.pad(dist, ((0, 0), (0, extra - dist.shape[1])), constant_values=np.inf)
+            idx = np.pad(idx, ((0, 0), (0, extra - idx.shape[1])), constant_values=self.n)
+            dist[open_rows], idx[open_rows] = more_d, more_i
+            open_rows = open_rows[_tie_reaches_end(more_d, k)]
+        order = np.lexsort((idx, dist), axis=1)[:, :k]
+        dist = np.take_along_axis(dist, order, axis=1)
+        idx = np.take_along_axis(idx, order, axis=1)
+        if dist.shape[1] < k:  # fewer points than k: pad as cKDTree does
+            dist = np.pad(dist, ((0, 0), (0, k - dist.shape[1])), constant_values=np.inf)
+            idx = np.pad(idx, ((0, 0), (0, k - idx.shape[1])), constant_values=self.n)
+        return dist.reshape(-1), idx.reshape(-1).astype(np.int64, copy=False)
 
     def query_ball_point_csr(self, x, r) -> tuple[np.ndarray, np.ndarray]:
         """Every point within `r` (scalar, or one per query point) of each row of `x`, as int64

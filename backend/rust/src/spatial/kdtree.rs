@@ -400,6 +400,21 @@ mod tests {
     }
 
     #[test]
+    fn clustered_cloud_far_queries_match_bruteforce() {
+        // A tight cap queried from the far side of the sphere: box bounds must still admit the
+        // true nearest points.
+        let pts: Vec<[f64; 3]> = cloud(2000).into_iter().filter(|p| p[2] > 0.6).collect();
+        let tree = KdTree::build(&pts);
+        for q in [[0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, -0.6, -0.8], [0.3, 0.3, 0.9055]] {
+            let all = brute::<Fused>(&pts, q);
+            assert_eq!(tree.nearest::<Fused>(q, f64::INFINITY), Some(all[0]));
+            let mut got = Vec::new();
+            tree.knn::<Fused>(q, 5, f64::INFINITY, &mut got);
+            assert_eq!(got, all[..5].to_vec());
+        }
+    }
+
+    #[test]
     fn exact_ties_pick_the_lowest_index() {
         let base = cloud(64);
         let mut pts = base.clone();
