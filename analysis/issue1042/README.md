@@ -250,3 +250,25 @@ for baseline; these single shared-host measurements do not establish a runtime o
 trend. Compact checkpoint values are in `tectonic-review-fixed-replay.json`. The subsequent
 boundary export rename changes only the stale-build dispatch name, not the numerical kernel;
 the matching and missing-export paths have targeted tests.
+
+### Review-fixed candidate profiles
+
+The review-fixed candidate at `b02afbf4` was measured with the same settings as above. Peak
+RSS covers the entire profile process, including generation on the young arm.
+
+| Measure | Young main | Young final | Mature main | Mature final |
+|---|---:|---:|---:|---:|
+| Gathering boundary forces (s/step) | 0.1106 | 0.1686 | 0.1371 | 0.1264 |
+| Detecting collisions (s/step) | 0.1555 | 0.2014 | 0.2123 | 0.2195 |
+| Finding gap points (s/step) | 0.1625 | 0.0689 | 0.1955 | 0.0663 |
+| Moving magma (s/step) | 0.0166 | 0.0058 | not observed | not observed |
+| Whole step, mean (s) | 11.187 | 13.965 | 12.295 | 12.587 |
+| Peak RSS (MB) | 1,070.6 | 882.6 | 1,068.7 | 1,023.0 |
+
+The final young run's erosion phase rose from 9.08 to 11.56 s/step, accounting for most of
+its 2.78 s total-step difference; the original candidate profile was 11.11 s/step. This
+variation also limits conclusions about the shorter boundary and collision phases. The
+preregistered young baseline and candidate replicates are needed before attributing the
+regression to the kernels. Mature magma was not observed, so its performance remains unmeasured.
+The full stress suite passed on the final code: 68 tests with one worker in 4 h 4 min 30 s;
+another agent's unit worker overlapped part of the run, so that runtime is not a benchmark.
