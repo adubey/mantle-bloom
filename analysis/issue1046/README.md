@@ -279,4 +279,14 @@ three measured steps. It measured 14.084 s per step, 0.308 s for climate and 1,0
 RSS. This run overlapped another unit worker and simulation under an explicit one-run compute
 override, so its wall times and memory cannot be compared directly with the idle baseline
 runs above. The prior replay and phase tables describe `7c53a46a`, before these review fixes;
-the optimized smoother has exact unit parity but the revised candidate needs its own replay.
+the optimized smoother has exact unit parity and its revised-candidate replay is reported below.
+
+
+The review-fix candidate `434761e5` was replayed for the same 1 Myr and 0.1 Myr
+checkpoints against `31094ae7`. Every recorded non-timing checkpoint, inventory, material
+account and closure value matched exactly. End-point land area and sea level remained
+171,862,737.117 km² and −60.8954356473 m in both arms; compact checkpoint values are in
+`climate-review-replay-comparison.json`. The candidate overlapped another simulation, so its
+132.0 s runtime and 1,054.5 MiB peak RSS are descriptive and not comparable to the baseline
+run. The comparison covers one save and interval; the glacier summation change affects the
+Python fallback and is separately checked by the seed-0 and seed-1 glacier parity cases.
