@@ -930,3 +930,41 @@ def test_climate_native_degenerate_grids_match_numpy(monkeypatch, shape, ocean_v
     expected_coast = climate._smooth_along_coast(*coast_args)
     for got, expected in zip((*got_humidity, *got_coast), (*expected_humidity, *expected_coast), strict=True):
         np.testing.assert_allclose(got, expected, rtol=2e-14, atol=2e-14)
+
+
+def test_offset_sampler_matches_numpy_at_seams_poles_and_half_cells(monkeypatch):
+    from app.hydroclimate import _climate_rust
+
+    if not _climate_rust.has_kernel("offset_indices_rs"):
+        pytest.skip("Rust offset kernel unavailable")
+    rng = np.random.default_rng(10461)
+    height, width = 8, 16
+    lat = np.array([89.9, 75., 45., 0., 0., -45., -75., -89.9])
+    u = rng.uniform(-1, 1, (height, width))
+    v = rng.uniform(-1, 1, (height, width))
+    u[3] = 0.5
+    v[3] = 0.5
+    for field in (rng.normal(size=(height, width)), rng.random((height, width)) > 0.5):
+        got = climate._sample_at_offset(field, u, v, 22.5, lat)
+        with monkeypatch.context() as patch:
+            patch.setattr(_climate_rust, "has_kernel", lambda _name: False)
+            expected = climate._sample_at_offset(field, u, v, 22.5, lat)
+        np.testing.assert_array_equal(got, expected)
+
+
+def test_moisture_flux_rust_matches_numpy_with_and_without_noise(monkeypatch):
+    from app.hydroclimate import _climate_rust
+
+    if not _climate_rust.has_kernel("moisture_divergence_rs"):
+        pytest.skip("Rust moisture divergence unavailable")
+    rng = np.random.default_rng(10462)
+    shape = (17, 31)
+    humidity = rng.uniform(0, 18, shape)
+    u, v, noise = (rng.normal(size=shape) for _ in range(3))
+    lat = np.linspace(89., -89., shape[0])
+    for white_noise in (None, noise):
+        got = climate.compute_moisture_flux_convergence(humidity, u, v, lat, white_noise)
+        with monkeypatch.context() as patch:
+            patch.setattr(_climate_rust, "has_kernel", lambda _name: False)
+            expected = climate.compute_moisture_flux_convergence(humidity, u, v, lat, white_noise)
+        np.testing.assert_allclose(got, expected, rtol=2e-14, atol=2e-14)

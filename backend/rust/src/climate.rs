@@ -588,3 +588,88 @@ pub fn smooth_along_coast_rs<'py>(
         PyArray2::from_owned_array(py, v),
     ))
 }
+
+/// Compute NumPy-compatible nearest offset indices (#1046).
+#[pyfunction]
+pub fn offset_indices_rs<'py>(
+    py: Python<'py>,
+    u: PyReadonlyArray2<'py, f64>,
+    v: PyReadonlyArray2<'py, f64>,
+    lat: PyReadonlyArray1<'py, f64>,
+    cos_lat: PyReadonlyArray1<'py, f64>,
+    lon: PyReadonlyArray1<'py, f64>,
+    distance: f64,
+) -> PyResult<(Bound<'py, PyArray2<i64>>, Bound<'py, PyArray2<i64>>)> {
+    let u = u.as_array();
+    let v = v.as_array();
+    let lat = lat.as_array();
+    let cos_lat = cos_lat.as_array();
+    let lon = lon.as_array();
+    let (h, w) = u.dim();
+    if h == 0
+        || w == 0
+        || v.dim() != (h, w)
+        || lat.len() != h
+        || cos_lat.len() != h
+        || lon.len() != w
+    {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "offset shape mismatch",
+        ));
+    }
+    let mut rows = vec![vec![0i64; w]; h];
+    let mut cols = vec![vec![0i64; w]; h];
+    for r in 0..h {
+        for c in 0..w {
+            let dst_lat = lat[r] + v[[r, c]] * distance;
+            let dst_lon = lon[c] + u[[r, c]] * distance / cos_lat[r];
+            let row = ((90.0 - dst_lat) / (180.0 / h as f64) - 0.5).round_ties_even() as i64;
+            let col = ((dst_lon + 180.0) / (360.0 / w as f64) - 0.5).round_ties_even() as i64;
+            rows[r][c] = row.clamp(0, h as i64 - 1);
+            cols[r][c] = col.rem_euclid(w as i64);
+        }
+    }
+    Ok((
+        PyArray2::from_vec2(py, &rows)?,
+        PyArray2::from_vec2(py, &cols)?,
+    ))
+}
+
+/// Spherical centered moisture divergence before smoothing (#1046).
+#[pyfunction]
+pub fn moisture_divergence_rs<'py>(
+    py: Python<'py>,
+    humidity: PyReadonlyArray2<'py, f64>,
+    u: PyReadonlyArray2<'py, f64>,
+    v: PyReadonlyArray2<'py, f64>,
+    cos_lat: PyReadonlyArray2<'py, f64>,
+    radius: f64,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let q = humidity.as_array();
+    let u = u.as_array();
+    let v = v.as_array();
+    let cos = cos_lat.as_array();
+    let (h, w) = q.dim();
+    if h == 0 || w == 0 || u.dim() != (h, w) || v.dim() != (h, w) || cos.dim() != (h, w) {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "moisture divergence shape mismatch",
+        ));
+    }
+    let dlon = 2.0 * std::f64::consts::PI / w as f64;
+    let dlat = std::f64::consts::PI / h as f64;
+    let mut result = vec![vec![0.0; w]; h];
+    for r in 0..h {
+        let n = (r + h - 1) % h;
+        let s = (r + 1) % h;
+        for c in 0..w {
+            let e = (c + 1) % w;
+            let west = (c + w - 1) % w;
+            let dqu = (q[[r, e]] * u[[r, e]] - q[[r, west]] * u[[r, west]]) / 2.0;
+            let dqv = ((q[[n, c]] * v[[n, c]]) * cos[[n, c]]
+                - (q[[s, c]] * v[[s, c]]) * cos[[s, c]])
+                / 2.0;
+            result[r][c] = (dqu / dlon + dqv / dlat) / (cos[[r, c]] * radius);
+        }
+    }
+    Ok(PyArray2::from_vec2(py, &result)?)
+}

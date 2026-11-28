@@ -206,3 +206,12 @@ run overlapping a climate unit test was discarded and repeated after the test st
 
 These single-run results are descriptive. The other climate targets and saved-world parity
 remain to be checked before the step is complete.
+
+The first two kernels' 1 Myr mature replay compared `31094ae7` with `73131aa7` using
+`attribute_hm_ratchet.py <local-save> --myr 1 --checkpoint-myr 0.1 --out <capture>`,
+sequentially with no other tracked heavy run. Every recorded non-timing checkpoint,
+inventory, material account, and closure value was exactly equal. At 68.9 Myr, land area
+was 171,862,737.117 km² and sea level −60.8954356473 m in both arms. Runtime was 138.7 →
+139.5 s and peak RSS 1,020.9 → 980.3 MiB; single-run timings are descriptive. Compact
+checkpoint values are in `climate-slice-replay-comparison.json`. This result covers only
+the first two kernels, one save and 1 Myr, not the remaining Step 4 work.

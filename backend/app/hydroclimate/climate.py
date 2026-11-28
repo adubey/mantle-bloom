@@ -329,6 +329,8 @@ def _sample_at_offset(field: np.ndarray, dir_u: np.ndarray, dir_v: np.ndarray, d
     throughout this module for offset-position sampling (mountain tangent picking, wake
     lookback, current advection)."""
     height, width = field.shape
+    if _climate_rust.can_sample_offset(field, dir_u, dir_v, dist_deg, lat_deg):
+        return _climate_rust.sample_at_offset(field, dir_u, dir_v, dist_deg, lat_deg)
     lat_grid = np.repeat(lat_deg[:, None], width, axis=1)
     lon_deg = -180.0 + (np.arange(width) + 0.5) * (360.0 / width)
     cos_lat = np.clip(np.cos(np.radians(lat_grid)), 0.15, 1.0)
@@ -1694,14 +1696,20 @@ def compute_moisture_flux_convergence(
     lat_grid = np.radians(np.repeat(lat_deg[:, None], width, axis=1))
     cos_lat = np.clip(np.cos(lat_grid), 0.15, 1.0)
 
-    qu = humidity * wind_u
-    qv = humidity * wind_v
-    dqu_dlon, _ = _centered_gradient(qu)
-    _, dqvcos_dlat = _centered_gradient(qv * cos_lat)  # northward-positive, per row-step
+    if (_climate_rust.has_kernel("moisture_divergence_rs")
+        and _climate_rust.supports_float_grid(humidity, wind_u, wind_v, cos_lat)):
+        divergence_per_km = _climate_rust.moisture_divergence(
+            humidity, wind_u, wind_v, cos_lat, plates.PLANET_RADIUS_KM,
+        )
+    else:
+        qu = humidity * wind_u
+        qv = humidity * wind_v
+        dqu_dlon, _ = _centered_gradient(qu)
+        _, dqvcos_dlat = _centered_gradient(qv * cos_lat)  # northward-positive, per row-step
 
-    dlon = 2.0 * np.pi / width
-    dlat = np.pi / height
-    divergence_per_km = (dqu_dlon / dlon + dqvcos_dlat / dlat) / (cos_lat * plates.PLANET_RADIUS_KM)
+        dlon = 2.0 * np.pi / width
+        dlat = np.pi / height
+        divergence_per_km = (dqu_dlon / dlon + dqvcos_dlat / dlat) / (cos_lat * plates.PLANET_RADIUS_KM)
     convergence_q = _smooth_field(-divergence_per_km * MFC_COLLECTION_LENGTH_KM / MFC_REFERENCE_WIND_SPEED_M_S, _mfc_smoothing_passes(width))
     zonal_mean = convergence_q.mean(axis=1, keepdims=True)
     blended = (1.0 - MFC_ZONAL_COHERENCE) * convergence_q + MFC_ZONAL_COHERENCE * zonal_mean
