@@ -290,3 +290,11 @@ account and closure value matched exactly. End-point land area and sea level rem
 132.0 s runtime and 1,054.5 MiB peak RSS are descriptive and not comparable to the baseline
 run. The comparison covers one save and interval; the glacier summation change affects the
 Python fallback and is separately checked by the seed-0 and seed-1 glacier parity cases.
+
+The reviewed candidate was also profiled on the young seed-0 world at `c778ed71` with the
+same diagnostic-wind, one-warmup and three-step schedule. Mean total step time was 12.250 s
+(individual steps: 13.181, 12.058, 11.512 s), the climate phase was 0.306 s/step, and peak RSS
+was 1,074 MB. The run overlapped another simulation under an explicit one-run compute override,
+so its timing and RSS are descriptive and should not be compared directly with the idle
+baseline's 12.342 s total, 0.351 s climate and 960 MB RSS. The same candidate's mature profile
+above also overlapped other work. CI was cancelled at the owner's request before this profile.
