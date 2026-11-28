@@ -215,3 +215,39 @@ was 171,862,737.117 km² and sea level −60.8954356473 m in both arms. Runtime 
 139.5 s and peak RSS 1,020.9 → 980.3 MiB; single-run timings are descriptive. Compact
 checkpoint values are in `climate-slice-replay-comparison.json`. This result covers only
 the first two kernels, one save and 1 Myr, not the remaining Step 4 work.
+
+### All four climate paths: phase profiles
+
+The complete candidate `7c53a46a` adds native offset indices and spherical moisture
+flux divergence. The pre-registered profile commands ran sequentially on the same host;
+peak RSS is decimal MB. Baseline is `31094ae7`. The final candidate used the same initial
+worlds and diagnostic wind. The first mature candidate of the earlier two-kernel slice
+was discarded due to overlap with a unit test, as noted above.
+
+| Case | Mean step, baseline → candidate | Climate phase, baseline → candidate | Peak RSS, baseline → candidate |
+|---|---:|---:|---:|
+| Young | 12.342 → 12.371 s | 0.351 → 0.305 s | 960 → 849 MB |
+| Mature | 13.282 → 13.651 s | 0.368 → 0.318 s | 1,070 → 946 MB |
+
+The climate phase fell by 13.1% and 13.6%, respectively. These are single runs. Total-step
+and peak-RSS changes are noisy and are not evidence that the port caused those changes.
+
+The complete candidate's 1 Myr replay (`7c53a46a`) used the same saved world, command,
+checkpoint schedule, and baseline as the first slice. Every recorded non-timing checkpoint,
+inventory, material account and closure value was exactly equal. End-point land area and sea
+level were 171,862,737.117 km² and −60.8954356473 m in both arms; see
+`climate-final-replay-comparison.json` for compact checkpoints. Runtime was 138.7 → 146.7 s
+and peak RSS 1,020.9 → 876.9 MiB. Each arm ran once, sequentially, with no other tracked
+heavy runs; the timings are descriptive. This tests one save for 1 Myr, not all worlds.
+
+A repeat of the complete mature candidate measured 13.963 s per step, 0.339 s for the
+climate phase, and 949 MB peak RSS. Against the original baseline, the largest exclusive
+phase increase was glacier marching (6.371 → 6.684 s); ocean currents and humidity fell
+by 0.024 s and 0.023 s. A repeat of the baseline is needed before comparing total-step
+runtime because other phases and host load varied.
+
+The mature baseline repeat measured 14.065 s per step, 0.393 s for climate and 953 MB peak
+RSS. Across two runs per arm, baseline/candidate climate times were 0.368–0.393 / 0.318–0.339 s,
+while total-step times were 13.282–14.065 / 13.651–13.963 s. The climate phase is consistently
+lower in this small sample, while the overlapping total-step ranges do not establish an
+end-to-end speedup. Baseline and candidate repeats were not interleaved, and host load varied.
