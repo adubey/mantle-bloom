@@ -272,3 +272,27 @@ preregistered young baseline and candidate replicates are needed before attribut
 regression to the kernels. Mature magma was not observed, so its performance remains unmeasured.
 The full stress suite passed on the final code: 68 tests with one worker in 4 h 4 min 30 s;
 another agent's unit worker overlapped part of the run, so that runtime is not a benchmark.
+
+### Young timing replicates
+
+The preregistered young replicate repeated the same seed, densities, warmup and three-step
+settings. At the user's request, the baseline started alongside another stress worker (its
+budget check allowed the run); a different simulation and then unit workers ran before the
+candidate, which started when the budget check listed no other heavy runs. The arms therefore
+are not an idle-host matched comparison. Individual samples and peak RSS are in
+`tectonic-young-replicate.json`.
+
+| Measure | Baseline original | Baseline repeat | Final original | Final repeat |
+|---|---:|---:|---:|---:|
+| Whole step, mean (s) | 11.187 | 12.773 | 13.965 | 11.411 |
+| Gathering boundary forces (s/step) | 0.1106 | 0.1423 | 0.1686 | 0.1018 |
+| Detecting collisions (s/step) | 0.1555 | 0.1802 | 0.2014 | 0.1509 |
+| Finding gap points (s/step) | 0.1625 | 0.1816 | 0.0689 | 0.0598 |
+| Moving magma (s/step) | 0.0166 | 0.0209 | 0.0058 | 0.0051 |
+| Eroding and depositing sediment (s/step) | 9.084 | 10.422 | 11.558 | 9.417 |
+| Peak RSS (MB) | 1,070.6 | 947.0 | 882.6 | 923.2 |
+
+Gap finding is faster in both samples, while the spread in unrelated erosion time tracks much
+of the total-step spread. Because the measured ranges overlap and the repeat arms had different
+competing workloads, the whole-step and shorter boundary/collision changes remain inconclusive;
+these runs do not establish a whole-step speedup. The mature magma phase was not observed.

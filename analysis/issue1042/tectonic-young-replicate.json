@@ -1,0 +1,32 @@
+{
+  "baseline": {
+    "step_seconds": [
+      13.30111312516965,
+      12.778062417171896,
+      12.239494625013322
+    ],
+    "peak_rss_mb": 947.03125,
+    "phases_seconds": {
+      "Gathering boundary forces": 0.14230319609244665,
+      "Detecting collisions": 0.1802103613348057,
+      "Finding gap points": 0.18161304124320546,
+      "Moving magma": 0.02092555530058841,
+      "Eroding and depositing sediment": 10.421939972632876
+    }
+  },
+  "final": {
+    "step_seconds": [
+      12.019855207996443,
+      11.33565679192543,
+      10.876256916904822
+    ],
+    "peak_rss_mb": 923.21875,
+    "phases_seconds": {
+      "Gathering boundary forces": 0.10181741874354582,
+      "Detecting collisions": 0.15089611111519238,
+      "Finding gap points": 0.05976856965571642,
+      "Moving magma": 0.0050900276595105725,
+      "Eroding and depositing sediment": 9.416686249741664
+    }
+  }
+}
