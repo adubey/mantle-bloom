@@ -43,7 +43,6 @@ from typing import TYPE_CHECKING, NamedTuple
 import numpy as np
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import breadth_first_order, connected_components
-from scipy.spatial import cKDTree
 
 from . import (
     collision_polarity,
@@ -95,6 +94,7 @@ from .lithosphere_plate import (
 )
 from .plates import _contested_by_any
 from .sparse_quad_patch import lattice_points, unpack_cell_keys
+from .spatial_index import SpatialIndex
 from .surface_fields import CRATON_UNFORMED_YEARS, SURFACE_FIELDS
 
 if TYPE_CHECKING:
@@ -1900,6 +1900,21 @@ def _advance(
     grow_frontier(plate, world, eligible, arc_source, neighbours, spacing_rad, MAX_ADVANCE_LAYERS_PER_STEP, max_cells, years=years)
 
 
+def _nearest_node_over(trees: list[SpatialIndex], points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Distance to, and position of, each point's nearest node across `trees`. Querying each
+    neighbour's cached node tree and keeping the nearer answer gives what one tree over their
+    concatenated nodes would (an exact tie goes to the earlier tree, then the lower index), without
+    rebuilding that tree for every frontier growth (#1042)."""
+    best = np.full(len(points), np.inf)
+    where = np.zeros((len(points), 3))
+    for tree in trees:
+        dist, idx = tree.query(points)
+        closer = dist < best
+        best[closer] = dist[closer]
+        where[closer] = tree.data[idx[closer]]
+    return best, where
+
+
 def grow_frontier(
     plate: "PlateWithSparseQuadPatch",
     world: "World",
@@ -1921,8 +1936,7 @@ def grow_frontier(
     that further. Cells grown from an `arc_source` cell are arc crust; the rest are fresh crust
     that stretch-thins the cells behind them. Returns how many cells were added."""
     extend_threshold_rad = EXTEND_THRESHOLD_MULTIPLIER * spacing_rad
-    neighbour_points = [p.all_points_and_elevation()[0] for p in neighbours if p.node_count() > 0]
-    neighbour_tree = cKDTree(np.concatenate(neighbour_points, axis=0)) if neighbour_points else None
+    neighbour_trees = [tree for p in neighbours if (tree := p.get_node_kdtree()) is not None]
     hc0, hm0 = growth_seed_thickness()
     amp = hc0 * 0.1
     texture = terrain_noise.FractalTexture(np.random.default_rng((world.seed, plate.plate_id, _TERRAIN_SEED_TAG)))
@@ -1944,12 +1958,12 @@ def grow_frontier(
         if claimable is not None:
             open_mask &= claimable(candidates, world_pts)
         gap_direction = np.zeros((len(candidates), 3))
-        if neighbour_tree is not None:
-            dist, idx = neighbour_tree.query(world_pts)
+        if neighbour_trees:
+            dist, nearest = _nearest_node_over(neighbour_trees, world_pts)
             if standoff:
                 open_mask &= dist > extend_threshold_rad
             finite = np.isfinite(dist)
-            gap_direction[finite] = neighbour_tree.data[idx[finite]] - world_pts[finite]
+            gap_direction[finite] = nearest[finite] - world_pts[finite]
         sources, candidates, local, world_pts, gap_direction = (
             array[open_mask][:budget] for array in (sources, candidates, local, world_pts, gap_direction)
         )
@@ -2413,7 +2427,7 @@ def fill_gap(
     donors use unweakened strength. Returns how many cells were added."""
     if plate.node_count() == 0 or len(gap_points) == 0:
         return 0
-    gap_tree = cKDTree(gap_points)
+    gap_tree = SpatialIndex(gap_points)
     coverage_radius_rad = COVERAGE_RADIUS_MULT * spacing_rad
 
     def claimable(keys: np.ndarray, world_pts: np.ndarray) -> np.ndarray:

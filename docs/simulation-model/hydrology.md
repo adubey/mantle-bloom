@@ -718,7 +718,7 @@ overlay toggle needed. Lake cells use
 a muddier, less-saturated blue than open ocean (`render_image.LAKE_COLOR_RGB`) via the same
 nearest-neighbor grid resample `_render_grid_arrays` already does for elevation/plate_id
 (`plates.collect_all_lake_depth`, index-aligned with `plates.collect_all_points`'s own
-output so both can share one `cKDTree` query). Rivers are drawn as short line segments, one
+output so both can share one `SpatialIndex` query). Rivers are drawn as short line segments, one
 per drawn `is_river` node to its own `flow_target`. Which segments and how they look is
 `render_image._rivers_to_draw`. Every map view that draws rivers, including animation frames,
 keeps only the `hydrology.group_rivers` networks that `_river_network_is_drawn` accepts: mouth
@@ -1188,7 +1188,7 @@ colored by `mouth_type` (`ocean`/`lake`/`other` each a distinct hue) so the endp
 classification is visible at a glance, not just in the sidebar text.
 
 **Click-to-select** is a server round trip (`GET /worlds/{world_id}/river_at`), the same nearest-node
-`cKDTree` hit-test pattern as `plate_at` (`hydrology.river_at`, searching every network's own
+`SpatialIndex` hit-test pattern as `plate_at` (`hydrology.river_at`, searching every network's own
 member points at once) -- there's no shape to point-in-polygon test against, only a sparse
 node cloud, so this is the natural fit rather than a departure from the pattern. No baked-PNG
 elevation backdrop, matching Plate Inspector's own confirmed "the shapes are the whole visual"
@@ -1297,7 +1297,7 @@ building a second grid just for this.
 
 **Land, ocean, and lake are three separate categories, not two.** `climate.py` has no lake
 concept of its own (see its "deliberately not ported" list), so lake-ness is resampled onto
-that same grid here, the same nearest-node `cKDTree` technique
+that same grid here, the same nearest-node `SpatialIndex` technique
 `climate._sample_elevation_and_crust` already uses for elevation. The first version of this
 folded "land" and "lake" into one combined category contrasted only against ocean -- which
 turned out wrong the moment it was tested against an inland lake (one entirely surrounded by

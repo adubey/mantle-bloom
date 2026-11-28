@@ -108,10 +108,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.spatial import cKDTree
 from scipy.special import ndtr
 
 from .. import geometry, plates, trace
+from ..spatial_index import SpatialIndex
 from . import biomes, hydrology
 
 if TYPE_CHECKING:
@@ -548,10 +548,7 @@ def _nearest_ocean_gather(is_ocean: np.ndarray, world_xyz: np.ndarray, field: np
 
     ocean_xyz = world_xyz.reshape(-1, 3)[flat_ocean]
     ocean_values = field.reshape(-1)[flat_ocean]
-    # balanced_tree=False/compact_nodes=False -- same build-time speedup hydrology.py's/
-    # plates.py's own cKDTrees use: ocean_xyz is one contiguous region of the grid rather
-    # than uniformly-scattered points, and the default construction degrades on that shape.
-    tree = cKDTree(ocean_xyz, balanced_tree=False, compact_nodes=False)
+    tree = SpatialIndex(ocean_xyz)
     query_points = world_xyz.reshape(-1, 3)
     chord_dist, idx = tree.query(query_points, workers=plates.query_workers(len(query_points)))
     # Chord distance -> great-circle angular distance (points are unit vectors).
@@ -904,11 +901,7 @@ def _land_swirl_current(wind_u: np.ndarray, wind_v: np.ndarray, is_ocean: np.nda
 
     land_xyz = world_xyz.reshape(-1, 3)[is_land.reshape(-1)]
     query_points = world_xyz.reshape(-1, 3)
-    # balanced_tree=False/compact_nodes=False -- same build-time speedup hydrology.py's/
-    # plates.py's own cKDTrees use: land_xyz forms contiguous landmass blobs rather than
-    # uniformly-scattered points, and the default construction degrades badly on that kind
-    # of clustered data (benchmarked ~10x slower query on a real ~70k-point land tree here).
-    tree = cKDTree(land_xyz, balanced_tree=False, compact_nodes=False)
+    tree = SpatialIndex(land_xyz)
     chord_dist, nearest_idx = tree.query(query_points, workers=plates.query_workers(len(query_points)))
     dist_rad = 2.0 * np.arcsin(np.clip(chord_dist / 2.0, 0.0, 1.0)).reshape(height, width)
     dist_deg = np.degrees(dist_rad)

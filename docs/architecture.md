@@ -3,10 +3,12 @@
 ## Stack
 
 - **Backend:** Python, FastAPI + uvicorn, numpy (rotation/vector math), scipy (`cKDTree`
-  for initial plate assignment, boundary-adjacency, merge-detection, and plate-defragment
-  queries, `scipy.cluster.vq.kmeans2` for split clustering,
+  for the point queries not yet on `spatial_index.SpatialIndex`, and as that index's fallback,
+  `scipy.cluster.vq.kmeans2` for split clustering,
   `scipy.sparse.csgraph.connected_components` for plate defragmentation), a compiled PyO3
   Rust extension (`backend/rust/`, imported as `mantle_bloom_rust` via
+  `spatial_index.py` for the shared 3D point index behind the per-plate, node-cloud and
+  hot-path nearest-neighbour and radius queries, via
   `hydroclimate/_glacier_rust.py` for the glacier march, plastic ice-sheet sweeps, and
   connected-ocean sea-level flood/bisection, via `hydroclimate/_lakes_rust.py` for lake
   component grouping, catchment roots, depression hierarchy events, and multi-member volume
@@ -581,6 +583,14 @@ elevation_lines.py  terrain-node constants and codes (planet radius, node densit
                     retired the line surface it used to hold
 rtree_index.py      minimal bulk-loaded (STR-packed) R-tree over 2D points -- box/nearest-
                     neighbor queries, used by PlateWithRTree
+spatial_index.py   SpatialIndex, the shared 3D point index (#1042): `cKDTree`'s `query`,
+                   `query_ball_point` and `query_pairs` with bit-identical distances, plus
+                   flat CSR radius queries (`query_ball_point_csr`). Backed by
+                   `mantle_bloom_rust.KdIndex` (`backend/rust/src/spatial/`, the same tree the
+                   Rust renderer uses), or a `cKDTree` without the extension. Behind
+                   `Plate.get_node_kdtree`, `Plate.get_bounding_polygon_tree`,
+                   `plates.cached_node_position_tree` and the climate, hydrology, erosion,
+                   gap-fill, frontier-growth, merge and render point queries
 plates.py          PlateSurface / Plate (ABC) -- node iteration and bulk field access, plate
                     identity and territory, `shift()` (per-turn Euler-pole refit + rotation),
                     the live per-plate outline used by the "Plates" map view, whole-world

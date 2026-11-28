@@ -413,7 +413,7 @@ otherwise only diagnosable with an ad-hoc script. See `docs/api-reference.md#get
 unprojects the click (through whatever view rotation is currently active --
 `rotation.ts`'s `unproject`, plus a `matTranspose` since a rotation matrix's inverse is its
 own transpose) to a true (lat, lon) and asks `GET /worlds/{world_id}/plate_at`, which reuses the exact
-same nearest-node `cKDTree` lookup the render grid already uses
+same nearest-node `SpatialIndex` lookup the render grid already uses
 (`plates.collect_all_points`/`nearest_plate_id`) to find the owning plate. This is more
 robust than projected-polygon hit-testing would be (which risks the same antimeridian-seam
 problems described above for filled/stroked shapes) and clicks are infrequent enough that one

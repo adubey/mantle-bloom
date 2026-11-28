@@ -96,11 +96,11 @@ import numpy as np
 from numba import njit
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
-from scipy.spatial import cKDTree
 
 from .. import cratons, geometry, healpix_grid, trace
 from . import _glacier_rust, _lakes_rust, _routing_rust, breaching, lakes, river_substeps
 from ..elevation_lines import DEFAULT_NODE_DENSITY, PLANET_RADIUS_KM, line_spacing_rad
+from ..spatial_index import SpatialIndex
 from ..plates import (
     Plate,
     cached_node_position_tree,
@@ -711,14 +711,12 @@ def _build_neighbor_graph(points: np.ndarray, world: "World | None" = None) -> n
     # (climate.py's own resample, erosion.py's slope/earthquake/wind-deposit queries) instead
     # of rebuilding an equivalent one from scratch -- see that function's own docstring.
     # `world=None` (connected_ocean_mask's own fallback build, and direct unit-test calls)
-    # keeps the old balanced_tree=False/compact_nodes=False build -- same build-once/
-    # query-once tradeoff as a single-use per-plate tree: built fresh
-    # and queried exactly once (one batched k-NN query over every node at once). Either way,
-    # an exact k-nearest-neighbor search -- results unchanged.
+    # builds a fresh index, queried exactly once (one batched k-NN query over every node at
+    # once). Either way, an exact k-nearest-neighbor search -- results unchanged.
     tree = (
         cached_node_position_tree(world, points)
         if world is not None
-        else cKDTree(points, balanced_tree=False, compact_nodes=False)
+        else SpatialIndex(points)
     )
     _, neighbor_idx = tree.query(points, k=k + 1, workers=query_workers(n))
     return neighbor_idx[:, 1:]  # column 0 is always the point itself, at distance 0
@@ -915,7 +913,7 @@ def force_earth_strait_connections(
         return is_ocean
     labels = _below_sea_components(below, neighbor_idx)
 
-    tree = cKDTree(points)
+    tree = SpatialIndex(points)
     for (lon_a, lat_a), (lon_b, lat_b) in _FORCED_EARTH_STRAITS_LONLAT:
         side_xyz = geometry.latlon_to_xyz(np.radians([lat_a, lat_b]), np.radians([lon_a, lon_b]))
         _, (idx_a, idx_b) = tree.query(side_xyz)
@@ -948,7 +946,7 @@ _LAST_NEAREST_HYDRO_NODE: tuple[object, object, np.ndarray, str] | None = None
 # would round-trip through every save/load for no benefit -- a plain module global, like
 # `_LAST_NEAREST_HYDRO_NODE` above, never enters that graph at all. Same identity-keyed,
 # worst-case-is-an-extra-rebuild safety as that cache.
-_LAST_OCEAN_TREE: tuple[object, cKDTree] | None = None
+_LAST_OCEAN_TREE: tuple[object, SpatialIndex] | None = None
 
 # The "healpix" World.node_cloud_resample_mode analogue of _LAST_OCEAN_TREE above (issue #133
 # phase 2) -- same module-global, not-on-World placement (and the same reasoning: a save/load
@@ -977,12 +975,12 @@ _LAST_OCEAN_HEALPIX_INDEX: tuple[object, healpix_grid.NodePixelIndex] | None = N
 _OCEAN_NSIDE_OVERSAMPLE = 4
 
 
-def _ocean_node_tree(hydro: "HydrologyFields") -> cKDTree:
+def _ocean_node_tree(hydro: "HydrologyFields") -> SpatialIndex:
     global _LAST_OCEAN_TREE
     cached = _LAST_OCEAN_TREE
     if cached is not None and cached[0] is hydro:
         return cached[1]
-    tree = cKDTree(hydro.points)
+    tree = SpatialIndex(hydro.points)
     _LAST_OCEAN_TREE = (hydro, tree)
     return tree
 
@@ -4249,6 +4247,6 @@ def river_at(fields: HydrologyFields, rivers: list[RiverInfo], query_xyz: np.nda
         return None
     all_idx = np.concatenate([r.member_idx for r in rivers])
     owner = np.concatenate([np.full(len(r.member_idx), i, dtype=np.int64) for i, r in enumerate(rivers)])
-    tree = cKDTree(fields.points[all_idx])
+    tree = SpatialIndex(fields.points[all_idx])
     _, nearest = tree.query(query_xyz.reshape(1, 3), k=1)
     return int(owner[int(nearest[0])])

@@ -25,11 +25,11 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components, dijkstra
-from scipy.spatial import cKDTree
 
 from . import lithosphere, rheology
 from . import rift_strength as strength
 from .rift_strength import RADIUS_M, RiftLineParams
+from .spatial_index import SpatialIndex
 
 N_DIRECTIONS = len(strength.CUT_ANGLES)
 PULL_NOISE = 1e-9  # relative to the total balanced force; keeps rounding noise from counting as a positive peak
@@ -219,8 +219,8 @@ def band_reach(points: np.ndarray, chain: np.ndarray, eps: np.ndarray, p: RiftLi
     width = np.minimum(3.0 * p.w0_m, p.w0_m * (1.0 + eps[chain].astype(float)))
     chord = 2.0 * np.sin(0.5 * (0.5 * width) / RADIUS_M)
     # One query for the whole line rather than one per cell (a sweep cost, #942).
-    hits = cKDTree(points).query_ball_point(points[chain], chord * (1.0 + 1e-6))
-    members = [np.union1d(np.asarray(found, dtype=np.int64), [cell]) for found, cell in zip(hits, chain)]
+    indptr, hits = SpatialIndex(points).query_ball_point_csr(points[chain], chord * (1.0 + 1e-6))
+    members = [np.union1d(hits[a:b], [cell]) for a, b, cell in zip(indptr[:-1], indptr[1:], chain)]
     band = np.unique(np.concatenate(members))
     position = np.searchsorted(band, np.concatenate(members))
     return band, position, np.repeat(np.arange(len(chain)), [len(m) for m in members])
@@ -425,7 +425,7 @@ def split_masks(graph: csr_matrix, areas: np.ndarray, chain: np.ndarray, p: Rift
     if islands.any():
         placed = np.flatnonzero(side >= 0)
         if points is not None and len(placed):
-            nearest = placed[cKDTree(points[placed]).query(points[islands])[1]]
+            nearest = placed[SpatialIndex(points[placed]).query(points[islands])[1]]
             side[islands] = side[nearest]
         else:
             side[islands] = 0

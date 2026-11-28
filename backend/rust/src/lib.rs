@@ -7,12 +7,14 @@ mod ice_step;
 mod lakes;
 mod plastic;
 mod render;
+mod spatial;
 
 use pyo3::prelude::*;
 
 #[pymodule]
 fn mantle_bloom_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<graph::MarchGraph>()?;
+    m.add_class::<spatial::KdIndex>()?;
     m.add_function(wrap_pyfunction!(ice_step::step_ice, m)?)?;
     m.add_function(wrap_pyfunction!(eustasy::seeded_flood_levels, m)?)?;
     m.add_function(wrap_pyfunction!(eustasy::solve_sea_level_connected, m)?)?;
