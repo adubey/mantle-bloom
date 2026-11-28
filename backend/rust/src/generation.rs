@@ -11,7 +11,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
 
-use crate::render::kdtree::KdTree;
+use crate::spatial::kdtree::KdTree;
 
 pub const PLANET_RADIUS_KM: f64 = 6371.0;
 
@@ -158,7 +158,7 @@ pub fn nearest_distance_rs<'py>(
 
 /// Seed assignment (`plate_partition`'s Voronoi step): the owner label of the
 /// nearest seed for every lattice cell, from a balanced k-d tree over the
-/// seeds (`render::kdtree::KdTree`, the renderer's tree). Exact ties resolve
+/// seeds (`spatial::kdtree::KdTree`, the shared tree). Exact ties resolve
 /// to the lowest seed index; `cKDTree` promises no tie order.
 #[pyfunction]
 pub fn nearest_seed_labels_rs<'py>(

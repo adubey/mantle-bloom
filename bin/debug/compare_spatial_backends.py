@@ -18,7 +18,9 @@ Usage (from the repository root, with this worktree's own venv; follow the compu
     backend/.venv/bin/python bin/debug/compare_spatial_backends.py --seed 0 --steps 1 --json out.json
 
 Options: --seed, --load, --steps (default 1), --step-years (default 100000), --wind-model
-(default diagnostic), --json (write every row).
+(default diagnostic), --reference (`ckdtree`, default: a plain `cKDTree`, so documented tie
+differences show up as `ties`; `fallback`: `SpatialIndex`'s own scipy fallback, which must
+agree exactly, ties and ordering included), --json (write every row).
 """
 
 from __future__ import annotations
@@ -65,8 +67,21 @@ def _compare_query(row, got, want):
     row["tie_rows"] += int(np.count_nonzero(differ & ~distance))
 
 
-def install() -> None:
+def _fallback_index(points):
+    """A `SpatialIndex` on its scipy fallback, over the same points."""
+    saved = spatial_index._KdIndex
+    spatial_index._KdIndex = None
+    try:
+        return SpatialIndex(points)
+    finally:
+        spatial_index._KdIndex = saved
+
+
+def install(reference: str = "ckdtree") -> None:
     original = {name: getattr(SpatialIndex, name) for name in ("query", "query_ball_point", "query_ball_point_csr", "query_pairs")}
+    if reference == "fallback":
+        _install_fallback_reference(original)
+        return
 
     def query(self, x, k=1, *args, **kwargs):
         got = original["query"](self, x, k, *args, **kwargs)
@@ -123,6 +138,33 @@ def install() -> None:
     SpatialIndex.query_pairs = pairs
 
 
+def _same(a, b) -> bool:
+    if isinstance(a, tuple) and isinstance(b, tuple):
+        return len(a) == len(b) and all(_same(x, y) for x, y in zip(a, b))
+    if isinstance(a, set) or isinstance(b, set):
+        return a == b
+    if isinstance(a, np.ndarray) and a.dtype == object:
+        return isinstance(b, np.ndarray) and a.shape == b.shape and all(list(x) == list(y) for x, y in zip(a.ravel(), b.ravel()))
+    return np.array_equal(np.asarray(a), np.asarray(b)) and np.asarray(a).dtype == np.asarray(b).dtype
+
+
+def _install_fallback_reference(original) -> None:
+    """Answer every call on the native index and on a fallback index too; count calls whose
+    results differ in any way (values, order, dtype or shape)."""
+    for name, fn in original.items():
+        def method(self, *args, _name=name, _fn=fn, **kwargs):
+            got = _fn(self, *args, **kwargs)
+            want = _fn(_fallback_index(self.data), *args, **kwargs)
+            row = STATS[(_site(), _name)]
+            row["calls"] += 1
+            if not _same(got, want):
+                row["bad_calls"] += 1
+                if row["bad_calls"] <= 3:
+                    print(f"MISMATCH {_name} at {_site()}: args={[np.shape(a) for a in args]} kwargs={kwargs}", file=sys.stderr)
+            return got
+        setattr(SpatialIndex, name, method)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--seed", type=int, default=0)
@@ -130,6 +172,7 @@ def main() -> None:
     ap.add_argument("--steps", type=int, default=1)
     ap.add_argument("--step-years", type=float, default=100_000.0)
     ap.add_argument("--wind-model", choices=("diagnostic", "cfd"), default="diagnostic")
+    ap.add_argument("--reference", choices=("ckdtree", "fallback"), default="ckdtree")
     ap.add_argument("--json", type=Path)
     args = ap.parse_args()
     if not spatial_index.RUST_AVAILABLE:
@@ -142,7 +185,7 @@ def main() -> None:
     else:
         world = world_mod.generate_world(args.seed)
     world.wind_model = args.wind_model
-    install()
+    install(args.reference)
     for _ in range(args.steps):
         world_mod.step_world(world, args.step_years)
 

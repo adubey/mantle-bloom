@@ -86,16 +86,18 @@ call against 5–7 µs.
 ### Step, render and memory
 
 `profile_phases.py --scenarios render,step --steps 3 --warmup 1 --wind-model diagnostic`
-under `/usr/bin/time -l`, one run per arm so far (replicates below).
+under `/usr/bin/time -l`, three interleaved runs per arm. The third mature candidate run was
+interrupted, so that row has two.
 
-| Case | Mean step, main → branch | Cold render | Warm render | Max RSS | Peak footprint |
-|---|---:|---:|---:|---:|---:|
-| Young, seed 0 | 14.46 → 12.41 s | 1.78 → 0.97 s | 1.20 → 0.56 s | 955 → 1,127 MB | 1,141 → 1,172 MB |
-| Mature, 67.9 Myr | 14.50 → 12.39 s | 1.46 → 0.87 s | 0.94 → 0.48 s | 1,131 → 1,251 MB | 1,231 → 1,246 MB |
+| Case | Mean step, main → branch | Cold render | Warm render | Peak footprint |
+|---|---:|---:|---:|---:|
+| Young, seed 0 (3 + 3 runs) | 13.07 → 11.88 s (14.46, 11.75, 13.01 → 12.41, 11.85, 11.37) | 1.41 → 0.87 s | 0.97 → 0.49 s | 1,191 → 1,257 MB |
+| Mature, 67.9 Myr (3 + 2 runs) | 13.08 → 12.07 s (14.50, 12.37, 12.38 → 12.39, 11.75) | 1.29 → 0.84 s | 0.86 → 0.47 s | 1,224 → 1,242 MB |
 
-These step gains are larger than the spatial time saved (0.7–0.9 s): the phase tree also shows
-the untouched Rust glacier march 0.35 s faster on the candidate run, so part of the gap is host
-noise, which the replicates are for. The render gains are real and come from the renderer's own
+The step reduction, about 1.0–1.2 s (8–9%), is close to the spatial time saved (0.7–0.9 s), but
+run-to-run spread on this shared host is ±1 s, so read it as "about the spatial saving", not a
+precise figure. Max RSS varied by up to 300 MB between runs of the same arm and is omitted;
+peak memory footprint rose 1–6%. The render gains are consistent across runs and come from the renderer's own
 k-d tree, which is now the shared one (`backend/rust/src/spatial/kdtree.rs`). Its traversal
 rechecks each cell's bound when it is popped and prunes by each node's tight box; it answers the
 same nearest-node queries (see the render check below).
@@ -136,11 +138,24 @@ fallback widens its k-NN query until no tie straddles the `k`-th slot and orders
 `(distance, index)`, so the Rust and fallback paths agree bit for bit, ties included
 (`test_symmetric_ties_take_the_lowest_index`). The model output therefore moves once relative
 to main, by a tie resolution rather than any distance or threshold change, in the land-area
-range #1047's lake port showed on the same save.
+range #1047's lake port showed on the same save. The project owner accepted this one-time model
+change on review of PR #1058.
 
-### Still running
+### Backend parity after review
 
-- Final-commit replays: the Rust index, and the same commit with only the spatial index forced
-  onto its scipy fallback. Expected: bit-identical to each other.
-- Rendered PNG hashes on the loaded save from both trees. Expected: identical.
-- Two more `profile_phases` replicates per arm and world.
+The first fallback ordered tied rows by the *returned* distance. Distinct squared distances can
+share a square root, so it could pick a farther point that Rust and `cKDTree` both reject (Codex
+review of #1058). The fallback now re-orders such rows by the squared distance, rounded as scipy
+rounds it, then index. With that fix (`942e56c3`):
+
+- `compare_spatial_backends.py --reference fallback` over one mature step: every call agreed in
+  values, order, dtype and shape, at every one of the 33 call sites.
+- The 1 Myr replay with the Rust index and with only the spatial index forced onto its scipy
+  fallback: bit-identical at all 11 checkpoints (runtime 122 s vs 136 s). The Rust replay is also
+  identical to the earlier candidates' (`fffa09b3`, `08a63513`).
+
+### Rendering is unchanged
+
+`combined`, `biome`, `elevation` (plain, and with the mountain and plains toggles) in Eckert IV,
+`combined` on the globe and `elevation` in Behrmann, rendered at 1100×611 from the loaded save
+in each tree: all six PNGs are byte-identical between `origin/main` and the branch.

@@ -10,16 +10,17 @@ GIL; without it, or with `MANTLE_BLOOM_DISABLE_RUST=1`, it wraps a `cKDTree`.
 What both backends guarantee, so either can stand in for the other or for a bare `cKDTree`:
 
 * Distances are `cKDTree`'s, bit for bit: the square root of `dx² + dy² + dz²` summed in that
-  order with the installed scipy's own rounding, which `_probe_fused` reads once at import.
+  order with the installed scipy's own rounding, which `_scipy_fuses` reads once at import.
   Every threshold test therefore agrees too: `query` keeps points strictly closer than
   `distance_upper_bound` (misses are `inf` with index `n`), and radius queries keep points at
   most `r` away.
 * `query` rows are sorted by distance; `query_ball_point` rows are ascending, single-point
   queries included (scipy leaves those in traversal order); `query_pairs(output_type="ndarray")`
   is in lexicographic order (scipy's is traversal order).
-* Exact distance ties go to the lowest index, on both backends: `query` rows are ordered by
-  `(distance, index)`, and when tied points straddle the `k`-th slot the lowest-index ones are
-  kept. A bare `cKDTree` keeps whichever tied point its traversal meets first, which depends on
+* Exact ties go to the lowest index, on both backends: `query` rows are ordered by
+  `(squared distance, index)`, and when tied points straddle the `k`-th slot the lowest-index
+  ones are kept. Ordering is decided on the squared distance, as `cKDTree` decides it, so two
+  points whose distances differ only before the square root are not a tie. A bare `cKDTree` keeps whichever tied point its traversal meets first, which depends on
   its leaf size and build options, so its rows can differ from these exactly where two distinct
   points are equidistant from the query. That is not rare: lattice and grid symmetry makes
   neighbours bit-identically equidistant somewhere in every step (see
@@ -34,6 +35,7 @@ from __future__ import annotations
 
 import itertools
 import logging
+import math
 import os
 
 import numpy as np
@@ -58,26 +60,51 @@ def _import_kdindex():
     return kdindex
 
 
-def _probe_fused(kdindex) -> bool | None:
-    """Whether the installed scipy fuses its squared-distance sum (see `kdtree::Metric` in the
-    Rust crate), read by comparing `cKDTree` distances against both native roundings on a fixed
-    random cloud. About one query in nine rounds differently under the two, so 512 queries
-    always tell them apart. `None` (fall back to scipy) if neither rounding reproduces scipy."""
+def _squared_distances(queries: np.ndarray, points: np.ndarray, fused: bool) -> np.ndarray:
+    """`cKDTree`'s squared distance between paired rows, rounded as the installed scipy rounds
+    it: `(dx*dx + dy*dy) + dz*dz`, or with the last two products fused into multiply-adds (see
+    `kdtree::Metric` in the Rust crate). numpy has no fused multiply-add, so the fused form runs
+    `math.fma` per row; the fallback calls this only for rows whose rounded distances collide."""
+    diff = queries - points
+    if not fused:
+        return diff[:, 0] * diff[:, 0] + diff[:, 1] * diff[:, 1] + diff[:, 2] * diff[:, 2]
+    fma = math.fma
+    return np.array([fma(dz, dz, fma(dy, dy, dx * dx)) for dx, dy, dz in diff.tolist()], dtype=np.float64)
+
+
+def _scipy_fuses() -> bool | None:
+    """Whether the installed scipy fuses its squared-distance sum, read by comparing `cKDTree`
+    distances on a fixed random cloud against both roundings. About one query in nine rounds
+    differently under the two, so 512 queries always tell them apart; `None` if neither matches."""
     rng = np.random.default_rng(1042)
     points = rng.normal(size=(64, 3))
     queries = rng.normal(size=(512, 3))
-    expected, _ = cKDTree(points).query(queries)
+    expected, idx = cKDTree(points).query(queries)
     for fused in (True, False):
-        got, _ = kdindex(points, fused).query(queries, 1, np.inf)
-        if np.array_equal(got, expected):
+        if np.array_equal(np.sqrt(_squared_distances(queries, points[idx], fused)), expected):
             return fused
-    _logger.warning("mantle_bloom_rust KdIndex distances differ from scipy's; spatial queries fall back to scipy.")
+    _logger.warning("scipy's cKDTree distances match neither rounding; spatial-index tie order may differ by backend.")
     return None
 
 
+def _native_matches_scipy(kdindex, fused: bool) -> bool:
+    rng = np.random.default_rng(1042)
+    points = rng.normal(size=(64, 3))
+    queries = rng.normal(size=(512, 3))
+    try:
+        got, _ = kdindex(points, fused).query(queries, 1, np.inf)
+    except Exception as exc:  # noqa: BLE001 -- a stale build with another signature must not break import
+        _logger.warning("mantle_bloom_rust KdIndex failed its self-check (%s; stale build?); spatial queries fall back to scipy.", exc)
+        return False
+    if np.array_equal(got, cKDTree(points).query(queries)[0]):
+        return True
+    _logger.warning("mantle_bloom_rust KdIndex distances differ from scipy's; spatial queries fall back to scipy.")
+    return False
+
+
+FUSED: bool | None = _scipy_fuses()
 _KdIndex = _import_kdindex()
-FUSED: bool | None = _probe_fused(_KdIndex) if _KdIndex is not None else None
-if FUSED is None:
+if _KdIndex is not None and (FUSED is None or not _native_matches_scipy(_KdIndex, FUSED)):
     _KdIndex = None
 RUST_AVAILABLE: bool = _KdIndex is not None
 
@@ -97,9 +124,19 @@ def _as_queries(x) -> tuple[np.ndarray, tuple[int, ...], bool]:
 
 def _radii(r, lead: tuple[int, ...]) -> np.ndarray:
     radii = np.asarray(r, dtype=np.float64)
-    if radii.ndim == 0:
+    if radii.size == 1:  # a scalar, or one radius for every query point as cKDTree allows
         return radii.reshape(1)
     return np.ascontiguousarray(np.broadcast_to(radii, lead).reshape(-1))
+
+
+def _exact_order_rows(index: "SpatialIndex", rows: np.ndarray, dist: np.ndarray, idx: np.ndarray):
+    """Re-order candidate rows by `(squared distance, index)`, misses last."""
+    found = np.isfinite(dist)
+    squared = np.full(dist.shape, np.inf)
+    r, c = np.nonzero(found)
+    squared[r, c] = _squared_distances(rows[r], index.data[idx[r, c]], bool(FUSED))
+    order = np.lexsort((idx, squared), axis=1)
+    return np.take_along_axis(dist, order, axis=1), np.take_along_axis(idx, order, axis=1)
 
 
 def _tie_reaches_end(dist: np.ndarray, k: int) -> np.ndarray:
@@ -123,10 +160,11 @@ class SpatialIndex:
     __slots__ = ("data", "n", "m", "_native", "_tree")
 
     def __init__(self, points) -> None:
-        data = np.ascontiguousarray(points, dtype=np.float64)
+        # An owned copy: `cKDTree` keeps a view of its caller's array, so a caller editing that
+        # array afterwards would change `data` under a tree built from the old coordinates.
+        data = np.array(points, dtype=np.float64, order="C", copy=True)
         if data.ndim != 2 or data.shape[1] != 3:
             raise ValueError(f"SpatialIndex needs (n, 3) points, got shape {data.shape}")
-        data = data.view()
         data.flags.writeable = False
         self.data = data
         self.n = int(data.shape[0])
@@ -156,7 +194,11 @@ class SpatialIndex:
         """`cKDTree.query`: distances and indices of the `k` nearest points (`k` an integer, or a
         sequence of 1-based ranks as in scipy), exact ties to the lowest index."""
         _check_supported(p, eps)
-        ranks = None if isinstance(k, (int, np.integer)) else [int(r) for r in k]
+        if np.ndim(k) == 0:
+            if float(k) != int(k):
+                raise ValueError("k must be a positive integer or a sequence of positive ranks")
+            k = int(k)  # cKDTree accepts integral floats too
+        ranks = None if isinstance(k, int) else [int(r) for r in k]
         kmax = int(k) if ranks is None else max(ranks, default=0)
         if kmax < 1 or (ranks is not None and min(ranks) < 1):
             raise ValueError("k must be a positive integer or a sequence of positive ranks")
@@ -177,9 +219,11 @@ class SpatialIndex:
 
     def _scipy_query(self, rows: np.ndarray, k: int, bound: float, workers: int) -> tuple[np.ndarray, np.ndarray]:
         """The Rust backend's `query` answer from `cKDTree`: ask for one more neighbour than
-        needed, and more again for rows where a tie still reaches the last slot asked for, so
-        every point tied with the `k`-th is among the candidates; then order each row by
-        `(distance, index)` and keep `k`. Distances are `cKDTree`'s own, so only tied rows move."""
+        needed, and more again for rows where an equal distance still reaches the last slot
+        asked for, so every point tied with the `k`-th is among the candidates. `cKDTree` already
+        orders each row by squared distance; rows where two returned distances are equal (an
+        exact tie, or distinct squared distances that round to the same root) are re-ordered by
+        `(squared distance, index)` before keeping `k`. Distances are `cKDTree`'s own."""
         m = len(rows)
         if m == 0:
             return np.zeros(0), np.zeros(0, dtype=np.int64)
@@ -193,13 +237,17 @@ class SpatialIndex:
             idx = np.pad(idx, ((0, 0), (0, extra - idx.shape[1])), constant_values=self.n)
             dist[open_rows], idx[open_rows] = more_d, more_i
             open_rows = open_rows[_tie_reaches_end(more_d, k)]
-        order = np.lexsort((idx, dist), axis=1)[:, :k]
-        dist = np.take_along_axis(dist, order, axis=1)
-        idx = np.take_along_axis(idx, order, axis=1)
+        collide = np.flatnonzero(np.any((dist[:, 1:] == dist[:, :-1]) & np.isfinite(dist[:, 1:]), axis=1))
+        if len(collide):
+            dist[collide], idx[collide] = self._exact_order(rows[collide], dist[collide], idx[collide])
+        dist, idx = dist[:, :k], idx[:, :k]
         if dist.shape[1] < k:  # fewer points than k: pad as cKDTree does
             dist = np.pad(dist, ((0, 0), (0, k - dist.shape[1])), constant_values=np.inf)
             idx = np.pad(idx, ((0, 0), (0, k - idx.shape[1])), constant_values=self.n)
         return dist.reshape(-1), idx.reshape(-1).astype(np.int64, copy=False)
+
+    def _exact_order(self, rows, dist, idx):
+        return _exact_order_rows(self, rows, dist, idx)
 
     def query_ball_point_csr(self, x, r) -> tuple[np.ndarray, np.ndarray]:
         """Every point within `r` (scalar, or one per query point) of each row of `x`, as int64

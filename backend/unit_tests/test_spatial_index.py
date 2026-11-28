@@ -168,6 +168,45 @@ def test_symmetric_ties_take_the_lowest_index(backend):
     assert np.all(bounded_d[0] == 0.25) and list(bounded_i[0]) == sorted(np.flatnonzero(np.isclose(np.linalg.norm(points, axis=1), 0.25)))[:4]
 
 
+def test_distances_that_collide_only_after_the_root_are_not_ties(backend):
+    """Squared distances 1 + 2**-52 and 1 both have root 1.0: the nearer point still wins, as
+    in `cKDTree` (review of #1058)."""
+    points = np.array([[1.0, 2.0**-26, 0.0], [1.0, 0.0, 0.0]])
+    d, i = SpatialIndex(points).query(np.zeros(3))
+    assert (d, i) == cKDTree(points).query(np.zeros(3)) == (1.0, 1)
+    d2, i2 = SpatialIndex(points).query(np.zeros((1, 3)), k=2)
+    np.testing.assert_array_equal(i2, [[1, 0]])
+
+
+def test_rounding_probe_reproduces_scipy():
+    rng = np.random.default_rng(12)
+    points, queries = _sphere(rng, 500), _sphere(rng, 5000)
+    expected, idx = cKDTree(points).query(queries)
+    assert spatial_index.FUSED is not None
+    np.testing.assert_array_equal(np.sqrt(spatial_index._squared_distances(queries, points[idx], spatial_index.FUSED)), expected)
+
+
+def test_api_edges_match_ckdtree(backend, cloud):
+    """Review of #1058: one radius as a length-1 array for a single point, and integral float k."""
+    points, queries = cloud
+    tree, index = cKDTree(points), SpatialIndex(points)
+    assert index.query_ball_point(queries[0], np.array([0.1])) == sorted(tree.query_ball_point(queries[0], np.array([0.1])))
+    indptr, indices = index.query_ball_point_csr(queries[0], np.array([0.1]))
+    assert indices.tolist() == sorted(tree.query_ball_point(queries[0], 0.1))
+    for got, want in zip(index.query(queries[:5], k=2.0), tree.query(queries[:5], k=2.0), strict=True):
+        np.testing.assert_array_equal(got, want)
+    with pytest.raises(ValueError):
+        index.query(queries[:5], k=1.5)
+
+
+def test_index_owns_its_points(backend):
+    points = np.array([[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]])
+    index = SpatialIndex(points)
+    points[0] = [9.0, 0.0, 0.0]
+    np.testing.assert_array_equal(index.data, [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]])
+    assert index.query([0.5, 0.0, 0.0]) == (0.5, 0)
+
+
 def test_exact_ties_take_the_lowest_index(backend):
     rng = np.random.default_rng(3)
     base = _sphere(rng, 400)
