@@ -155,3 +155,19 @@ The full stress run was interrupted after 9 passed and one failure: the glacier 
 case measured a sea-level difference of `0.01009711276609293 m` against its `0.01 m` limit.
 The same test on the unchanged baseline failed with the identical values, confirming that
 failure predates this routing port. Remaining full-suite stress cases were not run.
+
+### Gemini review-fix profiles
+
+After the review fixes, the same profile command, worlds, warmup and three-step schedule were
+run sequentially on the same host with no other tracked heavy runs. The earlier candidate is
+`105385b6`; the revised measurements include native ordering for non-NaN land elevations,
+including glacier graphs with infinite off-ice values, and avoid unused erosion buffers.
+
+| Case | Mean step, previous → revised | Routing + ordering, previous → revised | Peak RSS, previous → revised |
+|---|---:|---:|---:|
+| Young, seed 0 | 12.196 → 12.290 s | 0.170 → 0.172 s | 975 → 904 MB |
+| Mature, 67.9 Myr | 13.312 → 13.352 s | 0.209 → 0.195 s | 1,020 → 1,048 MB |
+
+These are single runs per arm; the differences are too small or variable to attribute a
+further speed or memory change to the review fixes. The large original routing improvement
+remains evident relative to the `f1b75db6` baseline above.

@@ -133,15 +133,11 @@ pub fn route_downstream_rs<'py>(
         let mut through: Vec<f64> = (0..n)
             .map(|i| if ocean[i] { 0.0 } else { source[i] })
             .collect();
-        let mut erode: Vec<f64> = (0..n)
-            .map(|i| {
-                if ocean[i] {
-                    0.0
-                } else {
-                    erosion.map_or(0.0, |e| e[i])
-                }
-            })
-            .collect();
+        let mut erode: Vec<f64> = erosion.map_or_else(Vec::new, |values| {
+            (0..n)
+                .map(|i| if ocean[i] { 0.0 } else { values[i] })
+                .collect()
+        });
         let mut deposited = vec![0.0; n];
         let mut retained = vec![0.0; n];
         let mut sink = vec![0.0; n];
@@ -231,6 +227,13 @@ pub fn routing_order_rs<'py>(
     let target = target.as_slice()?;
     if target.iter().any(|&i| i >= n as i64) {
         return Err(PyValueError::new_err("routing index out of range"));
+    }
+    if elevation
+        .iter()
+        .zip(ocean)
+        .any(|(&e, &is_ocean)| !is_ocean && e.is_nan())
+    {
+        return Err(PyValueError::new_err("land elevation contains NaN"));
     }
     Ok(py.detach(|| {
         let mut indegree = vec![0_usize; n];

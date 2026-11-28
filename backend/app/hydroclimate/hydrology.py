@@ -1383,11 +1383,11 @@ def _routing_order(elevation: np.ndarray, is_ocean: np.ndarray, flow_target: np.
     if not np.any(elevation[targets[land_edge]] >= elevation[land_indices[land_edge]]):
         return land_indices[np.argsort(-elevation[land_indices])].tolist(), []
 
-    # NumPy's fast downhill sort is retained to preserve its tie order. Non-finite
-    # elevations also keep Python's heap ordering (#1046).
+    # NumPy's downhill sort preserves its tie order; NaNs keep Python's heap
+    # behavior, while off-ice infinities do not prevent native routing (#1046).
     if (
-        _routing_rust.RUST_AVAILABLE and hasattr(_routing_rust._rust, "routing_order_rs")
-        and np.all(np.isfinite(elevation))
+        _routing_rust.has_kernel("routing_order_rs")
+        and not np.any(np.isnan(elevation[land_indices]))
     ):
         return _routing_rust.routing_order(elevation, is_ocean, flow_target)
 
@@ -1521,7 +1521,7 @@ def route_downstream(
     `erosion_only_source_amount` is supplied, it is propagated beside the primary source with
     the same losses but without retention/deposition, and remains the third item when unpacked."""
     n = len(elevation)
-    if _routing_rust.RUST_AVAILABLE and hasattr(_routing_rust._rust, "route_downstream_rs"):
+    if _routing_rust.has_kernel("route_downstream_rs"):
         order, stuck = _routing_order(elevation, is_ocean, flow_target)
         arrays = _routing_rust.route_downstream(
             order, stuck, flow_target, is_ocean, source_amount,
@@ -1747,16 +1747,16 @@ def _sweep_river_reaches(
     dtypes = (np.int64, np.int64, bool, bool, np.float64, np.float64, np.float64, np.float64,
               np.float64, np.float64, np.float64)
     if (
-        _routing_rust.RUST_AVAILABLE and hasattr(_routing_rust._rust, "sweep_river_reaches_rs")
+        _routing_rust.has_kernel("sweep_river_reaches_rs")
         and all(isinstance(a, np.ndarray) and a.dtype == dtype and a.flags.c_contiguous
                 for a, dtype in zip(arrays, dtypes, strict=True))
         and all(a.flags.writeable for a in (runoff, melt, prior))
         and not any(np.shares_memory(arrays[i], b) for i in (6, 7, 8)
                     for j, b in enumerate(arrays) if i != j)
     ):
-        return tuple(_routing_rust._rust.sweep_river_reaches_rs(
+        return _routing_rust.sweep_river_reaches(
             order, target, is_ocean, stores, tau_s, dt_s, storage_0, runoff, melt, prior, runoff_loss, melt_loss,
-        ))
+        )
     return _sweep_river_reaches_python(
         order, target, is_ocean, stores, tau_s, dt_s, storage_0, runoff, melt, prior, runoff_loss, melt_loss,
     )
